@@ -5,8 +5,12 @@ export const DEFAULT_TARGET_REPOSITORY_REF = "HEAD";
 export const DEFAULT_TARGET_ROOT_DIRECTORY = ".";
 export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".ndjson", ".txt"];
 export const PINNED_REPOSITORY_REF_PATTERN = /^[0-9a-f]{40}$/i;
-export const DEFAULT_CORPUS_REPOSITORY_COUNT = 100;
-export const DEFAULT_CORPUS_CONCURRENCY = 500;
+export const DEFAULT_CORPUS_REPOSITORY_COUNT = 2_000;
+export const DEFAULT_CORPUS_CONCURRENCY = 200;
+export const DEFAULT_REPOSITORIES_PER_SANDBOX = 10;
+export const DEFAULT_PROJECT_ROOTS_PER_REPOSITORY = 1;
+export const DEFAULT_EVALUATION_MAX_DURATION_MINUTES = 20;
+export const EVALUATION_CLEANUP_RESERVE_MINUTES = 2;
 export const EVALUATION_RETRY_CONCURRENCIES: ReadonlyArray<number> = [50, 10];
 
 export const SANDBOX_IMAGE = "node:22-bookworm";
@@ -26,6 +30,7 @@ export const SUCCESS_EXIT_CODE = 0;
 export const FAILURE_EXIT_CODE = 1;
 export const PROGRESS_INTERVAL_PROJECTS = 100;
 export const MILLISECONDS_PER_SECOND = 1_000;
+export const MILLISECONDS_PER_MINUTE = 60_000;
 export const PERCENT_MULTIPLIER = 100;
 export const SUMMARY_DECIMAL_PLACES = 1;
 
@@ -44,6 +49,7 @@ export const BUILD_REACT_DOCTOR_COMMANDS: ReadonlyArray<string> = [
 ];
 
 export const SETUP_TARGET_REPOSITORY_COMMAND = `set -eu
+rm -rf /workspace/target
 mkdir -p /workspace/target
 git -C /workspace/target init -q
 git -C /workspace/target remote add origin "$TARGET_REPOSITORY"

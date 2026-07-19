@@ -1,0 +1,1076 @@
+[
+  {
+    "org": "unkeyed",
+    "name": "unkey",
+    "ref": "77b60912168f244c68f0b0b8cfc922a72b43c695",
+    "rootDir": "web/apps/dashboard"
+  },
+  {
+    "org": "medusajs",
+    "name": "medusa",
+    "ref": "b85d670320aff82c64395d83e8aaca86c93f635b",
+    "rootDir": "packages/admin/dashboard"
+  },
+  {
+    "org": "appsmithorg",
+    "name": "appsmith",
+    "ref": "d75495a29b9430b83532e7ae6b53e5a17e6b85c0",
+    "rootDir": "app/client"
+  },
+  {
+    "org": "ChatGPTNextWeb",
+    "name": "NextChat",
+    "ref": "c3b8c1587c04fff05f7b42276a43016e87771527",
+    "rootDir": "."
+  },
+  {
+    "org": "toeverything",
+    "name": "AFFiNE",
+    "ref": "1201f7c3508192a636c19141400926cadaecac2d",
+    "rootDir": "packages/backend/server"
+  },
+  {
+    "org": "usememos",
+    "name": "memos",
+    "ref": "cf55f1107273c928e7c2d6bc26df5f3efea26458",
+    "rootDir": "web"
+  },
+  {
+    "org": "mastodon",
+    "name": "mastodon",
+    "ref": "8bbde181db0d6d79018fb1754a8296e753d47415",
+    "rootDir": "."
+  },
+  {
+    "org": "usebruno",
+    "name": "bruno",
+    "ref": "31dedc3c959f411e004c04249a9cc6782725c224",
+    "rootDir": "packages/bruno-app"
+  },
+  {
+    "org": "outline",
+    "name": "outline",
+    "ref": "0d76dfc9f443a02d8f645a2b3622c5ca4cc43319",
+    "rootDir": "."
+  },
+  {
+    "org": "drawdb-io",
+    "name": "drawdb",
+    "ref": "5cfea2c1e890e1a36d6adc4130931fc5ebb3b8b0",
+    "rootDir": "."
+  },
+  {
+    "org": "umami-software",
+    "name": "umami",
+    "ref": "a9508e7aaeb5440897c70a803b5933fd69b492e6",
+    "rootDir": "."
+  },
+  {
+    "org": "conductor-oss",
+    "name": "conductor",
+    "ref": "6d23b502510430c88a2797e01c3ffe842ad6e157",
+    "rootDir": "ui-next"
+  },
+  {
+    "org": "gitroomhq",
+    "name": "postiz-app",
+    "ref": "b4635f026b9d5b139de2519a1dc3964e7b316768",
+    "rootDir": "."
+  },
+  {
+    "org": "SigNoz",
+    "name": "signoz",
+    "ref": "b236a29a99843da368b5795420f32d87226b1805",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "chartdb",
+    "name": "chartdb",
+    "ref": "c24936a402bb3e24b4858f05282d69a04fcfe25b",
+    "rootDir": "."
+  },
+  {
+    "org": "illacloud",
+    "name": "illa-builder",
+    "ref": "a468660903e2a17b1778ba97dd17a375181a72e0",
+    "rootDir": "."
+  },
+  {
+    "org": "hyperdxio",
+    "name": "hyperdx",
+    "ref": "377ed16f441ce3e6ab79637df4af4dd8126c5b01",
+    "rootDir": "packages/app"
+  },
+  {
+    "org": "idurar",
+    "name": "idurar-erp-crm",
+    "ref": "5b2cf28969dc9a720c3fca20f0d2c7606534b277",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "Shopify",
+    "name": "react-native-skia",
+    "ref": "0d47d50fee4399f629be4d4edd85c4783c0f3c8d",
+    "rootDir": "packages/skia"
+  },
+  {
+    "org": "papermark",
+    "name": "papermark",
+    "ref": "aaaa958377cab0072fe6b21a459ff2cfca8a8a0b",
+    "rootDir": "."
+  },
+  {
+    "org": "ganeshrvel",
+    "name": "openmtp",
+    "ref": "ac02705fa9bcb81715ae328fb6c7324e126b2483",
+    "rootDir": "."
+  },
+  {
+    "org": "lightdash",
+    "name": "lightdash",
+    "ref": "a67ddb2656a05acd74bd56d3e1c0948151d23771",
+    "rootDir": "packages/frontend"
+  },
+  {
+    "org": "gitify-app",
+    "name": "gitify",
+    "ref": "a3886f772562384aae9aeb750aa01c1573b44723",
+    "rootDir": "."
+  },
+  {
+    "org": "edp963",
+    "name": "davinci",
+    "ref": "74a8cbf4d46b94048bfaa373642741769889b55d",
+    "rootDir": "webapp"
+  },
+  {
+    "org": "outsourc-e",
+    "name": "hermes-workspace",
+    "ref": "372b18a8e4e3fa7947ff3cf5651865560daca0a1",
+    "rootDir": "."
+  },
+  {
+    "org": "chartbrew",
+    "name": "chartbrew",
+    "ref": "275043235af2ecebaa880852dc901a437d99f2c3",
+    "rootDir": "client"
+  },
+  {
+    "org": "CherryHQ",
+    "name": "cherry-studio-app",
+    "ref": "1167eabbd5a8bacc27759ca9cb9c0dc1c1776b74",
+    "rootDir": "."
+  },
+  {
+    "org": "MetaMask",
+    "name": "metamask-mobile",
+    "ref": "ec66ea66d4fb99427f503f314c9283754aa200db",
+    "rootDir": "."
+  },
+  {
+    "org": "edrlab",
+    "name": "thorium-reader",
+    "ref": "6a27a373a7ff8530981f935e501925aff7da9a99",
+    "rootDir": "."
+  },
+  {
+    "org": "IceEnd",
+    "name": "Yosoro",
+    "ref": "2a01decad39ac1455128bbef652c2f7d0600c39b",
+    "rootDir": "."
+  },
+  {
+    "org": "RocketChat",
+    "name": "Rocket.Chat.ReactNative",
+    "ref": "fca8b8ed41f2c3cf6fa663279e592bbc83b8b22c",
+    "rootDir": "."
+  },
+  {
+    "org": "OneKeyHQ",
+    "name": "app-monorepo",
+    "ref": "44e179c92d635d6578e70b23c4961e66fe81e6dc",
+    "rootDir": "."
+  },
+  {
+    "org": "running-elephant",
+    "name": "datart",
+    "ref": "1af9c5d3ea46db2366d9daedc76e4d97881738b7",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "chatwoot",
+    "name": "chatwoot-mobile-app",
+    "ref": "9e91785f0cf69d1fabf899e5e0d5a28c9d1ddc4b",
+    "rootDir": "."
+  },
+  {
+    "org": "functionland",
+    "name": "fx-fotos",
+    "ref": "f41e97aba8cf333379f58ad4779c58ec4e4ac514",
+    "rootDir": "."
+  },
+  {
+    "org": "Sherlockouo",
+    "name": "music",
+    "ref": "18fa22b257b0cffa196a582f7f590540ec44e3ab",
+    "rootDir": "packages/web"
+  },
+  {
+    "org": "bbplayer-app",
+    "name": "BBPlayer",
+    "ref": "44e0a7422a8536b9bbbfa5ac2514d004e04f0411",
+    "rootDir": "packages/heatmap"
+  },
+  {
+    "org": "Grashjs",
+    "name": "cmms",
+    "ref": "f572f4443104c82ee1c9ffc5ea95cabb77245d45",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "DLand-Team",
+    "name": "moderate-react-admin",
+    "ref": "8efd855d60b8a876f3f28350f5893bf8af18a506",
+    "rootDir": "frontend/apps/admin-antd"
+  },
+  {
+    "org": "netbirdio",
+    "name": "dashboard",
+    "ref": "dc86c304637f272dce62380b7b63fa69c90a3f8b",
+    "rootDir": "."
+  },
+  {
+    "org": "picturama",
+    "name": "picturama",
+    "ref": "b79f0058b7ed3f46ae1f3704e531d3fe9c1d7389",
+    "rootDir": "."
+  },
+  {
+    "org": "moollaza",
+    "name": "repo-remover",
+    "ref": "150ef6c7f978162581e3725cadbdd424c9398752",
+    "rootDir": "."
+  },
+  {
+    "org": "mvdicarlo",
+    "name": "postybirb",
+    "ref": "5a5ae032ea13f760b954b1d02e4e8a4279b21bd3",
+    "rootDir": "."
+  },
+  {
+    "org": "goshacmd",
+    "name": "pabla",
+    "ref": "d7420128103ef594b31046a5bff48375482bcef0",
+    "rootDir": "."
+  },
+  {
+    "org": "inovex",
+    "name": "scrumlr.io",
+    "ref": "f0345a91e4a980489f3baa2880552359365b406b",
+    "rootDir": "."
+  },
+  {
+    "org": "Beever-AI",
+    "name": "beever-atlas",
+    "ref": "75cd45a7b770ce5513792d678e5c490f13a18f1c",
+    "rootDir": "web"
+  },
+  {
+    "org": "Syncano",
+    "name": "syncano-dashboard",
+    "ref": "1db0b4bb20e6fbae3d33a2b575ba3db5c6cee6b5",
+    "rootDir": "."
+  },
+  {
+    "org": "LiuYuYang01",
+    "name": "ThriveX-Admin",
+    "ref": "6ef1271b52408ee16de1c571ec505147d5a8ca89",
+    "rootDir": "."
+  },
+  {
+    "org": "ecency",
+    "name": "ecency-mobile",
+    "ref": "03aaf0cae141f2017515bf9104130bcc2d19ebf8",
+    "rootDir": "."
+  },
+  {
+    "org": "liuguanhua",
+    "name": "react-antd-admin",
+    "ref": "dce57d27274a27d1a51269eecbc710a8e10b5df9",
+    "rootDir": "client"
+  },
+  {
+    "org": "e2b-dev",
+    "name": "dashboard",
+    "ref": "5fa0e6c153223c94cef379f1dc719af5707e1560",
+    "rootDir": "."
+  },
+  {
+    "org": "betterlytics",
+    "name": "betterlytics",
+    "ref": "7398c6f749456437feac0063af2413101fb8f997",
+    "rootDir": "dashboard"
+  },
+  {
+    "org": "Morelitea",
+    "name": "initiative",
+    "ref": "20adae10495f6b5f61159569fdcb6cf8c2a2c0e9",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "ElSierra",
+    "name": "Social-app-React-Native",
+    "ref": "81f4784e9fe4b45d4130c4b8d37d82e2ee6a7d57",
+    "rootDir": "."
+  },
+  {
+    "org": "concrnt",
+    "name": "concrnt-world",
+    "ref": "bd43334c55e58a8aa3e5905bafce55512e737e41",
+    "rootDir": "app"
+  },
+  {
+    "org": "f",
+    "name": "prompts.chat",
+    "ref": "b5a3e428acc1620ed50aaad45c2cea1e2bb63c40",
+    "rootDir": "."
+  },
+  {
+    "org": "oven-sh",
+    "name": "bun",
+    "ref": "4d443e54022ceeadc79adf542b44c50c640e6985",
+    "rootDir": "bench"
+  },
+  {
+    "org": "DavidHDev",
+    "name": "react-bits",
+    "ref": "e519c73cdf94d103bb61e59bb174854796b01f7d",
+    "rootDir": "."
+  },
+  {
+    "org": "ueberdosis",
+    "name": "tiptap",
+    "ref": "ec1afc35ee12d24d30e0f1a31f2fd423312bd38f",
+    "rootDir": "."
+  },
+  {
+    "org": "refinedev",
+    "name": "refine",
+    "ref": "d9889ee24c719d34b8feaca5da2b42e8608a636d",
+    "rootDir": "documentation"
+  },
+  {
+    "org": "Dokploy",
+    "name": "dokploy",
+    "ref": "6e342ee2f2b728a42c3a5901749c42dfc41b7ef2",
+    "rootDir": "apps/dokploy"
+  },
+  {
+    "org": "ianstormtaylor",
+    "name": "slate",
+    "ref": "bd2441c86a2d5f7b3bafc3fba93c11037cd74bf9",
+    "rootDir": "."
+  },
+  {
+    "org": "gethomepage",
+    "name": "homepage",
+    "ref": "e81aadb0713e72dba461a0c315a32ca96b7da215",
+    "rootDir": "."
+  },
+  {
+    "org": "bigint",
+    "name": "hey",
+    "ref": "88c8f9d55340d57a37846ff72f55c2c604e3a566",
+    "rootDir": "."
+  },
+  {
+    "org": "tailwindlabs",
+    "name": "headlessui",
+    "ref": "eea57cf46fd6767ed1059012f7073b88eb159fba",
+    "rootDir": "packages/@headlessui-react"
+  },
+  {
+    "org": "mobxjs",
+    "name": "mobx",
+    "ref": "5c7058d215995164ee8e92cfc09a941774ed50fc",
+    "rootDir": "."
+  },
+  {
+    "org": "maotoumao",
+    "name": "MusicFree",
+    "ref": "42fdbd67955e67f0533bd7c874fc74ee915e91b9",
+    "rootDir": "."
+  },
+  {
+    "org": "handsontable",
+    "name": "handsontable",
+    "ref": "ea2d40e7bcec20a8c3bccbf8d585f3ef77c93f60",
+    "rootDir": "docs"
+  },
+  {
+    "org": "palantir",
+    "name": "blueprint",
+    "ref": "9c757cd49bdf73cda93b387f4a408f475311fc59",
+    "rootDir": "."
+  },
+  {
+    "org": "readest",
+    "name": "readest",
+    "ref": "787bbf2103bdcbb820c9d62ce2a5468c0a20063d",
+    "rootDir": "apps/readest-app"
+  },
+  {
+    "org": "GeekyAnts",
+    "name": "NativeBase",
+    "ref": "335a1d5f854f4416b841235c1afdfda04ea12243",
+    "rootDir": "example"
+  },
+  {
+    "org": "nukeop",
+    "name": "nuclear",
+    "ref": "c22026b579cad516df84ab25dab52a557ed7e1f4",
+    "rootDir": "packages/player"
+  },
+  {
+    "org": "microsoft",
+    "name": "react-native-windows",
+    "ref": "cdca047ea950fb061c04ca09e2d172fef5811e02",
+    "rootDir": "."
+  },
+  {
+    "org": "tremorlabs",
+    "name": "tremor-npm",
+    "ref": "7613bff631f713616b7b2ae52fb96dbc8e3dcc97",
+    "rootDir": "."
+  },
+  {
+    "org": "udecode",
+    "name": "plate",
+    "ref": "ce9ec871c9547a8a3c78ded13a93049ef9fe049c",
+    "rootDir": "apps/www"
+  },
+  {
+    "org": "wix",
+    "name": "react-native-navigation",
+    "ref": "4b6bbfd122c7fe420c163c4db19900e0a19a8ddd",
+    "rootDir": "."
+  },
+  {
+    "org": "MrXujiang",
+    "name": "h5-Dooring",
+    "ref": "c6e9d3607af1040c0b08e0123d491b7da90e9e17",
+    "rootDir": "."
+  },
+  {
+    "org": "react-page",
+    "name": "react-page",
+    "ref": "3bb72bd52ce0857a8f4a6ca1f15d4ce2242c89d5",
+    "rootDir": "."
+  },
+  {
+    "org": "keybase",
+    "name": "client",
+    "ref": "44af33002554ea4f81d4bca766fe642ad154e883",
+    "rootDir": "shared"
+  },
+  {
+    "org": "gorhom",
+    "name": "react-native-bottom-sheet",
+    "ref": "9bfbeb521b90d525791a3400a68eec523ad7e444",
+    "rootDir": "example"
+  },
+  {
+    "org": "vendurehq",
+    "name": "vendure",
+    "ref": "1bf5442c703e1c5b38db3c1b436c72d0f0ff5b92",
+    "rootDir": "packages/dashboard"
+  },
+  {
+    "org": "webiny",
+    "name": "webiny-js",
+    "ref": "5a9307c41b8966ff9cc1b61336b343f67a3c0414",
+    "rootDir": "."
+  },
+  {
+    "org": "gilbarbara",
+    "name": "react-joyride",
+    "ref": "73cbf65325c651b00be1180b9fe212a665f54b07",
+    "rootDir": "."
+  },
+  {
+    "org": "ant-design",
+    "name": "ant-design-landing",
+    "ref": "54f4360f0df75dd53e2febcd90b1b095801efb41",
+    "rootDir": "."
+  },
+  {
+    "org": "openblocks-dev",
+    "name": "openblocks",
+    "ref": "6be3679dd8404a9a59f239f591244de3c03217c3",
+    "rootDir": "client/packages/openblocks"
+  },
+  {
+    "org": "builderz-labs",
+    "name": "mission-control",
+    "ref": "85215c577f491cf570aa667e6757d8b30e201d0a",
+    "rootDir": "."
+  },
+  {
+    "org": "graphif",
+    "name": "project-graph",
+    "ref": "1c4f1bee7317a724b19a76cb84c904f398d6303a",
+    "rootDir": "app"
+  },
+  {
+    "org": "hello-pangea",
+    "name": "dnd",
+    "ref": "28c47a7a0139a09b1bf0a77a010e7121c39246d4",
+    "rootDir": "."
+  },
+  {
+    "org": "HiEventsDev",
+    "name": "Hi.Events",
+    "ref": "6c0afe3da0ace5f7c696c2ab2145e1c37a7f90d5",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "codeforreal1",
+    "name": "compressO",
+    "ref": "41ee3f8e27bf407019ed300ea8e5208319073d5c",
+    "rootDir": "."
+  },
+  {
+    "org": "ruilisi",
+    "name": "fortune-sheet",
+    "ref": "94346608877db4747406707a177c4b8f3bacdbf9",
+    "rootDir": "."
+  },
+  {
+    "org": "5rahim",
+    "name": "seanime",
+    "ref": "ce55ded22643aaa0cb453f2535e033b331907b37",
+    "rootDir": "seanime-web"
+  },
+  {
+    "org": "HamishMW",
+    "name": "portfolio",
+    "ref": "b7444bc16216f38c64f4afb8d2f53b8c4cbb2bda",
+    "rootDir": "."
+  },
+  {
+    "org": "heroui-inc",
+    "name": "heroui-native",
+    "ref": "3a858ded0f100fbc5985103d583869331c363ad1",
+    "rootDir": "example"
+  },
+  {
+    "org": "Worklenz",
+    "name": "worklenz",
+    "ref": "c4c32686587ad0d2fcd0b0b7c806a04858f03f7b",
+    "rootDir": "worklenz-frontend"
+  },
+  {
+    "org": "yoopta-editor",
+    "name": "Yoopta-Editor",
+    "ref": "070349b1cd703d05548e2db94c98b4e9622d4f07",
+    "rootDir": "."
+  },
+  {
+    "org": "mickasmt",
+    "name": "next-saas-stripe-starter",
+    "ref": "a78d130af7e04d0250d65c67f217976f7eb3adc2",
+    "rootDir": "."
+  },
+  {
+    "org": "apptension",
+    "name": "saas-boilerplate",
+    "ref": "90eb5421e305e1bed947f1098269ad9b39768ec6",
+    "rootDir": "."
+  },
+  {
+    "org": "athasdev",
+    "name": "athas",
+    "ref": "7edc3708eeec923e01cfd098d4dbbe0ecb459338",
+    "rootDir": "."
+  },
+  {
+    "org": "medusajs",
+    "name": "nextjs-starter-medusa",
+    "ref": "9818886f06e493cb2249733d114d339aa216ef00",
+    "rootDir": "."
+  },
+  {
+    "org": "getmeli",
+    "name": "meli",
+    "ref": "c90a11d66b029f5aa1c44837aa444abde02a3dcf",
+    "rootDir": "ui"
+  },
+  {
+    "org": "ryohey",
+    "name": "signal",
+    "ref": "559249a251ee36a5beb822624d024c2329c04cc7",
+    "rootDir": "app"
+  },
+  {
+    "org": "uiwjs",
+    "name": "react-codemirror",
+    "ref": "d10a51f80dcd073dd5edd3c88c598ec50701b2c2",
+    "rootDir": "."
+  },
+  {
+    "org": "suitenumerique",
+    "name": "meet",
+    "ref": "79400188d8f2efda68f5ccfd192003757a1c70fe",
+    "rootDir": "src/frontend"
+  },
+  {
+    "org": "ParabolInc",
+    "name": "parabol",
+    "ref": "2b9fb6bc75345be6f8653222856193b75c53c8c6",
+    "rootDir": "."
+  },
+  {
+    "org": "lobehub",
+    "name": "lobe-ui",
+    "ref": "90c8b4baa87e43da118e8b2d3aba553057c30174",
+    "rootDir": "."
+  },
+  {
+    "org": "mui",
+    "name": "toolpad",
+    "ref": "3cbd50158044a8638d46aae9a7f9ff445e8e5598",
+    "rootDir": "docs"
+  },
+  {
+    "org": "antvis",
+    "name": "S2",
+    "ref": "8e51c7722eb9d33025b870f8fabf7a8da5ee8a3a",
+    "rootDir": "packages/s2-react"
+  },
+  {
+    "org": "sambecker",
+    "name": "exif-photo-blog",
+    "ref": "a11560b437d684c212149cf185bf840f604ebce4",
+    "rootDir": "."
+  },
+  {
+    "org": "jd-opensource",
+    "name": "drip-table",
+    "ref": "00fb48d268a59cc9be6fc9a16b1cf71f79e1619f",
+    "rootDir": "."
+  },
+  {
+    "org": "influxdata",
+    "name": "chronograf",
+    "ref": "ded00515beac7162cca67afc2c5249a0da033fbf",
+    "rootDir": "ui"
+  },
+  {
+    "org": "jaegertracing",
+    "name": "jaeger-ui",
+    "ref": "460dd20d8b1bcfdf3c43912f930a883c6e10140d",
+    "rootDir": "packages/jaeger-ui"
+  },
+  {
+    "org": "wevm",
+    "name": "vocs",
+    "ref": "0767be51f7c40c488c21959af8f43adbf5f4e1e0",
+    "rootDir": "."
+  },
+  {
+    "org": "Brandawg93",
+    "name": "PeaNUT",
+    "ref": "5830817c1b625b0214b82341c4f6f5f7eeb7959e",
+    "rootDir": "."
+  },
+  {
+    "org": "saleor",
+    "name": "storefront",
+    "ref": "6eb0b97b25bd4344d8139515a1cabf763d703b39",
+    "rootDir": "."
+  },
+  {
+    "org": "lukasbach",
+    "name": "react-complex-tree",
+    "ref": "f4512b02d74245c8aa57df5d761bbf9e041a0d55",
+    "rootDir": "."
+  },
+  {
+    "org": "walterlow",
+    "name": "freecut",
+    "ref": "0bb07cb89875ef5ecda882a19a0aa319c0345e94",
+    "rootDir": "."
+  },
+  {
+    "org": "firecmsco",
+    "name": "firecms",
+    "ref": "0e8919618a6bcc207e265815cea53ed6c452b5c3",
+    "rootDir": "examples/example"
+  },
+  {
+    "org": "ximu3",
+    "name": "vnite",
+    "ref": "ca7d96661c8569e01c12c61abce667e093a28864",
+    "rootDir": "."
+  },
+  {
+    "org": "bemusic",
+    "name": "bemuse",
+    "ref": "68e0d5213b56502b3f5812f1d28c8d7075762717",
+    "rootDir": "bemuse"
+  },
+  {
+    "org": "shannonhochkins",
+    "name": "ha-component-kit",
+    "ref": "df12c20dba61ca68ab462fd3ec0918db16dc8a8f",
+    "rootDir": "."
+  },
+  {
+    "org": "jolbol1",
+    "name": "jolly-ui",
+    "ref": "aac97a84f8e0c2071a5e255c2f6ec190e238c1c2",
+    "rootDir": "."
+  },
+  {
+    "org": "marmelab",
+    "name": "atomic-crm",
+    "ref": "bc8fc09f83fc285f503b67fe69308ca9dff6b628",
+    "rootDir": "."
+  },
+  {
+    "org": "liqvidjs",
+    "name": "liqvid",
+    "ref": "771ca4eba36e90b5c9fb486780f56681582b20ac",
+    "rootDir": "."
+  },
+  {
+    "org": "imbhargav5",
+    "name": "nextbase-nextjs-supabase-starter",
+    "ref": "8418bf1d5fbdbace3a94f5692b6a3db11b105a2a",
+    "rootDir": "apps/web"
+  },
+  {
+    "org": "staringos",
+    "name": "mtbird",
+    "ref": "c9af67e2aa376f5a6df3fe42249b580c2cdb3209",
+    "rootDir": "."
+  },
+  {
+    "org": "keyshade-xyz",
+    "name": "keyshade",
+    "ref": "ef7e9e21a6d908d8c131e0e8bbdec3ef28c23e9a",
+    "rootDir": "apps/api"
+  },
+  {
+    "org": "reactjs",
+    "name": "ru.react.dev",
+    "ref": "2958f53099715b4c5e336adbb17cdfb32281f4e1",
+    "rootDir": "."
+  },
+  {
+    "org": "shadcnstore",
+    "name": "shadcn-dashboard-landing-template",
+    "ref": "65fc11224e96d56a62e224a58f7ed590aea5ac24",
+    "rootDir": "nextjs-version"
+  },
+  {
+    "org": "mental-os",
+    "name": "Aurora-OS.js",
+    "ref": "599b454fc2ceeb5b3ef0de470c094171006ff2bc",
+    "rootDir": "."
+  },
+  {
+    "org": "Blazity",
+    "name": "enterprise-commerce",
+    "ref": "4bc67922da316ea09608d30504551270b3815a5a",
+    "rootDir": "starters/shopify-algolia"
+  },
+  {
+    "org": "cossistantcom",
+    "name": "cossistant",
+    "ref": "50bd4662101bff61bbc1d9dd3770f2a52b9c9263",
+    "rootDir": "apps/api"
+  },
+  {
+    "org": "Vijayabaskar56",
+    "name": "tancn",
+    "ref": "a9ecf601e8d0b6b3683334eccdf4503958fcab07",
+    "rootDir": "."
+  },
+  {
+    "org": "AgoraIO-Extensions",
+    "name": "react-native-agora",
+    "ref": "cea3490582c2caa329e6d432f00be11f547e205f",
+    "rootDir": "examples/expo"
+  },
+  {
+    "org": "CloudOrc",
+    "name": "SolidUI",
+    "ref": "00d96b53bd0acf082996cef45b0f292eaba22fb7",
+    "rootDir": "solidui-web"
+  },
+  {
+    "org": "pdovhomilja",
+    "name": "nextcrm-app",
+    "ref": "730064adba37c2cf7773aa7f1fc8bef1380f9c00",
+    "rootDir": "."
+  },
+  {
+    "org": "mtsee",
+    "name": "image-editor",
+    "ref": "c284e1ffa25ada7e494817d9f3f0bedbfb3f979b",
+    "rootDir": "."
+  },
+  {
+    "org": "fecommunity",
+    "name": "reactpress",
+    "ref": "1e6483c39a5777c33c12d6289e9c4ce787c853da",
+    "rootDir": "client"
+  },
+  {
+    "org": "UgnisSoftware",
+    "name": "react-spreadsheet-import",
+    "ref": "e95d22e58aba4cd5123d2361a6f92e7aafc92b4c",
+    "rootDir": "."
+  },
+  {
+    "org": "Ryczko",
+    "name": "FormsLab",
+    "ref": "e330728c27ed5c0e39fdaeb5b1c1879be80f157f",
+    "rootDir": "."
+  },
+  {
+    "org": "uiwjs",
+    "name": "react-color",
+    "ref": "9ce665e6ccf158b50211233984d5e8d91eaa9588",
+    "rootDir": "."
+  },
+  {
+    "org": "Memmy-App",
+    "name": "memmy",
+    "ref": "f5019cad4660fbf39c63fcc712c8f7ee075836e7",
+    "rootDir": "."
+  },
+  {
+    "org": "eftpmc",
+    "name": "yuzic",
+    "ref": "96d0bdf1bcefad6efa497fa4468b8efb37e5aa53",
+    "rootDir": "."
+  },
+  {
+    "org": "yassir-jeraidi",
+    "name": "full-calendar",
+    "ref": "bd8eba932e4ec359353ec1f0cd9ec8daa9de16b1",
+    "rootDir": "."
+  },
+  {
+    "org": "medusajs",
+    "name": "b2b-starter-medusa",
+    "ref": "e7358f11e9fca8d8069b16f4c0d84f4fec9e50e8",
+    "rootDir": "backend"
+  },
+  {
+    "org": "Sportinger",
+    "name": "MasterSelects",
+    "ref": "3f8f15a070b140b287f767737f17dc8b414a7206",
+    "rootDir": "."
+  },
+  {
+    "org": "design-sparx",
+    "name": "mantine-analytics-dashboard",
+    "ref": "14279e801a4f74d9cdcce67d9b3830b3c51b0f68",
+    "rootDir": "."
+  },
+  {
+    "org": "hoangsonww",
+    "name": "Claude-Code-Agent-Monitor",
+    "ref": "840c518d7fa69231de049e41b893938228b67e40",
+    "rootDir": "client"
+  },
+  {
+    "org": "SalesforceCommerceCloud",
+    "name": "pwa-kit",
+    "ref": "695237b8b34d13b33e389c252ddaa4f731c1f40f",
+    "rootDir": "packages/commerce-sdk-react"
+  },
+  {
+    "org": "krud-dev",
+    "name": "ostara",
+    "ref": "48624b9f2a65a82f384e0a6e778444477e75986d",
+    "rootDir": "app"
+  },
+  {
+    "org": "FrankChen021",
+    "name": "datastoria",
+    "ref": "e6dec4855e97ef853277bbd9faa4cebaba8e04a6",
+    "rootDir": "."
+  },
+  {
+    "org": "neondatabase",
+    "name": "website",
+    "ref": "071e0365a34c6c2be82912c889f8d8608325666b",
+    "rootDir": "."
+  },
+  {
+    "org": "wri",
+    "name": "gfw",
+    "ref": "53452a47ce71c0c2b64a71f39ed307dfd64411f5",
+    "rootDir": "."
+  },
+  {
+    "org": "1600822305",
+    "name": "AetherLink",
+    "ref": "ab25c68060ae2f048c2436b36475d15f91bdbfd7",
+    "rootDir": "."
+  },
+  {
+    "org": "oyvhov",
+    "name": "Tunet",
+    "ref": "9e3f88b8303ecd85411daf0c04a29778e2c1e87e",
+    "rootDir": "."
+  },
+  {
+    "org": "basetool-io",
+    "name": "basetool",
+    "ref": "b5074690fa00896152fddf1083a4e20773a3368e",
+    "rootDir": "."
+  },
+  {
+    "org": "builderz-labs",
+    "name": "marketing-dashboard",
+    "ref": "3e760d076c12d85ca921f92d881c31b8f8b4e397",
+    "rootDir": "."
+  },
+  {
+    "org": "podverse",
+    "name": "podverse-rn",
+    "ref": "84155643c2a881584874357411d1262ac688fc67",
+    "rootDir": "."
+  },
+  {
+    "org": "customermates",
+    "name": "customermates",
+    "ref": "2be3976cc87aec14ba1cd8c254b4efa81427ef28",
+    "rootDir": "."
+  },
+  {
+    "org": "saeloun",
+    "name": "miru-web",
+    "ref": "468a056da0ae5a3b1ad792b6dc87b60536e82f81",
+    "rootDir": "."
+  },
+  {
+    "org": "vstruhar",
+    "name": "lara-collab",
+    "ref": "2fc3842e7d3b7989e53c646e023bb58db688515b",
+    "rootDir": "."
+  },
+  {
+    "org": "yangchaojie456",
+    "name": "VE-web",
+    "ref": "9f47c1770c03afd17d23eee26fe810f8f211a23d",
+    "rootDir": "."
+  },
+  {
+    "org": "mapcomponents",
+    "name": "react-map-components-maplibre",
+    "ref": "b30e193f81442c5b8f3a4e442566cfab436daea0",
+    "rootDir": "."
+  },
+  {
+    "org": "petera2c",
+    "name": "simple-table",
+    "ref": "09d1e146d0cf5bbf81c7440f127094e5bad433e1",
+    "rootDir": "apps/marketing"
+  },
+  {
+    "org": "joelhooks",
+    "name": "opencode-vibe",
+    "ref": "6d854033725c70995135b4239859b86872487762",
+    "rootDir": "apps/web"
+  },
+  {
+    "org": "replyke",
+    "name": "monorepo",
+    "ref": "7b3b547f51ce9d3cde994655f9041d6d876a0c87",
+    "rootDir": "."
+  },
+  {
+    "org": "yogijowo",
+    "name": "laravel12-react-starterkit",
+    "ref": "e10186f649670e33bde248f918fe72e743091e56",
+    "rootDir": "."
+  },
+  {
+    "org": "chatman-media",
+    "name": "timeline-studio",
+    "ref": "3d84bf486773b4d3d77d9af9e5b8f195eae75ba0",
+    "rootDir": "."
+  },
+  {
+    "org": "pjborowiecki",
+    "name": "ARKA-Veterinary-Clinic-Page-and-Appointment-Booking-System",
+    "ref": "3c352401db7106b1f5dd62e8bfdb6283a2dcb817",
+    "rootDir": "."
+  },
+  {
+    "org": "SeloSlav",
+    "name": "2d-multiplayer-survival-mmorpg",
+    "ref": "722de337339cc53c506ec8746688c261992c363b",
+    "rootDir": "."
+  },
+  {
+    "org": "Skyfay",
+    "name": "DBackup",
+    "ref": "3de3b52a5052d7553484f2a82e811d3cbb0174e3",
+    "rootDir": "."
+  },
+  {
+    "org": "KaraBharat",
+    "name": "ReactViTenStack",
+    "ref": "5b5553b0610f737f2417fb0bb000b8c3817777f5",
+    "rootDir": "client"
+  },
+  {
+    "org": "LimeJourney",
+    "name": "limeJourney",
+    "ref": "97b6af4ea5cfaf9cb73d2ab3ccde41f750699bb8",
+    "rootDir": "apps/web"
+  },
+  {
+    "org": "agungksidik",
+    "name": "laravel9-inertiajs-reactjs-starter",
+    "ref": "cee682d9d139000167914c9e850b1d186247a83a",
+    "rootDir": "."
+  },
+  {
+    "org": "lobehub",
+    "name": "lobe-editor",
+    "ref": "c6f777070a452b9eec1cfa42bc5b4e0c05c494a4",
+    "rootDir": "."
+  },
+  {
+    "org": "HugoGresse",
+    "name": "open-feedback",
+    "ref": "d3cdccb2661bf41a8cf7380378588641deb7a1e6",
+    "rootDir": "."
+  },
+  {
+    "org": "onflow",
+    "name": "flow-playground",
+    "ref": "701c6c1daefbac163ea54f05c8116a3777239642",
+    "rootDir": "."
+  },
+  {
+    "org": "source-academy",
+    "name": "frontend",
+    "ref": "2868ae7d881d58b61931256abf5a808aa02db16b",
+    "rootDir": "."
+  },
+  {
+    "org": "carbon-design-system",
+    "name": "carbon-addons-iot-react",
+    "ref": "b1f5b08e7edadcbf5c6282d9b7380424f68732c2",
+    "rootDir": "packages/react"
+  }
+]

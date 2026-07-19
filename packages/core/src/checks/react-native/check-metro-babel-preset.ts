@@ -1,7 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isFile } from "../../project-info/index.js";
-import type { Diagnostic } from "../../types/index.js";
+import * as semver from "semver";
+import { isFile, readPackageJson } from "../../project-info/index.js";
+import type { Diagnostic, PackageJson } from "../../types/index.js";
+import { readDeclaredDependencySpec } from "../../utils/read-declared-dependency-spec.js";
 import { buildReactNativeDiagnostic } from "./utils/build-react-native-diagnostic.js";
 
 // The babel config files we inspect. A project has a single root babel config,
@@ -22,6 +24,14 @@ const BABEL_CONFIG_FILE_NAMES: ReadonlyArray<string> = [
 // merely *mentions* the package in a comment (observed in the OSS corpus).
 const LEGACY_PRESET_SPEC = "module:metro-react-native-babel-preset";
 
+const LEGACY_PRESET_PACKAGE = "metro-react-native-babel-preset";
+
+const REACT_NATIVE_PACKAGE = "react-native";
+
+const PRESET_RENAME_MINIMUM_REACT_NATIVE_VERSION = "0.73.0";
+
+const LEGACY_PRESET_REFERENCE = new RegExp(`['"]${LEGACY_PRESET_SPEC}['"]`);
+
 const MODERN_PRESET_SPEC = "module:@react-native/babel-preset";
 
 // The modern spec is also its own `module:`-prefixed string, so unlike the
@@ -38,6 +48,36 @@ const MODERN_PRESET_REFERENCE = new RegExp(`['"]${MODERN_PRESET_SPEC}['"]`);
 // JS object keys (`enableBabelRuntime: '^7.26.0'`).
 const ENABLE_BABEL_RUNTIME_VERSION = /enableBabelRuntime["']?\s*:\s*['"]/;
 
+const isReactNativeVersionAtLeastPresetRename = (
+  rootDirectory: string,
+  packageJson: PackageJson,
+): boolean => {
+  const installedReactNativeManifestPath = path.join(
+    rootDirectory,
+    "node_modules",
+    REACT_NATIVE_PACKAGE,
+    "package.json",
+  );
+  const installedReactNativeVersion = isFile(installedReactNativeManifestPath)
+    ? readPackageJson(installedReactNativeManifestPath).version
+    : undefined;
+  const reactNativeVersionSpec =
+    installedReactNativeVersion ?? readDeclaredDependencySpec(packageJson, REACT_NATIVE_PACKAGE);
+  if (reactNativeVersionSpec === null || reactNativeVersionSpec === undefined) return false;
+
+  const normalizedVersionRange = semver.validRange(reactNativeVersionSpec);
+  if (normalizedVersionRange === null) return false;
+  const minimumVersion = semver.minVersion(normalizedVersionRange);
+  return (
+    minimumVersion !== null &&
+    semver.gte(minimumVersion, PRESET_RENAME_MINIMUM_REACT_NATIVE_VERSION)
+  );
+};
+
+const canResolveLegacyPreset = (rootDirectory: string, packageJson: PackageJson): boolean =>
+  readDeclaredDependencySpec(packageJson, LEGACY_PRESET_PACKAGE) !== null ||
+  isFile(path.join(rootDirectory, "node_modules", LEGACY_PRESET_PACKAGE, "package.json"));
+
 // Two babel-preset footguns surface here:
 //   1. `rn-no-metro-babel-preset` (error) — `module:metro-react-native-babel-preset`
 //      was renamed to `@react-native/babel-preset` and is no longer installed by
@@ -48,6 +88,10 @@ const ENABLE_BABEL_RUNTIME_VERSION = /enableBabelRuntime["']?\s*:\s*['"]/;
 //      across files instead of importing them once from @babel/runtime, inflating
 //      the JS bundle (https://github.com/facebook/react-native/issues/57123).
 export const checkReactNativeMetroBabelPreset = (rootDirectory: string): Diagnostic[] => {
+  const packageJson = readPackageJson(path.join(rootDirectory, "package.json"));
+  const shouldReportLegacyPreset =
+    isReactNativeVersionAtLeastPresetRename(rootDirectory, packageJson) &&
+    !canResolveLegacyPreset(rootDirectory, packageJson);
   for (const fileName of BABEL_CONFIG_FILE_NAMES) {
     const filePath = path.join(rootDirectory, fileName);
     if (!isFile(filePath)) continue;
@@ -57,7 +101,7 @@ export const checkReactNativeMetroBabelPreset = (rootDirectory: string): Diagnos
     } catch {
       continue;
     }
-    if (contents.includes(LEGACY_PRESET_SPEC)) {
+    if (shouldReportLegacyPreset && LEGACY_PRESET_REFERENCE.test(contents)) {
       return [
         buildReactNativeDiagnostic({
           filePath: fileName,

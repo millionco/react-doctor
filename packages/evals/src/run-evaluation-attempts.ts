@@ -2,6 +2,7 @@ import pLimit from "p-limit";
 
 import type { CorpusEvaluationRecord, CorpusRepositoryGroup } from "./corpus.js";
 import { groupCorpusRepositories } from "./group-corpus-repositories.js";
+import { partitionRepositoryGroups } from "./utils/partition-repository-groups.js";
 
 export interface EvaluationRetry {
   attemptNumber: number;
@@ -12,9 +13,10 @@ export interface EvaluationRetry {
 
 export interface RunEvaluationAttemptsInput {
   repositoryGroups: ReadonlyArray<CorpusRepositoryGroup>;
+  repositoriesPerSandbox: number;
   attemptConcurrencies: ReadonlyArray<number>;
-  evaluateRepositoryGroup: (
-    repositoryGroup: CorpusRepositoryGroup,
+  evaluateRepositoryBatch: (
+    repositoryGroups: ReadonlyArray<CorpusRepositoryGroup>,
   ) => Promise<ReadonlyArray<CorpusEvaluationRecord>>;
   beforeRetry: () => Promise<void>;
   onBeforeRetryFailure: (error: unknown) => void;
@@ -24,8 +26,9 @@ export interface RunEvaluationAttemptsInput {
 
 export const runEvaluationAttempts = async ({
   repositoryGroups,
+  repositoriesPerSandbox,
   attemptConcurrencies,
-  evaluateRepositoryGroup,
+  evaluateRepositoryBatch,
   beforeRetry,
   onBeforeRetryFailure,
   onRetry,
@@ -34,10 +37,14 @@ export const runEvaluationAttempts = async ({
   let pendingRepositoryGroups = repositoryGroups;
   for (const [attemptIndex, concurrency] of attemptConcurrencies.entries()) {
     const limit = pLimit(concurrency);
+    const repositoryBatches = partitionRepositoryGroups(
+      pendingRepositoryGroups,
+      repositoriesPerSandbox,
+    );
     const failedRecords = (
       await Promise.all(
-        pendingRepositoryGroups.map((repositoryGroup) =>
-          limit(() => evaluateRepositoryGroup(repositoryGroup)),
+        repositoryBatches.map((repositoryBatch) =>
+          limit(() => evaluateRepositoryBatch(repositoryBatch)),
         ),
       )
     ).flat();

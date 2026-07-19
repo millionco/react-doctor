@@ -10,7 +10,10 @@ import {
   REACT_HOC_NAMES,
   REACT_RUNTIME_MODULE_SOURCES,
 } from "../../constants/react.js";
-import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import {
+  getImportBindingForName,
+  getImportSourceForName,
+} from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
@@ -683,6 +686,7 @@ const MIN_HOOK_CALLS_FOR_RENDER_SCOPE = 2;
 // (`handleClick`, `fetchData`) must NOT qualify — otherwise any
 // module function with two copy-pasted hooks becomes exempt.
 const RENDER_SCOPE_FACTORY_NAME_PATTERN = /^_?(?:init|create|make|build)(?:[A-Z0-9_]|$)/;
+const HOOK_NAMESPACE_NAME_PATTERN = /Hooks?$/;
 
 // A use-prefixed callee that scope analysis resolves to a LOCAL
 // function whose own body issues zero hook calls is not a React hook
@@ -746,6 +750,18 @@ const isPackageImportedNonReactHookCallee = (call: EsTreeNodeOfType<"CallExpress
   if (importSource.startsWith(".")) return false;
   if (PATH_ALIAS_IMPORT_PATTERN.test(importSource)) return false;
   return !isReactEcosystemImportSource(importSource);
+};
+
+const isDefaultImportedClassApiMemberCallee = (
+  call: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  if (!isNodeOfType(callee.object, "Identifier")) return false;
+  if (HOOK_NAMESPACE_NAME_PATTERN.test(callee.object.name)) return false;
+  const importBinding = getImportBindingForName(call, callee.object.name);
+  if (!importBinding || importBinding.exportedName !== "default") return false;
+  return !REACT_RUNTIME_MODULE_SOURCES.has(importBinding.source);
 };
 
 // `useMDXComponents` is the MDX/Next.js convention name for a
@@ -989,6 +1005,12 @@ export const rulesOfHooks = defineRule({
         }
 
         if (isInsideClassComponent(node)) {
+          if (
+            isPackageImportedNonReactHookCallee(node) ||
+            isDefaultImportedClassApiMemberCallee(node)
+          ) {
+            return;
+          }
           context.report({ node: node.callee, message: buildClassComponentMessage(hookName) });
           return;
         }

@@ -34,4 +34,16 @@ describe("security-scan/mdx-ssr-execution-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("stays silent when an unrelated reporter identifier follows the MDX import", () => {
+    const findings = runScanRule(mdxSsrExecutionRisk, {
+      relativePath: "packages/node-loader/lib/index.js",
+      content: `import { createFormatAwareProcessors } from "@mdx-js/mdx/internal-create-format-aware-processors";
+import { reporter } from "vfile-reporter";
+
+export const load = async (url) => reporter(await createFormatAwareProcessors().process(url));
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

@@ -15,7 +15,7 @@ export const mdxSsrExecutionRisk = defineRule({
   scan: scanByPattern({
     shouldScan: (file) => isProductionSourcePath(file.relativePath),
     pattern:
-      /(?:@mdx-js\/mdx|next-mdx-remote|\b(?:MDXRemote|compileMDX|evaluateMdx)\b)[\s\S]{0,700}\b(?:repo|customer|tenant|user[-_]?(?:content|markdown|mdx|input|provided|generated|submitted)|untrusted|searchParams|req\.|request\.|fetch\s*\(|prisma\.|db\.|database|rehypeRaw|allowDangerousHtml)/i,
+      /(?:@mdx-js\/mdx|next-mdx-remote|\b(?:MDXRemote|compileMDX|evaluateMdx)\b)[\s\S]{0,700}\b(?:repo\b|customer|tenant|user[-_]?(?:content|markdown|mdx|input|provided|generated|submitted)|untrusted|searchParams|req\.|request\.|fetch\s*\(|prisma\.|db\.|database|rehypeRaw|allowDangerousHtml)/i,
     message:
       "MDX/markdown rendering code may evaluate user or repository content during SSR or static generation.",
   }),

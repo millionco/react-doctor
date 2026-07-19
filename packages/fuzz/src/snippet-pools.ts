@@ -380,6 +380,9 @@ export const MODULE_SCOPE_SNIPPET_POOL = [
 ] as const;
 
 export const SERVER_MODULE_PROGRAM_POOL = [
+  `export default function FuzzDedupPage({ items }) {
+  return <FuzzList items={items} sortedItems={items.toSorted()} />;
+}`,
   `#!/usr/bin/env node\u2028export const FUZZ_DATABASE_URL = process.env.DATABASE_URL;`,
   `#!/usr/bin/env node process.env.DATABASE_URL\u2029export const FuzzGeneratedDatabaseClient = {};`,
   `"use server";
@@ -658,6 +661,7 @@ export const EDGE_CASE_STATEMENT_POOL = [
 ] as const;
 
 export const IMPORT_LINE_POOL = [
+  `import { compile as compileFuzzMdx } from "@mdx-js/mdx"; const fuzzCompiledMdx = await compileFuzzMdx(tenantContent);`,
   `import fetch from "node-fetch";`,
   `import { motion, MotionConfig, useReducedMotion } from "framer-motion";`,
   `import React from "react";`,
@@ -714,6 +718,7 @@ export const FUZZ_FILENAME_POOL = [
   "src/utils/fuzz-helper.ts",
   "packages/docs/archive/v1/static/docs.js",
   "dist/assets/fuzz-bundle.js",
+  "public/debug.log",
 ] as const;
 
 // Identifiers rules key on by NAME (guard aliases, visibility gates,

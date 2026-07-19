@@ -25,9 +25,10 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 // Two more placeholder shapes: a snake_case literal ENDING in a secret word
 // (`"cboard_client_token"`) is a name-like dummy, not a credential value, and
 // a run of 8+ zeros after a short prefix (`"sk_0000000000000000000"`) is a
-// zero-filled placeholder key.
+// zero-filled placeholder key. The standard Anvil/Hardhat test mnemonic is
+// public fixture data rather than a credential.
 const HARDCODED_SECRET_FALLBACK_PATTERN =
-  /\bprocess\.env\.(?!(?:(?:(?:NEXT|EXPO|GATSBY|NUXT|REACT_APP|VITE)_)?PUBLIC_[A-Z0-9_]*(?<!_SECRET)(?<!_PRIVATE_KEY)(?<!_PASSWORD)(?<!_PASSWD)|[A-Z0-9_]*(?:PUBLISHABLE|ANON)_KEY)(?![A-Z0-9_]))[A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE_KEY|API_?KEY|APIKEY|ACCESS_KEY|CLIENT_SECRET|CREDENTIAL|SIGNING_KEY|ENCRYPTION_KEY|WEBHOOK_SECRET|SERVICE_ROLE)[A-Z0-9_]*(?<!_(?:NAME|HEADER|ENDPOINT|URL|URI|ID|PREFIX|SUFFIX|PARAM|PARAMS|FIELD|ISSUER|AUDIENCE|ALGORITHM|ALG|REGION|BUCKET|HOST|HOSTNAME|PORT|PATH|VERSION|SCOPE|TYPE|FORMAT|EXPIRY|TTL))\s*(?:\?\?|\|\|)\s*(["'`])(?![0-9]+["'`])(?![a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-](?:token|secret|key|password|passwd|credential)s?["'`])(?![\w-]{0,12}0{8,}["'`])(?!(?:changeme|change[_-]?me|placeholder|your[_-]|example|sample|dummy|development|local|todo|replace[_-]?me|https?:\/\/|x{3,}|\*{3,}))[^"'`\n]{8,}\1/i;
+  /\bprocess\.env\.(?!(?:(?:(?:NEXT|EXPO|GATSBY|NUXT|REACT_APP|VITE)_)?PUBLIC_[A-Z0-9_]*(?<!_SECRET)(?<!_PRIVATE_KEY)(?<!_PASSWORD)(?<!_PASSWD)|[A-Z0-9_]*(?:PUBLISHABLE|ANON)_KEY)(?![A-Z0-9_]))[A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE_KEY|API_?KEY|APIKEY|ACCESS_KEY|CLIENT_SECRET|CREDENTIAL|SIGNING_KEY|ENCRYPTION_KEY|WEBHOOK_SECRET|SERVICE_ROLE)[A-Z0-9_]*(?<!_(?:NAME|HEADER|ENDPOINT|URL|URI|ID|PREFIX|SUFFIX|PARAM|PARAMS|FIELD|ISSUER|AUDIENCE|ALGORITHM|ALG|REGION|BUCKET|HOST|HOSTNAME|PORT|PATH|VERSION|SCOPE|TYPE|FORMAT|EXPIRY|TTL))\s*(?:\?\?|\|\|)\s*(["'`])(?![0-9]+["'`])(?![a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-](?:token|secret|key|password|passwd|credential)s?["'`])(?![\w-]{0,12}0{8,}["'`])(?!test test test test test test test test test test test junk["'`])(?!(?:changeme|change[_-]?me|placeholder|your[_-]|example|sample|dummy|development|local|todo|replace[_-]?me|https?:\/\/|x{3,}|\*{3,}))[^"'`\n]{8,}\1/i;
 
 export const secretInFallback = defineRule({
   id: "secret-in-fallback",

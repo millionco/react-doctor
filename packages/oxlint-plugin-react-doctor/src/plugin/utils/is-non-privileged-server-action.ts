@@ -2,11 +2,15 @@ import {
   CACHE_REVALIDATION_FUNCTION_NAMES,
   NEXTJS_NAVIGATION_FUNCTIONS,
 } from "../constants/nextjs.js";
+import { collectLocallyScopedCookieBindings } from "./collect-locally-scoped-cookie-bindings.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getImportSourceForName } from "./find-import-source-for-name.js";
+import { isCookiesOrAwaitedCookiesCall } from "./is-cookies-or-awaited-cookies-call.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
+import { tokenizeIdentifierWords } from "./tokenize-identifier-words.js";
 import { walkAst } from "./walk-ast.js";
 
 type FunctionLikeNode =
@@ -23,6 +27,12 @@ const NON_DATA_EFFECT_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   ...NEXTJS_NAVIGATION_FUNCTIONS,
 ]);
 
+const LOCALE_PREFERENCE_VERB_TOKENS: ReadonlySet<string> = new Set(["set", "update"]);
+
+const LOCALE_PREFERENCE_NOUN_TOKENS: ReadonlySet<string> = new Set(["language", "locale"]);
+
+const COOKIE_DELETION_METHOD_NAME = "delete";
+
 // Matched only as a BARE identifier callee whose binding is IMPORTED. A member
 // call (`obj.redirect()`, `db.revalidateTag()`) shares the name but not the
 // import, and a module-local `const revalidatePath = …` doing privileged work
@@ -31,11 +41,65 @@ const NON_DATA_EFFECT_FUNCTION_NAMES: ReadonlySet<string> = new Set([
 // the local-shadow out while still exempting the common re-export barrel
 // (`import { revalidatePath } from "@/lib/cache"`), which the real Next.js
 // symbol is routinely funneled through and which we cannot resolve in-file.
-const isCacheOrNavigationCall = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "CallExpression") &&
-  isNodeOfType(node.callee, "Identifier") &&
-  NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name) &&
-  getImportSourceForName(node, node.callee.name) !== null;
+const isCacheOrNavigationCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "Identifier")) {
+    return false;
+  }
+  return (
+    NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name) &&
+    getImportSourceForName(node, node.callee.name) !== null
+  );
+};
+
+const isCallerScopedLocalePreferenceCall = (node: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    !isNodeOfType(node.callee, "Identifier") ||
+    node.arguments?.length !== 1
+  ) {
+    return false;
+  }
+  const nameTokens = tokenizeIdentifierWords(node.callee.name);
+  if (!nameTokens.some((token) => LOCALE_PREFERENCE_VERB_TOKENS.has(token))) return false;
+  if (!nameTokens.some((token) => LOCALE_PREFERENCE_NOUN_TOKENS.has(token))) return false;
+
+  const importSource = getImportSourceForName(node, node.callee.name)?.toLowerCase();
+  return Boolean(importSource?.includes("i18n") || importSource?.includes("locale"));
+};
+
+const isCallerScopedCookieCall = (
+  node: EsTreeNode,
+  cookieBindingNames: ReadonlySet<string>,
+): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  if (isNodeOfType(node.callee, "Identifier")) {
+    return (
+      node.callee.name === "cookies" &&
+      getImportSourceForName(node, node.callee.name) === "next/headers"
+    );
+  }
+  if (
+    !isNodeOfType(node.callee, "MemberExpression") ||
+    !isNodeOfType(node.callee.property, "Identifier") ||
+    node.callee.property.name !== COOKIE_DELETION_METHOD_NAME
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(node.callee.object);
+  if (isNodeOfType(receiver, "Identifier")) return cookieBindingNames.has(receiver.name);
+  return (
+    isCookiesOrAwaitedCookiesCall(receiver) &&
+    getImportSourceForName(receiver, "cookies") === "next/headers"
+  );
+};
+
+const isKnownNonDataEffectCall = (
+  node: EsTreeNode,
+  cookieBindingNames: ReadonlySet<string>,
+): boolean =>
+  isCacheOrNavigationCall(node) ||
+  isCallerScopedLocalePreferenceCall(node) ||
+  isCallerScopedCookieCall(node, cookieBindingNames);
 
 // Reduce an expression to the value it actually yields: strip TS / optional-
 // chain wrappers, and collapse a comma sequence to its last operand (the value
@@ -62,12 +126,15 @@ const unwrapExpression = (node: EsTreeNode | null | undefined): EsTreeNode | nul
 };
 
 // A value-yielding expression hands data back to the (possibly unauthenticated)
-// caller. Only a purely literal value (or a cache/navigation call, whose result
-// is void) is safe; anything referencing a binding could carry protected data.
-const isDataExposingValue = (node: EsTreeNode | null | undefined): boolean => {
+// caller. Only a purely literal value (or a known non-data-effect call, whose
+// result is void) is safe; anything referencing a binding could carry protected data.
+const isDataExposingValue = (
+  node: EsTreeNode | null | undefined,
+  cookieBindingNames: ReadonlySet<string>,
+): boolean => {
   const value = unwrapExpression(node);
   if (!value) return false;
-  if (isCacheOrNavigationCall(value)) return false;
+  if (isKnownNonDataEffectCall(value, cookieBindingNames)) return false;
   return !isLiteralOnlyExpression(value);
 };
 
@@ -115,42 +182,51 @@ const getReturnedOrThrownArgument = (node: EsTreeNode): EsTreeNode | null => {
 // identifier, member access, await, call, conditional, or a non-literal nested
 // inside an object/array could carry protected data, so it disqualifies the
 // exemption.
-const isDataExposingReturnOrThrow = (node: EsTreeNode): boolean =>
-  isDataExposingValue(getReturnedOrThrownArgument(node));
+const isDataExposingReturnOrThrow = (
+  node: EsTreeNode,
+  cookieBindingNames: ReadonlySet<string>,
+): boolean => isDataExposingValue(getReturnedOrThrownArgument(node), cookieBindingNames);
 
-// Any node that can reach state beyond the action's own locals: a non-cache/
-// non-navigation call (DB query, `fetch`, cookie mutation, an imported
+// Any node that can reach state beyond the action's own locals: an unknown call
+// (DB query, `fetch`, cookie mutation, an imported
 // helper), a tagged template (raw-SQL clients like `sql\`DELETE …\``), a
 // constructor, an assignment, a `delete`, or a `return`/`throw` that exposes
 // data.
-const isPrivilegedEffect = (node: EsTreeNode): boolean =>
+const isPrivilegedEffect = (node: EsTreeNode, cookieBindingNames: ReadonlySet<string>): boolean =>
   isNodeOfType(node, "CallExpression") ||
   isNodeOfType(node, "TaggedTemplateExpression") ||
   isNodeOfType(node, "NewExpression") ||
   isNodeOfType(node, "AssignmentExpression") ||
   isNodeOfType(node, "UpdateExpression") ||
   (isNodeOfType(node, "UnaryExpression") && node.operator === "delete") ||
-  isDataExposingReturnOrThrow(node);
+  isDataExposingReturnOrThrow(node, cookieBindingNames);
 
 // A server action is "non-privileged" when nothing it does can read or mutate
-// protected data: its body busts the cache and/or navigates, and contains no
-// other effect. Such an action is safe to call unauthenticated, so the
+// protected data: its body only changes a caller-scoped locale, busts the cache,
+// and/or navigates, and contains no other effect. Such an action is safe to call unauthenticated, so the
 // missing-auth-check rule must not flag it.
 //
-// The check is conservative: the body must contain at least one cache- or
-// navigation call AND no other privileged effect. Anything else — a DB write,
+// The check is conservative: the body must contain at least one known non-data
+// effect call AND no privileged effect. Anything else — a DB write,
 // a `fetch`, an imported helper, a raw-SQL tagged template, a constructor, or
 // returning a value to the caller — disqualifies the exemption, so a genuinely
 // sensitive action is never silently allowed through.
 export const isNonPrivilegedServerAction = (functionNode: FunctionLikeNode): boolean => {
   const functionBody = functionNode.body;
   if (!functionBody) return false;
+  const cookieBindingNames =
+    getImportSourceForName(functionBody, "cookies") === "next/headers"
+      ? collectLocallyScopedCookieBindings(functionBody)
+      : new Set<string>();
 
   // A concise-body arrow (`async () => expr`) implicitly returns its body, with
   // no `ReturnStatement` for the walk to catch. Treat that implicit return as a
   // data exposure check; the walk below still flags any privileged effect in
   // the expression itself (e.g. an earlier operand of a comma sequence).
-  if (!isNodeOfType(functionBody, "BlockStatement") && isDataExposingValue(functionBody)) {
+  if (
+    !isNodeOfType(functionBody, "BlockStatement") &&
+    isDataExposingValue(functionBody, cookieBindingNames)
+  ) {
     return false;
   }
 
@@ -163,13 +239,13 @@ export const isNonPrivilegedServerAction = (functionNode: FunctionLikeNode): boo
     // never invokes shouldn't count for or against the exemption.
     if (child !== functionBody && isFunctionLike(child)) return false;
 
-    // Keep descending after a cache/navigation call so a privileged effect
+    // Keep descending after a known non-data-effect call so a privileged effect
     // hidden in its arguments (`revalidateTag(db.get())`) is still caught.
-    if (isCacheOrNavigationCall(child)) {
+    if (isKnownNonDataEffectCall(child, cookieBindingNames)) {
       hasNonDataEffectCall = true;
       return;
     }
-    if (isPrivilegedEffect(child)) {
+    if (isPrivilegedEffect(child, cookieBindingNames)) {
       hasPrivilegedEffect = true;
       return false;
     }

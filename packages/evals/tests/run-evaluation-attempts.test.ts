@@ -22,6 +22,30 @@ const failedRecord: CorpusEvaluationRecord = {
 };
 
 describe("runEvaluationAttempts", () => {
+  it("reuses one sandbox evaluation for each balanced repository batch", async () => {
+    const secondRepositoryGroup: CorpusRepositoryGroup = {
+      ...repositoryGroup,
+      name: "second-app",
+    };
+    const evaluatedBatches: ReadonlyArray<CorpusRepositoryGroup>[] = [];
+
+    await runEvaluationAttempts({
+      repositoryGroups: [repositoryGroup, secondRepositoryGroup],
+      repositoriesPerSandbox: 10,
+      attemptConcurrencies: [500],
+      evaluateRepositoryBatch: async (batch) => {
+        evaluatedBatches.push(batch);
+        return [];
+      },
+      beforeRetry: async () => undefined,
+      onBeforeRetryFailure: vi.fn(),
+      onRetry: vi.fn(),
+      onFinalFailure: vi.fn(async () => undefined),
+    });
+
+    expect(evaluatedBatches).toEqual([[repositoryGroup, secondRepositoryGroup]]);
+  });
+
   it("retries only failed projects at the next concurrency", async () => {
     const evaluatedGroups: CorpusRepositoryGroup[] = [];
     const beforeRetry = vi.fn(async () => undefined);
@@ -30,8 +54,10 @@ describe("runEvaluationAttempts", () => {
 
     await runEvaluationAttempts({
       repositoryGroups: [repositoryGroup],
+      repositoriesPerSandbox: 10,
       attemptConcurrencies: [500, 50],
-      evaluateRepositoryGroup: async (group) => {
+      evaluateRepositoryBatch: async ([group]) => {
+        if (!group) return [];
         evaluatedGroups.push(group);
         return evaluatedGroups.length === 1 ? [failedRecord] : [];
       },
@@ -56,20 +82,21 @@ describe("runEvaluationAttempts", () => {
   });
 
   it("records a failure once after exhausting all attempts", async () => {
-    const evaluateRepositoryGroup = vi.fn(async () => [failedRecord]);
+    const evaluateRepositoryBatch = vi.fn(async () => [failedRecord]);
     const onFinalFailure = vi.fn(async () => undefined);
 
     await runEvaluationAttempts({
       repositoryGroups: [repositoryGroup],
+      repositoriesPerSandbox: 10,
       attemptConcurrencies: [500, 50, 10],
-      evaluateRepositoryGroup,
+      evaluateRepositoryBatch,
       beforeRetry: async () => undefined,
       onBeforeRetryFailure: vi.fn(),
       onRetry: () => undefined,
       onFinalFailure,
     });
 
-    expect(evaluateRepositoryGroup).toHaveBeenCalledTimes(3);
+    expect(evaluateRepositoryBatch).toHaveBeenCalledTimes(3);
     expect(onFinalFailure).toHaveBeenCalledOnce();
     expect(onFinalFailure).toHaveBeenCalledWith(failedRecord);
   });
@@ -82,8 +109,10 @@ describe("runEvaluationAttempts", () => {
 
     await runEvaluationAttempts({
       repositoryGroups: [repositoryGroup],
+      repositoriesPerSandbox: 10,
       attemptConcurrencies: [500, 50],
-      evaluateRepositoryGroup: async (group) => {
+      evaluateRepositoryBatch: async ([group]) => {
+        if (!group) return [];
         evaluatedGroups.push(group);
         return evaluatedGroups.length === 1 ? [failedRecord] : [];
       },

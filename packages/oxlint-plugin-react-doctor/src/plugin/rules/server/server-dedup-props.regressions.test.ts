@@ -71,4 +71,16 @@ describe("server/server-dedup-props — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);
   });
+
+  it("stays silent when the shared identifier is React's special key attribute", () => {
+    const result = runRule(
+      serverDedupProps,
+      `const ProductList = ({ productKeys }) => productKeys.map((productKey) => (
+        <Product key={productKey} size={productKey.slice(-2)} />
+      ));`,
+      { filename: "common/templates/received-mail.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

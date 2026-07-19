@@ -1,29 +1,37 @@
 # React Doctor evals
 
-Run a pushed React Doctor revision against 100 selected repositories with Daytona. The evaluator builds one snapshot, creates one sandbox per repository, and writes newline-delimited JSON (NDJSON) results.
+Run a pushed React Doctor revision against 2,000 pinned repositories with Daytona. The evaluator builds one snapshot, scans one representative project root per repository, reuses each sandbox for several repositories, and writes newline-delimited JSON (NDJSON) results.
 
 Set `DAYTONA_API_KEY`, then run:
 
 ```sh
 cd packages/evals
-nr eval --react-doctor-ref <pushed_commit> > results.ndjson
+nr --silent eval --react-doctor-ref <pushed_commit> > results.ndjson
 ```
 
-The default [repository corpus](./repositories.json) contains the 100 highest-ranked repositories and 255 project roots. React Bench ranks repositories by recommended React pull requests, candidate count, issue-linked pull requests, and merged pull requests scanned. Matching React Doctor Evals entries retain their pinned revisions and monorepo roots. Deterministically slow roots are excluded.
+The default [repository corpus](./repositories.json) contains 2,000 repositories and 5,892 available project roots selected from the canonical React Doctor Evals corpus. Every repository is pinned to a commit so repeated runs inspect the same source. Runs inspect the first root from each repository by default for breadth within the time budget; use `--project-roots-per-repository` for deeper monorepo coverage.
+
+The corpus excludes 179 [measured slow repositories](./excluded-slow-repositories.json) whose representative root took at least 60 seconds or returned incomplete lint coverage in the 2026-07-19 Daytona runs. Later pinned repositories from the canonical corpus replace them so the default remains at 2,000 repositories.
 
 The evaluator accepts corpus JSON, `owner/name` text files, prior result NDJSON, URLs, and directories. Repeat `--repositories` to combine sources:
 
 ```sh
-nr eval \
+nr --silent eval \
   --repositories ./repositories.json \
   --repositories ./extra-repositories.txt \
-  --concurrency 10 \
+  --repository-limit 2_000 \
+  --concurrency 200 \
+  --repositories-per-sandbox 10 \
+  --project-roots-per-repository 1 \
+  --max-duration-minutes 20 \
   --react-doctor-ref <pushed_commit>
 ```
 
 Text entries use each repository's default branch. Output records replace `HEAD` with the resolved commit hash, so a baseline NDJSON file can pin the candidate run.
 
-Candidate runs reject baseline records that still contain `HEAD`. Evaluation concurrency defaults to 500, while sandbox creation is capped at 20 to avoid overloading Daytona. After the initial pass, the evaluator cleans up resources and retries failed projects at concurrency 50, then 10. Valid partial reports remain in the corpus. Execution failures make the command exit non-zero.
+Candidate runs reject baseline records that still contain `HEAD`. Evaluation concurrency defaults to 200 batches, with a target of 10 repositories per sandbox. Sandbox creation is capped at 20 to avoid overloading Daytona, so a 2,000-repository run uses about 200 sandboxes instead of provisioning 2,000. Batches are balanced by project-root count so large monorepos do not collect on one worker.
+
+The default 20-minute wall-clock budget stops starting commands after 18 minutes and reserves two minutes for deleting sandboxes and the snapshot. Override the corpus size, batch size, concurrency, or duration for smaller investigations. After the initial pass, the evaluator retries failed projects at concurrency 50, then 10 while budget remains. Valid partial reports remain in the corpus. Execution failures, including work that exceeds the budget, make the command exit non-zero.
 
 Progress and completion metrics use stderr. Results use stdout. The evaluator deletes every repository sandbox and the build snapshot after the run.
 

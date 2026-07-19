@@ -41,4 +41,41 @@ describe("security-scan/public-debug-artifact — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when registry and documentation names merely contain debug nouns", () => {
+    const validPaths = [
+      "public/r/Stack-TS-CSS.json",
+      "public/r/ScrollStack-JS-TW.json",
+      "public/r/react/tanstack-form.json",
+      "public/questions/use-debug-value.json",
+      "public/r/debugging-docs.json",
+      "public/lotties/fullstack.json",
+    ];
+
+    for (const relativePath of validPaths) {
+      const findings = runScanRule(publicDebugArtifact, {
+        relativePath,
+        content: `{ "title": "Component registry entry" }\n`,
+      });
+      expect(findings).toHaveLength(0);
+    }
+  });
+
+  it("still flags explicitly named public debug artifacts", () => {
+    const validArtifactPaths = [
+      "public/debug.html",
+      "public/debug-output.json",
+      "public/crash-report.txt",
+      "public/stack-trace.log",
+      "public/request.log",
+    ];
+
+    for (const relativePath of validArtifactPaths) {
+      const findings = runScanRule(publicDebugArtifact, {
+        relativePath,
+        content: "internal request details\n",
+      });
+      expect(findings).toHaveLength(1);
+    }
+  });
 });

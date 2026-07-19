@@ -65,6 +65,7 @@ export const serverDedupProps = defineRule({
         for (const attr of node.attributes ?? []) {
           if (!isNodeOfType(attr, "JSXAttribute")) continue;
           if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
+          if (attr.name.name === "key") continue;
           if (!isNodeOfType(attr.value, "JSXExpressionContainer")) continue;
           const expression = attr.value.expression;
           if (!expression) continue;

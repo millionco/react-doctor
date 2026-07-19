@@ -826,6 +826,72 @@ describe("react-builtins/rules-of-hooks — regressions: plugin-registration .us
   });
 });
 
+describe("react-builtins/rules-of-hooks — regressions: non-Hook APIs called from classes", () => {
+  it("does not flag package-alias imported helpers that borrow the use prefix", () => {
+    const result = runTsx(`
+      import { useContextView } from "mo/components/contextView";
+      class Select {
+        constructor() {
+          this.contextView = useContextView({ shadowOutline: false });
+        }
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag use-prefixed methods on a default-imported service", () => {
+    const result = runTsx(`
+      import Tron from "reactotron-react-native";
+      import { mst } from "reactotron-mst";
+      class Reactotron {
+        setup() {
+          Tron.useReactNative({ asyncStorage: false });
+          Tron.use(mst({ filter: () => true }));
+          Tron.use(withCustomActions());
+        }
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a relative-imported custom Hook called from a class", () => {
+    const result = runTsx(`
+      import { useData } from "./use-data";
+      class DataService {
+        load() {
+          return useData();
+        }
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a namespace-imported custom Hook called from a class", () => {
+    const result = runTsx(`
+      import * as FeatureHooks from "./hooks";
+      class FeatureService {
+        load() {
+          return FeatureHooks.useFeature();
+        }
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags React Hooks called from a class", () => {
+    const result = runTsx(`
+      import * as React from "react";
+      class StatefulView {
+        render() {
+          const [value] = React.useState(0);
+          return <div>{value}</div>;
+        }
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("react-builtins/rules-of-hooks — regressions: use*-named functions imported from non-React packages", () => {
   it("does not flag a package-imported use* function called in a plain helper", () => {
     const result = runTsx(`

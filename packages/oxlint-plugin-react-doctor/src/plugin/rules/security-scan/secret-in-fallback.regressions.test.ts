@@ -97,6 +97,22 @@ describe("security-scan/secret-in-fallback — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent on the public Anvil test mnemonic", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "packages/builder/fixtures.ts",
+      content: `const privateKey = process.env.TEST_PRIVATE_KEY ?? "test test test test test test test test test test test junk";\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a non-placeholder test private key", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "packages/builder/fixtures.ts",
+      content: `const privateKey = process.env.TEST_PRIVATE_KEY ?? "0x9f2c1ab7e3d445219f2c1ab7e3d44521";\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent in a Playwright test-runner config file", () => {
     const findings = runScanRule(secretInFallback, {
       relativePath: "playwright.config.ts",

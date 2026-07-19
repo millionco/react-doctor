@@ -5,6 +5,7 @@ import {
   GENERIC_AUTH_METHOD_NAMES,
 } from "../../constants/security.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findExportedValue } from "../../utils/find-exported-value.js";
 import { getReactDoctorStringArraySetting } from "../../utils/get-react-doctor-setting.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasUseServerDirective } from "../../utils/has-use-server-directive.js";
@@ -17,6 +18,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 
 type AsyncFunctionLikeNode =
   | EsTreeNodeOfType<"FunctionDeclaration">
@@ -156,6 +158,40 @@ interface ServerActionCandidate {
   reportNode: EsTreeNode;
 }
 
+const COMPONENT_NAME_PATTERN = /^[A-Z]/;
+const TEST_APP_SOURCE_PATH_PATTERN = /(?:^|[/\\])test[/\\](?:app|src)[/\\]/;
+
+const containsJsxOutsideNestedFunctions = (rootNode: EsTreeNode): boolean => {
+  let containsJsx = false;
+  walkAst(rootNode, (child: EsTreeNode) => {
+    if (containsJsx) return false;
+    if (child !== rootNode && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "JSXElement") || isNodeOfType(child, "JSXFragment")) {
+      containsJsx = true;
+      return false;
+    }
+  });
+  return containsJsx;
+};
+
+const isComponentLikeServerExport = (candidate: ServerActionCandidate): boolean => {
+  if (!COMPONENT_NAME_PATTERN.test(candidate.displayName)) return false;
+  const functionBody = candidate.functionNode.body;
+  if (!isNodeOfType(functionBody, "BlockStatement")) {
+    return containsJsxOutsideNestedFunctions(functionBody);
+  }
+
+  let hasReturnedJsx = false;
+  walkAst(functionBody, (child: EsTreeNode) => {
+    if (hasReturnedJsx) return false;
+    if (child !== functionBody && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    hasReturnedJsx = containsJsxOutsideNestedFunctions(child.argument);
+    return false;
+  });
+  return hasReturnedJsx;
+};
+
 // `signIn` / `logIn` / `signUp` tokenize as two words; merge them so the
 // standalone-token check reads them as one credential phrase.
 const CREDENTIAL_MERGE_TAIL_TOKENS: Readonly<Record<string, ReadonlySet<string>>> = {
@@ -235,6 +271,7 @@ const inspectServerAction = (
   const isServerAction = fileHasUseServerDirective || hasUseServerDirective(candidate.functionNode);
   if (!isServerAction) return;
 
+  if (isComponentLikeServerExport(candidate)) return;
   if (isCredentialEstablishingActionName(candidate.displayName)) return;
   if (hasPublicNameToken(candidate.displayName)) return;
 
@@ -294,8 +331,13 @@ export const serverAuthActions = defineRule({
   severity: "error",
   recommendation:
     "Check auth before touching data because exported server actions can be called directly by unauthenticated clients.",
-  create: (context: RuleContext) => {
+  create: skipNonProductionFiles((context: RuleContext) => {
+    const shouldSkipTestAppSource = Boolean(
+      context.filename && TEST_APP_SOURCE_PATH_PATTERN.test(context.filename),
+    );
     let fileHasUseServerDirective = false;
+    let programNode: EsTreeNodeOfType<"Program"> | null = null;
+    const inspectedFunctions = new Set<AsyncFunctionLikeNode>();
     const customAuthFunctionNames = getReactDoctorStringArraySetting(
       context.settings,
       "serverAuthFunctionNames",
@@ -308,16 +350,46 @@ export const serverAuthActions = defineRule({
         ? new Set([...AUTH_FUNCTION_NAMES, ...customAuthFunctionNames])
         : AUTH_FUNCTION_NAMES;
 
-    const inspect = (candidate: ServerActionCandidate): void =>
+    const inspect = (candidate: ServerActionCandidate): void => {
+      if (inspectedFunctions.has(candidate.functionNode)) return;
+      inspectedFunctions.add(candidate.functionNode);
       inspectServerAction(candidate, fileHasUseServerDirective, allowedFunctionNames, context);
+    };
 
     return {
-      Program(programNode: EsTreeNodeOfType<"Program">) {
-        fileHasUseServerDirective = hasDirective(programNode, "use server");
+      Program(currentProgramNode: EsTreeNodeOfType<"Program">) {
+        programNode = currentProgramNode;
+        fileHasUseServerDirective = hasDirective(currentProgramNode, "use server");
       },
       ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
+        if (shouldSkipTestAppSource) return;
         const declaration = node.declaration;
-        if (!declaration) return;
+        if (!declaration) {
+          if (!programNode || node.source || node.exportKind === "type") return;
+          for (const specifier of node.specifiers ?? []) {
+            if (!isNodeOfType(specifier, "ExportSpecifier") || specifier.exportKind === "type") {
+              continue;
+            }
+            const exportedName = isNodeOfType(specifier.exported, "Identifier")
+              ? specifier.exported.name
+              : isNodeOfType(specifier.exported, "Literal") &&
+                  typeof specifier.exported.value === "string"
+                ? specifier.exported.value
+                : null;
+            if (!exportedName) continue;
+            const exportedValue = findExportedValue(programNode, exportedName);
+            if (!isAsyncFunctionLikeNode(exportedValue)) continue;
+            const localName = isNodeOfType(specifier.local, "Identifier")
+              ? specifier.local.name
+              : exportedName;
+            inspect({
+              functionNode: exportedValue,
+              displayName: localName,
+              reportNode: specifier.local ?? specifier,
+            });
+          }
+          return;
+        }
         if (isAsyncFunctionLikeNode(declaration)) {
           if (!isNodeOfType(declaration, "FunctionDeclaration")) return;
           inspect({
@@ -334,9 +406,25 @@ export const serverAuthActions = defineRule({
         }
       },
       ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
-        const candidate = getCandidateFromDefaultDeclaration(node);
+        if (shouldSkipTestAppSource) return;
+        const directCandidate = getCandidateFromDefaultDeclaration(node);
+        if (directCandidate) {
+          inspect(directCandidate);
+          return;
+        }
+        if (!programNode) return;
+        const resolvedDefaultExport = findExportedValue(programNode, "default");
+        const candidate = isAsyncFunctionLikeNode(resolvedDefaultExport)
+          ? {
+              functionNode: resolvedDefaultExport,
+              displayName: isNodeOfType(node.declaration, "Identifier")
+                ? node.declaration.name
+                : "default",
+              reportNode: node.declaration ?? node,
+            }
+          : null;
         if (candidate) inspect(candidate);
       },
     };
-  },
+  }),
 });

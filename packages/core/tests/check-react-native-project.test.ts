@@ -77,11 +77,11 @@ describe("checkReactNativeProject — gating", () => {
 });
 
 describe("checkReactNativeProject — legacy metro babel preset", () => {
-  it("flags the renamed metro-react-native-babel-preset", () => {
+  it("flags the removed preset on React Native 0.73+ when it cannot resolve", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {
       name: "rn-app",
-      dependencies: { "react-native": "0.72.0" },
+      dependencies: { "react-native": "0.73.0" },
     });
     writeFile(
       projectDirectory,
@@ -93,6 +93,98 @@ describe("checkReactNativeProject — legacy metro babel preset", () => {
     expect(hit).toBeDefined();
     // A broken build transform must surface by default (errors aren't hidden).
     expect(hit?.severity).toBe("error");
+  });
+
+  it("does NOT flag the preset before the React Native 0.73 rename", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "^0.72.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['module:metro-react-native-babel-preset'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-preset");
+  });
+
+  it("does NOT flag the preset on React Native 0.59", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "^0.59.10" },
+      devDependencies: { "metro-react-native-babel-preset": "^0.52.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['module:metro-react-native-babel-preset'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-preset");
+  });
+
+  it("does NOT flag an explicitly installed legacy preset on modern React Native", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+      devDependencies: { "metro-react-native-babel-preset": "^0.77.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['module:metro-react-native-babel-preset'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-preset");
+  });
+
+  it("does NOT flag a resolvable transitive legacy preset", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    const legacyPresetDirectory = path.join(
+      projectDirectory,
+      "node_modules",
+      "metro-react-native-babel-preset",
+    );
+    fs.mkdirSync(legacyPresetDirectory, { recursive: true });
+    writePackageJson(legacyPresetDirectory, {
+      name: "metro-react-native-babel-preset",
+      version: "0.77.0",
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['module:metro-react-native-babel-preset'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-preset");
+  });
+
+  it("does NOT flag an unresolvable React Native version spec", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "catalog:" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['module:metro-react-native-babel-preset'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-preset");
   });
 
   it("does NOT flag the current @react-native/babel-preset", () => {

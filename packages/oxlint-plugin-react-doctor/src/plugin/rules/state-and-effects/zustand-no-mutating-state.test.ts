@@ -390,6 +390,54 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("tracks snapshot aliases introduced inside branches", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          update: (enabled) => {
+            if (enabled) {
+              const items = get().items;
+              items.push("next");
+              set({ items });
+            } else {
+              const { items } = get();
+              items.push("fallback");
+              set({ items });
+            }
+          },
+          safe: (enabled) => {
+            if (enabled) {
+              const items = get().items;
+              items.push("next");
+              set({ items: [...items] });
+            }
+          },
+        }));
+      `,
+      2,
+    );
+  });
+
+  it("matches nested direct snapshot paths against nested updates", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          unsafe: () => {
+            get().nested.items.push("next");
+            set({ nested: { items: get().nested.items } });
+          },
+          safe: () => {
+            get().nested.items.push("next");
+            set({ nested: { items: [...get().nested.items] } });
+          },
+        }));
+      `,
+      1,
+    );
+  });
+
   it("matches the replacement property to the mutated snapshot path", () => {
     expectDiagnosticCount(
       `

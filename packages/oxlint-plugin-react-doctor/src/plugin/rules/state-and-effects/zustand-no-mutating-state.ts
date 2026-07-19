@@ -8,7 +8,6 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import {
-  addMutableStateReferenceBindings,
   collectMutableStateReferenceMutations,
   updateMutableStateReferencesForIdentifierAssignment,
   updateMutableStateReferencesForVariableDeclaration,
@@ -493,6 +492,7 @@ const objectTargetPathReplacementDisposition = (
   targetPath: readonly string[],
   isPartialUpdateRoot: boolean,
   context: RuleContext,
+  ancestorPath: readonly string[] = [],
 ): boolean | null => {
   const propertyName = targetPath[0];
   if (!propertyName) return true;
@@ -511,11 +511,15 @@ const objectTargetPathReplacementDisposition = (
         targetPath.slice(1),
         false,
         context,
+        [...ancestorPath, propertyName],
       );
       continue;
     }
     if (
-      staticPathPreservesTarget(staticPropertyPathForExpression(propertyValue, context), targetPath)
+      staticPathPreservesTarget(staticPropertyPathForExpression(propertyValue, context), [
+        ...ancestorPath,
+        ...targetPath,
+      ])
     ) {
       disposition = false;
       continue;
@@ -605,6 +609,46 @@ const conditionalNotifierTargetReplacementDisposition = (
   return branchDispositions.every((disposition) => disposition === true) ? true : null;
 };
 
+const updateSnapshotStateForStatement = (
+  statement: EsTreeNode,
+  state: MutableStateReferenceState,
+): void => {
+  if (isNodeOfType(statement, "VariableDeclaration")) {
+    updateMutableStateReferencesForVariableDeclaration(statement, state);
+    return;
+  }
+  if (!isNodeOfType(statement, "ExpressionStatement")) return;
+  const assignment = stripParenExpression(statement.expression);
+  if (!isNodeOfType(assignment, "AssignmentExpression")) return;
+  updateMutableStateReferencesForIdentifierAssignment(assignment, state);
+};
+
+const collectSequentialSnapshotMutations = (
+  branchRoot: EsTreeNode,
+  state: MutableStateReferenceState,
+): MutableStateReferenceMutation[] => {
+  const branchState: MutableStateReferenceState = {
+    mutableStateSourceNames: new Set(state.mutableStateSourceNames),
+  };
+  if (state.isAdditionalMutableStateSource) {
+    branchState.isAdditionalMutableStateSource = state.isAdditionalMutableStateSource;
+  }
+  const statements = isNodeOfType(branchRoot, "BlockStatement") ? branchRoot.body : [branchRoot];
+  const mutations: MutableStateReferenceMutation[] = [];
+  for (const statement of statements) {
+    if (isNodeOfType(statement, "IfStatement")) {
+      mutations.push(...collectSequentialSnapshotMutations(statement.consequent, branchState));
+      if (statement.alternate) {
+        mutations.push(...collectSequentialSnapshotMutations(statement.alternate, branchState));
+      }
+      continue;
+    }
+    mutations.push(...collectMutableStateReferenceMutations(statement, branchState));
+    updateSnapshotStateForStatement(statement, branchState);
+  }
+  return mutations;
+};
+
 const analyzeSnapshotContainer = (
   statements: readonly EsTreeNode[],
   getSymbolIds: ReadonlySet<number>,
@@ -629,7 +673,7 @@ const analyzeSnapshotContainer = (
       const branchCalls: EsTreeNodeOfType<"CallExpression">[][] = [];
       for (const branchRoot of [statement.consequent, statement.alternate]) {
         if (!branchRoot) continue;
-        for (const mutation of collectMutableStateReferenceMutations(branchRoot, state)) {
+        for (const mutation of collectSequentialSnapshotMutations(branchRoot, state)) {
           mutations.push({ branchRoot, mutation, statementIndex });
         }
         const calls = collectNotifierCalls(branchRoot, setSymbolIds, storeSymbolIds, context);
@@ -652,24 +696,7 @@ const analyzeSnapshotContainer = (
         notifierCalls.push({ branchRoot: null, callExpression, statementIndex });
       }
     }
-    if (isNodeOfType(statement, "VariableDeclaration")) {
-      updateMutableStateReferencesForVariableDeclaration(statement, state);
-      for (const declarator of statement.declarations) {
-        if (isSnapshotExpression(declarator.init, getSymbolIds, storeSymbolIds, context)) {
-          addMutableStateReferenceBindings(declarator.id, state);
-        }
-      }
-    } else if (isNodeOfType(statement, "ExpressionStatement")) {
-      const assignment = stripParenExpression(statement.expression);
-      if (!isNodeOfType(assignment, "AssignmentExpression")) continue;
-      updateMutableStateReferencesForIdentifierAssignment(assignment, state);
-      if (
-        isNodeOfType(assignment.left, "Identifier") &&
-        isSnapshotExpression(assignment.right, getSymbolIds, storeSymbolIds, context)
-      ) {
-        state.mutableStateSourceNames.add(assignment.left.name);
-      }
-    }
+    updateSnapshotStateForStatement(statement, state);
     if (isNodeOfType(statement, "ReturnStatement")) break;
   }
   for (const { branchRoot, mutation, statementIndex } of mutations) {

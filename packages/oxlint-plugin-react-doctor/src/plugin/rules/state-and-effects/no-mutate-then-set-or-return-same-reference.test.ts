@@ -565,10 +565,22 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         { length: pairCount },
         (_, conditionIndex) => `condition${conditionIndex}`,
       );
-      const sameReferenceResults = conditions
-        .map((condition) => `if(${condition})return items;`)
-        .join("");
-      return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}if(!flag){${sameReferenceResults}}return [...items]})}`;
+      const resultExpressions = [
+        ...conditions.map((condition) => `(${condition}&&items)`),
+        "[...items]",
+      ];
+      const buildBalancedResultExpression = (
+        startIndex: number,
+        endIndex: number,
+      ): string => {
+        if (endIndex - startIndex === 1) {
+          return resultExpressions[startIndex] ?? "[...items]";
+        }
+        const middleIndex = startIndex + Math.floor((endIndex - startIndex) / 2);
+        return `(${buildBalancedResultExpression(startIndex, middleIndex)}||${buildBalancedResultExpression(middleIndex, endIndex)})`;
+      };
+      const sameReferenceResults = buildBalancedResultExpression(0, resultExpressions.length);
+      return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}if(!flag){return ${sameReferenceResults}}return [...items]})}`;
     };
     runRule(noMutateThenSetOrReturnSameReference, buildSource(200));
     const start = performance.now();
@@ -576,5 +588,3 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
     const duration = performance.now() - start;
     expect(result.diagnostics).toHaveLength(0);
     expect(duration).toBeLessThan(1_500);
-  });
-});

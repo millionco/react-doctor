@@ -162,6 +162,20 @@ describe("zustand-no-fresh-selector-result", () => {
     );
   });
 
+  it("does not treat ignored equality arguments on v5 APIs as stabilization", () => {
+    expectDiagnosticCount(
+      `
+        import { create, useStore } from "zustand";
+        import { shallow } from "zustand/shallow";
+        import { bearStore } from "./bear-store";
+        const useBearStore = create(() => ({ count: 0 }));
+        const bound = useBearStore((state) => ({ count: state.count }), shallow);
+        const vanilla = useStore(bearStore, (state) => ({ count: state.count }), shallow);
+      `,
+      2,
+    );
+  });
+
   it("allows selectors wrapped by an imported useShallow alias", () => {
     expectDiagnosticCount(
       `

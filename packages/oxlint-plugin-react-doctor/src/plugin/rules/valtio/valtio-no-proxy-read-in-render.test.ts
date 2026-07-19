@@ -79,6 +79,20 @@ describe("valtio-no-proxy-read-in-render", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports reads after snapping a defaulted destructured proxy alias", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function Profile({ state, fallbackProfile }) {
+        const { profile = fallbackProfile } = state;
+        const snapshot = useSnapshot(profile);
+        return <span>{state.profile.name + snapshot.name}</span>;
+      }
+    `);
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports whole-proxy and render-time destructuring reads", () => {
     const result = runValtioRule(`
       import { useSnapshot } from "valtio";
@@ -161,6 +175,23 @@ describe("valtio-no-proxy-read-in-render", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports proxy reads used as computed assignment keys", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function Counter({ state, target, source }) {
+        const snapshot = useSnapshot(state);
+        target[state.key] = source;
+        ({ [state.label]: target.value } = source);
+        target[typeof state.type] = source;
+        return snapshot.key;
+      }
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
   });
 
   it("reports snapshot reads and stays quiet on the corresponding proxy", () => {

@@ -117,9 +117,10 @@ const findPatternPathToBinding = (
   bindingIdentifier: EsTreeNode,
 ): string[] | null => {
   if (pattern === bindingIdentifier) return [];
-  if (isNodeOfType(pattern, "AssignmentPattern") || isNodeOfType(pattern, "RestElement")) {
-    return null;
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    return findPatternPathToBinding(pattern.left, bindingIdentifier);
   }
+  if (isNodeOfType(pattern, "RestElement")) return null;
   if (isNodeOfType(pattern, "ArrayPattern")) {
     for (const [elementIndex, element] of pattern.elements.entries()) {
       if (!element) continue;
@@ -174,8 +175,10 @@ const resolveProxyPath = (
     symbol.initializer &&
     isNodeOfType(symbol.declarationNode, "VariableDeclarator")
   ) {
-    const initializer = stripParenExpression(symbol.initializer);
     const directAlias = symbol.declarationNode.id === symbol.bindingIdentifier;
+    const initializerNode = directAlias ? symbol.initializer : symbol.declarationNode.init;
+    if (!initializerNode) return { rootKey: `symbol:${symbol.id}`, properties: [] };
+    const initializer = stripParenExpression(initializerNode);
     const canResolveDirectAlias =
       directAlias &&
       (isNodeOfType(initializer, "Identifier") || isNodeOfType(initializer, "MemberExpression"));
@@ -248,6 +251,36 @@ const findOutermostMemberRead = (identifier: EsTreeNode): EsTreeNode => {
     }
     currentExpression = findTransparentExpressionRoot(parent);
   }
+};
+
+const isReadPositionWithinAssignmentTarget = (expression: EsTreeNode): boolean => {
+  let currentNode = expression;
+  let parentNode = currentNode.parent;
+  while (parentNode) {
+    if (
+      (isNodeOfType(parentNode, "MemberExpression") &&
+        parentNode.computed &&
+        parentNode.property === currentNode) ||
+      (isNodeOfType(parentNode, "Property") &&
+        parentNode.computed &&
+        parentNode.key === currentNode) ||
+      (isNodeOfType(parentNode, "AssignmentPattern") && parentNode.right === currentNode)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(parentNode, "AssignmentExpression") ||
+      isNodeOfType(parentNode, "UpdateExpression") ||
+      (isNodeOfType(parentNode, "UnaryExpression") && parentNode.operator === "delete") ||
+      isNodeOfType(parentNode, "ForInStatement") ||
+      isNodeOfType(parentNode, "ForOfStatement")
+    ) {
+      return false;
+    }
+    currentNode = parentNode;
+    parentNode = currentNode.parent;
+  }
+  return false;
 };
 
 const isSnapshotArgument = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -391,7 +424,8 @@ export const valtioNoProxyReadInRender = defineRule({
           const readExpression = findOutermostMemberRead(identifier);
           if (
             reportedExpressions.has(readExpression) ||
-            isWithinAssignmentTarget(readExpression) ||
+            (isWithinAssignmentTarget(readExpression) &&
+              !isReadPositionWithinAssignmentTarget(readExpression)) ||
             isSnapshotArgument(readExpression, context.scopes)
           ) {
             continue;

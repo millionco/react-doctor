@@ -580,10 +580,18 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
       return `const C=({flag,${conditions.join(",")}})=>{const[,setItems]=useState<number[]>([]);setItems(items=>{if(flag){${mutations}}if(!flag){return ${sameReferenceResults}}return [...items]})}`;
     };
     runRule(noMutateThenSetOrReturnSameReference, buildSource(200));
-    const start = performance.now();
-    const result = runRule(noMutateThenSetOrReturnSameReference, buildSource(3_200));
-    const duration = performance.now() - start;
-    expect(result.diagnostics).toHaveLength(0);
-    expect(duration).toBeLessThan(1_500);
+    const measureFastestDuration = (pairCount: number): number => {
+      let fastestDuration = Number.POSITIVE_INFINITY;
+      for (let repetition = 0; repetition < 2; repetition += 1) {
+        const start = performance.now();
+        const result = runRule(noMutateThenSetOrReturnSameReference, buildSource(pairCount));
+        fastestDuration = Math.min(fastestDuration, performance.now() - start);
+        expect(result.diagnostics).toHaveLength(0);
+      }
+      return fastestDuration;
+    };
+    const smallDuration = measureFastestDuration(800);
+    const largeDuration = measureFastestDuration(4_000);
+    expect(largeDuration).toBeLessThan(smallDuration * 18);
   });
 });

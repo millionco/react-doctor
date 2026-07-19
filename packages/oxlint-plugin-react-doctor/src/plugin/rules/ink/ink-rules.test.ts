@@ -275,6 +275,16 @@ describe("Ink rules", () => {
     expect(runRule(inkNoRepeatedRender, code).diagnostics).toHaveLength(0);
   });
 
+  it("still reports process exit after Ink exit", () => {
+    const code = `import {useApp,useInput} from "ink"; const App=()=> {const {exit}=useApp(); useInput(()=>{exit(); process.exit(0);}); return null;};`;
+    expect(runRule(inkNoBareProcessExit, code).diagnostics).toHaveLength(1);
+  });
+
+  it("allows process exit after explicit terminal cleanup", () => {
+    const code = `import {useInput} from "ink"; const App=()=> {useInput(()=>{restore(); process.exit(0);}); return null;};`;
+    expect(runRule(inkNoBareProcessExit, code).diagnostics).toHaveLength(0);
+  });
+
   it("allows separate renderers on different output streams", () => {
     const validCode = `import {render} from "ink"; const run=(firstOutput,secondOutput)=> { render(null,{stdout:firstOutput}); render(null,{stdout:secondOutput}); };`;
     const invalidCode = `import {render} from "ink"; const run=(output)=> { render(null,{stdout:output}); render(null,{stdout:output}); };`;

@@ -11,7 +11,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const CLEANUP_METHOD_PATTERN =
-  /^(?:abort|cleanup|close|destroy|disconnect|dispose|exit|restore|unmount)$/i;
+  /^(?:abort|cleanup|close|destroy|disconnect|dispose|restore|unmount)$/i;
 
 const findUseInputHandler = (node: EsTreeNode, context: RuleContext): EsTreeNode | null => {
   const enclosingFunction = findEnclosingFunction(node);

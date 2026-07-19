@@ -82,7 +82,7 @@ interface NotifierCallWithStatementIndex {
 }
 
 interface ConditionalNotifierGroupWithStatementIndex {
-  branchCalls: EsTreeNodeOfType<"CallExpression">[][];
+  statement: EsTreeNodeOfType<"IfStatement">;
   statementIndex: number;
 }
 
@@ -833,21 +833,80 @@ const notifierTargetReplacementDisposition = (
   return false;
 };
 
-const conditionalNotifierTargetReplacementDisposition = (
-  branchCalls: readonly (readonly EsTreeNodeOfType<"CallExpression">[])[],
+const sequentialNotifierTargetReplacementDisposition = (
+  previousDisposition: boolean | null,
+  nextDisposition: boolean | null,
+): boolean | null => {
+  if (previousDisposition === true || nextDisposition === true) return true;
+  if (previousDisposition === null || nextDisposition === null) return null;
+  return false;
+};
+
+const notifierFlowTargetReplacementDisposition = (
+  statement: EsTreeNode,
   mutation: MutableStateReferenceMutation,
+  setSymbolIds: ReadonlySet<number>,
+  storeSymbolIds: ReadonlySet<number>,
   context: RuleContext,
 ): boolean | null => {
-  const branchDispositions = branchCalls.map((calls) => {
-    const dispositions = calls.map((callExpression) =>
-      notifierTargetReplacementDisposition(callExpression, mutation, context),
+  if (isNodeOfType(statement, "BlockStatement")) {
+    return statement.body.reduce<boolean | null>(
+      (disposition, childStatement) =>
+        sequentialNotifierTargetReplacementDisposition(
+          disposition,
+          notifierFlowTargetReplacementDisposition(
+            childStatement,
+            mutation,
+            setSymbolIds,
+            storeSymbolIds,
+            context,
+          ),
+        ),
+      false,
     );
-    if (dispositions.some((disposition) => disposition === true)) return true;
-    if (dispositions.some((disposition) => disposition === null)) return null;
-    return false;
+  }
+  if (isNodeOfType(statement, "IfStatement")) {
+    const consequentDisposition = notifierFlowTargetReplacementDisposition(
+      statement.consequent,
+      mutation,
+      setSymbolIds,
+      storeSymbolIds,
+      context,
+    );
+    const alternateDisposition = statement.alternate
+      ? notifierFlowTargetReplacementDisposition(
+          statement.alternate,
+          mutation,
+          setSymbolIds,
+          storeSymbolIds,
+          context,
+        )
+      : false;
+    if (consequentDisposition === false || alternateDisposition === false) return false;
+    return consequentDisposition === true && alternateDisposition === true ? true : null;
+  }
+  return collectNotifierCalls(statement, setSymbolIds, storeSymbolIds, context).reduce<
+    boolean | null
+  >(
+    (disposition, callExpression) =>
+      sequentialNotifierTargetReplacementDisposition(
+        disposition,
+        notifierTargetReplacementDisposition(callExpression, mutation, context),
+      ),
+    false,
+  );
+};
+
+const collectConditionalNotifierGroups = (
+  statement: EsTreeNode,
+  statementIndex: number,
+): ConditionalNotifierGroupWithStatementIndex[] => {
+  const groups: ConditionalNotifierGroupWithStatementIndex[] = [];
+  walkAst(statement, (node: EsTreeNode) => {
+    if (isFunctionLike(node)) return false;
+    if (isNodeOfType(node, "IfStatement")) groups.push({ statement: node, statementIndex });
   });
-  if (branchDispositions.some((disposition) => disposition === false)) return false;
-  return branchDispositions.every((disposition) => disposition === true) ? true : null;
+  return groups;
 };
 
 const updateSnapshotStateForStatement = (
@@ -912,7 +971,6 @@ const analyzeSnapshotContainer = (
   for (let statementIndex = 0; statementIndex < statements.length; statementIndex += 1) {
     const statement = statements[statementIndex];
     if (isNodeOfType(statement, "IfStatement")) {
-      const branchCalls: EsTreeNodeOfType<"CallExpression">[][] = [];
       for (const branchRoot of [statement.consequent, statement.alternate]) {
         if (!branchRoot) continue;
         for (const mutation of collectSequentialSnapshotMutations(branchRoot, state)) {
@@ -924,12 +982,10 @@ const analyzeSnapshotContainer = (
           notifierStoreSymbolIds,
           context,
         );
-        branchCalls.push(calls);
         for (const callExpression of calls) {
           notifierCalls.push({ branchRoot, callExpression, statementIndex });
         }
       }
-      if (statement.alternate) conditionalNotifierGroups.push({ branchCalls, statementIndex });
     } else {
       for (const mutation of collectMutableStateReferenceMutations(statement, state)) {
         mutations.push({ branchRoot: null, mutation, statementIndex });
@@ -943,6 +999,7 @@ const analyzeSnapshotContainer = (
         notifierCalls.push({ branchRoot: null, callExpression, statementIndex });
       }
     }
+    conditionalNotifierGroups.push(...collectConditionalNotifierGroups(statement, statementIndex));
     updateSnapshotStateForStatement(statement, state);
     if (isNodeOfType(statement, "ReturnStatement")) break;
   }
@@ -972,9 +1029,25 @@ const analyzeSnapshotContainer = (
         updateTargetReplacementDisposition(expression, mutation, context),
       ),
       ...conditionalNotifierGroups
-        .filter((group) => group.statementIndex > statementIndex)
+        .filter((group) => {
+          if (group.statementIndex < statementIndex) return false;
+          const mutationStart = getRangeStart(mutation.node);
+          const groupStart = getRangeStart(group.statement);
+          return (
+            mutationStart !== null &&
+            groupStart !== null &&
+            groupStart > mutationStart &&
+            branchPathCompatibility(group.statement, mutation) === true
+          );
+        })
         .map((group) =>
-          conditionalNotifierTargetReplacementDisposition(group.branchCalls, mutation, context),
+          notifierFlowTargetReplacementDisposition(
+            group.statement,
+            mutation,
+            setSymbolIds,
+            notifierStoreSymbolIds,
+            context,
+          ),
         ),
     ];
     if (replacementDispositions.some((disposition) => disposition !== false)) {

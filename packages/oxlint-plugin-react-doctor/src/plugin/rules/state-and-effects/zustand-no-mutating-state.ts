@@ -311,15 +311,26 @@ const hasAbruptCompletion = (node: EsTreeNode): boolean => {
   return didFindAbruptCompletion;
 };
 
+const hasUnsupportedSnapshotStatement = (statement: EsTreeNode): boolean => {
+  if (!isNodeOfType(statement, "IfStatement")) {
+    return UNSUPPORTED_CONTROL_FLOW_TYPES.has(statement.type);
+  }
+  if (hasAbruptCompletion(statement)) return true;
+  const branchStatements: EsTreeNode[] = [];
+  for (const branch of [statement.consequent, statement.alternate]) {
+    if (!branch) continue;
+    branchStatements.push(...(isNodeOfType(branch, "BlockStatement") ? branch.body : [branch]));
+  }
+  return branchStatements.some(hasUnsupportedSnapshotStatement);
+};
+
 const hasUnsupportedSnapshotControlFlow = (statements: readonly EsTreeNode[]): boolean =>
-  statements.some(
-    (statement) =>
-      UNSUPPORTED_CONTROL_FLOW_TYPES.has(statement.type) &&
-      (!isNodeOfType(statement, "IfStatement") || hasAbruptCompletion(statement)),
-  );
+  statements.some(hasUnsupportedSnapshotStatement);
 
 const analyzeSetUpdater = (
   updaterFunction: EsTreeNode,
+  getSymbolIds: ReadonlySet<number>,
+  storeSymbolIds: ReadonlySet<number>,
   context: RuleContext,
   reportedNodes: WeakSet<EsTreeNode>,
 ): void => {
@@ -350,11 +361,19 @@ const analyzeSetUpdater = (
     mutations.push(...collectMutableStateReferenceMutations(updaterFunction.body, state));
   }
   for (const mutation of mutations) {
+    const mutationPath = staticPropertyPathForExpression(mutation.receiver, context);
     const hasNoUpdateReturn = returnedExpressions.some((expression) =>
       isDefinitelyNoUpdateExpression(expression, context),
     );
     const doesPreserveTarget = returnedExpressions.some(
-      (expression) => updateTargetReplacementDisposition(expression, mutation, context) === false,
+      (expression) =>
+        updateTargetReplacementDisposition(expression, mutation, context) === false ||
+        (isSnapshotExpression(expression, getSymbolIds, storeSymbolIds, context) &&
+          mutationPath !== null &&
+          staticPathPreservesTarget(
+            staticPropertyPathForExpression(expression, context),
+            mutationPath,
+          )),
     );
     if (returnedExpressions.length > 0 && !doesPreserveTarget && !hasNoUpdateReturn) continue;
     if (reportedNodes.has(mutation.node)) continue;
@@ -1014,7 +1033,13 @@ export const zustandNoMutatingState = defineRule({
               const updaterFunction = resolveExactLocalFunction(updaterArgument, context.scopes);
               if (!updaterFunction) return;
               recordUpdaterFunctionNotifier(updaterFunction, setSymbolId);
-              analyzeSetUpdater(updaterFunction, context, reportedNodes);
+              analyzeSetUpdater(
+                updaterFunction,
+                binding.getSymbol ? new Set([binding.getSymbol.id]) : new Set(),
+                new Set(),
+                context,
+                reportedNodes,
+              );
             });
           }
           if (!programNode || binding.storeSymbolIds.size === 0) continue;
@@ -1028,7 +1053,13 @@ export const zustandNoMutatingState = defineRule({
             const updaterFunction = resolveExactLocalFunction(updaterArgument, context.scopes);
             if (!updaterFunction) return;
             recordUpdaterFunctionNotifier(updaterFunction, storeSymbolId);
-            analyzeSetUpdater(updaterFunction, context, reportedNodes);
+            analyzeSetUpdater(
+              updaterFunction,
+              new Set(),
+              new Set([storeSymbolId]),
+              context,
+              reportedNodes,
+            );
           });
         }
         const analyzeProvenance = (

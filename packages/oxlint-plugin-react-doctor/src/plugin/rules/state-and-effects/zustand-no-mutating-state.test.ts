@@ -400,6 +400,25 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("fails closed when unsupported control flow is nested in a branch", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          update: (isEnabled, values) => {
+            const items = get().items;
+            items.push("next");
+            set({ items });
+            if (isEnabled) {
+              for (const value of values) set({ value });
+            }
+          },
+        }));
+      `,
+      0,
+    );
+  });
+
   it("abstains from unproven snapshot replacements", () => {
     expectDiagnosticCount(
       `
@@ -440,6 +459,26 @@ describe("zustand-no-mutating-state", () => {
         }));
       `,
       1,
+    );
+  });
+
+  it("recognizes updater returns that reuse get snapshots", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create((set, get) => ({
+          items: [],
+          update: () => set((state) => {
+            state.items.push("next");
+            return get();
+          }),
+        }));
+        useStore.setState((state) => {
+          state.items.push("next");
+          return useStore.getState();
+        });
+      `,
+      2,
     );
   });
 

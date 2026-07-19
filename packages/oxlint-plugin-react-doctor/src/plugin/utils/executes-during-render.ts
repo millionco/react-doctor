@@ -2,10 +2,12 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { findDeclaratorForBinding } from "./find-declarator-for-binding.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { findVariableInitializer } from "./find-variable-initializer.js";
+import { hasStaticPropertyWriteBefore } from "./has-static-property-write-before.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isHookCall } from "./is-hook-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall } from "./is-react-api-call.js";
+import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 // Array iteration methods that invoke their callback synchronously — the
@@ -29,6 +31,10 @@ const SYNCHRONOUS_ITERATION_METHOD_NAMES = new Set([
 ]);
 
 const REACT_RENDER_PHASE_HOOK_NAMES = new Set(["useMemo", "useState"]);
+
+export interface ExecutesDuringRenderOptions {
+  requireProvenSynchronousCallbackReceiver?: boolean;
+}
 
 const isGlobalArrayFromMember = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const unwrappedNode = stripParenExpression(node);
@@ -62,6 +68,57 @@ const isConstAliasOfGlobalArrayFrom = (node: EsTreeNode, scopes: ScopeAnalysis):
   );
 };
 
+const isGlobalArrayConstructor = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  if (!isNodeOfType(unwrappedNode, "Identifier")) return false;
+  if (unwrappedNode.name === "Array" && scopes.isGlobalReference(unwrappedNode)) return true;
+  const symbol = scopes.symbolFor(unwrappedNode);
+  if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return isGlobalArrayConstructor(symbol.initializer, scopes, visitedSymbolIds);
+};
+
+const isProvenArrayReceiver = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  referenceNode: EsTreeNode,
+  methodName: string,
+): boolean => {
+  const receiver = stripParenExpression(node);
+  if (isNodeOfType(receiver, "ArrayExpression")) return true;
+  if (isNodeOfType(receiver, "Identifier")) {
+    const symbol = resolveConstIdentifierAlias(receiver, scopes);
+    return Boolean(
+      symbol?.kind === "const" &&
+      symbol.initializer &&
+      !hasStaticPropertyWriteBefore(receiver, methodName, referenceNode, scopes) &&
+      isProvenArrayReceiver(symbol.initializer, scopes, referenceNode, methodName),
+    );
+  }
+  if (isNodeOfType(receiver, "NewExpression")) {
+    return isGlobalArrayConstructor(receiver.callee, scopes);
+  }
+  if (!isNodeOfType(receiver, "CallExpression")) return false;
+  const callee = stripParenExpression(receiver.callee);
+  if (isGlobalArrayConstructor(callee, scopes)) return true;
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const arrayIdentifier = stripParenExpression(callee.object);
+  return Boolean(
+    isNodeOfType(arrayIdentifier, "Identifier") &&
+    arrayIdentifier.name === "Array" &&
+    scopes.isGlobalReference(arrayIdentifier) &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    (callee.property.name === "from" || callee.property.name === "of"),
+  );
+};
+
 // A nested function usually runs on a user event, not during the render
 // pass — but four shapes DO execute while rendering: an immediately
 // invoked function (`{(() => new Date().toLocaleString())()}`), a
@@ -71,6 +128,7 @@ const isConstAliasOfGlobalArrayFrom = (node: EsTreeNode, scopes: ScopeAnalysis):
 export const executesDuringRender = (
   callbackExpression: EsTreeNode,
   scopes?: ScopeAnalysis,
+  options: ExecutesDuringRenderOptions = {},
 ): boolean => {
   const callbackRoot = findTransparentExpressionRoot(callbackExpression);
   const parent = callbackRoot.parent;
@@ -105,6 +163,11 @@ export const executesDuringRender = (
     !parent.callee.computed &&
     isNodeOfType(parent.callee.property, "Identifier") &&
     SYNCHRONOUS_ITERATION_METHOD_NAMES.has(parent.callee.property.name) &&
-    parent.arguments?.[0] === callbackRoot
+    parent.arguments?.[0] === callbackRoot &&
+    (!options.requireProvenSynchronousCallbackReceiver ||
+      Boolean(
+        scopes &&
+        isProvenArrayReceiver(parent.callee.object, scopes, parent, parent.callee.property.name),
+      ))
   );
 };

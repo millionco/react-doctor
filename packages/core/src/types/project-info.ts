@@ -33,6 +33,9 @@ export interface ProjectInfo {
   hasRemotion?: boolean;
   remotionVersion?: string | null;
   remotionMajorVersion?: number | null;
+  hasI18nLibrary?: boolean;
+  tanstackQueryVersion?: string | null;
+  styledComponentsVersion?: string | null;
   /**
    * The declared `valtio` version spec, or `null` when no package in the
    * analyzed project declares Valtio. `useSnapshot` has kept the same

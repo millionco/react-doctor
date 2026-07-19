@@ -9,6 +9,7 @@ import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";

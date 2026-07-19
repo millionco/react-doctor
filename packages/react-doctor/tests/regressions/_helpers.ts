@@ -118,6 +118,7 @@ export interface CollectRuleHitsOptions {
   hasReactCompiler?: boolean;
   hasReactCompilerLintPlugin?: boolean;
   hasTanStackQuery?: boolean;
+  tanstackQueryVersion?: string | null;
   hasSsrDependency?: boolean;
 }
 
@@ -143,6 +144,8 @@ export interface BuildTestProjectOptions {
   framework?: ProjectInfo["framework"];
   hasReactCompiler?: boolean;
   hasTanStackQuery?: boolean;
+  tanstackQueryVersion?: string | null;
+  hasSsrDependency?: boolean;
   hasReanimated?: boolean;
   reactMajorVersion?: number | null;
   reactVersion?: string | null;
@@ -197,7 +200,11 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,
     hasReactCompilerLintPlugin: options.hasReactCompilerLintPlugin ?? false,
-    hasTanStackQuery: options.hasTanStackQuery ?? false,
+    hasTanStackQuery: options.hasTanStackQuery ?? Boolean(options.tanstackQueryVersion),
+    hasI18nLibrary: false,
+    tanstackQueryVersion: options.tanstackQueryVersion ?? null,
+    mobxVersion: null,
+    styledComponentsVersion: null,
     hasSsrDependency: options.hasSsrDependency ?? false,
     nextjsVersion,
     nextjsMajorVersion,

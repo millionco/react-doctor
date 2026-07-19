@@ -14,7 +14,12 @@ import {
   LATEST_SUPPORTED_MOBX_MAJOR,
   LATEST_SUPPORTED_ZUSTAND_MAJOR,
 } from "../constants.js";
-import { isMajorMinorAtLeast, parseReactMajorMinor, parseTailwindMajorMinor } from "./version.js";
+import {
+  getLowestDependencyMajor,
+  isMajorMinorAtLeast,
+  parseReactMajorMinor,
+  parseTailwindMajorMinor,
+} from "./version.js";
 
 // SPA / mobile frameworks with no server-side form handler at all —
 // `preventDefault()` on `<form onSubmit>` is the canonical pattern there,
@@ -101,6 +106,9 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 15) {
     capabilities.add("nextjs:15");
   }
+  if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 16) {
+    capabilities.add("nextjs:16");
+  }
   addMajorLadder(
     capabilities,
     "react",
@@ -177,7 +185,18 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   }
   if (project.isPreES2023Target) capabilities.add("pre-es2023");
   if (project.hasReactCompiler) capabilities.add("react-compiler");
-  if (project.hasTanStackQuery) capabilities.add("tanstack-query");
+  if (Boolean(project.hasTanStackQuery) || Boolean(project.tanstackQueryVersion)) {
+    capabilities.add("tanstack-query");
+  }
+  if (project.mobxVersion) capabilities.add("mobx");
+  if (project.styledComponentsVersion) {
+    capabilities.add("styled-components");
+    const styledComponentsMajor = getLowestDependencyMajor(project.styledComponentsVersion);
+    if (styledComponentsMajor !== null && styledComponentsMajor >= 6) {
+      capabilities.add("styled-components:6");
+    }
+  }
+  if (project.hasI18nLibrary) capabilities.add("i18n");
   if (project.valtioVersion !== null) capabilities.add("valtio");
   addMajorLadder(
     capabilities,

@@ -387,10 +387,30 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
   it("rules never reference a plugin that isn't in plugins or jsPlugins", () => {
     const allCombinations = [
-      { hasReactCompiler: true, hasTanStackQuery: true, framework: "nextjs" as const },
-      { hasReactCompiler: true, hasTanStackQuery: false, framework: "expo" as const },
-      { hasReactCompiler: false, hasTanStackQuery: true, framework: "tanstack-start" as const },
-      { hasReactCompiler: false, hasTanStackQuery: false, framework: "unknown" as const },
+      {
+        hasReactCompiler: true,
+        hasI18nLibrary: false,
+        tanstackQueryVersion: "^5.66.0",
+        framework: "nextjs" as const,
+      },
+      {
+        hasReactCompiler: true,
+        hasI18nLibrary: false,
+        tanstackQueryVersion: null,
+        framework: "expo" as const,
+      },
+      {
+        hasReactCompiler: false,
+        hasI18nLibrary: false,
+        tanstackQueryVersion: "^5.66.0",
+        framework: "tanstack-start" as const,
+      },
+      {
+        hasReactCompiler: false,
+        hasI18nLibrary: false,
+        tanstackQueryVersion: null,
+        framework: "unknown" as const,
+      },
     ];
     for (const combination of allCombinations) {
       const config = createOxlintConfig({
@@ -622,6 +642,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
         rootDirectory: "/tmp/test",
         framework: "react-native",
         hasReactCompiler: false,
+        hasI18nLibrary: false,
       }),
     });
     for (const ruleKey of renderItemRules) {
@@ -634,6 +655,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
         rootDirectory: "/tmp/test",
         framework: "react-native",
         hasReactCompiler: true,
+        hasI18nLibrary: false,
       }),
     });
     for (const ruleKey of renderItemRules) {

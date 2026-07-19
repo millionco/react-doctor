@@ -21,6 +21,7 @@ import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
 import { resolveLang } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
+import { resolveCrossFileExport } from "./utils/resolve-cross-file-export.js";
 import {
   resolveCrossFileFunctionExport,
   resolveCrossFileValueExportWithFilePath,
@@ -178,6 +179,15 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
 }) => {
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
+const collectBrowserGuardDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  for (const entry of flattenImportEntries(staticImports)) {
+    resolveCrossFileExport(absoluteFilePath, entry.source, entry.exportedName);
   }
 };
 
@@ -454,6 +464,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-effect-with-fresh-deps", collectForwardedHookDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
+    ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectNearestManifestDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
@@ -472,7 +483,9 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  * partition), forcing a conscious classification.
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
+  "nextjs-async-dynamic-api-not-awaited",
   "nextjs-no-img-element",
+  "no-loading-flag-reset-outside-finally",
   "only-export-components",
   "remotion-calculate-metadata-fetch-signal",
   "remotion-deterministic-randomness",
@@ -481,6 +494,7 @@ export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "remotion-no-css-url-assets",
   "remotion-no-native-media-elements",
   "remotion-no-next-image",
+  "window-open-without-noopener",
 ]);
 
 /**

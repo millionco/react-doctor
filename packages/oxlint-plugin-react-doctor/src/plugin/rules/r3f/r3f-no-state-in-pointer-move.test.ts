@@ -53,6 +53,32 @@ describe("r3f-no-state-in-pointer-move", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows a short-circuit boolean latch transition", () => {
+    const result = runRule(
+      r3fNoStateInPointerMove,
+      `import { useState } from "react";
+       import "@react-three/fiber";
+       const Scene = () => {
+         const [started, setStarted] = useState(false);
+         return <mesh onPointerMove={() => { !started && setStarted(true); }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports a non-converging short-circuit state update", () => {
+    const result = runRule(
+      r3fNoStateInPointerMove,
+      `import { useState } from "react";
+       import "@react-three/fiber";
+       const Scene = () => {
+         const [started, setStarted] = useState(false);
+         return <mesh onPointerMove={() => { started && setStarted(true); }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores DOM, imported handlers, unknown spreads, and unrelated setters", () => {
     const result = runRule(
       r3fNoStateInPointerMove,

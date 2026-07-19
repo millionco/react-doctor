@@ -131,6 +131,7 @@ const isLatchTransitionGuaranteedForSetter = (
   setterCall: EsTreeNode,
   branch: EsTreeNode,
 ): boolean => {
+  if (latchCall === branch) return true;
   let currentChild = latchCall;
   let currentAncestor = latchCall.parent;
   while (currentAncestor && currentAncestor !== branch) {
@@ -333,10 +334,22 @@ export const isGuardedStateTransition = (
     if (
       isNodeOfType(currentAncestor, "LogicalExpression") &&
       currentAncestor.right === currentChild &&
-      (currentAncestor.operator === "&&" || currentAncestor.operator === "||") &&
-      branchGuaranteesValueChange(currentAncestor.left, currentAncestor.operator === "&&", scopes)
+      (currentAncestor.operator === "&&" || currentAncestor.operator === "||")
     ) {
-      return true;
+      const didTestPass = currentAncestor.operator === "&&";
+      if (
+        branchGuaranteesValueChange(currentAncestor.left, didTestPass, scopes) ||
+        branchHasBooleanLatchTransition(
+          currentChild,
+          setterCall,
+          callback,
+          currentAncestor.left,
+          didTestPass,
+          scopes,
+        )
+      ) {
+        return true;
+      }
     }
     currentChild = currentAncestor;
     currentAncestor = currentAncestor.parent;

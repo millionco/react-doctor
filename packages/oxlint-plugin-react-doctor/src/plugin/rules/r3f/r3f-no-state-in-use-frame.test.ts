@@ -75,6 +75,35 @@ describe("r3f-no-state-in-use-frame", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each([
+    `!started && setStarted(true);`,
+    `started || setStarted(true);`,
+    `started && setStarted(false);`,
+    `!started || setStarted(false);`,
+    `!started ? setStarted(true) : logStable();`,
+    `started ? setStarted(false) : logStable();`,
+  ])("allows converging boolean latch expressions", (transition) => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [started, setStarted] = useState(false); useFrame(() => { ${transition} }); return started; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    `started && setStarted(true);`,
+    `!started && setStarted(false);`,
+    `started || setStarted(false);`,
+    `!started || setStarted(true);`,
+    `started && setStarted((value) => !value);`,
+  ])("reports non-converging boolean latch expressions", (transition) => {
+    const result = runRule(
+      r3fNoStateInUseFrame,
+      `import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [started, setStarted] = useState(false); useFrame(() => { ${transition} }); return started; };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports updates outside a nested latch transition", () => {
     const result = runRule(
       r3fNoStateInUseFrame,

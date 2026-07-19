@@ -3208,7 +3208,7 @@ export const Debounced = ({ value }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("rejects split cleanup when an early return skips the rerun release", () => {
+  it("accepts one-shot timer cleanup owned by a stable unmount effect after an early return", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useEffect, useRef } from "react";
@@ -3224,10 +3224,10 @@ export const Debounced = ({ enabled, value }) => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("rejects split cleanup when an outer condition skips the rerun release", () => {
+  it("accepts one-shot timer cleanup owned by a stable unmount effect inside a condition", () => {
     const result = runRule(
       effectNeedsCleanup,
       `import { useEffect, useRef } from "react";
@@ -3239,6 +3239,60 @@ export const Debounced = ({ enabled, value }) => {
       timeoutRef.current = setTimeout(() => commit(value), 300);
     }
   }, [enabled, value]);
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects repeating timer cleanup when an early return skips the rerun release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Poller = ({ enabled, value }) => {
+  const intervalRef = useRef(null);
+  useEffect(() => {
+    if (!enabled) return;
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => poll(value), 300);
+  }, [enabled, value]);
+  useEffect(() => () => clearInterval(intervalRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects one-shot timer cleanup when rerenders can overwrite a live handle", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DeferredCommit = ({ value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [value]);
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects one-shot timer cleanup when a separate guard can skip the rerun release", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DeferredCommit = ({ shouldRelease, value }) => {
+  const timeoutRef = useRef(null);
+  useEffect(() => {
+    if (shouldRelease) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => commit(value), 300);
+  }, [shouldRelease, value]);
   useEffect(() => () => clearTimeout(timeoutRef.current), []);
   return null;
 };`,
@@ -5152,15 +5206,6 @@ export const MediaQuery = ({ breakpoint }) => {
       cleanupEvent: "event",
       cleanupListener: "listener",
     },
-    {
-      name: "defaulted object properties",
-      setupParameters: '{ event = "focus", listener = handleFocus }',
-      setupEvent: "event",
-      setupListener: "listener",
-      cleanupParameters: '{ event = "focus", listener = handleFocus }',
-      cleanupEvent: "event",
-      cleanupListener: "listener",
-    },
   ])("does not infer cleanup identity through $name", (fixture) => {
     const result = runRule(
       effectNeedsCleanup,
@@ -5182,6 +5227,162 @@ export const MediaQuery = ({ breakpoint }) => {
             enabledEvents.forEach((${fixture.cleanupParameters}) => {
               elementRefs.forEach((elementRef) => {
                 elementRef.current?.removeEventListener(${fixture.cleanupEvent}, ${fixture.cleanupListener});
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts replay cleanup through matching defaulted object properties", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach(({ event = "focus", listener = handleFocus, capture = false }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(event, listener, capture);
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event = "focus", listener = handleFocus, capture = false }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(event, listener, capture);
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects replay cleanup through different defaulted object properties", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach(({ event, listener, capture = false }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(event, listener, capture);
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, listener, capture = true }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(event, listener, capture);
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts replay cleanup through matching computed capture expressions", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach(({ event, listener }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(
+                event,
+                listener,
+                event === "focus" || event === "blur",
+              );
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, listener }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(
+                  event,
+                  listener,
+                  event === "focus" || event === "blur",
+                );
+              });
+            });
+          };
+        }, [anchorRefs]);
+
+        return null;
+      }
+    `,
+      { filename: "Tooltip.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("rejects replay cleanup through different computed capture expressions", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `
+      function Tooltip({ anchorRefs }) {
+        const handleFocus = () => {};
+
+        useEffect(() => {
+          const elementRefs = new Set(anchorRefs);
+          const enabledEvents = [{ event: "focus", listener: handleFocus }];
+
+          enabledEvents.forEach(({ event, listener }) => {
+            elementRefs.forEach((elementRef) => {
+              elementRef.current?.addEventListener(
+                event,
+                listener,
+                event === "focus" || event === "blur",
+              );
+            });
+          });
+
+          return () => {
+            enabledEvents.forEach(({ event, listener }) => {
+              elementRefs.forEach((elementRef) => {
+                elementRef.current?.removeEventListener(event, listener, event === "focus");
               });
             });
           };

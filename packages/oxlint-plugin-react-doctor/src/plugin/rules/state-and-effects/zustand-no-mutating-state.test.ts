@@ -513,6 +513,22 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("recognizes creator updater returns that reuse bound getState snapshots", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create((set) => ({
+          items: [],
+          update: () => set((state) => {
+            state.items.push("next");
+            return useStore.getState();
+          }),
+        }));
+      `,
+      1,
+    );
+  });
+
   it("analyzes setState updater snapshots and returned notifications", () => {
     expectDiagnosticCount(
       `

@@ -166,6 +166,48 @@ describe("r3f-require-projection-matrix-update", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("accepts a refresh guarded by a comparison with the previous projection value", () => {
+    const result = runRule(
+      r3fRequireProjectionMatrixUpdate,
+      `import { useFrame } from "@react-three/fiber";
+       useFrame(({ camera }) => {
+         const previousZoom = camera.zoom;
+         camera.zoom = nextZoom;
+         if (camera.zoom !== previousZoom) camera.updateProjectionMatrix();
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects imprecise previous-value refresh guards", () => {
+    const result = runRule(
+      r3fRequireProjectionMatrixUpdate,
+      `import { useFrame } from "@react-three/fiber";
+       useFrame(({ camera }) => {
+         const previousAspect = camera.aspect;
+         camera.zoom = nextZoom;
+         if (camera.zoom !== previousAspect) camera.updateProjectionMatrix();
+       });
+       useFrame(({ camera }) => {
+         const previousZoom = camera.zoom;
+         camera.zoom = nextZoom;
+         if (camera.zoom === previousZoom) camera.updateProjectionMatrix();
+       });
+       useFrame(({ camera }) => {
+         let previousZoom = camera.zoom;
+         camera.zoom = nextZoom;
+         if (camera.zoom !== previousZoom) camera.updateProjectionMatrix();
+       });
+       useFrame(({ camera }) => {
+         const previousZoom = camera.zoom;
+         camera.zoom = nextZoom;
+         console.log("zoom changed");
+         if (camera.zoom !== previousZoom) camera.updateProjectionMatrix();
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
   it("accepts a refresh that shares the write's short-circuit guard", () => {
     const result = runRule(
       r3fRequireProjectionMatrixUpdate,

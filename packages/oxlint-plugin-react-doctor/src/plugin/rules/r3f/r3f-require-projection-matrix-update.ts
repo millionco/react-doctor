@@ -27,6 +27,7 @@ import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 
 interface ProjectionMutation {
   node: EsTreeNode;
+  propertyKey: string;
   receiver: EsTreeNode;
   receiverKey: string;
 }
@@ -209,6 +210,76 @@ const getProjectionMutationReceiver = (node: EsTreeNode): EsTreeNode | null => {
     : null;
 };
 
+const getOnlyCallExpression = (
+  statement: EsTreeNode,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  if (isNodeOfType(statement, "BlockStatement")) {
+    return statement.body.length === 1 ? getOnlyCallExpression(statement.body[0]) : null;
+  }
+  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
+  const expression = stripParenExpression(statement.expression);
+  return isNodeOfType(expression, "CallExpression") ? expression : null;
+};
+
+const isGuardedRefreshForChangedProjectionValue = (
+  mutation: ProjectionMutation,
+  matchingUpdateNodes: ReadonlySet<EsTreeNode>,
+  context: RuleContext,
+): boolean => {
+  const mutationStatement = mutation.node.parent;
+  const block = mutationStatement?.parent;
+  if (
+    !isNodeOfType(mutationStatement, "ExpressionStatement") ||
+    mutationStatement.expression !== mutation.node ||
+    !isNodeOfType(block, "BlockStatement")
+  ) {
+    return false;
+  }
+  const mutationIndex = block.body.indexOf(mutationStatement);
+  if (mutationIndex < 1) return false;
+  const snapshotStatement = block.body[mutationIndex - 1];
+  const refreshStatement = block.body[mutationIndex + 1];
+  if (
+    !isNodeOfType(snapshotStatement, "VariableDeclaration") ||
+    snapshotStatement.kind !== "const" ||
+    snapshotStatement.declarations.length !== 1 ||
+    !isNodeOfType(refreshStatement, "IfStatement") ||
+    refreshStatement.alternate !== null
+  ) {
+    return false;
+  }
+  const snapshotDeclaration = snapshotStatement.declarations[0];
+  if (
+    !isNodeOfType(snapshotDeclaration.id, "Identifier") ||
+    !snapshotDeclaration.init ||
+    resolveExpressionKey(snapshotDeclaration.init, context) !== mutation.propertyKey
+  ) {
+    return false;
+  }
+  const refreshCall = getOnlyCallExpression(refreshStatement.consequent);
+  if (!refreshCall || !matchingUpdateNodes.has(refreshCall)) return false;
+  const comparison = stripParenExpression(refreshStatement.test);
+  if (
+    !isNodeOfType(comparison, "BinaryExpression") ||
+    (comparison.operator !== "!==" && comparison.operator !== "!=")
+  ) {
+    return false;
+  }
+  const snapshotSymbol = context.scopes.symbolFor(snapshotDeclaration.id);
+  const comparesSnapshotWithCurrentValue = (snapshot: EsTreeNode, current: EsTreeNode): boolean => {
+    const snapshotCandidate = stripParenExpression(snapshot);
+    return (
+      isNodeOfType(snapshotCandidate, "Identifier") &&
+      context.scopes.symbolFor(snapshotCandidate)?.id === snapshotSymbol?.id &&
+      resolveExpressionKey(current, context) === mutation.propertyKey
+    );
+  };
+  return (
+    comparesSnapshotWithCurrentValue(comparison.left, comparison.right) ||
+    comparesSnapshotWithCurrentValue(comparison.right, comparison.left)
+  );
+};
+
 const getUpdateProjectionMatrixReceiver = (
   node: EsTreeNodeOfType<"CallExpression">,
 ): EsTreeNode | null => {
@@ -301,6 +372,9 @@ const doUpdatesCoverEveryPathAfterMutation = (
     if (doesUpdateShareMutationExpressionRestrictions(mutation.node, updateNode, owner)) {
       expressionCoverageNodes.add(updateNode);
     }
+  }
+  if (isGuardedRefreshForChangedProjectionValue(mutation, new Set(matchingUpdateNodes), context)) {
+    return true;
   }
   const matchingBlocks = new Set(
     [...expressionCoverageNodes].flatMap((updateNode) => {
@@ -398,12 +472,18 @@ export const r3fRequireProjectionMatrixUpdate = defineRule({
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         const receiver = getProjectionMutationReceiver(node);
         const receiverKey = receiver ? resolveExpressionKey(receiver, context) : null;
-        if (receiver && receiverKey) projectionMutations.push({ node, receiver, receiverKey });
+        const propertyKey = resolveExpressionKey(node.left, context);
+        if (receiver && receiverKey && propertyKey) {
+          projectionMutations.push({ node, propertyKey, receiver, receiverKey });
+        }
       },
       UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
         const receiver = getProjectionMutationReceiver(node);
         const receiverKey = receiver ? resolveExpressionKey(receiver, context) : null;
-        if (receiver && receiverKey) projectionMutations.push({ node, receiver, receiverKey });
+        const propertyKey = resolveExpressionKey(node.argument, context);
+        if (receiver && receiverKey && propertyKey) {
+          projectionMutations.push({ node, propertyKey, receiver, receiverKey });
+        }
       },
       "Program:exit"() {
         if (!importsReactThreeFiber) return;

@@ -243,6 +243,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "hook-import-rename-loses-use-prefix": {
     code: 'import { useEffect as runEffect } from "react";\nconst App = () => { runEffect(() => {}, []); return null; };',
   },
+  "jsx-numeric-and-leaked-render": {
+    code: "const C = ({ count }) => <div>{(count - 1) && <More />}</div>;",
+  },
   "hook-use-state": {
     code: "\n            import React from 'react';\n            export default function useColor() {\n                const color = React.useState();\n                return color;\n            }",
     forceJsx: true,
@@ -456,6 +459,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "nextjs-async-client-component": {
     code: '"use client";\nexport default async function Profile() {\n  const data = await loadProfile();\n  return <div>{data.name}</div>;\n}',
   },
+  "nextjs-async-dynamic-api-not-awaited": {
+    code: 'import { headers } from "next/headers";\nexport const read = () => headers().get("x-request-id");',
+    filePath: "app/page.tsx",
+  },
   "nextjs-error-boundary-missing-use-client": {
     code: "export default function ErrorBoundary({ error, reset }) {\n  return <div>{error.message}</div>;\n}",
     filePath: "/app/app/error.tsx",
@@ -584,6 +591,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { cloneElement } from "react";\n           const clonedElement = cloneElement(\n             <Row title="Cabbage">Hello</Row>,\n             { isHighlighted: true },\n             "Goodbye",\n           );',
     forceJsx: true,
   },
+  "no-controlled-input-value-without-state-update": {
+    code: "const C = () => <input value={123} onChange={handleChange} />;",
+  },
   "no-create-context-in-render": {
     code: '\n      import { createContext } from "react";\n\n      function App() {\n        const Ctx = createContext(null);\n        return null;\n      }\n    ',
   },
@@ -607,6 +617,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-default-props": {
     code: "export const Link = (props) => <a {...props} />;\nLink.defaultProps = { appearance: 'default', size: 'regular', disabled: false };",
+  },
+  "no-deprecated-keyboard-event-keycode-which": {
+    code: "const Row = () => <div onKeyDown={(e) => { if (e.keyCode === 75) focusSearch(); }} />;",
   },
   "no-derived-state": {
     code: 'function Profile({ firstName, lastName }) {\n        const [fullName, setFullName] = useState("");\n        useEffect(() => {\n          setFullName(`${firstName} ${lastName}`);\n        }, [firstName, lastName]);\n        return <p>{fullName}</p>;\n      }',
@@ -663,6 +676,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-effect-with-fresh-deps": {
     code: '\n      import { useEffect } from "react";\n\n      function Component({ a, b }) {\n        useEffect(() => {\n          // ...\n        }, [{ a, b }]);\n      }\n    ',
   },
+  "no-enter-submit-without-ime-composition-guard": {
+    code: "const Field = () => (\n         <input onKeyDown={(e) => { e.key === 'Enter' && onSave(); }} />\n       );",
+  },
   "no-eval": {
     code: 'const fn = new Function("return 1");',
     filePath: "src/run.ts",
@@ -676,11 +692,20 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-fetch-in-effect": {
     code: '\n      const Widget = () => {\n        useEffect(() => {\n          fetch("/api/data")\n            .then((response) => response.json())\n            .then(setData);\n        }, []);\n        return null;\n      };\n    ',
   },
+  "no-fetch-response-used-without-status-check": {
+    code: "function warmCache(url) {\n  fetch(url).then((response) => response.blob());\n}",
+  },
+  "no-fill-map-element-as-key": {
+    code: "const Rows = () => Array(3).fill('a').map((letter) => <Row key={letter} />);",
+  },
   "no-find-dom-node": {
     code: 'import { findDOMNode } from "react-dom"; export const f = (node) => findDOMNode(node);',
   },
   "no-flush-sync": {
     code: 'import { flushSync } from "react-dom";\nfunction C() {\n  const onClick = () => {\n    flushSync(() => {\n      setCount((count) => count + 1);\n    });\n  };\n  return <button onClick={onClick}>go</button>;\n}',
+  },
+  "no-floating-then-in-jsx-handler": {
+    code: "const el = <input onChange={() => api.update(x).then(refetch)} />;",
   },
   "no-full-lodash-import": {
     code: '\n      import _ from "lodash";\n      export const chunked = _.chunk([1, 2, 3], 2);\n    ',
@@ -706,6 +731,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-img-lazy-with-high-fetchpriority": {
     code: 'const Hero = () => <img src="/a.png" loading="lazy" fetchPriority="high" />;',
+  },
+  "no-impure-call-at-module-scope": {
+    code: "const RENDERED = Date.now();",
   },
   "no-indeterminate-attribute": {
     code: 'const Checkbox = () => <input type="checkbox" indeterminate />;',
@@ -735,6 +763,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-json-parse-stringify-clone": {
     code: "const copy = JSON.parse(JSON.stringify(state));",
+  },
+  "no-collapsed-literal-or-chain-as-value": {
+    code: 'message.includes("first" || "second");',
   },
   "no-impure-state-updater": {
     code: `import { useState } from "react";
@@ -795,6 +826,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-mutable-in-deps": {
     code: "\n      function Page() {\n        useEffect(() => {\n          track(location.href);\n        }, [location.href]);\n        return null;\n      }\n    ",
   },
+  "no-mutate-queried-dom-node-in-component": {
+    code: "function Row({ order }) {\n        document.getElementById('row-1').style.zIndex = '1';\n        return <div id=\"row-1\" style={{ zIndex: order }} />;\n      }",
+  },
+  "no-mutating-array-method-on-prop-or-hook-result": {
+    code: "function List({ items }) {\n  items.splice(0, 1);\n  return null;\n}",
+  },
   "no-mutating-reducer-state": {
     code: '\n      import { useReducer } from "react";\n\n      function reducer(state, action) {\n        state.age = state.age + 1;\n        return state;\n      }\n\n      useReducer(reducer, { age: 0 });\n    ',
   },
@@ -807,6 +844,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-nested-component-definition": {
     code: "\n      const Parent = () => {\n        const NestedChild = () => <span>nested</span>;\n        return <NestedChild />;\n      };\n    ",
+  },
+  "no-non-literal-selector-query-without-try-catch": {
+    code: "element.matches(location.hash);",
+  },
+  "no-nondeterministic-id-value-in-render-body": {
+    code: 'import { uniqueId } from "lodash";\nconst useBundleChartData = () => {\n  const chartId = useMemo(() => uniqueId(), []);\n  return { chartId };\n};',
   },
   "no-noninteractive-element-interactions": {
     code: "<li onClick={() => {}}>x</li>",
@@ -828,6 +871,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-outline-none": {
     code: 'const T = () => <button style={{ outline: "none" }}>Save</button>;',
+  },
+  "no-object-or-array-coerced-to-string-in-template-literal": {
+    code: "function formatPair() { return `pair: ${[1, 2]}`; }",
   },
   "no-pass-data-to-parent": {
     code: "const Child = (props) => {\n          const fetchedData = useSomeAPI();\n          useEffect(() => {\n            props.onLoaded(fetchedData);\n          }, [props, fetchedData]);\n          return null;\n        };",
@@ -973,9 +1019,18 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'export default function Field({ text }) { return <input type="text" value={text} />; }',
     filePath: "app/field.tsx",
   },
+  "no-unescaped-dynamic-string-in-regexp": {
+    code: "const matcher = RegExp(highlight, 'gi');",
+  },
   "no-unguarded-browser-global-in-render-or-hook-init": {
     code: '"use client";\nexport const Page = () => <main>{window.innerWidth}</main>;',
     filePath: "app/page.tsx",
+  },
+  "no-unguarded-numeric-input-parse": {
+    code: "const Field = () => <input onChange={(event) => setValue(Number(event.target.value))} />;",
+  },
+  "no-unguarded-throwing-parse-call": {
+    code: "function Swatch(props) { return chroma(props.color).hex(); }",
   },
   "no-undeferred-third-party": {
     code: 'const W = () => <script src="https://cdn.example.com/w.js" />;',
@@ -983,6 +1038,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-unescaped-entities": {
     code: "\n        var Hello = createReactClass({\n            render: function() {\n              return <div>'</div>;\n            }\n        });\n        ",
     forceJsx: true,
+  },
+  "no-unguarded-browser-global-at-module-scope": {
+    code: "const lang = navigator.language;",
+    filePath: "src/lib/foo.ts",
   },
   "no-unknown-property": {
     code: '<div transform-origin="center" />',
@@ -995,6 +1054,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     },
     forceJsx: true,
   },
+  "no-unsafe-json-parse": {
+    code: "const message = JSON.parse(raw).message;",
+  },
   "no-unstable-nested-components": {
     code: "\n                    function ParentComponent() {\n                      function UnstableNestedFunctionComponent() {\n                        return <div />;\n                      }\n            \n                      return (\n                        <div>\n                          <UnstableNestedFunctionComponent />\n                        </div>\n                      );\n                    }\n                  ",
     forceJsx: true,
@@ -1004,6 +1066,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-whole-object-dep-with-member-reads": {
     code: 'import { useMemo } from "react";function FullName(props){return useMemo(()=>props.first,[props])}',
+  },
+  "no-whole-object-default-losing-per-key-defaults": {
+    code: "function f({ a, b } = { a: 1 } as Options) {}",
   },
   "no-wide-letter-spacing": {
     code: "\n      const Body = () => (\n        <p style={{ letterSpacing: 2 }}>Some long paragraph of body copy.</p>\n      );\n    ",
@@ -1126,6 +1191,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "query-stable-query-client": {
     code: "function App() { const client = new QueryClient(); return null; }",
+  },
+  "radio-input-missing-name": {
+    code: '<input type="radio" value="yes" />;',
   },
   "raw-sql-injection-risk": {
     code: "export const q = (prisma, id) => prisma.$queryRawUnsafe(`SELECT * FROM users WHERE id = '${id}'`);\n",
@@ -1378,6 +1446,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "styled-components-duplicate-css-property-in-block": {
     code: 'import { css } from "styled-components"; const shared = css`opacity: ${p => p.$a ? 1 : 0}; opacity: ${p => p.$b ? 1 : 0.5};`;',
   },
+  "styled-components-non-transient-custom-prop-on-intrinsic-element": {
+    code: "const D = styled.div<{ selected: boolean }>`color: red;`;",
+  },
   "supabase-client-owned-authz-field": {
     code: 'export const createTeam = async (name: string) => {\n  await supabase.from("teams").insert({ name, ownerId: currentUser.id, role: "admin" });\n};',
     filePath: "src/lib/create-team.ts",
@@ -1473,6 +1544,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "webhook-signature-risk": {
     code: "export async function POST(request: Request) {\n  const event = await request.json();\n  await applyEvent(event);\n  return Response.json({ ok: true });\n}\n",
     filePath: "src/app/api/webhooks/github/route.ts",
+  },
+  "window-open-without-noopener": {
+    code: "window.open(url);",
   },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',

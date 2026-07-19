@@ -1,6 +1,5 @@
 // rule: no-floating-then-in-jsx-handler
-// weakness: library-idiom
-// source: PR #1000 corpus sweep (cloudscape microtask-scheduling idiom never rejects)
+// source: PR #1000 corpus sweep
 import { useRef } from "react";
 
 export const Trigger = () => {

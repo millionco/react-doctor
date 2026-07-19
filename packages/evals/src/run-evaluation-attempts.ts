@@ -17,6 +17,7 @@ export interface RunEvaluationAttemptsInput {
     repositoryGroup: CorpusRepositoryGroup,
   ) => Promise<ReadonlyArray<CorpusEvaluationRecord>>;
   beforeRetry: () => Promise<void>;
+  onBeforeRetryFailure: (error: unknown) => void;
   onRetry: (retry: EvaluationRetry) => void;
   onFinalFailure: (record: CorpusEvaluationRecord) => Promise<void>;
 }
@@ -26,6 +27,7 @@ export const runEvaluationAttempts = async ({
   attemptConcurrencies,
   evaluateRepositoryGroup,
   beforeRetry,
+  onBeforeRetryFailure,
   onRetry,
   onFinalFailure,
 }: RunEvaluationAttemptsInput): Promise<void> => {
@@ -47,7 +49,7 @@ export const runEvaluationAttempts = async ({
       return;
     }
 
-    await beforeRetry();
+    await beforeRetry().catch(onBeforeRetryFailure);
     pendingRepositoryGroups = groupCorpusRepositories(
       failedRecords.map((record) => record.repository),
     );

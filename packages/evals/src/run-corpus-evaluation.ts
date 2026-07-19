@@ -113,6 +113,11 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           onRecord: recordEvaluation,
         }),
       beforeRetry: () => cleanupEvaluationSandboxes({ daytona, evaluationId }),
+      onBeforeRetryFailure: (error) => {
+        process.stderr.write(
+          `Failed to clean up Daytona sandboxes before retry: ${toErrorMessage(error)}\n`,
+        );
+      },
       onRetry: (retry) => {
         process.stderr.write(
           `Retrying ${retry.failedProjectCount} projects at concurrency ${retry.concurrency} (attempt ${retry.attemptNumber}/${retry.totalAttempts})\n`,

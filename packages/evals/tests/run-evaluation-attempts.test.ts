@@ -36,6 +36,7 @@ describe("runEvaluationAttempts", () => {
         return evaluatedGroups.length === 1 ? [failedRecord] : [];
       },
       beforeRetry,
+      onBeforeRetryFailure: vi.fn(),
       onRetry,
       onFinalFailure,
     });
@@ -63,6 +64,7 @@ describe("runEvaluationAttempts", () => {
       attemptConcurrencies: [500, 50, 10],
       evaluateRepositoryGroup,
       beforeRetry: async () => undefined,
+      onBeforeRetryFailure: vi.fn(),
       onRetry: () => undefined,
       onFinalFailure,
     });
@@ -70,5 +72,35 @@ describe("runEvaluationAttempts", () => {
     expect(evaluateRepositoryGroup).toHaveBeenCalledTimes(3);
     expect(onFinalFailure).toHaveBeenCalledOnce();
     expect(onFinalFailure).toHaveBeenCalledWith(failedRecord);
+  });
+
+  it("continues retrying when cleanup fails", async () => {
+    const cleanupError = new Error("Daytona list failed");
+    const evaluatedGroups: CorpusRepositoryGroup[] = [];
+    const onBeforeRetryFailure = vi.fn();
+    const onFinalFailure = vi.fn(async () => undefined);
+
+    await runEvaluationAttempts({
+      repositoryGroups: [repositoryGroup],
+      attemptConcurrencies: [500, 50],
+      evaluateRepositoryGroup: async (group) => {
+        evaluatedGroups.push(group);
+        return evaluatedGroups.length === 1 ? [failedRecord] : [];
+      },
+      beforeRetry: async () => {
+        throw cleanupError;
+      },
+      onBeforeRetryFailure,
+      onRetry: () => undefined,
+      onFinalFailure,
+    });
+
+    expect(evaluatedGroups).toEqual([
+      repositoryGroup,
+      { ...repositoryGroup, rootDirectories: ["packages/web"] },
+    ]);
+    expect(onBeforeRetryFailure).toHaveBeenCalledOnce();
+    expect(onBeforeRetryFailure).toHaveBeenCalledWith(cleanupError);
+    expect(onFinalFailure).not.toHaveBeenCalled();
   });
 });

@@ -591,6 +591,40 @@ const objectExpressionPublishesSymbolAtPath = (
   return false;
 };
 
+const isNodeWithin = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+};
+
+const rebindPathCompatibility = (
+  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+  mutation: MutableStateReferenceMutation,
+): boolean | null => {
+  if (!isNodeOfType(assignment.parent, "ExpressionStatement")) return null;
+  let current: EsTreeNode = assignment.parent;
+  const mutationFunction = findEnclosingFunction(mutation.node);
+  while (current.parent && current.parent !== mutationFunction) {
+    const parent: EsTreeNode = current.parent;
+    if (
+      isNodeOfType(parent, "IfStatement") &&
+      (parent.consequent === current || parent.alternate === current)
+    ) {
+      if (isNodeWithin(mutation.node, current)) {
+        current = parent;
+        continue;
+      }
+      const otherBranch = parent.consequent === current ? parent.alternate : parent.consequent;
+      return otherBranch && isNodeWithin(mutation.node, otherBranch) ? false : null;
+    }
+    current = parent;
+  }
+  return true;
+};
+
 const targetRebindReplacementDisposition = (
   updateExpression: EsTreeNode,
   mutation: MutableStateReferenceMutation,
@@ -616,6 +650,7 @@ const targetRebindReplacementDisposition = (
   if (mutationStart === null || updateStart === null) return undefined;
   let latestAssignment: EsTreeNodeOfType<"AssignmentExpression"> | null = null;
   let latestAssignmentStart: number | null = null;
+  let latestConditionalAssignmentStart: number | null = null;
   for (const reference of targetSymbol.references) {
     if (reference.flag === "read") continue;
     const assignment = reference.identifier.parent;
@@ -631,13 +666,30 @@ const targetRebindReplacementDisposition = (
     if (
       assignmentStart === null ||
       assignmentStart <= mutationStart ||
-      assignmentStart >= updateStart ||
-      (latestAssignmentStart !== null && assignmentStart <= latestAssignmentStart)
+      assignmentStart >= updateStart
     ) {
       continue;
     }
+    const pathCompatibility = rebindPathCompatibility(assignment, mutation);
+    if (pathCompatibility === false) continue;
+    if (pathCompatibility === null) {
+      if (
+        latestConditionalAssignmentStart === null ||
+        assignmentStart > latestConditionalAssignmentStart
+      ) {
+        latestConditionalAssignmentStart = assignmentStart;
+      }
+      continue;
+    }
+    if (latestAssignmentStart !== null && assignmentStart <= latestAssignmentStart) continue;
     latestAssignment = assignment;
     latestAssignmentStart = assignmentStart;
+  }
+  if (
+    latestConditionalAssignmentStart !== null &&
+    (latestAssignmentStart === null || latestConditionalAssignmentStart > latestAssignmentStart)
+  ) {
+    return null;
   }
   if (!latestAssignment) return undefined;
   if (expressionKeyPreservesTarget(latestAssignment.right, targetKey, context)) return false;

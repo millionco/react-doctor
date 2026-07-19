@@ -338,6 +338,40 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("does not apply rebindings from mutually exclusive branches", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          unsafe: (shouldMutate) => {
+            let items = get().items;
+            if (shouldMutate) {
+              items.push("next");
+            } else {
+              items = [...items];
+            }
+            set({ items });
+          },
+          safeInBranch: (shouldMutate) => {
+            let items = get().items;
+            if (shouldMutate) {
+              items.push("next");
+              items = [...items];
+              set({ items });
+            }
+          },
+          safeAfterBranch: (shouldMutate) => {
+            let items = get().items;
+            if (shouldMutate) items.push("next");
+            items = [...items];
+            set({ items });
+          },
+        }));
+      `,
+      1,
+    );
+  });
+
   it("abstains from unproven snapshot replacements", () => {
     expectDiagnosticCount(
       `

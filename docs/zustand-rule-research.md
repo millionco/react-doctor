@@ -167,7 +167,9 @@ Detector contract:
   branch cannot publish the mutation.
 - Pair creator `get()` snapshots with either its `set` parameter or the resulting bound store's
   `setState`, while keeping `getState` snapshot provenance exact to one store.
-- Follow ordered mutable-alias rebindings and accept a clone published at the original state path.
+- Follow ordered mutable-alias rebindings on the mutation's execution path and accept a clone
+  published at the original state path. Ignore mutually exclusive branch rebindings and abstain
+  when a conditional rebind cannot be proven to run.
 - Compare nested replacement paths from the snapshot root so a direct `get()` or `getState()`
   chain cannot hide reuse inside a nested object update.
 - Treat clone-before-mutate as valid when the clone is statically proven fresh.

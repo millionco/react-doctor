@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { MUTATING_ARRAY_METHODS } from "../../constants/js.js";
 import {
   analyzeScopes,
   type ScopeAnalysis,
@@ -751,18 +752,6 @@ const hasNestedIndexedPropertyWriteBefore = (
   );
 };
 
-const ARRAY_MUTATING_METHOD_NAMES = new Set([
-  "copyWithin",
-  "fill",
-  "pop",
-  "push",
-  "reverse",
-  "shift",
-  "sort",
-  "splice",
-  "unshift",
-]);
-
 const hasArrayMutationBefore = (
   arrayIdentifier: EsTreeNodeOfType<"Identifier">,
   referenceNode: EsTreeNode,
@@ -796,7 +785,7 @@ const hasArrayMutationBefore = (
       const methodName = getStaticPropertyName(memberExpression);
       if (
         methodName &&
-        ARRAY_MUTATING_METHOD_NAMES.has(methodName) &&
+        MUTATING_ARRAY_METHODS.has(methodName) &&
         isNodeOfType(memberParent, "CallExpression") &&
         memberParent.callee === memberRoot
       ) {

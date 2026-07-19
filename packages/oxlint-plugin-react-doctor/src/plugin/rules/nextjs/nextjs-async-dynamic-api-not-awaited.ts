@@ -3,7 +3,7 @@ import {
   NEXTJS_SOURCE_FILE_EXTENSION_GROUP,
   ROUTE_HANDLER_HTTP_METHODS,
 } from "../../constants/nextjs.js";
-import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
+import { MUTATING_ARRAY_METHODS, PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import type { BasicBlock } from "../../semantic/control-flow-graph.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -82,18 +82,6 @@ const COERCIVE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
 ]);
 const NON_CONSUMING_UNARY_OPERATORS: ReadonlySet<string> = new Set(["!", "typeof", "void"]);
 const SITEMAP_FILE_PATTERN = new RegExp(`^sitemap\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`);
-const ARRAY_CARDINALITY_MUTATION_METHOD_NAMES: ReadonlySet<string> = new Set([
-  "copyWithin",
-  "fill",
-  "pop",
-  "push",
-  "reverse",
-  "shift",
-  "sort",
-  "splice",
-  "unshift",
-]);
-
 const MESSAGE =
   "This Next.js request API returns a Promise. Synchronous property access warns in Next.js 15 and is removed in Next.js 16; await it or unwrap it with React `use()`.";
 
@@ -2075,7 +2063,7 @@ const getDirectInvocationSites = (
       const parent = memberExpression.parent;
       if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === memberExpression) {
         const methodName = getResolvedStaticPropertyName(context, memberExpression);
-        if (!methodName || !ARRAY_CARDINALITY_MUTATION_METHOD_NAMES.has(methodName)) continue;
+        if (!methodName || !MUTATING_ARRAY_METHODS.has(methodName)) continue;
         if (methodName === "push" || methodName === "unshift") {
           if (parent.arguments.some((argument) => isNodeOfType(argument, "SpreadElement"))) {
             return null;

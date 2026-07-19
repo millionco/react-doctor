@@ -377,7 +377,7 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
-  it("fails closed for branch-dependent mutation and notification paths", () => {
+  it("supports non-exiting snapshot branches and fails closed for updater branches", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
@@ -391,9 +391,42 @@ describe("zustand-no-mutating-state", () => {
             if (enabled) items.push("next");
             set({ items });
           },
+          safeExternal: (enabled) => {
+            const items = get().items;
+            if (enabled) items.push("next");
+            set({ items: [...items] });
+          },
+          earlyExit: (enabled) => {
+            const items = get().items;
+            if (enabled) {
+              items.push("next");
+              return;
+            }
+            set({ items });
+          },
         }));
       `,
-      0,
+      1,
+    );
+  });
+
+  it("reports mutations in both branches before a reused snapshot notification", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          add: (item, prepend) => {
+            const { items } = get();
+            if (prepend) {
+              items.unshift(item);
+            } else {
+              items.push(item);
+            }
+            set({ items });
+          },
+        }));
+      `,
+      2,
     );
   });
 });

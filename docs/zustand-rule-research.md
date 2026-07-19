@@ -157,6 +157,8 @@ Detector contract:
   back to `setState`, or mutated without a notifying update.
 - Treat clone-before-mutate as valid when the clone is statically proven fresh.
 - Treat mutation inside a creator wrapped by the official `immer` middleware as valid.
+- Follow mutations through simple `if`/`else` branches when every branch rejoins before the
+  notifying update; fail closed when a branch returns or throws.
 - Skip unknown custom middleware, unresolved helper calls, and cross-file stores unless ownership
   and freshness can be proven.
 - Reuse existing mutation and fresh-reference analysis. Do not add a second general-purpose walker.

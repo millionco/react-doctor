@@ -133,6 +133,7 @@ import { mediaHasCaption } from "./rules/a11y/media-has-caption.js";
 import { mobxReactionDisposerDiscarded } from "./rules/state-and-effects/mobx-reaction-disposer-discarded.js";
 import { mouseEventsHaveKeyEvents } from "./rules/a11y/mouse-events-have-key-events.js";
 import { nextjsAsyncClientComponent } from "./rules/nextjs/nextjs-async-client-component.js";
+import { nextjsAsyncDynamicApiNotAwaited } from "./rules/nextjs/nextjs-async-dynamic-api-not-awaited.js";
 import { nextjsErrorBoundaryMissingUseClient } from "./rules/nextjs/nextjs-error-boundary-missing-use-client.js";
 import { nextjsGlobalErrorMissingHtmlBody } from "./rules/nextjs/nextjs-global-error-missing-html-body.js";
 import { nextjsImageMissingSizes } from "./rules/nextjs/nextjs-image-missing-sizes.js";
@@ -1971,6 +1972,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...nextjsAsyncClientComponent,
+      framework: "nextjs",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/nextjs-async-dynamic-api-not-awaited",
+    id: "nextjs-async-dynamic-api-not-awaited",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...nextjsAsyncDynamicApiNotAwaited,
       framework: "nextjs",
       category: "Bugs",
     },

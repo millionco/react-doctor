@@ -1,5 +1,3 @@
-import { HTML_TAGS } from "../../constants/html-tags.js";
-import { SVG_TAGS } from "../../constants/svg-tags.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -9,7 +7,6 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
-import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -17,6 +14,7 @@ import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isR3fCanvas } from "./utils/is-r3f-canvas.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
+import { isR3fHostIntrinsic } from "./utils/is-r3f-host-intrinsic.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
@@ -89,15 +87,7 @@ const ownerRunsInsideR3f = (effectCall: EsTreeNode, context: RuleContext): boole
       isInsideR3f = true;
       return false;
     }
-    if (!isNodeOfType(candidate, "JSXOpeningElement")) return;
-    const elementType = resolveJsxElementType(candidate);
-    if (
-      elementType &&
-      elementType[0] === elementType[0]?.toLowerCase() &&
-      !elementType.includes("-") &&
-      !HTML_TAGS.has(elementType) &&
-      !SVG_TAGS.has(elementType)
-    ) {
+    if (isNodeOfType(candidate, "JSXOpeningElement") && isR3fHostIntrinsic(candidate)) {
       isInsideR3f = true;
       return false;
     }

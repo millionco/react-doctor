@@ -21,10 +21,10 @@ import {
 import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { R3F_PUBLIC_MODULES } from "./utils/r3f-public-modules.js";
+import { THREE_RENDER_METHOD_NAMES } from "./utils/three-render-method-names.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const RENDERER_CONSTRUCTORS = new Set(["WebGLRenderer", "WebGPURenderer"]);
-const RENDER_METHOD_NAMES = new Set(["render", "renderAsync"]);
 
 interface AnimationFrameRegistration {
   handleSymbol: SymbolDescriptor | null;
@@ -94,7 +94,7 @@ const collectRendererRenderFunctions = (
       if (
         isNodeOfType(member, "MemberExpression") &&
         member.object === referenceRoot &&
-        RENDER_METHOD_NAMES.has(getStaticPropertyName(member) ?? "") &&
+        THREE_RENDER_METHOD_NAMES.has(getStaticPropertyName(member) ?? "") &&
         isNodeOfType(call, "CallExpression") &&
         call.callee === member
       ) {

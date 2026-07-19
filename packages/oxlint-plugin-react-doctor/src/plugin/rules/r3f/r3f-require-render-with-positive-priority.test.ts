@@ -35,7 +35,7 @@ describe("r3f-require-render-with-positive-priority", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("accepts gl, renderer, composer, ref, and delegated render sinks", () => {
+  it("accepts sync, async, composer, ref, and delegated render sinks", () => {
     const result = runRule(
       r3fRequireRenderWithPositivePriority,
       `
@@ -46,8 +46,9 @@ describe("r3f-require-render-with-positive-priority", () => {
             renderScene();
           }, 1);
           useFrame((state) => state.gl["render"](scene, camera), 2);
-          useFrame(() => renderer.render(scene, camera), 3);
-          useFrame(() => composer.current.render(), 4);
+          useFrame((state) => state.gl.renderAsync(scene, camera), 3);
+          useFrame(() => renderer.render(scene, camera), 4);
+          useFrame(() => composer.current.render(), 5);
           return null;
         };
       `,

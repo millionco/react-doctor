@@ -1,5 +1,3 @@
-import { HTML_TAGS } from "../../constants/html-tags.js";
-import { SVG_TAGS } from "../../constants/svg-tags.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -12,12 +10,12 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
+import { isR3fHostIntrinsic } from "./utils/is-r3f-host-intrinsic.js";
 import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 
@@ -174,31 +172,6 @@ const getCurrentRefSymbol = (
   });
 };
 
-const isNestedInSvg = (node: EsTreeNode): boolean => {
-  let current = node.parent ?? null;
-  while (current) {
-    if (
-      isNodeOfType(current, "JSXElement") &&
-      isNodeOfType(current.openingElement.name, "JSXIdentifier") &&
-      current.openingElement.name.name === "svg"
-    ) {
-      return true;
-    }
-    current = current.parent ?? null;
-  }
-  return false;
-};
-
-const isR3fManagedIntrinsic = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
-  const elementType = resolveJsxElementType(node);
-  return Boolean(
-    elementType &&
-    elementType[0] === elementType[0]?.toLowerCase() &&
-    !HTML_TAGS.has(elementType) &&
-    (!SVG_TAGS.has(elementType) || (elementType === "line" && !isNestedInSvg(node))),
-  );
-};
-
 export const r3fNoImperativeAttachOfManagedRef = defineRule({
   id: "r3f-no-imperative-attach-of-managed-ref",
   title: "Imperative attachment of an R3F-managed ref",
@@ -221,7 +194,7 @@ export const r3fNoImperativeAttachOfManagedRef = defineRule({
         importsReactThreeFiber = hasR3fRuntimeImport(node, context.scopes);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!importsReactThreeFiber || !isR3fManagedIntrinsic(node)) return;
+        if (!importsReactThreeFiber || !isR3fHostIntrinsic(node)) return;
         const refAttribute = getAuthoritativeJsxAttribute(node.attributes, "ref");
         if (
           !refAttribute?.value ||

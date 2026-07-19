@@ -11,6 +11,7 @@ import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.
 import { getModuleNamespaceSource } from "./utils/get-module-namespace-source.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
+import { THREE_RENDER_METHOD_NAMES } from "./utils/three-render-method-names.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const EXTERNAL_RENDER_OWNER_MODULES = new Set(["@react-three/postprocessing"]);
@@ -101,7 +102,10 @@ const callbackHasRenderSink = (callback: EsTreeNode, context: RuleContext): bool
   walkFunctionExecution(callback, context.scopes, (candidate) => {
     if (hasRenderSink || !isNodeOfType(candidate, "CallExpression")) return;
     const callee = stripParenExpression(candidate.callee);
-    if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "render")
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      !THREE_RENDER_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
+    )
       return;
     if (isProvenNonRendererRenderCall(callee, context.scopes)) return;
     hasRenderSink = true;

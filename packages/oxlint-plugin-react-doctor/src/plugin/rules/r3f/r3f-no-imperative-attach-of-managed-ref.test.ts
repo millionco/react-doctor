@@ -62,7 +62,7 @@ describe("r3f-no-imperative-attach-of-managed-ref", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("ignores custom components, DOM elements, callback refs, and overridden ref props", () => {
+  it("ignores custom components, web components, DOM elements, and overridden ref props", () => {
     const result = runRule(
       r3fNoImperativeAttachOfManagedRef,
       `
@@ -71,13 +71,15 @@ describe("r3f-no-imperative-attach-of-managed-ref", () => {
         import { Scene as ThreeScene } from "three";
         const Scene = ({ props }) => {
           const customRef = useRef(null);
+          const webComponentRef = useRef(null);
           const domRef = useRef(null);
           const overriddenRef = useRef(null);
           const scene = new ThreeScene();
           scene.add(customRef.current);
+          scene.add(webComponentRef.current);
           scene.add(domRef.current);
           scene.add(overriddenRef.current);
-          return <><CustomObject ref={customRef} /><div ref={domRef} /><group ref={overriddenRef} {...props} /></>;
+          return <><CustomObject ref={customRef} /><model-preview ref={webComponentRef} /><div ref={domRef} /><group ref={overriddenRef} {...props} /></>;
         };
       `,
     );

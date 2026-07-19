@@ -10,6 +10,8 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   tailwindVersion: null,
   zodVersion: null,
   zodMajorVersion: null,
+  zustandVersion: null,
+  zustandMajorVersion: null,
   framework: "react-native",
   hasTypeScript: true,
   hasReactCompiler: false,
@@ -65,6 +67,46 @@ describe("createOxlintConfig settings", () => {
     });
 
     expect(config.rules).not.toHaveProperty("react-doctor/valtio-no-proxy-read-in-render");
+  });
+
+  it("registers the Zustand rule only for supported Zustand projects", () => {
+    const ruleKey = "react-doctor/zustand-no-whole-store-destructure";
+    const noZustand = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({ framework: "vite", hasReactNativeWorkspace: false }),
+    });
+    const futureZustand = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        zustandVersion: "^6.0.0",
+        zustandMajorVersion: 6,
+      }),
+    });
+    const zustand1 = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        zustandVersion: "^1.0.0",
+        zustandMajorVersion: 1,
+      }),
+    });
+    const zustand5 = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        zustandVersion: "^5.0.8",
+        zustandMajorVersion: 5,
+      }),
+    });
+
+    expect(noZustand.rules).not.toHaveProperty(ruleKey);
+    expect(futureZustand.rules).not.toHaveProperty(ruleKey);
+    expect(zustand1.rules[ruleKey]).toBe("warn");
+    expect(zustand5.rules[ruleKey]).toBe("warn");
   });
 
   it("forwards the detected @shopify/flash-list major version", () => {

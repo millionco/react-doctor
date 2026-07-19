@@ -56,6 +56,7 @@ const AUDITED_RULE_IDS = [
   "rules-of-hooks",
   "valtio-no-proxy-read-in-render",
   "valtio-no-snapshot-in-callback",
+  "zustand-no-whole-store-destructure",
 ] as const;
 
 // Rule × variant pairs where losing the diagnostic is the rule's DOCUMENTED

@@ -105,3 +105,26 @@ export const readAfterSingleCodePointCallbacks = () => {
   });
   return cookieStore.get("session");
 };
+
+export const readAfterDeadMutation = () => {
+  let cookieStore = cookies();
+  const values = [0];
+  if (false) values.pop();
+  values.map(() => {
+    cookieStore = { get: (name: string) => name };
+  });
+  return cookieStore.get("session");
+};
+
+export const readAfterKnownNoop = () => {
+  let cookieStore = cookies();
+  const noop = () => {};
+  const clear = () => {
+    noop();
+    cookieStore = { get: (name: string) => name };
+  };
+  try {
+    clear();
+  } catch {}
+  return cookieStore.get("session");
+};

@@ -54,3 +54,33 @@ export const readAfterEmptyCallbacks = () => {
   });
   return cookieStore.get("session");
 };
+
+export const readAfterEquivalentEmptyCallbacks = () => {
+  let cookieStore = { get: (name: string) => name };
+  const emptyValues: number[] = [];
+  emptyValues.map(() => {
+    cookieStore = cookies();
+  });
+  Array.of().map(() => {
+    cookieStore = cookies();
+  });
+  Array.from([], () => {
+    cookieStore = cookies();
+  });
+  return cookieStore.get("session");
+};
+
+export const readAfterEquivalentDenseClears = () => {
+  let cookieStore = cookies();
+  const values = [0];
+  values.map(() => {
+    cookieStore = { get: (name: string) => name };
+  });
+  Array.of(0).map(() => {
+    cookieStore = { get: (name: string) => name };
+  });
+  Array.from([0], () => {
+    cookieStore = { get: (name: string) => name };
+  });
+  return cookieStore.get("session");
+};

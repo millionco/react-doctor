@@ -3,6 +3,7 @@
 // source: PR #1000 final audit
 
 import { cookies } from "next/headers";
+import { useMemo, useState } from "react";
 
 export const readAfterEmptyMap = () => {
   let cookieStore = cookies();
@@ -31,5 +32,25 @@ export const readAfterCaughtThrow = (condition: boolean) => {
   try {
     update();
   } catch {}
+  return cookieStore.get("session");
+};
+
+export const readAfterSparseClear = () => {
+  let cookieStore = cookies();
+  Array(1).map(() => {
+    cookieStore = { get: (name: string) => name };
+  });
+  return cookieStore.get("session");
+};
+
+export const readAfterNamedHookTaint = () => {
+  let cookieStore = { get: (name: string) => name };
+  useMemo(() => {
+    cookieStore = cookies();
+  }, []);
+  useState(() => {
+    cookieStore = cookies();
+    return 0;
+  });
   return cookieStore.get("session");
 };

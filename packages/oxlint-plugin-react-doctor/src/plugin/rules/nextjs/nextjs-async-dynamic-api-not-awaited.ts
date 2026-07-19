@@ -119,6 +119,12 @@ interface DirectInvocationSiteOptions {
   requireGuaranteedCallbackExecution?: boolean;
 }
 
+interface KnownArrayCardinality {
+  comparableElementCount: number;
+  length: number;
+  presentElementCount: number;
+}
+
 interface ProjectedClearingSitesInput {
   afterStart: number;
   context: RuleContext;
@@ -652,7 +658,7 @@ const officialPropertyIsClearedBeforeReferenceInOwner = (
   ) {
     return false;
   }
-  let isCleared = false;
+  const clearingNodes: EsTreeNode[] = [];
   walkAst(referenceOwner, (node) => {
     if (node !== referenceOwner && isFunctionLike(node)) return false;
     if (
@@ -662,20 +668,14 @@ const officialPropertyIsClearedBeforeReferenceInOwner = (
         ? assignmentUnwrapsOfficialProperty(context, node, source.symbol, propertyName)
         : node.operator !== "||=" &&
           node.operator !== "??=" &&
-          memberExpressionMatchesOfficialProperty(
-            context,
-            node.left,
-            source.symbol,
-            propertyName,
-          )) &&
-      getExecutionSitesInOwner(context, node, referenceOwner, {
-        requiresGuaranteedExecution: true,
-      }).some((executionSite) => nodeDominatesNode(executionSite, reference, context))
+          memberExpressionMatchesOfficialProperty(context, node.left, source.symbol, propertyName))
     ) {
-      isCleared = true;
+      clearingNodes.push(node);
     }
   });
-  return isCleared;
+  return projectGuaranteedClearingNodes(context, clearingNodes, referenceOwner).some(
+    (executionSite) => nodeDominatesNode(executionSite, reference, context),
+  );
 };
 
 const findOfficialAsyncRequestPropReference = (
@@ -2008,39 +2008,161 @@ const getDirectInvocationSites = (
   functionNode: EsTreeNode,
   options: DirectInvocationSiteOptions = { includeCallbackExecutionSites: true },
 ): EsTreeNode[] => {
-  const getKnownPresentArrayElements = (arrayExpression: EsTreeNode): EsTreeNode[] | null => {
-    if (!isNodeOfType(arrayExpression, "ArrayExpression")) return null;
-    const presentElements: EsTreeNode[] = [];
-    for (const element of arrayExpression.elements) {
-      if (!element) continue;
-      if (!isNodeOfType(element, "SpreadElement")) {
-        presentElements.push(element);
-        continue;
-      }
-      const spreadElements = getKnownPresentArrayElements(stripParenExpression(element.argument));
-      if (!spreadElements) return null;
-      presentElements.push(...spreadElements);
+  const expressionIsGuaranteedUndefined = (expression: EsTreeNode): boolean => {
+    const node = stripParenExpression(expression);
+    return (
+      (isNodeOfType(node, "UnaryExpression") && node.operator === "void") ||
+      (isNodeOfType(node, "Identifier") &&
+        node.name === "undefined" &&
+        context.scopes.isGlobalReference(node))
+    );
+  };
+  const getKnownArrayCardinality = (
+    expression: EsTreeNode,
+    visitedSymbolIds: ReadonlySet<number> = new Set(),
+  ): KnownArrayCardinality | null => {
+    const node = stripParenExpression(expression);
+    if (isNodeOfType(node, "Identifier")) {
+      const symbol = resolveConstIdentifierAlias(node, context.scopes);
+      if (!symbol?.initializer || visitedSymbolIds.has(symbol.id)) return null;
+      const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+      nextVisitedSymbolIds.add(symbol.id);
+      return getKnownArrayCardinality(symbol.initializer, nextVisitedSymbolIds);
     }
-    return presentElements;
+    if (isNodeOfType(node, "Literal") && typeof node.value === "string") {
+      return {
+        comparableElementCount: node.value.length,
+        length: node.value.length,
+        presentElementCount: node.value.length,
+      };
+    }
+    if (isNodeOfType(node, "ArrayExpression")) {
+      const cardinality: KnownArrayCardinality = {
+        comparableElementCount: 0,
+        length: 0,
+        presentElementCount: 0,
+      };
+      for (const element of node.elements) {
+        if (!element) {
+          cardinality.length += 1;
+          continue;
+        }
+        if (isNodeOfType(element, "SpreadElement")) {
+          const spreadCardinality = getKnownArrayCardinality(element.argument, visitedSymbolIds);
+          if (!spreadCardinality) return null;
+          cardinality.length += spreadCardinality.length;
+          cardinality.presentElementCount += spreadCardinality.length;
+          cardinality.comparableElementCount += spreadCardinality.comparableElementCount;
+          continue;
+        }
+        cardinality.length += 1;
+        cardinality.presentElementCount += 1;
+        if (!expressionIsGuaranteedUndefined(element)) cardinality.comparableElementCount += 1;
+      }
+      return cardinality;
+    }
+    if (!isNodeOfType(node, "CallExpression") && !isNodeOfType(node, "NewExpression")) {
+      return null;
+    }
+    const callee = stripParenExpression(node.callee);
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "Array" &&
+      context.scopes.isGlobalReference(callee)
+    ) {
+      const argumentsList = node.arguments ?? [];
+      const onlyArgument = argumentsList.length === 1 ? argumentsList[0] : null;
+      if (
+        onlyArgument &&
+        !isNodeOfType(onlyArgument, "SpreadElement") &&
+        isNodeOfType(onlyArgument, "Literal") &&
+        typeof onlyArgument.value === "number" &&
+        Number.isInteger(onlyArgument.value) &&
+        onlyArgument.value >= 0
+      ) {
+        return {
+          comparableElementCount: 0,
+          length: onlyArgument.value,
+          presentElementCount: 0,
+        };
+      }
+      if (argumentsList.some((argument) => isNodeOfType(argument, "SpreadElement"))) return null;
+      const comparableElementCount = argumentsList.filter(
+        (argument) => !expressionIsGuaranteedUndefined(argument),
+      ).length;
+      return {
+        comparableElementCount,
+        length: argumentsList.length,
+        presentElementCount: argumentsList.length,
+      };
+    }
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      !isNodeOfType(callee.object, "Identifier") ||
+      callee.object.name !== "Array" ||
+      !context.scopes.isGlobalReference(callee.object)
+    ) {
+      return null;
+    }
+    const methodName = getResolvedStaticPropertyName(context, callee);
+    if (methodName === "from") {
+      const sourceArgument = node.arguments?.[0];
+      if (!sourceArgument || isNodeOfType(sourceArgument, "SpreadElement")) return null;
+      const sourceCardinality = getKnownArrayCardinality(sourceArgument, visitedSymbolIds);
+      return sourceCardinality
+        ? {
+            comparableElementCount: sourceCardinality.comparableElementCount,
+            length: sourceCardinality.length,
+            presentElementCount: sourceCardinality.length,
+          }
+        : null;
+    }
+    if (methodName !== "of") return null;
+    const argumentsList = node.arguments ?? [];
+    if (argumentsList.some((argument) => isNodeOfType(argument, "SpreadElement"))) return null;
+    return {
+      comparableElementCount: argumentsList.filter(
+        (argument) => !expressionIsGuaranteedUndefined(argument),
+      ).length,
+      length: argumentsList.length,
+      presentElementCount: argumentsList.length,
+    };
   };
   const callbackExecutionMatches = (invocationSite: EsTreeNode): boolean => {
     if (isNodeOfType(invocationSite, "NewExpression")) return true;
     if (!isNodeOfType(invocationSite, "CallExpression")) return false;
     const callee = stripParenExpression(invocationSite.callee);
-    if (!isNodeOfType(callee, "MemberExpression")) return false;
+    if (!isNodeOfType(callee, "MemberExpression")) {
+      return !options.requireGuaranteedCallbackExecution;
+    }
+    const methodName = getResolvedStaticPropertyName(context, callee);
+    if (
+      methodName === "from" &&
+      isNodeOfType(callee.object, "Identifier") &&
+      callee.object.name === "Array" &&
+      context.scopes.isGlobalReference(callee.object)
+    ) {
+      const sourceArgument = invocationSite.arguments[0];
+      const sourceCardinality =
+        sourceArgument && !isNodeOfType(sourceArgument, "SpreadElement")
+          ? getKnownArrayCardinality(sourceArgument)
+          : null;
+      return sourceCardinality
+        ? sourceCardinality.length > 0
+        : !options.requireGuaranteedCallbackExecution;
+    }
     const receiver = stripParenExpression(callee.object);
-    const presentElements = getKnownPresentArrayElements(receiver);
-    if (presentElements) {
-      const methodName = getResolvedStaticPropertyName(context, callee);
+    const cardinality = getKnownArrayCardinality(receiver);
+    if (cardinality) {
       if (methodName === "reduce" || methodName === "reduceRight") {
         return invocationSite.arguments.slice(1).length > 0
-          ? presentElements.length > 0
-          : presentElements.slice(1).length > 0;
+          ? cardinality.presentElementCount > 0
+          : cardinality.presentElementCount > 1;
       }
       if (methodName === "sort" || methodName === "toSorted") {
-        return presentElements.slice(1).length > 0;
+        return cardinality.comparableElementCount > 1;
       }
-      return presentElements.length > 0;
+      return cardinality.presentElementCount > 0;
     }
     return !options.requireGuaranteedCallbackExecution;
   };

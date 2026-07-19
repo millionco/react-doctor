@@ -1212,8 +1212,8 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
 
   it.each([
     "[0].map(readPending)",
-    "Array(1).map(readPending)",
-    "new Array(1).map(readPending)",
+    "Array.of(0).map(readPending)",
+    "new Array(0, 1).map(readPending)",
     "new Promise(readPending)",
   ])("reports a named synchronous callback passed through %s", (expression) => {
     expectDiagnosticCount(
@@ -1249,7 +1249,7 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
       `import { cookies } from "next/headers";
        export const read = async () => {
          let pending = cookies();
-         const values = Array(1);
+         const values = Array.of(0);
          const readPending = () => pending.get("session");
          const result = values.map(readPending);
          pending = await pending;
@@ -1910,11 +1910,25 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = () => { try { throw new Error(); } finally { pending = {}; } }; try { clear(); } catch {} props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props, condition) { let pending = cookies(); const clear = () => { if (condition) pending = {}; else pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
     `export default function Page(props, condition) { const clear = () => { if (condition) props.params = {}; else props.params = {}; }; clear(); return props.params.slug; }`,
+    `export default function Page(props, condition) { const read = () => { if (condition) props.params = { slug: "first" }; else props.params = { slug: "second" }; return props.params.slug; }; return read(); }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = async () => { while (false) await 0; pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const clear = async () => { for (; false; ) await 0; pending = {}; }; clear(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [...[]].map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [0].reduce(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [0].sort(() => { pending = cookies(); return 0; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const values = []; values.map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; Array.of().map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; Array.from([], () => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const values = [0]; values.map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); Array.of(0).map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); Array.from([0], () => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [undefined].map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); Array.of(undefined).map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0].reduce(() => { pending = {}; return 0; }, 0); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0, 1].reduce(() => { pending = {}; return 0; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0, 1].sort(() => { pending = {}; return 0; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0, 1].toSorted(() => { pending = {}; return 0; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); Array.from([,], () => { pending = {}; }); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const update = () => { pending = cookies(); pending = {}; throw new Error(); }; try { update(); } catch {} props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const update = () => { pending = cookies(); pending = {}; }; if (false) { try { update(); } catch {} } update(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props, shouldThrow) { let pending = {}; const update = () => { pending = cookies(); if (shouldThrow) throw new Error(); pending = {}; }; try { update(); } catch { return null; } props.params = pending; return props.params.slug; }`,
@@ -1939,6 +1953,22 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0].reduce(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0].sort(() => { pending = {}; return 0; }); props.params = pending; return props.params.slug; }`,
     `export default function Page(props) { const read = () => { try { props.params = getSafeOrThrow(); } catch {} return props.params.slug; }; return read(); }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); const values = []; values.map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); Array.of().map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); Array.from([], () => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const values = [0]; values.map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; Array.of(0).map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; Array.from([0], () => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { useMemo } from "react"; import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; useMemo(() => { pending = cookies(); }, []); props.params = pending; return props.params.slug; }`,
+    `import { useState } from "react"; import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; useState(() => { pending = cookies(); return 0; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [,].map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); Array(1).map(() => { pending = {}; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; [undefined].map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; Array.of(undefined).map(() => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [].reduce(() => { pending = {}; return 0; }, 0); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0, undefined].sort(() => { pending = {}; return 0; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = cookies(); [0, undefined].toSorted(() => { pending = {}; return 0; }); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; Array.from([,], () => { pending = cookies(); }); props.params = pending; return props.params.slug; }`,
   ])("retains reachable aliases and invoked taint %#", (code) => {
     expectDiagnosticCount(code, 1, "app/[slug]/page.tsx");
   });

@@ -289,6 +289,7 @@ import { preferFunctionComponent } from "./rules/react-builtins/prefer-function-
 import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
 import { preferModuleScopePureFunction } from "./rules/architecture/prefer-module-scope-pure-function.js";
 import { preferModuleScopeStaticValue } from "./rules/architecture/prefer-module-scope-static-value.js";
+import { preferSchemaValidation } from "./rules/architecture/prefer-schema-validation.js";
 import { preferStableEmptyFallback } from "./rules/performance/prefer-stable-empty-fallback.js";
 import { preferTagOverRole } from "./rules/a11y/prefer-tag-over-role.js";
 import { preferUseEffectEvent } from "./rules/state-and-effects/prefer-use-effect-event.js";
@@ -3728,6 +3729,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...preferModuleScopeStaticValue,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/prefer-schema-validation",
+    id: "prefer-schema-validation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferSchemaValidation,
       framework: "global",
       category: "Maintainability",
     },

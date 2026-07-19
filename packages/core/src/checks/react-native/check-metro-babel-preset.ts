@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as semver from "semver";
+import { getDependencySpec } from "../../project-info/dependencies.js";
 import { isFile, readPackageJson } from "../../project-info/index.js";
 import type { Diagnostic, PackageJson } from "../../types/index.js";
-import { readDeclaredDependencySpec } from "../../utils/read-declared-dependency-spec.js";
 import { buildReactNativeDiagnostic } from "./utils/build-react-native-diagnostic.js";
 
 // The babel config files we inspect. A project has a single root babel config,
@@ -62,7 +62,7 @@ const isReactNativeVersionAtLeastPresetRename = (
     ? readPackageJson(installedReactNativeManifestPath).version
     : undefined;
   const reactNativeVersionSpec =
-    installedReactNativeVersion ?? readDeclaredDependencySpec(packageJson, REACT_NATIVE_PACKAGE);
+    installedReactNativeVersion ?? getDependencySpec(packageJson, REACT_NATIVE_PACKAGE);
   if (reactNativeVersionSpec === null || reactNativeVersionSpec === undefined) return false;
 
   const normalizedVersionRange = semver.validRange(reactNativeVersionSpec);
@@ -75,7 +75,7 @@ const isReactNativeVersionAtLeastPresetRename = (
 };
 
 const canResolveLegacyPreset = (rootDirectory: string, packageJson: PackageJson): boolean =>
-  readDeclaredDependencySpec(packageJson, LEGACY_PRESET_PACKAGE) !== null ||
+  getDependencySpec(packageJson, LEGACY_PRESET_PACKAGE) !== null ||
   isFile(path.join(rootDirectory, "node_modules", LEGACY_PRESET_PACKAGE, "package.json"));
 
 // Two babel-preset footguns surface here:

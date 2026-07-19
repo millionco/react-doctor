@@ -187,6 +187,25 @@ describe("checkReactNativeProject — legacy metro babel preset", () => {
     ).not.toContain("rn-no-metro-babel-preset");
   });
 
+  it("does NOT flag a malformed non-string React Native version spec", () => {
+    const projectDirectory = makeProjectDirectory();
+    writeFile(
+      projectDirectory,
+      "package.json",
+      JSON.stringify({ name: "rn-app", dependencies: { "react-native": 73 } }),
+    );
+    clearPackageJsonCache();
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['module:metro-react-native-babel-preset'] };`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-preset");
+  });
+
   it("does NOT flag the current @react-native/babel-preset", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {

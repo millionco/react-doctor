@@ -5,10 +5,10 @@ import {
   REACT_SERVER_DOM_PACKAGES,
   VERCEL_NEXTJS_SECURITY_RELEASE_URL,
 } from "./constants.js";
+import { getDependencySpec } from "./project-info/dependencies.js";
 import { findMonorepoRoot, isFile, readPackageJson } from "./project-info/index.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./project-info/workspaces.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
-import { readDeclaredDependencySpec } from "./utils/read-declared-dependency-spec.js";
 
 const RULE_KEY = "no-vulnerable-react-server-components";
 
@@ -107,7 +107,7 @@ const resolveVersionInDirectory = (
   // catalog-resolved `project.nextjsVersion`) — so an unparseable manifest spec
   // like `catalog:` doesn't shadow an already-resolved concrete pin.
   const candidateSpecs = [
-    readDeclaredDependencySpec(readPackageJson(path.join(directory, "package.json")), packageName),
+    getDependencySpec(readPackageJson(path.join(directory, "package.json")), packageName),
     declaredSpecOverride,
   ];
   for (const spec of candidateSpecs) {

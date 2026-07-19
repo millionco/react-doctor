@@ -2101,15 +2101,26 @@ const getDirectInvocationSites = (
         continue;
       }
       const propertyName = getResolvedStaticPropertyName(context, memberExpression);
-      if (
-        propertyName === "length" &&
-        isNodeOfType(parent.right, "Literal") &&
-        parent.right.value === 0
-      ) {
-        cardinality.length = 0;
-        cardinality.presentElementCount = 0;
-        cardinality.comparableElementCount = 0;
-        continue;
+      if (propertyName === "length" && isNodeOfType(parent.right, "Literal")) {
+        const nextLength = parent.right.value;
+        if (typeof nextLength !== "number" || !Number.isInteger(nextLength) || nextLength < 0) {
+          return null;
+        }
+        if (nextLength >= cardinality.length) {
+          cardinality.length = nextLength;
+          continue;
+        }
+        if (
+          nextLength === 0 ||
+          (cardinality.presentElementCount === cardinality.length &&
+            cardinality.comparableElementCount === cardinality.presentElementCount)
+        ) {
+          cardinality.length = nextLength;
+          cardinality.presentElementCount = nextLength;
+          cardinality.comparableElementCount = nextLength;
+          continue;
+        }
+        return null;
       }
       const property = stripParenExpression(memberExpression.property);
       if (

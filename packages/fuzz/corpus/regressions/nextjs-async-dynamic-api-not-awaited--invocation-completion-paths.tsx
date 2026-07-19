@@ -128,3 +128,13 @@ export const readAfterKnownNoop = () => {
   } catch {}
   return cookieStore.get("session");
 };
+
+export const readAfterSparseLengthGrowth = () => {
+  let cookieStore = { get: (name: string) => name };
+  const values: number[] = [];
+  values.length = 1;
+  values.map(() => {
+    cookieStore = cookies();
+  });
+  return cookieStore.get("session");
+};

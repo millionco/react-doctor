@@ -45,6 +45,7 @@ let currentDestinationCoercionReference: EsTreeNode | undefined;
 let currentDestinationCoercionBoundaryReference: EsTreeNode | undefined;
 let currentLocalFunctionInvocationReference: EsTreeNode | undefined;
 let currentLocalFunctionSerializationReference: EsTreeNode | undefined;
+let currentImmediateLocalFunctionSerializationReference: EsTreeNode | undefined;
 let currentAnalyzedLocalFunction: EsTreeNode | undefined;
 let currentOpaqueLocalFunctionSerializationReference: EsTreeNode | undefined;
 let currentDeferredLocalFunctions: EsTreeNode[] = [];
@@ -2089,9 +2090,12 @@ const isTrustedLocalFunctionCall = (
   if (!localFunction || !returnedExpressions || returnedExpressions.length === 0) return false;
   const previousInvocationReference = currentLocalFunctionInvocationReference;
   const previousSerializationReference = currentLocalFunctionSerializationReference;
+  const previousImmediateSerializationReference =
+    currentImmediateLocalFunctionSerializationReference;
   const previousAnalyzedLocalFunction = currentAnalyzedLocalFunction;
   currentLocalFunctionInvocationReference ??= callExpression;
   currentLocalFunctionSerializationReference ??= callExpression;
+  currentImmediateLocalFunctionSerializationReference = callExpression;
   currentAnalyzedLocalFunction = localFunction;
   try {
     return returnedExpressions.every((returnedExpression) =>
@@ -2100,6 +2104,7 @@ const isTrustedLocalFunctionCall = (
   } finally {
     currentLocalFunctionInvocationReference = previousInvocationReference;
     currentLocalFunctionSerializationReference = previousSerializationReference;
+    currentImmediateLocalFunctionSerializationReference = previousImmediateSerializationReference;
     currentAnalyzedLocalFunction = previousAnalyzedLocalFunction;
   }
 };
@@ -2480,8 +2485,11 @@ const isTrustedUrlInstanceHrefRead = (
     return false;
   }
   if (
-    hasUrlOriginMutationBefore(receiver, memberNode) &&
-    hasUrlOriginMutationBefore(receiver, serializationReference)
+    hasUrlOriginMutationBefore(receiver, serializationReference) ||
+    Boolean(
+      currentImmediateLocalFunctionSerializationReference &&
+      hasUrlOriginMutationBefore(receiver, currentImmediateLocalFunctionSerializationReference),
+    )
   ) {
     return false;
   }
@@ -2771,8 +2779,14 @@ const isTrustedDestination = (
       const coercionExecutionReference = currentDestinationCoercionReference ?? urlArgument;
       if (
         isNodeOfType(stripParenExpression(constInitializer), "NewExpression") &&
-        ((hasUrlOriginMutationBefore(urlArgument, coercionBoundaryReference) &&
-          hasUrlOriginMutationBefore(urlArgument, coercionExecutionReference)) ||
+        (hasUrlOriginMutationBefore(urlArgument, coercionExecutionReference) ||
+          Boolean(
+            currentImmediateLocalFunctionSerializationReference &&
+            hasUrlOriginMutationBefore(
+              urlArgument,
+              currentImmediateLocalFunctionSerializationReference,
+            ),
+          ) ||
           !globalNamespaceBindingIsUnmodifiedBefore(
             "URL",
             coercionExecutionReference,

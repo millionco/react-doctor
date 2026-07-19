@@ -3014,6 +3014,20 @@ window.open(deltaPage, '_blank');
        const openPopup = () => window.open(popupUrl.toString());
        popupUrl.toString = () => userControlledUrl;
        openPopup();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getPopupHref = () => popupUrl.href;
+       const openPopup = () => {
+         popupUrl.href = userControlledUrl;
+         window.open(getPopupHref());
+       };
+       openPopup();`,
+      `const popupUrl = new URL("/safe", window.origin);
+       const getPopupUrl = () => popupUrl;
+       const openPopup = () => {
+         popupUrl.href = userControlledUrl;
+         window.open(getPopupUrl());
+       };
+       openPopup();`,
     ]) {
       const result = runRule(windowOpenWithoutNoopener, code);
       expect(result.diagnostics, code).toHaveLength(1);

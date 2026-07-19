@@ -29,4 +29,20 @@ export const openMutatedUrl = (blob: Blob, userControlledUrl: string) => {
   const popupUrlAlias = aliasedPopupUrl;
   URL.prototype.toString = () => userControlledUrl;
   window.open(popupUrlAlias);
+
+  const nestedHrefPopupUrl = new URL("/safe", window.origin);
+  const getNestedPopupHref = () => nestedHrefPopupUrl.href;
+  const openNestedPopupHref = () => {
+    nestedHrefPopupUrl.href = userControlledUrl;
+    window.open(getNestedPopupHref());
+  };
+  openNestedPopupHref();
+
+  const nestedInstancePopupUrl = new URL("/safe", window.origin);
+  const getNestedPopupUrl = () => nestedInstancePopupUrl;
+  const openNestedPopupUrl = () => {
+    nestedInstancePopupUrl.href = userControlledUrl;
+    window.open(getNestedPopupUrl());
+  };
+  openNestedPopupUrl();
 };

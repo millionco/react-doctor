@@ -67,8 +67,9 @@ export const r3fNoCloneInUseFrame = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callback = resolveR3fCallback(node, "useFrame", context.scopes);
       if (!callback) return;
-      walkFunctionExecution(callback, context.scopes, (candidate) => {
+      walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
         if (
+          isConditionallyExecuted ||
           !isNodeOfType(candidate, "CallExpression") ||
           !isNodeOfType(candidate.callee, "MemberExpression") ||
           getStaticPropertyName(candidate.callee) !== "clone" ||

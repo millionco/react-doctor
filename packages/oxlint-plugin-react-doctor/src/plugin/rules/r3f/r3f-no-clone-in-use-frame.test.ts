@@ -66,4 +66,20 @@ describe("r3f-no-clone-in-use-frame", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("ignores clones that only execute behind a frame guard", () => {
+    const result = runRule(
+      r3fNoCloneInUseFrame,
+      `import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = ({ resized }) => { const mesh = useRef(null); useFrame(() => { if (resized) mesh.current.geometry.clone(); }); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores clone helpers that are only reached conditionally", () => {
+    const result = runRule(
+      r3fNoCloneInUseFrame,
+      `import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = ({ resized }) => { const mesh = useRef(null); const cloneGeometry = () => mesh.current.geometry.clone(); useFrame(() => { resized && cloneGeometry(); }); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

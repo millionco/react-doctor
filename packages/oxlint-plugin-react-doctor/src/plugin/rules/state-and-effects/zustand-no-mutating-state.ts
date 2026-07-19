@@ -2,6 +2,7 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -60,14 +61,17 @@ interface ZustandCreatorBinding {
   getSymbol: SymbolDescriptor | null;
   hasNonImmerUsage: boolean;
   setSymbol: SymbolDescriptor | null;
+  storeSymbolIds: Set<number>;
 }
 
 interface MutationWithStatementIndex {
+  branchRoot: EsTreeNode | null;
   mutation: MutableStateReferenceMutation;
   statementIndex: number;
 }
 
 interface NotifierCallWithStatementIndex {
+  branchRoot: EsTreeNode | null;
   callExpression: EsTreeNodeOfType<"CallExpression">;
   statementIndex: number;
 }
@@ -598,17 +602,32 @@ const analyzeSnapshotContainer = (
   const notifierCalls: NotifierCallWithStatementIndex[] = [];
   for (let statementIndex = 0; statementIndex < statements.length; statementIndex += 1) {
     const statement = statements[statementIndex];
-    for (const mutation of collectMutableStateReferenceMutations(statement, state)) {
-      mutations.push({ mutation, statementIndex });
-    }
-    if (!isNodeOfType(statement, "IfStatement")) {
+    if (isNodeOfType(statement, "IfStatement")) {
+      for (const branchRoot of [statement.consequent, statement.alternate]) {
+        if (!branchRoot) continue;
+        for (const mutation of collectMutableStateReferenceMutations(branchRoot, state)) {
+          mutations.push({ branchRoot, mutation, statementIndex });
+        }
+        for (const callExpression of collectNotifierCalls(
+          branchRoot,
+          setSymbolIds,
+          storeSymbolIds,
+          context,
+        )) {
+          notifierCalls.push({ branchRoot, callExpression, statementIndex });
+        }
+      }
+    } else {
+      for (const mutation of collectMutableStateReferenceMutations(statement, state)) {
+        mutations.push({ branchRoot: null, mutation, statementIndex });
+      }
       for (const callExpression of collectNotifierCalls(
         statement,
         setSymbolIds,
         storeSymbolIds,
         context,
       )) {
-        notifierCalls.push({ callExpression, statementIndex });
+        notifierCalls.push({ branchRoot: null, callExpression, statementIndex });
       }
     }
     if (isNodeOfType(statement, "VariableDeclaration")) {
@@ -631,10 +650,16 @@ const analyzeSnapshotContainer = (
     }
     if (isNodeOfType(statement, "ReturnStatement")) break;
   }
-  for (const { mutation, statementIndex } of mutations) {
-    const followingNotifiers = notifierCalls.filter(
-      (notifier) => notifier.statementIndex >= statementIndex,
-    );
+  for (const { branchRoot, mutation, statementIndex } of mutations) {
+    const followingNotifiers = notifierCalls.filter((notifier) => {
+      if (!notifier.branchRoot) return notifier.statementIndex >= statementIndex;
+      if (notifier.statementIndex !== statementIndex || notifier.branchRoot !== branchRoot) {
+        return false;
+      }
+      const mutationStart = getRangeStart(mutation.node);
+      const notifierStart = getRangeStart(notifier.callExpression);
+      return mutationStart !== null && notifierStart !== null && notifierStart >= mutationStart;
+    });
     const replacementDispositions = [
       ...followingNotifiers.map((notifier) =>
         notifierTargetReplacementDisposition(notifier.callExpression, mutation, context),
@@ -666,8 +691,7 @@ export const zustandNoMutatingState = defineRule({
       ZustandCreatorBinding
     >();
     const functionContainers = new Set<EsTreeNode>();
-    const setUpdaterFunctions = new Set<EsTreeNode>();
-    const storeSymbolIds = new Set<number>();
+    const setUpdaterFunctionSymbolIds = new Map<EsTreeNode, number>();
     const reportedNodes = new WeakSet<EsTreeNode>();
     let programNode: EsTreeNodeOfType<"Program"> | null = null;
     return {
@@ -677,21 +701,23 @@ export const zustandNoMutatingState = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const creator = resolveZustandStoreCreator(node, context.scopes);
         if (!creator) return;
-        const existingBinding = creatorBindings.get(creator.creatorFunction);
-        if (existingBinding) {
-          if (!creator.middlewareNames.has("immer")) existingBinding.hasNonImmerUsage = true;
+        let binding = creatorBindings.get(creator.creatorFunction);
+        if (binding) {
+          if (!creator.middlewareNames.has("immer")) binding.hasNonImmerUsage = true;
         } else {
-          creatorBindings.set(creator.creatorFunction, {
+          binding = {
             creatorFunction: creator.creatorFunction,
             getSymbol: symbolForParameter(creator.creatorFunction, 1, context),
             hasNonImmerUsage: !creator.middlewareNames.has("immer"),
             setSymbol: symbolForParameter(creator.creatorFunction, 0, context),
-          });
+            storeSymbolIds: new Set(),
+          };
+          creatorBindings.set(creator.creatorFunction, binding);
         }
         const parent = node.parent;
         if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
           const storeSymbol = context.scopes.symbolFor(parent.id);
-          if (storeSymbol) storeSymbolIds.add(storeSymbol.id);
+          if (storeSymbol) binding.storeSymbolIds.add(storeSymbol.id);
         }
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
@@ -704,15 +730,10 @@ export const zustandNoMutatingState = defineRule({
         functionContainers.add(node);
       },
       "Program:exit"() {
-        const getSymbolIds = new Set<number>();
-        const setSymbolIds = new Set<number>();
         for (const binding of creatorBindings.values()) {
-          if (binding.getSymbol && binding.setSymbol && binding.setSymbol.references.length > 0) {
-            getSymbolIds.add(binding.getSymbol.id);
-          }
-          if (binding.setSymbol) setSymbolIds.add(binding.setSymbol.id);
           if (!binding.hasNonImmerUsage || !binding.setSymbol) continue;
-          const creatorSetSymbolIds = new Set([binding.setSymbol.id]);
+          const setSymbolId = binding.setSymbol.id;
+          const creatorSetSymbolIds = new Set([setSymbolId]);
           walkAst(binding.creatorFunction.body, (node: EsTreeNode) => {
             if (!isNodeOfType(node, "CallExpression")) return;
             if (!isCallToSymbol(node, creatorSetSymbolIds, context)) return;
@@ -720,34 +741,53 @@ export const zustandNoMutatingState = defineRule({
             if (!updaterArgument || isNodeOfType(updaterArgument, "SpreadElement")) return;
             const updaterFunction = resolveExactLocalFunction(updaterArgument, context.scopes);
             if (!updaterFunction) return;
-            setUpdaterFunctions.add(updaterFunction);
+            setUpdaterFunctionSymbolIds.set(updaterFunction, setSymbolId);
             analyzeSetUpdater(updaterFunction, context, reportedNodes);
           });
         }
-        if (programNode) {
-          analyzeSnapshotContainer(
-            programNode.body,
-            getSymbolIds,
-            setSymbolIds,
-            storeSymbolIds,
-            context,
-            reportedNodes,
-          );
-        }
-        for (const functionContainer of functionContainers) {
-          if (!isFunctionLike(functionContainer)) continue;
-          if (!isNodeOfType(functionContainer.body, "BlockStatement")) continue;
-          analyzeSnapshotContainer(
-            functionContainer.body.body,
-            getSymbolIds,
-            setSymbolIds,
-            storeSymbolIds,
-            context,
-            reportedNodes,
-            setUpdaterFunctions.has(functionContainer)
-              ? returnedExpressionsForFunction(functionContainer)
-              : [],
-          );
+        const analyzeProvenance = (
+          getSymbolIds: ReadonlySet<number>,
+          setSymbolIds: ReadonlySet<number>,
+          storeSymbolIds: ReadonlySet<number>,
+        ): void => {
+          if (programNode) {
+            analyzeSnapshotContainer(
+              programNode.body,
+              getSymbolIds,
+              setSymbolIds,
+              storeSymbolIds,
+              context,
+              reportedNodes,
+            );
+          }
+          for (const functionContainer of functionContainers) {
+            if (!isFunctionLike(functionContainer)) continue;
+            if (!isNodeOfType(functionContainer.body, "BlockStatement")) continue;
+            const updaterSetSymbolId = setUpdaterFunctionSymbolIds.get(functionContainer);
+            analyzeSnapshotContainer(
+              functionContainer.body.body,
+              getSymbolIds,
+              setSymbolIds,
+              storeSymbolIds,
+              context,
+              reportedNodes,
+              updaterSetSymbolId !== undefined && setSymbolIds.has(updaterSetSymbolId)
+                ? returnedExpressionsForFunction(functionContainer)
+                : [],
+            );
+          }
+        };
+        for (const binding of creatorBindings.values()) {
+          const getSymbolIds = new Set<number>();
+          const setSymbolIds = new Set<number>();
+          if (binding.getSymbol && binding.setSymbol && binding.setSymbol.references.length > 0) {
+            getSymbolIds.add(binding.getSymbol.id);
+          }
+          if (binding.setSymbol) setSymbolIds.add(binding.setSymbol.id);
+          analyzeProvenance(getSymbolIds, setSymbolIds, new Set<number>());
+          for (const storeSymbolId of binding.storeSymbolIds) {
+            analyzeProvenance(new Set<number>(), new Set<number>(), new Set([storeSymbolId]));
+          }
         }
       },
     };

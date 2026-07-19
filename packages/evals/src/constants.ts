@@ -5,7 +5,7 @@ export const DEFAULT_TARGET_REPOSITORY_REF = "HEAD";
 export const DEFAULT_TARGET_ROOT_DIRECTORY = ".";
 export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".ndjson", ".txt"];
 export const PINNED_REPOSITORY_REF_PATTERN = /^[0-9a-f]{40}$/i;
-export const DEFAULT_CORPUS_REPOSITORY_COUNT = 300;
+export const DEFAULT_CORPUS_REPOSITORY_COUNT = 100;
 export const DEFAULT_CORPUS_CONCURRENCY = 500;
 export const EVALUATION_RETRY_CONCURRENCIES: ReadonlyArray<number> = [50, 10];
 

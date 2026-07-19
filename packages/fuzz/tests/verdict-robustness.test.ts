@@ -33,6 +33,7 @@ const AUDITED_RULE_IDS = [
   "js-hoist-regexp",
   "jsx-numeric-and-leaked-render",
   "mobx-reaction-disposer-discarded",
+  "nextjs-async-dynamic-api-not-awaited",
   "nextjs-no-polyfill-script",
   "no-adjust-state-on-prop-change",
   "no-aria-hidden-on-focusable",
@@ -97,6 +98,7 @@ const AUDITED_RULE_IDS = [
   "rn-detox-missing-await",
   "rules-of-hooks",
   "styled-components-non-transient-custom-prop-on-intrinsic-element",
+  "window-open-without-noopener",
 ] as const;
 
 // Rule × variant pairs where losing the diagnostic is the rule's DOCUMENTED

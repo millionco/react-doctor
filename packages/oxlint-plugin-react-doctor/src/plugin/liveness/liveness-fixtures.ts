@@ -459,6 +459,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "nextjs-async-client-component": {
     code: '"use client";\nexport default async function Profile() {\n  const data = await loadProfile();\n  return <div>{data.name}</div>;\n}',
   },
+  "nextjs-async-dynamic-api-not-awaited": {
+    code: 'import { headers } from "next/headers";\nexport const read = () => headers().get("x-request-id");',
+    filePath: "app/page.tsx",
+  },
   "nextjs-error-boundary-missing-use-client": {
     code: "export default function ErrorBoundary({ error, reset }) {\n  return <div>{error.message}</div>;\n}",
     filePath: "/app/app/error.tsx",
@@ -1540,6 +1544,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "webhook-signature-risk": {
     code: "export async function POST(request: Request) {\n  const event = await request.json();\n  await applyEvent(event);\n  return Response.json({ ok: true });\n}\n",
     filePath: "src/app/api/webhooks/github/route.ts",
+  },
+  "window-open-without-noopener": {
+    code: "window.open(url);",
   },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',

@@ -65,6 +65,7 @@ interface ZustandCreatorBinding {
   creatorFunction: ZustandStoreCreator["creatorFunction"];
   getSymbol: SymbolDescriptor | null;
   hasNonImmerUsage: boolean;
+  nonImmerStoreSymbolIds: Set<number>;
   setSymbol: SymbolDescriptor | null;
   storeSymbolIds: Set<number>;
 }
@@ -1095,14 +1096,16 @@ export const zustandNoMutatingState = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const creator = resolveZustandStoreCreator(node, context.scopes);
         if (!creator) return;
+        const hasNonImmerUsage = !creator.middlewareNames.has("immer");
         let binding = creatorBindings.get(creator.creatorFunction);
         if (binding) {
-          if (!creator.middlewareNames.has("immer")) binding.hasNonImmerUsage = true;
+          if (hasNonImmerUsage) binding.hasNonImmerUsage = true;
         } else {
           binding = {
             creatorFunction: creator.creatorFunction,
             getSymbol: symbolForParameter(creator.creatorFunction, 1, context),
-            hasNonImmerUsage: !creator.middlewareNames.has("immer"),
+            hasNonImmerUsage,
+            nonImmerStoreSymbolIds: new Set(),
             setSymbol: symbolForParameter(creator.creatorFunction, 0, context),
             storeSymbolIds: new Set(),
           };
@@ -1111,7 +1114,10 @@ export const zustandNoMutatingState = defineRule({
         const parent = node.parent;
         if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
           const storeSymbol = context.scopes.symbolFor(parent.id);
-          if (storeSymbol) binding.storeSymbolIds.add(storeSymbol.id);
+          if (storeSymbol) {
+            binding.storeSymbolIds.add(storeSymbol.id);
+            if (hasNonImmerUsage) binding.nonImmerStoreSymbolIds.add(storeSymbol.id);
+          }
         }
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
@@ -1156,6 +1162,7 @@ export const zustandNoMutatingState = defineRule({
             const updaterFunction = resolveExactLocalFunction(updaterArgument, context.scopes);
             if (!updaterFunction) return;
             recordUpdaterFunctionNotifier(updaterFunction, storeSymbolId);
+            if (!binding.nonImmerStoreSymbolIds.has(storeSymbolId)) return;
             analyzeSetUpdater(
               updaterFunction,
               new Set(),

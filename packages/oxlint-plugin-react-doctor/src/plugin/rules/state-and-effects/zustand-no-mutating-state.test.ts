@@ -166,8 +166,25 @@ describe("zustand-no-mutating-state", () => {
           count: 0,
           increment: () => set((state) => void state.count++),
         })));
+        const useStore = create(withDrafts(() => ({ count: 0 })));
+        useStore.setState((state) => void state.count++);
       `,
       0,
+    );
+  });
+
+  it("gates bound updater semantics for each store using a shared creator", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        import { immer } from "zustand/middleware/immer";
+        const creator = () => ({ count: 0 });
+        const immerStore = create(immer(creator));
+        const plainStore = create(creator);
+        immerStore.setState((state) => void state.count++);
+        plainStore.setState((state) => void state.count++);
+      `,
+      1,
     );
   });
 

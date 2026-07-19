@@ -10,6 +10,7 @@ import { getRangeStart } from "../../utils/get-range-start.js";
 import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isImportedOrStableParameterCall } from "../../utils/is-imported-or-stable-parameter-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
@@ -239,23 +240,6 @@ const getDirectLocalUpdateReceiver = (
     : null;
 };
 
-const isDefensibleOpaqueHelperCall = (
-  node: EsTreeNodeOfType<"CallExpression">,
-  context: RuleContext,
-): boolean => {
-  const callee = stripParenExpression(node.callee);
-  if (resolveExactLocalFunction(callee, context.scopes)) return false;
-  const rootIdentifier = getRootIdentifier(callee);
-  if (!rootIdentifier || context.scopes.isGlobalReference(rootIdentifier)) return false;
-  const symbol = resolveConstIdentifierAlias(rootIdentifier, context.scopes);
-  return Boolean(
-    symbol &&
-    (symbol.kind === "import" ||
-      (symbol.kind === "parameter" &&
-        symbol.references.every((reference) => reference.flag === "read"))),
-  );
-};
-
 const collectExpressionRestrictions = (
   node: EsTreeNode,
   owner: EsTreeNode,
@@ -405,7 +389,7 @@ export const r3fRequireProjectionMatrixUpdate = defineRule({
           updateCalls.push({ node, receiverKey: localUpdateReceiverKey });
           return;
         }
-        if (!isDefensibleOpaqueHelperCall(node, context)) return;
+        if (!isImportedOrStableParameterCall(node, context.scopes)) return;
         for (const argument of node.arguments) {
           if (isNodeOfType(argument, "SpreadElement")) continue;
           const argumentKey = resolveExpressionKey(argument, context);

@@ -5,13 +5,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
-import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isImportedOrStableParameterCall } from "../../utils/is-imported-or-stable-parameter-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSynchronousIteratorCallback } from "../../utils/is-synchronous-iterator-callback.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
-import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -152,18 +151,7 @@ const getOpaqueRefTransfer = (
     const methodName = getStaticPropertyName(callee);
     if (methodName === "setMatrixAt" || methodName === "setColorAt") return [];
   }
-  if (resolveExactLocalFunction(callee, context.scopes)) return [];
-  const rootIdentifier = getRootIdentifier(callee);
-  if (!rootIdentifier || context.scopes.isGlobalReference(rootIdentifier)) return [];
-  const calleeSymbol = resolveConstIdentifierAlias(rootIdentifier, context.scopes);
-  if (
-    !calleeSymbol ||
-    (calleeSymbol.kind !== "import" &&
-      (calleeSymbol.kind !== "parameter" ||
-        calleeSymbol.references.some((reference) => reference.flag !== "read")))
-  ) {
-    return [];
-  }
+  if (!isImportedOrStableParameterCall(node, context.scopes)) return [];
   const completions: InstancedBufferCompletion[] = [];
   for (const argument of node.arguments) {
     if (isNodeOfType(argument, "SpreadElement")) continue;

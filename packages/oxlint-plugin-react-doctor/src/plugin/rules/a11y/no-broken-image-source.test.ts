@@ -29,6 +29,14 @@ describe("no-broken-image-source", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not assume a ref leaves src unset", () => {
+    const result = runRule(
+      noBrokenImageSource,
+      `const Example = ({ imageRef }) => <img ref={imageRef} alt="Preview" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not inspect custom Image components", () => {
     const result = runRule(noBrokenImageSource, `const Example = () => <Image alt="Preview" />;`);
     expect(result.diagnostics).toHaveLength(0);

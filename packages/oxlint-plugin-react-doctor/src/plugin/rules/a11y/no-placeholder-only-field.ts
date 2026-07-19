@@ -29,6 +29,7 @@ const isNestedInLabel = (node: EsTreeNode): boolean => {
 export const noPlaceholderOnlyField = defineRule({
   id: "no-placeholder-only-field",
   title: "Field relies on placeholder text for its label",
+  tags: ["test-noise"],
   severity: "warn",
   category: "Accessibility",
   recommendation:

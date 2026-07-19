@@ -19,6 +19,7 @@ export const noBrokenImageSource = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "img") return;
+      if (hasJsxPropIgnoreCase(node.attributes, "ref")) return;
       const sourceAttribute = hasJsxPropIgnoreCase(node.attributes, "src");
       if (!sourceAttribute) {
         if (hasJsxSpreadAttribute(node.attributes)) return;

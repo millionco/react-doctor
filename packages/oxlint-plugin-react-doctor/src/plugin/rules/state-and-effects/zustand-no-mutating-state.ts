@@ -1066,7 +1066,7 @@ export const zustandNoMutatingState = defineRule({
               analyzeSetUpdater(
                 updaterFunction,
                 binding.getSymbol ? new Set([binding.getSymbol.id]) : new Set(),
-                new Set(),
+                binding.storeSymbolIds,
                 context,
                 reportedNodes,
               );

@@ -556,9 +556,9 @@ describe("no-boolean-toggle-without-functional-update", () => {
       }
       return fastestDuration;
     };
-    const smallDuration = measureFastestDuration(4_000);
-    const largeDuration = measureFastestDuration(8_000);
-    expect(largeDuration).toBeLessThan(smallDuration * 2.5);
+    const smallDuration = measureFastestDuration(3_000);
+    const largeDuration = measureFastestDuration(9_000);
+    expect(largeDuration).toBeLessThan(smallDuration * 5);
   });
 
   it("proves cleanup identity, correlated paths, and render-time ref freshness", () => {

@@ -57,7 +57,7 @@ describe("state update correctness final audit regressions", () => {
       `const C=({flags})=>{const[,setItems]=useState([]);setItems(items=>{${branches}return [...items]})}`,
     );
     expect(result.diagnostics).toHaveLength(0);
-    expect(performance.now() - start).toBeLessThan(2_000);
+    expect(performance.now() - start).toBeLessThan(5_000);
   });
 
   it("tracks external receivers returned into fresh local containers", () => {

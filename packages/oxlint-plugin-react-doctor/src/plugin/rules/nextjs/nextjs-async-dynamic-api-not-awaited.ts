@@ -1150,6 +1150,8 @@ const expressionMayRetainOfficialPendingValue = (
           const sourceExecutionStart = getNodeStartIndex(sourceExecutionSite);
           if (
             sourceExecutionStart >= candidateStart ||
+            !isNodeReachableWithinFunction(sourceExecutionSite, context) ||
+            expressionIsStaticallySkipped(context, sourceExecutionSite) ||
             expressionIsStaticallySkipped(context, sourceExpression, sourceExecutionSite)
           ) {
             continue;

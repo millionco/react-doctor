@@ -1899,6 +1899,7 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const update = () => { pending = cookies(); pending = {}; }; update(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const taint = () => { return; pending = cookies(); }; taint(); props.params = pending; return props.params.slug; }`,
     `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const taint = async () => { await 0; pending = cookies(); }; taint(); props.params = pending; return props.params.slug; }`,
+    `import { cookies } from "next/headers"; export default function Page(props) { let pending = {}; const taint = () => { pending = cookies(); }; if (false) taint(); props.params = pending; return props.params.slug; }`,
   ])("ignores unreachable taint and honors invoked clearing %#", (code) => {
     expectDiagnosticCount(code, 0, "app/[slug]/page.tsx");
   });

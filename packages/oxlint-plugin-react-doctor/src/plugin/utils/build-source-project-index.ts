@@ -12,24 +12,24 @@ import { parseSourceFile } from "./parse-source-file.js";
 import { resolveModulePath } from "./resolve-module-path.js";
 import { walkAst } from "./walk-ast.js";
 
-export interface GeneratedImageModule {
+export interface SourceProjectModule {
   readonly filePath: string;
   readonly programNode: EsTreeNodeOfType<"Program">;
   readonly scopes: ScopeAnalysis;
 }
 
-export interface GeneratedImageProjectIndex {
-  readonly modulesByFilePath: ReadonlyMap<string, GeneratedImageModule>;
-  readonly consumerModulesByFilePath: ReadonlyMap<string, ReadonlySet<GeneratedImageModule>>;
+export interface SourceProjectIndex {
+  readonly modulesByFilePath: ReadonlyMap<string, SourceProjectModule>;
+  readonly consumerModulesByFilePath: ReadonlyMap<string, ReadonlySet<SourceProjectModule>>;
   readonly resolvedSourcePathByNode: WeakMap<EsTreeNode, string>;
   readonly unresolvedRuntimeSources: ReadonlySet<string>;
   readonly hasOpaqueMdxConsumerSurface: boolean;
 }
 
-const GENERATED_IMAGE_SOURCE_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
-const GENERATED_IMAGE_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
-const GENERATED_IMAGE_MDX_FILE_PATTERN = /\.mdx$/i;
-const GENERATED_IMAGE_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
+const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
+const SOURCE_PROJECT_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
+const SOURCE_PROJECT_MDX_FILE_PATTERN = /\.mdx$/i;
+const SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
   ".angular",
   ".astro",
   ".cache",
@@ -50,13 +50,13 @@ const GENERATED_IMAGE_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
   "out",
   "storybook-static",
 ]);
-const generatedImageScopeCache = new WeakMap<EsTreeNodeOfType<"Program">, ScopeAnalysis>();
+const sourceProjectScopeCache = new WeakMap<EsTreeNodeOfType<"Program">, ScopeAnalysis>();
 
-const getGeneratedImageModuleScopes = (programNode: EsTreeNodeOfType<"Program">): ScopeAnalysis => {
-  const cachedScopes = generatedImageScopeCache.get(programNode);
+const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">): ScopeAnalysis => {
+  const cachedScopes = sourceProjectScopeCache.get(programNode);
   if (cachedScopes) return cachedScopes;
   const scopes = analyzeScopes(programNode);
-  generatedImageScopeCache.set(programNode, scopes);
+  sourceProjectScopeCache.set(programNode, scopes);
   return scopes;
 };
 
@@ -79,7 +79,7 @@ const listProductionSourceFiles = (
     for (const entry of entries) {
       const absolutePath = path.join(currentDirectory, entry.name);
       const isIgnoredDirectoryName =
-        GENERATED_IMAGE_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
+        SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
         (entry.name.startsWith(".") && entry.name !== ".dumi" && entry.name !== ".storybook");
       if (entry.isSymbolicLink() && isIgnoredDirectoryName) continue;
       if (entry.isSymbolicLink()) return null;
@@ -89,12 +89,12 @@ const listProductionSourceFiles = (
         continue;
       }
       if (!entry.isFile() || isTestlikeFilename(absolutePath)) continue;
-      if (GENERATED_IMAGE_MDX_FILE_PATTERN.test(entry.name)) {
+      if (SOURCE_PROJECT_MDX_FILE_PATTERN.test(entry.name)) {
         hasOpaqueMdxConsumerSurface = true;
         continue;
       }
-      if (!GENERATED_IMAGE_SOURCE_FILE_PATTERN.test(entry.name)) continue;
-      if (GENERATED_IMAGE_DECLARATION_FILE_PATTERN.test(entry.name)) continue;
+      if (!SOURCE_PROJECT_FILE_PATTERN.test(entry.name)) continue;
+      if (SOURCE_PROJECT_DECLARATION_FILE_PATTERN.test(entry.name)) continue;
       sourceFilePaths.push(normalizeFilename(absolutePath));
     }
   }
@@ -140,8 +140,8 @@ const getRuntimeModuleSource = (node: EsTreeNode): string | null => {
 };
 
 const indexModuleSources = (
-  module: GeneratedImageModule,
-  consumerModulesByFilePath: Map<string, Set<GeneratedImageModule>>,
+  module: SourceProjectModule,
+  consumerModulesByFilePath: Map<string, Set<SourceProjectModule>>,
   resolvedSourcePathByNode: WeakMap<EsTreeNode, string>,
   unresolvedRuntimeSources: Set<string>,
 ): void => {
@@ -161,15 +161,15 @@ const indexModuleSources = (
   });
 };
 
-export const buildGeneratedImageProjectIndex = (
+export const buildSourceProjectIndex = (
   rootDirectory: string,
   currentFilePath: string,
   currentProgramNode: EsTreeNodeOfType<"Program">,
   currentScopes: ScopeAnalysis,
-): GeneratedImageProjectIndex | null => {
+): SourceProjectIndex | null => {
   const productionSourceFiles = listProductionSourceFiles(rootDirectory);
   if (!productionSourceFiles) return null;
-  const modulesByFilePath = new Map<string, GeneratedImageModule>();
+  const modulesByFilePath = new Map<string, SourceProjectModule>();
   for (const filePath of productionSourceFiles.sourceFilePaths) {
     if (filePath === currentFilePath) {
       modulesByFilePath.set(filePath, {
@@ -184,11 +184,11 @@ export const buildGeneratedImageProjectIndex = (
     modulesByFilePath.set(filePath, {
       filePath,
       programNode: parsedProgram,
-      scopes: getGeneratedImageModuleScopes(parsedProgram),
+      scopes: getSourceProjectModuleScopes(parsedProgram),
     });
   }
 
-  const consumerModulesByFilePath = new Map<string, Set<GeneratedImageModule>>();
+  const consumerModulesByFilePath = new Map<string, Set<SourceProjectModule>>();
   const resolvedSourcePathByNode = new WeakMap<EsTreeNode, string>();
   const unresolvedRuntimeSources = new Set<string>();
   for (const module of modulesByFilePath.values()) {

@@ -1,5 +1,9 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import type { RunRuleOptions } from "../../../test-utils/run-rule.js";
 import type { Rule } from "../../utils/rule.js";
 import { remotionCalculateMetadataFetchSignal } from "./remotion-calculate-metadata-fetch-signal.js";
 import { remotionDeterministicRandomness } from "./remotion-deterministic-randomness.js";
@@ -11,10 +15,25 @@ import { remotionNoNativeMediaElements } from "./remotion-no-native-media-elemen
 import { remotionNoNextImage } from "./remotion-no-next-image.js";
 import { remotionStableDelayRenderHandle } from "./remotion-stable-delay-render-handle.js";
 
-const expectDiagnosticCount = (rule: Rule, code: string, count: number): void => {
-  const result = runRule(rule, code);
+const expectDiagnosticCount = (
+  rule: Rule,
+  code: string,
+  count: number,
+  options?: RunRuleOptions,
+): void => {
+  const result = runRule(rule, code, options);
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics).toHaveLength(count);
+};
+
+const createRemotionProjectFixture = (files: Readonly<Record<string, string>>): string => {
+  const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-remotion-"));
+  for (const [relativePath, sourceText] of Object.entries(files)) {
+    const filePath = path.join(rootDirectory, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, sourceText);
+  }
+  return rootDirectory;
 };
 
 describe("remotion-no-css-animation", () => {
@@ -117,6 +136,14 @@ describe("remotion-no-css-transition", () => {
       remotionNoCssTransition,
       `import {AbsoluteFill} from 'remotion'; export const DocsDemo = () => <AbsoluteFill style={{transition: 'opacity 1s'}}/>;`,
       0,
+    );
+  });
+
+  it("treats @remotion/media components as render evidence", () => {
+    expectDiagnosticCount(
+      remotionNoCssTransition,
+      `import {Video} from '@remotion/media'; export const Scene = () => <Video style={{transition: 'opacity 1s'}}/>;`,
+      1,
     );
   });
 });
@@ -254,6 +281,38 @@ describe("remotion-no-native-media-elements", () => {
       1,
     );
   });
+
+  it("detects native media in an imported registered composition", () => {
+    const sceneSource = `export const Scene = () => <img src="a.png"/>;`;
+    const rootDirectory = createRemotionProjectFixture({
+      "scene.tsx": sceneSource,
+      "root.tsx": `import {Composition} from 'remotion'; import {Scene} from './scene'; export const Root = () => <Composition component={Scene}/>;`,
+    });
+    try {
+      expectDiagnosticCount(remotionNoNativeMediaElements, sceneSource, 1, {
+        filename: path.join(rootDirectory, "scene.tsx"),
+        settings: { "react-doctor": { rootDirectory } },
+      });
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not treat an ordinary imported component as a composition", () => {
+    const sceneSource = `export const Scene = () => <img src="a.png"/>;`;
+    const rootDirectory = createRemotionProjectFixture({
+      "scene.tsx": sceneSource,
+      "root.tsx": `import {Composition} from 'remotion'; import {Scene} from './scene'; const Other = () => null; export const Root = () => <><Scene/><Composition component={Other}/></>;`,
+    });
+    try {
+      expectDiagnosticCount(remotionNoNativeMediaElements, sceneSource, 0, {
+        filename: path.join(rootDirectory, "scene.tsx"),
+        settings: { "react-doctor": { rootDirectory } },
+      });
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("remotion-no-next-image", () => {
@@ -288,6 +347,23 @@ describe("remotion-no-next-image", () => {
       `import Image from 'next/image'; export const Page = () => <Image src="a.png" alt="" />;`,
       0,
     );
+  });
+
+  it("follows a barrel export to an imported registered composition", () => {
+    const sceneSource = `import Image from 'next/image'; export const Scene = () => <Image src="a.png" alt=""/>;`;
+    const rootDirectory = createRemotionProjectFixture({
+      "scene.tsx": sceneSource,
+      "scenes.ts": `export {Scene} from './scene';`,
+      "root.tsx": `import {Composition} from 'remotion'; import {Scene} from './scenes'; export const Root = () => <Composition component={Scene}/>;`,
+    });
+    try {
+      expectDiagnosticCount(remotionNoNextImage, sceneSource, 1, {
+        filename: path.join(rootDirectory, "scene.tsx"),
+        settings: { "react-doctor": { rootDirectory } },
+      });
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
   });
 });
 

@@ -10,7 +10,6 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
-import { programImportsRemotion } from "../../utils/program-imports-remotion.js";
 import { resolveRemotionApi } from "../../utils/resolve-remotion-api.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -77,13 +76,10 @@ export const remotionNoCssUrlAssets = defineRule({
   recommendation:
     "Render the asset with `Img` inside an `AbsoluteFill`, or preload the same source with a hidden `Img` when a CSS mask is required.",
   create: (context) => {
-    const renderEvidence = createRemotionRenderEvidenceChecker(context.scopes);
+    const renderEvidence = createRemotionRenderEvidenceChecker(context);
     return {
       Property(node: EsTreeNodeOfType<"Property">) {
-        if (
-          !programImportsRemotion(node) ||
-          !CSS_URL_ASSET_PROPERTY_NAMES.has(getStaticPropertyKeyName(node) ?? "")
-        ) {
+        if (!CSS_URL_ASSET_PROPERTY_NAMES.has(getStaticPropertyKeyName(node) ?? "")) {
           return;
         }
         const styleObject = node.parent;

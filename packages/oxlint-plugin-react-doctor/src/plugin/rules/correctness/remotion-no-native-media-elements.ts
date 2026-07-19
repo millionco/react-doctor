@@ -3,7 +3,6 @@ import { createRemotionRenderEvidenceChecker } from "../../utils/create-remotion
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { programImportsRemotion } from "../../utils/program-imports-remotion.js";
 
 const REMOTION_MEDIA_REPLACEMENT_BY_TAG = new Map([
   ["audio", "`Audio` from `@remotion/media`"],
@@ -21,12 +20,10 @@ export const remotionNoNativeMediaElements = defineRule({
   recommendation:
     "Use Remotion's media components so rendering waits for assets and seeks media to the requested frame.",
   create: (context) => {
-    const renderEvidence = createRemotionRenderEvidenceChecker(context.scopes);
+    const renderEvidence = createRemotionRenderEvidenceChecker(context);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!programImportsRemotion(node) || !isNodeOfType(node.name, "JSXIdentifier")) {
-          return;
-        }
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         const renderFunction = findRenderPhaseComponentOrHook(node, context.scopes);
         if (!renderFunction || !renderEvidence.functionHasEvidence(renderFunction)) return;
         const replacement = REMOTION_MEDIA_REPLACEMENT_BY_TAG.get(node.name.name);

@@ -7,7 +7,6 @@ import { functionHasReactComponentEvidence } from "../../utils/function-has-reac
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
-import { programImportsRemotion } from "../../utils/program-imports-remotion.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -35,10 +34,9 @@ export const remotionDeterministicRandomness = defineRule({
   recommendation:
     "Use Remotion's seeded `random(seed)` helper so the same frame produces the same value in every render tab.",
   create: (context) => {
-    const renderEvidence = createRemotionRenderEvidenceChecker(context.scopes);
+    const renderEvidence = createRemotionRenderEvidenceChecker(context);
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!programImportsRemotion(node)) return;
         const callee = stripParenExpression(node.callee);
         if (
           !isNodeOfType(callee, "MemberExpression") ||

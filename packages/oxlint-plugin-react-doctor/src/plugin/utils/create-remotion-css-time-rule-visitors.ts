@@ -4,7 +4,6 @@ import { findRenderPhaseComponentOrHook } from "./find-render-phase-component-or
 import { getJsxAttributeStaticString } from "./get-jsx-attribute-static-string.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { programImportsRemotion } from "./program-imports-remotion.js";
 import type { RuleContext } from "./rule-context.js";
 import type { RuleVisitors } from "./rule-visitors.js";
 
@@ -19,13 +18,10 @@ export const createRemotionCssTimeRuleVisitors = (
   context: RuleContext,
   options: RemotionCssTimeRuleOptions,
 ): RuleVisitors => {
-  const renderEvidence = createRemotionRenderEvidenceChecker(context.scopes);
+  const renderEvidence = createRemotionRenderEvidenceChecker(context);
   return {
     Property(node: EsTreeNodeOfType<"Property">) {
-      if (
-        !programImportsRemotion(node) ||
-        !options.stylePropertyNames.has(getStaticPropertyKeyName(node) ?? "")
-      ) {
+      if (!options.stylePropertyNames.has(getStaticPropertyKeyName(node) ?? "")) {
         return;
       }
       const styleObject = node.parent;
@@ -46,11 +42,7 @@ export const createRemotionCssTimeRuleVisitors = (
       context.report({ node, message: options.styleMessage });
     },
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      if (
-        !programImportsRemotion(node) ||
-        !isNodeOfType(node.name, "JSXIdentifier") ||
-        node.name.name !== "className"
-      ) {
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "className") {
         return;
       }
       const renderFunction = findRenderPhaseComponentOrHook(node, context.scopes);

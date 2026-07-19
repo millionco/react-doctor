@@ -4,7 +4,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { programImportsRemotion } from "../../utils/program-imports-remotion.js";
 
 export const remotionNoNextImage = defineRule({
   id: "remotion-no-next-image",
@@ -14,12 +13,10 @@ export const remotionNoNextImage = defineRule({
   severity: "error",
   recommendation: "Use `Img` from `remotion`, which delays rendering until the image is loaded.",
   create: (context) => {
-    const renderEvidence = createRemotionRenderEvidenceChecker(context.scopes);
+    const renderEvidence = createRemotionRenderEvidenceChecker(context);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!programImportsRemotion(node) || !isNodeOfType(node.name, "JSXIdentifier")) {
-          return;
-        }
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         const renderFunction = findRenderPhaseComponentOrHook(node, context.scopes);
         if (!renderFunction || !renderEvidence.functionHasEvidence(renderFunction)) return;
         const symbol = context.scopes.symbolFor(node.name);

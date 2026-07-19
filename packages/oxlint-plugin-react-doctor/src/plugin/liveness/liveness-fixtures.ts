@@ -1418,6 +1418,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "export async function POST(request: Request) {\n  const event = await request.json();\n  await applyEvent(event);\n  return Response.json({ ok: true });\n}\n",
     filePath: "src/app/api/webhooks/github/route.ts",
   },
+  "zustand-no-get-during-initialization": {
+    code: 'import { create } from "zustand";\nconst useStore = create((_set, get) => ({ count: get().count }));',
+  },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',
   },

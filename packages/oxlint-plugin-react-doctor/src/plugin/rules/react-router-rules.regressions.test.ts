@@ -214,10 +214,40 @@ const safeRuleCases: SafeRuleCase[] = [
     filename: "/project/app/components/shell.client.tsx",
   },
   {
+    name: "allows client modules inside an imported ClientOnly render prop",
+    rule: reactRouterNoClientModuleInServerRender,
+    source:
+      'import { ClientOnly } from "./client-only"; import { ClientCard } from "./card.client"; export default function Route() { return <ClientOnly>{() => <ClientCard />}</ClientOnly>; }',
+  },
+  {
     name: "allows synchronized search params mutation",
     rule: reactRouterNoUnsynchronizedSearchParamsMutation,
     source:
       'import { useSearchParams } from "react-router"; export function Filters() { const [params, setParams] = useSearchParams(); return <button onClick={() => { params.set("tab", "all"); setParams(params); }} />; }',
+  },
+  {
+    name: "allows search params mutation synchronized after an inline iterator",
+    rule: reactRouterNoUnsynchronizedSearchParamsMutation,
+    source:
+      'import { useSearchParams } from "react-router"; import { useEffect } from "react"; export function Filters() { const [params, setParams] = useSearchParams(); useEffect(() => { ["page"].forEach((key) => params.delete(key)); setParams(params); }, [params, setParams]); }',
+  },
+  {
+    name: "allows search params mutation synchronized with a different setter value",
+    rule: reactRouterNoUnsynchronizedSearchParamsMutation,
+    source:
+      'import { useSearchParams } from "react-router"; export function Filters() { const [params, setParams] = useSearchParams(); return <button onClick={() => { params.delete("page"); setParams(""); }} />; }',
+  },
+  {
+    name: "allows serialized search params returned for navigation",
+    rule: reactRouterNoUnsynchronizedSearchParamsMutation,
+    source:
+      'import { useSearchParams } from "react-router"; export function Filters() { const [params] = useSearchParams(); const href = () => { params.set("page", "2"); return `/items?${params.toString()}`; }; return <a href={href()}>Next</a>; }',
+  },
+  {
+    name: "allows serialized search params passed to useNavigate",
+    rule: reactRouterNoUnsynchronizedSearchParamsMutation,
+    source:
+      'import { useNavigate, useSearchParams } from "react-router"; export function useNext() { const navigate = useNavigate(); const [params] = useSearchParams(); return () => { ["page"].forEach((key) => params.set(key, "2")); navigate(`/items?${params.toString()}`); }; }',
   },
   {
     name: "allows a known UI anchor with a non-self target",
@@ -260,6 +290,12 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterNoRouteModuleEnvironmentSuffix,
     source: "export default function buildRoutes() { return []; }",
     filename: "/project/app/routes-helper.server.ts",
+  },
+  {
+    name: "allows default-exported environment helpers colocated in route folders",
+    rule: reactRouterNoRouteModuleEnvironmentSuffix,
+    source: "export default function ClientWidget() { return null; }",
+    filename: "/project/app/routes/dashboard/client-widget.client.tsx",
   },
   {
     name: "allows a transition callback that returns navigation",

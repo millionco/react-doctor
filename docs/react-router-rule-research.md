@@ -1311,6 +1311,31 @@ TanStack route detectors, request-body security analysis, and shared import, rea
 filename utilities above. The empty `truffler` results for several behavior phrases are not proof
 of absence on their own; the registry and filename/source searches provide the confirming audit.
 
+## Daytona pull-request field audit
+
+The first pushed candidate was evaluated against 2,000 pinned open-source projects. Daytona
+produced 1,989 baseline reports and 1,981 candidate reports before the shared 18-minute scan budget;
+all missing records were explicit time-budget failures, not malformed output or unpinned refs. The
+candidate reports contained 55 React Router diagnostics across 36 repositories.
+
+Pinned-source review confirmed the router-factory, render-phase navigation, root error boundary,
+route-object, route-lazy, and loader abort-signal findings. It also exposed three detector boundaries
+that were too broad:
+
+- Imported `.client` components rendered inside an imported `ClientOnly` render prop are already
+  excluded from the server graph. Six findings in `frontvibe/fluid` demonstrated this shape.
+- A default-exported `.client` helper nested inside a route folder is not itself a route module. The
+  actual `route.tsx` in `frontvibe/fluid` dynamically imported that helper inside `ClientOnly`.
+- Mutating the stable `useSearchParams()` value can still synchronize navigation through an
+  enclosing setter, a returned serialized URL, or a proven `useNavigate()` call. Six findings in
+  `apache/answer` and `Yooooomi/your_spotify` demonstrated those data-flow shapes.
+
+The shipped detectors now abstain on those proven boundaries, and each source shape is preserved as
+a regression test. The `.client` JSX rule requires an imported `client-only` render-prop boundary;
+the route-suffix rule only treats direct files under `routes/` as statically proven flat route
+modules; and the search-param rule follows inline iterator ownership plus returned or navigated
+serialization. These exits deliberately trade recall for evidence-backed precision.
+
 ## Rejected or deferred ideas
 
 - **Blanket `no-fetch-in-effect` for route files:** already covered generically, and client-only or

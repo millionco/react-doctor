@@ -1,12 +1,66 @@
 import { REACT_ROUTER_SEARCH_PARAM_MUTATOR_NAMES } from "../../constants/react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
+
+const isInlineCallCallback = (node: EsTreeNode): boolean =>
+  isFunctionLike(node) &&
+  isNodeOfType(node.parent, "CallExpression") &&
+  node.parent.arguments?.some((argument) => argument === node) === true;
+
+const findSearchParamsOperationOwner = (node: EsTreeNode): EsTreeNode | null => {
+  let owner = findEnclosingFunction(node);
+  while (owner && isInlineCallCallback(owner)) {
+    owner = findEnclosingFunction(owner);
+  }
+  return owner;
+};
+
+const isReturnedBeforeFunctionBoundary = (node: EsTreeNode): boolean => {
+  let cursor = node.parent;
+  while (cursor) {
+    if (isNodeOfType(cursor, "ReturnStatement")) return true;
+    if (isFunctionLike(cursor)) return false;
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+const findContainingCallBeforeFunctionBoundary = (
+  node: EsTreeNode,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  let cursor = node.parent;
+  while (cursor) {
+    if (isNodeOfType(cursor, "CallExpression")) return cursor;
+    if (isFunctionLike(cursor)) return null;
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+const isProvenNavigateCall = (
+  context: RuleContext,
+  node: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  if (!isNodeOfType(node.callee, "Identifier")) return false;
+  const navigateSymbol = context.scopes.symbolFor(node.callee);
+  if (navigateSymbol === null) return false;
+  const initializer = getDirectUnreassignedInitializer(navigateSymbol);
+  return (
+    isNodeOfType(initializer, "CallExpression") &&
+    isNodeOfType(initializer.callee, "Identifier") &&
+    getImportedNameFromReactRouter(context, initializer.callee, initializer.callee.name) ===
+      "useNavigate"
+  );
+};
 
 export const reactRouterNoUnsynchronizedSearchParamsMutation = wrapReactRouterRule(
   defineRule({
@@ -36,7 +90,7 @@ export const reactRouterNoUnsynchronizedSearchParamsMutation = wrapReactRouterRu
         const setterSymbol = isNodeOfType(setterBinding, "Identifier")
           ? context.scopes.symbolFor(setterBinding)
           : null;
-        const pairedSetterCalls =
+        const setterCalls =
           setterSymbol?.references.flatMap((reference) => {
             const callExpression = reference.identifier.parent;
             if (
@@ -45,11 +99,23 @@ export const reactRouterNoUnsynchronizedSearchParamsMutation = wrapReactRouterRu
             ) {
               return [];
             }
-            const firstArgument = callExpression.arguments?.[0];
-            return firstArgument && context.scopes.symbolFor(firstArgument) === searchParamsSymbol
-              ? [callExpression]
-              : [];
+            return [callExpression];
           }) ?? [];
+        const serializationCalls = searchParamsSymbol.references.flatMap((reference) => {
+          const memberExpression = reference.identifier.parent;
+          if (
+            !isNodeOfType(memberExpression, "MemberExpression") ||
+            memberExpression.object !== reference.identifier ||
+            getStaticPropertyKeyName(memberExpression, { allowComputedString: true }) !== "toString"
+          ) {
+            return [];
+          }
+          const callExpression = memberExpression.parent;
+          return isNodeOfType(callExpression, "CallExpression") &&
+            callExpression.callee === memberExpression
+            ? [callExpression]
+            : [];
+        });
 
         for (const reference of searchParamsSymbol.references) {
           const memberExpression = reference.identifier.parent;
@@ -72,14 +138,21 @@ export const reactRouterNoUnsynchronizedSearchParamsMutation = wrapReactRouterRu
           ) {
             continue;
           }
-          const mutationOwner = findEnclosingFunction(callExpression);
+          const mutationOwner = findSearchParamsOperationOwner(callExpression);
           if (
-            pairedSetterCalls.some(
-              (setterCall) => findEnclosingFunction(setterCall) === mutationOwner,
+            setterCalls.some(
+              (setterCall) => findSearchParamsOperationOwner(setterCall) === mutationOwner,
             )
           ) {
             continue;
           }
+          const isSerializedForNavigation = serializationCalls.some((serializationCall) => {
+            if (findSearchParamsOperationOwner(serializationCall) !== mutationOwner) return false;
+            if (isReturnedBeforeFunctionBoundary(serializationCall)) return true;
+            const containingCall = findContainingCallBeforeFunctionBoundary(serializationCall);
+            return containingCall !== null && isProvenNavigateCall(context, containingCall);
+          });
+          if (isSerializedForNavigation) continue;
           context.report({
             node: callExpression,
             message: `${searchParamsBinding.name}.${propertyName}() mutates a stable search params object without synchronizing the URL.`,

@@ -17,6 +17,7 @@ import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./r
 import { isPackageJsonSsrAware } from "./ssr-metadata.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";
 import { parseReactMajor } from "./version.js";
+import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 
 const REANIMATED_DEPENDENCY_NAME = "react-native-reanimated";
 
@@ -45,6 +46,7 @@ export interface WorkspaceFacts {
   expo: DependencyFact;
   next: DependencyFact;
   shopifyFlashList: DependencyFact;
+  tanstackQueryVersion: string | null;
   // Any-of predicates over the scan root + every workspace manifest.
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
@@ -132,6 +134,7 @@ const evaluateManifestFacts = (
     const spec = getDependencySpec(packageJson, REANIMATED_DEPENDENCY_NAME);
     if (spec !== null) facts.reanimatedVersion = spec;
   }
+  facts.tanstackQueryVersion ??= getTanStackQueryVersion(packageJson);
   facts.hasReactNativeAwarePackage =
     facts.hasReactNativeAwarePackage || isPackageJsonReactNativeAware(packageJson);
   facts.hasReanimatedAwarePackage =
@@ -166,6 +169,7 @@ export const collectWorkspaceFacts = (
     expo: { version: null, sourceDirectory: null },
     next: { version: null, sourceDirectory: null },
     shopifyFlashList: { version: null, sourceDirectory: null },
+    tanstackQueryVersion: null,
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,

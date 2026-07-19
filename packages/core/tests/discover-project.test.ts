@@ -110,6 +110,47 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory).hasI18nLibrary).toBe(false);
   });
 
+  it("detects React Query from a workspace package when scanning the workspace root", () => {
+    const monorepoRoot = path.join(tempDirectory, "react-query-workspace-root");
+    const webDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(webDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "root", private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(webDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { react: "^19.0.0", "@tanstack/react-query": "^5.66.0" },
+      }),
+    );
+
+    const rootProject = discoverProject(monorepoRoot);
+    const leafProject = discoverProject(webDirectory);
+
+    expect(rootProject.tanstackQueryVersion).toBe("^5.66.0");
+    expect(rootProject.hasTanStackQuery).toBe(true);
+    expect(leafProject.tanstackQueryVersion).toBe("^5.66.0");
+    expect(leafProject.hasTanStackQuery).toBe(true);
+  });
+
+  it("does not classify framework-agnostic query-core as React Query", () => {
+    const projectDirectory = path.join(tempDirectory, "tanstack-query-core-only");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "query-core-library",
+        dependencies: { "@tanstack/query-core": "^5.66.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.tanstackQueryVersion).toBeNull();
+    expect(projectInfo.hasTanStackQuery).toBe(false);
+  });
+
   it("prefers the runtime styled-components spec over a dev-only pin", () => {
     const projectDirectory = path.join(tempDirectory, "styled-dev-pin");
     fs.mkdirSync(projectDirectory, { recursive: true });

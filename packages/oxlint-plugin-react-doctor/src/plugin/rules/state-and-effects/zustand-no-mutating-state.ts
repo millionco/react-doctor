@@ -281,6 +281,25 @@ const returnedExpressionsForFunction = (functionNode: EsTreeNode): EsTreeNode[] 
 const hasUnsupportedControlFlow = (statements: readonly EsTreeNode[]): boolean =>
   statements.some((statement) => UNSUPPORTED_CONTROL_FLOW_TYPES.has(statement.type));
 
+const hasAbruptCompletion = (node: EsTreeNode): boolean => {
+  let didFindAbruptCompletion = false;
+  walkAst(node, (child: EsTreeNode) => {
+    if (child !== node && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "ThrowStatement")) {
+      didFindAbruptCompletion = true;
+      return false;
+    }
+  });
+  return didFindAbruptCompletion;
+};
+
+const hasUnsupportedSnapshotControlFlow = (statements: readonly EsTreeNode[]): boolean =>
+  statements.some(
+    (statement) =>
+      UNSUPPORTED_CONTROL_FLOW_TYPES.has(statement.type) &&
+      (!isNodeOfType(statement, "IfStatement") || hasAbruptCompletion(statement)),
+  );
+
 const analyzeSetUpdater = (
   updaterFunction: EsTreeNode,
   context: RuleContext,
@@ -506,7 +525,7 @@ const analyzeSnapshotContainer = (
   context: RuleContext,
   reportedNodes: WeakSet<EsTreeNode>,
 ): void => {
-  if (hasUnsupportedControlFlow(statements)) return;
+  if (hasUnsupportedSnapshotControlFlow(statements)) return;
   const state: MutableStateReferenceState = {
     isAdditionalMutableStateSource: (expression) =>
       isSnapshotExpression(expression, getSymbolIds, storeSymbolIds, context),
@@ -519,13 +538,15 @@ const analyzeSnapshotContainer = (
     for (const mutation of collectMutableStateReferenceMutations(statement, state)) {
       mutations.push({ mutation, statementIndex });
     }
-    for (const callExpression of collectNotifierCalls(
-      statement,
-      setSymbolIds,
-      storeSymbolIds,
-      context,
-    )) {
-      notifierCalls.push({ callExpression, statementIndex });
+    if (!isNodeOfType(statement, "IfStatement")) {
+      for (const callExpression of collectNotifierCalls(
+        statement,
+        setSymbolIds,
+        storeSymbolIds,
+        context,
+      )) {
+        notifierCalls.push({ callExpression, statementIndex });
+      }
     }
     if (isNodeOfType(statement, "VariableDeclaration")) {
       updateMutableStateReferencesForVariableDeclaration(statement, state);

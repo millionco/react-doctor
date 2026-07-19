@@ -517,6 +517,8 @@ import { r3fNoAsyncUseFrame } from "./rules/r3f/r3f-no-async-use-frame.js";
 import { r3fNoCloneInUseFrame } from "./rules/r3f/r3f-no-clone-in-use-frame.js";
 import { r3fNoDisposeLoaderCache } from "./rules/r3f/r3f-no-dispose-loader-cache.js";
 import { r3fNoDuplicatePrimitiveObject } from "./rules/r3f/r3f-no-duplicate-primitive-object.js";
+import { r3fNoExtendInRender } from "./rules/r3f/r3f-no-extend-in-render.js";
+import { r3fNoExtendThreeNamespace } from "./rules/r3f/r3f-no-extend-three-namespace.js";
 import { r3fNoFreshPortalContainer } from "./rules/r3f/r3f-no-fresh-portal-container.js";
 import { r3fNoFreshUseThreeSelector } from "./rules/r3f/r3f-no-fresh-use-three-selector.js";
 import { r3fNoImperativeAttachOfManagedRef } from "./rules/r3f/r3f-no-imperative-attach-of-managed-ref.js";
@@ -6786,6 +6788,34 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoDuplicatePrimitiveObject.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoDuplicatePrimitiveObject.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-extend-in-render",
+    id: "r3f-no-extend-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoExtendInRender,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoExtendInRender.tags ?? [])])],
+      requires: [...new Set<Capability>(["react", "r3f", ...(r3fNoExtendInRender.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-extend-three-namespace",
+    id: "r3f-no-extend-three-namespace",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoExtendThreeNamespace,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoExtendThreeNamespace.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoExtendThreeNamespace.requires ?? [])]),
       ],
     },
   },

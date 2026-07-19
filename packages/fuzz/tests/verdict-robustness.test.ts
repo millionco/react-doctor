@@ -145,6 +145,8 @@ const AUDITED_RULE_IDS = [
   "r3f-no-clone-in-use-frame",
   "r3f-no-dispose-loader-cache",
   "r3f-no-duplicate-primitive-object",
+  "r3f-no-extend-in-render",
+  "r3f-no-extend-three-namespace",
   "r3f-no-fresh-portal-container",
   "r3f-no-fresh-use-three-selector",
   "r3f-no-inline-resource-prop",

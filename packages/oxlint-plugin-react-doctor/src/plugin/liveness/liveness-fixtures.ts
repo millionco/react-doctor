@@ -1752,6 +1752,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-fresh-use-three-selector": {
     code: 'import { useThree } from "@react-three/fiber"; const pair = useThree((state) => [state.camera, state.scene]);',
   },
+  "r3f-no-extend-in-render": {
+    code: 'import { extend } from "@react-three/fiber"; const Scene = () => { extend({ CustomObject }); return <customObject />; };',
+  },
+  "r3f-no-extend-three-namespace": {
+    code: 'import { extend } from "@react-three/fiber"; import * as THREE from "three"; extend(THREE);',
+  },
   "r3f-no-fresh-portal-container": {
     code: 'import { createPortal } from "@react-three/fiber"; import { Scene } from "three"; const World = ({ enabled }) => createPortal(<mesh />, enabled ? {} : new Scene());',
   },

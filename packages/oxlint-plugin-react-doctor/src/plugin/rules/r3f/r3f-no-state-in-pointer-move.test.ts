@@ -66,6 +66,79 @@ describe("r3f-no-state-in-pointer-move", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows primitive face buckets derived from discrete pointer-hit indices", () => {
+    const result = runRule(
+      r3fNoStateInPointerMove,
+      `import { useState } from "react";
+       import "@react-three/fiber";
+       const Scene = () => {
+         const [, setHoveredFace] = useState(0);
+         const [, setInstanceGroup] = useState(0);
+         return <instancedMesh onPointerMove={(event) => {
+           setHoveredFace(Math.floor((event.faceIndex || 0) / 2));
+           const { instanceId: hitInstance = 0 } = event;
+           const instanceGroup = Math.trunc(hitInstance / 10);
+           setInstanceGroup(instanceGroup);
+         }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports quantized continuous coordinates and unproven quantizers", () => {
+    const result = runRule(
+      r3fNoStateInPointerMove,
+      `import { useState } from "react";
+       import "@react-three/fiber";
+       const Math = { floor: quantize };
+       const Scene = () => {
+         const [, setWorldBucket] = useState(0);
+         const [, setScreenBucket] = useState(0);
+         const [, setFace] = useState(0);
+         return <mesh onPointerMove={(event) => {
+           setWorldBucket(globalThis.Math.floor(event.point.x / 2));
+           setScreenBucket(globalThis.Math.round(event.clientX / 100));
+           setFace(Math.floor((event.faceIndex || 0) / 2));
+         }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("reports global Math quantization when any input remains continuous or unknown", () => {
+    const result = runRule(
+      r3fNoStateInPointerMove,
+      `import { useState } from "react";
+       import "@react-three/fiber";
+       const Scene = ({ bucketSize }) => {
+         const [, setWorldBucket] = useState(0);
+         const [, setFaceBucket] = useState(0);
+         return <mesh onPointerMove={(event) => {
+           setWorldBucket(Math.floor(event.point.x / 2));
+           setFaceBucket(Math.floor((event.faceIndex || 0) / bucketSize));
+         }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("reports fresh payloads and toggles that contain a bounded face bucket", () => {
+    const result = runRule(
+      r3fNoStateInPointerMove,
+      `import { useState } from "react";
+       import "@react-three/fiber";
+       const Scene = () => {
+         const [, setHover] = useState({ face: 0 });
+         const [, setOpen] = useState(false);
+         return <mesh onPointerMove={(event) => {
+           setHover({ face: Math.floor((event.faceIndex || 0) / 2) });
+           setOpen((open) => !open);
+         }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports a non-converging short-circuit state update", () => {
     const result = runRule(
       r3fNoStateInPointerMove,

@@ -37,6 +37,21 @@ describe("valtio-no-proxy-read-in-render", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports reads through proxy aliases not used by useSnapshot", () => {
+    const result = runValtioRule(`
+      import { useSnapshot } from "valtio";
+
+      function Profile({ state }) {
+        const stateAlias = state;
+        const profileAlias = state.profile;
+        const snapshot = useSnapshot(state.profile);
+        return stateAlias.profile.name + profileAlias.name + snapshot.name;
+      }
+    `);
+
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports namespace imports and namespace aliases", () => {
     const result = runValtioRule(`
       import * as Valtio from "valtio";

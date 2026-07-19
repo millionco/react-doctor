@@ -435,7 +435,7 @@ export const valtioNoProxyReadInRender = defineRule({
             readExpression,
             context.scopes,
             new Set(),
-            allowedAliasSymbolIds,
+            null,
             readAliasCaptures,
           );
           const readPosition = readExpression.range?.[0];
@@ -450,6 +450,10 @@ export const valtioNoProxyReadInRender = defineRule({
                 isScopeWithin(readScope, bindingScope),
               ) &&
               isPathPrefix(target.path, readPath) &&
+              (readAliasCaptures.size === 0 ||
+                [...readAliasCaptures.values()].some((aliasCapture) =>
+                  isPathPrefix(aliasCapture.path, target.path),
+                )) &&
               !wasTargetReplacedBeforeRead(
                 target,
                 readPosition,

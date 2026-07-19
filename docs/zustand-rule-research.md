@@ -160,6 +160,8 @@ Detector contract:
   Zustand as an imperative cache with no subscribers.
 - Treat a surrounding `set` updater's returned value as the notifier for `get()` snapshots read
   inside that updater, and abstain whenever replacement freshness cannot be proven.
+- Match notifiers to the exact creator or bound store, including same-branch ordering for simple
+  `if` statements. Another store or mutually exclusive branch cannot publish the mutation.
 - Treat clone-before-mutate as valid when the clone is statically proven fresh.
 - Treat mutation inside a creator wrapped by the official `immer` middleware as valid.
 - Follow mutations through simple `if`/`else` branches when every branch rejoins before the

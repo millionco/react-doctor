@@ -18,4 +18,11 @@ export const useFuzzStore = create((set, get) => ({
       items.push("next");
       return { items: [...items] };
     }),
+  updateInBranch: (enabled: boolean) => {
+    const items = get().items;
+    if (enabled) {
+      items.push("next");
+      set({ items: [...items] });
+    }
+  },
 }));

@@ -325,6 +325,53 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("does not use another store as the snapshot notifier", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const storeA = create(() => ({ items: [] }));
+        const storeB = create(() => ({ items: [] }));
+        const items = storeA.getState().items;
+        items.push("next");
+        storeB.setState({ items: [] });
+      `,
+      1,
+    );
+  });
+
+  it("matches branch-local notifiers to the mutation branch", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          safe: (enabled) => {
+            const items = get().items;
+            if (enabled) {
+              items.push("next");
+              set({ items: [...items] });
+            }
+          },
+          unsafe: (enabled) => {
+            const items = get().items;
+            if (enabled) {
+              items.push("next");
+              set({ items });
+            }
+          },
+          crossBranch: (enabled) => {
+            const items = get().items;
+            if (enabled) {
+              items.push("next");
+            } else {
+              set({ items: [...items] });
+            }
+          },
+        }));
+      `,
+      2,
+    );
+  });
+
   it("matches the replacement property to the mutated snapshot path", () => {
     expectDiagnosticCount(
       `

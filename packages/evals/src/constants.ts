@@ -5,7 +5,7 @@ export const DEFAULT_TARGET_REPOSITORY_REF = "HEAD";
 export const DEFAULT_TARGET_ROOT_DIRECTORY = ".";
 export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".ndjson", ".txt"];
 export const PINNED_REPOSITORY_REF_PATTERN = /^[0-9a-f]{40}$/i;
-export const DEFAULT_CORPUS_REPOSITORY_COUNT = 2_000;
+export const DEFAULT_CORPUS_REPOSITORY_COUNT = 500;
 export const DEFAULT_CORPUS_CONCURRENCY = 500;
 export const EVALUATION_RETRY_CONCURRENCIES: ReadonlyArray<number> = [50, 10];
 
@@ -19,6 +19,7 @@ export const SANDBOX_SETUP_TIMEOUT_SECONDS = 1_800;
 export const SANDBOX_SCAN_TIMEOUT_SECONDS = 900;
 export const SANDBOX_DELETE_TIMEOUT_SECONDS = 120;
 export const SANDBOX_CLEANUP_CONCURRENCY = 50;
+export const SANDBOX_CREATE_CONCURRENCY = 10;
 
 export const EVALUATION_SCHEMA_VERSION = 1;
 export const SUCCESS_EXIT_CODE = 0;

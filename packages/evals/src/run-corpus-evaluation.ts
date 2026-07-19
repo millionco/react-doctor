@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 
 import { Daytona, DaytonaNotFoundError, Image } from "@daytona/sdk";
+import pLimit from "p-limit";
 
 import { cleanupEvaluationSandboxes } from "./cleanup-evaluation-sandboxes.js";
 import {
@@ -12,7 +13,10 @@ import {
   PREPARE_REACT_DOCTOR_COMMANDS,
   PROGRESS_INTERVAL_PROJECTS,
   REACT_DOCTOR_WORK_DIRECTORY,
+  SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
   SANDBOX_CPU_CORES,
+  SANDBOX_CREATE_CONCURRENCY,
+  SANDBOX_CREATE_TIMEOUT_SECONDS,
   SANDBOX_DISK_GIB,
   SANDBOX_IMAGE,
   SANDBOX_MEMORY_GIB,
@@ -80,14 +84,31 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
         Math.min(options.concurrency, concurrency),
       ),
     ];
+    const limitSandboxCreation = pLimit(Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY));
+    const createSandbox = (sandboxName: string) =>
+      limitSandboxCreation(() =>
+        daytona.create(
+          {
+            name: sandboxName,
+            snapshot: snapshotName,
+            ephemeral: true,
+            autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
+            labels: {
+              evaluation: evaluationId,
+              project: "react-doctor",
+              purpose: "eval-repository",
+            },
+          },
+          { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
+        ),
+      );
     await runEvaluationAttempts({
       repositoryGroups,
       attemptConcurrencies,
       evaluateRepositoryGroup: (repositoryGroup) =>
         evaluateRepositoryGroup({
           daytona,
-          evaluationId,
-          snapshotName,
+          createSandbox,
           repositoryGroup,
           onRecord: recordEvaluation,
         }),

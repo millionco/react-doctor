@@ -48,6 +48,7 @@ export const REACT_ROUTER_RULE_IDS: readonly string[] = [
 export const REACT_ROUTER_RUNTIME_PACKAGE_NAMES = new Set([
   "@react-router/cloudflare",
   "@react-router/node",
+  "react-router/dom",
   "react-router-dom",
   "react-router",
 ]);

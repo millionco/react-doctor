@@ -210,6 +210,24 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/app", children: [{ path: "/app/settings", children: [{ path: "/app/settings/profile", element: <Profile /> }] }] }]);',
   },
   {
+    name: "allows absolute children beneath a parameterized parent",
+    rule: reactRouterNoInvalidAbsoluteChildPath,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/users/:userId", children: [{ path: "/users/settings", element: <Settings /> }] }]);',
+  },
+  {
+    name: "allows absolute children beneath an optional parent",
+    rule: reactRouterNoInvalidAbsoluteChildPath,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/users/:userId?", children: [{ path: "/users/settings", element: <Settings /> }] }]);',
+  },
+  {
+    name: "allows absolute children beneath a splat parent",
+    rule: reactRouterNoInvalidAbsoluteChildPath,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/files/*", children: [{ path: "/files/preview", element: <Preview /> }] }]);',
+  },
+  {
     name: "allows a root boundary supplied by lazy",
     rule: reactRouterRequireRootErrorBoundary,
     source:
@@ -475,6 +493,15 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterResourceLinkRequiresReload,
       'import { NavLink as ResourceLink } from "react-router"; export const Download = () => <ResourceLink to="/guide.pdf">Guide</ResourceLink>;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes resource NavLinks imported from react-router/dom", () => {
+    const result = runRule(
+      reactRouterResourceLinkRequiresReload,
+      'import { NavLink } from "react-router/dom"; export const Download = () => <NavLink to="/guide.pdf">Guide</NavLink>;',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

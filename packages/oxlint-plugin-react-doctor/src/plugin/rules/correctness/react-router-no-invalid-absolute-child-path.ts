@@ -9,6 +9,8 @@ import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-rout
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
+const DYNAMIC_ROUTE_PATH_PATTERN = /[:*?]/;
+
 const getParentRoutePath = (routeObject: EsTreeNodeOfType<"ObjectExpression">): string | null => {
   const routeArray: EsTreeNode | null | undefined = routeObject.parent;
   const childrenProperty: EsTreeNode | null | undefined = routeArray?.parent;
@@ -38,6 +40,7 @@ export const reactRouterNoInvalidAbsoluteChildPath = wrapReactRouterRule(
         if (routePath === null || !routePath.startsWith("/")) return;
         const parentPath = getParentRoutePath(node);
         if (parentPath === null || parentPath === "/") return;
+        if (DYNAMIC_ROUTE_PATH_PATTERN.test(parentPath)) return;
         if (routePath === parentPath || routePath.startsWith(`${parentPath}/`)) return;
         context.report({
           node: pathProperty,

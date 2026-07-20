@@ -66,7 +66,7 @@ describe("r3f-no-state-in-pointer-move", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("allows primitive face buckets derived from discrete pointer-hit indices", () => {
+  it("allows primitive buckets derived from discrete pointer-hit indices", () => {
     const result = runRule(
       r3fNoStateInPointerMove,
       `import { useState } from "react";
@@ -74,12 +74,16 @@ describe("r3f-no-state-in-pointer-move", () => {
        const Scene = () => {
          const [, setHoveredFace] = useState(0);
          const [, setInstanceGroup] = useState(0);
-         return <instancedMesh onPointerMove={(event) => {
-           setHoveredFace(Math.floor((event.faceIndex || 0) / 2));
-           const { instanceId: hitInstance = 0 } = event;
-           const instanceGroup = Math.trunc(hitInstance / 10);
-           setInstanceGroup(instanceGroup);
-         }} />;
+         const [, setBatch] = useState(0);
+         return <>
+           <instancedMesh onPointerMove={(event) => {
+             setHoveredFace(Math.floor((event.faceIndex || 0) / 2));
+             const { instanceId: hitInstance = 0 } = event;
+             const instanceGroup = Math.trunc(hitInstance / 10);
+             setInstanceGroup(instanceGroup);
+           }} />
+           <batchedMesh onPointerMove={(event) => (event.stopPropagation(), setBatch(event.batchId))} />
+         </>;
        };`,
     );
     expect(result.diagnostics).toHaveLength(0);

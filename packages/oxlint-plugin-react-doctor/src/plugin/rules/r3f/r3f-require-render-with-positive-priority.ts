@@ -10,6 +10,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { getModuleNamespaceSource } from "./utils/get-module-namespace-source.js";
+import { getStaticNumber } from "./utils/get-static-number.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 import { THREE_RENDER_METHOD_NAMES } from "./utils/three-render-method-names.js";
@@ -30,38 +31,6 @@ interface PositivePrioritySubscriptionGroup {
   hasRenderSink: boolean;
   hasUnresolvedCallback: boolean;
 }
-
-const getStaticNumber = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number> = new Set(),
-): number | null => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Literal") && typeof candidate.value === "number") {
-    return candidate.value;
-  }
-  if (
-    isNodeOfType(candidate, "UnaryExpression") &&
-    (candidate.operator === "+" || candidate.operator === "-")
-  ) {
-    const operand = getStaticNumber(candidate.argument, scopes, new Set(visitedSymbolIds));
-    if (operand === null) return null;
-    return candidate.operator === "-" ? -operand : operand;
-  }
-  if (!isNodeOfType(candidate, "Identifier")) return null;
-  const symbol = scopes.symbolFor(candidate);
-  if (
-    symbol?.kind !== "const" ||
-    !symbol.initializer ||
-    visitedSymbolIds.has(symbol.id) ||
-    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-    symbol.declarationNode.id !== symbol.bindingIdentifier
-  ) {
-    return null;
-  }
-  visitedSymbolIds.add(symbol.id);
-  return getStaticNumber(symbol.initializer, scopes, visitedSymbolIds);
-};
 
 const getImportedReceiverModuleSource = (
   expression: EsTreeNode,

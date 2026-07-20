@@ -7,17 +7,26 @@ import { hasPossibleStaticPropertyWrite } from "../../utils/has-static-property-
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveReactRefSymbol } from "../../utils/react-ref-origin.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
+import { getStaticNumber } from "./utils/get-static-number.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const STATE_HOOKS = new Set(["useState", "useReducer"]);
 const USE_STATE_HOOK = new Set(["useState"]);
 const VALUE_CHANGE_OPERATORS = new Set(["!==", "!=", "===", "=="]);
+const REPEATED_EXECUTION_NODE_TYPES: ReadonlySet<string> = new Set([
+  "DoWhileStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "ForStatement",
+  "WhileStatement",
+]);
 
 interface StateSetterBinding {
   stateSymbolId: number | null;
@@ -26,6 +35,12 @@ interface StateSetterBinding {
 interface BoundaryTransitions {
   above: Set<boolean>;
   below: Set<boolean>;
+}
+
+interface NumericRefBoundary {
+  operator: string;
+  refSymbolId: number;
+  threshold: number;
 }
 
 const isStateHookTuple = (
@@ -268,12 +283,109 @@ const resolveCurrentRefSymbolId = (
   ) {
     return null;
   }
-  const refExpression = stripParenExpression(candidate.object);
-  if (!isNodeOfType(refExpression, "Identifier")) return null;
-  const refSymbol = scopes.symbolFor(refExpression);
-  return refSymbol?.initializer && isR3fReactApiCall(refSymbol.initializer, "useRef", scopes)
-    ? refSymbol.id
-    : null;
+  return resolveReactRefSymbol(candidate, scopes, { resolveNamedAliases: true })?.id ?? null;
+};
+
+const getNumericRefBoundary = (
+  test: EsTreeNode,
+  scopes: ScopeAnalysis,
+): NumericRefBoundary | null => {
+  const candidate = stripParenExpression(test);
+  if (
+    !isNodeOfType(candidate, "BinaryExpression") ||
+    !["<", "<=", ">", ">="].includes(candidate.operator)
+  ) {
+    return null;
+  }
+  const leftRefSymbolId = resolveCurrentRefSymbolId(candidate.left, scopes);
+  const rightRefSymbolId = resolveCurrentRefSymbolId(candidate.right, scopes);
+  if ((leftRefSymbolId === null) === (rightRefSymbolId === null)) return null;
+  const threshold = getStaticNumber(
+    leftRefSymbolId === null ? candidate.left : candidate.right,
+    scopes,
+  );
+  if (threshold === null || !Number.isFinite(threshold)) return null;
+  let operator = candidate.operator;
+  if (rightRefSymbolId !== null) {
+    if (operator === "<") operator = ">";
+    else if (operator === "<=") operator = ">=";
+    else if (operator === ">") operator = "<";
+    else operator = "<=";
+  }
+  const refSymbolId = leftRefSymbolId ?? rightRefSymbolId;
+  if (refSymbolId === null) return null;
+  return {
+    operator,
+    refSymbolId,
+    threshold,
+  };
+};
+
+const doesValuePassNumericBoundary = (value: number, boundary: NumericRefBoundary): boolean => {
+  if (boundary.operator === "<") return value < boundary.threshold;
+  if (boundary.operator === "<=") return value <= boundary.threshold;
+  if (boundary.operator === ">") return value > boundary.threshold;
+  return value >= boundary.threshold;
+};
+
+const getWrittenCurrentRefSymbolId = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): number | null => {
+  if (isNodeOfType(expression, "AssignmentExpression")) {
+    return resolveCurrentRefSymbolId(expression.left, scopes);
+  }
+  if (isNodeOfType(expression, "UpdateExpression")) {
+    return resolveCurrentRefSymbolId(expression.argument, scopes);
+  }
+  return null;
+};
+
+const isInsideRepeatedExecution = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
+  let current = node.parent;
+  while (current && current !== boundary) {
+    if (REPEATED_EXECUTION_NODE_TYPES.has(current.type)) return true;
+    current = current.parent;
+  }
+  return false;
+};
+
+const branchHasNumericRefReset = (
+  branch: EsTreeNode,
+  setterCall: EsTreeNode,
+  test: EsTreeNode,
+  didTestPass: boolean,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const boundary = getNumericRefBoundary(test, scopes);
+  if (!boundary || isInsideRepeatedExecution(setterCall, branch)) return false;
+  let latestRefWrite: EsTreeNode | null = null;
+  walkAst(branch, (candidate) => {
+    if (candidate !== branch && isFunctionLike(candidate)) return false;
+    if (
+      candidate.range[0] < setterCall.range[0] &&
+      getWrittenCurrentRefSymbolId(candidate, scopes) === boundary.refSymbolId &&
+      (!latestRefWrite || candidate.range[0] > latestRefWrite.range[0])
+    ) {
+      latestRefWrite = candidate;
+    }
+  });
+  if (
+    !latestRefWrite ||
+    !isNodeOfType(latestRefWrite, "AssignmentExpression") ||
+    latestRefWrite.operator !== "=" ||
+    isNodeConditionallyExecuted(latestRefWrite, branch) ||
+    isInsideRepeatedExecution(latestRefWrite, branch) ||
+    !isLatchTransitionGuaranteedForSetter(latestRefWrite, setterCall, branch)
+  ) {
+    return false;
+  }
+  const resetValue = getStaticNumber(latestRefWrite.right, scopes);
+  return (
+    resetValue !== null &&
+    Number.isFinite(resetValue) &&
+    doesValuePassNumericBoundary(resetValue, boundary) !== didTestPass
+  );
 };
 
 const branchGuaranteesRefBoolean = (
@@ -571,6 +683,13 @@ export const isGuardedStateTransition = (
             scopes,
           ) ||
           branchHasRefLatchTransition(
+            currentChild,
+            setterCall,
+            currentAncestor.test,
+            didTestPass,
+            scopes,
+          ) ||
+          branchHasNumericRefReset(
             currentChild,
             setterCall,
             currentAncestor.test,

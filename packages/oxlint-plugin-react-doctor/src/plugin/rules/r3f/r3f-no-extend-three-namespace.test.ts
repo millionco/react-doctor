@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoExtendThreeNamespace } from "./r3f-no-extend-three-namespace.js";
 
 describe("r3f-no-extend-three-namespace", () => {
-  it("reports Three.js and WebGPU namespace registration", () => {
+  it("reports the core Three.js namespace without flagging the official WebGPU setup", () => {
     const result = runRule(
       r3fNoExtendThreeNamespace,
       `
@@ -14,10 +14,10 @@ describe("r3f-no-extend-three-namespace", () => {
         extend(WebGPU);
       `,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("reports whole namespaces spread into direct and immutable aliased catalogues", () => {
+  it("reports the core namespace spread without flagging WebGPU catalogue aliases", () => {
     const result = runRule(
       r3fNoExtendThreeNamespace,
       `
@@ -29,7 +29,21 @@ describe("r3f-no-extend-three-namespace", () => {
         extend(catalogue);
       `,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows the R3F v9 WebGPU namespace catalogue through transparent wrappers", () => {
+    const result = runRule(
+      r3fNoExtendThreeNamespace,
+      `
+        import { extend } from "@react-three/fiber";
+        import * as THREE from "three/webgpu";
+        const WebGPU = THREE;
+        extend(THREE as any);
+        extend({ ...WebGPU });
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("resolves R3F and Three.js namespace aliases across module systems", () => {

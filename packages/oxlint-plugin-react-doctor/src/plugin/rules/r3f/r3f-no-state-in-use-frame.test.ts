@@ -41,6 +41,75 @@ describe("r3f-no-state-in-use-frame", () => {
     expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(1);
   });
 
+  it("allows state transitions throttled by a resetting frame timer", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber/webgpu";
+      import { useRef, useState } from "react";
+      const Scene = () => {
+        const timerRef = useRef(0);
+        const [, setDamages] = useState([]);
+        useFrame((_, delta) => {
+          timerRef.current += delta;
+          if (timerRef.current > 0.3) {
+            timerRef.current = 0;
+            const nextDamage = createDamage();
+            setDamages((damages) => [...damages, nextDamage]);
+            setTimeout(() => setDamages((damages) => damages.slice(1)), 1500);
+          }
+        });
+        return null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(0);
+  });
+
+  it("resolves timer aliases, static computed current, and reversed boundaries", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber";
+      import { useRef as useTimerRef, useState } from "react";
+      const Scene = ({ enabled }) => {
+        const timerRef = useTimerRef(0);
+        const elapsedRef = timerRef;
+        const threshold = 0.3;
+        const [, setPulse] = useState(0);
+        useFrame((_, delta) => {
+          elapsedRef.current += delta;
+          if (enabled) {
+            if (threshold <= elapsedRef["current"]) {
+              elapsedRef.current = -1;
+              setPulse((pulse) => pulse + 1);
+            }
+          }
+        });
+        return null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(0);
+  });
+
+  it("keeps unproven or still-triggering timer resets reportable", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber";
+      import { useRef, useState } from "react";
+      const Scene = ({ shouldReset }) => {
+        const timerRef = useRef(0);
+        const otherRef = useRef(0);
+        const [, setCount] = useState(0);
+        useFrame(() => {
+          if (timerRef.current > 0.3) setCount(1);
+          if (timerRef.current > 0.3) { otherRef.current = 0; setCount(2); }
+          if (timerRef.current > 0.3) { timerRef.current = 1; setCount(3); }
+          if (timerRef.current > 0.3) { timerRef.current = 0; timerRef.current = 1; setCount(4); }
+          if (timerRef.current > 0.3) { setCount(5); timerRef.current = 0; }
+          if (timerRef.current > 0.3) { if (shouldReset) timerRef.current = 0; setCount(6); }
+          if (timerRef.current > 0.3) { for (const item of items) { timerRef.current = 0; setCount(item); } }
+        });
+        return null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(7);
+  });
+
   it("allows mutually exclusive bounded state transitions", () => {
     const code = `
       import { useFrame, useThree } from "@react-three/fiber";

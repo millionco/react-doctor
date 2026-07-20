@@ -16,6 +16,7 @@ import {
 } from "./r3f-no-state-in-use-frame.js";
 
 const DISCRETE_POINTER_HIT_PROPERTY_NAMES: ReadonlySet<string> = new Set([
+  "batchId",
   "faceIndex",
   "instanceId",
 ]);

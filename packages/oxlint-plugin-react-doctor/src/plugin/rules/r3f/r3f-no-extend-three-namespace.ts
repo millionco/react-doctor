@@ -10,7 +10,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getModuleNamespaceSource } from "./utils/get-module-namespace-source.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 
-const THREE_NAMESPACE_MODULES = new Set(["three", "three/webgpu"]);
+const TREE_SHAKING_UNSAFE_NAMESPACE_MODULES = new Set(["three"]);
 const EMPTY_VISITORS: RuleVisitors = {};
 
 const containsThreeNamespaceSpread = (
@@ -36,7 +36,7 @@ const containsThreeNamespaceSpread = (
   return candidate.properties.some(
     (property) =>
       isNodeOfType(property, "SpreadElement") &&
-      THREE_NAMESPACE_MODULES.has(
+      TREE_SHAKING_UNSAFE_NAMESPACE_MODULES.has(
         getModuleNamespaceSource(property.argument, context.scopes) ?? "",
       ),
   );
@@ -62,7 +62,7 @@ export const r3fNoExtendThreeNamespace = defineRule({
           : null;
         if (
           (argumentSymbol && hasSymbolWriteBefore(argumentSymbol, node, context.scopes)) ||
-          (!THREE_NAMESPACE_MODULES.has(
+          (!TREE_SHAKING_UNSAFE_NAMESPACE_MODULES.has(
             getModuleNamespaceSource(catalogueArgument, context.scopes) ?? "",
           ) &&
             !containsThreeNamespaceSpread(catalogueArgument, context))

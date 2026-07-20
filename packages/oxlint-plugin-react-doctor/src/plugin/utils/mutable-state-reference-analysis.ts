@@ -25,6 +25,7 @@ export interface MutableStateReferenceMutation {
 
 export interface CollectMutableStateReferenceMutationsOptions {
   isAdditionalMutatingCall?: (callExpression: EsTreeNodeOfType<"CallExpression">) => boolean;
+  isProvenMutatingMethodCall?: (callExpression: EsTreeNodeOfType<"CallExpression">) => boolean;
 }
 
 const isStaticMethodCallOnNamedObject = (
@@ -194,22 +195,22 @@ export const collectMutableStateReferenceMutations = (
     const callee = stripParenExpression(candidate.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;
     const methodName = getStaticPropertyName(callee);
-    if (
-      !methodName ||
-      (!MUTATING_ARRAY_METHODS.has(methodName) && !MUTATING_COLLECTION_METHODS.has(methodName))
-    ) {
-      return;
+    if (!methodName || !isExpressionRootedInMutableStateSource(callee.object, state)) return;
+    if (options.isProvenMutatingMethodCall) {
+      if (!options.isProvenMutatingMethodCall(candidate)) return;
+    } else {
+      if (!MUTATING_ARRAY_METHODS.has(methodName) && !MUTATING_COLLECTION_METHODS.has(methodName)) {
+        return;
+      }
+      if (
+        MUTATING_COLLECTION_METHODS.has(methodName) &&
+        !MUTATING_ARRAY_METHODS.has(methodName) &&
+        !isResultDiscardedCall(candidate)
+      ) {
+        return;
+      }
     }
-    if (
-      MUTATING_COLLECTION_METHODS.has(methodName) &&
-      !MUTATING_ARRAY_METHODS.has(methodName) &&
-      !isResultDiscardedCall(candidate)
-    ) {
-      return;
-    }
-    if (isExpressionRootedInMutableStateSource(callee.object, state)) {
-      mutations.push({ node: candidate, receiver: callee.object });
-    }
+    mutations.push({ node: candidate, receiver: callee.object });
   });
   return mutations;
 };

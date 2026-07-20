@@ -1,8 +1,10 @@
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { functionReturnsCollectionAtPath } from "../../utils/function-returns-collection-at-path.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -349,6 +351,7 @@ const analyzeSetUpdater = (
   updaterFunction: EsTreeNode,
   getSymbolIds: ReadonlySet<number>,
   storeSymbolIds: ReadonlySet<number>,
+  creatorFunction: ZustandStoreCreator["creatorFunction"],
   context: RuleContext,
   reportedNodes: WeakSet<EsTreeNode>,
 ): void => {
@@ -361,10 +364,14 @@ const analyzeSetUpdater = (
   };
   const returnedExpressions = returnedExpressionsForFunction(updaterFunction);
   const mutations: MutableStateReferenceMutation[] = [];
+  const mutationOptions = {
+    isProvenMutatingMethodCall: (callExpression: EsTreeNodeOfType<"CallExpression">) =>
+      isProvenZustandMutatingMethodCall(callExpression, creatorFunction, context),
+  };
   if (isNodeOfType(updaterFunction.body, "BlockStatement")) {
     if (hasUnsupportedControlFlow(updaterFunction.body.body)) return;
     for (const statement of updaterFunction.body.body) {
-      mutations.push(...collectMutableStateReferenceMutations(statement, state));
+      mutations.push(...collectMutableStateReferenceMutations(statement, state, mutationOptions));
       if (isNodeOfType(statement, "VariableDeclaration")) {
         updateMutableStateReferencesForVariableDeclaration(statement, state);
       } else if (isNodeOfType(statement, "ExpressionStatement")) {
@@ -376,7 +383,9 @@ const analyzeSetUpdater = (
       if (isNodeOfType(statement, "ReturnStatement")) break;
     }
   } else {
-    mutations.push(...collectMutableStateReferenceMutations(updaterFunction.body, state));
+    mutations.push(
+      ...collectMutableStateReferenceMutations(updaterFunction.body, state, mutationOptions),
+    );
   }
   for (const mutation of mutations) {
     const mutationPath = staticPropertyPathForExpression(mutation.receiver, context);
@@ -470,6 +479,43 @@ const staticPropertyPathForExpression = (
   }
   if (isNodeOfType(candidate, "CallExpression")) return [];
   return null;
+};
+
+const isProvenZustandMutatingMethodCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  creatorFunction: ZustandStoreCreator["creatorFunction"],
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyName(callee);
+  const receiverPath = staticPropertyPathForExpression(
+    callee.object,
+    context,
+    new Set<number>(),
+    true,
+  );
+  if (!methodName || !receiverPath) return false;
+  if (
+    MUTATING_ARRAY_METHODS.has(methodName) &&
+    functionReturnsCollectionAtPath({
+      collectionKind: "array",
+      functionNode: creatorFunction,
+      propertyPath: receiverPath,
+      scopes: context.scopes,
+    })
+  ) {
+    return true;
+  }
+  return (
+    MUTATING_COLLECTION_METHODS.has(methodName) &&
+    functionReturnsCollectionAtPath({
+      collectionKind: "map-or-set",
+      functionNode: creatorFunction,
+      propertyPath: receiverPath,
+      scopes: context.scopes,
+    })
+  );
 };
 
 const isProvenFreshReplacementExpression = (
@@ -927,6 +973,8 @@ const updateSnapshotStateForStatement = (
 const collectSequentialSnapshotMutations = (
   branchRoot: EsTreeNode,
   state: MutableStateReferenceState,
+  creatorFunction: ZustandStoreCreator["creatorFunction"],
+  context: RuleContext,
 ): MutableStateReferenceMutation[] => {
   const branchState: MutableStateReferenceState = {
     mutableStateSourceNames: new Set(state.mutableStateSourceNames),
@@ -936,15 +984,35 @@ const collectSequentialSnapshotMutations = (
   }
   const statements = isNodeOfType(branchRoot, "BlockStatement") ? branchRoot.body : [branchRoot];
   const mutations: MutableStateReferenceMutation[] = [];
+  const mutationOptions = {
+    isProvenMutatingMethodCall: (callExpression: EsTreeNodeOfType<"CallExpression">) =>
+      isProvenZustandMutatingMethodCall(callExpression, creatorFunction, context),
+  };
   for (const statement of statements) {
     if (isNodeOfType(statement, "IfStatement")) {
-      mutations.push(...collectSequentialSnapshotMutations(statement.consequent, branchState));
+      mutations.push(
+        ...collectSequentialSnapshotMutations(
+          statement.consequent,
+          branchState,
+          creatorFunction,
+          context,
+        ),
+      );
       if (statement.alternate) {
-        mutations.push(...collectSequentialSnapshotMutations(statement.alternate, branchState));
+        mutations.push(
+          ...collectSequentialSnapshotMutations(
+            statement.alternate,
+            branchState,
+            creatorFunction,
+            context,
+          ),
+        );
       }
       continue;
     }
-    mutations.push(...collectMutableStateReferenceMutations(statement, branchState));
+    mutations.push(
+      ...collectMutableStateReferenceMutations(statement, branchState, mutationOptions),
+    );
     updateSnapshotStateForStatement(statement, branchState);
   }
   return mutations;
@@ -956,6 +1024,7 @@ const analyzeSnapshotContainer = (
   setSymbolIds: ReadonlySet<number>,
   snapshotStoreSymbolIds: ReadonlySet<number>,
   notifierStoreSymbolIds: ReadonlySet<number>,
+  creatorFunction: ZustandStoreCreator["creatorFunction"],
   context: RuleContext,
   reportedNodes: WeakSet<EsTreeNode>,
   returnedUpdateExpressions: readonly EsTreeNode[] = [],
@@ -969,12 +1038,21 @@ const analyzeSnapshotContainer = (
   const mutations: MutationWithStatementIndex[] = [];
   const notifierCalls: NotifierCallWithStatementIndex[] = [];
   const conditionalNotifierGroups: ConditionalNotifierGroupWithStatementIndex[] = [];
+  const mutationOptions = {
+    isProvenMutatingMethodCall: (callExpression: EsTreeNodeOfType<"CallExpression">) =>
+      isProvenZustandMutatingMethodCall(callExpression, creatorFunction, context),
+  };
   for (let statementIndex = 0; statementIndex < statements.length; statementIndex += 1) {
     const statement = statements[statementIndex];
     if (isNodeOfType(statement, "IfStatement")) {
       for (const branchRoot of [statement.consequent, statement.alternate]) {
         if (!branchRoot) continue;
-        for (const mutation of collectSequentialSnapshotMutations(branchRoot, state)) {
+        for (const mutation of collectSequentialSnapshotMutations(
+          branchRoot,
+          state,
+          creatorFunction,
+          context,
+        )) {
           mutations.push({ branchRoot, mutation, statementIndex });
         }
         const calls = collectNotifierCalls(
@@ -988,7 +1066,11 @@ const analyzeSnapshotContainer = (
         }
       }
     } else {
-      for (const mutation of collectMutableStateReferenceMutations(statement, state)) {
+      for (const mutation of collectMutableStateReferenceMutations(
+        statement,
+        state,
+        mutationOptions,
+      )) {
         mutations.push({ branchRoot: null, mutation, statementIndex });
       }
       for (const callExpression of collectNotifierCalls(
@@ -1029,28 +1111,29 @@ const analyzeSnapshotContainer = (
       ...returnedUpdateExpressions.map((expression) =>
         updateTargetReplacementDisposition(expression, mutation, context),
       ),
-      ...conditionalNotifierGroups
-        .filter((group) => {
-          if (group.statementIndex < statementIndex) return false;
-          const mutationStart = getRangeStart(mutation.node);
-          const groupStart = getRangeStart(group.statement);
-          return (
-            mutationStart !== null &&
-            groupStart !== null &&
-            groupStart > mutationStart &&
-            branchPathCompatibility(group.statement, mutation) === true
-          );
-        })
-        .map((group) =>
-          notifierFlowTargetReplacementDisposition(
-            group.statement,
-            mutation,
-            setSymbolIds,
-            notifierStoreSymbolIds,
-            context,
-          ),
-        ),
     ];
+    for (const group of conditionalNotifierGroups) {
+      if (group.statementIndex < statementIndex) continue;
+      const mutationStart = getRangeStart(mutation.node);
+      const groupStart = getRangeStart(group.statement);
+      if (
+        mutationStart === null ||
+        groupStart === null ||
+        groupStart <= mutationStart ||
+        branchPathCompatibility(group.statement, mutation) !== true
+      ) {
+        continue;
+      }
+      replacementDispositions.push(
+        notifierFlowTargetReplacementDisposition(
+          group.statement,
+          mutation,
+          setSymbolIds,
+          notifierStoreSymbolIds,
+          context,
+        ),
+      );
+    }
     if (replacementDispositions.some((disposition) => disposition !== false)) {
       continue;
     }
@@ -1146,6 +1229,7 @@ export const zustandNoMutatingState = defineRule({
                 updaterFunction,
                 binding.getSymbol ? new Set([binding.getSymbol.id]) : new Set(),
                 binding.storeSymbolIds,
+                binding.creatorFunction,
                 context,
                 reportedNodes,
               );
@@ -1167,6 +1251,7 @@ export const zustandNoMutatingState = defineRule({
               updaterFunction,
               new Set(),
               new Set([storeSymbolId]),
+              binding.creatorFunction,
               context,
               reportedNodes,
             );
@@ -1177,6 +1262,7 @@ export const zustandNoMutatingState = defineRule({
           setSymbolIds: ReadonlySet<number>,
           snapshotStoreSymbolIds: ReadonlySet<number>,
           notifierStoreSymbolIds: ReadonlySet<number>,
+          creatorFunction: ZustandStoreCreator["creatorFunction"],
         ): void => {
           if (programNode) {
             analyzeSnapshotContainer(
@@ -1185,6 +1271,7 @@ export const zustandNoMutatingState = defineRule({
               setSymbolIds,
               snapshotStoreSymbolIds,
               notifierStoreSymbolIds,
+              creatorFunction,
               context,
               reportedNodes,
             );
@@ -1208,6 +1295,7 @@ export const zustandNoMutatingState = defineRule({
               setSymbolIds,
               snapshotStoreSymbolIds,
               notifierStoreSymbolIds,
+              creatorFunction,
               context,
               reportedNodes,
               isUpdaterNotifierForProvenance
@@ -1227,10 +1315,22 @@ export const zustandNoMutatingState = defineRule({
             getSymbolIds.add(binding.getSymbol.id);
           }
           if (binding.setSymbol) setSymbolIds.add(binding.setSymbol.id);
-          analyzeProvenance(getSymbolIds, setSymbolIds, new Set<number>(), binding.storeSymbolIds);
+          analyzeProvenance(
+            getSymbolIds,
+            setSymbolIds,
+            new Set<number>(),
+            binding.storeSymbolIds,
+            binding.creatorFunction,
+          );
           for (const storeSymbolId of binding.storeSymbolIds) {
             const storeSymbolIds = new Set([storeSymbolId]);
-            analyzeProvenance(new Set<number>(), new Set<number>(), storeSymbolIds, storeSymbolIds);
+            analyzeProvenance(
+              new Set<number>(),
+              new Set<number>(),
+              storeSymbolIds,
+              storeSymbolIds,
+              binding.creatorFunction,
+            );
           }
         }
       },

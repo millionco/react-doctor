@@ -83,6 +83,12 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", lazy: async () => ({ Component, loader }) }]);',
   },
   {
+    name: "allows every lazy return path to use mutable route properties",
+    rule: reactRouterNoInvalidLazyRouteProperties,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", lazy: async () => { if (compact) return { Component }; return { loader }; } }]);',
+  },
+  {
     name: "allows request bodies in actions",
     rule: reactRouterNoLoaderRequestBody,
     source: "export async function action({ request }) { return request.formData(); }",
@@ -152,6 +158,20 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterLoaderFetchForwardsSignal,
     source:
       'export async function loader({ request: routeRequest }) { return fetch("/api/profile", { signal: routeRequest.signal }); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+  },
+  {
+    name: "allows a local request signal alias",
+    rule: reactRouterLoaderFetchForwardsSignal,
+    source:
+      'export async function loader({ request }) { const signal = request.signal; return fetch("/api/profile", { signal }); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+  },
+  {
+    name: "allows a request signal destructuring alias",
+    rule: reactRouterLoaderFetchForwardsSignal,
+    source:
+      'export async function loader({ request }) { const { signal } = request; return fetch("/api/profile", { signal }); }',
     ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
@@ -235,6 +255,12 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterServerMiddlewareReturnResponse,
     source:
       'export const middleware = [async (_context, next) => { await next(); return new Response("replacement"); }];',
+  },
+  {
+    name: "allows middleware to return a bound next response",
+    rule: reactRouterServerMiddlewareReturnResponse,
+    source:
+      "export const middleware = [async (_context, next) => { const response = await next(); return response; }];",
   },
   {
     name: "allows unique route IDs",
@@ -612,6 +638,15 @@ describe("React Router rule regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports forbidden lazy properties from nested and later returns", () => {
+    const result = runRule(
+      reactRouterNoInvalidLazyRouteProperties,
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", lazy: async () => { if (compact) { return { id: "compact" }; } return { path: "/changed" }; } }]);',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("ignores descendant routes declared only by a nested helper", () => {
     const result = runRule(
       reactRouterDescendantRoutesRequireSplat,
@@ -643,6 +678,24 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterNoMiddlewareResponseBodyConsumption,
       "export const middleware = [async (_context, next) => { const response = await next(); await response.json(); return response; }];",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a bound middleware response that is never returned", () => {
+    const result = runRule(
+      reactRouterServerMiddlewareReturnResponse,
+      "export const middleware = [async (_context, next) => { const response = await next(); response.headers.set('x-trace', '1'); }];",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a middleware response returned on only one later path", () => {
+    const result = runRule(
+      reactRouterServerMiddlewareReturnResponse,
+      "export const middleware = [async ({ includeResponse }, next) => { const response = await next(); if (includeResponse) return response; }];",
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

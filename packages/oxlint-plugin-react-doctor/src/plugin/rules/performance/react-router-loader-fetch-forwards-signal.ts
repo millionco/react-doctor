@@ -2,6 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -28,10 +30,32 @@ const isRequestSignal = (
   context: RuleContext,
   expression: EsTreeNode,
   loaderFunction: EsTreeNode,
-): boolean =>
-  isNodeOfType(expression, "MemberExpression") &&
-  getStaticPropertyKeyName(expression, { allowComputedString: true }) === "signal" &&
-  isRouteRequestExpression(context, expression.object, loaderFunction);
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  if (
+    isNodeOfType(expression, "MemberExpression") &&
+    getStaticPropertyKeyName(expression, { allowComputedString: true }) === "signal" &&
+    isRouteRequestExpression(context, expression.object, loaderFunction)
+  ) {
+    return true;
+  }
+  if (!isNodeOfType(expression, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(expression);
+  if (symbol === null || visitedSymbolIds.has(symbol.id)) return false;
+  visitedSymbolIds.add(symbol.id);
+  const destructuredPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
+  if (destructuredPropertyName !== null) {
+    return (
+      symbol.kind === "const" &&
+      destructuredPropertyName === "signal" &&
+      symbol.initializer !== null &&
+      isRouteRequestExpression(context, symbol.initializer, loaderFunction)
+    );
+  }
+  const initializer = getDirectUnreassignedInitializer(symbol);
+  if (initializer === null) return false;
+  return isRequestSignal(context, initializer, loaderFunction, visitedSymbolIds);
+};
 
 const optionsForwardRequestSignal = (
   context: RuleContext,

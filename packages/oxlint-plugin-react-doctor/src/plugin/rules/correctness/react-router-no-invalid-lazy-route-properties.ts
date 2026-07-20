@@ -1,4 +1,5 @@
 import { REACT_ROUTER_LAZY_FORBIDDEN_PROPERTY_NAMES } from "../../constants/react-router.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -16,19 +17,14 @@ const ROUTE_CONFIG_EXPORT_NAMES = new Set([
   "useRoutes",
 ]);
 
-const findReturnedObject = (functionNode: EsTreeNode): EsTreeNode | null => {
-  if (!isFunctionLike(functionNode)) return null;
-  if (isNodeOfType(functionNode.body, "ObjectExpression")) return functionNode.body;
-  if (!isNodeOfType(functionNode.body, "BlockStatement")) return null;
-  for (const statement of functionNode.body.body ?? []) {
-    if (
-      isNodeOfType(statement, "ReturnStatement") &&
-      isNodeOfType(statement.argument, "ObjectExpression")
-    ) {
-      return statement.argument;
-    }
-  }
-  return null;
+const collectReturnedObjects = (
+  functionNode: EsTreeNode,
+): EsTreeNodeOfType<"ObjectExpression">[] => {
+  if (!isFunctionLike(functionNode)) return [];
+  if (isNodeOfType(functionNode.body, "ObjectExpression")) return [functionNode.body];
+  return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
+    isNodeOfType(returnStatement.argument, "ObjectExpression") ? [returnStatement.argument] : [],
+  );
 };
 
 const isInsideRouteConfigCall = (context: RuleContext, node: EsTreeNode): boolean => {
@@ -60,20 +56,20 @@ export const reactRouterNoInvalidLazyRouteProperties = wrapReactRouterRule(
       Property(node: EsTreeNodeOfType<"Property">) {
         if (getStaticPropertyKeyName(node, { allowComputedString: true }) !== "lazy") return;
         if (!isInsideRouteConfigCall(context, node)) return;
-        const returnedObject = findReturnedObject(node.value);
-        if (!isNodeOfType(returnedObject, "ObjectExpression")) return;
-        for (const property of returnedObject.properties ?? []) {
-          const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-          if (
-            propertyName === null ||
-            !REACT_ROUTER_LAZY_FORBIDDEN_PROPERTY_NAMES.has(propertyName)
-          ) {
-            continue;
+        for (const returnedObject of collectReturnedObjects(node.value)) {
+          for (const property of returnedObject.properties ?? []) {
+            const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+            if (
+              propertyName === null ||
+              !REACT_ROUTER_LAZY_FORBIDDEN_PROPERTY_NAMES.has(propertyName)
+            ) {
+              continue;
+            }
+            context.report({
+              node: property,
+              message: `lazy() cannot change the route-matching property '${propertyName}'.`,
+            });
           }
-          context.report({
-            node: property,
-            message: `lazy() cannot change the route-matching property '${propertyName}'.`,
-          });
         }
       },
     }),

@@ -262,6 +262,12 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { useSearchParams } from "react-router"; export function Filters() { const [, setParams] = useSearchParams(); const update = async () => { setParams({ phase: "start" }); await save(); setParams({ phase: "done" }); }; return <button onClick={update} />; }',
   },
   {
+    name: "allows search param updates separated by an early return",
+    rule: reactRouterNoMultipleSetSearchParamsInTick,
+    source:
+      'import { useSearchParams } from "react-router"; export function Filters({ compact }) { const [, setParams] = useSearchParams(); if (compact) { setParams({ view: "compact" }); return null; } setParams({ view: "full" }); return null; }',
+  },
+  {
     name: "allows a middleware catch with another throwing operation",
     rule: reactRouterNoCatchMiddlewareNext,
     source:
@@ -380,6 +386,12 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterCspNonceConsistency,
     source:
       'import { ServerRouter } from "react-router"; import { renderToPipeableStream } from "react-dom/server"; export const render = (request, context) => renderToPipeableStream(<ServerRouter context={context} url={request.url} nonce={context.nonce} />, { nonce: context.nonce });',
+  },
+  {
+    name: "allows the same string CSP nonce",
+    rule: reactRouterCspNonceConsistency,
+    source:
+      'import { ServerRouter } from "react-router"; import { renderToPipeableStream } from "react-dom/server"; export const render = (request, context) => renderToPipeableStream(<ServerRouter context={context} url={request.url} nonce="fixed" />, { nonce: "fixed" });',
   },
   {
     name: "allows modules whose ordinary name starts with client",
@@ -770,6 +782,24 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterNoMultipleSetSearchParamsInTick,
       'import { useSearchParams } from "react-router"; export function Filters() { const [, setParams] = useSearchParams(); const update = () => { setParams(setParams({ page: "1" })); }; return <button onClick={update} />; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a later search param update inside a nested block", () => {
+    const result = runRule(
+      reactRouterNoMultipleSetSearchParamsInTick,
+      'import { useSearchParams } from "react-router"; export function Filters({ compact }) { const [, setParams] = useSearchParams(); setParams({ page: "1" }); if (compact) { setParams({ view: "compact" }); } return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a string CSP nonce passed only to ServerRouter", () => {
+    const result = runRule(
+      reactRouterCspNonceConsistency,
+      'import { ServerRouter } from "react-router"; import { renderToPipeableStream } from "react-dom/server"; export const render = (request, context) => renderToPipeableStream(<ServerRouter context={context} url={request.url} nonce="fixed" />, {});',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

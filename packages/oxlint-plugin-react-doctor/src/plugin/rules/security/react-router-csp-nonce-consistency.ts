@@ -14,7 +14,9 @@ const SERVER_RENDER_EXPORT_NAMES = new Set(["renderToPipeableStream", "renderToR
 
 const getJsxNonceExpression = (node: EsTreeNodeOfType<"JSXOpeningElement">): EsTreeNode | null => {
   const nonceAttribute = hasJsxProp(node.attributes ?? [], "nonce");
-  if (!nonceAttribute || !isNodeOfType(nonceAttribute.value, "JSXExpressionContainer")) return null;
+  if (!nonceAttribute) return null;
+  if (isNodeOfType(nonceAttribute.value, "Literal")) return nonceAttribute.value;
+  if (!isNodeOfType(nonceAttribute.value, "JSXExpressionContainer")) return null;
   return isNodeOfType(nonceAttribute.value.expression, "JSXEmptyExpression")
     ? null
     : nonceAttribute.value.expression;

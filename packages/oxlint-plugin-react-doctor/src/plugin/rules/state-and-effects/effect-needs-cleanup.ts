@@ -13,6 +13,7 @@ import {
   WHOLE_RECEIVER_RELEASE_ARGUMENT_COUNT,
 } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-later-node-within-function.js";
 import {
   collectEffectInvokedFunctions,
   collectSynchronouslyEffectInvokedFunctions,
@@ -1771,43 +1772,6 @@ const collectBlockingBooleanStates = (
           value: blockedExpressionValue,
         },
       ];
-};
-
-const canNodeReachLaterNodeWithinFunction = (
-  sourceNode: EsTreeNode,
-  targetNode: EsTreeNode,
-  owner: EsTreeNode,
-  context: RuleContext,
-): boolean => {
-  const functionCfg = context.cfg.cfgFor(owner);
-  const sourceBlock = functionCfg?.blockOf(sourceNode);
-  const targetBlock = functionCfg?.blockOf(targetNode);
-  const sourceStart = getRangeStart(sourceNode);
-  const targetStart = getRangeStart(targetNode);
-  if (
-    !functionCfg ||
-    !sourceBlock ||
-    !targetBlock ||
-    sourceStart === null ||
-    targetStart === null
-  ) {
-    return true;
-  }
-  if (!isNodeReachableWithinFunction(sourceNode, context)) return false;
-  if (sourceBlock === targetBlock) return sourceStart < targetStart;
-  const visitedBlocks = new Set([sourceBlock]);
-  const pendingBlocks = [sourceBlock];
-  while (pendingBlocks.length > 0) {
-    const currentBlock = pendingBlocks.pop();
-    if (!currentBlock) break;
-    for (const edge of currentBlock.successors) {
-      if (edge.to === targetBlock) return true;
-      if (visitedBlocks.has(edge.to)) continue;
-      visitedBlocks.add(edge.to);
-      pendingBlocks.push(edge.to);
-    }
-  }
-  return false;
 };
 
 const collectDeferredUsageGuardStates = (

@@ -1,38 +1,50 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { areNodesInMutuallyExclusiveBranches } from "../../utils/are-nodes-in-mutually-exclusive-branches.js";
-import { containsDirectAwait } from "../../utils/contains-direct-await.js";
+import { canNodeReachLaterNodeWithinFunction } from "../../utils/can-node-reach-later-node-within-function.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
-interface BlockStatementPosition {
-  block: EsTreeNodeOfType<"BlockStatement">;
-  callExpression: EsTreeNode;
-  statementIndex: number;
-}
+const hasDirectAwaitBetween = (
+  firstCall: EsTreeNode,
+  secondCall: EsTreeNode,
+  functionNode: EsTreeNode,
+): boolean => {
+  const firstCallStart = getRangeStart(firstCall);
+  const secondCallStart = getRangeStart(secondCall);
+  if (firstCallStart === null || secondCallStart === null) return true;
+  let foundAwait = false;
+  walkAst(functionNode, (node: EsTreeNode) => {
+    if (foundAwait) return false;
+    if (node !== functionNode && isFunctionLike(node)) return false;
+    if (!isNodeOfType(node, "AwaitExpression")) return;
+    const awaitStart = getRangeStart(node);
+    if (awaitStart !== null && awaitStart > firstCallStart && awaitStart < secondCallStart) {
+      foundAwait = true;
+      return false;
+    }
+  });
+  return foundAwait;
+};
 
-const findBlockStatementPosition = (node: EsTreeNode): BlockStatementPosition | null => {
-  const callExpression = node;
-  let current: EsTreeNode | null | undefined = node;
-  while (current !== null && current !== undefined) {
-    const parent = current.parent;
-    if (isNodeOfType(parent, "BlockStatement")) {
-      const statementIndex = parent.body.findIndex((statement) => statement === current);
-      return statementIndex < 0 ? null : { block: parent, callExpression, statementIndex };
-    }
-    if (
-      isNodeOfType(current, "FunctionDeclaration") ||
-      isNodeOfType(current, "FunctionExpression") ||
-      isNodeOfType(current, "ArrowFunctionExpression")
-    ) {
-      return null;
-    }
-    current = current.parent;
+const canExecuteAfter = (
+  firstCall: EsTreeNode,
+  secondCall: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const functionNode = context.cfg.enclosingFunction(firstCall);
+  if (functionNode === null || context.cfg.enclosingFunction(secondCall) !== functionNode) {
+    return null;
   }
-  return null;
+  return canNodeReachLaterNodeWithinFunction(firstCall, secondCall, functionNode, context)
+    ? functionNode
+    : null;
 };
 
 export const reactRouterNoMultipleSetSearchParamsInTick = wrapReactRouterRule(
@@ -60,43 +72,35 @@ export const reactRouterNoMultipleSetSearchParamsInTick = wrapReactRouterRule(
         const setterSymbol = context.scopes.symbolFor(setterBinding);
         if (setterSymbol === null) return;
 
-        const previousCallByBlock = new Map<EsTreeNode, BlockStatementPosition>();
-        for (const reference of setterSymbol.references) {
-          const callExpression = reference.identifier.parent;
-          if (
-            !isNodeOfType(callExpression, "CallExpression") ||
-            callExpression.callee !== reference.identifier
-          ) {
-            continue;
-          }
-          const position = findBlockStatementPosition(callExpression);
-          if (position === null) continue;
-          const previousPosition = previousCallByBlock.get(position.block);
-          if (previousPosition === undefined) {
-            previousCallByBlock.set(position.block, position);
-            continue;
-          }
-          if (
-            previousPosition.statementIndex === position.statementIndex &&
-            areNodesInMutuallyExclusiveBranches(
-              previousPosition.callExpression,
-              position.callExpression,
-            )
-          ) {
-            continue;
-          }
-          const hasAwaitBetween = position.block.body
-            .slice(previousPosition.statementIndex + 1, position.statementIndex)
-            .some((statement) => containsDirectAwait(statement));
-          if (hasAwaitBetween) {
-            previousCallByBlock.set(position.block, position);
-            continue;
-          }
+        const setterCalls = setterSymbol.references
+          .flatMap((reference) => {
+            const callExpression = reference.identifier.parent;
+            return isNodeOfType(callExpression, "CallExpression") &&
+              callExpression.callee === reference.identifier
+              ? [callExpression]
+              : [];
+          })
+          .sort((firstCall, secondCall) => {
+            const firstStart = getRangeStart(firstCall) ?? 0;
+            const secondStart = getRangeStart(secondCall) ?? 0;
+            return firstStart - secondStart;
+          });
+        for (let callIndex = 1; callIndex < setterCalls.length; callIndex += 1) {
+          const callExpression = setterCalls[callIndex];
+          if (callExpression === undefined) continue;
+          const hasEarlierSynchronousCall = setterCalls.slice(0, callIndex).some((previousCall) => {
+            if (areNodesInMutuallyExclusiveBranches(previousCall, callExpression)) return false;
+            const functionNode = canExecuteAfter(previousCall, callExpression, context);
+            return (
+              functionNode !== null &&
+              !hasDirectAwaitBetween(previousCall, callExpression, functionNode)
+            );
+          });
+          if (!hasEarlierSynchronousCall) continue;
           context.report({
             node: callExpression,
-            message: `${setterBinding.name}() is called more than once in this block, so an earlier update can be discarded.`,
+            message: `${setterBinding.name}() is called more than once on the same synchronous path, so an earlier update can be discarded.`,
           });
-          previousCallByBlock.set(position.block, position);
         }
       },
     }),

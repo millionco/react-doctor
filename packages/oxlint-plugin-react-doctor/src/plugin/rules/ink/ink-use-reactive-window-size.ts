@@ -8,8 +8,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isProcessStdoutMember } from "../../utils/is-process-stdout-member.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -18,15 +18,10 @@ const WINDOW_DIMENSION_NAMES = new Set(["columns", "rows"]);
 const RESIZE_LISTENER_METHOD_NAMES = new Set(["addListener", "on", "once"]);
 const REACTIVE_HOOK_NAMES = new Set(["useReducer", "useState"]);
 
-const isProcessStdout = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
-  isNodeOfType(node, "MemberExpression") &&
-  getStaticPropertyName(node) === "stdout" &&
-  isProvenGlobalNamespaceReference(node.object, "process", scopes);
-
 const resolveListenerFunction = (
   node: EsTreeNode | null | undefined,
   scopes: ScopeAnalysis,
-  visitedSymbolIds: ReadonlySet<number> = new Set(),
+  visitedSymbolIds: Set<number> = new Set(),
 ): EsTreeNode | null => {
   if (!node) return null;
   const unwrappedNode = stripParenExpression(node);
@@ -39,11 +34,8 @@ const resolveListenerFunction = (
   if (!isNodeOfType(unwrappedNode, "Identifier")) return null;
   const symbol = scopes.symbolFor(unwrappedNode);
   if (!symbol || visitedSymbolIds.has(symbol.id) || !symbol.initializer) return null;
-  return resolveListenerFunction(
-    symbol.initializer,
-    scopes,
-    new Set([...visitedSymbolIds, symbol.id]),
-  );
+  visitedSymbolIds.add(symbol.id);
+  return resolveListenerFunction(symbol.initializer, scopes, visitedSymbolIds);
 };
 
 const isReactStateUpdater = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -100,7 +92,7 @@ const hasStdoutResizeListener = (componentNode: EsTreeNode, scopes: ScopeAnalysi
       !isNodeOfType(descendantNode, "CallExpression") ||
       !isNodeOfType(descendantNode.callee, "MemberExpression") ||
       !RESIZE_LISTENER_METHOD_NAMES.has(getStaticPropertyName(descendantNode.callee) ?? "") ||
-      !isProcessStdout(descendantNode.callee.object, scopes) ||
+      !isProcessStdoutMember(descendantNode.callee.object, scopes) ||
       !isNodeOfType(descendantNode.arguments[0], "Literal") ||
       descendantNode.arguments[0].value !== "resize" ||
       !listenerBelongsToComponent(descendantNode, componentNode)
@@ -134,7 +126,7 @@ export const inkUseReactiveWindowSize = defineRule({
       const componentNode = findRenderPhaseComponentOrHook(node, context.scopes);
       if (
         !isNodeOfType(node.object, "MemberExpression") ||
-        !isProcessStdout(node.object, context.scopes) ||
+        !isProcessStdoutMember(node.object, context.scopes) ||
         !componentNode ||
         !componentRendersInk(componentNode, context.scopes) ||
         hasStdoutResizeListener(componentNode, context.scopes)

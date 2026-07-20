@@ -12,7 +12,6 @@ export const findNearestInkJsxElement = (
     if (isNodeOfType(ancestorNode, "JSXElement")) {
       const inkElementName = resolveInkJsxElementName(ancestorNode.openingElement, scopes);
       if (inkElementName) return inkElementName;
-      return null;
     }
     ancestorNode = ancestorNode.parent;
   }

@@ -5,8 +5,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isProcessStdoutMember } from "../../utils/is-process-stdout-member.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { resolveInkApiName } from "../../utils/resolve-ink-api-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -48,14 +48,6 @@ const resolveInkRenderOutput = (
   return output;
 };
 
-const isProcessStdoutExpression = (node: EsTreeNode | null, context: RuleContext): boolean =>
-  Boolean(
-    node &&
-    isNodeOfType(node, "MemberExpression") &&
-    getStaticPropertyName(node) === "stdout" &&
-    isProvenGlobalNamespaceReference(node.object, "process", context.scopes),
-  );
-
 const areSameStableOutputBindings = (
   leftNode: EsTreeNode | null,
   rightNode: EsTreeNode | null,
@@ -82,9 +74,9 @@ const doInkRenderCallsShareOutput = (
   const rightOutput = resolveInkRenderOutput(rightCall);
   if (!leftOutput || !rightOutput) return false;
   const leftUsesProcessStdout =
-    leftOutput.isDefault || isProcessStdoutExpression(leftOutput.expression, context);
+    leftOutput.isDefault || isProcessStdoutMember(leftOutput.expression, context.scopes);
   const rightUsesProcessStdout =
-    rightOutput.isDefault || isProcessStdoutExpression(rightOutput.expression, context);
+    rightOutput.isDefault || isProcessStdoutMember(rightOutput.expression, context.scopes);
   if (leftUsesProcessStdout || rightUsesProcessStdout) {
     return leftUsesProcessStdout && rightUsesProcessStdout;
   }
@@ -242,16 +234,18 @@ export const inkNoRepeatedRender = defineRule({
         if (resolveInkApiName(node.callee, context.scopes) !== "render") return;
         const owner = context.cfg.enclosingFunction(node);
         if (!owner) return;
-        const previousRenderCalls = renderCallsByOwner.get(owner) ?? [];
-        renderCallsByOwner.set(owner, [...previousRenderCalls, node]);
-        if (
-          !previousRenderCalls.some(
+        const previousRenderCalls = renderCallsByOwner.get(owner);
+        const didRenderBeforeUnmount = Boolean(
+          previousRenderCalls?.some(
             (call) =>
               doInkRenderCallsShareOutput(call, node, context) &&
               canExecuteAfter(call, node, owner, context) &&
               !isRenderUnmountedBefore(owner, call, node, context),
-          )
-        ) {
+          ),
+        );
+        if (previousRenderCalls) previousRenderCalls.push(node);
+        else renderCallsByOwner.set(owner, [node]);
+        if (!didRenderBeforeUnmount) {
           return;
         }
         context.report({

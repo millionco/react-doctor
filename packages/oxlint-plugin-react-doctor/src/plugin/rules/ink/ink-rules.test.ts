@@ -191,6 +191,11 @@ describe("Ink rules", () => {
     expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(0);
   });
 
+  it("finds Ink ancestors through custom JSX wrappers for layout checks", () => {
+    const code = `import {Text,Box} from "ink"; const Wrapper=({children}) => <>{children}</>; const App=()=> <Text><Wrapper><Box /></Wrapper></Text>;`;
+    expect(runRule(inkNoLayoutInsideText, code).diagnostics).toHaveLength(1);
+  });
+
   it("classifies same-file Ink children forwarders", () => {
     const code = `
       import {Box as InkBox,Text as InkText} from "ink";
@@ -404,7 +409,7 @@ describe("Ink rules", () => {
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(0);
   });
 
-  it("fails closed for unresolved renderer options", () => {
+  it("treats spread renderer options as unresolved", () => {
     const ctrlCCode = `
       import {render,useInput} from "ink";
       const App=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
@@ -463,6 +468,11 @@ describe("Ink rules", () => {
       export const App=()=> <Text>Ready</Text>;
     `;
     expect(runRule(inkUseSuspendTerminal, code).diagnostics).toHaveLength(0);
+  });
+
+  it("allows DOM router route tables that render Ink elements", () => {
+    const code = `import {Box} from "ink"; import {createBrowserRouter} from "react-router-dom"; createBrowserRouter([{path:"/",element:<Box />}]);`;
+    expect(runRule(inkNoDomRouter, code).diagnostics).toHaveLength(0);
   });
 
   it("ignores ordinary input length checks and shadowed nested input", () => {

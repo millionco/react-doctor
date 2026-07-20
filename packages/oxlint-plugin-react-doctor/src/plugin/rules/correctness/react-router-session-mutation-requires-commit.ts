@@ -92,8 +92,7 @@ export const reactRouterSessionMutationRequiresCommit = wrapReactRouterRule(
           }
         });
         const uncommittedMutation = mutationCalls.find(
-          (mutationCall) =>
-            !doNodesCoverEveryPathAfterNode(mutationCall, commitCalls, context),
+          (mutationCall) => !doNodesCoverEveryPathAfterNode(mutationCall, commitCalls, context),
         );
         if (uncommittedMutation === undefined) return;
         context.report({

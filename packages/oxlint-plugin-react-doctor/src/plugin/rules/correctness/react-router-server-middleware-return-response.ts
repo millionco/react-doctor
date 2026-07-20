@@ -15,7 +15,6 @@ const hasLaterReplacementReturn = (
   responseReceiptStatement: EsTreeNode,
 ): boolean =>
   doNodesCoverEveryPathAfterNode(
-    middlewareFunction,
     responseReceiptStatement,
     collectFunctionReturnStatements(middlewareFunction).filter(
       (returnStatement) => returnStatement.argument !== null,

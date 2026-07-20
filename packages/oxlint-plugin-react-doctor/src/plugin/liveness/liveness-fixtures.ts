@@ -2226,6 +2226,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-presentation-role-conflict": {
     code: 'const Control = () => <div role="presentation" tabIndex={0} />;',
+  },
   "react-router-csp-nonce-consistency": {
     code: 'import { ServerRouter } from "react-router";\nimport { renderToPipeableStream } from "react-dom/server";\nexport const render = (request, context) => renderToPipeableStream(<ServerRouter context={context} url={request.url} nonce={context.nonce} />, {});',
   },

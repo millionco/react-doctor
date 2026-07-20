@@ -19,18 +19,18 @@ export const doNodesCoverEveryPathAfterNode = (
   const matchingBlocks = new Set(
     [...collectExpressionPathCoverageNodes(owner, matchingNodes, context)].flatMap(
       (matchingNode) => {
-      const matchingBlock = functionCfg.blockOf(matchingNode);
-      if (!matchingBlock) return [];
-      const matchingStart = getRangeStart(matchingNode);
-      if (
-        matchingBlock === anchorBlock &&
-        anchorStart !== null &&
-        matchingStart !== null &&
-        matchingStart < anchorStart
-      ) {
-        return [];
-      }
-      return [matchingBlock];
+        const matchingBlock = functionCfg.blockOf(matchingNode);
+        if (!matchingBlock) return [];
+        const matchingStart = getRangeStart(matchingNode);
+        if (
+          matchingBlock === anchorBlock &&
+          anchorStart !== null &&
+          matchingStart !== null &&
+          matchingStart < anchorStart
+        ) {
+          return [];
+        }
+        return [matchingBlock];
       },
     ),
   );

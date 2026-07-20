@@ -742,7 +742,7 @@ describe("React Router rule regressions", () => {
   it("reports statically known resource destinations with falsy reload props", () => {
     const result = runRule(
       reactRouterResourceLinkRequiresReload,
-      'import { createBrowserRouter, Link } from "react-router"; createBrowserRouter([{ path: "/guide.pdf", loader: loadGuide }]); export const Downloads = () => <><Link to={"/guide.pdf"} reloadDocument={false}>Reload</Link><Link to={`/guide.pdf`} download={false}>Download</Link></>;',
+      'import { createBrowserRouter, Link } from "react-router"; createBrowserRouter([{ path: ("/guide.pdf" as const), loader: loadGuide }]); export const Downloads = () => <><Link to={"/guide.pdf"} reloadDocument={false}>Reload</Link><Link to={`/guide.pdf`} download={false}>Download</Link></>;',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);
@@ -755,6 +755,15 @@ describe("React Router rule regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports duplicate route IDs through transparent TypeScript wrappers", () => {
+    const result = runRule(
+      reactRouterNoDuplicateRouteId,
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ id: ("dashboard" as const), path: "/" }, { id: ("dashboard" satisfies string), path: "/settings" }]);',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("reports static expression anchors when download is falsy", () => {

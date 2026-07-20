@@ -229,11 +229,11 @@ describe("React Router adversarial rule contracts", () => {
   it("reports only splats outside the final complete segment", () => {
     const invalidResult = runRule(
       reactRouterNoInvalidSplatPath,
-      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/files/*/edit", element: <Editor /> }]);',
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: ("/files/*/edit" as const), element: <Editor /> }]);',
     );
     const validResult = runRule(
       reactRouterNoInvalidSplatPath,
-      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/files/*", element: <Files /> }]);',
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: ("/files/*" satisfies string), element: <Files /> }]);',
     );
     expect(invalidResult.diagnostics).toHaveLength(1);
     expect(validResult.diagnostics).toEqual([]);

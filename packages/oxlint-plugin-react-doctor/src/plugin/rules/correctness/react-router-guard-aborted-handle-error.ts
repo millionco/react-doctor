@@ -118,7 +118,11 @@ const isErrorReportingCall = (
   ) {
     return true;
   }
-  return ERROR_REPORTING_EXPORT_NAMES.has(methodName);
+  return (
+    ERROR_REPORTING_EXPORT_NAMES.has(methodName) &&
+    isNodeOfType(callee.object, "Identifier") &&
+    context.scopes.symbolFor(callee.object)?.kind === "import"
+  );
 };
 
 export const reactRouterGuardAbortedHandleError = wrapReactRouterRule(

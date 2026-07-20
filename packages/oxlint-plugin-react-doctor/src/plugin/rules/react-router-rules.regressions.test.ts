@@ -28,6 +28,7 @@ import { reactRouterNoUseLoaderDataInErrorUi } from "./correctness/react-router-
 import { reactRouterRequireRootErrorBoundary } from "./correctness/react-router-require-root-error-boundary.js";
 import { reactRouterResourceLinkRequiresReload } from "./correctness/react-router-resource-link-requires-reload.js";
 import { reactRouterReturnNavigationPromiseInTransition } from "./correctness/react-router-return-navigation-promise-in-transition.js";
+import { reactRouterServerMiddlewareReturnResponse } from "./correctness/react-router-server-middleware-return-response.js";
 import { reactRouterSessionMutationRequiresCommit } from "./correctness/react-router-session-mutation-requires-commit.js";
 import { reactRouterValidRouteObject } from "./correctness/react-router-valid-route-object.js";
 
@@ -99,6 +100,13 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterGuardAbortedHandleError,
     source:
       "export function handleError(error, { request }) { if (!request.signal.aborted) { console.error(error); } }",
+    filename: "/project/app/entry.server.tsx",
+  },
+  {
+    name: "allows unrelated object methods named logError",
+    rule: reactRouterGuardAbortedHandleError,
+    source:
+      "const analytics = { logError() {} }; export function handleError(error, { request }) { analytics.logError(error); }",
     filename: "/project/app/entry.server.tsx",
   },
   {
@@ -190,6 +198,12 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterNoCatchMiddlewareNext,
     source:
       "export const middleware = [async (_context, next) => { try { validate(); return await next(); } catch (error) { report(error); } }];",
+  },
+  {
+    name: "allows middleware to return a replacement response after next",
+    rule: reactRouterServerMiddlewareReturnResponse,
+    source:
+      'export const middleware = [async (_context, next) => { await next(); return new Response("replacement"); }];',
   },
   {
     name: "allows unique route IDs",
@@ -576,6 +590,16 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterGuardAbortedHandleError,
       "export function handleError(error, { request }) { console.error(error); if (request.signal.aborted) return; }",
+      { filename: "/project/app/entry.server.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an imported namespace error reporter without an abort guard", () => {
+    const result = runRule(
+      reactRouterGuardAbortedHandleError,
+      'import * as Sentry from "@sentry/node"; export function handleError(error, { request }) { Sentry.captureException(error); }',
       { filename: "/project/app/entry.server.tsx" },
     );
     expect(result.parseErrors).toEqual([]);

@@ -2,16 +2,18 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import {
-  getImportedNameFromModule,
-  isDefaultImportFromModule,
-  isNamespaceImportFromModule,
-} from "../../utils/find-import-source-for-name.js";
+import { functionReturnsCollectionAtPath } from "../../utils/function-returns-collection-at-path.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveFreshRenderValue } from "../../utils/resolve-fresh-render-value.js";
+import {
+  resolveZustandApiBinding,
+  resolveZustandStoreCreator,
+  resolveZustandStoreFactoryCall,
+  type ZustandStoreCreator,
+} from "../../utils/resolve-zustand-api.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -22,21 +24,20 @@ interface FreshSelectorResult {
 }
 
 interface ZustandBoundStore {
+  readonly creatorFunction: ZustandStoreCreator["creatorFunction"] | null;
   readonly hasDefaultEquality: boolean;
   readonly supportsEqualityArgument: boolean;
 }
 
 interface ZustandSelectorCall {
   readonly selector: EsTreeNode;
+  readonly storeCreatorFunction: ZustandStoreCreator["creatorFunction"] | null;
 }
 
-interface ZustandApiBinding {
-  readonly apiName:
-    | "create"
-    | "createWithEqualityFn"
-    | "useShallow"
-    | "useStore"
-    | "useStoreWithEqualityFn";
+interface FreshSelectorAnalysis {
+  readonly scopes: ScopeAnalysis;
+  readonly selectorFunction: EsTreeNode;
+  readonly storeCreatorFunction: ZustandStoreCreator["creatorFunction"] | null;
 }
 
 const ALLOCATING_ARRAY_METHODS = new Set([
@@ -56,33 +57,6 @@ const ALLOCATING_NAMESPACE_METHODS = new Map<string, ReadonlySet<string>>([
   ["Array", new Set(["from", "of"])],
   ["Object", new Set(["create", "entries", "fromEntries", "keys", "values"])],
 ]);
-
-const ZUSTAND_CORE_API_NAMES: ReadonlySet<ZustandApiBinding["apiName"]> = new Set([
-  "create",
-  "useStore",
-]);
-
-const ZUSTAND_TRADITIONAL_API_NAMES: ReadonlySet<ZustandApiBinding["apiName"]> = new Set([
-  "createWithEqualityFn",
-  "useStoreWithEqualityFn",
-]);
-
-const ZUSTAND_SHALLOW_API_NAMES: ReadonlySet<ZustandApiBinding["apiName"]> = new Set([
-  "useShallow",
-]);
-
-const toZustandApiName = (importedName: string): ZustandApiBinding["apiName"] | null => {
-  switch (importedName) {
-    case "create":
-    case "createWithEqualityFn":
-    case "useShallow":
-    case "useStore":
-    case "useStoreWithEqualityFn":
-      return importedName;
-    default:
-      return null;
-  }
-};
 
 const isNullishEqualityArgument = (argument: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const candidate = stripParenExpression(argument);
@@ -106,129 +80,28 @@ const hasExplicitEqualityArgument = (
   return !isNullishEqualityArgument(equalityArgument, scopes);
 };
 
-const getNamedImportApi = (
-  identifier: EsTreeNodeOfType<"Identifier">,
-  moduleSource: string,
-  supportedApiNames: ReadonlySet<ZustandApiBinding["apiName"]>,
-): ZustandApiBinding | null => {
-  const importedName = getImportedNameFromModule(identifier, identifier.name, moduleSource);
-  if (!importedName) return null;
-  const apiName = toZustandApiName(importedName);
-  return apiName && supportedApiNames.has(apiName) ? { apiName } : null;
-};
-
-const resolveDirectZustandApiBinding = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-): ZustandApiBinding | null => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Identifier")) {
-    if (scopes.symbolFor(candidate)?.kind !== "import") return null;
-    return (
-      getNamedImportApi(candidate, "zustand", ZUSTAND_CORE_API_NAMES) ??
-      getNamedImportApi(candidate, "zustand/traditional", ZUSTAND_TRADITIONAL_API_NAMES) ??
-      getNamedImportApi(candidate, "zustand/react/shallow", ZUSTAND_SHALLOW_API_NAMES) ??
-      getNamedImportApi(candidate, "zustand/shallow", ZUSTAND_SHALLOW_API_NAMES) ??
-      (isDefaultImportFromModule(candidate, candidate.name, "zustand")
-        ? { apiName: "create" }
-        : null)
-    );
-  }
-
-  if (!isNodeOfType(candidate, "MemberExpression")) return null;
-  const namespaceIdentifier = stripParenExpression(candidate.object);
-  const propertyName = getStaticPropertyName(candidate);
-  if (!isNodeOfType(namespaceIdentifier, "Identifier") || !propertyName) return null;
-  if (scopes.symbolFor(namespaceIdentifier)?.kind !== "import") return null;
-
-  if (
-    isNamespaceImportFromModule(namespaceIdentifier, namespaceIdentifier.name, "zustand") &&
-    (propertyName === "create" || propertyName === "useStore")
-  ) {
-    return { apiName: propertyName };
-  }
-  if (
-    isNamespaceImportFromModule(
-      namespaceIdentifier,
-      namespaceIdentifier.name,
-      "zustand/traditional",
-    ) &&
-    (propertyName === "createWithEqualityFn" || propertyName === "useStoreWithEqualityFn")
-  ) {
-    return { apiName: propertyName };
-  }
-  if (
-    (isNamespaceImportFromModule(
-      namespaceIdentifier,
-      namespaceIdentifier.name,
-      "zustand/react/shallow",
-    ) ||
-      isNamespaceImportFromModule(
-        namespaceIdentifier,
-        namespaceIdentifier.name,
-        "zustand/shallow",
-      )) &&
-    propertyName === "useShallow"
-  ) {
-    return { apiName: propertyName };
-  }
-  return null;
-};
-
-const resolveZustandApiBinding = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number> = new Set(),
-): ZustandApiBinding | null => {
-  const directBinding = resolveDirectZustandApiBinding(expression, scopes);
-  if (directBinding) return directBinding;
-
-  const candidate = stripParenExpression(expression);
-  if (!isNodeOfType(candidate, "Identifier")) return null;
-  const symbol = scopes.symbolFor(candidate);
-  if (
-    symbol?.kind !== "const" ||
-    !symbol.initializer ||
-    visitedSymbolIds.has(symbol.id) ||
-    symbol.references.some((reference) => reference.flag !== "read")
-  ) {
-    return null;
-  }
-  visitedSymbolIds.add(symbol.id);
-  return resolveZustandApiBinding(symbol.initializer, scopes, visitedSymbolIds);
-};
-
 const resolveZustandStoreCreation = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
 ): ZustandBoundStore | null => {
   const candidate = stripParenExpression(expression);
   if (!isNodeOfType(candidate, "CallExpression")) return null;
-
-  const directFactory = resolveZustandApiBinding(candidate.callee, scopes);
-  if (directFactory?.apiName === "create") {
-    return { hasDefaultEquality: false, supportsEqualityArgument: false };
+  const factoryCall = resolveZustandStoreFactoryCall(candidate, scopes);
+  if (
+    !factoryCall ||
+    (factoryCall.factoryApiName !== "create" &&
+      factoryCall.factoryApiName !== "createWithEqualityFn")
+  ) {
+    return null;
   }
-  if (directFactory?.apiName === "createWithEqualityFn") {
-    return {
-      hasDefaultEquality: hasExplicitEqualityArgument(candidate.arguments, 1, scopes),
-      supportsEqualityArgument: true,
-    };
-  }
-
-  const curriedFactoryCall = stripParenExpression(candidate.callee);
-  if (!isNodeOfType(curriedFactoryCall, "CallExpression")) return null;
-  const curriedFactory = resolveZustandApiBinding(curriedFactoryCall.callee, scopes);
-  if (curriedFactory?.apiName === "create") {
-    return { hasDefaultEquality: false, supportsEqualityArgument: false };
-  }
-  if (curriedFactory?.apiName === "createWithEqualityFn") {
-    return {
-      hasDefaultEquality: hasExplicitEqualityArgument(candidate.arguments, 1, scopes),
-      supportsEqualityArgument: true,
-    };
-  }
-  return null;
+  const creator = resolveZustandStoreCreator(candidate, scopes);
+  return {
+    creatorFunction: creator?.creatorFunction ?? null,
+    hasDefaultEquality:
+      factoryCall.factoryApiName === "createWithEqualityFn" &&
+      hasExplicitEqualityArgument(candidate.arguments, 1, scopes),
+    supportsEqualityArgument: factoryCall.factoryApiName === "createWithEqualityFn",
+  };
 };
 
 const resolveZustandBoundStore = (
@@ -268,7 +141,7 @@ const getZustandSelectorCall = (
     ) {
       return null;
     }
-    return { selector };
+    return { selector, storeCreatorFunction: null };
   }
 
   const boundStore = resolveZustandBoundStore(callExpression.callee, scopes);
@@ -281,7 +154,7 @@ const getZustandSelectorCall = (
   ) {
     return null;
   }
-  return { selector };
+  return { selector, storeCreatorFunction: boundStore.creatorFunction };
 };
 
 const isUseShallowCall = (
@@ -329,9 +202,44 @@ const resolveSelectorFunction = (
   return resolveSelectorFunction(symbol.initializer, scopes, visitedSymbolIds);
 };
 
+const selectorStatePropertyPath = (
+  expression: EsTreeNode,
+  analysis: FreshSelectorAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): string[] | null => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = analysis.scopes.symbolFor(candidate);
+    const selectorParameter = isFunctionLike(analysis.selectorFunction)
+      ? analysis.selectorFunction.params[0]
+      : null;
+    if (
+      selectorParameter &&
+      isNodeOfType(selectorParameter, "Identifier") &&
+      symbol?.id === analysis.scopes.symbolFor(selectorParameter)?.id
+    ) {
+      return [];
+    }
+    if (
+      symbol?.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      symbol.references.some((reference) => reference.flag !== "read")
+    ) {
+      return null;
+    }
+    visitedSymbolIds.add(symbol.id);
+    return selectorStatePropertyPath(symbol.initializer, analysis, visitedSymbolIds);
+  }
+  if (!isNodeOfType(candidate, "MemberExpression")) return null;
+  const propertyName = getStaticPropertyName(candidate);
+  const objectPath = selectorStatePropertyPath(candidate.object, analysis, visitedSymbolIds);
+  return propertyName && objectPath ? [...objectPath, propertyName] : null;
+};
+
 const freshResultFromAllocatingCall = (
   expression: EsTreeNodeOfType<"CallExpression">,
-  scopes: ScopeAnalysis,
+  analysis: FreshSelectorAnalysis,
   visitedSymbolIds: Set<number>,
 ): FreshSelectorResult | null => {
   const callee = stripParenExpression(expression.callee);
@@ -340,7 +248,7 @@ const freshResultFromAllocatingCall = (
   if (!methodName) return null;
   const receiver = stripParenExpression(callee.object);
 
-  if (isNodeOfType(receiver, "Identifier") && scopes.isGlobalReference(receiver)) {
+  if (isNodeOfType(receiver, "Identifier") && analysis.scopes.isGlobalReference(receiver)) {
     const allocatingMethods = ALLOCATING_NAMESPACE_METHODS.get(receiver.name);
     if (allocatingMethods?.has(methodName)) {
       return { kind: receiver.name === "Object" ? "object" : "array", node: expression };
@@ -348,25 +256,40 @@ const freshResultFromAllocatingCall = (
     if (receiver.name === "Object" && methodName === "assign") {
       const target = expression.arguments[0];
       if (!target || isNodeOfType(target, "SpreadElement")) return null;
-      const freshTarget = resolveFreshSelectorResult(target, scopes, new Set(visitedSymbolIds));
+      const freshTarget = resolveFreshSelectorResult(target, analysis, new Set(visitedSymbolIds));
       return freshTarget ? { kind: freshTarget.kind, node: expression } : null;
     }
   }
 
   if (ALLOCATING_ARRAY_METHODS.has(methodName)) {
-    return { kind: "array", node: expression };
+    const freshReceiver = resolveFreshSelectorResult(receiver, analysis, new Set(visitedSymbolIds));
+    if (freshReceiver?.kind === "array") return { kind: "array", node: expression };
+    const receiverPath = selectorStatePropertyPath(receiver, analysis);
+    if (
+      receiverPath &&
+      analysis.storeCreatorFunction &&
+      functionReturnsCollectionAtPath({
+        collectionKind: "array",
+        functionNode: analysis.storeCreatorFunction,
+        propertyPath: receiverPath,
+        scopes: analysis.scopes,
+      })
+    ) {
+      return { kind: "array", node: expression };
+    }
+    return null;
   }
   if (!SAME_REFERENCE_ARRAY_METHODS.has(methodName)) return null;
-  const freshReceiver = resolveFreshSelectorResult(receiver, scopes, new Set(visitedSymbolIds));
+  const freshReceiver = resolveFreshSelectorResult(receiver, analysis, new Set(visitedSymbolIds));
   return freshReceiver ? { kind: "array", node: expression } : null;
 };
 
 const resolveFreshSelectorResult = (
   expression: EsTreeNode,
-  scopes: ScopeAnalysis,
+  analysis: FreshSelectorAnalysis,
   visitedSymbolIds: Set<number> = new Set(),
 ): FreshSelectorResult | null => {
-  const freshRenderValue = resolveFreshRenderValue(expression, scopes);
+  const freshRenderValue = resolveFreshRenderValue(expression, analysis.scopes);
   if (
     freshRenderValue?.kind === "array" ||
     freshRenderValue?.kind === "function" ||
@@ -378,32 +301,32 @@ const resolveFreshSelectorResult = (
 
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "CallExpression")) {
-    return freshResultFromAllocatingCall(candidate, scopes, visitedSymbolIds);
+    return freshResultFromAllocatingCall(candidate, analysis, visitedSymbolIds);
   }
   if (isNodeOfType(candidate, "ConditionalExpression")) {
     return (
-      resolveFreshSelectorResult(candidate.consequent, scopes, new Set(visitedSymbolIds)) ??
-      resolveFreshSelectorResult(candidate.alternate, scopes, new Set(visitedSymbolIds))
+      resolveFreshSelectorResult(candidate.consequent, analysis, new Set(visitedSymbolIds)) ??
+      resolveFreshSelectorResult(candidate.alternate, analysis, new Set(visitedSymbolIds))
     );
   }
   if (isNodeOfType(candidate, "LogicalExpression")) {
     if (candidate.operator === "&&") {
-      return resolveFreshSelectorResult(candidate.right, scopes, visitedSymbolIds);
+      return resolveFreshSelectorResult(candidate.right, analysis, visitedSymbolIds);
     }
     return (
-      resolveFreshSelectorResult(candidate.left, scopes, new Set(visitedSymbolIds)) ??
-      resolveFreshSelectorResult(candidate.right, scopes, new Set(visitedSymbolIds))
+      resolveFreshSelectorResult(candidate.left, analysis, new Set(visitedSymbolIds)) ??
+      resolveFreshSelectorResult(candidate.right, analysis, new Set(visitedSymbolIds))
     );
   }
   if (isNodeOfType(candidate, "SequenceExpression")) {
     const returnedExpression = candidate.expressions[candidate.expressions.length - 1];
     return returnedExpression
-      ? resolveFreshSelectorResult(returnedExpression, scopes, visitedSymbolIds)
+      ? resolveFreshSelectorResult(returnedExpression, analysis, visitedSymbolIds)
       : null;
   }
   if (!isNodeOfType(candidate, "Identifier")) return null;
 
-  const symbol = scopes.symbolFor(candidate);
+  const symbol = analysis.scopes.symbolFor(candidate);
   if (
     symbol?.kind !== "const" ||
     symbol.scope.kind === "module" ||
@@ -414,16 +337,22 @@ const resolveFreshSelectorResult = (
     return null;
   }
   visitedSymbolIds.add(symbol.id);
-  return resolveFreshSelectorResult(symbol.initializer, scopes, visitedSymbolIds);
+  return resolveFreshSelectorResult(symbol.initializer, analysis, visitedSymbolIds);
 };
 
 const findFreshSelectorReturn = (
   selectorFunction: EsTreeNode,
   scopes: ScopeAnalysis,
+  storeCreatorFunction: ZustandStoreCreator["creatorFunction"] | null,
 ): FreshSelectorResult | null => {
   if (!isFunctionLike(selectorFunction) || !selectorFunction.body) return null;
+  const analysis: FreshSelectorAnalysis = {
+    scopes,
+    selectorFunction,
+    storeCreatorFunction,
+  };
   if (!isNodeOfType(selectorFunction.body, "BlockStatement")) {
-    return resolveFreshSelectorResult(selectorFunction.body, scopes);
+    return resolveFreshSelectorResult(selectorFunction.body, analysis);
   }
 
   let freshResult: FreshSelectorResult | null = null;
@@ -431,7 +360,7 @@ const findFreshSelectorReturn = (
     if (freshResult) return false;
     if (candidate !== selectorFunction.body && isFunctionLike(candidate)) return false;
     if (!isNodeOfType(candidate, "ReturnStatement") || !candidate.argument) return;
-    freshResult = resolveFreshSelectorResult(candidate.argument, scopes);
+    freshResult = resolveFreshSelectorResult(candidate.argument, analysis);
     return freshResult ? false : undefined;
   });
   return freshResult;
@@ -451,7 +380,11 @@ export const zustandNoFreshSelectorResult = defineRule({
       if (!selectorCall) return;
       const selectorFunction = resolveSelectorFunction(selectorCall.selector, context.scopes);
       if (!selectorFunction) return;
-      const freshResult = findFreshSelectorReturn(selectorFunction, context.scopes);
+      const freshResult = findFreshSelectorReturn(
+        selectorFunction,
+        context.scopes,
+        selectorCall.storeCreatorFunction,
+      );
       if (!freshResult) return;
 
       context.report({

@@ -217,6 +217,38 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules["react-doctor/forbid-component-props"]).toBe("warn");
   });
 
+  it("gates fresh Zustand selector diagnostics to major version 5", () => {
+    const supportedConfig = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        zustandVersion: "^5.0.0",
+        zustandMajorVersion: 5,
+      }),
+    });
+    expect(supportedConfig.rules["react-doctor/zustand-no-fresh-selector-result"]).toBe("error");
+
+    for (const project of [
+      buildProject({ framework: "vite", hasReactNativeWorkspace: false }),
+      buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        zustandVersion: "^4.0.0",
+        zustandMajorVersion: 4,
+      }),
+      buildProject({
+        framework: "vite",
+        hasReactNativeWorkspace: false,
+        zustandVersion: "^6.0.0",
+        zustandMajorVersion: 6,
+      }),
+    ]) {
+      const config = createOxlintConfig({ pluginPath: "/tmp/plugin.js", project });
+      expect(config.rules).not.toHaveProperty("react-doctor/zustand-no-fresh-selector-result");
+    }
+  });
+
   it("drops the react-hooks-js plugin + compiler rules under disableReactHooksJsPlugin (the load-failure fallback)", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

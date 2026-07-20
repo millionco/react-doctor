@@ -1,6 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getJsxAttributeStaticString } from "../../utils/get-jsx-attribute-static-string.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -29,7 +29,7 @@ export const noPermanentWillChange = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       if (node.name.name === "className" || node.name.name === "class") {
-        const className = getJsxAttributeStaticString(node);
+        const className = getStringLiteralAttributeValue(node);
         const permanentUtility = className
           ?.split(/\s+/)
           .find((token) => isPermanentWillChangeClass(token));

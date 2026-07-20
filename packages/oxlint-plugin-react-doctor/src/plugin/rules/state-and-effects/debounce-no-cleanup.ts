@@ -585,7 +585,9 @@ export const debounceNoCleanup = defineRule({
           functionUsageIndexes.set(enclosingFunction, functionUsageIndex);
         }
 
-        const aliases = collectBindingAliases(declarator.id, context.scopes);
+        const aliases = collectBindingAliases(declarator.id, context.scopes, {
+          includeReactRefContainers: true,
+        });
         const aliasSymbolIds = new Set(
           aliases.flatMap((alias) => {
             const symbolId = context.scopes.symbolFor(alias)?.id;

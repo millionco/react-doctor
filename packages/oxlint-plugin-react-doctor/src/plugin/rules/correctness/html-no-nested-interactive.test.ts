@@ -82,6 +82,15 @@ describe("html-no-nested-interactive", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a native control inside a static template-literal ARIA button", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      "const Menu = () => <div role={`button`} tabIndex={0}><input /></div>;",
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not infer a presentational-child role from a dynamic override", () => {
     const result = runRule(
       htmlNoNestedInteractive,

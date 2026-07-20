@@ -1,4 +1,9 @@
 import type { PackageJson } from "../types/index.js";
+import { getDependencyDeclaration } from "./dependencies.js";
+
+const PREFERRED_DEPENDENCY_SECTIONS: ReadonlyArray<
+  "dependencies" | "peerDependencies" | "devDependencies"
+> = ["dependencies", "peerDependencies", "devDependencies"];
 
 interface GetPreferredDependencyVersionOptions {
   packageJson: PackageJson;
@@ -9,14 +14,13 @@ export const getPreferredDependencyVersion = ({
   packageJson,
   packageNames,
 }: GetPreferredDependencyVersionOptions): string | null => {
-  const allDependencies = {
-    ...packageJson.devDependencies,
-    ...packageJson.peerDependencies,
-    ...packageJson.dependencies,
-  };
   for (const packageName of packageNames) {
-    const version = allDependencies[packageName];
-    if (version !== undefined) return version;
+    const declaration = getDependencyDeclaration({
+      packageJson,
+      packageName,
+      sections: PREFERRED_DEPENDENCY_SECTIONS,
+    });
+    if (declaration.version !== null) return declaration.version;
   }
   return null;
 };

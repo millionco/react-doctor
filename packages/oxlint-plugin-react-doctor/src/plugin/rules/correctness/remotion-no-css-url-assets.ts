@@ -5,7 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
-import { getJsxAttributeStaticString } from "../../utils/get-jsx-attribute-static-string.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -59,7 +59,7 @@ const componentPreloadsStaticImage = (
     const apiBinding = resolveRemotionApi(child.name, scopes);
     if (apiBinding?.apiName !== "Img" || apiBinding.moduleSource !== "remotion") return;
     const sourceAttribute = findJsxAttribute(child.attributes, "src");
-    if (sourceAttribute && getJsxAttributeStaticString(sourceAttribute) === assetSource) {
+    if (sourceAttribute && getStringLiteralAttributeValue(sourceAttribute) === assetSource) {
       hasPreload = true;
       return false;
     }

@@ -1,12 +1,18 @@
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
+import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { stripParenExpression } from "./strip-paren-expression.js";
+import { isReactApiCall } from "./is-react-api-call.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+
+interface CollectBindingAliasesOptions {
+  includeReactRefContainers?: boolean;
+}
 
 export const collectBindingAliases = (
   bindingIdentifier: EsTreeNode,
   scopes: ScopeAnalysis,
+  options: CollectBindingAliasesOptions = {},
 ): EsTreeNode[] => {
   const initialSymbol = scopes.symbolFor(bindingIdentifier);
   if (!initialSymbol) return [];
@@ -22,22 +28,25 @@ export const collectBindingAliases = (
       if (reference.flag !== "read") continue;
       const referenceRoot = findTransparentExpressionRoot(reference.identifier);
       let aliasInitializerRoot = referenceRoot;
-      let declarator: EsTreeNode | null | undefined = aliasInitializerRoot.parent;
-      while (
+      let declarator = aliasInitializerRoot.parent;
+      if (
+        options.includeReactRefContainers &&
         isNodeOfType(declarator, "MemberExpression") &&
-        declarator.object === aliasInitializerRoot
+        declarator.object === aliasInitializerRoot &&
+        getStaticPropertyName(declarator) === "current"
       ) {
         aliasInitializerRoot = findTransparentExpressionRoot(declarator);
         declarator = aliasInitializerRoot.parent;
       }
-      const callCallee = isNodeOfType(declarator, "CallExpression")
-        ? stripParenExpression(declarator.callee)
-        : null;
       if (
+        options.includeReactRefContainers &&
         isNodeOfType(declarator, "CallExpression") &&
-        declarator.arguments.some((argument) => argument === referenceRoot) &&
-        isNodeOfType(callCallee, "Identifier") &&
-        callCallee.name === "useRef"
+        declarator.arguments[0] === referenceRoot &&
+        isReactApiCall(declarator, "useRef", scopes, {
+          allowGlobalReactNamespace: true,
+          allowUnboundBareCalls: true,
+          resolveNamedAliases: true,
+        })
       ) {
         aliasInitializerRoot = findTransparentExpressionRoot(declarator);
         declarator = aliasInitializerRoot.parent;

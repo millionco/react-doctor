@@ -1,29 +1,40 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactApiCall } from "./is-react-api-call.js";
 
-const STABLE_INITIALIZER_HOOKS: ReadonlySet<string> = new Set(["useMemo", "useState"]);
+interface IsInsideStableReactInitializerOptions {
+  isReactHookCall?: (node: EsTreeNode, apiName: string) => boolean;
+}
 
 export const isInsideStableReactInitializer = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
+  options: IsInsideStableReactInitializerOptions = {},
 ): boolean => {
-  let functionNode = findEnclosingFunction(node);
-  while (functionNode) {
-    const parent = functionNode.parent;
+  const isHookCall = (hookCall: EsTreeNode, apiName: string): boolean =>
+    options.isReactHookCall?.(hookCall, apiName) ??
+    isReactApiCall(hookCall, apiName, scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    });
+  let enclosingFunction = findEnclosingFunction(node);
+  while (enclosingFunction) {
+    const callbackRoot = findTransparentExpressionRoot(enclosingFunction);
+    const hookCall = callbackRoot.parent;
     if (
-      isNodeOfType(parent, "CallExpression") &&
-      parent.arguments[0] === functionNode &&
-      isReactApiCall(parent, STABLE_INITIALIZER_HOOKS, scopes, {
-        allowGlobalReactNamespace: true,
-        resolveNamedAliases: true,
-      })
+      isNodeOfType(hookCall, "CallExpression") &&
+      hookCall.arguments[0] === callbackRoot &&
+      (isHookCall(hookCall, "useState") ||
+        (isHookCall(hookCall, "useMemo") &&
+          hookCall.arguments[1] !== undefined &&
+          !isNodeOfType(hookCall.arguments[1], "SpreadElement")))
     ) {
       return true;
     }
-    functionNode = findEnclosingFunction(functionNode);
+    enclosingFunction = findEnclosingFunction(enclosingFunction);
   }
   return false;
 };

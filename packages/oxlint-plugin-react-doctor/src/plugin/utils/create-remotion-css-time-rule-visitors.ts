@@ -1,7 +1,7 @@
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { createRemotionRenderEvidenceChecker } from "./create-remotion-render-evidence-checker.js";
 import { findRenderPhaseComponentOrHook } from "./find-render-phase-component-or-hook.js";
-import { getJsxAttributeStaticString } from "./get-jsx-attribute-static-string.js";
+import { getStringLiteralAttributeValue } from "./get-string-literal-attribute-value.js";
 import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import type { RuleContext } from "./rule-context.js";
@@ -47,7 +47,7 @@ export const createRemotionCssTimeRuleVisitors = (
       }
       const renderFunction = findRenderPhaseComponentOrHook(node, context.scopes);
       if (!renderFunction || !renderEvidence.functionHasEvidence(renderFunction)) return;
-      const className = getJsxAttributeStaticString(node);
+      const className = getStringLiteralAttributeValue(node);
       if (!className) return;
       const hasForbiddenClass = className
         .split(/\s+/)

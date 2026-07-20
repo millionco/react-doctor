@@ -28,6 +28,13 @@ export const SANDBOX_CLEANUP_CONCURRENCY = 50;
 export const SANDBOX_CREATE_CONCURRENCY = 20;
 
 export const EVALUATION_SCHEMA_VERSION = 1;
+export const REACT_DOCTOR_REPORT_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([1, 2, 3]);
+export const REACT_DOCTOR_REPORT_MODES: ReadonlySet<string> = new Set([
+  "full",
+  "diff",
+  "staged",
+  "baseline",
+]);
 export const SUCCESS_EXIT_CODE = 0;
 export const FAILURE_EXIT_CODE = 1;
 export const PROGRESS_INTERVAL_PROJECTS = 100;

@@ -31,6 +31,19 @@ describe("motion-create-in-render", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("reports useMemo without a dependency array", () => {
+    const result = runRule(
+      motionCreateInRender,
+      `import { motion } from "motion/react";
+       import { useMemo } from "react";
+       const Panel = () => {
+         const Item = useMemo(() => motion.create("div"));
+         return <Item />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores same-named local APIs", () => {
     const result = runRule(
       motionCreateInRender,

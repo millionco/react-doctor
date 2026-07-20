@@ -1,10 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticRouteFullPath } from "../../utils/get-static-route-full-path.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { hasActiveRouteProperty } from "../../utils/has-active-route-property.js";
 import { hasJsxProp } from "../../utils/has-jsx-prop.js";
+import { isJsxAttributePotentiallyTruthy } from "../../utils/is-jsx-attribute-potentially-truthy.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -43,12 +44,14 @@ export const reactRouterInternalRouteAnchor = wrapReactRouterRule(
         },
         JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
           if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;
-          if (hasJsxProp(node.attributes ?? [], "download")) return;
+          if (isJsxAttributePotentiallyTruthy(hasJsxProp(node.attributes ?? [], "download"))) {
+            return;
+          }
           const target = hasJsxProp(node.attributes ?? [], "target");
-          if (target && getJsxPropStringValue(target) !== "_self") return;
+          if (target && getStringLiteralAttributeValue(target) !== "_self") return;
           const href = hasJsxProp(node.attributes ?? [], "href");
           if (!href) return;
-          const destination = getJsxPropStringValue(href);
+          const destination = getStringLiteralAttributeValue(href);
           if (
             destination === null ||
             !destination.startsWith("/") ||

@@ -1,10 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
-import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticRouteFullPath } from "../../utils/get-static-route-full-path.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { hasActiveRouteProperty } from "../../utils/has-active-route-property.js";
 import { hasJsxProp } from "../../utils/has-jsx-prop.js";
+import { isJsxAttributePotentiallyTruthy } from "../../utils/is-jsx-attribute-potentially-truthy.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -56,13 +57,20 @@ export const reactRouterResourceLinkRequiresReload = wrapReactRouterRule(
           if (!isNodeOfType(node.name, "JSXIdentifier")) return;
           const importedName = getImportedNameFromReactRouter(context, node.name, node.name.name);
           if (importedName !== "Link" && importedName !== "NavLink") return;
-          if (hasJsxProp(node.attributes ?? [], "reloadDocument")) return;
-          if (hasJsxProp(node.attributes ?? [], "download")) return;
+          if (
+            isJsxAttributePotentiallyTruthy(hasJsxProp(node.attributes ?? [], "reloadDocument"))
+          ) {
+            return;
+          }
+          if (isJsxAttributePotentiallyTruthy(hasJsxProp(node.attributes ?? [], "download"))) {
+            return;
+          }
           const targetAttribute = hasJsxProp(node.attributes ?? [], "target");
-          if (targetAttribute && getJsxPropStringValue(targetAttribute) !== "_self") return;
+          if (targetAttribute && getStringLiteralAttributeValue(targetAttribute) !== "_self")
+            return;
           const toAttribute = hasJsxProp(node.attributes ?? [], "to");
           if (!toAttribute) return;
-          const destination = getJsxPropStringValue(toAttribute);
+          const destination = getStringLiteralAttributeValue(toAttribute);
           if (
             destination === null ||
             /^[a-z][a-z\d+.-]*:/i.test(destination) ||

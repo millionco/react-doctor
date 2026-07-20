@@ -739,6 +739,42 @@ describe("React Router rule regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports statically known resource destinations with falsy reload props", () => {
+    const result = runRule(
+      reactRouterResourceLinkRequiresReload,
+      'import { createBrowserRouter, Link } from "react-router"; createBrowserRouter([{ path: "/guide.pdf", loader: loadGuide }]); export const Downloads = () => <><Link to={"/guide.pdf"} reloadDocument={false}>Reload</Link><Link to={`/guide.pdf`} download={false}>Download</Link></>;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps potentially enabled resource-link escape props conservative", () => {
+    const result = runRule(
+      reactRouterResourceLinkRequiresReload,
+      'import { createBrowserRouter, Link } from "react-router"; createBrowserRouter([{ path: "/guide.pdf", loader: loadGuide }]); export const Downloads = ({ shouldDownload, shouldReload }) => <><Link to={"/guide.pdf"} reloadDocument={shouldReload}>Reload</Link><Link to={`/guide.pdf`} download={shouldDownload}>Download</Link></>;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports static expression anchors when download is falsy", () => {
+    const result = runRule(
+      reactRouterInternalRouteAnchor,
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/about", element: <About /> }]); export const Navigation = () => <><a href={"/about"} download={false}>About</a><a href={`/about`} download={null}>About</a></>;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps potentially enabled anchor downloads conservative", () => {
+    const result = runRule(
+      reactRouterInternalRouteAnchor,
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/about", element: <About /> }]); export const Navigation = ({ shouldDownload }) => <a href={"/about"} download={shouldDownload}>About</a>;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not accept a shadowed useOutlet as a nested route render point", () => {
     const result = runRule(
       reactRouterNestedRouteRequiresOutlet,

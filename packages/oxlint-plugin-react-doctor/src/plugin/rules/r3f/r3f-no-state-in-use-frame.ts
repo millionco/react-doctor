@@ -23,6 +23,11 @@ interface StateSetterBinding {
   stateSymbolId: number | null;
 }
 
+interface BoundaryTransitions {
+  above: Set<boolean>;
+  below: Set<boolean>;
+}
+
 const isStateHookTuple = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -390,9 +395,17 @@ const isBoundedBooleanStateTransition = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const setterBinding = isNodeOfType(setterCall, "CallExpression")
-    ? resolveStateSetterBinding(setterCall.callee, scopes)
-    : null;
+  if (!isNodeOfType(setterCall, "CallExpression")) return false;
+  const nextState = setterCall.arguments[0];
+  if (!nextState || isNodeOfType(nextState, "SpreadElement")) return false;
+  const nextStateCandidate = stripParenExpression(nextState);
+  if (
+    !isNodeOfType(nextStateCandidate, "Literal") ||
+    typeof nextStateCandidate.value !== "boolean"
+  ) {
+    return false;
+  }
+  const setterBinding = resolveStateSetterBinding(setterCall.callee, scopes);
   if (setterBinding?.stateSymbolId === null || setterBinding?.stateSymbolId === undefined) {
     return false;
   }
@@ -409,16 +422,13 @@ const isBoundedBooleanStateTransition = (
   ) {
     containingIf = containingIf.parent;
   }
-  const transitionValues = new Set<boolean>();
-  const boundaryDirectionsByExpression = new Map<string, Set<"above" | "below">>();
+  const transitionsByExpression = new Map<string, BoundaryTransitions>();
+  let setterBoundary: readonly [string, "above" | "below"] | null = null;
   let branch: EsTreeNodeOfType<"IfStatement"> | null = containingIf;
   while (branch) {
     const boundary = getRelationalBoundary(branch.test, scopes);
-    if (boundary) {
-      const directions = boundaryDirectionsByExpression.get(boundary[0]) ?? new Set();
-      directions.add(boundary[1]);
-      boundaryDirectionsByExpression.set(boundary[0], directions);
-    }
+    const branchSetterCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+    const branchTransitionValues: boolean[] = [];
     const branchConsequent = branch.consequent;
     walkAst(branchConsequent, (candidate) => {
       if (candidate !== branchConsequent && isFunctionLike(candidate)) return false;
@@ -442,17 +452,28 @@ const isBoundedBooleanStateTransition = (
         isNodeOfType(nextStateCandidate, "Literal") &&
         typeof nextStateCandidate.value === "boolean"
       ) {
-        transitionValues.add(nextStateCandidate.value);
+        branchSetterCalls.push(candidate);
+        branchTransitionValues.push(nextStateCandidate.value);
       }
     });
+    if (boundary && branchSetterCalls.length === 1) {
+      const transitionValue = branchTransitionValues[0];
+      const transitions = transitionsByExpression.get(boundary[0]) ?? {
+        above: new Set<boolean>(),
+        below: new Set<boolean>(),
+      };
+      transitions[boundary[1]].add(transitionValue);
+      transitionsByExpression.set(boundary[0], transitions);
+      if (branchSetterCalls[0] === setterCall) setterBoundary = boundary;
+    }
     branch = isNodeOfType(branch.alternate, "IfStatement") ? branch.alternate : null;
   }
-  return (
-    transitionValues.has(true) &&
-    transitionValues.has(false) &&
-    [...boundaryDirectionsByExpression.values()].some(
-      (directions) => directions.has("above") && directions.has("below"),
-    )
+  if (!setterBoundary) return false;
+  const oppositeDirection = setterBoundary[1] === "above" ? "below" : "above";
+  return Boolean(
+    transitionsByExpression
+      .get(setterBoundary[0])
+      ?.[oppositeDirection].has(!nextStateCandidate.value),
   );
 };
 

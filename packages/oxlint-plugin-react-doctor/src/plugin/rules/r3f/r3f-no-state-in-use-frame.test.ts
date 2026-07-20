@@ -62,6 +62,40 @@ describe("r3f-no-state-in-use-frame", () => {
     expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(0);
   });
 
+  it("reports a non-boolean update inside a bounded transition chain", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber";
+      import { useState } from "react";
+      const Scene = ({ elapsed }) => {
+        const [active, setActive] = useState(false);
+        useFrame(() => {
+          if (elapsed > 3) {
+            setActive(readActive());
+          } else if (elapsed < 1) {
+            setActive(true);
+          } else {
+            setActive(false);
+          }
+        });
+        return active ? <mesh /> : null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(3);
+  });
+
+  it("reports unrelated and repeated updates inside bounded transition chains", () => {
+    const unrelatedResult = runRule(
+      r3fNoStateInUseFrame,
+      `import { useFrame } from "@react-three/fiber"; import { useState } from "react"; const Scene = ({ x, y }) => { const [, setActive] = useState(false); useFrame(() => { if (x > 3) setActive(true); else if (x < 1) setActive(true); else if (y > 4) setActive(false); }); return null; };`,
+    );
+    const repeatedResult = runRule(
+      r3fNoStateInUseFrame,
+      `import { useFrame } from "@react-three/fiber"; import { useState } from "react"; const Scene = ({ x }) => { const [, setActive] = useState(false); useFrame(() => { if (x > 3) { setActive(false); setActive(true); } else if (x < 1) setActive(true); }); return null; };`,
+    );
+    expect(unrelatedResult.diagnostics).toHaveLength(3);
+    expect(repeatedResult.diagnostics).toHaveLength(3);
+  });
+
   it("reports a one-sided relational state update", () => {
     const code = `
       import { useFrame } from "@react-three/fiber";

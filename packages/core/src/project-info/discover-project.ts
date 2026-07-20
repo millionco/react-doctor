@@ -319,8 +319,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
           rootDirectory: directory,
           rootPackageJson: packageJson,
           packageName: workspaceFacts.reactRouter.packageName,
-           version: workspaceFacts.reactRouter.version,
-         });
+          version: workspaceFacts.reactRouter.version,
+        });
   const preactVersion = getPreactVersion(packageJson);
   const remotionVersion = workspaceFacts.remotionVersion;
   const tanstackQueryVersion =

@@ -4,9 +4,9 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import {
   resolveZustandStoreCreator,
   type ZustandStoreCreator,
@@ -24,12 +24,6 @@ const findGetParameterIdentifier = (parameter: EsTreeNode | undefined): EsTreeNo
   return null;
 };
 
-const isSynchronousIife = (functionNode: EsTreeNode): boolean =>
-  isFunctionLike(functionNode) &&
-  !functionNode.async &&
-  !functionNode.generator &&
-  isImmediatelyInvokedFunction(functionNode);
-
 const isGetParameterCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   getParameterSymbol: SymbolDescriptor,
@@ -45,17 +39,34 @@ const reportEagerGetCalls = (
   getParameterSymbol: SymbolDescriptor,
   context: RuleContext,
 ): void => {
-  walkAst(creatorFunction, (node: EsTreeNode) => {
-    if (node !== creatorFunction && isFunctionLike(node) && !isSynchronousIife(node)) return false;
-    if (!isNodeOfType(node, "CallExpression")) return;
-    if (!isGetParameterCall(node, getParameterSymbol, context)) return;
-    if (!canExecuteBeforeAsyncSuspension(node, creatorFunction, context)) return;
-    context.report({
-      node,
-      message:
-        "`get()` runs before Zustand installs the initial state, so it returns `undefined` here.",
+  const visitedFunctions = new Set<EsTreeNode>();
+  const reportFunctionReads = (functionNode: EsTreeNode): void => {
+    if (
+      !isFunctionLike(functionNode) ||
+      functionNode.generator ||
+      visitedFunctions.has(functionNode)
+    )
+      return;
+    visitedFunctions.add(functionNode);
+    walkAst(functionNode, (node: EsTreeNode) => {
+      if (node !== functionNode && isFunctionLike(node)) return false;
+      if (!isNodeOfType(node, "CallExpression")) return;
+      if (isGetParameterCall(node, getParameterSymbol, context)) {
+        if (!canExecuteBeforeAsyncSuspension(node, functionNode, context)) return;
+        context.report({
+          node,
+          message:
+            "`get()` runs before Zustand installs the initial state, so it returns `undefined` here.",
+        });
+        return;
+      }
+      if (!canExecuteBeforeAsyncSuspension(node, functionNode, context)) return;
+      const calledFunction = resolveExactLocalFunction(node.callee, context.scopes);
+      if (!calledFunction || calledFunction === functionNode) return;
+      reportFunctionReads(calledFunction);
     });
-  });
+  };
+  reportFunctionReads(creatorFunction);
 };
 
 export const zustandNoGetDuringInitialization = defineRule({

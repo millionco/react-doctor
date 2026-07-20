@@ -152,11 +152,30 @@ Detector contract:
 
 - Resolve `set` callback parameters, `get()` snapshots, and `store.getState()` snapshots only from
   proven same-file Zustand stores.
+- Analyze updater state parameters passed to both creator `set(...)` and bound or vanilla
+  `store.setState(...)` calls.
 - Track direct assignment, update expressions, mutating array methods, and `Map` or `Set` mutators.
 - Report when the mutated snapshot or a mutated child reference is returned through `set`, passed
   back to `setState`, or mutated without a notifying update.
+- Require the paired `set` parameter or resulting bound store's `setState` to be used before
+  treating `get()` mutations without a notifier as reactive-state bugs. A creator with neither
+  can deliberately use Zustand as an imperative cache with no subscribers.
+- Treat a surrounding `set` updater's returned value as the notifier for `get()` snapshots read
+  inside that updater, and abstain whenever replacement freshness cannot be proven.
+- Match notifiers to the exact creator or bound store, including same-branch ordering for simple
+  `if` statements and aliases introduced inside a branch. Another store or mutually exclusive
+  branch cannot publish the mutation.
+- Pair creator `get()` snapshots with either its `set` parameter or the resulting bound store's
+  `setState`, while keeping `getState` snapshot provenance exact to one store.
+- Follow ordered mutable-alias rebindings on the mutation's execution path and accept a clone
+  published at the original state path. Ignore mutually exclusive branch rebindings and abstain
+  when a conditional rebind cannot be proven to run.
+- Compare nested replacement paths from the snapshot root so a direct `get()` or `getState()`
+  chain cannot hide reuse inside a nested object update.
 - Treat clone-before-mutate as valid when the clone is statically proven fresh.
 - Treat mutation inside a creator wrapped by the official `immer` middleware as valid.
+- Follow mutations through simple `if`/`else` branches when every branch rejoins before the
+  notifying update; fail closed when a branch returns or throws.
 - Skip unknown custom middleware, unresolved helper calls, and cross-file stores unless ownership
   and freshness can be proven.
 - Reuse existing mutation and fresh-reference analysis. Do not add a second general-purpose walker.

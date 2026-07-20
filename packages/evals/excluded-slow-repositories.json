@@ -1108,5 +1108,317 @@
     "name": "nocobase",
     "ref": "f67491bb035cca5c27cb15de94a288dd03bd72c6",
     "rootDir": "packages/core/flow-engine"
+  },
+  {
+    "org": "Infisical",
+    "name": "infisical",
+    "ref": "6321a81059459066a1d95738acb6420accf5626c",
+    "rootDir": "backend"
+  },
+  {
+    "org": "Infisical",
+    "name": "infisical",
+    "ref": "6321a81059459066a1d95738acb6420accf5626c",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "client"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/api-queries"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/block-notes"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/calypso-jest"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/calypso-paypal"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/calypso-products"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/calypso-razorpay"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/calypso-sentry"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/calypso-storybook"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/calypso-stripe"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/components"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/composite-checkout"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/data-stores"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/design-picker"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/design-preview"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/domain-search"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/domains-table"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/explat-client-react-helpers"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/global-styles"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/grid"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/help-center"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/i18n-calypso"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/i18n-utils"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/image-studio"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/interpolate-components"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/jetpack-ai-calypso"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/jetpack-ai-sidebar"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/language-picker"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/launchpad"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/odie-client"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/omnibar"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/onboarding"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/plans-grid-next"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/privacy-toolset"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/search"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/shopping-cart"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/site-admin"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/sites"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/subscriber"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/ui"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/verbum-block-editor"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/viewport-react"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/viewport"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/wpcom-smart-dictation"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/wpcom-template-parts"
+  },
+  {
+    "org": "Automattic",
+    "name": "wp-calypso",
+    "ref": "4b2bc7fe4be695df4a442097ee59712425468b9e",
+    "rootDir": "packages/zendesk-client"
+  },
+  {
+    "org": "openreplay",
+    "name": "openreplay",
+    "ref": "1452c569641f3b2d889c1b658ef161de77de41dd",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "openreplay",
+    "name": "openreplay",
+    "ref": "1452c569641f3b2d889c1b658ef161de77de41dd",
+    "rootDir": "tracker/tracker-reactnative/example"
+  },
+  {
+    "org": "openreplay",
+    "name": "openreplay",
+    "ref": "1452c569641f3b2d889c1b658ef161de77de41dd",
+    "rootDir": "tracker/tracker-reactnative"
+  },
+  {
+    "org": "openreplay",
+    "name": "openreplay",
+    "ref": "1452c569641f3b2d889c1b658ef161de77de41dd",
+    "rootDir": "tracker/tracker-testing-playground"
   }
 ]

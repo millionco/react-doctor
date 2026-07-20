@@ -71,6 +71,12 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { createBrowserRouter, useOutlet as useChildOutlet } from "react-router"; createBrowserRouter([{ Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "child", element: <Child /> }] }]);',
   },
   {
+    name: "ignores explicitly falsy nested route children",
+    rule: reactRouterNestedRouteRequiresOutlet,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ Component: () => <main />, children: null }, { Component: () => <main />, children: undefined }, { Component: () => <main />, children: false }]);',
+  },
+  {
     name: "allows an inline route component to delegate to a layout component",
     rule: reactRouterNestedRouteRequiresOutlet,
     source:
@@ -595,6 +601,15 @@ describe("React Router rule regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports explicitly falsy root error boundaries", () => {
+    const result = runRule(
+      reactRouterRequireRootErrorBoundary,
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", ErrorBoundary: null }, { path: "/admin", errorElement: undefined }, { path: "/account", lazy: false }]);',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
   });
 
   it("recognizes inline data-router loader properties without framework mode", () => {

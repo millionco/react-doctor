@@ -1,6 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getStaticRouteProperty } from "../../utils/get-static-route-property.js";
+import { hasActiveRouteProperty } from "../../utils/has-active-route-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -21,9 +21,9 @@ export const reactRouterRequireRootErrorBoundary = wrapReactRouterRule(
         const routeArray = node.parent;
         if (!isNodeOfType(routeArray, "ArrayExpression")) return;
         if (!isNodeOfType(routeArray.parent, "CallExpression")) return;
-        if (getStaticRouteProperty(node, "ErrorBoundary") !== null) return;
-        if (getStaticRouteProperty(node, "errorElement") !== null) return;
-        if (getStaticRouteProperty(node, "lazy") !== null) return;
+        if (hasActiveRouteProperty(context, node, "ErrorBoundary")) return;
+        if (hasActiveRouteProperty(context, node, "errorElement")) return;
+        if (hasActiveRouteProperty(context, node, "lazy")) return;
         context.report({
           node,
           message:

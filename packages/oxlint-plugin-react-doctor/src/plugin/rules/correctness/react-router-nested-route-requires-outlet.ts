@@ -3,6 +3,7 @@ import { containsReactRouterExportUsage } from "../../utils/contains-react-route
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticRouteProperty } from "../../utils/get-static-route-property.js";
+import { hasActiveRouteProperty } from "../../utils/has-active-route-property.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
@@ -60,7 +61,7 @@ export const reactRouterNestedRouteRequiresOutlet = wrapReactRouterRule(
     create: (context: RuleContext) => ({
       ObjectExpression(node: EsTreeNodeOfType<"ObjectExpression">) {
         if (!isStaticReactRouterRouteObject(context, node)) return;
-        if (getStaticRouteProperty(node, "children") === null) return;
+        if (!hasActiveRouteProperty(context, node, "children")) return;
         const routeContent = getResolvedInlineRouteContent(node);
         if (routeContent === null) return;
         if (containsReactRouterExportUsage(context, routeContent, OUTLET_EXPORT_NAMES)) return;

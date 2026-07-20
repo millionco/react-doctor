@@ -3,9 +3,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticRouteFullPath } from "../../utils/get-static-route-full-path.js";
-import { getStaticRouteProperty } from "../../utils/get-static-route-property.js";
+import { hasActiveRouteProperty } from "../../utils/has-active-route-property.js";
 import { hasJsxProp } from "../../utils/has-jsx-prop.js";
-import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -19,15 +18,6 @@ interface ResourceLinkCandidate {
   importedName: string;
   node: EsTreeNodeOfType<"JSXOpeningElement">;
 }
-
-const hasActiveRouteProperty = (
-  context: RuleContext,
-  routeObject: EsTreeNodeOfType<"ObjectExpression">,
-  propertyName: string,
-): boolean => {
-  const property = getStaticRouteProperty(routeObject, propertyName);
-  return property !== null && !isDefinitelyFalsyExpression(property.value, context.scopes);
-};
 
 export const reactRouterResourceLinkRequiresReload = wrapReactRouterRule(
   defineRule({

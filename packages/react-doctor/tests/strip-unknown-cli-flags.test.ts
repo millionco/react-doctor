@@ -108,6 +108,15 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps the blocking level on the experimental TUI command", () => {
+    expect(stripUserArguments(["experimental-tui", ".", "--blocking", "none"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--blocking",
+      "none",
+    ]);
+  });
+
   it("keeps the --no-telemetry alias for --no-score", () => {
     expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
   });

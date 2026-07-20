@@ -229,7 +229,57 @@ describe("runScanApp", () => {
     expect(firstOptions?.deadlineEpochMs).toBe(secondOptions?.deadlineEpochMs);
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
     expect(mockState.lifecycleEvents).toEqual(["footer", "handoff"]);
-    expect(result.hasLintHardFailure).toBe(true);
+    expect(result.shouldFail).toBe(true);
+  });
+
+  it("uses the configured blocking level and ciFailure surface for the exit gate", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, { blocking: "none" }, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      diagnostics: [buildDiagnostic({ severity: "error" })],
+      skippedChecks: ["lint"],
+      skippedCheckReasons: { lint: "Oxlint failed." },
+    });
+
+    const advisoryResult = await runScanApp({ directory: rootDirectory, skipPrompts: true });
+    expect(advisoryResult.shouldFail).toBe(false);
+
+    const flagOverrideResult = await runScanApp({
+      directory: rootDirectory,
+      skipPrompts: true,
+      blocking: "warning",
+    });
+    expect(flagOverrideResult.shouldFail).toBe(true);
+    expect(vi.mocked(inspect).mock.calls.at(-1)?.[1]?.warnings).toBe(true);
+
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(
+        rootDirectory,
+        rootDirectory,
+        {
+          blocking: "error",
+          surfaces: { ciFailure: { excludeRules: ["react-doctor/test-rule"] } },
+        },
+        rootDirectory,
+      ),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      diagnostics: [buildDiagnostic({ severity: "error" })],
+    });
+
+    const surfaceExcludedResult = await runScanApp({
+      directory: rootDirectory,
+      skipPrompts: true,
+    });
+    expect(surfaceExcludedResult.shouldFail).toBe(false);
   });
 
   it("normalizes project-qualified diagnostic paths", async () => {

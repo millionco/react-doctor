@@ -442,48 +442,58 @@ program
   .allowUnknownOption()
   .action(() => {});
 
+interface ExperimentalTuiOptions {
+  readonly blocking?: string;
+  readonly deadCode?: boolean;
+  readonly score?: boolean;
+  readonly project?: string;
+  readonly yes?: boolean;
+}
+
 program
   .command("experimental-tui [directory]", { hidden: true })
   .description("[experimental] interactive, scrollable scan report")
+  .option(
+    "--blocking <level>",
+    "severity that fails CI: error (default), warning, or none (advisory)",
+  )
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .option("--no-dead-code", "skip dead-code analysis")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")
-  .action(
-    async (
-      directory = ".",
-      options: { deadCode?: boolean; score?: boolean; project?: string; yes?: boolean },
-    ) => {
-      const deadCode = options.deadCode === false ? false : undefined;
-      const noScore = options.score === false ? true : undefined;
-      const nodeMajorVersion = Number(process.versions.node.split(".")[0]);
-      if (
-        process.stdout.isTTY !== true ||
-        process.stdin.isTTY !== true ||
-        isNonInteractiveEnvironment() ||
-        nodeMajorVersion < TUI_MIN_NODE_MAJOR_VERSION
-      ) {
-        await inspectAction(directory, {
-          deadCode,
-          score: options.score === false ? false : undefined,
-          project: options.project,
-          yes: options.yes,
-        });
-        return;
-      }
-      recordCount(METRIC.cliInvoked, 1, { command: "experimental-tui" });
-      const { runScanApp } = await import("./ink/run-scan-app.js");
-      const { errorCount, hasLintHardFailure: didLintHardFail } = await runScanApp({
-        directory,
-        options: { deadCode, noScore },
-        projectFlag: options.project,
-        skipPrompts: options.yes ?? false,
+  .action(async (directory = ".", _localOptions: ExperimentalTuiOptions, command) => {
+    const options: ExperimentalTuiOptions = command.optsWithGlobals();
+    const deadCode = options.deadCode === false ? false : undefined;
+    const noScore = options.score === false ? true : undefined;
+    const nodeMajorVersion = Number(process.versions.node.split(".")[0]);
+    if (
+      process.stdout.isTTY !== true ||
+      process.stdin.isTTY !== true ||
+      isNonInteractiveEnvironment() ||
+      nodeMajorVersion < TUI_MIN_NODE_MAJOR_VERSION
+    ) {
+      await inspectAction(directory, {
+        deadCode,
+        score: options.score === false ? false : undefined,
+        project: options.project,
+        yes: options.yes,
+        blocking: options.blocking,
       });
-      if (errorCount > 0 || didLintHardFail) process.exitCode = 1;
-    },
-  );
+      return;
+    }
+    recordCount(METRIC.cliInvoked, 1, { command: "experimental-tui" });
+    const { runScanApp } = await import("./ink/run-scan-app.js");
+    const { shouldFail } = await runScanApp({
+      directory,
+      options: { deadCode, noScore },
+      projectFlag: options.project,
+      skipPrompts: options.yes ?? false,
+      blocking: options.blocking,
+    });
+    if (shouldFail) process.exitCode = 1;
+  });
 
 // HACK: when stdout is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next

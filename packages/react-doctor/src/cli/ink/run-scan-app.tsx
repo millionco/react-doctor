@@ -11,6 +11,7 @@ import {
   resolveScanTarget,
 } from "@react-doctor/core";
 import type {
+  BlockingLevel,
   Diagnostic,
   InspectResult,
   ReactDoctorConfig,
@@ -36,7 +37,11 @@ import { hasLintHardFailure } from "../utils/has-lint-hard-failure.js";
 import { setUpGitHubActions } from "../utils/set-up-github-actions.js";
 import { recordCount } from "../utils/record-metric.js";
 import { METRIC } from "../utils/constants.js";
+import type { SurfaceFilterableScan } from "../utils/filter-scans-for-surface.js";
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
+import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
+import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
+import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
 import { ProjectSelect } from "./components/project-select.js";
 import { ScanApp } from "./scan-app.js";
 import { progressLayerForStore, reporterLayerForStore } from "./scan-bridge-layers.js";
@@ -50,12 +55,11 @@ export interface RunScanAppInput {
   readonly skipPrompts?: boolean;
   readonly configProjects?: readonly string[];
   readonly share?: boolean;
+  readonly blocking?: string;
 }
 
 export interface RunScanAppResult {
-  readonly errorCount: number;
-  readonly warningCount: number;
-  readonly hasLintHardFailure: boolean;
+  readonly shouldFail: boolean;
 }
 
 interface ResolvedProjectScan {
@@ -95,19 +99,6 @@ const resolveProjectScan = async (
   };
 };
 
-const countDiagnosticsBySeverity = (
-  diagnostics: ReadonlyArray<Diagnostic>,
-  didLintHardFail: boolean,
-): RunScanAppResult => {
-  let errorCount = 0;
-  let warningCount = 0;
-  for (const diagnostic of diagnostics) {
-    if (diagnostic.severity === "error") errorCount += 1;
-    else warningCount += 1;
-  }
-  return { errorCount, warningCount, hasLintHardFailure: didLintHardFail };
-};
-
 const qualifyDiagnosticPaths = (
   diagnostics: ReadonlyArray<Diagnostic>,
   rootDirectory: string,
@@ -139,6 +130,17 @@ const resolveScanPresentation = (
       isShareOptedOut(projectScans, input.options?.noScore),
     noScoreMessage: buildNoScoreMessage(isScoreDisabled),
   };
+};
+
+const resolveTuiInspectOptions = (
+  input: RunScanAppInput,
+  config: ReactDoctorConfig | null,
+): ReactDoctorInspectOptions => {
+  const warnings = resolveCliInspectOptions(
+    { blocking: input.blocking, warnings: input.options?.warnings },
+    config,
+  ).warnings;
+  return warnings === undefined ? { ...input.options } : { ...input.options, warnings };
 };
 
 const resolveSelectedDirectories = async (
@@ -326,7 +328,7 @@ interface ScanExecutionContext {
 }
 
 interface CompletedTuiScan {
-  readonly results: ReadonlyArray<InspectResult>;
+  readonly scans: ReadonlyArray<SurfaceFilterableScan>;
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly scoreResult: ScoreResult | null;
   readonly projectName: string;
@@ -341,6 +343,7 @@ interface ExecuteTuiScan {
 const runMountedScan = async (
   rootDirectory: string,
   presentation: ScanPresentation,
+  blockingLevel: BlockingLevel,
   executeScan: ExecuteTuiScan,
 ): Promise<RunScanAppResult> => {
   const { store, instance, settle } = await mountScanApp(rootDirectory);
@@ -359,13 +362,12 @@ const runMountedScan = async (
       scannedFileCount: completedScan.scannedFileCount,
       elapsedMilliseconds: completedScan.elapsedMilliseconds,
       isOffline: context.isOffline,
-      lintFailureReason: resolveLintFailureReason(completedScan.results),
+      lintFailureReason: resolveLintFailureReason(completedScan.scans.map(({ result }) => result)),
     });
     await settle();
-    return countDiagnosticsBySeverity(
-      completedScan.diagnostics,
-      completedScan.results.some(hasLintHardFailure),
-    );
+    return {
+      shouldFail: shouldFailScanGate({ scans: completedScan.scans, blockingLevel }),
+    };
   } catch (error) {
     instance.unmount();
     throw error;
@@ -376,12 +378,13 @@ const runSingleProjectScan = async (
   rootScanTarget: ResolvedScanTarget,
   projectDirectory: string,
   input: RunScanAppInput,
+  blockingLevel: BlockingLevel,
 ): Promise<RunScanAppResult> => {
   const projectScan = await resolveProjectScan(rootScanTarget, projectDirectory);
   const presentation = resolveScanPresentation(input, [projectScan]);
-  return runMountedScan(projectScan.directory, presentation, async (context) => {
+  return runMountedScan(projectScan.directory, presentation, blockingLevel, async (context) => {
     const result = await inspect(projectScan.directory, {
-      ...input.options,
+      ...resolveTuiInspectOptions(input, projectScan.config),
       isCi: isCiEnvironment(),
       configOverride: projectScan.config,
       configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
@@ -403,7 +406,7 @@ const runSingleProjectScan = async (
       }),
     );
     return {
-      results: [result],
+      scans: [{ result, config: projectScan.config }],
       diagnostics: result.diagnostics,
       scoreResult: result.score,
       projectName: result.project.projectName,
@@ -417,6 +420,7 @@ const runMultiProjectScan = async (
   rootScanTarget: ResolvedScanTarget,
   directories: ReadonlyArray<string>,
   input: RunScanAppInput,
+  blockingLevel: BlockingLevel,
 ): Promise<RunScanAppResult> => {
   const rootDirectory = rootScanTarget.resolvedDirectory;
   const projectScans = await mapWithConcurrency(
@@ -425,7 +429,7 @@ const runMultiProjectScan = async (
     (projectDirectory) => resolveProjectScan(rootScanTarget, projectDirectory),
   );
   const presentation = resolveScanPresentation(input, projectScans);
-  return runMountedScan(rootDirectory, presentation, async (context) => {
+  return runMountedScan(rootDirectory, presentation, blockingLevel, async (context) => {
     const startTime = performance.now();
     let finishedCount = 0;
     context.store.setProgress(`Scanning ${directories.length} projects…`);
@@ -434,7 +438,7 @@ const runMultiProjectScan = async (
       DEFAULT_PROJECT_SCAN_CONCURRENCY,
       async (projectScan) => {
         const result = await inspect(projectScan.directory, {
-          ...input.options,
+          ...resolveTuiInspectOptions(input, projectScan.config),
           isCi: isCiEnvironment(),
           configOverride: projectScan.config,
           configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
@@ -445,7 +449,7 @@ const runMultiProjectScan = async (
         context.store.setProgress(
           `Scanning ${directories.length} projects… (${finishedCount}/${directories.length})`,
         );
-        return { directory: projectScan.directory, result };
+        return { directory: projectScan.directory, result, config: projectScan.config };
       },
     );
 
@@ -484,7 +488,7 @@ const runMultiProjectScan = async (
     };
     context.store.setSummary(summary);
     return {
-      results: results.map(({ result }) => result),
+      scans: results,
       diagnostics: combinedDiagnostics,
       scoreResult: summary.aggregateScore,
       projectName: summary.projectName,
@@ -510,12 +514,16 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
     share: input.share ?? scanTarget.userConfig?.share ?? true,
   };
   const selectedDirectories = await resolveSelectedDirectories(rootDirectory, resolvedInput);
+  const blockingLevel = resolveBlockingLevel(
+    { blocking: resolvedInput.blocking },
+    scanTarget.userConfig,
+  );
 
   if (selectedDirectories.length === 0) {
-    return { errorCount: 0, warningCount: 0, hasLintHardFailure: false };
+    return { shouldFail: false };
   }
   if (selectedDirectories.length === 1) {
-    return runSingleProjectScan(scanTarget, selectedDirectories[0], resolvedInput);
+    return runSingleProjectScan(scanTarget, selectedDirectories[0], resolvedInput, blockingLevel);
   }
-  return runMultiProjectScan(scanTarget, selectedDirectories, resolvedInput);
+  return runMultiProjectScan(scanTarget, selectedDirectories, resolvedInput, blockingLevel);
 };

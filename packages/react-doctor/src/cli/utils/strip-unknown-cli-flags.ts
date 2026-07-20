@@ -141,7 +141,7 @@ const EXPERIMENTAL_TUI_FLAG_SPEC: CliFlagSpec = {
     "--no-score",
     "--yes",
   ]),
-  longOptionsWithRequiredValues: new Set(["--project"]),
+  longOptionsWithRequiredValues: new Set(["--blocking", "--project"]),
   longOptionsWithOptionalValues: new Set(),
   shortOptionsWithoutValues: new Set(["-h", "-y"]),
   shortOptionsWithRequiredValues: new Set(["-p"]),

@@ -33,12 +33,43 @@ export const reactRouterNoMultipleMiddlewareNext = wrapReactRouterRule(
           }
           return [callExpression];
         });
-        const hasUnconditionalCall = nextCalls.some((call) =>
-          context.cfg.isUnconditionalFromEntry(call),
-        );
-        if (!hasUnconditionalCall || nextCalls.length < 2) return;
+        if (nextCalls.length < 2) return;
+        const functionCfg = context.cfg.cfgFor(functionNode);
+        if (functionCfg === null) return;
+        const canReach = (sourceCall: EsTreeNode, targetCall: EsTreeNode): boolean => {
+          const sourceBlock = functionCfg.blockOf(sourceCall);
+          const targetBlock = functionCfg.blockOf(targetCall);
+          if (sourceBlock === null || targetBlock === null) return false;
+          const pendingBlocks = [sourceBlock];
+          const visitedBlockIds = new Set<number>();
+          while (pendingBlocks.length > 0) {
+            const block = pendingBlocks.pop();
+            if (block === undefined || visitedBlockIds.has(block.id)) continue;
+            if (block === targetBlock) return true;
+            visitedBlockIds.add(block.id);
+            for (const edge of block.successors) pendingBlocks.push(edge.to);
+          }
+          return false;
+        };
+        let secondReachableCall: EsTreeNode | null = null;
+        for (let firstIndex = 0; firstIndex < nextCalls.length; firstIndex += 1) {
+          for (let secondIndex = firstIndex + 1; secondIndex < nextCalls.length; secondIndex += 1) {
+            const firstCall = nextCalls[firstIndex];
+            const secondCall = nextCalls[secondIndex];
+            if (
+              firstCall !== undefined &&
+              secondCall !== undefined &&
+              (canReach(firstCall, secondCall) || canReach(secondCall, firstCall))
+            ) {
+              secondReachableCall = secondCall;
+              break;
+            }
+          }
+          if (secondReachableCall !== null) break;
+        }
+        if (secondReachableCall === null) return;
         context.report({
-          node: nextCalls[1] ?? nextCalls[0]!,
+          node: secondReachableCall,
           message: "Two next() calls can execute on the same middleware path.",
         });
       };

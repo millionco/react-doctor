@@ -30,7 +30,7 @@ export const reactRouterReturnNavigationPromiseInTransition = wrapReactRouterRul
           ) {
             return;
           }
-          hasTransitionEnabledRouter = (node.attributes ?? []).some((attribute) => {
+          hasTransitionEnabledRouter ||= (node.attributes ?? []).some((attribute) => {
             if (!isNodeOfType(attribute, "JSXAttribute")) return false;
             const attributeName = getJsxAttributeName(attribute.name);
             return (

@@ -1072,5 +1072,41 @@
     "name": "carbon-addons-iot-react",
     "ref": "b1f5b08e7edadcbf5c6282d9b7380424f68732c2",
     "rootDir": "packages/react"
+  },
+  {
+    "org": "getsentry",
+    "name": "sentry",
+    "ref": "2bacd0a62af377a22cdc94431bd7c97c674d1cf9",
+    "rootDir": "."
+  },
+  {
+    "org": "mattermost",
+    "name": "mattermost",
+    "ref": "323841e9c560e75a4f8fd3d106b0fd2d780216fc",
+    "rootDir": "webapp/channels"
+  },
+  {
+    "org": "mattermost",
+    "name": "mattermost",
+    "ref": "323841e9c560e75a4f8fd3d106b0fd2d780216fc",
+    "rootDir": "webapp/platform/shared"
+  },
+  {
+    "org": "nocobase",
+    "name": "nocobase",
+    "ref": "f67491bb035cca5c27cb15de94a288dd03bd72c6",
+    "rootDir": "packages/core/client"
+  },
+  {
+    "org": "nocobase",
+    "name": "nocobase",
+    "ref": "f67491bb035cca5c27cb15de94a288dd03bd72c6",
+    "rootDir": "packages/core/devtools"
+  },
+  {
+    "org": "nocobase",
+    "name": "nocobase",
+    "ref": "f67491bb035cca5c27cb15de94a288dd03bd72c6",
+    "rootDir": "packages/core/flow-engine"
   }
 ]

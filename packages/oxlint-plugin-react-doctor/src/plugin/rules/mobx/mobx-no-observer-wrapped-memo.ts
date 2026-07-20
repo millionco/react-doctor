@@ -20,26 +20,26 @@ const isObserverCall = (
   return Boolean(reference?.importedName === "observer" && OBSERVER_MODULES.has(reference.source));
 };
 
-const resolveInvalidInnerWrapper = (
+const hasInvalidInnerWrapper = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds = new Set<number>(),
-): string | null => {
+): boolean => {
   const unwrappedExpression = stripParenExpression(expression);
   if (isNodeOfType(unwrappedExpression, "Identifier")) {
     const symbol = scopes.symbolFor(unwrappedExpression);
     if (symbol?.kind !== "const" || !symbol.initializer || visitedSymbolIds.has(symbol.id)) {
-      return null;
+      return false;
     }
     visitedSymbolIds.add(symbol.id);
-    return resolveInvalidInnerWrapper(symbol.initializer, scopes, visitedSymbolIds);
+    return hasInvalidInnerWrapper(symbol.initializer, scopes, visitedSymbolIds);
   }
-  if (!isNodeOfType(unwrappedExpression, "CallExpression")) return null;
+  if (!isNodeOfType(unwrappedExpression, "CallExpression")) return false;
   const reference = resolveImportedApiReference(unwrappedExpression.callee, scopes);
   if (reference?.importedName === "observer" && OBSERVER_MODULES.has(reference.source)) {
-    return "observer";
+    return true;
   }
-  return reference?.source === "react" && reference.importedName === "memo" ? "memo" : null;
+  return reference?.source === "react" && reference.importedName === "memo";
 };
 
 export const mobxNoObserverWrappedMemo = defineRule({
@@ -55,7 +55,7 @@ export const mobxNoObserverWrappedMemo = defineRule({
       if (!isObserverCall(callExpression, context.scopes)) return;
       const componentArgument = callExpression.arguments[0];
       if (!componentArgument) return;
-      if (!resolveInvalidInnerWrapper(componentArgument, context.scopes)) return;
+      if (!hasInvalidInnerWrapper(componentArgument, context.scopes)) return;
       context.report({ node: callExpression, message: MESSAGE });
     },
   }),

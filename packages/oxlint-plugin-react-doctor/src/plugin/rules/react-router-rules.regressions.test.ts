@@ -181,6 +181,13 @@ const safeRuleCases: SafeRuleCase[] = [
     ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
+    name: "allows loader options through a shadowed undefined binding",
+    rule: reactRouterLoaderFetchForwardsSignal,
+    source:
+      'export async function loader({ request }) { const undefined = { signal: request.signal }; return fetch("/api/profile", undefined); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+  },
+  {
     name: "allows dependent loader awaits",
     rule: reactRouterLoaderParallelFetch,
     source:
@@ -557,6 +564,16 @@ describe("React Router rule regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports loader fetches with nullish options", () => {
+    const result = runRule(
+      reactRouterLoaderFetchForwardsSignal,
+      'export async function loader({ request }) { await fetch("/null", null); await fetch("/undefined", undefined); return fetch("/void", void 0); }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
   });
 
   it("reports every uncovered top-level route branch", () => {

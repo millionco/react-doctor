@@ -10,6 +10,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactRouterRouteFunction } from "../../utils/is-react-router-route-function.js";
 import { isRouteRequestExpression } from "../../utils/is-route-request-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const isLoaderFunction = (context: RuleContext, functionNode: EsTreeNode): boolean =>
@@ -62,8 +63,19 @@ const optionsForwardRequestSignal = (
   options: EsTreeNode | null | undefined,
   loaderFunction: EsTreeNode,
 ): boolean => {
-  if (!options || !isNodeOfType(options, "ObjectExpression")) return Boolean(options);
-  for (const property of options.properties ?? []) {
+  if (!options) return false;
+  const candidate = stripParenExpression(options);
+  if (
+    (isNodeOfType(candidate, "Literal") && candidate.value === null) ||
+    (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "void") ||
+    (isNodeOfType(candidate, "Identifier") &&
+      candidate.name === "undefined" &&
+      context.scopes.isGlobalReference(candidate))
+  ) {
+    return false;
+  }
+  if (!isNodeOfType(candidate, "ObjectExpression")) return true;
+  for (const property of candidate.properties ?? []) {
     if (isNodeOfType(property, "SpreadElement")) return true;
     if (getStaticPropertyKeyName(property, { allowComputedString: true }) !== "signal") continue;
     return (

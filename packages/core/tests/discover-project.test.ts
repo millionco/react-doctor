@@ -81,6 +81,35 @@ describe("discoverProject", () => {
     expect(projectInfo.reactRouterVersion).toBe("^6.30.1");
   });
 
+  it("resolves catalog specs before selecting the lowest React Router workspace version", () => {
+    const projectDirectory = path.join(tempDirectory, "catalog-react-router-workspaces");
+    const legacyDirectory = path.join(projectDirectory, "packages", "legacy");
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "pnpm-workspace.yaml"),
+      'packages:\n  - "packages/*"\n\ncatalogs:\n  legacy:\n    react-router-dom: ^6.30.1\n',
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "catalog-react-router-workspaces",
+        private: true,
+        workspaces: ["packages/*"],
+        dependencies: { react: "^19.0.0", "react-router": "^8.1.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({
+        name: "legacy",
+        dependencies: { "react-router-dom": "catalog:legacy" },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).reactRouterVersion).toBe("^6.30.1");
+    expect(discoverProject(legacyDirectory).reactRouterVersion).toBe("^6.30.1");
+  });
+
   it("detects React from a UTF-8 BOM-prefixed package.json", () => {
     const projectDirectory = path.join(tempDirectory, "bom-prefixed-package-json");
     fs.mkdirSync(projectDirectory, { recursive: true });

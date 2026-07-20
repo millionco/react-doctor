@@ -310,9 +310,20 @@ const evaluateManifestFacts = (
   }
   for (const packageName of REACT_ROUTER_DEPENDENCY_NAMES) {
     const spec = getDependencySpec(packageJson, packageName);
-    if (spec === null || !shouldReplaceReactRouterVersion(facts.reactRouter.version, spec))
+    const resolvedSpec = resolveCatalogBackedDependencyVersion({
+      rootDirectory,
+      rootPackageJson,
+      sourceDirectory: directory,
+      sourcePackageJson: packageJson,
+      packageName,
+      version: spec,
+    });
+    if (
+      resolvedSpec === null ||
+      !shouldReplaceReactRouterVersion(facts.reactRouter.version, resolvedSpec)
+    )
       continue;
-    facts.reactRouter = { version: spec, sourceDirectory: directory, packageName };
+    facts.reactRouter = { version: resolvedSpec, sourceDirectory: directory, packageName };
   }
   facts.hasReactRouterFramework =
     facts.hasReactRouterFramework || getDependencySpec(packageJson, "@react-router/dev") !== null;

@@ -3612,78 +3612,6 @@
     "rootDir": "tool/tyber/js"
   },
   {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "dashboard"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/demos/react-demo"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/guides/codegen-nhost"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/guides/react-apollo"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/guides/react-query"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/guides/react-urql"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/quickstarts/nextjs"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/quickstarts/react"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/quickstarts/reactnative"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/tutorials/nhost-nextjs-tutorial"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/tutorials/nhost-react-tutorial"
-  },
-  {
-    "org": "nhost",
-    "name": "nhost",
-    "ref": "284c909d73dee1d285fecd333ac736c6c9acad6e",
-    "rootDir": "examples/tutorials/nhost-reactnative-tutorial"
-  },
-  {
     "org": "gridstack",
     "name": "gridstack.js",
     "ref": "d6e2d90f77b1bda0ad8f35fe8c87e5e9ed335672",
@@ -8292,12 +8220,6 @@
     "rootDir": "sanity_onlineshop"
   },
   {
-    "org": "DefiLlama",
-    "name": "defillama-app",
-    "ref": "c4bb14d6bb56ff6bc87da5daffc67b205ac0f1e3",
-    "rootDir": "."
-  },
-  {
     "org": "machadop1407",
     "name": "react-socketio-chat-app",
     "ref": "5de1839dda0df003799f6bf9fd18abd5afafc368",
@@ -11254,24 +11176,6 @@
     "name": "trpc",
     "ref": "23c723cfeaf07da28a52a5c35c3dcccf96a47578",
     "rootDir": "www"
-  },
-  {
-    "org": "novuhq",
-    "name": "novu",
-    "ref": "eb19786a05b35633f3799f8514326501814554e5",
-    "rootDir": "apps/dashboard"
-  },
-  {
-    "org": "novuhq",
-    "name": "novu",
-    "ref": "eb19786a05b35633f3799f8514326501814554e5",
-    "rootDir": "libs/notifications"
-  },
-  {
-    "org": "novuhq",
-    "name": "novu",
-    "ref": "eb19786a05b35633f3799f8514326501814554e5",
-    "rootDir": "playground/nextjs"
   },
   {
     "org": "ant-design",
@@ -18360,18 +18264,6 @@
     "rootDir": "."
   },
   {
-    "org": "mattermost",
-    "name": "mattermost-mobile",
-    "ref": "62916892f369e4d809a3d449743da5b9f096903c",
-    "rootDir": "."
-  },
-  {
-    "org": "ill-inc",
-    "name": "biomes-game",
-    "ref": "14252b95bf9e68495655af40c72750e8e3c44a42",
-    "rootDir": "."
-  },
-  {
     "org": "borndotcom",
     "name": "react-native-godot",
     "ref": "2744c1f44725d770d4aee5aa78f61b1ea2efb4b7",
@@ -22770,12 +22662,6 @@
     "rootDir": "."
   },
   {
-    "org": "PostHog",
-    "name": "posthog.com",
-    "ref": "384320e4c9b906753114486f466efcd0152c8182",
-    "rootDir": "."
-  },
-  {
     "org": "reflexjs",
     "name": "reflexjs",
     "ref": "41bdf1dc16123ddf6c1901037f33f509e79a8244",
@@ -23574,12 +23460,6 @@
     "rootDir": "packages/htmldocs/public/template"
   },
   {
-    "org": "GrootMade",
-    "name": "GrootMade",
-    "ref": "2d1548ea1c5d569fcadf5e1c343e991e0e06ff1d",
-    "rootDir": "."
-  },
-  {
     "org": "jkytoela",
     "name": "next-startd",
     "ref": "07c4db6b4f7df941d4c4c3502beba8e3cee8bee9",
@@ -24123,54 +24003,6 @@
     "org": "d-ivashchuk",
     "name": "cascade",
     "ref": "336691c97e6bf08b1bd8c027c52b147f775e100d",
-    "rootDir": "."
-  },
-  {
-    "org": "eigenpal",
-    "name": "docx-editor",
-    "ref": "4b6e572dc85bc91cead13abafb1c2c5f572a5122",
-    "rootDir": "examples/agent-chat-demo"
-  },
-  {
-    "org": "eigenpal",
-    "name": "docx-editor",
-    "ref": "4b6e572dc85bc91cead13abafb1c2c5f572a5122",
-    "rootDir": "examples/agent-use-demo"
-  },
-  {
-    "org": "eigenpal",
-    "name": "docx-editor",
-    "ref": "4b6e572dc85bc91cead13abafb1c2c5f572a5122",
-    "rootDir": "examples/collaboration"
-  },
-  {
-    "org": "eigenpal",
-    "name": "docx-editor",
-    "ref": "4b6e572dc85bc91cead13abafb1c2c5f572a5122",
-    "rootDir": "examples/plugins/docxtemplater"
-  },
-  {
-    "org": "eigenpal",
-    "name": "docx-editor",
-    "ref": "4b6e572dc85bc91cead13abafb1c2c5f572a5122",
-    "rootDir": "examples/plugins/hello-world"
-  },
-  {
-    "org": "eigenpal",
-    "name": "docx-editor",
-    "ref": "4b6e572dc85bc91cead13abafb1c2c5f572a5122",
-    "rootDir": "examples/remix"
-  },
-  {
-    "org": "eigenpal",
-    "name": "docx-editor",
-    "ref": "4b6e572dc85bc91cead13abafb1c2c5f572a5122",
-    "rootDir": "examples/vite"
-  },
-  {
-    "org": "eigenpal",
-    "name": "docx-editor",
-    "ref": "4b6e572dc85bc91cead13abafb1c2c5f572a5122",
     "rootDir": "."
   },
   {
@@ -28122,12 +27954,6 @@
     "rootDir": "packages/client"
   },
   {
-    "org": "reearth",
-    "name": "reearth-visualizer",
-    "ref": "e9b543ecdd0523ba3ff6cd7cc879394a7652de9f",
-    "rootDir": "web"
-  },
-  {
     "org": "arthelokyo",
     "name": "tailnext",
     "ref": "cd8304fc50c0626d2e607fd74e93451a10382bd8",
@@ -28497,12 +28323,6 @@
     "org": "adrianhajdin",
     "name": "saas-app",
     "ref": "c641282c05c81ad6bc6bd969e6904b2c53e70e42",
-    "rootDir": "."
-  },
-  {
-    "org": "nuotsu",
-    "name": "sanitypress",
-    "ref": "c6b4d5764049e94b76afc6a552e4e7cd6b2f0b29",
     "rootDir": "."
   },
   {
@@ -30816,12 +30636,6 @@
     "rootDir": "app"
   },
   {
-    "org": "drkostas",
-    "name": "drkostas.github.io",
-    "ref": "ec62d277563fef21a052f04d70138b4f254d0cc4",
-    "rootDir": "."
-  },
-  {
     "org": "Gothsec",
     "name": "Astro-portfolio",
     "ref": "fd3199be0f5d1622ea34e960ebda794427573bd9",
@@ -31486,12 +31300,6 @@
     "name": "horizon-tailwind-react-nextjs",
     "ref": "2f65f2112a3b04cdf28571f4f1ba48ad83d9ee24",
     "rootDir": "."
-  },
-  {
-    "org": "DioCrafts",
-    "name": "OpenFoundry",
-    "ref": "e5986e9cefc20cb9986506c1846a811f061dd88b",
-    "rootDir": "apps/web"
   },
   {
     "org": "walkframe",
@@ -34254,12 +34062,6 @@
     "rootDir": "."
   },
   {
-    "org": "invoiceninja",
-    "name": "ui",
-    "ref": "7f7a57cb8f07176c932bf52afd88adaf97d83399",
-    "rootDir": "."
-  },
-  {
     "org": "thecodeholic",
     "name": "laravel-react-survey",
     "ref": "9253b69db0cd92ad8fca80bb87d39a0a932a23e1",
@@ -34408,12 +34210,6 @@
     "name": "postel",
     "ref": "487c063ed845ac11cbba94b29830cb1783c268aa",
     "rootDir": "."
-  },
-  {
-    "org": "berthutapea",
-    "name": "mern-movie",
-    "ref": "32d491a3139f2b72da6bbf913f59ca914e14906f",
-    "rootDir": "client"
   },
   {
     "org": "SamiurRahmanMukul",
@@ -35037,6 +34833,114 @@
     "org": "swellstores",
     "name": "horizon",
     "ref": "d7e60931f14cd7beeaaf48a3a407bf3e8ccfe04e",
+    "rootDir": "."
+  },
+  {
+    "org": "sangammukherjee",
+    "name": "nextjs15-ecommerce-2025",
+    "ref": "108662a44889114d7daa707bfe2a8298c79f30c3",
+    "rootDir": "client"
+  },
+  {
+    "org": "xixihhhh",
+    "name": "daihuo-jianshou",
+    "ref": "a30e475fccb62053d53750186808e621de592851",
+    "rootDir": "."
+  },
+  {
+    "org": "djyde",
+    "name": "nextjs-saas-starter",
+    "ref": "af505e83ff1cbab05d977a8e859b1b4fd71b86b6",
+    "rootDir": "packages/server"
+  },
+  {
+    "org": "bl33h",
+    "name": "whosbl33h",
+    "ref": "96b1febc1e89ac7c4c65ea2164e78deb62e82b9e",
+    "rootDir": "."
+  },
+  {
+    "org": "sofiyevsr",
+    "name": "mobile-app-landing-template",
+    "ref": "87b904e3c44d53a15ecfb59d263a76fff2bba1bc",
+    "rootDir": "."
+  },
+  {
+    "org": "bmorelli25",
+    "name": "React-Weather-App",
+    "ref": "600da669fb75381d430333e09aa0e288201cdde0",
+    "rootDir": "."
+  },
+  {
+    "org": "saseungmin",
+    "name": "react-native-gesture-image-viewer",
+    "ref": "4994c34a15fd63336eabdaf7506ce8eb8536e7ce",
+    "rootDir": "example"
+  },
+  {
+    "org": "saseungmin",
+    "name": "react-native-gesture-image-viewer",
+    "ref": "4994c34a15fd63336eabdaf7506ce8eb8536e7ce",
+    "rootDir": "."
+  },
+  {
+    "org": "felire",
+    "name": "react-native-animated-dots-carousel",
+    "ref": "44d7fedd340df53216dba814c32b8c4bdf47c231",
+    "rootDir": "."
+  },
+  {
+    "org": "JhojanGgarcia",
+    "name": "PopplyLibrary",
+    "ref": "8fde4baa642f311e1c631e9dc5a51c780e5f819e",
+    "rootDir": "."
+  },
+  {
+    "org": "giladfuchs",
+    "name": "next-ecommerce",
+    "ref": "f53a6fafacc8fcb62d702fba6e9cd83955c826b0",
+    "rootDir": "frontend"
+  },
+  {
+    "org": "giladfuchs",
+    "name": "next-ecommerce",
+    "ref": "f53a6fafacc8fcb62d702fba6e9cd83955c826b0",
+    "rootDir": "."
+  },
+  {
+    "org": "giladfuchs",
+    "name": "next-ecommerce",
+    "ref": "f53a6fafacc8fcb62d702fba6e9cd83955c826b0",
+    "rootDir": "payload"
+  },
+  {
+    "org": "FullProduct-dev",
+    "name": "green-stack-starter-demo",
+    "ref": "da3552a44b0b15ba0ec48068e109345a48c160ea",
+    "rootDir": "apps/expo"
+  },
+  {
+    "org": "FullProduct-dev",
+    "name": "green-stack-starter-demo",
+    "ref": "da3552a44b0b15ba0ec48068e109345a48c160ea",
+    "rootDir": "."
+  },
+  {
+    "org": "lesterfernandez",
+    "name": "react-live-messenger",
+    "ref": "cb04e060f77bf3743e359c6f401a50461891d405",
+    "rootDir": "packages/client"
+  },
+  {
+    "org": "mdyna",
+    "name": "mdyna-app",
+    "ref": "aec8437bd05dd50f2eda63f92419ddc4ca2f0a96",
+    "rootDir": "app"
+  },
+  {
+    "org": "lxerxa",
+    "name": "actionview-fe",
+    "ref": "9c626a43c4794512bfd7355cc783f534559eb9ea",
     "rootDir": "."
   }
 ]

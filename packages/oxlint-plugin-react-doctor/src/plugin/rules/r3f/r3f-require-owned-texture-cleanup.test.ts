@@ -17,6 +17,32 @@ describe("r3f-require-owned-texture-cleanup", () => {
     expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(3);
   });
 
+  it("reports eager state-owned base textures that are replaced later", () => {
+    const code = `
+      import * as THREE from "three";
+      import { useState } from "react";
+      const Scene = ({ loadedTexture }) => {
+        const [texture, setTexture] = useState(new THREE.Texture());
+        if (loadedTexture) setTexture(loadedTexture);
+        return <meshBasicMaterial map={texture} />;
+      };
+    `;
+    expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a lazy state-owned base texture with cleanup", () => {
+    const code = `
+      import { Texture } from "three";
+      import { useEffect, useState } from "react";
+      const Scene = () => {
+        const [texture] = useState(() => new Texture());
+        useEffect(() => () => texture.dispose(), [texture]);
+        return <meshBasicMaterial map={texture} />;
+      };
+    `;
+    expect(runRule(r3fRequireOwnedTextureCleanup, code).diagnostics).toHaveLength(0);
+  });
+
   it("reports effect-owned textures when the effect does not return disposal", () => {
     const code = `
       import * as THREE from "three";

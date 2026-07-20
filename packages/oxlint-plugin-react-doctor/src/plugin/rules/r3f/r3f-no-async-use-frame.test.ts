@@ -19,6 +19,15 @@ describe("r3f-no-async-use-frame", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("describes ignored promises even when the callback has no await", () => {
+    const result = runRule(
+      r3fNoAsyncUseFrame,
+      `import { useFrame } from "@react-three/fiber"; useFrame(async () => update());`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("ignored Promise");
+  });
+
   it("flags async callbacks wrapped by React useCallback", () => {
     const result = runRule(
       r3fNoAsyncUseFrame,

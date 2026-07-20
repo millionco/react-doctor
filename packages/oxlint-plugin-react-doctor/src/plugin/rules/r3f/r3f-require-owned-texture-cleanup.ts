@@ -17,7 +17,12 @@ import {
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 
-const OWNED_TEXTURE_CONSTRUCTOR_NAMES = new Set(["CanvasTexture", "DataTexture", "VideoTexture"]);
+const OWNED_TEXTURE_CONSTRUCTOR_NAMES = new Set([
+  "CanvasTexture",
+  "DataTexture",
+  "Texture",
+  "VideoTexture",
+]);
 const TEXTURE_BORROWING_METHOD_NAMES = new Set<string>();
 
 const isMaterialTexturePropertyName = (propertyName: string | null): boolean =>

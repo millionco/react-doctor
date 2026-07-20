@@ -4,6 +4,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import {
   analyzeOwnedLifecycleCleanup,
   analyzeOwnedLifecycleResource,
+  analyzeOwnedLifecycleSetupCleanup,
   functionInvokesOwnedResourceMethod,
 } from "./utils/analyze-owned-lifecycle-resource.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
@@ -71,6 +72,23 @@ export const threeRequireControlsCleanup = defineRule({
         ),
       );
       if (cleanup.isProven || cleanup.isUnknown) return;
+      if (CONTROL_DISCONNECT_EQUIVALENT_CONSTRUCTORS.has(provenance.apiName)) {
+        const setupCleanup = analyzeOwnedLifecycleSetupCleanup(
+          ownership,
+          context,
+          "connect",
+          (cleanupFunction) =>
+            cleanupMethodNames.some((methodName) =>
+              functionInvokesOwnedResourceMethod(
+                cleanupFunction,
+                ownership,
+                methodName,
+                context.scopes,
+              ),
+            ),
+        );
+        if (setupCleanup.isProven || setupCleanup.isUnknown) return;
+      }
       context.report({
         node,
         message:

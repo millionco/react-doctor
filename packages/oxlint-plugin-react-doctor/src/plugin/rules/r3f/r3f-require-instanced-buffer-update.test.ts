@@ -53,6 +53,42 @@ describe("r3f-require-instanced-buffer-update", () => {
     expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(0);
   });
 
+  it("accepts a color upload guarded by the matching optional buffer", () => {
+    const code = `
+      import "@react-three/fiber";
+      import { useRef } from "react";
+      const Scene = () => {
+        const meshRef = useRef(null);
+        const update = () => {
+          meshRef.current.setColorAt(0, color);
+          if (meshRef.current.instanceColor) {
+            meshRef.current.instanceColor.needsUpdate = true;
+          }
+        };
+        return <instancedMesh ref={meshRef} />;
+      };
+    `;
+    expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(0);
+  });
+
+  it("rejects an upload guarded by a different optional buffer", () => {
+    const code = `
+      import "@react-three/fiber";
+      import { useRef } from "react";
+      const Scene = () => {
+        const meshRef = useRef(null);
+        const update = () => {
+          meshRef.current.setColorAt(0, color);
+          if (meshRef.current.instanceMatrix) {
+            meshRef.current.instanceColor.needsUpdate = true;
+          }
+        };
+        return <instancedMesh ref={meshRef} />;
+      };
+    `;
+    expect(runRule(r3fRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(1);
+  });
+
   it("accepts a matching upload returned directly after the mutation", () => {
     const code = `
       import "@react-three/fiber";

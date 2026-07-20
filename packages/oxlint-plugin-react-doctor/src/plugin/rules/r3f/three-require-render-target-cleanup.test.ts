@@ -84,6 +84,37 @@ describe("three-require-render-target-cleanup", () => {
     expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(0);
   });
 
+  it("accepts immediate disposal after the render target is used", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { WebGLCubeRenderTarget } from "three";
+      function Preload({ camera, gl, scene }) {
+        useEffect(() => {
+          const target = new WebGLCubeRenderTarget(128);
+          camera.update(gl, scene, target);
+          target.dispose();
+        }, []);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("rejects immediate disposal that remains conditional", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { WebGLRenderTarget } from "three";
+      function Scene({ shouldDispose }) {
+        useEffect(() => {
+          const target = new WebGLRenderTarget(1, 1);
+          if (shouldDispose) target.dispose();
+        }, [shouldDispose]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRenderTargetCleanup, code).diagnostics).toHaveLength(1);
+  });
+
   it("requires cleanup to follow a reactive target", () => {
     const code = `
       import { useEffect, useMemo } from "react";

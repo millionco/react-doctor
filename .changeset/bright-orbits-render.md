@@ -9,3 +9,5 @@ Add handbook-derived coverage for non-reactive mutable `useThree` scalar selecto
 Track component-owned Three.js resources stored in direct or guarded-lazy `useRef` bindings, and diagnose renderer `setAnimationLoop` scheduling that competes with R3F `useFrame`.
 
 Require component-owned Three.js animation mixers to stop cached actions and uncache their root, and require modern WebGL postprocessing composers and resource-owning passes imported from either `three/examples/jsm` or `three/addons`, including Three's postprocessing barrel, to dispose their GPU resources without conflating Three's borrowed passes with pmndrs composer ownership. Gate pass cleanup on the earliest supported Three.js release, composer cleanup on release 146, the addon barrel on release 158, and `FXAAPass` on release 177.
+
+Recognize immediate disposal, conditional instanced-color uploads, reassigned effect cleanup closures, module-scoped WeakMap registration caches, bounded frame-state transitions, boolean ref latches, and conditional controls connections. Ignore whole-namespace registration in test-like files, and diagnose eagerly constructed base textures held in state.

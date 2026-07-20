@@ -75,6 +75,42 @@ describe("three-require-controls-cleanup", () => {
     expect(runRule(threeRequireControlsCleanup, code).diagnostics).toHaveLength(0);
   });
 
+  it("accepts a conditional connection paired with the same effect cleanup", () => {
+    const code = `
+      import { useEffect, useMemo } from "react";
+      import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
+      const Scene = ({ camera, enabled }) => {
+        const controls = useMemo(() => new PointerLockControls(camera), [camera]);
+        useEffect(() => {
+          if (enabled) {
+            controls.connect();
+            return () => controls.disconnect();
+          }
+        }, [controls, enabled]);
+        return null;
+      };
+    `;
+    expect(runRule(threeRequireControlsCleanup, code).diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a conditional connection with a cleanup gap", () => {
+    const code = `
+      import { useEffect, useMemo } from "react";
+      import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
+      const Scene = ({ camera, enabled, shouldDisconnect }) => {
+        const controls = useMemo(() => new PointerLockControls(camera), [camera]);
+        useEffect(() => {
+          if (enabled) {
+            controls.connect();
+            if (shouldDisconnect) return () => controls.disconnect();
+          }
+        }, [controls, enabled, shouldDisconnect]);
+        return null;
+      };
+    `;
+    expect(runRule(threeRequireControlsCleanup, code).diagnostics).toHaveLength(1);
+  });
+
   it("tracks useRef-owned controls and accepts cleanup through current", () => {
     const code = `
       import { useEffect, useRef } from "react";

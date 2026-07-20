@@ -8,6 +8,7 @@ import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isImportedOrStableParameterCall } from "../../utils/is-imported-or-stable-parameter-call.js";
+import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSynchronousIteratorCallback } from "../../utils/is-synchronous-iterator-callback.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
@@ -174,6 +175,58 @@ const getOpaqueRefTransfer = (
   return completions;
 };
 
+const expressionMatchesCompletionBuffer = (
+  expression: EsTreeNode,
+  completion: InstancedBufferCompletion,
+  context: RuleContext,
+): boolean => {
+  const bufferMember = stripParenExpression(expression);
+  if (
+    !isNodeOfType(bufferMember, "MemberExpression") ||
+    getStaticPropertyName(bufferMember) !== completion.bufferPropertyName
+  ) {
+    return false;
+  }
+  return resolveCurrentRefSymbol(bufferMember.object, context)?.id === completion.refSymbolId;
+};
+
+const isCompletionGuardedByMatchingBuffer = (
+  completion: InstancedBufferCompletion,
+  owner: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let currentChild = completion.node;
+  let currentAncestor = completion.node.parent;
+  while (currentAncestor && currentAncestor !== owner) {
+    if (
+      isNodeOfType(currentAncestor, "IfStatement") &&
+      currentAncestor.consequent === currentChild &&
+      !isNodeConditionallyExecuted(completion.node, currentAncestor.consequent) &&
+      expressionMatchesCompletionBuffer(currentAncestor.test, completion, context)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(currentAncestor, "ConditionalExpression") &&
+      currentAncestor.consequent === currentChild &&
+      expressionMatchesCompletionBuffer(currentAncestor.test, completion, context)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(currentAncestor, "LogicalExpression") &&
+      currentAncestor.operator === "&&" &&
+      currentAncestor.right === currentChild &&
+      expressionMatchesCompletionBuffer(currentAncestor.left, completion, context)
+    ) {
+      return true;
+    }
+    currentChild = currentAncestor;
+    currentAncestor = currentAncestor.parent;
+  }
+  return false;
+};
+
 const completionsCoverEveryPathWithinOwner = (
   pathAnchor: EsTreeNode,
   owner: EsTreeNode,
@@ -184,6 +237,18 @@ const completionsCoverEveryPathWithinOwner = (
   const mutationBlock = functionCfg?.blockOf(pathAnchor);
   const mutationStart = getRangeStart(pathAnchor);
   if (!functionCfg || !mutationBlock || mutationStart === null) return true;
+  if (
+    completions.some((completion) => {
+      const completionStart = getRangeStart(completion.node);
+      return (
+        completionStart !== null &&
+        completionStart > mutationStart &&
+        isCompletionGuardedByMatchingBuffer(completion, owner, context)
+      );
+    })
+  ) {
+    return true;
+  }
   const matchingBlocks = new Set(
     completions.flatMap((completion) => {
       const completionBlock = functionCfg.blockOf(completion.node);

@@ -3,6 +3,79 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { r3fNoStateInUseFrame } from "./r3f-no-state-in-use-frame.js";
 
 describe("r3f-no-state-in-use-frame", () => {
+  it("allows state transitions guarded by a ref latch", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber";
+      import { useRef, useState } from "react";
+      const Scene = ({ controller }) => {
+        const pressedRef = useRef(false);
+        const [enabled, setEnabled] = useState(false);
+        useFrame(() => {
+          if (controller.pressed && !pressedRef.current) {
+            pressedRef.current = true;
+            setEnabled((current) => !current);
+          }
+        });
+        return enabled ? <mesh /> : null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(0);
+  });
+
+  it("reports a ref latch written after the state transition", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber";
+      import { useRef, useState } from "react";
+      const Scene = ({ pressed }) => {
+        const pressedRef = useRef(false);
+        const [enabled, setEnabled] = useState(false);
+        useFrame(() => {
+          if (pressed && !pressedRef.current) {
+            setEnabled((current) => !current);
+            pressedRef.current = true;
+          }
+        });
+        return enabled ? <mesh /> : null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(1);
+  });
+
+  it("allows mutually exclusive bounded state transitions", () => {
+    const code = `
+      import { useFrame, useThree } from "@react-three/fiber";
+      import { useState } from "react";
+      const Scene = () => {
+        const camera = useThree((state) => state.camera);
+        const [zoomIn, setZoomIn] = useState(true);
+        useFrame(() => {
+          zoomIn ? (camera.zoom += 0.01) : (camera.zoom -= 0.01);
+          if (camera.zoom > 3) {
+            setZoomIn(false);
+          } else if (camera.zoom < 1) {
+            setZoomIn(true);
+          }
+        });
+        return null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(0);
+  });
+
+  it("reports a one-sided relational state update", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber";
+      import { useState } from "react";
+      const Scene = ({ elapsed }) => {
+        const [, setOpen] = useState(false);
+        useFrame(() => {
+          if (elapsed > 3) setOpen(true);
+        });
+        return null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(1);
+  });
   it("flags imported React state setters called each frame", () => {
     const result = runRule(
       r3fNoStateInUseFrame,

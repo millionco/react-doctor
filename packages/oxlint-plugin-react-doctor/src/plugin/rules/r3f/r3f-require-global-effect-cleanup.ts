@@ -11,9 +11,12 @@ import {
 } from "../../utils/function-returns-matching-expression.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
@@ -97,14 +100,55 @@ const functionInvokesSymbol = (
   scopes: ScopeAnalysis,
 ): boolean => {
   let didInvokeSymbol = false;
+  const invocationReachesSymbol = (
+    invokedSymbol: SymbolDescriptor,
+    visitedSymbolIds: Set<number>,
+  ): boolean => {
+    if (invokedSymbol.id === symbol.id) return true;
+    if (visitedSymbolIds.has(invokedSymbol.id)) return false;
+    visitedSymbolIds.add(invokedSymbol.id);
+    const assignedFunctions: EsTreeNode[] = [];
+    for (const reference of invokedSymbol.references) {
+      if (reference.flag === "read") continue;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const assignment = referenceRoot.parent;
+      if (
+        !isNodeOfType(assignment, "AssignmentExpression") ||
+        assignment.operator !== "=" ||
+        assignment.left !== referenceRoot
+      ) {
+        return false;
+      }
+      const assignedFunction = resolveExactLocalFunction(assignment.right, scopes);
+      if (!assignedFunction) return false;
+      assignedFunctions.push(assignedFunction);
+    }
+    return (
+      assignedFunctions.length > 0 &&
+      assignedFunctions.every((assignedFunction) => {
+        let doesReachSymbol = false;
+        walkFunctionExecution(assignedFunction, scopes, (candidate) => {
+          if (doesReachSymbol || !isNodeOfType(candidate, "CallExpression")) return;
+          const callee = stripParenExpression(candidate.callee);
+          if (!isNodeOfType(callee, "Identifier")) return;
+          const calleeSymbol = scopes.symbolFor(callee);
+          if (calleeSymbol && invocationReachesSymbol(calleeSymbol, new Set(visitedSymbolIds))) {
+            doesReachSymbol = true;
+          }
+        });
+        return doesReachSymbol;
+      })
+    );
+  };
   walkFunctionExecution(functionNode, scopes, (candidate) => {
-    if (
-      !didInvokeSymbol &&
-      isNodeOfType(candidate, "CallExpression") &&
-      isNodeOfType(candidate.callee, "Identifier") &&
-      scopes.symbolFor(candidate.callee)?.id === symbol.id
-    ) {
-      didInvokeSymbol = true;
+    const callee = isNodeOfType(candidate, "CallExpression")
+      ? stripParenExpression(candidate.callee)
+      : null;
+    if (!didInvokeSymbol && callee && isNodeOfType(callee, "Identifier")) {
+      const calleeSymbol = scopes.symbolFor(callee);
+      if (calleeSymbol && invocationReachesSymbol(calleeSymbol, new Set())) {
+        didInvokeSymbol = true;
+      }
     }
   });
   return didInvokeSymbol;
@@ -172,12 +216,33 @@ const effectReturnsCapturedCleanup = (
     );
   };
   if (findEnclosingFunction(registration) !== effectCallback) {
-    return functionReturnsMatchingExpression(
-      effectCallback,
-      context.scopes,
-      matchesCapturedCleanup,
-      context.cfg,
-      "every",
+    const registrationOwner = findEnclosingFunction(registration);
+    if (!registrationOwner) return false;
+    const registrationOwnerCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+    walkAst(effectCallback, (candidate) => {
+      if (candidate !== effectCallback && isFunctionLike(candidate)) return false;
+      if (!isNodeOfType(candidate, "CallExpression")) return;
+      if (resolveExactLocalFunction(candidate.callee, context.scopes) === registrationOwner) {
+        registrationOwnerCalls.push(candidate);
+      }
+    });
+    if (registrationOwnerCalls.length === 0) {
+      return functionReturnsMatchingExpression(
+        effectCallback,
+        context.scopes,
+        matchesCapturedCleanup,
+        context.cfg,
+        "every",
+      );
+    }
+    return registrationOwnerCalls.every((registrationOwnerCall) =>
+      functionReturnsMatchingExpressionOnEveryPathAfterNode(
+        effectCallback,
+        registrationOwnerCall,
+        context.scopes,
+        matchesCapturedCleanup,
+        context.cfg,
+      ),
     );
   }
   return functionReturnsMatchingExpressionOnEveryPathAfterNode(

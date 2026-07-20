@@ -18,7 +18,7 @@ export const r3fNoAsyncUseFrame = defineRule({
       context.report({
         node: callback,
         message:
-          "useFrame does not await this async callback, so work can overlap across frames and rejected promises can escape. Keep the frame callback synchronous",
+          "useFrame receives an ignored Promise from this callback, so thrown errors become unhandled rejections and awaited work can overlap across frames. Keep the frame callback synchronous",
       });
     },
   }),

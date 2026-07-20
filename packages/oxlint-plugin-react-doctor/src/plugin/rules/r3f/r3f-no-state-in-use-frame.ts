@@ -4,6 +4,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { hasPossibleStaticPropertyWrite } from "../../utils/has-static-property-write-before.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -250,6 +252,210 @@ const branchHasBooleanLatchTransition = (
   return didFindLatch;
 };
 
+const resolveCurrentRefSymbolId = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): number | null => {
+  const candidate = stripParenExpression(expression);
+  if (
+    !isNodeOfType(candidate, "MemberExpression") ||
+    getStaticPropertyName(candidate) !== "current"
+  ) {
+    return null;
+  }
+  const refExpression = stripParenExpression(candidate.object);
+  if (!isNodeOfType(refExpression, "Identifier")) return null;
+  const refSymbol = scopes.symbolFor(refExpression);
+  return refSymbol?.initializer && isR3fReactApiCall(refSymbol.initializer, "useRef", scopes)
+    ? refSymbol.id
+    : null;
+};
+
+const branchGuaranteesRefBoolean = (
+  test: EsTreeNode,
+  didTestPass: boolean,
+  refSymbolId: number,
+  expectedValue: boolean,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const candidate = stripParenExpression(test);
+  if (resolveCurrentRefSymbolId(candidate, scopes) === refSymbolId) {
+    return didTestPass === expectedValue;
+  }
+  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "!") {
+    return branchGuaranteesRefBoolean(
+      candidate.argument,
+      !didTestPass,
+      refSymbolId,
+      expectedValue,
+      scopes,
+    );
+  }
+  if (!isNodeOfType(candidate, "LogicalExpression")) return false;
+  const leftGuarantees = branchGuaranteesRefBoolean(
+    candidate.left,
+    didTestPass,
+    refSymbolId,
+    expectedValue,
+    scopes,
+  );
+  const rightGuarantees = branchGuaranteesRefBoolean(
+    candidate.right,
+    didTestPass,
+    refSymbolId,
+    expectedValue,
+    scopes,
+  );
+  const requiresEveryOperand = (candidate.operator === "&&") !== didTestPass;
+  return requiresEveryOperand
+    ? leftGuarantees && rightGuarantees
+    : leftGuarantees || rightGuarantees;
+};
+
+const branchHasRefLatchTransition = (
+  branch: EsTreeNode,
+  setterCall: EsTreeNode,
+  test: EsTreeNode,
+  didTestPass: boolean,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let didFindLatch = false;
+  walkAst(branch, (candidate) => {
+    if (didFindLatch) return false;
+    if (candidate !== branch && isFunctionLike(candidate)) return false;
+    if (
+      !isNodeOfType(candidate, "AssignmentExpression") ||
+      candidate.operator !== "=" ||
+      candidate.range[0] >= setterCall.range[0] ||
+      isNodeConditionallyExecuted(candidate, branch)
+    ) {
+      return;
+    }
+    const refSymbolId = resolveCurrentRefSymbolId(candidate.left, scopes);
+    const assignedValue = stripParenExpression(candidate.right);
+    if (
+      refSymbolId === null ||
+      !isNodeOfType(assignedValue, "Literal") ||
+      typeof assignedValue.value !== "boolean" ||
+      !branchGuaranteesRefBoolean(test, didTestPass, refSymbolId, !assignedValue.value, scopes) ||
+      !isLatchTransitionGuaranteedForSetter(candidate, setterCall, branch)
+    ) {
+      return;
+    }
+    didFindLatch = true;
+    return false;
+  });
+  return didFindLatch;
+};
+
+const getStableExpressionKey = (expression: EsTreeNode, scopes: ScopeAnalysis): string | null => {
+  const propertyNames: string[] = [];
+  let current = stripParenExpression(expression);
+  while (isNodeOfType(current, "MemberExpression")) {
+    const propertyName = getStaticPropertyName(current);
+    if (!propertyName) return null;
+    propertyNames.unshift(propertyName);
+    current = stripParenExpression(current.object);
+  }
+  if (!isNodeOfType(current, "Identifier")) return null;
+  const symbol = scopes.symbolFor(current);
+  return symbol ? `${symbol.id}:${propertyNames.join(".")}` : null;
+};
+
+const getRelationalBoundary = (
+  test: EsTreeNode,
+  scopes: ScopeAnalysis,
+): readonly [string, "above" | "below"] | null => {
+  const candidate = stripParenExpression(test);
+  if (
+    !isNodeOfType(candidate, "BinaryExpression") ||
+    !["<", "<=", ">", ">="].includes(candidate.operator)
+  ) {
+    return null;
+  }
+  const leftIsBoundary = isPrimitiveComparisonBoundary(candidate.left);
+  const rightIsBoundary = isPrimitiveComparisonBoundary(candidate.right);
+  if (leftIsBoundary === rightIsBoundary) return null;
+  const valueExpression = leftIsBoundary ? candidate.right : candidate.left;
+  const expressionKey = getStableExpressionKey(valueExpression, scopes);
+  if (!expressionKey) return null;
+  const pointsAbove = leftIsBoundary
+    ? candidate.operator === "<" || candidate.operator === "<="
+    : candidate.operator === ">" || candidate.operator === ">=";
+  return [expressionKey, pointsAbove ? "above" : "below"];
+};
+
+const isBoundedBooleanStateTransition = (
+  setterCall: EsTreeNode,
+  callback: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const setterBinding = isNodeOfType(setterCall, "CallExpression")
+    ? resolveStateSetterBinding(setterCall.callee, scopes)
+    : null;
+  if (setterBinding?.stateSymbolId === null || setterBinding?.stateSymbolId === undefined) {
+    return false;
+  }
+  let containingIf: EsTreeNodeOfType<"IfStatement"> | null = null;
+  let current = setterCall.parent;
+  while (current && current !== callback) {
+    if (isNodeOfType(current, "IfStatement")) containingIf = current;
+    current = current.parent;
+  }
+  if (!containingIf) return false;
+  while (
+    isNodeOfType(containingIf.parent, "IfStatement") &&
+    containingIf.parent.alternate === containingIf
+  ) {
+    containingIf = containingIf.parent;
+  }
+  const transitionValues = new Set<boolean>();
+  const boundaryDirectionsByExpression = new Map<string, Set<"above" | "below">>();
+  let branch: EsTreeNodeOfType<"IfStatement"> | null = containingIf;
+  while (branch) {
+    const boundary = getRelationalBoundary(branch.test, scopes);
+    if (boundary) {
+      const directions = boundaryDirectionsByExpression.get(boundary[0]) ?? new Set();
+      directions.add(boundary[1]);
+      boundaryDirectionsByExpression.set(boundary[0], directions);
+    }
+    const branchConsequent = branch.consequent;
+    walkAst(branchConsequent, (candidate) => {
+      if (candidate !== branchConsequent && isFunctionLike(candidate)) return false;
+      if (
+        !isNodeOfType(candidate, "CallExpression") ||
+        isNodeConditionallyExecuted(candidate, branchConsequent)
+      ) {
+        return;
+      }
+      const candidateBinding = resolveStateSetterBinding(candidate.callee, scopes);
+      const nextState = candidate.arguments[0];
+      if (
+        candidateBinding?.stateSymbolId !== setterBinding.stateSymbolId ||
+        !nextState ||
+        isNodeOfType(nextState, "SpreadElement")
+      ) {
+        return;
+      }
+      const nextStateCandidate = stripParenExpression(nextState);
+      if (
+        isNodeOfType(nextStateCandidate, "Literal") &&
+        typeof nextStateCandidate.value === "boolean"
+      ) {
+        transitionValues.add(nextStateCandidate.value);
+      }
+    });
+    branch = isNodeOfType(branch.alternate, "IfStatement") ? branch.alternate : null;
+  }
+  return (
+    transitionValues.has(true) &&
+    transitionValues.has(false) &&
+    [...boundaryDirectionsByExpression.values()].some(
+      (directions) => directions.has("above") && directions.has("below"),
+    )
+  );
+};
+
 const isPrimitiveComparisonBoundary = (node: EsTreeNode): boolean => {
   const candidate = stripParenExpression(node);
   return (
@@ -339,7 +545,15 @@ export const isGuardedStateTransition = (
             currentAncestor.test,
             didTestPass,
             scopes,
-          ))
+          ) ||
+          branchHasRefLatchTransition(
+            currentChild,
+            setterCall,
+            currentAncestor.test,
+            didTestPass,
+            scopes,
+          ) ||
+          isBoundedBooleanStateTransition(setterCall, callback, scopes))
       ) {
         return true;
       }
@@ -361,6 +575,13 @@ export const isGuardedStateTransition = (
             currentAncestor.test,
             didTestPass,
             scopes,
+          ) ||
+          branchHasRefLatchTransition(
+            currentChild,
+            setterCall,
+            currentAncestor.test,
+            didTestPass,
+            scopes,
           ))
       ) {
         return true;
@@ -378,6 +599,13 @@ export const isGuardedStateTransition = (
           currentChild,
           setterCall,
           callback,
+          currentAncestor.left,
+          didTestPass,
+          scopes,
+        ) ||
+        branchHasRefLatchTransition(
+          currentChild,
+          setterCall,
           currentAncestor.left,
           didTestPass,
           scopes,

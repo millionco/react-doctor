@@ -63,6 +63,19 @@ describe("r3f-no-extend-three-namespace", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("ignores namespace registration in test files", () => {
+    const result = runRule(
+      r3fNoExtendThreeNamespace,
+      `
+        import { extend } from "@react-three/fiber";
+        import * as THREE from "three";
+        extend(THREE);
+      `,
+      { filename: "src/EffectComposer.test.tsx" },
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("ignores unrelated, shadowed, default, mutable, and subpath values", () => {
     const result = runRule(
       r3fNoExtendThreeNamespace,

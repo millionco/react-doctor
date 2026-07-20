@@ -193,6 +193,59 @@ describe("r3f-require-global-effect-cleanup", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows a disposer retained by a reassigned local cleanup", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { addEffect } from "@react-three/fiber";
+      function useForwardEvents(update) {
+        useEffect(() => {
+          let cleanup;
+          const register = () => {
+            cleanup?.();
+            const cleanupUpdate = addEffect(update);
+            cleanup = () => cleanupUpdate();
+          };
+          register();
+          return () => cleanup?.();
+        }, [update]);
+      }
+    `;
+    const result = runRule(r3fRequireGlobalEffectCleanup, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows a subscribed update to replace a returned local cleanup", () => {
+    const code = `
+      import { useEffect } from "react";
+      import { addEffect } from "@react-three/fiber";
+      function useForwardEvents(store, ref) {
+        useEffect(() => {
+          const { current } = ref;
+          if (current == null) return;
+          let cleanup;
+          const update = (state, previousState) => {
+            if (state.camera === previousState?.camera) return;
+            cleanup?.();
+            const { destroy, update: updateEvents } = forwardObjectEvents(current, state);
+            const cleanupUpdate = addEffect(updateEvents);
+            cleanup = () => {
+              destroy();
+              cleanupUpdate();
+            };
+          };
+          update(store.getState());
+          const unsubscribe = store.subscribe(update);
+          return () => {
+            unsubscribe();
+            cleanup?.();
+          };
+        }, [store, ref]);
+      }
+    `;
+    const result = runRule(r3fRequireGlobalEffectCleanup, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows cleanup on every path that reaches registration after an early return", () => {
     const code = `
       import { useEffect } from "react";

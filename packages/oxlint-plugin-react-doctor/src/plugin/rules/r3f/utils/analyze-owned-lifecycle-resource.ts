@@ -1187,6 +1187,59 @@ export const analyzeOwnedLifecycleCleanup = (
   return { isProven: false, isUnknown };
 };
 
+export const analyzeOwnedLifecycleSetupCleanup = (
+  analysis: OwnedLifecycleResourceAnalysis,
+  context: RuleContext,
+  setupMethodName: string,
+  matchesCleanupFunction: (cleanupFunction: EsTreeNode) => boolean,
+): OwnedLifecycleCleanupAnalysis => {
+  if (analysis.hasEagerHookAllocation || analysis.hasUnstableIdentity) {
+    return { isProven: false, isUnknown: false };
+  }
+  const returnedExpressionContainsMatchingCleanup = (returnedExpression: EsTreeNode): boolean => {
+    const cleanupFunction = resolveExactLocalFunction(returnedExpression, context.scopes);
+    return Boolean(cleanupFunction && matchesCleanupFunction(cleanupFunction));
+  };
+  let isUnknown = false;
+  for (const source of collectLifecycleCleanupSources(analysis, context)) {
+    const setupCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+    walkFunctionExecution(source.callback, context.scopes, (candidate) => {
+      if (
+        !isNodeOfType(candidate, "CallExpression") ||
+        !isNodeOfType(candidate.callee, "MemberExpression") ||
+        getStaticPropertyName(candidate.callee) !== setupMethodName ||
+        !expressionMatchesOwnedResource(
+          candidate.callee.object,
+          analysis.symbols,
+          analysis.resourceSymbols,
+          analysis.accessPath,
+          context.scopes,
+        )
+      ) {
+        return;
+      }
+      setupCalls.push(candidate);
+    });
+    if (
+      setupCalls.length === 0 ||
+      !setupCalls.every((setupCall) =>
+        functionReturnsMatchingExpressionOnEveryPathAfterNode(
+          source.callback,
+          setupCall,
+          context.scopes,
+          returnedExpressionContainsMatchingCleanup,
+          context.cfg,
+        ),
+      )
+    ) {
+      continue;
+    }
+    if (source.dependencyStatus === "valid") return { isProven: true, isUnknown: false };
+    if (source.dependencyStatus === "unknown") isUnknown = true;
+  }
+  return { isProven: false, isUnknown };
+};
+
 export const functionInvokesOwnedResourceMethod = (
   functionNode: EsTreeNode,
   analysis: OwnedLifecycleResourceAnalysis,

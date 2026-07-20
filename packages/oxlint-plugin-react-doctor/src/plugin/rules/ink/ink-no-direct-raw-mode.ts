@@ -7,13 +7,16 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveInkApiName } from "../../utils/resolve-ink-api-name.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-const isUseStdinCall = (node: EsTreeNode | null | undefined, scopes: ScopeAnalysis): boolean =>
-  Boolean(
-    node &&
-    isNodeOfType(node, "CallExpression") &&
-    resolveInkApiName(node.callee, scopes) === "useStdin",
+const isUseStdinCall = (node: EsTreeNode | null | undefined, scopes: ScopeAnalysis): boolean => {
+  if (!node) return false;
+  const unwrappedNode = stripParenExpression(node);
+  return (
+    isNodeOfType(unwrappedNode, "CallExpression") &&
+    resolveInkApiName(unwrappedNode.callee, scopes) === "useStdin"
   );
+};
 
 const isInkSetRawModeCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
@@ -22,10 +25,11 @@ const isInkSetRawModeCall = (
   const callee = callExpression.callee;
   if (isNodeOfType(callee, "MemberExpression")) {
     if (getStaticPropertyName(callee) !== "setRawMode") return false;
-    if (isUseStdinCall(callee.object, context)) return true;
+    const stdinObject = stripParenExpression(callee.object);
+    if (isUseStdinCall(stdinObject, context)) return true;
     return (
-      isNodeOfType(callee.object, "Identifier") &&
-      isUseStdinCall(context.symbolFor(callee.object)?.initializer, context)
+      isNodeOfType(stdinObject, "Identifier") &&
+      isUseStdinCall(context.symbolFor(stdinObject)?.initializer, context)
     );
   }
   if (!isNodeOfType(callee, "Identifier") || callee.name !== "setRawMode") return false;

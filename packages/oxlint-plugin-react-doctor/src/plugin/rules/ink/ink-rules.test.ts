@@ -591,6 +591,19 @@ describe("Ink rules", () => {
     expect(runRule(inkNoDirectRawMode, code).diagnostics).toHaveLength(0);
   });
 
+  it("recognizes parenthesized raw-mode receivers", () => {
+    const code = `
+      import {useStdin,Text} from "ink";
+      const App=()=> {
+        (useStdin()).setRawMode(true);
+        const stdin=(useStdin());
+        (stdin).setRawMode(true);
+        return <Text>ready</Text>;
+      };
+    `;
+    expect(runRule(inkNoDirectRawMode, code).diagnostics).toHaveLength(2);
+  });
+
   it("allows cursor lengths for provably ASCII-only strings", () => {
     const code = `import {useCursor} from "ink"; const App=()=> { const label="Ready"; const cursor=useCursor(); cursor.setCursorPosition({x:label.length,y:0}); return null; };`;
     expect(runRule(inkUseStringWidthForCursor, code).diagnostics).toHaveLength(0);

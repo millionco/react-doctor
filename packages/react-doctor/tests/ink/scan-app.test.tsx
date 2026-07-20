@@ -342,7 +342,7 @@ describe("ScanApp", () => {
 
     const frame = lastFrame() ?? "";
     expect(frame.split("\n").length).toBeLessThanOrEqual(TUI_DEFAULT_TERMINAL_ROWS);
-    expect(frame).toContain("> 1 | import");
+    expect(frame).toContain('"ink-testing-library"');
     expect(frame).toContain("1 issue");
     expect(frame).toContain("q to quit");
     unmount();

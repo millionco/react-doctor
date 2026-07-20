@@ -195,6 +195,15 @@ const isProcessLifetimeWiring = (node: EsTreeNode, scopes: ScopeAnalysis): boole
         isNodeOfType(classNode, "ClassDeclaration") ||
         isNodeOfType(classNode, "ClassExpression")
       ) {
+        const classRoot = findTransparentExpressionRoot(classNode);
+        const classInstantiation = classRoot.parent;
+        if (
+          isNodeOfType(classNode, "ClassExpression") &&
+          isNodeOfType(classInstantiation, "NewExpression") &&
+          stripParenExpression(classInstantiation.callee) === classRoot
+        ) {
+          return isEvaluatedAtModuleScope(classInstantiation);
+        }
         const classSymbol = getClassBindingSymbol(classNode, scopes);
         return Boolean(
           classSymbol && getProcessLifetimeClassSymbolIds(node, scopes).has(classSymbol.id),

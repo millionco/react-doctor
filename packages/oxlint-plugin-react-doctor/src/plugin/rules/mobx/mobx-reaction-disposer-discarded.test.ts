@@ -259,6 +259,28 @@ describe("mobx-reaction-disposer-discarded", () => {
     ).toBe(0);
   });
 
+  it("exempts inline classes only when instantiated at module scope", () => {
+    expect(
+      diagnosticsFor(`
+        import { autorun } from "mobx";
+        export const anonymousStore = new class {
+          constructor() { autorun(() => this.sync()); }
+        }();
+        export const namedStore = new (class Store {
+          constructor() { autorun(() => this.refresh()); }
+        })();
+      `),
+    ).toBe(0);
+    expect(
+      diagnosticsFor(`
+        import { autorun } from "mobx";
+        export const createStore = () => new class {
+          constructor() { autorun(() => this.sync()); }
+        }();
+      `),
+    ).toBe(1);
+  });
+
   it("resolves destructured namespace aliases", () => {
     expect(
       diagnosticsFor(`

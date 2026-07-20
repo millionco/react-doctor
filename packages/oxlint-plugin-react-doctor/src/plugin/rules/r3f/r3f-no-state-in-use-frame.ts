@@ -359,17 +359,21 @@ const branchHasNumericRefReset = (
 ): boolean => {
   const boundary = getNumericRefBoundary(test, scopes);
   if (!boundary || isInsideRepeatedExecution(setterCall, branch)) return false;
-  let latestRefWrite: EsTreeNode | null = null;
+  const refWritesBeforeSetter: EsTreeNode[] = [];
   walkAst(branch, (candidate) => {
     if (candidate !== branch && isFunctionLike(candidate)) return false;
     if (
       candidate.range[0] < setterCall.range[0] &&
-      getWrittenCurrentRefSymbolId(candidate, scopes) === boundary.refSymbolId &&
-      (!latestRefWrite || candidate.range[0] > latestRefWrite.range[0])
+      getWrittenCurrentRefSymbolId(candidate, scopes) === boundary.refSymbolId
     ) {
-      latestRefWrite = candidate;
+      refWritesBeforeSetter.push(candidate);
     }
   });
+  const latestRefWrite = refWritesBeforeSetter.reduce<EsTreeNode | null>(
+    (latestWrite, candidate) =>
+      !latestWrite || candidate.range[0] > latestWrite.range[0] ? candidate : latestWrite,
+    null,
+  );
   if (
     !latestRefWrite ||
     !isNodeOfType(latestRefWrite, "AssignmentExpression") ||

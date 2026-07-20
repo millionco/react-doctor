@@ -11,35 +11,35 @@ import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import {
   resolveZustandApiBinding,
-  resolveZustandStoreCreator,
-  type ZustandStoreCreator,
+  resolveZustandStoreFactoryCall,
+  type ZustandStoreFactoryCall,
 } from "../../utils/resolve-zustand-api.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-const BOUND_STORE_FACTORY_APIS: ReadonlySet<ZustandStoreCreator["factoryApiName"]> = new Set([
+const BOUND_STORE_FACTORY_APIS: ReadonlySet<ZustandStoreFactoryCall["factoryApiName"]> = new Set([
   "create",
   "createWithEqualityFn",
 ]);
 
-const VANILLA_STORE_FACTORY_APIS: ReadonlySet<ZustandStoreCreator["factoryApiName"]> = new Set([
+const VANILLA_STORE_FACTORY_APIS: ReadonlySet<ZustandStoreFactoryCall["factoryApiName"]> = new Set([
   "createStore",
 ]);
 
 const isStoreFactoryValue = (
   rawValue: EsTreeNode,
-  factoryApiNames: ReadonlySet<ZustandStoreCreator["factoryApiName"]>,
+  factoryApiNames: ReadonlySet<ZustandStoreFactoryCall["factoryApiName"]>,
   scopes: ScopeAnalysis,
 ): boolean => {
   const value = stripParenExpression(rawValue);
   if (!isNodeOfType(value, "CallExpression")) return false;
-  const creator = resolveZustandStoreCreator(value, scopes);
-  return Boolean(creator && factoryApiNames.has(creator.factoryApiName));
+  const factoryCall = resolveZustandStoreFactoryCall(value, scopes);
+  return Boolean(factoryCall && factoryApiNames.has(factoryCall.factoryApiName));
 };
 
 const isStoreValue = (
   rawValue: EsTreeNode,
-  factoryApiNames: ReadonlySet<ZustandStoreCreator["factoryApiName"]>,
+  factoryApiNames: ReadonlySet<ZustandStoreFactoryCall["factoryApiName"]>,
   scopes: ScopeAnalysis,
 ): boolean => {
   const value = stripParenExpression(rawValue);

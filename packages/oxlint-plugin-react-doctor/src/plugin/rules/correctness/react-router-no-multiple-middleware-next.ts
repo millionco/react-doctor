@@ -22,14 +22,17 @@ export const reactRouterNoMultipleMiddlewareNext = wrapReactRouterRule(
         inspectedFunctions.add(functionNode);
         const nextSymbol = getReactRouterMiddlewareNextSymbol(context, functionNode);
         if (nextSymbol === null) return;
-        const nextCalls = nextSymbol.references
-          .map((reference) => reference.identifier.parent)
-          .filter(
-            (parent): parent is EsTreeNode =>
-              isNodeOfType(parent, "CallExpression") &&
-              parent.callee.type === "Identifier" &&
-              findEnclosingFunction(parent) === functionNode,
-          );
+        const nextCalls = nextSymbol.references.flatMap((reference) => {
+          const callExpression = reference.identifier.parent;
+          if (
+            !isNodeOfType(callExpression, "CallExpression") ||
+            callExpression.callee !== reference.identifier ||
+            findEnclosingFunction(callExpression) !== functionNode
+          ) {
+            return [];
+          }
+          return [callExpression];
+        });
         const hasUnconditionalCall = nextCalls.some((call) =>
           context.cfg.isUnconditionalFromEntry(call),
         );

@@ -46,14 +46,26 @@ export const reactRouterSessionMutationRequiresCommit = wrapReactRouterRule(
         }
         const sessionSymbol = context.scopes.symbolFor(node.id);
         if (sessionSymbol === null) return;
-        const mutationCall = sessionSymbol.references
-          .map((reference) => reference.identifier.parent)
-          .find((parent) => {
-            if (!isNodeOfType(parent, "MemberExpression")) return false;
-            const methodName = getStaticPropertyKeyName(parent, { allowComputedString: true });
-            return methodName !== null && REACT_ROUTER_SESSION_MUTATOR_NAMES.has(methodName);
+        const mutationCall = sessionSymbol.references.flatMap((reference) => {
+          const memberExpression = reference.identifier.parent;
+          if (!isNodeOfType(memberExpression, "MemberExpression")) return [];
+          if (memberExpression.object !== reference.identifier) return [];
+          const methodName = getStaticPropertyKeyName(memberExpression, {
+            allowComputedString: true,
           });
-        if (mutationCall === undefined || mutationCall === null) return;
+          if (methodName === null || !REACT_ROUTER_SESSION_MUTATOR_NAMES.has(methodName)) {
+            return [];
+          }
+          const callExpression = memberExpression.parent;
+          if (
+            !isNodeOfType(callExpression, "CallExpression") ||
+            callExpression.callee !== memberExpression
+          ) {
+            return [];
+          }
+          return [memberExpression];
+        })[0];
+        if (mutationCall === undefined) return;
 
         let hasCommit = false;
         walkAst(routeFunction, (descendant: EsTreeNode) => {

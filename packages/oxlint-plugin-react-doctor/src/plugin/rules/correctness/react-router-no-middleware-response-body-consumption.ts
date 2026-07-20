@@ -25,6 +25,7 @@ export const reactRouterNoMiddlewareResponseBodyConsumption = wrapReactRouterRul
         for (const nextReference of nextSymbol.references) {
           const callExpression = nextReference.identifier.parent;
           if (!isNodeOfType(callExpression, "CallExpression")) continue;
+          if (callExpression.callee !== nextReference.identifier) continue;
           const awaitedExpression = callExpression.parent;
           if (!isNodeOfType(awaitedExpression, "AwaitExpression")) continue;
           const declarator = awaitedExpression.parent;

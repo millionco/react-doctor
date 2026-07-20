@@ -55,6 +55,7 @@ export const reactRouterReturnNavigationPromiseInTransition = wrapReactRouterRul
           for (const reference of navigateSymbol.references) {
             const navigationCall = reference.identifier.parent;
             if (!isNodeOfType(navigationCall, "CallExpression")) continue;
+            if (navigationCall.callee !== reference.identifier) continue;
             if (!isNodeOfType(navigationCall.parent, "ExpressionStatement")) continue;
             const callback = findEnclosingFunction(navigationCall);
             if (callback === null) continue;

@@ -13,6 +13,7 @@ import { reactRouterNoDuplicateRouteId } from "./correctness/react-router-no-dup
 import { reactRouterNoInvalidAbsoluteChildPath } from "./correctness/react-router-no-invalid-absolute-child-path.js";
 import { reactRouterNoInvalidLazyRouteProperties } from "./correctness/react-router-no-invalid-lazy-route-properties.js";
 import { reactRouterNoLoaderRequestBody } from "./correctness/react-router-no-loader-request-body.js";
+import { reactRouterNoMiddlewareResponseBodyConsumption } from "./correctness/react-router-no-middleware-response-body-consumption.js";
 import { reactRouterNoMultipleMiddlewareNext } from "./correctness/react-router-no-multiple-middleware-next.js";
 import { reactRouterNoMultipleSetSearchParamsInTick } from "./correctness/react-router-no-multiple-set-search-params-in-tick.js";
 import { reactRouterNoNavigateInRender } from "./correctness/react-router-no-navigate-in-render.js";
@@ -128,6 +129,18 @@ const safeRuleCases: SafeRuleCase[] = [
       "export const middleware = [async ({ admin }, next) => { if (admin) return next(); return next(); }];",
   },
   {
+    name: "allows passing middleware continuation to helpers",
+    rule: reactRouterNoMultipleMiddlewareNext,
+    source:
+      "export const middleware = [async (_context, next) => { observe(next); observe(next); return new Response(); }];",
+  },
+  {
+    name: "does not infer a response from a passed middleware continuation",
+    rule: reactRouterNoMiddlewareResponseBodyConsumption,
+    source:
+      "export const middleware = [async (_context, next) => { const response = await observe(next); await response.json(); return response; }];",
+  },
+  {
     name: "allows mutually exclusive search param updates",
     rule: reactRouterNoMultipleSetSearchParamsInTick,
     source:
@@ -187,6 +200,12 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterSessionMutationRequiresCommit,
     source:
       'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return redirect("/", { headers: { "Set-Cookie": await commitSession(session) } }); }',
+  },
+  {
+    name: "allows reading a session mutator property without calling it",
+    rule: reactRouterSessionMutationRequiresCommit,
+    source:
+      'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); observe(session.set); return null; }',
   },
   {
     name: "allows the same CSP nonce on router and stream",
@@ -309,6 +328,14 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterReturnNavigationPromiseInTransition,
     source:
       'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} useTransitions />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => navigate("/next"))} />; };',
+    settings: { "react-doctor": { capabilities: ["react-router:7.15"] } },
+  },
+  {
+    name: "allows passing navigate to a helper inside a transition",
+    rule: reactRouterReturnNavigationPromiseInTransition,
+    source:
+      'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} useTransitions />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => schedule(navigate))} />; };',
+    settings: { "react-doctor": { capabilities: ["react-router:7.15"] } },
   },
 ];
 
@@ -424,6 +451,43 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterNestedRouteRequiresOutlet,
       'import { createBrowserRouter, useOutlet } from "react-router"; createBrowserRouter([{ Component: () => { const useOutlet = () => null; return <main>{useOutlet()}</main>; }, children: [{ path: "child", element: <Child /> }] }]);',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports two direct middleware continuation calls", () => {
+    const result = runRule(
+      reactRouterNoMultipleMiddlewareNext,
+      "export const middleware = [async (_context, next) => { await next(); return next(); }];",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports consuming a response returned by middleware continuation", () => {
+    const result = runRule(
+      reactRouterNoMiddlewareResponseBodyConsumption,
+      "export const middleware = [async (_context, next) => { const response = await next(); await response.json(); return response; }];",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a dropped navigation promise inside a transition", () => {
+    const result = runRule(
+      reactRouterReturnNavigationPromiseInTransition,
+      'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} useTransitions />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { navigate("/next"); })} />; };',
+      { settings: { "react-doctor": { capabilities: ["react-router:7.15"] } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a session mutator invocation without a commit", () => {
+    const result = runRule(
+      reactRouterSessionMutationRequiresCommit,
+      'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

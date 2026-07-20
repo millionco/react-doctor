@@ -20,5 +20,5 @@
   ],
   "category": "developer-tools",
   "tags": ["react", "linting", "code-review"],
-  "skills": "./skills/react-doctor/"
+  "skills": "./skills/react-doctor/SKILL.md"
 }

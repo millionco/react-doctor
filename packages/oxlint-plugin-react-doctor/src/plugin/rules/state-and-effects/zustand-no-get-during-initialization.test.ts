@@ -39,6 +39,38 @@ describe("zustand-no-get-during-initialization", () => {
     );
   });
 
+  it("reports eager reads through exact local helper calls", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create(async (_set, get) => {
+          const read = () => get().count;
+          const readAlias = read;
+          const readBeforeAwait = async () => get().count;
+          const first = readAlias();
+          const second = readBeforeAwait();
+          await ready();
+          const late = read();
+          return { first, second, late };
+        });
+      `,
+      2,
+    );
+  });
+
+  it("does not follow helper calls that are themselves deferred", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create((_set, get) => {
+          const read = () => get().count;
+          return { count: 0, read: () => read() };
+        });
+      `,
+      0,
+    );
+  });
+
   it("reports immutable get aliases", () => {
     expectDiagnosticCount(
       `
@@ -229,7 +261,7 @@ describe("zustand-no-get-during-initialization", () => {
     );
   });
 
-  it("skips async and generator IIFEs", () => {
+  it("reports async IIFE preludes and skips generator IIFEs", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
@@ -238,7 +270,7 @@ describe("zustand-no-get-during-initialization", () => {
           iterator: (function* () { yield get().count; })(),
         }));
       `,
-      0,
+      1,
     );
   });
 

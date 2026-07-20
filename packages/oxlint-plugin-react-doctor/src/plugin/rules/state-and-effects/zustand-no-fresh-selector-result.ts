@@ -53,9 +53,27 @@ const ALLOCATING_ARRAY_METHODS = new Set([
 
 const SAME_REFERENCE_ARRAY_METHODS = new Set(["reverse", "sort"]);
 
-const ALLOCATING_NAMESPACE_METHODS = new Map<string, ReadonlySet<string>>([
-  ["Array", new Set(["from", "of"])],
-  ["Object", new Set(["create", "entries", "fromEntries", "keys", "values"])],
+const ALLOCATING_NAMESPACE_METHOD_KINDS = new Map<
+  string,
+  ReadonlyMap<string, FreshSelectorResult["kind"]>
+>([
+  [
+    "Array",
+    new Map([
+      ["from", "array"],
+      ["of", "array"],
+    ]),
+  ],
+  [
+    "Object",
+    new Map([
+      ["create", "object"],
+      ["entries", "array"],
+      ["fromEntries", "object"],
+      ["keys", "array"],
+      ["values", "array"],
+    ]),
+  ],
 ]);
 
 const isNullishEqualityArgument = (argument: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -249,10 +267,8 @@ const freshResultFromAllocatingCall = (
   const receiver = stripParenExpression(callee.object);
 
   if (isNodeOfType(receiver, "Identifier") && analysis.scopes.isGlobalReference(receiver)) {
-    const allocatingMethods = ALLOCATING_NAMESPACE_METHODS.get(receiver.name);
-    if (allocatingMethods?.has(methodName)) {
-      return { kind: receiver.name === "Object" ? "object" : "array", node: expression };
-    }
+    const resultKind = ALLOCATING_NAMESPACE_METHOD_KINDS.get(receiver.name)?.get(methodName);
+    if (resultKind) return { kind: resultKind, node: expression };
     if (receiver.name === "Object" && methodName === "assign") {
       const target = expression.arguments[0];
       if (!target || isNodeOfType(target, "SpreadElement")) return null;

@@ -31,6 +31,7 @@ import { groupCorpusRepositories } from "./group-corpus-repositories.js";
 import { loadCorpusRepositories } from "./load-corpus-repositories.js";
 import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
 import { runEvaluationAttempts } from "./run-evaluation-attempts.js";
+import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
@@ -106,7 +107,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       ),
     ];
     const limitSandboxCreation = pLimit(Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY));
-    const createSandbox = (sandboxName: string) =>
+    const createSandbox = (sandboxName: string, deadlineMilliseconds: number) =>
       limitSandboxCreation(() =>
         daytona.create(
           {
@@ -122,7 +123,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           },
           {
             timeout: getEvaluationTimeoutSeconds({
-              deadlineMilliseconds: evaluationDeadlineMilliseconds,
+              deadlineMilliseconds,
               maximumTimeoutSeconds: SANDBOX_CREATE_TIMEOUT_SECONDS,
             }),
           },
@@ -132,12 +133,16 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       repositoryGroups,
       repositoriesPerSandbox: options.repositoriesPerSandbox,
       attemptConcurrencies,
-      evaluateRepositoryBatch: (repositoryBatch) =>
+      evaluateRepositoryBatch: (repositoryBatch, attemptIndex) =>
         evaluateRepositoryBatch({
           daytona,
           createSandbox,
           repositoryGroups: repositoryBatch,
-          evaluationDeadlineMilliseconds,
+          evaluationDeadlineMilliseconds: getEvaluationAttemptDeadlineMilliseconds({
+            evaluationDeadlineMilliseconds,
+            attemptIndex,
+            totalAttempts: attemptConcurrencies.length,
+          }),
           onRecord: recordEvaluation,
         }),
       beforeRetry: () => cleanupEvaluationSandboxes({ daytona, evaluationId }),

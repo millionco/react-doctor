@@ -136,6 +136,26 @@ describe("runEvaluationAttempts", () => {
     expect(onFinalFailure).toHaveBeenCalledWith(failedRecord);
   });
 
+  it("reports the current attempt index to each batch evaluation", async () => {
+    const attemptIndexes: number[] = [];
+
+    await runEvaluationAttempts({
+      repositoryGroups: [repositoryGroup],
+      repositoriesPerSandbox: 10,
+      attemptConcurrencies: [500, 50, 10],
+      evaluateRepositoryBatch: async (_batch, attemptIndex) => {
+        attemptIndexes.push(attemptIndex);
+        return attemptIndex < 2 ? [failedRecord] : [];
+      },
+      beforeRetry: async () => undefined,
+      onBeforeRetryFailure: vi.fn(),
+      onRetry: vi.fn(),
+      onFinalFailure: vi.fn(async () => undefined),
+    });
+
+    expect(attemptIndexes).toEqual([0, 1, 2]);
+  });
+
   it("continues retrying when cleanup fails", async () => {
     const cleanupError = new Error("Daytona list failed");
     const evaluatedGroups: CorpusRepositoryGroup[] = [];

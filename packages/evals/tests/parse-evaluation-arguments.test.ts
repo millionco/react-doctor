@@ -59,8 +59,8 @@ describe("parseEvaluationArguments", () => {
     expect(() => parseEvaluationArguments(["--project-roots-per-repository", "0"])).toThrow(
       "positive integer",
     );
-    expect(() => parseEvaluationArguments(["--max-duration-minutes", "2"])).toThrow(
-      "cleanup reserve",
+    expect(() => parseEvaluationArguments(["--max-duration-minutes", "6"])).toThrow(
+      "cleanup and retry reserve",
     );
   });
 });

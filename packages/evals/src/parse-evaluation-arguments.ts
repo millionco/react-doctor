@@ -10,6 +10,8 @@ import {
   DEFAULT_REPOSITORIES_PER_SANDBOX,
   DEFAULT_REPOSITORIES_SOURCES,
   EVALUATION_CLEANUP_RESERVE_MINUTES,
+  EVALUATION_RETRY_ATTEMPT_RESERVE_MINUTES,
+  EVALUATION_RETRY_CONCURRENCIES,
 } from "./constants.js";
 
 export interface EvaluationOptions {
@@ -92,12 +94,12 @@ export const parseEvaluationArguments = (
   }
 
   const maxDurationMinutes = Number(values["max-duration-minutes"]);
-  if (
-    !Number.isFinite(maxDurationMinutes) ||
-    maxDurationMinutes <= EVALUATION_CLEANUP_RESERVE_MINUTES
-  ) {
+  const reservedDurationMinutes =
+    EVALUATION_CLEANUP_RESERVE_MINUTES +
+    EVALUATION_RETRY_CONCURRENCIES.length * EVALUATION_RETRY_ATTEMPT_RESERVE_MINUTES;
+  if (!Number.isFinite(maxDurationMinutes) || maxDurationMinutes <= reservedDurationMinutes) {
     throw new Error(
-      `--max-duration-minutes must be greater than the ${EVALUATION_CLEANUP_RESERVE_MINUTES}-minute cleanup reserve`,
+      `--max-duration-minutes must be greater than the ${reservedDurationMinutes}-minute cleanup and retry reserve`,
     );
   }
 

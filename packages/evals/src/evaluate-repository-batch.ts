@@ -23,7 +23,7 @@ import { toErrorMessage } from "./utils/to-error-message.js";
 
 export interface EvaluateRepositoryBatchInput {
   daytona: Daytona;
-  createSandbox: (sandboxName: string) => Promise<Sandbox>;
+  createSandbox: (sandboxName: string, deadlineMilliseconds: number) => Promise<Sandbox>;
   repositoryGroups: ReadonlyArray<CorpusRepositoryGroup>;
   evaluationDeadlineMilliseconds: number;
   onRecord: (record: CorpusEvaluationRecord) => Promise<void>;
@@ -140,7 +140,7 @@ export const evaluateRepositoryBatch = async ({
   let shouldRecoverSandbox = true;
   try {
     try {
-      sandbox = await createSandbox(sandboxName);
+      sandbox = await createSandbox(sandboxName, evaluationDeadlineMilliseconds);
     } catch (error) {
       shouldRecoverSandbox = !(error instanceof EvaluationDeadlineExceededError);
       return repositoryGroups.flatMap((repositoryGroup) =>

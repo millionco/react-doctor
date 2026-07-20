@@ -18,6 +18,7 @@ export interface RunEvaluationAttemptsInput {
   attemptConcurrencies: ReadonlyArray<number>;
   evaluateRepositoryBatch: (
     repositoryGroups: ReadonlyArray<CorpusRepositoryGroup>,
+    attemptIndex: number,
   ) => Promise<ReadonlyArray<CorpusEvaluationRecord>>;
   beforeRetry: () => Promise<void>;
   onBeforeRetryFailure: (error: unknown) => void;
@@ -47,7 +48,7 @@ export const runEvaluationAttempts = async ({
     const failedRecords = (
       await Promise.all(
         repositoryBatches.map((repositoryBatch) =>
-          limit(() => evaluateRepositoryBatch(repositoryBatch)),
+          limit(() => evaluateRepositoryBatch(repositoryBatch, attemptIndex)),
         ),
       )
     ).flat();

@@ -1,0 +1,1 @@
+export const MINIMUM_CARD_PADDING_SCALE = 2;

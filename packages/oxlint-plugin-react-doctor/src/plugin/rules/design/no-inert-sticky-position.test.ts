@@ -29,6 +29,14 @@ describe("no-inert-sticky-position", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows negative Tailwind insets", () => {
+    const result = runRule(
+      noInertStickyPosition,
+      `const Header = () => <header className="sticky -top-4" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("reports auto insets", () => {
     const result = runRule(
       noInertStickyPosition,

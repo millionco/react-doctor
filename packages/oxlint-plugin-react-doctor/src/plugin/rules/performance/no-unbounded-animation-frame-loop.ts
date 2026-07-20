@@ -5,6 +5,7 @@ import { getFunctionBindingName } from "../../utils/get-function-binding-name.js
 import { isGlobalAnimationFrameCallee } from "../../utils/is-global-animation-frame-callee.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -56,7 +57,9 @@ export const noUnboundedAnimationFrameLoop = defineRule({
   recommendation:
     "Add an explicit stop condition and retain each request ID so the active frame can be cancelled when the animation or component stops.",
   create: (context) => {
+    const shouldIgnoreFile = isTestlikeFilename(context.filename);
     const inspectFunction = (node: EsTreeNode): void => {
+      if (shouldIgnoreFile) return;
       const recursiveRequest = findUnboundedRecursiveRequest(node, context);
       if (!recursiveRequest) return;
       context.report({

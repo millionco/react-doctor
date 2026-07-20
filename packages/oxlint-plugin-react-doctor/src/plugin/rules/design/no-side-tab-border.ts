@@ -5,6 +5,7 @@ import {
 } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
@@ -61,6 +62,10 @@ const NAMED_BORDER_COLOR_PATTERN =
 const NEUTRAL_NAMED_BORDER_COLOR_PATTERN =
   /^(?:(?:gray|slate|zinc|neutral|stone)-\d+|white|black|transparent)$/;
 
+const hasSpinnerClass = (className: string): boolean =>
+  /\bspinner\b/.test(className) ||
+  (/\banimate-spin\b/.test(className) && /\brounded-full\b/.test(className));
+
 export const noSideTabBorder = defineRule({
   id: "no-side-tab-border",
   title: "Thick one-sided border",
@@ -75,6 +80,9 @@ export const noSideTabBorder = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
+      const openingElement = isNodeOfType(node.parent, "JSXOpeningElement") ? node.parent : null;
+      const className = openingElement ? getStringFromClassNameAttr(openingElement) : null;
+      if (className && hasSpinnerClass(className)) return;
 
       let hasBorderRadius = false;
       const borderRadiusProperty = getEffectiveStyleProperty(expression.properties, "borderRadius");
@@ -87,6 +95,20 @@ export const noSideTabBorder = defineRule({
         ) {
           hasBorderRadius = true;
         }
+      }
+      const animationProperty = getEffectiveStyleProperty(expression.properties, "animation");
+      const animationNameProperty = getEffectiveStyleProperty(
+        expression.properties,
+        "animationName",
+      );
+      const animationValue = animationProperty
+        ? getStylePropertyStringValue(animationProperty)
+        : null;
+      const animationNameValue = animationNameProperty
+        ? getStylePropertyStringValue(animationNameProperty)
+        : null;
+      if (hasBorderRadius && /spin/i.test(`${animationValue ?? ""} ${animationNameValue ?? ""}`)) {
+        return;
       }
 
       const threshold = hasBorderRadius
@@ -137,6 +159,7 @@ export const noSideTabBorder = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classStr = getStringFromClassNameAttr(node);
       if (!classStr) return;
+      if (hasSpinnerClass(classStr)) return;
 
       const sideMatch = classStr.match(/\bborder-([lrsetb])-(\d+)\b/);
       if (!sideMatch) return;

@@ -26,4 +26,29 @@ describe("no-repeating-gradient-decoration", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("accepts repeating gradients that encode data", () => {
+    const gradient =
+      "repeating-linear-gradient(45deg, var(--data-color) 0 6px, transparent 6px 12px)";
+    const chartResult = runRule(
+      noRepeatingGradientDecoration,
+      `const Usage = () => <Chart><div style={{ backgroundImage: "${gradient}" }} /></Chart>;`,
+    );
+    const fileResult = runRule(
+      noRepeatingGradientDecoration,
+      `const Usage = () => <div style={{ backgroundImage: "${gradient}" }} />;`,
+      { filename: "/src/VariantDistributionEditor.tsx" },
+    );
+    expect(chartResult.diagnostics).toHaveLength(0);
+    expect(fileResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not mistake typography filenames for data visualization", () => {
+    const result = runRule(
+      noRepeatingGradientDecoration,
+      `const Panel = () => <div style={{ backgroundImage: "repeating-linear-gradient(45deg, #fff 0 4px, #eee 4px 8px)" }} />;`,
+      { filename: "/src/Typography.tsx" },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

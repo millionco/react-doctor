@@ -53,4 +53,13 @@ describe("no-unbounded-animation-frame-loop", () => {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("ignores deliberate loops in test files", () => {
+    const result = runRule(
+      noUnboundedAnimationFrameLoop,
+      `const tick = () => { update(); requestAnimationFrame(tick); }; tick();`,
+      { filename: "/repo/e2e/freeze-animations.spec.ts" },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

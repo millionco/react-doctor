@@ -30,6 +30,28 @@ describe("no-nested-card-surface", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat fixed-size icon tiles as nested cards", () => {
+    const result = runRule(
+      noNestedCardSurface,
+      `const Example = () => <div className="rounded-xl border p-6">
+        <div className="flex size-10 items-center justify-center rounded-full border bg-white"><Icon /></div>
+      </div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat compact chips or control groups as nested cards", () => {
+    const result = runRule(
+      noNestedCardSurface,
+      `const Example = () => <div className="rounded-xl border p-6">
+        <div className="rounded-lg border bg-white p-0.5">Controls</div>
+        <div className="rounded-md border bg-white p-1.5">Icon</div>
+        <div className="rounded-full border bg-white px-2 py-1">Badge</div>
+      </div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not infer card styling from dynamic classes", () => {
     const result = runRule(
       noNestedCardSurface,

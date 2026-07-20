@@ -1,5 +1,6 @@
 import { getUnvariantClassNameTokens } from "../../../utils/get-unvariant-class-name-tokens.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
+import { MINIMUM_CARD_PADDING_SCALE } from "./constants.js";
 import { getStringFromClassNameAttr } from "./get-string-from-class-name-attr.js";
 import {
   hasVisibleTailwindBackground,
@@ -16,6 +17,12 @@ const hasPositivePadding = (token: string): boolean => {
   return parseFloat(match[1].replace(/^\[|(?:px|rem)\]$/g, "")) > 0;
 };
 
+const hasSubstantialPadding = (token: string): boolean => {
+  const match = token.match(PADDING_PATTERN);
+  if (!match?.[1] || match[1] === "px") return false;
+  return parseFloat(match[1].replace(/^\[|(?:px|rem)\]$/g, "")) >= MINIMUM_CARD_PADDING_SCALE;
+};
+
 export const isTailwindCardSurface = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const classNameValue = getStringFromClassNameAttr(node);
   if (!classNameValue) return false;
@@ -26,4 +33,17 @@ export const isTailwindCardSurface = (node: EsTreeNodeOfType<"JSXOpeningElement"
   const hasInterior =
     tokens.some((token) => hasPositivePadding(token)) || hasVisibleTailwindBackground(tokens);
   return hasRounding && hasVisibleTailwindBoundary(tokens) && hasInterior;
+};
+
+export const isTailwindPaddedCardSurface = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const classNameValue = getStringFromClassNameAttr(node);
+  if (!classNameValue) return false;
+  const tokens = getUnvariantClassNameTokens(classNameValue);
+  return (
+    !tokens.includes("rounded-full") &&
+    isTailwindCardSurface(node) &&
+    tokens.some((token) => hasSubstantialPadding(token))
+  );
 };

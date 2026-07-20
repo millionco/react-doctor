@@ -12,6 +12,7 @@ import { isInteractiveRole } from "../../utils/is-interactive-role.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getLastMatchingToken } from "./utils/get-last-matching-token.js";
 
@@ -23,6 +24,7 @@ const hasPointerBehaviorSignal = (
   if (hasJsxSpreadAttribute(openingElement.attributes)) return true;
   if (
     hasJsxPropIgnoreCase(openingElement.attributes, "tabIndex") ||
+    hasJsxPropIgnoreCase(openingElement.attributes, "ref") ||
     hasJsxPropIgnoreCase(openingElement.attributes, "draggable") ||
     hasJsxPropIgnoreCase(openingElement.attributes, "contentEditable")
   ) {
@@ -44,10 +46,28 @@ const hasPointerBehaviorSignal = (
 const isInteractionBoundary = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const elementType = resolveJsxElementType(openingElement);
   return (
+    !HTML_TAGS.has(elementType) ||
     elementType === "label" ||
-    (HTML_TAGS.has(elementType) && isInteractiveElement(elementType, openingElement)) ||
+    isInteractiveElement(elementType, openingElement) ||
     hasPointerBehaviorSignal(openingElement)
   );
+};
+
+const hasNestedInteractionBoundary = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const element = openingElement.parent;
+  if (!isNodeOfType(element, "JSXElement")) return false;
+  let didFindInteractionBoundary = false;
+  for (const child of element.children) {
+    walkAst(child, (descendant) => {
+      if (!isNodeOfType(descendant, "JSXOpeningElement")) return;
+      if (!isInteractionBoundary(descendant)) return;
+      didFindInteractionBoundary = true;
+      return false;
+    });
+  }
+  return didFindInteractionBoundary;
 };
 
 const hasWrappingInteractionBoundary = (
@@ -56,12 +76,12 @@ const hasWrappingInteractionBoundary = (
   let ancestor: EsTreeNode | null | undefined = openingElement.parent?.parent;
   while (ancestor) {
     if (isNodeOfType(ancestor, "JSXAttribute")) {
-      const isChildrenAttribute =
-        isNodeOfType(ancestor.name, "JSXIdentifier") && ancestor.name.name === "children";
-      if (!isChildrenAttribute) return false;
-    }
-    if (isNodeOfType(ancestor, "JSXElement") && isInteractionBoundary(ancestor.openingElement)) {
       return true;
+    }
+    if (isNodeOfType(ancestor, "JSXElement")) {
+      const elementType = resolveJsxElementType(ancestor.openingElement);
+      if (!HTML_TAGS.has(elementType) || isInteractionBoundary(ancestor.openingElement))
+        return true;
     }
     ancestor = ancestor.parent;
   }
@@ -91,6 +111,7 @@ export const noInertPointerAffordance = defineRule({
       if (cursorUtility !== "cursor-pointer") return;
       if (elementType === "label" || hasPointerBehaviorSignal(node)) return;
       if (hasWrappingInteractionBoundary(node)) return;
+      if (hasNestedInteractionBoundary(node)) return;
       context.report({
         node,
         message:

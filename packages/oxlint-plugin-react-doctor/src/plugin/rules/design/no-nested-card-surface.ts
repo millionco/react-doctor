@@ -3,7 +3,10 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { isTailwindCardSurface } from "./utils/is-tailwind-card-surface.js";
+import {
+  isTailwindCardSurface,
+  isTailwindPaddedCardSurface,
+} from "./utils/is-tailwind-card-surface.js";
 
 const CARD_CONTAINER_ELEMENT_NAMES = new Set([
   "article",
@@ -49,7 +52,7 @@ export const noNestedCardSurface = defineRule({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       if (
         !isCardContainer(node) ||
-        !isTailwindCardSurface(node.openingElement) ||
+        !isTailwindPaddedCardSurface(node.openingElement) ||
         !hasCardAncestor(node)
       ) {
         return;

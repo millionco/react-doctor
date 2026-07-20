@@ -43,10 +43,33 @@ describe("no-inert-pointer-affordance", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("allows refs because they can attach imperative behavior", () => {
+    const result = runRule(
+      noInertPointerAffordance,
+      `const Control = () => <div ref={controlRef} className="cursor-pointer">Open</div>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("allows label semantics and wrapping native controls", () => {
     const result = runRule(
       noInertPointerAffordance,
       `const Controls = () => <><label className="cursor-pointer"><input type="checkbox" /> Agree</label><label><span className="cursor-pointer">Upload</span><input type="file" /></label><button><span className="cursor-pointer">Save</span></button><a href="/settings"><span className="cursor-pointer">Settings</span></a></>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("allows nested controls and delegated interaction targets", () => {
+    const result = runRule(
+      noInertPointerAffordance,
+      `const Controls = () => <>
+        <div className="cursor-pointer"><button>Open</button></div>
+        <ul className="cursor-pointer"><li onClick={select}>Select</li></ul>
+        <section className="cursor-pointer"><svg {...trigger} /></section>
+        <div className="cursor-pointer"><OverlayTrigger /></div>
+        <div className="cursor-pointer">{open && <button>Close</button>}</div>
+        <div className="cursor-pointer">{items.map((item) => <span onClick={() => select(item)}>{item}</span>)}</div>
+      </>;`,
     );
     expect(result.diagnostics).toEqual([]);
   });
@@ -75,11 +98,15 @@ describe("no-inert-pointer-affordance", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not treat a JSX value prop owner as a DOM ancestor", () => {
+  it("abstains inside opaque component children and JSX value props", () => {
     const result = runRule(
       noInertPointerAffordance,
-      `const Content = () => <Wrapper onClick={open} icon={<span className="cursor-pointer">Icon</span>} />;`,
+      `const Content = () => <>
+        <Link href="/settings"><div className="cursor-pointer">Settings</div></Link>
+        <Tooltip><span className="cursor-pointer">Details</span></Tooltip>
+        <Picker customButton={<span className="cursor-pointer">Color</span>} />
+      </>;`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 });

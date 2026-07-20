@@ -30,7 +30,7 @@ const hasNonAutoInsetClass = (className: string | null): boolean =>
     className &&
     getUnvariantClassNameTokens(className).some(
       (token) =>
-        /^(?:inset(?:-[xy])?|top|right|bottom|left|start|end)-/.test(token) &&
+        /^-?(?:inset(?:-[xy])?|top|right|bottom|left|start|end)-/.test(token) &&
         !token.endsWith("-auto"),
     ),
   );

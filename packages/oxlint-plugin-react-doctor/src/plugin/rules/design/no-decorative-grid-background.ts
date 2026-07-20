@@ -7,10 +7,7 @@ import { getEffectiveStyleProperty } from "./utils/get-effective-style-property.
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
-
-const DATA_VISUALIZATION_ELEMENT_PATTERN = /(?:Blueprint|Canvas|Chart|Graph|Map)|^canvas$/;
-const DATA_VISUALIZATION_CLASS_PATTERN =
-  /(?:^|[-_\s])(?:blueprint|canvas|chart|graph|map)(?:[-_\s]|$)/i;
+import { isDataVisualizationContext } from "./utils/is-data-visualization-context.js";
 
 const isDecorativeGridValue = (value: string): boolean => {
   const nonRepeatingValue = value.replace(/repeating-linear-gradient/gi, "");
@@ -20,30 +17,6 @@ const isDecorativeGridValue = (value: string): boolean => {
     /(?:^|[^\d.])1px(?:[^\d.]|$)/i.test(value) &&
     /transparent/i.test(value)
   );
-};
-
-const isDataVisualizationElement = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
-  const elementName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : "";
-  const classNameValue = getStringFromClassNameAttr(node) ?? "";
-  return (
-    DATA_VISUALIZATION_ELEMENT_PATTERN.test(elementName) ||
-    DATA_VISUALIZATION_CLASS_PATTERN.test(classNameValue)
-  );
-};
-
-const isDataVisualizationContext = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
-  if (isDataVisualizationElement(node)) return true;
-  let ancestor = node.parent;
-  while (ancestor) {
-    if (
-      isNodeOfType(ancestor, "JSXElement") &&
-      isDataVisualizationElement(ancestor.openingElement)
-    ) {
-      return true;
-    }
-    ancestor = ancestor.parent;
-  }
-  return false;
 };
 
 export const noDecorativeGridBackground = defineRule({
@@ -56,7 +29,7 @@ export const noDecorativeGridBackground = defineRule({
     "Reserve coordinate grids for data or spatial interfaces; use a quieter surface for decoration.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (isDataVisualizationContext(node)) return;
+      if (isDataVisualizationContext(node, context.filename)) return;
       const classNameValue = getStringFromClassNameAttr(node);
       if (classNameValue && isDecorativeGridValue(classNameValue)) {
         context.report({

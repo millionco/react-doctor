@@ -77,4 +77,15 @@ describe("design/no-side-tab-border — regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag Tailwind or inline loading spinners", () => {
+    const tailwindResult = run(
+      `const Spinner = () => <div className="animate-spin rounded-full border-b-2 border-blue-600" />;`,
+    );
+    const inlineResult = run(
+      `const Spinner = () => <div className="spinner" style={{ borderRadius: "50%", borderTop: "4px solid blue", animation: "spin 1s linear infinite" }} />;`,
+    );
+    expect(tailwindResult.diagnostics).toEqual([]);
+    expect(inlineResult.diagnostics).toEqual([]);
+  });
 });

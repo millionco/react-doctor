@@ -26,4 +26,12 @@ describe("no-presentation-role-conflict", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("accepts redundant hidden state on decorative elements", () => {
+    const result = runRule(
+      noPresentationRoleConflict,
+      `const View = () => <><img alt="" aria-hidden="true" src="logo.svg" /><span role="presentation" aria-hidden="true" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

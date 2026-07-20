@@ -21,7 +21,6 @@ const GLOBAL_ARIA_ATTRIBUTES: ReadonlySet<string> = new Set([
   "aria-errormessage",
   "aria-flowto",
   "aria-haspopup",
-  "aria-hidden",
   "aria-invalid",
   "aria-keyshortcuts",
   "aria-label",

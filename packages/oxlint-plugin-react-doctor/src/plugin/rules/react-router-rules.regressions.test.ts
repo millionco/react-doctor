@@ -487,6 +487,12 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/report", element: <Report /> }]); export const Download = () => <a href="/report" target="report-frame">Report</a>;',
   },
   {
+    name: "allows an anchor to a route with explicitly falsy UI properties",
+    rule: reactRouterInternalRouteAnchor,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/component", Component: null }, { path: "/element", element: false }, { path: "/lazy", lazy: undefined }]); export const Navigation = () => <><a href="/component">Component</a><a href="/element">Element</a><a href="/lazy">Lazy</a></>;',
+  },
+  {
     name: "allows a resource link with a dynamic target",
     rule: reactRouterResourceLinkRequiresReload,
     source:

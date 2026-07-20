@@ -3,7 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticRouteFullPath } from "../../utils/get-static-route-full-path.js";
-import { getStaticRouteProperty } from "../../utils/get-static-route-property.js";
+import { hasActiveRouteProperty } from "../../utils/has-active-route-property.js";
 import { hasJsxProp } from "../../utils/has-jsx-prop.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
@@ -32,7 +32,9 @@ export const reactRouterInternalRouteAnchor = wrapReactRouterRule(
         ObjectExpression(node: EsTreeNodeOfType<"ObjectExpression">) {
           if (!isStaticReactRouterRouteObject(context, node)) return;
           if (
-            !UI_ROUTE_PROPERTY_NAMES.some((name) => getStaticRouteProperty(node, name) !== null)
+            !UI_ROUTE_PROPERTY_NAMES.some((propertyName) =>
+              hasActiveRouteProperty(context, node, propertyName),
+            )
           ) {
             return;
           }

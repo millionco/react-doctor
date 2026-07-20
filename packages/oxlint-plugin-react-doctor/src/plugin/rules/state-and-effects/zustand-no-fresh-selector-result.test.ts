@@ -40,15 +40,16 @@ describe("zustand-no-fresh-selector-result", () => {
     );
   });
 
-  it("does not treat an intermediate curried factory as a bound hook", () => {
+  it("recognizes a store completed through a split curried factory", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
-        interface BearState { bears: number }
+        interface BearState { bears: string[] }
         const makeBearStore = create<BearState>();
-        const useBearStore = makeBearStore(() => ({ bears: 0 }));
+        const useBearStore = makeBearStore(() => ({ bears: [] }));
+        const names = useBearStore((state) => state.bears.map(formatBear));
       `,
-      0,
+      1,
     );
   });
 

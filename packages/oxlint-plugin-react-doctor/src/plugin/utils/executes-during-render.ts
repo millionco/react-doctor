@@ -31,6 +31,7 @@ const SYNCHRONOUS_ITERATION_METHOD_NAMES = new Set([
 ]);
 
 const REACT_RENDER_PHASE_HOOK_NAMES = new Set(["useMemo", "useState"]);
+const REACT_SYNCHRONOUS_CALLBACK_NAMES = new Set(["startTransition"]);
 
 export interface ExecutesDuringRenderOptions {
   requireProvenSynchronousCallbackReceiver?: boolean;
@@ -150,6 +151,12 @@ export const executesDuringRender = (
       })
     : isHookCall(parent, REACT_RENDER_PHASE_HOOK_NAMES);
   if (isRenderPhaseHook && parent.arguments?.[0] === callbackRoot) return true;
+  const isSynchronousReactCallback = scopes
+    ? isReactApiCall(parent, REACT_SYNCHRONOUS_CALLBACK_NAMES, scopes, {
+        allowGlobalReactNamespace: true,
+      })
+    : false;
+  if (isSynchronousReactCallback && parent.arguments?.[0] === callbackRoot) return true;
   if (
     scopes &&
     parent.arguments?.[1] === callbackRoot &&

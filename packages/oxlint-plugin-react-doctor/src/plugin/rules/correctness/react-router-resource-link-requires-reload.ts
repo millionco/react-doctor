@@ -20,7 +20,8 @@ export const reactRouterResourceLinkRequiresReload = wrapReactRouterRule(
     create: (context: RuleContext) => ({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-        if (getImportedNameFromReactRouter(context, node.name, node.name.name) !== "Link") return;
+        const importedName = getImportedNameFromReactRouter(context, node.name, node.name.name);
+        if (importedName !== "Link" && importedName !== "NavLink") return;
         if (hasJsxProp(node.attributes ?? [], "reloadDocument")) return;
         if (hasJsxProp(node.attributes ?? [], "download")) return;
         const targetAttribute = hasJsxProp(node.attributes ?? [], "target");
@@ -38,7 +39,7 @@ export const reactRouterResourceLinkRequiresReload = wrapReactRouterRule(
         }
         context.report({
           node,
-          message: `Link to '${destination}' is intercepted as an SPA navigation instead of a document request.`,
+          message: `${importedName} to '${destination}' is intercepted as an SPA navigation instead of a document request.`,
         });
       },
     }),

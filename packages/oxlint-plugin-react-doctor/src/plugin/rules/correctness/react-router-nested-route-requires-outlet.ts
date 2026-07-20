@@ -9,7 +9,7 @@ import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-rout
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
-const OUTLET_EXPORT_NAMES = new Set(["Outlet"]);
+const OUTLET_EXPORT_NAMES = new Set(["Outlet", "useOutlet"]);
 
 const getResolvedInlineRouteContent = (
   routeObject: EsTreeNodeOfType<"ObjectExpression">,

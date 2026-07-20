@@ -16,6 +16,7 @@ import { reactRouterNoLoaderRequestBody } from "./correctness/react-router-no-lo
 import { reactRouterNoMultipleMiddlewareNext } from "./correctness/react-router-no-multiple-middleware-next.js";
 import { reactRouterNoMultipleSetSearchParamsInTick } from "./correctness/react-router-no-multiple-set-search-params-in-tick.js";
 import { reactRouterNoNavigateInRender } from "./correctness/react-router-no-navigate-in-render.js";
+import { reactRouterNestedRouteRequiresOutlet } from "./correctness/react-router-nested-route-requires-outlet.js";
 import { reactRouterNoRedirectInTryCatch } from "./correctness/react-router-no-redirect-in-try-catch.js";
 import { reactRouterNoRouteModuleEnvironmentSuffix } from "./correctness/react-router-no-route-module-environment-suffix.js";
 import { reactRouterNoRouterInRender } from "./correctness/react-router-no-router-in-render.js";
@@ -48,6 +49,12 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterNoNavigateInRender,
     source:
       'import { useNavigate } from "react-router"; function App() { const navigate = useNavigate(); return <button onClick={() => navigate("/next")} />; }',
+  },
+  {
+    name: "allows useOutlet as a nested route render point",
+    rule: reactRouterNestedRouteRequiresOutlet,
+    source:
+      'import { createBrowserRouter, useOutlet as useChildOutlet } from "react-router"; createBrowserRouter([{ Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "child", element: <Child /> }] }]);',
   },
   {
     name: "allows lazy to return mutable route properties",
@@ -336,6 +343,87 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterNoUnsynchronizedSearchParamsMutation,
       'import { useSearchParams } from "react-router"; export function Filters() { const [params, setParams] = useSearchParams(); const mutate = () => params.set("tab", "all"); const synchronize = () => setParams(params); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports navigate in an immediately invoked render callback", () => {
+    const result = runRule(
+      reactRouterNoNavigateInRender,
+      'import { useNavigate } from "react-router"; export function App() { const navigate = useNavigate(); (() => navigate("/next"))(); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports navigate in a synchronous iterator during render", () => {
+    const result = runRule(
+      reactRouterNoNavigateInRender,
+      'import { useNavigate } from "react-router"; export function App() { const navigate = useNavigate(); routes.forEach((route) => navigate(route)); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports navigate in a React transition started during render", () => {
+    const result = runRule(
+      reactRouterNoNavigateInRender,
+      'import { startTransition } from "react"; import { useNavigate } from "react-router"; export function App() { const navigate = useNavigate(); startTransition(() => navigate("/next")); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports navigate through a local helper chain invoked during render", () => {
+    const result = runRule(
+      reactRouterNoNavigateInRender,
+      'import { useNavigate } from "react-router"; export function App() { const navigate = useNavigate(); const go = () => navigate("/next"); const run = () => go(); run(); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a local navigate helper passed to a render-time transition", () => {
+    const result = runRule(
+      reactRouterNoNavigateInRender,
+      'import { startTransition } from "react"; import { useNavigate } from "react-router"; export function App() { const navigate = useNavigate(); const go = () => navigate("/next"); startTransition(go); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows navigate through local helpers invoked after render", () => {
+    const result = runRule(
+      reactRouterNoNavigateInRender,
+      'import { useNavigate } from "react-router"; export function App() { const navigate = useNavigate(); const go = () => navigate("/next"); return <button onClick={() => go()}>Next</button>; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("allows a transition-like callback that is not the React API", () => {
+    const result = runRule(
+      reactRouterNoNavigateInRender,
+      'import { useNavigate } from "react-router"; export function App() { const navigate = useNavigate(); const startTransition = queueTask; startTransition(() => navigate("/next")); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a resource NavLink without reloadDocument", () => {
+    const result = runRule(
+      reactRouterResourceLinkRequiresReload,
+      'import { NavLink as ResourceLink } from "react-router"; export const Download = () => <ResourceLink to="/guide.pdf">Guide</ResourceLink>;',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept a shadowed useOutlet as a nested route render point", () => {
+    const result = runRule(
+      reactRouterNestedRouteRequiresOutlet,
+      'import { createBrowserRouter, useOutlet } from "react-router"; createBrowserRouter([{ Component: () => { const useOutlet = () => null; return <main>{useOutlet()}</main>; }, children: [{ path: "child", element: <Child /> }] }]);',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

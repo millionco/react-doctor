@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
+import { isFunctionInvokedDuringRender } from "../../utils/is-function-invoked-during-render.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
@@ -27,8 +28,6 @@ export const reactRouterNoNavigateInRender = wrapReactRouterRule(
           return;
         }
 
-        const renderFunction = findEnclosingFunction(node);
-        if (renderFunction === null) return;
         const navigateSymbol = context.scopes.symbolFor(node.id);
         if (navigateSymbol === null) return;
 
@@ -36,8 +35,14 @@ export const reactRouterNoNavigateInRender = wrapReactRouterRule(
           const callExpression = reference.identifier.parent;
           if (
             !isNodeOfType(callExpression, "CallExpression") ||
-            callExpression.callee !== reference.identifier ||
-            findEnclosingFunction(callExpression) !== renderFunction
+            callExpression.callee !== reference.identifier
+          ) {
+            continue;
+          }
+          const enclosingFunction = findEnclosingFunction(callExpression);
+          if (
+            enclosingFunction === null ||
+            !isFunctionInvokedDuringRender(enclosingFunction, context.scopes)
           ) {
             continue;
           }

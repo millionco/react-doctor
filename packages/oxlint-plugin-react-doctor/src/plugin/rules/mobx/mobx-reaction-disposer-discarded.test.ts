@@ -78,6 +78,24 @@ describe("mobx-reaction-disposer-discarded", () => {
         }
       `),
     ).toBe(0);
+    expect(
+      diagnosticsFor(`
+        import { useEffect } from "react";
+        import { reaction } from "mobx";
+        function useReaction(enabled) {
+          useEffect(() => enabled && reaction(() => store.value, refresh), [enabled]);
+          useEffect(
+            () => enabled ? reaction(() => store.size, resize) : undefined,
+            [enabled],
+          );
+          useEffect(
+            () => enabled ? undefined : (prepare(), reaction(() => store.theme, restyle)),
+            [enabled],
+          );
+          useEffect(() => reaction(() => store.status, update) || fallback, []);
+        }
+      `),
+    ).toBe(0);
   });
 
   it("reports coercion and control-flow uses that discard ownership", () => {
@@ -90,10 +108,11 @@ describe("mobx-reaction-disposer-discarded", () => {
             enabled && autorun(() => this.sync());
             if (reaction(() => externalStore.value, this.persist)) this.ready();
             Boolean(autorun(() => this.refresh()));
+            useEffect(() => reaction(() => externalStore.other, this.persist) && enabled, []);
           }
         }
       `),
-    ).toBe(3);
+    ).toBe(4);
   });
 
   it("accepts literal and stable-object AbortSignal options", () => {

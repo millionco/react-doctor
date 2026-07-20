@@ -320,14 +320,34 @@ const observesOnlyInstanceRootedState = (
   return !observesExternalState;
 };
 
-const isDisposerDiscarded = (callExpression: EsTreeNode): boolean => {
-  const expressionRoot = findTransparentExpressionRoot(callExpression);
-  if (
-    isNodeOfType(expressionRoot.parent, "ArrowFunctionExpression") &&
-    expressionRoot.parent.body === expressionRoot
-  ) {
+const isForwardedFromConciseArrow = (callExpression: EsTreeNode): boolean => {
+  let expressionRoot = findTransparentExpressionRoot(callExpression);
+  let parent = expressionRoot.parent;
+  while (parent) {
+    if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === expressionRoot) {
+      return true;
+    }
+    if (
+      (isNodeOfType(parent, "LogicalExpression") &&
+        (parent.right === expressionRoot ||
+          (parent.left === expressionRoot && parent.operator !== "&&"))) ||
+      (isNodeOfType(parent, "ConditionalExpression") &&
+        (parent.consequent === expressionRoot || parent.alternate === expressionRoot)) ||
+      (isNodeOfType(parent, "SequenceExpression") &&
+        parent.expressions[parent.expressions.length - 1] === expressionRoot)
+    ) {
+      expressionRoot = findTransparentExpressionRoot(parent);
+      parent = expressionRoot.parent;
+      continue;
+    }
     return false;
   }
+  return false;
+};
+
+const isDisposerDiscarded = (callExpression: EsTreeNode): boolean => {
+  if (isForwardedFromConciseArrow(callExpression)) return false;
+  const expressionRoot = findTransparentExpressionRoot(callExpression);
   if (isResultDiscardedCall(callExpression)) return true;
   const parent = expressionRoot.parent;
   if (!parent) return false;

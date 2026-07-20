@@ -8,6 +8,7 @@ import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
+import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
@@ -34,11 +35,13 @@ export const reactRouterReturnNavigationPromiseInTransition = wrapReactRouterRul
           hasTransitionEnabledRouter ||= (node.attributes ?? []).some((attribute) => {
             if (!isNodeOfType(attribute, "JSXAttribute")) return false;
             const attributeName = getJsxAttributeName(attribute.name);
-            return (
+            const isTransitionAttribute =
               attributeName === "unstable_useTransitions" ||
               (attributeName === "useTransitions" &&
-                hasCapability(context.settings, "react-router:7.15"))
-            );
+                hasCapability(context.settings, "react-router:7.15"));
+            if (!isTransitionAttribute) return false;
+            if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return true;
+            return readStaticBoolean(attribute.value.expression) !== false;
           });
         },
         VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {

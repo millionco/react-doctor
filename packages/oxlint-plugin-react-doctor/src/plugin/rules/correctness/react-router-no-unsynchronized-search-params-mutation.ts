@@ -1,14 +1,17 @@
 import { REACT_ROUTER_SEARCH_PARAM_MUTATOR_NAMES } from "../../constants/react-router.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const isInlineCallCallback = (node: EsTreeNode): boolean =>
@@ -62,6 +65,43 @@ const isProvenNavigateCall = (
   );
 };
 
+const collectExactSearchParamsAliasSymbols = (
+  context: RuleContext,
+  sourceSymbol: SymbolDescriptor,
+): SymbolDescriptor[] => {
+  const symbols = [sourceSymbol];
+  const symbolIds = new Set([sourceSymbol.id]);
+  for (let symbolIndex = 0; symbolIndex < symbols.length; symbolIndex += 1) {
+    const symbol = symbols[symbolIndex];
+    if (symbol === undefined) continue;
+    for (const reference of symbol.references) {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const declarator = referenceRoot.parent;
+      if (
+        !isNodeOfType(declarator, "VariableDeclarator") ||
+        declarator.init !== referenceRoot ||
+        !isNodeOfType(declarator.id, "Identifier")
+      ) {
+        continue;
+      }
+      const aliasSymbol = context.scopes.symbolFor(declarator.id);
+      const aliasInitializer = aliasSymbol ? getDirectUnreassignedInitializer(aliasSymbol) : null;
+      const unwrappedInitializer = aliasInitializer ? stripParenExpression(aliasInitializer) : null;
+      if (
+        aliasSymbol === null ||
+        symbolIds.has(aliasSymbol.id) ||
+        !isNodeOfType(unwrappedInitializer, "Identifier") ||
+        context.scopes.symbolFor(unwrappedInitializer) !== symbol
+      ) {
+        continue;
+      }
+      symbolIds.add(aliasSymbol.id);
+      symbols.push(aliasSymbol);
+    }
+  }
+  return symbols;
+};
+
 export const reactRouterNoUnsynchronizedSearchParamsMutation = wrapReactRouterRule(
   defineRule({
     id: "react-router-no-unsynchronized-search-params-mutation",
@@ -87,6 +127,11 @@ export const reactRouterNoUnsynchronizedSearchParamsMutation = wrapReactRouterRu
         if (!isNodeOfType(searchParamsBinding, "Identifier")) return;
         const searchParamsSymbol = context.scopes.symbolFor(searchParamsBinding);
         if (searchParamsSymbol === null) return;
+        const searchParamsSymbols = collectExactSearchParamsAliasSymbols(
+          context,
+          searchParamsSymbol,
+        );
+        const searchParamsReferences = searchParamsSymbols.flatMap((symbol) => symbol.references);
         const setterSymbol = isNodeOfType(setterBinding, "Identifier")
           ? context.scopes.symbolFor(setterBinding)
           : null;
@@ -101,7 +146,7 @@ export const reactRouterNoUnsynchronizedSearchParamsMutation = wrapReactRouterRu
             }
             return [callExpression];
           }) ?? [];
-        const serializationCalls = searchParamsSymbol.references.flatMap((reference) => {
+        const serializationCalls = searchParamsReferences.flatMap((reference) => {
           const memberExpression = reference.identifier.parent;
           if (
             !isNodeOfType(memberExpression, "MemberExpression") ||
@@ -117,7 +162,7 @@ export const reactRouterNoUnsynchronizedSearchParamsMutation = wrapReactRouterRu
             : [];
         });
 
-        for (const reference of searchParamsSymbol.references) {
+        for (const reference of searchParamsReferences) {
           const memberExpression = reference.identifier.parent;
           if (
             !isNodeOfType(memberExpression, "MemberExpression") ||

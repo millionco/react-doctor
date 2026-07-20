@@ -23,7 +23,7 @@ const findCookieFactoryCall = (context: RuleContext, node: EsTreeNode): boolean 
         current.callee,
         current.callee.name,
       );
-      return importedName !== null && COOKIE_FACTORY_EXPORT_NAMES.has(importedName);
+      if (importedName !== null && COOKIE_FACTORY_EXPORT_NAMES.has(importedName)) return true;
     }
     current = current.parent;
   }

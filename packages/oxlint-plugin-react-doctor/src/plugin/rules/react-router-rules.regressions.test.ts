@@ -414,6 +414,12 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { useSearchParams } from "react-router"; export function Filters() { const [params, setParams] = useSearchParams(); return <button onClick={() => { params.set("tab", "all"); setParams(params); }} />; }',
   },
   {
+    name: "allows synchronized search params mutation through an immutable alias",
+    rule: reactRouterNoUnsynchronizedSearchParamsMutation,
+    source:
+      'import { useSearchParams } from "react-router"; export function Filters() { const [searchParams, setSearchParams] = useSearchParams(); const params = searchParams; return <button onClick={() => { params.set("tab", "all"); setSearchParams(params); }} />; }',
+  },
+  {
     name: "allows search params mutation synchronized after an inline iterator",
     rule: reactRouterNoUnsynchronizedSearchParamsMutation,
     source:
@@ -491,6 +497,19 @@ const safeRuleCases: SafeRuleCase[] = [
     source:
       'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} useTransitions />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => navigate("/next"))} />; };',
     settings: { "react-doctor": { capabilities: ["react-router:7.15"] } },
+  },
+  {
+    name: "allows discarded navigation when transitions are explicitly disabled",
+    rule: reactRouterReturnNavigationPromiseInTransition,
+    source:
+      'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} useTransitions={false} />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { void navigate("/next"); })} />; };',
+    settings: { "react-doctor": { capabilities: ["react-router:7.15"] } },
+  },
+  {
+    name: "allows discarded navigation when unstable transitions are explicitly disabled",
+    rule: reactRouterReturnNavigationPromiseInTransition,
+    source:
+      'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} unstable_useTransitions={false} />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { void navigate("/next"); })} />; };',
   },
   {
     name: "allows passing navigate to a helper inside a transition",
@@ -790,6 +809,24 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterNoStaticCookieExpires,
       'import { createFileSessionStorage } from "@react-router/node"; export const sessions = createFileSessionStorage({ dir: "./sessions", cookie: { name: "session", expires: new Date(Date.now() + 1000) } });',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a static expiry inside merged cookie options", () => {
+    const result = runRule(
+      reactRouterNoStaticCookieExpires,
+      'import { createCookie } from "react-router"; export const cookie = createCookie("session", merge({ sameSite: "lax" }, { expires: new Date(Date.now() + 1000) }));',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an unsynchronized search params mutation through an immutable alias", () => {
+    const result = runRule(
+      reactRouterNoUnsynchronizedSearchParamsMutation,
+      'import { useSearchParams } from "react-router"; export function Filters() { const [searchParams] = useSearchParams(); const params = searchParams; params.set("tab", "all"); return null; }',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

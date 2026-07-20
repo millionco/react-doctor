@@ -5,9 +5,11 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { functionReturnsCollectionAtPath } from "../../utils/function-returns-collection-at-path.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import {
@@ -644,16 +646,6 @@ const objectTargetPathReplacementDisposition = (
   return disposition;
 };
 
-const rootIdentifierForExpression = (
-  expression: EsTreeNode,
-): EsTreeNodeOfType<"Identifier"> | null => {
-  let current = stripParenExpression(expression);
-  while (isNodeOfType(current, "MemberExpression")) {
-    current = stripParenExpression(current.object);
-  }
-  return isNodeOfType(current, "Identifier") ? current : null;
-};
-
 const objectExpressionPublishesSymbolAtPath = (
   objectExpression: EsTreeNodeOfType<"ObjectExpression">,
   targetPath: readonly string[],
@@ -680,15 +672,6 @@ const objectExpressionPublishesSymbolAtPath = (
   return false;
 };
 
-const isNodeWithin = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current) {
-    if (current === ancestor) return true;
-    current = current.parent;
-  }
-  return false;
-};
-
 const branchPathCompatibility = (
   candidate: EsTreeNode,
   mutation: MutableStateReferenceMutation,
@@ -701,12 +684,12 @@ const branchPathCompatibility = (
       isNodeOfType(parent, "IfStatement") &&
       (parent.consequent === current || parent.alternate === current)
     ) {
-      if (isNodeWithin(mutation.node, current)) {
+      if (isAstDescendant(mutation.node, current)) {
         current = parent;
         continue;
       }
       const otherBranch = parent.consequent === current ? parent.alternate : parent.consequent;
-      return otherBranch && isNodeWithin(mutation.node, otherBranch) ? false : null;
+      return otherBranch && isAstDescendant(mutation.node, otherBranch) ? false : null;
     }
     current = parent;
   }
@@ -728,7 +711,7 @@ const targetRebindReplacementDisposition = (
   targetKey: string,
   context: RuleContext,
 ): boolean | null | undefined => {
-  const targetIdentifier = rootIdentifierForExpression(mutation.receiver);
+  const targetIdentifier = getRootIdentifier(mutation.receiver);
   if (!targetIdentifier) return undefined;
   const targetSymbol = context.scopes.symbolFor(targetIdentifier);
   if (!targetSymbol || targetSymbol.kind === "const") return undefined;
@@ -1094,7 +1077,10 @@ const analyzeSnapshotContainer = (
         }
         const mutationStart = getRangeStart(mutation.node);
         const notifierStart = getRangeStart(notifier.callExpression);
-        return mutationStart !== null && notifierStart !== null && notifierStart >= mutationStart;
+        return (
+          isAstDescendant(mutation.node, notifier.callExpression) ||
+          (mutationStart !== null && notifierStart !== null && notifierStart >= mutationStart)
+        );
       }
       if (notifier.statementIndex !== statementIndex || notifier.branchRoot !== branchRoot) {
         return false;
@@ -1102,7 +1088,10 @@ const analyzeSnapshotContainer = (
       if (branchPathCompatibility(notifier.callExpression, mutation) !== true) return false;
       const mutationStart = getRangeStart(mutation.node);
       const notifierStart = getRangeStart(notifier.callExpression);
-      return mutationStart !== null && notifierStart !== null && notifierStart >= mutationStart;
+      return (
+        isAstDescendant(mutation.node, notifier.callExpression) ||
+        (mutationStart !== null && notifierStart !== null && notifierStart >= mutationStart)
+      );
     });
     const replacementDispositions = [
       ...followingNotifiers.map((notifier) =>

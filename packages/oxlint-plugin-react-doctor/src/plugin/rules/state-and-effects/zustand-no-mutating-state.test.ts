@@ -566,6 +566,26 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("treats enclosing notifier calls as following nested argument mutations", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set, get) => ({
+          items: [],
+          safe: () => {
+            const items = get().items;
+            set({ items: (items.push("next"), [...items]) });
+          },
+          unsafe: () => {
+            const items = get().items;
+            set({ items: (items.push("next"), items) });
+          },
+        }));
+      `,
+      1,
+    );
+  });
+
   it("recognizes updater returns that reuse get snapshots", () => {
     expectDiagnosticCount(
       `

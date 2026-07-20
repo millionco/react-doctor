@@ -69,7 +69,8 @@ const isRetainedByUnusedLocalReactRef = (reference: EsTreeNode, scopes: ScopeAna
       (refReference) => refReference.identifier === assignmentTarget.object,
     ) &&
     referenceFunction &&
-    findEnclosingFunction(referenceFunction) === refOwnerFunction,
+    (referenceFunction === refOwnerFunction ||
+      findEnclosingFunction(referenceFunction) === refOwnerFunction),
   );
 };
 

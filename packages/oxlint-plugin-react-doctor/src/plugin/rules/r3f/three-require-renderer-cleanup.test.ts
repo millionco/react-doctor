@@ -214,6 +214,21 @@ describe("three-require-renderer-cleanup", () => {
     expect(runRule(threeRequireRendererCleanup, escapingRef).diagnostics).toHaveLength(0);
   });
 
+  it("retains ownership when the component stores the renderer in an otherwise-unused local ref", () => {
+    const code = `
+      import { useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Scene({ canvas }) {
+        const rendererRef = useRef(null);
+        const renderer = new WebGLRenderer({ canvas });
+        rendererRef.current = renderer;
+        renderer.render(scene, camera);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, code).diagnostics).toHaveLength(1);
+  });
+
   it("accepts animation frame handles stored in the same stable React ref", () => {
     const code = `
       import { useEffect, useRef } from "react";

@@ -40,6 +40,46 @@ describe("zustand-no-fresh-selector-result", () => {
     );
   });
 
+  it("does not treat an intermediate curried factory as a bound hook", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        interface BearState { bears: number }
+        const makeBearStore = create<BearState>();
+        const useBearStore = makeBearStore(() => ({ bears: 0 }));
+      `,
+      0,
+    );
+  });
+
+  it("does not infer allocating array methods from user-defined method names", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const stableValue = {};
+        const useStore = create(() => ({
+          index: { map: () => stableValue },
+          values: makeValues(),
+        }));
+        const custom = useStore((state) => state.index.map());
+        const unknown = useStore((state) => state.values.filter(isValue));
+      `,
+      0,
+    );
+  });
+
+  it("still reports fresh literals for stores created from imported creators", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        import { creator } from "./creator";
+        const useStore = create(creator);
+        const summary = useStore((state) => ({ count: state.count }));
+      `,
+      1,
+    );
+  });
+
   it("flags fresh instances and fresh chains", () => {
     expectDiagnosticCount(
       `

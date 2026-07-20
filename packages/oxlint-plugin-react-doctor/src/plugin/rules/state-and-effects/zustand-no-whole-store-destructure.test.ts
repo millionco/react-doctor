@@ -78,6 +78,18 @@ describe("zustand-no-whole-store-destructure", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports same-file stores created from imported creator functions", () => {
+    const result = run(`
+      import { create, createStore, useStore } from "zustand";
+      import { creator } from "./creator";
+      const useBearStore = create(creator);
+      const bearStore = createStore(creator);
+      export const BoundView = () => <span>{useBearStore().count}</span>;
+      export const VanillaView = () => <span>{useStore(bearStore).count}</span>;
+    `);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports traditional vanilla store hooks without a selector", () => {
     const result = run(`
       import { createStore } from "zustand/vanilla";
@@ -144,6 +156,15 @@ describe("zustand-no-whole-store-destructure", () => {
         const { bears } = useBearStore();
         return <span>{bears}</span>;
       };
+    `);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows incomplete curried factories", () => {
+    const result = run(`
+      import { create } from "zustand";
+      const makeBearStore = create();
+      export const View = () => <span>{makeBearStore().count}</span>;
     `);
     expect(result.diagnostics).toHaveLength(0);
   });

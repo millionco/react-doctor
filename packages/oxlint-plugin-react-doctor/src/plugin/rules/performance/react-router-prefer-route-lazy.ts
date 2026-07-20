@@ -22,7 +22,7 @@ const getEagerRouteComponent = (propertyValue: EsTreeNode): EsTreeNode | null =>
 export const reactRouterPreferRouteLazy = wrapReactRouterRule(
   defineRule({
     id: "react-router-prefer-route-lazy",
-    title: "Route component is eagerly loaded",
+    title: "React.lazy creates a route-module waterfall",
     tags: ["test-noise"],
     requires: ["react-router:6.9"],
     disabledWhen: ["react-router-framework"],
@@ -53,7 +53,7 @@ export const reactRouterPreferRouteLazy = wrapReactRouterRule(
         context.report({
           node: contentProperty,
           message:
-            "This route eagerly imports its component instead of splitting the route module with lazy.",
+            "React.lazy defers only the component; use the route lazy property to load the full route module in parallel.",
         });
       },
     }),

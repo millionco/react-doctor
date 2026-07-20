@@ -659,8 +659,8 @@ False-positive traps:
 
 In scope:
 
-- Framework server entry files and typed/named `handleError` exports; known console and reporting
-  sinks.
+- Framework server entry files and typed/named `handleError` exports; global `console.error` and
+  Sentry reporting imports. Nested function bodies are excluded unless execution is proven.
 
 Out of scope:
 
@@ -708,12 +708,14 @@ False-positive traps:
 
 In scope:
 
-- Targets resolvable through the static route index, including simple dynamic parameter
-  interpolation when the route identity is unambiguous.
+- Exact static targets proven by a loader/action-only Data route object in the same module. This
+  conservative first release requires React Router 6.4 or newer.
 
 Out of scope:
 
-- Runtime-generated routes and arbitrary string construction.
+- Cross-file Framework route discovery, parameterized targets, runtime-generated routes, and
+  arbitrary string construction. These require a project route index before they can be enabled
+  without reviving the file-extension false positive.
 
 Test seeds:
 
@@ -894,15 +896,19 @@ When a Framework server entry creates or receives a CSP nonce, require the same 
 `ServerRouter nonce` and the `nonce` option of `renderToPipeableStream` or
 `renderToReadableStream`. Do not require nonce props merely because `Scripts` or
 `ScrollRestoration` exists; a project without nonce-based CSP is valid, and current Framework mode
-inherits the `ServerRouter` nonce for those components.
+inherits the `ServerRouter` nonce for those components. Pair each render call with the single
+`ServerRouter` in its render argument, and treat immutable identifier aliases as the same nonce.
 
 ### `react-router-valid-route-object`
 
 For proven Data route objects, catch API contradictions that JavaScript users otherwise encounter
-at runtime: an index route with `children` or `path`, `element` with `Component`, `errorElement`
-with `ErrorBoundary`, and `hydrateFallbackElement` with `HydrateFallback`. Keep this below the
-behavioral rules because TypeScript already rejects most cases. `lazy` immutable fields remain a
-separate rule because they are structurally valid objects whose values are ignored too late.
+at runtime: an index route with `children`, `element` with `Component`, `errorElement` with
+`ErrorBoundary`, and `hydrateFallbackElement` with `HydrateFallback`. A path is valid on the
+router's current `IndexRouteObject` and is not a contradiction. Keep this below the behavioral rules
+because TypeScript already rejects most cases. `lazy` immutable fields remain a separate rule
+because they are structurally valid objects whose values are ignored too late. Match the router's
+truthiness semantics: explicit `undefined`, `null`, `false`, `0`, empty-string, and `void` values do
+not create a contradiction.
 
 ## Additional high-confidence contracts
 
@@ -1151,7 +1157,10 @@ False-positive traps:
 - Returning a `Response` supplied by middleware that centrally commits the session.
 
 Implementation boundary:
-No autofix. Header merging is application-specific and an incorrect fix can drop existing headers.
+No autofix. The first release follows direct `commitSession(session)` results and immutable local
+bindings into a `Set-Cookie` property inside the returned expression. Response helpers, mutable
+header objects, and cross-function propagation stay unknown. Header merging is application-specific
+and an incorrect fix can drop existing headers.
 
 ### `react-router-return-navigation-promise-in-transition`
 
@@ -1166,6 +1175,8 @@ and optimistic transition state before the navigation finishes.
 Detector precision:
 Scope-aware callback control flow plus project configuration. Recognize
 `unstable_useTransitions` in v7.10-v7.14, `useTransitions` from v7.15 onward, and current v8.
+The first release reports only when the module contains exactly one proven `RouterProvider` and it
+enables transitions; mixed-provider modules are ambiguous and must be skipped.
 
 Strong positives:
 
@@ -1265,7 +1276,7 @@ or need more project analysis before they should be default-on.
 | P2       | `react-router-no-empty-leaf-route`                     | static UI route tree, v6+                                           | Report a proven leaf UI route with no `element`, `Component`, or `lazy`; the router warns and renders a null outlet. Exclude resource routes, path prefixes, RSC routes, and intentionally componentless data routes.                                                                              |
 | P2       | `react-router-v8-no-react-router-dom-import`           | installed v8                                                        | Replace DOM APIs with `react-router/dom` and other APIs with `react-router`. Never report this in v6 or v7.                                                                                                                                                                                        |
 | P2       | `react-router-v8-no-meta-data-field`                   | installed v8                                                        | Report proven `data` bindings in `meta` args and `useMatches()` results; use `loaderData`. Scope proof is required because ordinary objects may have `data`.                                                                                                                                       |
-| P2       | `react-router-v8-no-removed-future-flags`              | installed v8 Framework config                                       | Remove exact `future.v8_*` flags removed or promoted in v8; move `v8_splitRouteModules` to top-level `splitRouteModules`.                                                                                                                                                                          |
+| P2       | `react-router-v8-no-removed-future-flags`              | installed v8 Framework config                                       | Inspect only the default-exported config. Remove exact `future.v8_*` flags removed or promoted in v8 plus `unstable_previewServerPrerendering`; move `v8_splitRouteModules` to top-level `splitRouteModules`.                                                                                      |
 
 ### Non-AST project and dependency diagnostics
 

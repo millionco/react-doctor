@@ -7,6 +7,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const COOKIE_FACTORY_EXPORT_NAMES = new Set([
@@ -30,6 +31,23 @@ const findCookieFactoryCall = (context: RuleContext, node: EsTreeNode): boolean 
   return false;
 };
 
+const containsGlobalDateNowCall = (context: RuleContext, node: EsTreeNode): boolean => {
+  let didFindDateNowCall = false;
+  walkAst(node, (descendant) => {
+    if (!isNodeOfType(descendant, "CallExpression")) return;
+    if (!isNodeOfType(descendant.callee, "MemberExpression")) return;
+    if (getStaticPropertyKeyName(descendant.callee, { allowComputedString: true }) !== "now") {
+      return;
+    }
+    const receiver = descendant.callee.object;
+    if (!isNodeOfType(receiver, "Identifier") || receiver.name !== "Date") return;
+    if (!context.scopes.isGlobalReference(receiver)) return;
+    didFindDateNowCall = true;
+    return false;
+  });
+  return didFindDateNowCall;
+};
+
 export const reactRouterNoStaticCookieExpires = wrapReactRouterRule(
   defineRule({
     id: "react-router-no-static-cookie-expires",
@@ -47,7 +65,7 @@ export const reactRouterNoStaticCookieExpires = wrapReactRouterRule(
         if (!context.scopes.isGlobalReference(node.value.callee)) return;
         if (findEnclosingFunction(node) !== null) return;
         const expirationArgument = node.value.arguments?.[0];
-        if (isNodeOfType(expirationArgument, "Literal")) return;
+        if (!expirationArgument || !containsGlobalDateNowCall(context, expirationArgument)) return;
         if (!findCookieFactoryCall(context, node)) return;
         context.report({
           node,

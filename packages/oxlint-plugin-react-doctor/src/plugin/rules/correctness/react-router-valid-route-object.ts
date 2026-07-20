@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticRouteProperty } from "../../utils/get-static-route-property.js";
+import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -11,6 +12,17 @@ const EXCLUSIVE_ROUTE_PROPERTY_PAIRS: ReadonlyArray<readonly [string, string]> =
   ["ErrorBoundary", "errorElement"],
   ["HydrateFallback", "hydrateFallbackElement"],
 ];
+
+const getActiveRouteProperty = (
+  context: RuleContext,
+  routeObject: EsTreeNodeOfType<"ObjectExpression">,
+  propertyName: string,
+): EsTreeNodeOfType<"Property"> | null => {
+  const property = getStaticRouteProperty(routeObject, propertyName);
+  return property === null || isDefinitelyFalsyExpression(property.value, context.scopes)
+    ? null
+    : property;
+};
 
 export const reactRouterValidRouteObject = wrapReactRouterRule(
   defineRule({
@@ -30,19 +42,18 @@ export const reactRouterValidRouteObject = wrapReactRouterRule(
           isNodeOfType(indexProperty.value, "Literal") &&
           indexProperty.value.value === true
         ) {
-          const incompatibleProperty =
-            getStaticRouteProperty(node, "children") ?? getStaticRouteProperty(node, "path");
+          const incompatibleProperty = getActiveRouteProperty(context, node, "children");
           if (incompatibleProperty !== null) {
             context.report({
               node: incompatibleProperty,
-              message: "An index route cannot also declare children or a path.",
+              message: "An index route cannot also declare children.",
             });
           }
         }
         for (const [componentPropertyName, elementPropertyName] of EXCLUSIVE_ROUTE_PROPERTY_PAIRS) {
           if (
-            getStaticRouteProperty(node, componentPropertyName) === null ||
-            getStaticRouteProperty(node, elementPropertyName) === null
+            getActiveRouteProperty(context, node, componentPropertyName) === null ||
+            getActiveRouteProperty(context, node, elementPropertyName) === null
           ) {
             continue;
           }

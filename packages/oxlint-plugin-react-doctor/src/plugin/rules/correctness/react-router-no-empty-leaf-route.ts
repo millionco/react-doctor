@@ -1,12 +1,22 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticRouteProperty } from "../../utils/get-static-route-property.js";
+import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-expression.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const LEAF_CONTENT_PROPERTY_NAMES = ["Component", "element", "lazy"];
 const RESOURCE_ROUTE_PROPERTY_NAMES = ["action", "clientAction", "clientLoader", "loader"];
+
+const hasActiveRouteProperty = (
+  context: RuleContext,
+  routeObject: EsTreeNodeOfType<"ObjectExpression">,
+  propertyName: string,
+): boolean => {
+  const property = getStaticRouteProperty(routeObject, propertyName);
+  return property !== null && !isDefinitelyFalsyExpression(property.value, context.scopes);
+};
 
 export const reactRouterNoEmptyLeafRoute = wrapReactRouterRule(
   defineRule({
@@ -20,7 +30,7 @@ export const reactRouterNoEmptyLeafRoute = wrapReactRouterRule(
     create: (context: RuleContext) => ({
       ObjectExpression(node: EsTreeNodeOfType<"ObjectExpression">) {
         if (!isStaticReactRouterRouteObject(context, node)) return;
-        if (getStaticRouteProperty(node, "children") !== null) return;
+        if (hasActiveRouteProperty(context, node, "children")) return;
         if (
           getStaticRouteProperty(node, "path") === null &&
           getStaticRouteProperty(node, "index") === null
@@ -28,12 +38,12 @@ export const reactRouterNoEmptyLeafRoute = wrapReactRouterRule(
           return;
         }
         if (
-          LEAF_CONTENT_PROPERTY_NAMES.some((name) => getStaticRouteProperty(node, name) !== null)
+          LEAF_CONTENT_PROPERTY_NAMES.some((name) => hasActiveRouteProperty(context, node, name))
         ) {
           return;
         }
         if (
-          RESOURCE_ROUTE_PROPERTY_NAMES.some((name) => getStaticRouteProperty(node, name) !== null)
+          RESOURCE_ROUTE_PROPERTY_NAMES.some((name) => hasActiveRouteProperty(context, node, name))
         ) {
           return;
         }

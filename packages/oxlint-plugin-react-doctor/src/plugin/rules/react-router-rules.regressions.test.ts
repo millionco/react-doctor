@@ -682,7 +682,7 @@ describe("React Router rule regressions", () => {
   it("reports a resource NavLink without reloadDocument", () => {
     const result = runRule(
       reactRouterResourceLinkRequiresReload,
-      'import { NavLink as ResourceLink } from "react-router"; export const Download = () => <ResourceLink to="/guide.pdf">Guide</ResourceLink>;',
+      'import { createBrowserRouter, NavLink as ResourceLink } from "react-router"; createBrowserRouter([{ path: "/guide.pdf", loader: loadGuide }]); export const Download = () => <ResourceLink to="/guide.pdf">Guide</ResourceLink>;',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -691,7 +691,7 @@ describe("React Router rule regressions", () => {
   it("recognizes resource NavLinks imported from react-router/dom", () => {
     const result = runRule(
       reactRouterResourceLinkRequiresReload,
-      'import { NavLink } from "react-router/dom"; export const Download = () => <NavLink to="/guide.pdf">Guide</NavLink>;',
+      'import { createBrowserRouter } from "react-router"; import { NavLink } from "react-router/dom"; createBrowserRouter([{ path: "/guide.pdf", loader: loadGuide }]); export const Download = () => <NavLink to="/guide.pdf">Guide</NavLink>;',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -834,14 +834,14 @@ describe("React Router rule regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("retains an earlier transition-enabled router when a later provider is disabled", () => {
+  it("abstains when transition-enabled and disabled routers share a file", () => {
     const result = runRule(
       reactRouterReturnNavigationPromiseInTransition,
       'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router, fallbackRouter }) => <><RouterProvider router={router} useTransitions /><RouterProvider router={fallbackRouter} /></>; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { navigate("/next"); })} />; };',
       { settings: { "react-doctor": { capabilities: ["react-router:7.15"] } } },
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("reports a loader session mutator invocation", () => {

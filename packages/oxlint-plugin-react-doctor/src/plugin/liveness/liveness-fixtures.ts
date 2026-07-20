@@ -2328,7 +2328,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/", element: <App /> }]);',
   },
   "react-router-resource-link-requires-reload": {
-    code: 'import { Link } from "react-router";\nexport const Download = () => <Link to="/guide.pdf">Guide</Link>;',
+    code: 'import { createBrowserRouter, Link } from "react-router";\ncreateBrowserRouter([{ path: "/guide.pdf", loader: loadGuide }]);\nexport const Download = () => <Link to="/guide.pdf">Guide</Link>;',
   },
   "react-router-return-navigation-promise-in-transition": {
     code: 'import { startTransition } from "react";\nimport { RouterProvider, useNavigate } from "react-router";\nexport const App = ({ router }) => <RouterProvider router={router} useTransitions />;\nexport const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { navigate("/next"); })} />; };',
@@ -2352,7 +2352,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     filePath: "react-router.config.ts",
   },
   "react-router-valid-route-object": {
-    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ index: true, path: "home", element: <Home /> }]);',
+    code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ index: true, children: [{ path: "child", element: <Child /> }] }]);',
   },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',

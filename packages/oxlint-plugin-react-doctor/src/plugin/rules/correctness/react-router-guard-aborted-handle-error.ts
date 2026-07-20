@@ -20,6 +20,7 @@ const ERROR_REPORTING_EXPORT_NAMES = new Set([
   "logError",
   "reportError",
 ]);
+const ERROR_REPORTING_MODULE_PATTERN = /^(?:@sentry\/|sentry$)/;
 const SERVER_ENTRY_PATTERN = /(?:^|\/)entry\.server\.[cm]?[jt]sx?$/;
 const EMPTY_VISITORS: RuleVisitors = {};
 
@@ -105,7 +106,11 @@ const isErrorReportingCall = (
   if (isNodeOfType(callee, "Identifier")) {
     if (context.scopes.symbolFor(callee)?.kind !== "import") return false;
     const binding = getImportBindingForName(callee, callee.name);
-    return Boolean(binding?.exportedName && ERROR_REPORTING_EXPORT_NAMES.has(binding.exportedName));
+    return Boolean(
+      binding?.exportedName &&
+      ERROR_REPORTING_MODULE_PATTERN.test(binding.source) &&
+      ERROR_REPORTING_EXPORT_NAMES.has(binding.exportedName),
+    );
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const methodName = getStaticPropertyKeyName(callee, { allowComputedString: true });
@@ -118,11 +123,11 @@ const isErrorReportingCall = (
   ) {
     return true;
   }
-  return (
-    ERROR_REPORTING_EXPORT_NAMES.has(methodName) &&
-    isNodeOfType(callee.object, "Identifier") &&
-    context.scopes.symbolFor(callee.object)?.kind === "import"
-  );
+  if (!ERROR_REPORTING_EXPORT_NAMES.has(methodName)) return false;
+  if (!isNodeOfType(callee.object, "Identifier")) return false;
+  if (context.scopes.symbolFor(callee.object)?.kind !== "import") return false;
+  const binding = getImportBindingForName(callee.object, callee.object.name);
+  return Boolean(binding?.isNamespace && ERROR_REPORTING_MODULE_PATTERN.test(binding.source));
 };
 
 export const reactRouterGuardAbortedHandleError = wrapReactRouterRule(
@@ -149,6 +154,7 @@ export const reactRouterGuardAbortedHandleError = wrapReactRouterRule(
         if (errorSymbol === null) return;
         const reportingCalls: EsTreeNode[] = [];
         walkAst(functionNode, (descendant) => {
+          if (descendant !== functionNode && isFunctionLike(descendant)) return false;
           if (isErrorReportingCall(context, descendant, errorSymbol)) {
             reportingCalls.push(descendant);
           }

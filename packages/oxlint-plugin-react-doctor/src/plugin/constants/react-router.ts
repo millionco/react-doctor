@@ -80,9 +80,6 @@ export const REACT_ROUTER_LAZY_FORBIDDEN_PROPERTY_NAMES = new Set([
   "path",
 ]);
 
-export const REACT_ROUTER_RESOURCE_PATH_PATTERN =
-  /\.(?:avif|csv|docx?|gif|jpe?g|json|mp3|mp4|pdf|png|svg|txt|webm|webp|xlsx?|xml|zip)(?:[?#].*)?$/i;
-
 export const REACT_ROUTER_SEQUENTIAL_AWAIT_THRESHOLD = 2;
 
 export const REACT_ROUTER_RESPONSE_BODY_READER_NAMES = new Set([
@@ -95,6 +92,7 @@ export const REACT_ROUTER_RESPONSE_BODY_READER_NAMES = new Set([
 ]);
 
 export const REACT_ROUTER_V8_REMOVED_FUTURE_FLAG_NAMES = new Set([
+  "unstable_previewServerPrerendering",
   "v8_middleware",
   "v8_passThroughRequests",
   "v8_splitRouteModules",

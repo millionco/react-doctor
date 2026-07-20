@@ -22,7 +22,8 @@ export const reactRouterReturnNavigationPromiseInTransition = wrapReactRouterRul
     recommendation:
       "Return or await the navigation promise from the transition callback so pending state lasts through navigation.",
     create: (context: RuleContext) => {
-      let hasTransitionEnabledRouter = false;
+      let routerProviderCount = 0;
+      let transitionEnabledRouterCount = 0;
       const droppedNavigationCalls: EsTreeNode[] = [];
       return {
         JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
@@ -32,7 +33,8 @@ export const reactRouterReturnNavigationPromiseInTransition = wrapReactRouterRul
           ) {
             return;
           }
-          hasTransitionEnabledRouter ||= (node.attributes ?? []).some((attribute) => {
+          routerProviderCount += 1;
+          const isTransitionEnabled = (node.attributes ?? []).some((attribute) => {
             if (!isNodeOfType(attribute, "JSXAttribute")) return false;
             const attributeName = getJsxAttributeName(attribute.name);
             const isTransitionAttribute =
@@ -43,6 +45,7 @@ export const reactRouterReturnNavigationPromiseInTransition = wrapReactRouterRul
             if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return true;
             return readStaticBoolean(attribute.value.expression) !== false;
           });
+          if (isTransitionEnabled) transitionEnabledRouterCount += 1;
         },
         VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
           if (!isNodeOfType(node.id, "Identifier")) return;
@@ -87,7 +90,7 @@ export const reactRouterReturnNavigationPromiseInTransition = wrapReactRouterRul
           }
         },
         "Program:exit"() {
-          if (!hasTransitionEnabledRouter) return;
+          if (routerProviderCount !== 1 || transitionEnabledRouterCount !== 1) return;
           for (const navigationCall of droppedNavigationCalls) {
             context.report({
               node: navigationCall,

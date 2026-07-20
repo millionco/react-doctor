@@ -1,6 +1,8 @@
 import { REACT_ROUTER_V8_REMOVED_FUTURE_FLAG_NAMES } from "../../constants/react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findExportedValue } from "../../utils/find-exported-value.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -25,10 +27,19 @@ export const reactRouterV8NoRemovedFutureFlags = wrapReactRouterRule(
         return EMPTY_VISITORS;
       }
       return {
-        Property(node: EsTreeNodeOfType<"Property">) {
-          if (getStaticPropertyKeyName(node, { allowComputedString: true }) !== "future") return;
-          if (!isNodeOfType(node.value, "ObjectExpression")) return;
-          for (const property of node.value.properties ?? []) {
+        "Program:exit"(node: EsTreeNodeOfType<"Program">) {
+          const config = findExportedValue(node, "default");
+          if (!isNodeOfType(config, "ObjectExpression")) return;
+          let futureOptions: EsTreeNode | null = null;
+          for (const property of config.properties ?? []) {
+            if (!isNodeOfType(property, "Property")) continue;
+            if (getStaticPropertyKeyName(property, { allowComputedString: true }) !== "future") {
+              continue;
+            }
+            futureOptions = property.value;
+          }
+          if (!isNodeOfType(futureOptions, "ObjectExpression")) return;
+          for (const property of futureOptions.properties ?? []) {
             const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
             if (
               propertyName === null ||

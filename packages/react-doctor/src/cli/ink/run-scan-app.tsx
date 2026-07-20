@@ -27,6 +27,7 @@ import { discoverWorkspacePackages, selectProjects } from "../utils/select-proje
 import { isCiEnvironment } from "../utils/is-ci-environment.js";
 import { formatElapsedTime } from "../utils/render-diagnostics.js";
 import { printFooter } from "../utils/render-summary.js";
+import { toForwardSlashes } from "../utils/path-format.js";
 import { detectLaunchableAgents } from "../utils/detect-launchable-agents.js";
 import { CLI_AGENT_BINARIES, launchCliAgent } from "../utils/launch-agent.js";
 import { isReactDoctorWorkflowInstalled } from "../utils/install-github-workflow.js";
@@ -117,7 +118,10 @@ const qualifyDiagnosticPaths = (
   return diagnostics.map((diagnostic) =>
     path.isAbsolute(diagnostic.filePath)
       ? diagnostic
-      : { ...diagnostic, filePath: path.join(prefix, diagnostic.filePath) },
+      : {
+          ...diagnostic,
+          filePath: toForwardSlashes(path.join(prefix, diagnostic.filePath)),
+        },
   );
 };
 

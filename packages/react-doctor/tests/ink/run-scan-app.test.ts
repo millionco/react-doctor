@@ -4,11 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { InspectResult, ResolvedScanTarget } from "@react-doctor/core";
 import { Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
-import type { TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
+import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
 import { inspect } from "../../src/inspect.js";
-import { buildTestProject } from "../regressions/_helpers.js";
+import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 
 interface MockScanAppProps {
+  readonly store?: ScanStore;
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
 }
 
@@ -18,6 +19,7 @@ const mockState = vi.hoisted(() => ({
   inspectResults: new Map<string, InspectResult>(),
   shouldRequestHandoff: false,
   lifecycleEvents: new Array<string>(),
+  scanStores: new Array<ScanStore>(),
 }));
 
 vi.mock("ink", async (importOriginal) => {
@@ -26,8 +28,11 @@ vi.mock("ink", async (importOriginal) => {
   return {
     ...actual,
     render: vi.fn((node) => {
-      if (mockState.shouldRequestHandoff && React.isValidElement<MockScanAppProps>(node)) {
-        node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
+      if (React.isValidElement<MockScanAppProps>(node)) {
+        if (node.props.store) mockState.scanStores.push(node.props.store);
+        if (mockState.shouldRequestHandoff) {
+          node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
+        }
       }
       return {
         clear: vi.fn(),
@@ -135,6 +140,7 @@ describe("runScanApp", () => {
     mockState.inspectResults.clear();
     mockState.shouldRequestHandoff = false;
     mockState.lifecycleEvents.length = 0;
+    mockState.scanStores.length = 0;
     vi.restoreAllMocks();
   });
 
@@ -224,5 +230,37 @@ describe("runScanApp", () => {
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
     expect(mockState.lifecycleEvents).toEqual(["footer", "handoff"]);
     expect(result.hasLintHardFailure).toBe(true);
+  });
+
+  it("normalizes project-qualified diagnostic paths", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const adminDirectory = "/repo/apps/admin";
+
+    mockState.projectDirectories.push(webDirectory, adminDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.scanTargets.set(
+      adminDirectory,
+      buildScanTarget(adminDirectory, adminDirectory, null, adminDirectory),
+    );
+    mockState.inspectResults.set(webDirectory, {
+      ...buildInspectResult(webDirectory),
+      diagnostics: [buildDiagnostic({ filePath: "src\\app.tsx" })],
+    });
+    mockState.inspectResults.set(adminDirectory, buildInspectResult(adminDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.scanStores[0]?.getSnapshot().summary?.combinedDiagnostics[0]?.filePath).toBe(
+      "apps/web/src/app.tsx",
+    );
   });
 });

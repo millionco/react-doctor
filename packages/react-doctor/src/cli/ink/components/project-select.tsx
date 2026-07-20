@@ -162,11 +162,17 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
     }
     if (input === "a") {
       if (matches.length === 0) return;
-      setChecked((current) =>
-        matches.every((match) => current.has(match.workspacePackage.directory))
-          ? new Set()
-          : new Set(matches.map((match) => match.workspacePackage.directory)),
-      );
+      setChecked((current) => {
+        const next = new Set(current);
+        const shouldClearMatches = matches.every((match) =>
+          current.has(match.workspacePackage.directory),
+        );
+        for (const match of matches) {
+          if (shouldClearMatches) next.delete(match.workspacePackage.directory);
+          else next.add(match.workspacePackage.directory);
+        }
+        return next;
+      });
       return;
     }
     if (input === "q") return submit([]);

@@ -70,6 +70,54 @@ describe("ProjectSelect", () => {
     unmount();
   });
 
+  it("adds filtered matches without dropping hidden selections", async () => {
+    const onSubmit = vi.fn();
+    const { stdin, unmount } = render(
+      <ProjectSelect packages={PACKAGES} rootDirectory="/repo" onSubmit={onSubmit} />,
+    );
+    await flush();
+
+    stdin.write(" ");
+    await flush();
+    stdin.write("/");
+    await flush();
+    stdin.write("docs");
+    await flush();
+    stdin.write(ENTER);
+    await flush();
+    stdin.write("a");
+    await flush();
+    stdin.write(ENTER);
+    await flush();
+
+    expect(onSubmit).toHaveBeenCalledWith(["/repo/apps/web", "/repo/apps/docs"]);
+    unmount();
+  });
+
+  it("clears filtered matches without dropping hidden selections", async () => {
+    const onSubmit = vi.fn();
+    const { stdin, unmount } = render(
+      <ProjectSelect packages={PACKAGES} rootDirectory="/repo" onSubmit={onSubmit} />,
+    );
+    await flush();
+
+    stdin.write("a");
+    await flush();
+    stdin.write("/");
+    await flush();
+    stdin.write("docs");
+    await flush();
+    stdin.write(ENTER);
+    await flush();
+    stdin.write("a");
+    await flush();
+    stdin.write(ENTER);
+    await flush();
+
+    expect(onSubmit).toHaveBeenCalledWith(["/repo/apps/web"]);
+    unmount();
+  });
+
   it("scans the subset built with space", async () => {
     const onSubmit = vi.fn();
     const { stdin, unmount } = render(

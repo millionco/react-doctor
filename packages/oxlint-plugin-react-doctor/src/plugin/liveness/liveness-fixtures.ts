@@ -1425,7 +1425,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { create } from "zustand";\nconst useStore = create((_set, get) => ({ count: get().count }));',
   },
   "zustand-no-mutating-state": {
-    code: '\n      import { create } from "zustand";\n      create((set) => ({ update: () => set((state) => { state.items.push("next"); return { items: state.items }; }) }));\n    ',
+    code: '\n      import { create } from "zustand";\n      create((set) => ({ items: [], update: () => set((state) => { state.items.push("next"); return { items: state.items }; }) }));\n    ',
   },
   "zod-v4-no-deprecated-error-apis": {
     code: '\n      import { z } from "zod";\n      const error = z.ZodError.create([]);\n    ',

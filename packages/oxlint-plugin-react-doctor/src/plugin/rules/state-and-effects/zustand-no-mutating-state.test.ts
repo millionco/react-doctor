@@ -34,6 +34,11 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set) => ({
+          rows: [],
+          count: 0,
+          cache: { stale: true },
+          user: { active: false },
+          map: new Map(),
           update: () => set((state) => {
             const rows = state.rows;
             rows.push({ id: 1 });
@@ -49,11 +54,51 @@ describe("zustand-no-mutating-state", () => {
     );
   });
 
+  it("reports inline Map and Set mutations that reuse the returned collection", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create((set) => ({
+          values: new Map(),
+          selected: new Set(),
+          update: () => set((state) => ({
+            values: state.values.set("key", 1),
+            selected: state.selected.add("key"),
+          })),
+        }));
+      `,
+      2,
+    );
+  });
+
+  it("does not infer built-in mutation from user-defined method names", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const stableQueue = {};
+        create((set) => ({
+          queue: {
+            push: (_value) => stableQueue,
+            set: (_key, _value) => stableQueue,
+          },
+          update: () => set((state) => {
+            state.queue.push("value");
+            state.queue.set("key", "value");
+            return { queue: state.queue };
+          }),
+        }));
+      `,
+      0,
+    );
+  });
+
   it("reports concise updater mutations and callbacks without a returned update", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
         create((set) => ({
+          items: [],
+          count: 0,
           sort: () => set((state) => ({ items: state.items.sort() })),
           increment: () => set((state) => { state.count += 1; }),
           decrement: () => set((state) => void state.count--),
@@ -271,6 +316,7 @@ describe("zustand-no-mutating-state", () => {
         import { create } from "zustand";
         import { createStore } from "zustand/vanilla";
         const useStore = create((set, get) => ({
+          items: [],
           update: () => {
             get().items.push("next");
             set({ items: get().items });
@@ -288,6 +334,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           update: () => {
             const items = get().items;
             items.push("next");
@@ -304,6 +351,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         const useStore = create((set, get) => ({
+          items: [],
           safe: () => {
             const items = get().items;
             items.push("next");
@@ -325,6 +373,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           safe: () => {
             let selected = get().items;
             selected.push("next");
@@ -360,6 +409,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           unsafe: (shouldMutate) => {
             let items = get().items;
             if (shouldMutate) {
@@ -394,6 +444,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           unsafe: (isOuterEnabled, shouldMutate) => {
             if (isOuterEnabled) {
               const items = get().items;
@@ -422,6 +473,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           update: () => {
             const items = get().items;
             set({ items: [...items] }), items.push("next");
@@ -437,6 +489,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           update: (isEnabled, values) => {
             const items = get().items;
             items.push("next");
@@ -456,6 +509,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           update: (shouldNotify) => {
             const items = get().items;
             items.push("next");
@@ -472,6 +526,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           updateWithBinding: () => {
             const items = get().items;
             items.push("next");
@@ -494,6 +549,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           safe: () => set(() => {
             const items = get().items;
             items.push("next");
@@ -601,6 +657,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           safe: (enabled) => {
             const items = get().items;
             if (enabled) {
@@ -652,6 +709,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           unsafe: (isOuterEnabled, isInnerEnabled) => {
             const items = get().items;
             items.push("next");
@@ -683,6 +741,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           update: (enabled) => {
             if (enabled) {
               const items = get().items;
@@ -712,6 +771,8 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
+          nested: { items: [] },
           unsafe: () => {
             get().nested.items.push("next");
             set({ nested: { items: get().nested.items } });
@@ -731,6 +792,8 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
+          nested: { items: [] },
           unsafe: () => {
             const nested = get().nested;
             nested.items.push("next");
@@ -752,6 +815,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           unsafe: () => {
             const items = get().items;
             items.push("next");
@@ -849,6 +913,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           update: (set, get) => {
             const items = get().items;
             items.push("next");
@@ -865,6 +930,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           update: (enabled) => set((state) => {
             if (enabled) state.items.push("next");
             return { items: state.items };
@@ -898,6 +964,7 @@ describe("zustand-no-mutating-state", () => {
       `
         import { create } from "zustand";
         create((set, get) => ({
+          items: [],
           add: (item, prepend) => {
             const { items } = get();
             if (prepend) {

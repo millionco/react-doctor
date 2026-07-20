@@ -291,7 +291,7 @@ describe("createOxlintConfig settings", () => {
     }
   });
 
-  it("gates Zustand initialization diagnostics to supported major versions", () => {
+  it("gates Zustand initialization and mutation diagnostics to supported major versions", () => {
     for (const zustandMajorVersion of [1, 2, 3, 4, 5]) {
       const config = createOxlintConfig({
         pluginPath: "/tmp/plugin.js",
@@ -303,6 +303,7 @@ describe("createOxlintConfig settings", () => {
         }),
       });
       expect(config.rules["react-doctor/zustand-no-get-during-initialization"]).toBe("error");
+      expect(config.rules["react-doctor/zustand-no-mutating-state"]).toBe("error");
     }
 
     for (const project of [
@@ -322,6 +323,7 @@ describe("createOxlintConfig settings", () => {
     ]) {
       const config = createOxlintConfig({ pluginPath: "/tmp/plugin.js", project });
       expect(config.rules).not.toHaveProperty("react-doctor/zustand-no-get-during-initialization");
+      expect(config.rules).not.toHaveProperty("react-doctor/zustand-no-mutating-state");
     }
   });
 

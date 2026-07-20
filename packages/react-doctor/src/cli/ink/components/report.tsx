@@ -35,10 +35,9 @@ export interface ReportProps {
   readonly exitHint?: string;
 }
 
-const STACKED_CHROME_ROWS =
+const STACKED_FIXED_ROWS =
   TUI_REPORT_HEADER_ROWS +
   TUI_REPORT_LIST_MARGIN_ROWS +
-  TUI_REPORT_DETAIL_ROWS +
   TUI_REPORT_DIVIDER_ROWS +
   TUI_REPORT_STATUS_ROWS;
 const SPLIT_CHROME_ROWS =
@@ -71,9 +70,18 @@ export const Report = ({
 
   const width = Math.max(TUI_REPORT_MIN_WIDTH_CHARS, columns - TUI_HORIZONTAL_PADDING_COLUMNS);
   const isWide = columns >= TUI_REPORT_WIDE_MIN_COLUMNS && terminalRows >= TUI_REPORT_WIDE_MIN_ROWS;
+  const detailHeight = isWide
+    ? Math.max(0, terminalRows - TUI_REPORT_STATUS_ROWS)
+    : Math.max(
+        0,
+        Math.min(
+          TUI_REPORT_DETAIL_ROWS,
+          terminalRows - STACKED_FIXED_ROWS - TUI_REPORT_MIN_LIST_ROWS,
+        ),
+      );
   const listHeight = Math.max(
     TUI_REPORT_MIN_LIST_ROWS,
-    terminalRows - (isWide ? SPLIT_CHROME_ROWS : STACKED_CHROME_ROWS),
+    terminalRows - (isWide ? SPLIT_CHROME_ROWS : STACKED_FIXED_ROWS + detailHeight),
   );
   const detailColumnWidth = Math.max(
     TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
@@ -120,6 +128,7 @@ export const Report = ({
       listColumnWidth={listColumnWidth}
       detailColumnWidth={detailColumnWidth}
       listHeight={listHeight}
+      detailHeight={detailHeight}
       layout={isWide ? "split" : "stacked"}
       rootDirectory={report.rootDirectory}
       projectName={report.projectName}

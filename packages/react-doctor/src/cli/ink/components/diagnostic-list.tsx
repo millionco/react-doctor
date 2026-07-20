@@ -25,6 +25,7 @@ export interface DiagnosticListProps {
   readonly listColumnWidth: number;
   readonly detailColumnWidth: number;
   readonly listHeight: number;
+  readonly detailHeight: number;
   readonly layout: DiagnosticListLayout;
   readonly rootDirectory: string;
   readonly projectName: string;
@@ -71,6 +72,7 @@ export const DiagnosticList = ({
   listColumnWidth,
   detailColumnWidth,
   listHeight,
+  detailHeight,
   layout,
   rootDirectory,
   projectName,
@@ -279,6 +281,8 @@ export const DiagnosticList = ({
             borderRight={false}
             borderBottom={false}
             paddingLeft={1}
+            height={detailHeight}
+            overflowY="hidden"
           >
             {detailContent}
           </Box>
@@ -294,7 +298,9 @@ export const DiagnosticList = ({
       {header}
       <Box marginTop={1}>{listColumn}</Box>
       <Text dimColor>{"─".repeat(width)}</Text>
-      {detailContent}
+      <Box flexDirection="column" height={detailHeight} overflowY="hidden">
+        {detailContent}
+      </Box>
       {statusBar}
       {overlay}
     </Box>

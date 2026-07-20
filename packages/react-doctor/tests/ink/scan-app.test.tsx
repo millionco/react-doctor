@@ -1,6 +1,7 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+import { TUI_DEFAULT_TERMINAL_ROWS } from "../../src/cli/utils/constants.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
 import { createScanStore } from "../../src/cli/ink/scan-store.js";
 
@@ -19,15 +20,31 @@ const makeDiagnostic = (overrides: Partial<Diagnostic>): Diagnostic => ({
 
 const SCORE: ScoreResult = { score: 72, label: "Fair" };
 
+interface TerminalStdout {
+  readonly emit: (event: string) => void;
+}
+
+interface TerminalDimensions {
+  readonly columns?: number;
+  readonly rows?: number;
+}
+
 // ink-testing-library needs a tick for effects (useInput wiring) to flush.
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));
 
-// ink-testing-library hardcodes 100 columns (< the split threshold), so the
-// report renders stacked by default. Widen the fake stdout and fire a resize so
-// the report switches to the side-by-side layout for that test.
-const widenTerminal = (stdout: { emit: (event: string) => void }): void => {
-  Object.defineProperty(stdout, "columns", { get: () => 140, configurable: true });
-  Object.defineProperty(stdout, "rows", { get: () => 40, configurable: true });
+const resizeTerminal = (stdout: TerminalStdout, dimensions: TerminalDimensions): void => {
+  if (dimensions.columns !== undefined) {
+    Object.defineProperty(stdout, "columns", {
+      get: () => dimensions.columns,
+      configurable: true,
+    });
+  }
+  if (dimensions.rows !== undefined) {
+    Object.defineProperty(stdout, "rows", {
+      get: () => dimensions.rows,
+      configurable: true,
+    });
+  }
   stdout.emit("resize");
 };
 
@@ -287,7 +304,7 @@ describe("ScanApp", () => {
     });
 
     const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
-    widenTerminal(stdout);
+    resizeTerminal(stdout, { columns: 140, rows: 40 });
     await flush();
 
     const frame = lastFrame() ?? "";
@@ -295,6 +312,39 @@ describe("ScanApp", () => {
     // so a row's title and its detail headline share a line.
     expect(frame).toContain("│");
     expect(frame).toMatch(/react-doctor\/rules-of-hooks.*│/);
+    unmount();
+  });
+
+  it("keeps stacked report controls visible in a 24-row terminal", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [
+        makeDiagnostic({
+          rule: "rules-of-hooks",
+          severity: "error",
+          category: "Correctness",
+          filePath: "tests/ink/scan-app.test.tsx",
+        }),
+      ],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: process.cwd(),
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { rows: TUI_DEFAULT_TERMINAL_ROWS });
+    await flush();
+
+    const frame = lastFrame() ?? "";
+    expect(frame.split("\n").length).toBeLessThanOrEqual(TUI_DEFAULT_TERMINAL_ROWS);
+    expect(frame).toContain("> 1 | import");
+    expect(frame).toContain("1 issue");
+    expect(frame).toContain("q to quit");
     unmount();
   });
 });

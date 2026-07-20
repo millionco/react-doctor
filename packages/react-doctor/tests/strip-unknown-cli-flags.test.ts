@@ -96,6 +96,16 @@ describe("stripUnknownCliFlags", () => {
       "--cwd",
       ".",
     ]);
+    expect(stripUserArguments(["experimental-tui", ".", "--color"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--color",
+    ]);
+    expect(stripUserArguments(["experimental-tui", ".", "--no-color"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--no-color",
+    ]);
   });
 
   it("keeps the --no-telemetry alias for --no-score", () => {

@@ -4,8 +4,6 @@ import type { DiagnosticRow } from "./diagnostic-rows.js";
 export interface DiagnosticHeaderEntry {
   readonly kind: "header";
   readonly category: string;
-  readonly errorCount: number;
-  readonly warningCount: number;
 }
 
 export interface DiagnosticItemEntry {
@@ -39,13 +37,7 @@ export const buildDiagnosticListEntries = (
   const entries: DiagnosticListEntry[] = [];
   for (const category of orderedCategories) {
     const categoryRows = rowsByCategory.get(category) ?? [];
-    let errorCount = 0;
-    let warningCount = 0;
-    for (const row of categoryRows) {
-      if (row.severity === "error") errorCount += row.siteCount;
-      else warningCount += row.siteCount;
-    }
-    entries.push({ kind: "header", category, errorCount, warningCount });
+    entries.push({ kind: "header", category });
     for (const row of categoryRows) entries.push({ kind: "item", row });
   }
   return entries;

@@ -41,19 +41,4 @@ describe("buildDiagnosticListEntries", () => {
       if (entry.kind === "header") expect(entries[index + 1]?.kind).toBe("item");
     }
   });
-
-  it("tallies each category header by site count and severity", () => {
-    const rows = buildDiagnosticRows(
-      [
-        makeDiagnostic({ rule: "a", category: "Bugs", severity: "error", filePath: "x.tsx" }),
-        makeDiagnostic({ rule: "a", category: "Bugs", severity: "error", filePath: "y.tsx" }),
-        makeDiagnostic({ rule: "b", category: "Bugs", severity: "warning" }),
-      ],
-      [null],
-    );
-
-    const [header] = buildDiagnosticListEntries(rows);
-    expect(header.kind === "header" && header.errorCount).toBe(2);
-    expect(header.kind === "header" && header.warningCount).toBe(1);
-  });
 });

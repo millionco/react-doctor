@@ -445,6 +445,8 @@ program
 program
   .command("experimental-tui [directory]", { hidden: true })
   .description("[experimental] interactive, scrollable scan report")
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .option("--no-dead-code", "skip dead-code analysis")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")

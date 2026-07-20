@@ -133,7 +133,14 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
 // falls back to ROOT_FLAG_SPEC, which drops `-p` and turns its value into the
 // directory positional.
 const EXPERIMENTAL_TUI_FLAG_SPEC: CliFlagSpec = {
-  longOptionsWithoutValues: new Set(["--help", "--no-dead-code", "--no-score", "--yes"]),
+  longOptionsWithoutValues: new Set([
+    "--color",
+    "--help",
+    "--no-color",
+    "--no-dead-code",
+    "--no-score",
+    "--yes",
+  ]),
   longOptionsWithRequiredValues: new Set(["--project"]),
   longOptionsWithOptionalValues: new Set(),
   shortOptionsWithoutValues: new Set(["-h", "-y"]),

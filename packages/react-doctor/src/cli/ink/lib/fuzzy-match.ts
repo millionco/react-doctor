@@ -1,3 +1,9 @@
+import {
+  TUI_FUZZY_CONSECUTIVE_BONUS,
+  TUI_FUZZY_LEADING_PENALTY,
+  TUI_FUZZY_WORD_BOUNDARY_BONUS,
+} from "../../utils/constants.js";
+
 export interface FuzzyMatchResult {
   readonly score: number;
   readonly matchedIndices: ReadonlyArray<number>;
@@ -36,8 +42,3 @@ export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | nu
   score -= matchedIndices[0] * TUI_FUZZY_LEADING_PENALTY;
   return { score, matchedIndices };
 };
-import {
-  TUI_FUZZY_CONSECUTIVE_BONUS,
-  TUI_FUZZY_LEADING_PENALTY,
-  TUI_FUZZY_WORD_BOUNDARY_BONUS,
-} from "../../utils/constants.js";

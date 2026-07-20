@@ -425,6 +425,7 @@ import { zodV4NoDeprecatedErrorCustomization } from "./rules/zod/zod-v4-no-depre
 import { zodV4NoDeprecatedSchemaApis } from "./rules/zod/zod-v4-no-deprecated-schema-apis.js";
 import { zodV4PreferTopLevelStringFormats } from "./rules/zod/zod-v4-prefer-top-level-string-formats.js";
 import { zustandNoFreshSelectorResult } from "./rules/state-and-effects/zustand-no-fresh-selector-result.js";
+import { zustandNoWholeStoreDestructure } from "./rules/state-and-effects/zustand-no-whole-store-destructure.js";
 
 export const reactDoctorRules = [
   {
@@ -5354,6 +5355,20 @@ export const reactDoctorRules = [
       category: "Performance",
       requires: [
         ...new Set<Capability>(["react", ...(zustandNoFreshSelectorResult.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/zustand-no-whole-store-destructure",
+    id: "zustand-no-whole-store-destructure",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...zustandNoWholeStoreDestructure,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(zustandNoWholeStoreDestructure.requires ?? [])]),
       ],
     },
   },

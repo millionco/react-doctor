@@ -4,9 +4,11 @@ import {
   EARLIEST_GATED_MOBX_MAJOR,
   EARLIEST_GATED_PREACT_MAJOR,
   EARLIEST_GATED_REACT_MAJOR,
+  EARLIEST_GATED_REMOTION_MAJOR,
   EARLIEST_GATED_VALTIO_MAJOR,
   LATEST_KNOWN_PREACT_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
+  LATEST_KNOWN_REMOTION_MAJOR,
   LATEST_KNOWN_VALTIO_MAJOR,
   LATEST_SUPPORTED_MOBX_MAJOR,
 } from "../constants.js";
@@ -34,7 +36,7 @@ const SSR_FRAMEWORKS: ReadonlySet<Framework> = new Set([
 
 const addMajorLadder = (
   capabilities: Set<Capability>,
-  name: "react" | "preact" | "valtio" | "mobx",
+  name: "react" | "remotion" | "preact" | "valtio" | "mobx",
   major: number | null,
   earliest: number,
   latest: number,
@@ -165,6 +167,16 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
     EARLIEST_GATED_VALTIO_MAJOR,
     LATEST_KNOWN_VALTIO_MAJOR,
   );
+  if (project.hasRemotion) {
+    capabilities.add("remotion");
+    addMajorLadder(
+      capabilities,
+      "remotion",
+      project.remotionMajorVersion ?? null,
+      EARLIEST_GATED_REMOTION_MAJOR,
+      LATEST_KNOWN_REMOTION_MAJOR,
+    );
+  }
   if (project.hasTypeScript) capabilities.add("typescript");
   // Keyed off `preactVersion`, not `framework === "preact"`, so Preact-on-Vite
   // still gets the `preact` bucket.

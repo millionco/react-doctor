@@ -26,6 +26,7 @@ const baseProject: ProjectInfo = {
   hasTanStackQuery: false,
   valtioVersion: null,
   valtioMajorVersion: null,
+  hasRemotion: false,
   hasSsrDependency: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
@@ -42,6 +43,43 @@ const baseProject: ProjectInfo = {
 };
 
 describe("buildCapabilities", () => {
+  it("emits the remotion capability without replacing the web framework capability", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+      hasRemotion: true,
+      remotionVersion: "^4.0.0",
+      remotionMajorVersion: 4,
+    });
+    expect(capabilities.has("remotion")).toBe(true);
+    expect(capabilities.has("remotion:4")).toBe(true);
+    expect(capabilities.has("vite")).toBe(true);
+  });
+
+  it("omits the Remotion v4 capability for older or unparseable versions", () => {
+    const remotionThreeCapabilities = buildCapabilities({
+      ...baseProject,
+      hasRemotion: true,
+      remotionVersion: "^3.3.0",
+      remotionMajorVersion: 3,
+    });
+    const unknownRemotionCapabilities = buildCapabilities({
+      ...baseProject,
+      hasRemotion: true,
+      remotionVersion: "workspace:*",
+      remotionMajorVersion: null,
+    });
+
+    expect(remotionThreeCapabilities.has("remotion")).toBe(true);
+    expect(remotionThreeCapabilities.has("remotion:4")).toBe(false);
+    expect(unknownRemotionCapabilities.has("remotion")).toBe(true);
+    expect(unknownRemotionCapabilities.has("remotion:4")).toBe(false);
+  });
+
+  it("omits the remotion capability when the dependency is absent", () => {
+    expect(buildCapabilities(baseProject).has("remotion")).toBe(false);
+  });
+
   it("emits exactly the expected token set for a fully-featured Next.js project", () => {
     const capabilities = buildCapabilities({
       ...baseProject,

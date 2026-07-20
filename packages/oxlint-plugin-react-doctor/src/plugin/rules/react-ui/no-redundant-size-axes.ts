@@ -1,7 +1,7 @@
 import { SIZE_HEIGHT_AXIS_PATTERN, SIZE_WIDTH_AXIS_PATTERN } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getClassNameLiteral } from "./utils/get-class-name-literal.js";
+import { getJsxAttributeStaticString } from "../../utils/get-jsx-attribute-static-string.js";
 import { collectAxisShorthandPairs } from "./utils/collect-axis-shorthand-pairs.js";
 import { hasResponsivePrefix } from "./utils/has-responsive-prefix.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -33,7 +33,7 @@ export const noRedundantSizeAxes = defineRule({
         ) {
           return;
         }
-        const classNameLiteral = getClassNameLiteral(jsxAttribute);
+        const classNameLiteral = getJsxAttributeStaticString(jsxAttribute);
         if (!classNameLiteral) return;
         // A redundant pair needs BOTH axes present, so a class list missing
         // either substring can never match — bail before any regex work.

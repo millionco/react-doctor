@@ -26,6 +26,9 @@ export interface ProjectInfo {
   hasReactCompiler: boolean;
   hasReactCompilerLintPlugin?: boolean;
   hasTanStackQuery: boolean;
+  hasRemotion?: boolean;
+  remotionVersion?: string | null;
+  remotionMajorVersion?: number | null;
   /**
    * The declared `valtio` version spec, or `null` when no package in the
    * analyzed project declares Valtio. `useSnapshot` has kept the same

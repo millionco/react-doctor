@@ -98,6 +98,30 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules).not.toHaveProperty("react-doctor/raw-sql-injection-risk");
   });
 
+  it("registers Remotion rules only for Remotion v4 or newer", () => {
+    const remotionThreeConfig = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        hasRemotion: true,
+        remotionVersion: "^3.3.0",
+        remotionMajorVersion: 3,
+      }),
+    });
+    const remotionFourConfig = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        hasRemotion: true,
+        remotionVersion: "^4.0.0",
+        remotionMajorVersion: 4,
+      }),
+    });
+    const getRemotionRuleNames = (config: ReturnType<typeof createOxlintConfig>): string[] =>
+      Object.keys(config.rules).filter((ruleName) => ruleName.startsWith("react-doctor/remotion-"));
+
+    expect(getRemotionRuleNames(remotionThreeConfig)).toEqual([]);
+    expect(getRemotionRuleNames(remotionFourConfig)).toHaveLength(9);
+  });
+
   it("excludes security scan rules even when severity controls opt them in", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

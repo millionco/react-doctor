@@ -1,13 +1,15 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import {
-  buildGeneratedImageProjectIndex,
-  type GeneratedImageModule,
-  type GeneratedImageProjectIndex,
-} from "./build-generated-image-project-index.js";
+  buildSourceProjectIndex,
+  type SourceProjectModule,
+  type SourceProjectIndex,
+} from "./build-source-project-index.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { findExportedValue } from "./find-exported-value.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
+import { getDirectFunctionBindingIdentifier } from "./get-direct-function-binding-identifier.js";
+import { getFunctionExportNames } from "./get-function-export-names.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
@@ -26,7 +28,7 @@ interface GeneratedImageExportIdentity {
 }
 
 interface GeneratedImageOwnershipState {
-  readonly projectIndex: GeneratedImageProjectIndex;
+  readonly projectIndex: SourceProjectIndex;
   readonly pendingExports: GeneratedImageExportIdentity[];
   readonly visitedExportKeys: Set<string>;
   currentExportWasUsed: boolean;
@@ -59,67 +61,6 @@ const getImportSpecifierName = (specifier: EsTreeNode): string | null => {
   return isNodeOfType(imported, "Literal") && typeof imported.value === "string"
     ? imported.value
     : null;
-};
-
-const getDirectFunctionBindingIdentifier = (
-  functionNode: EsTreeNode,
-): EsTreeNodeOfType<"Identifier"> | null => {
-  if (
-    isNodeOfType(functionNode, "FunctionDeclaration") &&
-    isNodeOfType(functionNode.id, "Identifier")
-  ) {
-    return functionNode.id;
-  }
-  const functionValueRoot = findTransparentExpressionRoot(functionNode);
-  const parent = functionValueRoot.parent;
-  return isNodeOfType(parent, "VariableDeclarator") &&
-    parent.init === functionValueRoot &&
-    isNodeOfType(parent.id, "Identifier")
-    ? parent.id
-    : null;
-};
-
-const getExportNamesForFunction = (
-  programNode: EsTreeNodeOfType<"Program">,
-  functionNode: EsTreeNode,
-): ReadonlyArray<string> => {
-  const functionValueRoot = findTransparentExpressionRoot(functionNode);
-  const bindingIdentifier = getDirectFunctionBindingIdentifier(functionNode);
-  const bindingName = bindingIdentifier?.name ?? null;
-  const exportedNames = new Set<string>();
-
-  for (const statement of programNode.body) {
-    if (isNodeOfType(statement, "ExportDefaultDeclaration")) {
-      if (
-        statement.declaration === functionValueRoot ||
-        (bindingName &&
-          isNodeOfType(statement.declaration, "Identifier") &&
-          statement.declaration.name === bindingName)
-      ) {
-        exportedNames.add("default");
-      }
-      continue;
-    }
-    if (!isNodeOfType(statement, "ExportNamedDeclaration")) continue;
-    const declaration = statement.declaration;
-    if (declaration === functionValueRoot && bindingName) exportedNames.add(bindingName);
-    if (declaration && isNodeOfType(declaration, "VariableDeclaration")) {
-      for (const declarator of declaration.declarations) {
-        if (declarator.init === functionValueRoot && isNodeOfType(declarator.id, "Identifier")) {
-          exportedNames.add(declarator.id.name);
-        }
-      }
-    }
-    if (!bindingName || statement.source) continue;
-    for (const specifier of statement.specifiers) {
-      if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
-      if (getImportedSpecifierName(specifier) !== bindingName) continue;
-      const exportedName = getExportedSpecifierName(specifier);
-      if (exportedName) exportedNames.add(exportedName);
-    }
-  }
-
-  return [...exportedNames];
 };
 
 const isTransparentGeneratedImageValueFlow = (
@@ -223,7 +164,7 @@ const enqueueExport = (
 };
 
 const classifyInvokedExpression = (
-  module: GeneratedImageModule,
+  module: SourceProjectModule,
   expression: EsTreeNode,
   state: GeneratedImageOwnershipState,
 ): boolean => {
@@ -233,14 +174,14 @@ const classifyInvokedExpression = (
   }
   const forwardingFunction = getForwardingFunction(expression);
   if (!forwardingFunction) return false;
-  const exportedNames = getExportNamesForFunction(module.programNode, forwardingFunction);
+  const exportedNames = getFunctionExportNames(module.programNode, forwardingFunction);
   if (exportedNames.length === 0) return false;
   for (const exportedName of exportedNames) enqueueExport(state, module.filePath, exportedName);
   return true;
 };
 
 const classifySymbolReferences = (
-  module: GeneratedImageModule,
+  module: SourceProjectModule,
   symbol: SymbolDescriptor,
   state: GeneratedImageOwnershipState,
   visitedSymbolIds: Set<number>,
@@ -287,7 +228,7 @@ const classifySymbolReferences = (
 };
 
 const classifyNamespaceImportReferences = (
-  module: GeneratedImageModule,
+  module: SourceProjectModule,
   symbol: SymbolDescriptor,
   exportedName: string,
   state: GeneratedImageOwnershipState,
@@ -310,7 +251,7 @@ const classifyNamespaceImportReferences = (
 };
 
 const classifyImportsFromExport = (
-  module: GeneratedImageModule,
+  module: SourceProjectModule,
   exportIdentity: GeneratedImageExportIdentity,
   state: GeneratedImageOwnershipState,
 ): boolean => {
@@ -370,9 +311,9 @@ const classifyImportsFromExport = (
 };
 
 const hasOpaqueDynamicImportOfExport = (
-  module: GeneratedImageModule,
+  module: SourceProjectModule,
   exportIdentity: GeneratedImageExportIdentity,
-  projectIndex: GeneratedImageProjectIndex,
+  projectIndex: SourceProjectIndex,
 ): boolean => {
   let isOpaque = false;
   walkAst(module.programNode, (node) => {
@@ -399,7 +340,7 @@ const hasOpaqueDynamicImportOfExport = (
 };
 
 const classifyLocalExportReferences = (
-  module: GeneratedImageModule,
+  module: SourceProjectModule,
   exportIdentity: GeneratedImageExportIdentity,
   state: GeneratedImageOwnershipState,
 ): boolean => {
@@ -412,7 +353,7 @@ const classifyLocalExportReferences = (
 };
 
 const hasOpaqueWorkspacePackageConsumer = (
-  projectIndex: GeneratedImageProjectIndex,
+  projectIndex: SourceProjectIndex,
   exportIdentity: GeneratedImageExportIdentity,
 ): boolean => {
   const packageName = readNearestPackageManifest(exportIdentity.filePath)?.name;
@@ -434,23 +375,18 @@ export const createExportedJsxGeneratedImageOwnershipAnalyzer = (context: RuleCo
   const isFileInsideRoot =
     Boolean(filename && rootDirectory) &&
     (filename === rootDirectory || filename.startsWith(`${rootDirectory}/`));
-  let projectIndex: GeneratedImageProjectIndex | null | undefined;
+  let projectIndex: SourceProjectIndex | null | undefined;
 
   return (jsxNode: EsTreeNode): boolean => {
     if (!isFileInsideRoot) return false;
     const programNode = findProgramRoot(jsxNode);
     const enclosingFunction = findEnclosingFunction(jsxNode);
     if (!programNode || !enclosingFunction) return false;
-    const initialExportNames = getExportNamesForFunction(programNode, enclosingFunction);
+    const initialExportNames = getFunctionExportNames(programNode, enclosingFunction);
     if (initialExportNames.length === 0) return false;
 
     if (projectIndex === undefined) {
-      projectIndex = buildGeneratedImageProjectIndex(
-        rootDirectory,
-        filename,
-        programNode,
-        context.scopes,
-      );
+      projectIndex = buildSourceProjectIndex(rootDirectory, filename, programNode, context.scopes);
     }
     if (!projectIndex || projectIndex.hasOpaqueMdxConsumerSurface) return false;
     const state: GeneratedImageOwnershipState = {

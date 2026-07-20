@@ -61,6 +61,9 @@ export interface WorkspaceFacts {
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
   hasSsrDependency: boolean;
+  hasRemotionDependency: boolean;
+  hasUnknownRemotionVersion: boolean;
+  remotionVersion: string | null;
   reanimatedVersion: string | null;
 }
 
@@ -140,6 +143,8 @@ const evaluateManifestFacts = (
   facts: WorkspaceFacts,
   packageJson: PackageJson,
   directory: string,
+  rootDirectory: string,
+  rootPackageJson: PackageJson,
 ): void => {
   if (facts.expo.version === null) {
     const spec = getDependencySpec(packageJson, "expo");
@@ -190,6 +195,31 @@ const evaluateManifestFacts = (
   facts.hasReanimatedAwarePackage =
     facts.hasReanimatedAwarePackage || isPackageJsonReanimatedAware(packageJson);
   facts.hasSsrDependency = facts.hasSsrDependency || isPackageJsonSsrAware(packageJson);
+  const remotionSpec = getDependencySpec(packageJson, "remotion");
+  if (remotionSpec !== null) {
+    facts.hasRemotionDependency = true;
+    const resolvedRemotionVersion = resolveCatalogBackedDependencyVersion({
+      rootDirectory,
+      rootPackageJson,
+      packageName: "remotion",
+      version: remotionSpec,
+    });
+    const remotionMajorVersion =
+      resolvedRemotionVersion === null ? null : getLowestDependencyMajor(resolvedRemotionVersion);
+    if (remotionMajorVersion === null) {
+      facts.hasUnknownRemotionVersion = true;
+      facts.remotionVersion = null;
+    } else if (!facts.hasUnknownRemotionVersion) {
+      const currentRemotionMajorVersion =
+        facts.remotionVersion === null ? null : getLowestDependencyMajor(facts.remotionVersion);
+      if (
+        currentRemotionMajorVersion === null ||
+        remotionMajorVersion < currentRemotionMajorVersion
+      ) {
+        facts.remotionVersion = resolvedRemotionVersion;
+      }
+    }
+  }
 };
 
 interface CollectWorkspaceFactsOptions {
@@ -228,10 +258,13 @@ export const collectWorkspaceFacts = (
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
     hasSsrDependency: false,
+    hasRemotionDependency: false,
+    hasUnknownRemotionVersion: false,
+    remotionVersion: null,
     reanimatedVersion: null,
   };
 
-  evaluateManifestFacts(facts, rootPackageJson, rootDirectory);
+  evaluateManifestFacts(facts, rootPackageJson, rootDirectory, rootDirectory, rootPackageJson);
 
   // Once react (major ≤ 17), tailwind, and the framework are all pinned,
   // later workspaces can't change the outcome the legacy walk would have
@@ -249,7 +282,13 @@ export const collectWorkspaceFacts = (
       visitedDirectories.add(workspaceDirectory);
       const workspacePackageJson = readPackageJson(path.join(workspaceDirectory, "package.json"));
 
-      evaluateManifestFacts(facts, workspacePackageJson, workspaceDirectory);
+      evaluateManifestFacts(
+        facts,
+        workspacePackageJson,
+        workspaceDirectory,
+        rootDirectory,
+        rootPackageJson,
+      );
 
       const info = extractDependencyInfo(workspacePackageJson);
       // Priority merge, not first-hit: a web framework outranks a mobile one

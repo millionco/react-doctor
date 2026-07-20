@@ -36,6 +36,7 @@ const RULES_DIRECTORY = path.join(PLUGIN_SOURCE_DIRECTORY, "rules");
 // so the rules reaching it (`rn-prefer-expo-image`, `no-full-lodash-import`,
 // …) are detected.
 const CROSS_FILE_PRIMITIVE_FILES = [
+  "utils/build-source-project-index.ts",
   "utils/parse-source-file.ts",
   "utils/does-module-export-name.ts",
   "utils/has-ancestor-layout-matching.ts",
@@ -159,6 +160,13 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-unguarded-browser-global-in-render-or-hook-init",
       "only-export-components",
       "prefer-dynamic-import",
+      "remotion-calculate-metadata-fetch-signal",
+      "remotion-deterministic-randomness",
+      "remotion-no-css-animation",
+      "remotion-no-css-transition",
+      "remotion-no-css-url-assets",
+      "remotion-no-native-media-elements",
+      "remotion-no-next-image",
       "rendering-hydration-mismatch-time",
       "rerender-memo-with-default-value",
       "rn-no-legacy-shadow-styles",

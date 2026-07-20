@@ -49,6 +49,9 @@ export const EARLIEST_GATED_PREACT_MAJOR = 10;
 // follows the same untrusted-version clamp as React and Preact.
 export const EARLIEST_GATED_VALTIO_MAJOR = 1;
 export const LATEST_KNOWN_VALTIO_MAJOR = 10;
+export const LATEST_KNOWN_REMOTION_MAJOR = 30;
+
+export const EARLIEST_GATED_REMOTION_MAJOR = 4;
 
 export const EARLIEST_GATED_MOBX_MAJOR = 4;
 

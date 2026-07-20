@@ -474,6 +474,13 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-no-img-element",
   "only-export-components",
+  "remotion-calculate-metadata-fetch-signal",
+  "remotion-deterministic-randomness",
+  "remotion-no-css-animation",
+  "remotion-no-css-transition",
+  "remotion-no-css-url-assets",
+  "remotion-no-native-media-elements",
+  "remotion-no-next-image",
 ]);
 
 /**

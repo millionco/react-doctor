@@ -15,7 +15,7 @@ import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
-import { getClassNameLiteral } from "../react-ui/utils/get-class-name-literal.js";
+import { getJsxAttributeStaticString } from "../../utils/get-jsx-attribute-static-string.js";
 
 const MESSAGE =
   "Blind users can't tell what this control does because screen readers find no label, so add visible text, `aria-label`, or `aria-labelledby`.";
@@ -135,7 +135,7 @@ const hasDisplayNoneClass = (opening: EsTreeNodeOfType<"JSXOpeningElement">): bo
     hasJsxPropIgnoreCase(opening.attributes, "className") ??
     hasJsxPropIgnoreCase(opening.attributes, "class");
   if (!classAttribute) return false;
-  const literalValue = getClassNameLiteral(classAttribute);
+  const literalValue = getJsxAttributeStaticString(classAttribute);
   if (literalValue !== null) {
     return literalValue.split(/\s+/).some(isDisplayNoneClassToken);
   }

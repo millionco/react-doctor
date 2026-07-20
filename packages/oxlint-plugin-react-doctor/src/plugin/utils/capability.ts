@@ -29,6 +29,7 @@ export type Capability =
   // ruleset cache key, so even "unknown" is load-bearing).
   | FrameworkToken
   | "react"
+  | "remotion"
   | "pure-preact"
   | "react-native"
   | "server-actions"
@@ -56,6 +57,7 @@ export type Capability =
   // core's constants (`EARLIEST_GATED_*` / `LATEST_*`).
   | `react:${number}`
   | `preact:${number}`
+  | `remotion:${number}`
   | `valtio:${number}`
   | `mobx:${number}`;
 

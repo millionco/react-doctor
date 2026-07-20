@@ -1,0 +1,24 @@
+{
+  "name": "react-doctor",
+  "displayName": "React Doctor",
+  "version": "1.0.0",
+  "description": "Scan, understand, and fix React codebase diagnostics with React Doctor.",
+  "author": {
+    "name": "Million Software, Inc.",
+    "email": "founders@million.dev"
+  },
+  "homepage": "https://react.doctor",
+  "repository": "https://github.com/millionco/react-doctor",
+  "logo": "packages/website/public/react-doctor-icon.svg",
+  "keywords": [
+    "react",
+    "react-native",
+    "static-analysis",
+    "code-quality",
+    "accessibility",
+    "performance"
+  ],
+  "category": "developer-tools",
+  "tags": ["react", "linting", "code-review"],
+  "skills": "./skills/react-doctor/"
+}

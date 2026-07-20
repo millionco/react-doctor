@@ -47,6 +47,12 @@ npx react-doctor@latest install
 
 Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
+#### Cursor plugin
+
+In Cursor, install React Doctor from Customize or run `/add-plugin react-doctor`. The plugin
+bundles the same `react-doctor` skill as the CLI installer; scans still run through the local
+React Doctor CLI.
+
 ### 4. Run in CI
 
 React Doctor reviews every pull request and reports only the issues your change introduced, not your existing backlog. Set it up with one command:

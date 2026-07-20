@@ -39,6 +39,12 @@ export interface ZustandStoreCreator {
   readonly middlewareNames: ReadonlySet<ZustandApiBinding["apiName"]>;
 }
 
+export interface ZustandStoreFactoryCall {
+  readonly callExpression: EsTreeNodeOfType<"CallExpression">;
+  readonly creatorArgument: EsTreeNode;
+  readonly factoryApiName: "create" | "createStore" | "createWithEqualityFn";
+}
+
 const ZUSTAND_APIS_BY_MODULE = new Map<string, ReadonlySet<ZustandApiBinding["apiName"]>>([
   ["zustand", new Set(["create", "createStore", "useStore"])],
   ["zustand/vanilla", new Set(["createStore"])],
@@ -185,6 +191,22 @@ export const resolveZustandStoreCreator = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
 ): ZustandStoreCreator | null => {
+  const factoryCall = resolveZustandStoreFactoryCall(callExpression, scopes);
+  if (!factoryCall) return null;
+  const middlewareNames = new Set<ZustandApiBinding["apiName"]>();
+  const creatorFunction = resolveStateCreator(factoryCall.creatorArgument, scopes, middlewareNames);
+  if (!creatorFunction) return null;
+  return {
+    creatorFunction,
+    factoryApiName: factoryCall.factoryApiName,
+    middlewareNames,
+  };
+};
+
+export const resolveZustandStoreFactoryCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): ZustandStoreFactoryCall | null => {
   let factoryBinding = resolveZustandApiBinding(callExpression.callee, scopes);
   if (!isStoreFactoryApi(factoryBinding)) {
     const curriedFactoryCall = stripParenExpression(callExpression.callee);
@@ -194,12 +216,9 @@ export const resolveZustandStoreCreator = (
   }
   const creatorArgument = callExpression.arguments[0];
   if (!creatorArgument || isNodeOfType(creatorArgument, "SpreadElement")) return null;
-  const middlewareNames = new Set<ZustandApiBinding["apiName"]>();
-  const creatorFunction = resolveStateCreator(creatorArgument, scopes, middlewareNames);
-  if (!creatorFunction) return null;
   return {
-    creatorFunction,
+    callExpression,
+    creatorArgument,
     factoryApiName: factoryBinding.apiName,
-    middlewareNames,
   };
 };

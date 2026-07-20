@@ -7,6 +7,8 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import {
   resolveZustandApiBinding,
   resolveZustandStoreCreator,
+  resolveZustandStoreFactoryCall,
+  type ZustandStoreFactoryCall,
   type ZustandStoreCreator,
 } from "./resolve-zustand-api.js";
 import { walkAst } from "./walk-ast.js";
@@ -23,6 +25,20 @@ const collectResolvedCreators = (code: string): ZustandStoreCreator[] => {
     if (creator) creators.push(creator);
   });
   return creators;
+};
+
+const collectResolvedFactoryCalls = (code: string): ZustandStoreFactoryCall[] => {
+  const parsed = parseFixture(code);
+  expect(parsed.errors).toEqual([]);
+  attachParentReferences(parsed.program);
+  const scopes = analyzeScopes(parsed.program);
+  const factoryCalls: ZustandStoreFactoryCall[] = [];
+  walkAst(parsed.program, (node: EsTreeNode) => {
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const factoryCall = resolveZustandStoreFactoryCall(node, scopes);
+    if (factoryCall) factoryCalls.push(factoryCall);
+  });
+  return factoryCalls;
 };
 
 describe("resolveZustandApiBinding", () => {
@@ -116,5 +132,34 @@ describe("resolveZustandStoreCreator", () => {
       create(creator);
     `);
     expect(creators).toHaveLength(0);
+  });
+});
+
+describe("resolveZustandStoreFactoryCall", () => {
+  it("resolves completed direct and curried factories without inspecting the creator", () => {
+    const factoryCalls = collectResolvedFactoryCalls(`
+      import { create } from "zustand";
+      import { createStore } from "zustand/vanilla";
+      import { createWithEqualityFn } from "zustand/traditional";
+      import { creator } from "./creator";
+      create(creator);
+      createStore()((set) => ({ count: 0 }));
+      createWithEqualityFn()(creator, Object.is);
+    `);
+    expect(factoryCalls.map((factoryCall) => factoryCall.factoryApiName)).toEqual([
+      "create",
+      "createStore",
+      "createWithEqualityFn",
+    ]);
+  });
+
+  it("skips incomplete curried factories and userland calls", () => {
+    const factoryCalls = collectResolvedFactoryCalls(`
+      import { create } from "zustand";
+      const makeStore = create();
+      makeStore(() => ({ count: 0 }));
+      customCreate(() => ({ count: 0 }));
+    `);
+    expect(factoryCalls).toEqual([]);
   });
 });

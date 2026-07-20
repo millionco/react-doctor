@@ -2,6 +2,7 @@ import { MUTATING_ARRAY_METHODS, MUTATING_COLLECTION_METHODS } from "../../../co
 import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import { collectExpressionPathCoverageNodes } from "../../../utils/collect-expression-path-coverage-nodes.js";
+import { canExecuteBeforeAsyncSuspension } from "../../../utils/can-execute-before-async-suspension.js";
 import { executesDuringRender } from "../../../utils/executes-during-render.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
@@ -13,6 +14,7 @@ import { getFunctionBindingIdentifier } from "../../../utils/get-function-bindin
 import { getRangeStart } from "../../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
 import { isEventHandlerAttribute } from "../../../utils/is-event-handler-attribute.js";
+import { isDescendantWithoutFunctionBoundary } from "../../../utils/is-descendant-without-function-boundary.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isJsxAttributeOnIntrinsicHtmlElement } from "../../../utils/is-on-intrinsic-html-element.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
@@ -386,18 +388,6 @@ const buildLocationInvalidationIndex = (
     }
   });
   return index;
-};
-
-const isDescendantWithoutFunctionBoundary = (
-  descendant: EsTreeNode,
-  ancestor: EsTreeNode,
-): boolean => {
-  let current: EsTreeNode | null | undefined = descendant;
-  while (current && current !== ancestor) {
-    if (current !== descendant && isFunctionLike(current)) return false;
-    current = current.parent;
-  }
-  return current === ancestor;
 };
 
 const areInMutuallyExclusiveConditionalBranches = (
@@ -1019,54 +1009,6 @@ const canNodeReachNormalFunctionExit = (
   return false;
 };
 
-const canExecuteBeforeAsyncSuspension = (
-  node: EsTreeNode,
-  functionNode: EsTreeNode,
-  index: LocationInvalidationIndex,
-): boolean => {
-  if (!isFunctionLike(functionNode) || !functionNode.async) {
-    return isNodeReachableWithinFunction(node, index.context);
-  }
-  const functionCfg = index.context.cfg.cfgFor(functionNode);
-  const targetBlock = functionCfg?.blockOf(node);
-  if (!functionCfg || !targetBlock) return false;
-  const awaitsByBlock = new Map<typeof targetBlock, EsTreeNode[]>();
-  for (const awaitExpression of index.awaitExpressionsByOwner.get(functionNode) ?? []) {
-    const awaitBlock = functionCfg.blockOf(awaitExpression);
-    if (!awaitBlock) continue;
-    const blockAwaits = awaitsByBlock.get(awaitBlock) ?? [];
-    blockAwaits.push(awaitExpression);
-    awaitsByBlock.set(awaitBlock, blockAwaits);
-  }
-  const visitedBlocks = new Set<typeof targetBlock>();
-  const pendingBlocks = [functionCfg.entry];
-  const targetStart = getRangeStart(node);
-  while (pendingBlocks.length > 0) {
-    const block = pendingBlocks.pop();
-    if (!block || visitedBlocks.has(block)) continue;
-    visitedBlocks.add(block);
-    const blockAwaits = awaitsByBlock.get(block) ?? [];
-    if (block === targetBlock) {
-      return !blockAwaits.some((awaitExpression) => {
-        if (
-          isNodeOfType(awaitExpression, "AwaitExpression") &&
-          isDescendantWithoutFunctionBoundary(node, awaitExpression.argument)
-        ) {
-          return false;
-        }
-        if (isDescendantWithoutFunctionBoundary(awaitExpression, node)) return true;
-        const awaitStart = getRangeStart(awaitExpression);
-        return awaitStart !== null && targetStart !== null && awaitStart < targetStart;
-      });
-    }
-    if (blockAwaits.length > 0) continue;
-    for (const edge of block.successors) {
-      if (edge.kind !== "throw") pendingBlocks.push(edge.to);
-    }
-  }
-  return false;
-};
-
 const canReactBatchMutationAfterExecution = (
   executionNode: EsTreeNode,
   mutationNode: EsTreeNode,
@@ -1075,7 +1017,9 @@ const canReactBatchMutationAfterExecution = (
 ): boolean =>
   (isExclusiveIntrinsicReactEventHandler(owner, index) || index.effectCallbacks.has(owner)) &&
   canNodeReachNode(executionNode, mutationNode, index) &&
-  canExecuteBeforeAsyncSuspension(mutationNode, owner, index) &&
+  canExecuteBeforeAsyncSuspension(mutationNode, owner, index.context, {
+    suspensionNodes: index.awaitExpressionsByOwner.get(owner),
+  }) &&
   canNodeReachNormalFunctionExit(mutationNode, owner, index);
 
 const functionMaySynchronouslyMutateLocation = (
@@ -1104,8 +1048,9 @@ const functionMaySynchronouslyMutateLocation = (
   );
   const doesMutateSynchronously = [...mutationExecutions].some(
     (mutationExecution) =>
-      canExecuteBeforeAsyncSuspension(mutationExecution, functionNode, index) &&
-      canNodeReachNormalFunctionExit(mutationExecution, functionNode, index),
+      canExecuteBeforeAsyncSuspension(mutationExecution, functionNode, index.context, {
+        suspensionNodes: index.awaitExpressionsByOwner.get(functionNode),
+      }) && canNodeReachNormalFunctionExit(mutationExecution, functionNode, index),
   );
   visitingFunctions.delete(functionNode);
   if (doesMutateSynchronously || !cycleAffectedFunctions.has(functionNode)) {
@@ -1179,7 +1124,11 @@ const functionMustSynchronouslyRemoveLocationListener = (
   for (const removal of index.listenerRemovals) {
     if (!isDefinitelyMatchingLocationListenerRemoval(registration, removal)) continue;
     if (index.context.cfg.enclosingFunction(removal.callExpression) !== functionNode) continue;
-    if (canExecuteBeforeAsyncSuspension(removal.callExpression, functionNode, index)) {
+    if (
+      canExecuteBeforeAsyncSuspension(removal.callExpression, functionNode, index.context, {
+        suspensionNodes: index.awaitExpressionsByOwner.get(functionNode),
+      })
+    ) {
       removalExecutions.push(removal.callExpression);
     }
   }
@@ -1187,7 +1136,9 @@ const functionMustSynchronouslyRemoveLocationListener = (
     const calledFunction = index.calledFunctionByExpression.get(expression);
     if (
       calledFunction &&
-      canExecuteBeforeAsyncSuspension(expression, functionNode, index) &&
+      canExecuteBeforeAsyncSuspension(expression, functionNode, index.context, {
+        suspensionNodes: index.awaitExpressionsByOwner.get(functionNode),
+      }) &&
       functionMustSynchronouslyRemoveLocationListener(
         calledFunction,
         registration,
@@ -1211,7 +1162,9 @@ const collectSynchronousLocationListenerRemovalExecutions = (
     if (
       isDefinitelyMatchingLocationListenerRemoval(registration, removal) &&
       index.context.cfg.enclosingFunction(removal.callExpression) === functionNode &&
-      canExecuteBeforeAsyncSuspension(removal.callExpression, functionNode, index)
+      canExecuteBeforeAsyncSuspension(removal.callExpression, functionNode, index.context, {
+        suspensionNodes: index.awaitExpressionsByOwner.get(functionNode),
+      })
     ) {
       removalExecutions.add(removal.callExpression);
     }
@@ -1220,7 +1173,9 @@ const collectSynchronousLocationListenerRemovalExecutions = (
     const calledFunction = index.calledFunctionByExpression.get(expression);
     if (
       calledFunction &&
-      canExecuteBeforeAsyncSuspension(expression, functionNode, index) &&
+      canExecuteBeforeAsyncSuspension(expression, functionNode, index.context, {
+        suspensionNodes: index.awaitExpressionsByOwner.get(functionNode),
+      }) &&
       functionMustSynchronouslyRemoveLocationListener(
         calledFunction,
         registration,

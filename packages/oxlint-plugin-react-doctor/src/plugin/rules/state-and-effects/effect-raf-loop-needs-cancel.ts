@@ -925,7 +925,7 @@ export const effectRafLoopNeedsCancel = defineRule({
   severity: "warn",
   category: "Bugs",
   recommendation:
-    "Store the frame id and return a cleanup that calls `cancelAnimationFrame(id)` so the self-scheduling loop stops on unmount instead of running setState ~60x/sec against a torn-down component.",
+    "Store the frame id and return a cleanup that calls `cancelAnimationFrame(id)` so self-scheduling work cannot continue after unmount.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isProvenEffectHookCall(node, context.scopes)) return;
@@ -952,7 +952,7 @@ export const effectRafLoopNeedsCancel = defineRule({
         context.report({
           node: rafLoop.rafCall,
           message:
-            "This requestAnimationFrame loop reschedules itself every frame but is never cancelled, so it keeps running after unmount; store every frame id in one handle and cancel that handle from the returned effect cleanup.",
+            "This requestAnimationFrame loop can schedule another frame but is never cancelled, so pending work may continue after unmount; store every frame id in one handle and cancel that handle from the returned effect cleanup.",
         });
       }
     },

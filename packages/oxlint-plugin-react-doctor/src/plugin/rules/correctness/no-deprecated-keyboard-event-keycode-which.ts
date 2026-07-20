@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
@@ -563,9 +564,8 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
   create: (context: RuleContext) => ({
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
       if (isNonSourceFilename(context.filename)) return;
-      if (node.computed) return;
-      if (!isNodeOfType(node.property, "Identifier")) return;
-      const propertyName = node.property.name;
+      const propertyName = getStaticPropertyName(node);
+      if (!propertyName) return;
       if (!DEPRECATED_NUMERIC_MEMBERS.has(propertyName)) return;
       const receiver = node.object;
       if (!isNodeOfType(receiver, "Identifier")) return;

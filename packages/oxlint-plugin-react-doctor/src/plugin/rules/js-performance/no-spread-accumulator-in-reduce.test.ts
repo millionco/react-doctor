@@ -3,13 +3,13 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noSpreadAccumulatorInReduce } from "./no-spread-accumulator-in-reduce.js";
 
 describe("no-spread-accumulator-in-reduce", () => {
-  it("does not flag a single-spread keyed-lookup build ({ ...acc, [key]: value })", () => {
+  it("flags a single-spread keyed-lookup build ({ ...acc, [key]: value })", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
       `const out = keys.reduce((acc, key) => ({ ...acc, [key]: value }), {});`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags array spread of the accumulator", () => {
@@ -37,7 +37,7 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag an entity-map fold with a computed key over CMS items (Faqs shape)", () => {
+  it("flags an entity-map fold with a computed key over CMS items (Faqs shape)", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
       `
@@ -50,7 +50,7 @@ describe("no-spread-accumulator-in-reduce", () => {
       );
     `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags reduceRight too", () => {
@@ -673,7 +673,7 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a filter/dedup shape with an unchanged `return acc` path (growth bounded by matches)", () => {
+  it("flags a filter/dedup shape with an unchanged `return acc` path", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
       `
@@ -683,7 +683,7 @@ describe("no-spread-accumulator-in-reduce", () => {
       }, {});
     `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a shadowed local that reuses the accumulator name (spreads the O(1) local, not the fold)", () => {
@@ -716,7 +716,7 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(arrayCase.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a keyed-lookup build over Object.keys of external data (single spread + computed key)", () => {
+  it("flags a keyed-lookup build over Object.keys of external data", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
       `
@@ -726,7 +726,7 @@ describe("no-spread-accumulator-in-reduce", () => {
       );
     `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a reduce over a const array behind a ternary initializer (bounded either way)", () => {

@@ -68,7 +68,7 @@ describe("state update correctness final audit regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("detects direct member and Array.from side-effect callbacks", () => {
+  it("does not infer callback impurity from an on-prefixed name", () => {
     const memberCallback = runRule(
       noSideEffectInStateUpdaterFunction,
       "const C=(props)=>{const[,setRows]=useState([]);setRows(rows=>{rows.forEach(props.onVisit);return rows})}",
@@ -77,8 +77,8 @@ describe("state update correctness final audit regressions", () => {
       noSideEffectInStateUpdaterFunction,
       "const C=({onVisit})=>{const[,setRows]=useState([]);setRows(rows=>Array.from(rows,onVisit))}",
     );
-    expect(memberCallback.diagnostics).toHaveLength(1);
-    expect(arrayFrom.diagnostics).toHaveLength(1);
+    expect(memberCallback.diagnostics).toHaveLength(0);
+    expect(arrayFrom.diagnostics).toHaveLength(0);
   });
 
   it("requires latest-write proof for state mirror refs", () => {

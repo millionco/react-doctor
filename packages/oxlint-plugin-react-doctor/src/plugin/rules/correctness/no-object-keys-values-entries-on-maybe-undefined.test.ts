@@ -497,4 +497,16 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("accepts a dominating local null-predicate early exit", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `const isEmptyOrNull = (value) => value == null;
+      function keys(value?: object) {
+        if (isEmptyOrNull(value)) return [];
+        return Object.keys(value);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

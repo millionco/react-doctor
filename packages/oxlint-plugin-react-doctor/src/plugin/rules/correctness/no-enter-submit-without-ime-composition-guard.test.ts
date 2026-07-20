@@ -747,4 +747,12 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a static computed Enter key read", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Editor = () => <input onKeyDown={(event) => { if (event["key"] === "Enter") save(); }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

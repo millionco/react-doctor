@@ -57,6 +57,107 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag observers retained and disconnected through one local collection", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observers = [];
+         for (const element of elements) {
+           const observer = new ResizeObserver(() => updateSize());
+           observer.observe(element);
+           observers.push(observer);
+         }
+         return () => observers.forEach((observer) => observer.disconnect());
+       }, [elements]);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a MutationObserver collection built while walking ancestors", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useLayoutEffect(() => {
+         if (!element) return;
+         const observers = [];
+         for (let node = element; node; node = node.parentElement) {
+           const observer = new MutationObserver(detect);
+           observer.observe(node, { attributes: true });
+           observers.push(observer);
+         }
+         return () => observers.forEach((observer) => observer.disconnect());
+       }, [element]);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags conditional retention or cleanup through a mutated collection", () => {
+    const conditionalRetention = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observers = [];
+         const observer = new ResizeObserver(update);
+         observer.observe(element);
+         if (shouldRetain) observers.push(observer);
+         return () => observers.forEach((observer) => observer.disconnect());
+       }, [element, shouldRetain]);`,
+    );
+    const conditionalCleanup = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observers = [];
+         const observer = new ResizeObserver(update);
+         observer.observe(element);
+         observers.push(observer);
+         return () => {
+           if (shouldCleanup) observers.forEach((observer) => observer.disconnect());
+         };
+       }, [element, shouldCleanup]);`,
+    );
+    const mutatedCollection = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observers = [];
+         const observer = new ResizeObserver(update);
+         observer.observe(element);
+         observers.push(observer);
+         observers.pop();
+         return () => observers.forEach((observer) => observer.disconnect());
+       }, [element]);`,
+    );
+    expect(conditionalRetention.diagnostics).toHaveLength(1);
+    expect(conditionalCleanup.diagnostics).toHaveLength(1);
+    expect(mutatedCollection.diagnostics).toHaveLength(1);
+  });
+
+  it("requires collection cleanup on every return path after observation", () => {
+    const emptyCleanupBranch = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observers = [];
+         const observer = new ResizeObserver(update);
+         observer.observe(element);
+         observers.push(observer);
+         if (enabled) return () => observers.forEach((observer) => observer.disconnect());
+         return () => {};
+       }, [element, enabled]);`,
+    );
+    const bareReturnBranch = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+         const observers = [];
+         const observer = new ResizeObserver(update);
+         observer.observe(element);
+         observers.push(observer);
+         if (enabled) return () => observers.forEach((observer) => observer.disconnect());
+         return;
+       }, [element, enabled]);`,
+    );
+    expect(emptyCleanupBranch.diagnostics).toHaveLength(1);
+    expect(bareReturnBranch.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a bound disconnect returned through a local alias", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,
@@ -525,7 +626,7 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a cleanup that delegates the release to a helper receiving the observer", () => {
+  it("does not trust an opaque cleanup helper receiving the observer", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,
       `
@@ -536,7 +637,7 @@ describe("effect-observer-needs-disconnect", () => {
       }, [node]);
       `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag an observer stashed in a ref whose outer named cleanup is returned by reference", () => {
@@ -554,7 +655,7 @@ describe("effect-observer-needs-disconnect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag an observer pushed into a registry that disconnects it elsewhere", () => {
+  it("does not treat an unproven registry push as observer cleanup", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,
       `
@@ -566,7 +667,19 @@ describe("effect-observer-needs-disconnect", () => {
       }, [node]);
       `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat logging an observer as ownership transfer", () => {
+    const result = runRule(
+      effectObserverNeedsDisconnect,
+      `useEffect(() => {
+        const observer = new ResizeObserver(cb);
+        observer.observe(node);
+        console.log(observer);
+      }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag an observer aliased to another binding that releases it", () => {

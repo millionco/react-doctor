@@ -60,6 +60,25 @@ const READ_INTENT_WORDS = new Set([
   "search",
 ]);
 
+const WRITE_INTENT_WORDS = new Set([
+  "add",
+  "create",
+  "delete",
+  "insert",
+  "mutate",
+  "patch",
+  "post",
+  "put",
+  "remove",
+  "save",
+  "send",
+  "set",
+  "submit",
+  "update",
+  "upload",
+  "write",
+]);
+
 const hasReadIntentName = (name: string | null): boolean => {
   if (!name) return false;
   const words = tokenizeIdentifierWords(name);
@@ -75,6 +94,9 @@ const hasReadIntentName = (name: string | null): boolean => {
     return READ_INTENT_WORDS.has(word);
   });
 };
+
+const hasWriteIntentName = (name: string | null): boolean =>
+  Boolean(name && tokenizeIdentifierWords(name).some((word) => WRITE_INTENT_WORDS.has(word)));
 
 const getPatternBindings = (
   pattern: EsTreeNode,
@@ -843,14 +865,17 @@ const declaratorHasReadIntent = (
   initializer: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
-  if (hasReadIntentName(getCalleeName(initializer))) return true;
-  if (hasReadIntentName(getMutationFunctionIntentName(initializer, context))) return true;
-  if (isNodeOfType(declarator.id, "Identifier")) return hasReadIntentName(declarator.id.name);
-  return ["mutate", "mutateAsync"].some((propertyName) =>
-    getPatternBindings(declarator.id, propertyName).some((binding) =>
-      hasReadIntentName(binding.name),
-    ),
-  );
+  const intentNames = [
+    getCalleeName(initializer),
+    getMutationFunctionIntentName(initializer, context),
+  ];
+  if (isNodeOfType(declarator.id, "Identifier")) intentNames.push(declarator.id.name);
+  for (const propertyName of ["mutate", "mutateAsync"]) {
+    intentNames.push(
+      ...getPatternBindings(declarator.id, propertyName).map((binding) => binding.name),
+    );
+  }
+  return !intentNames.some(hasWriteIntentName) && intentNames.some(hasReadIntentName);
 };
 
 export const queryNoMutationInEffectAsRead = defineRule({

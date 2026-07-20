@@ -512,4 +512,12 @@ const labelKeyDownEntry = (entry: ReplayKeystroke) =>
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a static computed deprecated keyCode read", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event) => { if (event["keyCode"] === 65) select(); };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

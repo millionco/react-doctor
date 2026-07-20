@@ -93,14 +93,14 @@ describe("radio-input-missing-name", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag allowlisted Radios inside a nameless RadioGroup, which auto-generates a name (Chakra/Mantine)", () => {
+  it("flags allowlisted Radios inside an unproven nameless RadioGroup", () => {
     const result = runRule(
       radioInputMissingName,
       `<RadioGroup value={value} onChange={setValue}><div><Radio value="react" /></div></RadioGroup>;`,
       { settings: withRadioComponents },
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it.each([`name="answer"`, `name={"answer"}`, `name={42}`])(
@@ -183,6 +183,13 @@ describe("radio-input-missing-name", () => {
 
   it("still flags an allowlisted Radio inside an unrelated FormGroup", () => {
     const result = runRule(radioInputMissingName, `<FormGroup><Radio value="a" /></FormGroup>;`, {
+      settings: withRadioComponents,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a RadioGroup name without an explicit native group name", () => {
+    const result = runRule(radioInputMissingName, `<RadioGroup><Radio value="a" /></RadioGroup>;`, {
       settings: withRadioComponents,
     });
     expect(result.diagnostics).toHaveLength(1);

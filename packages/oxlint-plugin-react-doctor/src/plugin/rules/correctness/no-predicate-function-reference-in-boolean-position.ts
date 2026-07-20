@@ -104,6 +104,7 @@ const resolvesToLocalFunction = (
   const binding = findVariableInitializer(identifier, identifier.name);
   const initializer = binding?.initializer;
   if (!binding || !initializer) return false;
+  if (!isDeclaredAsDirectInitializer(binding)) return false;
   if (isNodeOfType(initializer, "Identifier")) {
     if (initializer.name === "Boolean" && context.scopes.isGlobalReference(initializer))
       return true;
@@ -119,7 +120,6 @@ const resolvesToLocalFunction = (
   ) {
     return false;
   }
-  if (!isDeclaredAsDirectInitializer(binding)) return false;
   return isInitializerExecutedUnconditionally(binding);
 };
 

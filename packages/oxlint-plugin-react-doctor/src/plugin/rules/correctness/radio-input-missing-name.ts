@@ -39,22 +39,19 @@ const nameAttributeMayCreateGroup = (
   }
   return true;
 };
-const isGroupProviderName = (elementName: string): boolean => {
-  const nameSegments = elementName.split(".");
-  const finalSegment = nameSegments.at(-1) ?? "";
-  if (finalSegment === "RadioGroup") return true;
-  if (finalSegment !== "Group") return false;
-  return (nameSegments.at(-2) ?? "").endsWith("Radio");
-};
-
-const hasGroupProviderAncestor = (
+const hasNamedGroupProviderAncestor = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  elementType: string,
+  context: RuleContext,
 ): boolean => {
   let ancestor: EsTreeNode | null | undefined = openingElement.parent;
   while (ancestor) {
     if (isNodeOfType(ancestor, "JSXElement")) {
       const ancestorName = flattenJsxName(ancestor.openingElement.name);
-      if (ancestorName && isGroupProviderName(ancestorName)) return true;
+      if (ancestorName === `${elementType}.Group`) {
+        const nameAttribute = findJsxAttribute(ancestor.openingElement.attributes ?? [], "name");
+        if (nameAttribute && nameAttributeMayCreateGroup(nameAttribute, context)) return true;
+      }
     }
     ancestor = ancestor.parent;
   }
@@ -93,7 +90,11 @@ export const radioInputMissingName = defineRule({
 
         // Library group wrappers (Mantine/antd `Radio.Group`, Chakra
         // `RadioGroup`, …) supply `name` to their radios via context.
-        if (isAllowlistedRadioComponent && hasGroupProviderAncestor(node)) return;
+        if (
+          isAllowlistedRadioComponent &&
+          hasNamedGroupProviderAncestor(node, elementType, context)
+        )
+          return;
 
         const nameAttribute = findJsxAttribute(attributes, "name");
         if (nameAttribute && nameAttributeMayCreateGroup(nameAttribute, context)) return;

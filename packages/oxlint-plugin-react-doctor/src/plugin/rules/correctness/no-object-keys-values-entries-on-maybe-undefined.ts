@@ -4,6 +4,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isPresenceProvenBeforeNode } from "../../utils/is-presence-proven-before-node.js";
 import {
   stripParenExpression,
@@ -12,6 +14,7 @@ import {
 import { unwrapNegativeGuardForm } from "../../utils/unwrap-negative-guard-form.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { subtreeWritesSymbol } from "../../utils/subtree-writes-symbol.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const OBJECT_ITERATION_METHODS = new Set(["keys", "values", "entries"]);
@@ -251,6 +254,88 @@ const testPositivelyProvesPath = (
   );
 };
 
+const localNullPredicateProvesMissing = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  guardedIdentifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const argument = call.arguments[0];
+  if (!argument || !isNodeOfType(argument, "Identifier")) return false;
+  if (context.scopes.symbolFor(argument)?.id !== context.scopes.symbolFor(guardedIdentifier)?.id) {
+    return false;
+  }
+  const predicate = resolveExactLocalFunction(call.callee as EsTreeNode, context.scopes);
+  if (!predicate || !isFunctionLike(predicate)) return false;
+  const parameter = predicate.params[0];
+  if (!parameter || !isNodeOfType(parameter, "Identifier")) return false;
+  let returnedExpression: EsTreeNode = predicate.body;
+  if (isNodeOfType(returnedExpression, "BlockStatement")) {
+    if (returnedExpression.body.length !== 1) return false;
+    const statement = returnedExpression.body[0];
+    if (!isNodeOfType(statement, "ReturnStatement") || !statement.argument) return false;
+    returnedExpression = statement.argument;
+  }
+  const missingKinds = (expression: EsTreeNode): Set<string> => {
+    const unwrapped = stripParenExpression(expression);
+    if (isNodeOfType(unwrapped, "LogicalExpression") && unwrapped.operator === "||") {
+      return new Set([
+        ...missingKinds(unwrapped.left as EsTreeNode),
+        ...missingKinds(unwrapped.right as EsTreeNode),
+      ]);
+    }
+    if (
+      !isNodeOfType(unwrapped, "BinaryExpression") ||
+      (unwrapped.operator !== "===" && unwrapped.operator !== "==")
+    ) {
+      return new Set();
+    }
+    const pairs: Array<[EsTreeNode, EsTreeNode]> = [
+      [unwrapped.left as EsTreeNode, unwrapped.right as EsTreeNode],
+      [unwrapped.right as EsTreeNode, unwrapped.left as EsTreeNode],
+    ];
+    for (const [candidateParameter, candidateMissing] of pairs) {
+      if (
+        !isNodeOfType(candidateParameter, "Identifier") ||
+        context.scopes.symbolFor(candidateParameter)?.id !== context.scopes.symbolFor(parameter)?.id
+      ) {
+        continue;
+      }
+      if (isNodeOfType(candidateMissing, "Literal") && candidateMissing.value === null) {
+        return new Set(unwrapped.operator === "==" ? ["null", "undefined"] : ["null"]);
+      }
+      if (
+        isNodeOfType(candidateMissing, "Identifier") &&
+        candidateMissing.name === "undefined" &&
+        context.scopes.isGlobalReference(candidateMissing)
+      ) {
+        return new Set(unwrapped.operator === "==" ? ["null", "undefined"] : ["undefined"]);
+      }
+    }
+    return new Set();
+  };
+  const provenMissingKinds = missingKinds(returnedExpression);
+  return provenMissingKinds.has("null") && provenMissingKinds.has("undefined");
+};
+
+const localNullGuardStatementProvesPresence = (
+  statement: EsTreeNode,
+  guardedIdentifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  if (
+    !isNodeOfType(statement, "IfStatement") ||
+    statement.alternate ||
+    !isEarlyExitStatement(statement.consequent)
+  ) {
+    return false;
+  }
+  const test = stripParenExpression(statement.test);
+  return (
+    isNodeOfType(test, "CallExpression") &&
+    localNullPredicateProvesMissing(test, guardedIdentifier, context)
+  );
+};
+
 const assignmentIndexesByBlock = new WeakMap<
   EsTreeNode,
   {
@@ -289,6 +374,7 @@ const isValueGuardedBeforeCall = (
   guardProvesValue: (guard: EsTreeNode) => boolean,
   earlierStatementNormalizesValue?: (statement: EsTreeNode) => boolean,
   nodeInvalidatesValue?: (node: EsTreeNode) => boolean,
+  earlierStatementGuardsValue?: (statement: EsTreeNode) => boolean,
 ): boolean => {
   if (isPresenceProvenBeforeNode(callNode, guardProvesValue, nodeInvalidatesValue)) return true;
   let child: EsTreeNode = callNode;
@@ -297,6 +383,15 @@ const isValueGuardedBeforeCall = (
     if (isNodeOfType(ancestor, "BlockStatement")) {
       const indexed = indexBlockAssignments(ancestor);
       const childIndex = indexed.statementIndexes.get(child) ?? -1;
+      if (earlierStatementGuardsValue && childIndex >= 0) {
+        const earlierStatements = ancestor.body.slice(0, childIndex) as EsTreeNode[];
+        const guardIndex = earlierStatements.findIndex(earlierStatementGuardsValue);
+        const hasLaterInvalidation =
+          guardIndex >= 0 &&
+          nodeInvalidatesValue !== undefined &&
+          earlierStatements.slice(guardIndex + 1).some(nodeInvalidatesValue);
+        if (guardIndex >= 0 && !hasLaterInvalidation) return true;
+      }
       for (const assignment of indexed.assignments) {
         if (assignment.index >= childIndex) break;
         if (
@@ -450,6 +545,8 @@ export const noObjectKeysValuesEntriesOnMaybeUndefined = defineRule({
                 (assignment.operator === "??=" || assignment.operator === "||=")
               );
             }),
+          (statement: EsTreeNode) =>
+            localNullGuardStatementProvesPresence(statement, unwrapped, context),
         );
         if (isParameterGuarded) return;
         context.report({ node, message: MESSAGE });

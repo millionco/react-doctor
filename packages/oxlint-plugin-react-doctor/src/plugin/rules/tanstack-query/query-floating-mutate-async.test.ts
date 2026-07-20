@@ -387,14 +387,14 @@ describe("query-floating-mutate-async", () => {
   it.each([
     ["voided", "void mutation.mutateAsync(payload)"],
     ["rejection-handled", "mutation.mutateAsync(payload).catch(handleError)"],
-  ])("accepts a %s promise inside a wrapped effect callback", (_usageName, promiseExpression) => {
+  ])("handles a %s promise inside a wrapped effect callback", (usageName, promiseExpression) => {
     const result = runMutationRule(
       `const mutation = useMutation(options);
        const handleError = (error) => report(error);
        const effectCallback = () => ${promiseExpression};
        useEffect(enabled ? effectCallback : fallback, [enabled]);`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(usageName === "voided" ? 1 : 0);
   });
 
   it.each([
@@ -707,10 +707,19 @@ describe("query-floating-mutate-async", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("preserves the explicit void escape hatch", () => {
+  it("flags explicit void because it still discards rejection handling", () => {
     const result = runMutationRule(
       `const mutation = useMutation(options);
        void mutation.mutateAsync(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not assume a custom component callback discards returned promises", () => {
+    const result = runMutationRule(
+      `const mutation = useMutation(options);
+       const onFinish = () => mutation.mutateAsync(payload);
+       const form = <StepsForm onFinish={onFinish} />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

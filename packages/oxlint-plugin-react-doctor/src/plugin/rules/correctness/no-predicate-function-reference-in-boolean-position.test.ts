@@ -399,4 +399,16 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not treat an aliased parameter default as an unconditional function value", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `const fallback = () => false;
+      function useReady(isReady = fallback) {
+        if (!isReady) return;
+        isReady();
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

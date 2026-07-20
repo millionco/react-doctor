@@ -38,6 +38,9 @@ const isImportedHookName = (
   return declaration.source.value === "react";
 };
 
+const isProvenHookModule = (declaration: EsTreeNodeOfType<"ImportDeclaration">): boolean =>
+  declaration.source.value === "react" || declaration.source.value.startsWith(".");
+
 const isSafeHookWrapperCall = (
   call: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -75,7 +78,13 @@ export const hookImportRenameLosesUsePrefix = defineRule({
       }
 
       const importedName = getImportedName(node);
-      if (!importedName || !isImportedHookName(importedName, declaration)) return;
+      if (
+        !importedName ||
+        !isImportedHookName(importedName, declaration) ||
+        !isProvenHookModule(declaration)
+      ) {
+        return;
+      }
 
       const localName = node.local.name;
       if (localName === importedName) return;

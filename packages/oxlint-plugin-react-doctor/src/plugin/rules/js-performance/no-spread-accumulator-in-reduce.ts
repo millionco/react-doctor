@@ -513,11 +513,6 @@ const literalSpreadsAccumulator = (
   });
 };
 
-// Only unambiguous growth shapes are worth reporting. An array literal always
-// appends. An object literal counts only with a second spread merged in
-// (`{ ...acc, ...chunk(x) }`) — a single accumulator spread plus one computed
-// key (`{ ...acc, [key]: value }`) is the keyed-lookup-build idiom over a
-// semantically bounded key set, empirically the dominant false positive.
 const literalGrowsAccumulatorPerIteration = (
   literal: EsTreeNode,
   accumulatorParameter: EsTreeNode,
@@ -550,6 +545,9 @@ const literalGrowsAccumulatorPerIteration = (
   if (!isNodeOfType(literal, "ObjectExpression")) return false;
   const accumulatorSymbol = scopes.symbolFor(accumulatorParameter);
   return literal.properties.some((property) => {
+    if (isNodeOfType(property, "Property")) {
+      return property.computed && getStaticPropertyKeyName(property) === null;
+    }
     if (!isNodeOfType(property, "SpreadElement")) return false;
     const spreadArgument = stripParenExpression(property.argument);
     if (
@@ -598,8 +596,6 @@ export const noSpreadAccumulatorInReduce = defineRule({
         if (!accumulatorParam || !isNodeOfType(accumulatorParam, "Identifier")) return;
 
         const analysis = analyzeReducerReturns(callback, accumulatorParam, context);
-        if (analysis.hasAccumulatorPassthroughReturn) return;
-
         for (const literal of analysis.returnedLiterals) {
           if (
             literalSpreadsAccumulator(literal, accumulatorParam, context.scopes) &&

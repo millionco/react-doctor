@@ -328,7 +328,6 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasTanStackQuery: tanstackQueryVersion !== null,
     hasI18nLibrary: workspaceFacts.hasI18nLibrary,
     tanstackQueryVersion,
-    mobxVersion: workspaceFacts.mobxVersion,
     styledComponentsVersion: workspaceFacts.styledComponentsVersion,
     valtioVersion,
     valtioMajorVersion: valtioVersion === null ? null : getLowestDependencyMajor(valtioVersion),

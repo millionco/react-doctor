@@ -4,6 +4,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import {
   getImportedNameFromModule,
@@ -313,6 +314,16 @@ export const noEffectWrapperDiscardsCallbackCleanupReturn = defineRule({
 
       const bareCall = findBareForwardedCall(effectBody, callbackName, callbackBinding);
       if (!bareCall) return;
+      const callbackSymbol = context.scopes.symbolFor(callbackBinding);
+      if (
+        callbackSymbol &&
+        (hasSymbolWriteBefore(callbackSymbol, bareCall, context.scopes) ||
+          callbackSymbol.references.some(
+            (reference) =>
+              reference.flag !== "read" && reference.identifier.range[0] < bareCall.range[0],
+          ))
+      )
+        return;
       context.report({
         node: bareCall,
         message:

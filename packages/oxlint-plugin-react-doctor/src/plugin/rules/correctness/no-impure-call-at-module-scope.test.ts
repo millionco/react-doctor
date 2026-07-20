@@ -411,4 +411,9 @@ describe("audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags a static computed impure built-in call", () => {
+    const result = runRule(noImpureCallAtModuleScope, `const seed = Math["random"]();`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

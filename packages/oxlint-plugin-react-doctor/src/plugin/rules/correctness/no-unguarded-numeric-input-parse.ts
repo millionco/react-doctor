@@ -71,6 +71,22 @@ const getEventValueRoot = (argument: EsTreeNode): EsTreeNodeOfType<"Identifier">
   return isNodeOfType(root, "Identifier") ? root : null;
 };
 
+const nanGuardCoversEmptyInput = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  argument: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  const valueAccess = stripParenExpression(argument);
+  return !(
+    isNodeOfType(callee, "Identifier") &&
+    callee.name === "Number" &&
+    context.scopes.isGlobalReference(callee) &&
+    isNodeOfType(valueAccess, "MemberExpression") &&
+    getStaticPropertyName(valueAccess) === "value"
+  );
+};
+
 const findEnclosingHandler = (call: EsTreeNode): EsTreeNode | null => {
   let ancestor = call.parent;
   while (ancestor) {
@@ -210,6 +226,7 @@ const branchProvesEventValueState = (
   eventRoot: EsTreeNodeOfType<"Identifier">,
   branchWhenTruthy: boolean,
   expectedNonEmpty: boolean,
+  nanGuardProvesNonEmpty: boolean,
   context: RuleContext,
 ): boolean => {
   const test = stripParenExpression(rawTest);
@@ -222,6 +239,7 @@ const branchProvesEventValueState = (
       eventRoot,
       !branchWhenTruthy,
       expectedNonEmpty,
+      nanGuardProvesNonEmpty,
       context,
     );
   }
@@ -236,6 +254,7 @@ const branchProvesEventValueState = (
           eventRoot,
           branchWhenTruthy,
           expectedNonEmpty,
+          nanGuardProvesNonEmpty,
           context,
         ) ||
         branchProvesEventValueState(
@@ -243,6 +262,7 @@ const branchProvesEventValueState = (
           eventRoot,
           branchWhenTruthy,
           expectedNonEmpty,
+          nanGuardProvesNonEmpty,
           context,
         )
       );
@@ -262,7 +282,22 @@ const branchProvesEventValueState = (
         !isNodeOfType(argument, "SpreadElement") &&
         isSameEventValueAccess(argument as EsTreeNode, eventRoot, context),
     );
-    return Boolean(guardedEventValue && guardName && branchWhenTruthy === (guardName !== "isNaN"));
+    const guardsValueAsNumber = test.arguments.some((argument) => {
+      const guardedValue = isNodeOfType(argument, "SpreadElement")
+        ? null
+        : stripParenExpression(argument as EsTreeNode);
+      return (
+        guardedValue !== null &&
+        isNodeOfType(guardedValue, "MemberExpression") &&
+        getStaticPropertyName(guardedValue) === "valueAsNumber"
+      );
+    });
+    return Boolean(
+      guardedEventValue &&
+      (nanGuardProvesNonEmpty || guardsValueAsNumber) &&
+      guardName &&
+      branchWhenTruthy === (guardName !== "isNaN"),
+    );
   }
   if (!isNodeOfType(test, "BinaryExpression")) return false;
   if (!["===", "!==", "==", "!="].includes(test.operator)) return false;
@@ -284,6 +319,7 @@ const branchProvesEventValueState = (
 const isGuardedByRelatedAncestor = (
   call: EsTreeNode,
   eventRoot: EsTreeNodeOfType<"Identifier">,
+  nanGuardProvesNonEmpty: boolean,
   context: RuleContext,
 ): boolean => {
   let child = call;
@@ -293,7 +329,14 @@ const isGuardedByRelatedAncestor = (
       const branchWhenTruthy = ancestor.consequent === child;
       if (
         (branchWhenTruthy || ancestor.alternate === child) &&
-        branchProvesEventValueState(ancestor.test, eventRoot, branchWhenTruthy, true, context)
+        branchProvesEventValueState(
+          ancestor.test,
+          eventRoot,
+          branchWhenTruthy,
+          true,
+          nanGuardProvesNonEmpty,
+          context,
+        )
       ) {
         return true;
       }
@@ -310,6 +353,7 @@ const isGuardedByRelatedAncestor = (
           eventRoot,
           ancestor.operator === "&&",
           true,
+          nanGuardProvesNonEmpty,
           context,
         )
       ) {
@@ -332,22 +376,33 @@ const blockHasPriorEmptyExitGuard = (
   block: EsTreeNodeOfType<"BlockStatement">,
   call: EsTreeNode,
   eventRoot: EsTreeNodeOfType<"Identifier">,
+  nanGuardProvesNonEmpty: boolean,
   context: RuleContext,
-  emptyExitGuardOffsetsByBlock: WeakMap<EsTreeNode, number[]>,
+  emptyExitGuardOffsetsByBlock: WeakMap<EsTreeNode, Map<boolean, number[]>>,
 ): boolean => {
-  let guardEndOffsets = emptyExitGuardOffsetsByBlock.get(block);
+  let guardEndOffsetsByNanBehavior = emptyExitGuardOffsetsByBlock.get(block);
+  let guardEndOffsets = guardEndOffsetsByNanBehavior?.get(nanGuardProvesNonEmpty);
   if (!guardEndOffsets) {
     guardEndOffsets = block.body.flatMap((statement) => {
       if (
         !isNodeOfType(statement, "IfStatement") ||
         !directlyExits(statement.consequent) ||
-        !branchProvesEventValueState(statement.test, eventRoot, true, false, context)
+        !branchProvesEventValueState(
+          statement.test,
+          eventRoot,
+          true,
+          false,
+          nanGuardProvesNonEmpty,
+          context,
+        )
       ) {
         return [];
       }
       return [statement.range[1]];
     });
-    emptyExitGuardOffsetsByBlock.set(block, guardEndOffsets);
+    guardEndOffsetsByNanBehavior ??= new Map();
+    guardEndOffsetsByNanBehavior.set(nanGuardProvesNonEmpty, guardEndOffsets);
+    emptyExitGuardOffsetsByBlock.set(block, guardEndOffsetsByNanBehavior);
   }
   let lowerIndex = 0;
   let upperIndex = guardEndOffsets.length;
@@ -363,21 +418,30 @@ const handlerGuardsParsedValue = (
   call: EsTreeNode,
   eventRoot: EsTreeNodeOfType<"Identifier">,
   parseResultBinding: EsTreeNode | null,
+  nanGuardProvesNonEmpty: boolean,
   handlerAnalysis: NumericHandlerAnalysis,
   context: RuleContext,
-  emptyExitGuardOffsetsByBlock: WeakMap<EsTreeNode, number[]>,
+  emptyExitGuardOffsetsByBlock: WeakMap<EsTreeNode, Map<boolean, number[]>>,
   guardProtectionByBinding: WeakMap<EsTreeNode, boolean>,
 ): boolean => {
   let ancestor = call.parent;
   while (ancestor && !isFunctionLike(ancestor)) {
     if (
       isNodeOfType(ancestor, "BlockStatement") &&
-      blockHasPriorEmptyExitGuard(ancestor, call, eventRoot, context, emptyExitGuardOffsetsByBlock)
+      blockHasPriorEmptyExitGuard(
+        ancestor,
+        call,
+        eventRoot,
+        nanGuardProvesNonEmpty,
+        context,
+        emptyExitGuardOffsetsByBlock,
+      )
     ) {
       return true;
     }
     ancestor = ancestor.parent;
   }
+  if (!nanGuardProvesNonEmpty) return false;
   if (!parseResultBinding) return false;
   const cachedProtection = guardProtectionByBinding.get(parseResultBinding);
   if (cachedProtection !== undefined) return cachedProtection;
@@ -514,7 +578,7 @@ export const noUnguardedNumericInputParse = defineRule({
     "Guard `Number(e.target.value)` / `parseInt(e.target.value)` against empty and NaN before storing it. `Number('')` is `0` and `Number('abc')` is `NaN`, both of which silently ship a wrong value.",
   create: (context: RuleContext) => {
     const handlerAnalysisByHandler = new WeakMap<EsTreeNode, NumericHandlerAnalysis>();
-    const emptyExitGuardOffsetsByBlock = new WeakMap<EsTreeNode, number[]>();
+    const emptyExitGuardOffsetsByBlock = new WeakMap<EsTreeNode, Map<boolean, number[]>>();
     const guardProtectionByBinding = new WeakMap<EsTreeNode, boolean>();
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
@@ -524,12 +588,16 @@ export const noUnguardedNumericInputParse = defineRule({
         if (!firstArgument) return;
         const eventRoot = getEventValueRoot(firstArgument);
         if (!eventRoot) return;
+        const nanGuardProvesNonEmpty = nanGuardCoversEmptyInput(node, firstArgument, context);
 
         const handler = findEnclosingHandler(node as EsTreeNode);
         if (!handler) return;
         const firstParameter = getFirstParameter(handler);
         if (!firstParameter || !isSameBinding(firstParameter, eventRoot, context)) return;
-        if (isGuardedByRelatedAncestor(node as EsTreeNode, eventRoot, context)) return;
+        if (
+          isGuardedByRelatedAncestor(node as EsTreeNode, eventRoot, nanGuardProvesNonEmpty, context)
+        )
+          return;
         if (!isTextualInputElementHandler(handler)) return;
         let handlerAnalysis = handlerAnalysisByHandler.get(handler);
         if (!handlerAnalysis) {
@@ -542,6 +610,7 @@ export const noUnguardedNumericInputParse = defineRule({
             node as EsTreeNode,
             eventRoot,
             parseResultBinding,
+            nanGuardProvesNonEmpty,
             handlerAnalysis,
             context,
             emptyExitGuardOffsetsByBlock,

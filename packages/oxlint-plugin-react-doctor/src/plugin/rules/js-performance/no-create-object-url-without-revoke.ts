@@ -933,6 +933,52 @@ const boundaryHasExhaustiveDisposal = (
   return didFindExhaustiveDisposal;
 };
 
+const isGuaranteedScheduledRevoke = (
+  revokeCall: EsTreeNodeOfType<"CallExpression">,
+  createCall: EsTreeNodeOfType<"CallExpression">,
+  producedValue: ProducedValueBinding,
+  executionBoundary: EsTreeNode | null,
+  context: RuleContext,
+): boolean => {
+  const callback = findEnclosingFunction(revokeCall);
+  if (!callback || callback === executionBoundary) return false;
+  const callbackRoot = findTransparentExpressionRoot(callback);
+  const schedulerCall = callbackRoot.parent;
+  if (
+    !isNodeOfType(schedulerCall, "CallExpression") ||
+    schedulerCall.arguments[0] !== callbackRoot ||
+    !isNodeOfType(schedulerCall.parent, "ExpressionStatement")
+  ) {
+    return false;
+  }
+  const scheduler = stripParenExpression(schedulerCall.callee);
+  if (
+    !isNodeOfType(scheduler, "Identifier") ||
+    (scheduler.name !== "queueMicrotask" && scheduler.name !== "setTimeout") ||
+    !isProvenGlobalNamespaceReference(scheduler, scheduler.name, context.scopes)
+  ) {
+    return false;
+  }
+  return (
+    context.cfg.enclosingFunction(schedulerCall) === executionBoundary &&
+    context.cfg.isUnconditionalFromEntry(revokeCall) &&
+    isNodeReachableWithinFunction(revokeCall, context) &&
+    bindingValueRemainsCurrentAtConsumer(
+      producedValue,
+      createCall,
+      schedulerCall,
+      context.scopes,
+    ) &&
+    consumerIsGuaranteedAfterResult(
+      schedulerCall,
+      createCall,
+      producedValue,
+      executionBoundary,
+      context,
+    )
+  );
+};
+
 const boundCreationIsDisposed = (
   createCall: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -955,13 +1001,20 @@ const boundCreationIsDisposed = (
         isRevokeOfProducedBinding(consumer, producedValue.binding, context.scopes) &&
         bindingValueRemainsCurrentAtConsumer(producedValue, createCall, consumer, context.scopes) &&
         isNodeReachableWithinFunction(consumer, context) &&
-        consumerIsGuaranteedAfterResult(
+        (consumerIsGuaranteedAfterResult(
           consumer,
           createCall,
           producedValue,
           executionBoundary,
           context,
-        ),
+        ) ||
+          isGuaranteedScheduledRevoke(
+            consumer,
+            createCall,
+            producedValue,
+            executionBoundary,
+            context,
+          )),
       );
     });
   });

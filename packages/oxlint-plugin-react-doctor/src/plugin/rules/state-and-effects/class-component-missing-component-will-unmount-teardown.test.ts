@@ -163,6 +163,32 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags when componentWillUnmount does not release the mounted resource", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class C extends React.Component {
+        componentDidMount() { window.addEventListener("resize", this.handleResize); }
+        componentWillUnmount() { console.log("bye"); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags when componentWillUnmount releases the resource only conditionally", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class C extends React.Component {
+        componentDidMount() { window.addEventListener("resize", this.handleResize); }
+        componentWillUnmount() {
+          if (this.enabled) window.removeEventListener("resize", this.handleResize);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("recognizes quoted and computed lifecycle method names", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -252,6 +278,41 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(namespaceTimer.diagnostics).toHaveLength(0);
     expect(handlerOnlySubscription.diagnostics).toHaveLength(0);
     expect(onceSubscription.diagnostics).toHaveLength(0);
+  });
+
+  it("requires disposeOnUnmount registration and release on every path after acquisition", () => {
+    const conditionalRegistration = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           window.addEventListener("resize", this.handleResize);
+           if (this.enabled) {
+             disposeOnUnmount(this, () =>
+               window.removeEventListener("resize", this.handleResize),
+             );
+           }
+         }
+         render() { return null; }
+       }`,
+    );
+    const conditionalRelease = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { disposeOnUnmount } from "mobx-react";
+       class C extends React.Component {
+         componentDidMount() {
+           window.addEventListener("resize", this.handleResize);
+           disposeOnUnmount(this, () => {
+             if (this.enabled) {
+               window.removeEventListener("resize", this.handleResize);
+             }
+           });
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(conditionalRegistration.diagnostics).toHaveLength(1);
+    expect(conditionalRelease.diagnostics).toHaveLength(1);
   });
 
   it("requires proven disposeOnUnmount provenance, owner, and matching cleanup", () => {
@@ -897,7 +958,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags call-derived d3 selections even when they receive a class-owned ref", () => {
+  it("does not flag call-derived d3 selections rooted in a class-owned ref", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
       `class BarChart extends React.Component {
@@ -916,10 +977,10 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
 }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags call-derived d3 selections rooted at a non-null asserted ref", () => {
+  it("does not flag call-derived d3 selections rooted at a non-null asserted ref", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
       `class BarChart extends React.Component {
@@ -935,7 +996,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
 }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("stays quiet: Destructured mount-local emitter that never escapes", () => {

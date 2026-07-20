@@ -775,4 +775,12 @@ describe("audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a static computed mutating method on a prop", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `const C = ({ items }) => items["sort"]().map(String);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

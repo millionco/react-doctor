@@ -1036,4 +1036,20 @@ describe("audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("accepts a static computed ok guard", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); if (!response["ok"]) throw new Error(); return response.json(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports a static computed body consumer", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() { const response = await fetch("/api"); return response["json"](); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

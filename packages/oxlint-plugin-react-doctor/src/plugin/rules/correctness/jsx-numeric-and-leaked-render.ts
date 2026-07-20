@@ -6,6 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -472,15 +473,12 @@ const resolveReceiverTypeName = (receiver: EsTreeNodeOfType<"Identifier">): stri
 const isSyntacticallyNumeric = (node: EsTreeNode, context: RuleContext): boolean => {
   const stripped = stripParenExpression(node);
 
-  if (
-    isNodeOfType(stripped, "MemberExpression") &&
-    !stripped.computed &&
-    isNodeOfType(stripped.property, "Identifier")
-  ) {
-    if (stripped.property.name === "length") {
+  if (isNodeOfType(stripped, "MemberExpression")) {
+    const propertyName = getStaticPropertyName(stripped);
+    if (propertyName === "length") {
       return !inFileTypeDeclaresNonNumericLength(stripped.object as EsTreeNode);
     }
-    if (stripped.property.name === "size") return isProvableCollectionReceiver(stripped.object);
+    if (propertyName === "size") return isProvableCollectionReceiver(stripped.object);
     return false;
   }
 

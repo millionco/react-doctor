@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
@@ -90,11 +91,7 @@ const getFillReceiverLengthArgument = (
   const unwrappedReceiver = stripParenExpression(receiver);
   if (!isNodeOfType(unwrappedReceiver, "CallExpression")) return null;
   const callee = stripParenExpression(unwrappedReceiver.callee);
-  if (
-    !isNodeOfType(callee, "MemberExpression") ||
-    !isNodeOfType(callee.property, "Identifier") ||
-    callee.property.name !== "fill"
-  ) {
+  if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "fill") {
     return null;
   }
   return getArrayConstructorLengthArgument(stripParenExpression(callee.object), context);
@@ -247,8 +244,7 @@ const findEnclosingMapCall = (
         isNodeOfType(parent, "CallExpression") &&
         parent.arguments.some((argument) => argument === current) &&
         isNodeOfType(parent.callee, "MemberExpression") &&
-        isNodeOfType(parent.callee.property, "Identifier") &&
-        parent.callee.property.name === "map"
+        getStaticPropertyName(parent.callee) === "map"
       ) {
         return {
           callback: current,

@@ -225,7 +225,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a per-item value inside a .map() render-loop callback (SegmentedControl idiom)", () => {
+  it("flags a per-item value inside a .map() render-loop callback", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
       `
@@ -239,7 +239,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
       }
     `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a value allocated once in an outer factory/HOC closure (createStore idiom)", () => {
@@ -291,7 +291,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
          return <ThemeContext.Provider value={value}>{item.label}</ThemeContext.Provider>;
        });`,
     ],
-  ])("does not treat a named %s callback as a component", (_name, body) => {
+  ])("handles a named %s callback by render semantics", (name, body) => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,
       `import { createContext, useMemo } from "react";
@@ -300,7 +300,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
          ${body}
        }`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(name === "map" ? 1 : 0);
   });
 
   it.each([

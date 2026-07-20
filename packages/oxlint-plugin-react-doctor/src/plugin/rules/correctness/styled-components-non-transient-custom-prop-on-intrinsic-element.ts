@@ -9,6 +9,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -38,19 +39,34 @@ interface StyledIntrinsicTag {
   readonly tagName: string;
 }
 
-// Unwraps `.attrs(...)` chains — `.attrs()` merges attributes and strips
-// nothing, so `styled.div.attrs({...})` is still an intrinsic target whose
-// non-transient custom props forward to the DOM. `withConfig(...)` stays
-// opaque because `shouldForwardProp` can legitimately filter the prop.
-const unwrapAttrsCalls = (tag: EsTreeNode): EsTreeNode => {
+const configCannotFilterProps = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const config = call.arguments[0];
+  if (!config || !isNodeOfType(config, "ObjectExpression")) return false;
+  return config.properties.every(
+    (property) =>
+      isNodeOfType(property, "Property") &&
+      getStaticPropertyKeyName(property) !== null &&
+      getStaticPropertyKeyName(property) !== "shouldForwardProp",
+  );
+};
+
+const unwrapStyledConfigurationCalls = (tag: EsTreeNode): EsTreeNode => {
   let current = tag;
-  while (
-    isNodeOfType(current, "CallExpression") &&
-    isNodeOfType(current.callee, "MemberExpression") &&
-    !current.callee.computed &&
-    isNodeOfType(current.callee.property, "Identifier") &&
-    current.callee.property.name === "attrs"
-  ) {
+  while (isNodeOfType(current, "CallExpression")) {
+    if (
+      !isNodeOfType(current.callee, "MemberExpression") ||
+      current.callee.computed ||
+      !isNodeOfType(current.callee.property, "Identifier")
+    ) {
+      break;
+    }
+    const configurationMethodName = current.callee.property.name;
+    if (
+      configurationMethodName !== "attrs" &&
+      (configurationMethodName !== "withConfig" || !configCannotFilterProps(current))
+    ) {
+      break;
+    }
     current = current.callee.object;
   }
   return current;
@@ -65,7 +81,7 @@ const readStyledIntrinsicTag = (
   tag: EsTreeNode,
   context: RuleContext,
 ): StyledIntrinsicTag | null => {
-  const base = unwrapAttrsCalls(tag);
+  const base = unwrapStyledConfigurationCalls(tag);
   if (!isNodeOfType(base, "MemberExpression") || base.computed) return null;
   if (!isNodeOfType(base.object, "Identifier")) return null;
   const importSource = getImportSourceForName(base, base.object.name);

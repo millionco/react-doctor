@@ -28,6 +28,7 @@ import { getDestructuredBindingPropertyName } from "../../utils/get-destructured
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFinalSequenceExpressionValue } from "../../utils/get-final-sequence-expression-value.js";
 import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
+import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -602,45 +603,7 @@ const doMatchingNodesCoverEveryPathAfterUsage = (
     pathAnchor = iteratorCall;
     pathOwner = findEnclosingFunction(pathAnchor);
   }
-  const owner = context.cfg.enclosingFunction(pathAnchor);
-  if (!owner) return false;
-  const functionCfg = context.cfg.cfgFor(owner);
-  if (!functionCfg) return false;
-  const usageBlock = functionCfg.blockOf(pathAnchor);
-  if (!usageBlock) return false;
-  const usageStart = getRangeStart(usageNode);
-  const matchingBlocks = new Set(
-    matchingNodes.flatMap((matchingNode) => {
-      if (context.cfg.enclosingFunction(matchingNode) !== owner) return [];
-      const matchingBlock = functionCfg.blockOf(matchingNode);
-      if (!matchingBlock) return [];
-      const matchingStart = getRangeStart(matchingNode);
-      if (
-        matchingBlock === usageBlock &&
-        usageStart !== null &&
-        matchingStart !== null &&
-        matchingStart < usageStart
-      ) {
-        return [];
-      }
-      return [matchingBlock];
-    }),
-  );
-  if (matchingBlocks.has(usageBlock)) return true;
-  const visitedBlocks = new Set([usageBlock]);
-  const pendingBlocks = [usageBlock];
-  while (pendingBlocks.length > 0) {
-    const currentBlock = pendingBlocks.pop();
-    if (!currentBlock) break;
-    for (const edge of currentBlock.successors) {
-      if (matchingBlocks.has(edge.to)) continue;
-      if (edge.to === functionCfg.exit) return false;
-      if (visitedBlocks.has(edge.to)) continue;
-      visitedBlocks.add(edge.to);
-      pendingBlocks.push(edge.to);
-    }
-  }
-  return matchingBlocks.size > 0;
+  return doNodesCoverEveryPathAfterNode(pathAnchor, matchingNodes, context, usageNode);
 };
 
 // A resource registered and then released SYNCHRONOUSLY later in the same

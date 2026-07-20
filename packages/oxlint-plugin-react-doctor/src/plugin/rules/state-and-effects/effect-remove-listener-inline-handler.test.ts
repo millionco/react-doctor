@@ -6,7 +6,7 @@ describe("effect-remove-listener-inline-handler", () => {
   it("flags removeEventListener with an inline arrow handler", () => {
     const result = runRule(
       effectRemoveListenerInlineHandler,
-      `el.removeEventListener('scroll', () => handle());`,
+      `el.addEventListener('scroll', handle); el.removeEventListener('scroll', () => handle());`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -15,7 +15,7 @@ describe("effect-remove-listener-inline-handler", () => {
   it("flags removeEventListener with an inline function expression", () => {
     const result = runRule(
       effectRemoveListenerInlineHandler,
-      `window.removeEventListener('resize', function () { onResize(); });`,
+      `window.addEventListener('resize', onResize); window.removeEventListener('resize', function () { onResize(); });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -23,7 +23,7 @@ describe("effect-remove-listener-inline-handler", () => {
   it("flags removeEventListener with a .bind() handler", () => {
     const result = runRule(
       effectRemoveListenerInlineHandler,
-      `node.removeEventListener('click', this.handle.bind(this));`,
+      `node.addEventListener('click', this.handle); node.removeEventListener('click', this.handle.bind(this));`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -89,6 +89,15 @@ describe("effect-remove-listener-inline-handler", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not infer reference-equality semantics from a custom method name", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `const bag = { removeListener(predicate) { return items.filter((item) => !predicate(item)); } };
+       bag.removeListener((item) => item.done);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag computed removal member access", () => {
     const result = runRule(
       effectRemoveListenerInlineHandler,
@@ -129,6 +138,22 @@ describe("effect-remove-listener-inline-handler", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not claim a leak when another cleanup removes the registered handler", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `useEffect(() => {
+         emitter.on("change", handleChange);
+         return () => {
+           emitter.off("change", () => handleChange());
+           emitter.off("change", handleChange);
+         };
+       }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("this removal silently no-ops");
+    expect(result.diagnostics[0]?.message).not.toContain("listener leaks");
+  });
+
   it("flags off() when matching expressionless template event names", () => {
     const result = runRule(
       effectRemoveListenerInlineHandler,
@@ -164,7 +189,8 @@ describe("effect-remove-listener-inline-handler", () => {
   it("flags a fresh bind reached through a static computed member", () => {
     const freshBind = runRule(
       effectRemoveListenerInlineHandler,
-      `window.removeEventListener("resize", handleResize["bind"](this));`,
+      `window.addEventListener("resize", handleResize);
+       window.removeEventListener("resize", handleResize["bind"](this));`,
     );
     const matchingReference = runRule(
       effectRemoveListenerInlineHandler,

@@ -370,6 +370,57 @@ describe("discoverProject", () => {
     expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("^5.3.11");
   });
 
+  it("uses a workspace v5 catalog spec over a root styled-components v6 spec", () => {
+    const monorepoRoot = path.join(tempDirectory, "styled-components-root-v6-catalog-v5");
+    const appDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalog:\n  styled-components: ^5.3.11\n",
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "root",
+        private: true,
+        dependencies: { "styled-components": "^6.1.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { react: "^19.0.0", "styled-components": "catalog:" },
+      }),
+    );
+
+    expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("^5.3.11");
+  });
+
+  it("resolves a named styled-components catalog from the workspace root", () => {
+    const monorepoRoot = path.join(tempDirectory, "styled-components-named-catalog");
+    const appDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalogs:\n  legacy:\n    styled-components: ^5.3.11\n",
+    );
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "root", private: true }),
+    );
+    fs.writeFileSync(
+      path.join(appDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { react: "^19.0.0", "styled-components": "catalog:legacy" },
+      }),
+    );
+
+    expect(discoverProject(monorepoRoot).styledComponentsVersion).toBe("^5.3.11");
+    expect(discoverProject(appDirectory).styledComponentsVersion).toBe("^5.3.11");
+  });
+
   it("does not classify framework-agnostic query-core as React Query", () => {
     const projectDirectory = path.join(tempDirectory, "tanstack-query-core-only");
     fs.mkdirSync(projectDirectory, { recursive: true });

@@ -700,14 +700,14 @@ const hasUnsafePostAwaitSetter = (
   context: RuleContext,
 ): boolean => {
   if (!isFunctionLike(asyncFunction) || !asyncFunction.async) return false;
+  const firstSuspensionStart = findFirstSuspensionStart(asyncFunction);
+  if (firstSuspensionStart === null) return false;
   const cleanupWrites = collectCleanupGuardWrites(effectCallback, context);
   const declaredControllers = collectAbortControllerKeys(effectCallback, context);
   const abortedControllers = collectCleanupAbortedControllers(effectCallback, context);
   const abortProtectedControllers = new Set(
     [...declaredControllers].filter((controllerName) => abortedControllers.has(controllerName)),
   );
-  const firstSuspensionStart = findFirstSuspensionStart(asyncFunction);
-  if (firstSuspensionStart === null) return false;
   const sequenceSnapshots = new Map([
     ...collectSequenceSnapshots(effectCallback, firstSuspensionStart, context),
     ...collectSequenceSnapshots(asyncFunction, firstSuspensionStart, context),

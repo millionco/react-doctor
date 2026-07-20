@@ -115,18 +115,20 @@ const isEventHandlerAttributeValue = (expression: EsTreeNode): boolean => {
   }
   const attribute = container.parent;
   if (!isNodeOfType(attribute, "JSXAttribute")) return false;
+  const openingElement = attribute.parent;
+  if (
+    !isNodeOfType(openingElement, "JSXOpeningElement") ||
+    !isNodeOfType(openingElement.name, "JSXIdentifier") ||
+    !/^[a-z]/.test(openingElement.name.name)
+  ) {
+    return false;
+  }
   const attributeName = getJsxAttributeName(attribute.name);
   return Boolean(attributeName && /^on[A-Z]/.test(attributeName));
 };
 
-const isDiscardingTestPosition = (
-  expression: EsTreeNode,
-  parent: EsTreeNode,
-  shouldTreatVoidAsDiscarded: boolean,
-): boolean =>
-  (isNodeOfType(parent, "UnaryExpression") &&
-    parent.argument === expression &&
-    (shouldTreatVoidAsDiscarded || parent.operator !== "void")) ||
+const isDiscardingTestPosition = (expression: EsTreeNode, parent: EsTreeNode): boolean =>
+  (isNodeOfType(parent, "UnaryExpression") && parent.argument === expression) ||
   (isNodeOfType(parent, "BinaryExpression") &&
     (parent.left === expression || parent.right === expression)) ||
   ((isNodeOfType(parent, "IfStatement") ||
@@ -163,7 +165,7 @@ const isExpressionValueDiscarded = (expression: EsTreeNode, context: RuleContext
       parent = current.parent ?? null;
       continue;
     }
-    if (isDiscardingTestPosition(current, parent, true)) return true;
+    if (isDiscardingTestPosition(current, parent)) return true;
     if (isNodeOfType(parent, "SequenceExpression")) {
       if (parent.expressions.at(-1) !== current) return true;
       current = parent;
@@ -325,7 +327,6 @@ const isFloatingPromiseUse = (
 ): boolean => {
   let current: EsTreeNode = callExpression;
   let parent = current.parent ?? null;
-  let shouldTreatVoidAsDiscarded = false;
   while (parent) {
     if (
       TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type) ||
@@ -337,23 +338,20 @@ const isFloatingPromiseUse = (
     }
     if (isNodeOfType(parent, "ConditionalExpression")) {
       if (parent.test === current) return true;
-      shouldTreatVoidAsDiscarded = true;
       current = parent;
       parent = current.parent ?? null;
       continue;
     }
     if (isNodeOfType(parent, "LogicalExpression")) {
       if (parent.left === current && parent.operator === "&&") return true;
-      shouldTreatVoidAsDiscarded = true;
       current = parent;
       parent = current.parent ?? null;
       continue;
     }
-    if (isDiscardingTestPosition(current, parent, shouldTreatVoidAsDiscarded)) return true;
+    if (isDiscardingTestPosition(current, parent)) return true;
     if (isNodeOfType(parent, "SequenceExpression")) {
       const finalExpression = parent.expressions.at(-1);
       if (finalExpression !== current) return true;
-      shouldTreatVoidAsDiscarded = true;
       current = parent;
       parent = current.parent ?? null;
       continue;
@@ -362,7 +360,6 @@ const isFloatingPromiseUse = (
     if (forwardingPromiseCall) {
       current = forwardingPromiseCall;
       parent = current.parent ?? null;
-      shouldTreatVoidAsDiscarded = true;
       continue;
     }
     if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
@@ -388,7 +385,6 @@ const isFloatingPromiseUse = (
       }
       current = chainCall;
       parent = current.parent ?? null;
-      shouldTreatVoidAsDiscarded = true;
       continue;
     }
     if (isNodeOfType(parent, "AwaitExpression") && parent.argument === current) {

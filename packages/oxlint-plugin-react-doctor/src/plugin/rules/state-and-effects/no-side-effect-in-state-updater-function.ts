@@ -7,6 +7,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -31,7 +32,7 @@ const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
   "toSorted",
 ]);
 const SIDE_EFFECT_CALL_NAME_PATTERN =
-  /^(?:analytics|capture|dispatch|emit|log|notify|on[A-Z]|persist|record|report|send|track)/;
+  /^(?:analytics|capture|dispatch|emit|log|notify|persist|record|report|send|track)/;
 const SAFE_GLOBAL_RECEIVER_NAMES = new Set(["Math", "JSON", "Object", "Array"]);
 const FRESH_CONTAINER_CONSTRUCTOR_NAMES = new Set([
   "Array",
@@ -388,20 +389,15 @@ const identifierIsCallbackParameter = (identifier: EsTreeNode, context: RuleCont
   );
 };
 
-const identifierLooksSideEffecting = (identifier: EsTreeNode, context: RuleContext): boolean =>
-  isNodeOfType(identifier, "Identifier") &&
-  (SIDE_EFFECT_CALL_NAME_PATTERN.test(identifier.name) ||
-    identifierIsCallbackParameter(identifier, context));
+const identifierLooksSideEffecting = (identifier: EsTreeNode): boolean =>
+  isNodeOfType(identifier, "Identifier") && SIDE_EFFECT_CALL_NAME_PATTERN.test(identifier.name);
 
-const expressionLooksLikeExternalCallback = (
-  expression: EsTreeNode,
-  context: RuleContext,
-): boolean => {
+const expressionLooksLikeExternalCallback = (expression: EsTreeNode): boolean => {
   const unwrappedExpression = stripParenExpression(expression);
-  if (identifierLooksSideEffecting(unwrappedExpression, context)) return true;
+  if (identifierLooksSideEffecting(unwrappedExpression)) return true;
   return Boolean(
     isNodeOfType(unwrappedExpression, "MemberExpression") &&
-    /^on[A-Z]/.test(getStaticPropertyName(unwrappedExpression) ?? ""),
+    SIDE_EFFECT_CALL_NAME_PATTERN.test(getStaticPropertyName(unwrappedExpression) ?? ""),
   );
 };
 
@@ -424,7 +420,7 @@ const freshObjectMethodIsExternalCallback = (
     ) {
       continue;
     }
-    return expressionLooksLikeExternalCallback(property.value, context);
+    return expressionLooksLikeExternalCallback(property.value);
   }
   return false;
 };
@@ -446,7 +442,7 @@ const callHasImmediateSideEffectCallback = (
       context.scopes.isGlobalReference(receiver) &&
       mapperArgument &&
       !isNodeOfType(mapperArgument, "SpreadElement") &&
-      expressionLooksLikeExternalCallback(mapperArgument, context)
+      expressionLooksLikeExternalCallback(mapperArgument)
     ) {
       return true;
     }
@@ -468,7 +464,7 @@ const callHasImmediateSideEffectCallback = (
   return Boolean(
     callbackArgument &&
     !isNodeOfType(callbackArgument, "SpreadElement") &&
-    expressionLooksLikeExternalCallback(stripParenExpression(callbackArgument), context),
+    expressionLooksLikeExternalCallback(stripParenExpression(callbackArgument)),
   );
 };
 
@@ -511,6 +507,11 @@ const callHasSideEffectName = (
   const callName = getCallName(call);
   if (!callName) return false;
   const callee = stripParenExpression(call.callee);
+  const isDiscardedExternalCallbackCall =
+    isResultDiscardedCall(call) &&
+    (identifierIsCallbackParameter(callee, context) ||
+      (isNodeOfType(callee, "MemberExpression") &&
+        /^on[A-Z]/.test(getStaticPropertyName(callee) ?? "")));
   if (isNodeOfType(callee, "MemberExpression")) {
     const globalReceiver = baseReceiverIdentifier(callee.object);
     const isGlobalObjectMember = Boolean(
@@ -528,16 +529,18 @@ const callHasSideEffectName = (
   if (
     isNodeOfType(callee, "Identifier") &&
     !SIDE_EFFECT_CALL_NAME_PATTERN.test(callName) &&
-    !identifierIsCallbackParameter(callee, context) &&
+    !isDiscardedExternalCallbackCall &&
     !(GLOBAL_SIDE_EFFECT_CALL_NAMES.has(callName) && context.scopes.isGlobalReference(callee)) &&
     !(GLOBAL_SCHEDULER_CALL_NAMES.has(callName) && context.scopes.isGlobalReference(callee))
   ) {
     return false;
   }
+  if (isDiscardedExternalCallbackCall) return true;
   if (
     isNodeOfType(callee, "MemberExpression") &&
     !SIDE_EFFECT_CALL_NAME_PATTERN.test(callName) &&
-    !SIDE_EFFECT_METHOD_NAMES.has(callName)
+    !SIDE_EFFECT_METHOD_NAMES.has(callName) &&
+    !isDiscardedExternalCallbackCall
   ) {
     return false;
   }

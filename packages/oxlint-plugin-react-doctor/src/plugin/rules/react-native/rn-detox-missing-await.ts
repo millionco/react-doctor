@@ -40,11 +40,15 @@ const DETOX_ELEMENT_ACTIONS = new Set<string>([
   "clearText",
   "tapReturnKey",
   "tapBackspaceKey",
+  "tapAtPoint",
   "pinch",
+  "pinchWithAngle",
   "setColumnToValue",
   "setDatePickerDate",
   "performAccessibilityAction",
   "adjustSliderToPosition",
+  "getAttributes",
+  "takeScreenshot",
 ]);
 
 const TEST_CALL_NAMES = new Set(["it", "specify", "test"]);
@@ -65,6 +69,13 @@ const findChainRoot = (wrappedNode: EsTreeNode): ChainRoot | null => {
       return { calleeName: node.callee.name, callee: node.callee, rootCall: node };
     }
     if (isNodeOfType(node.callee, "MemberExpression")) {
+      const receiver = stripParenExpression(node.callee.object);
+      if (
+        isNodeOfType(receiver, "Identifier") &&
+        getStaticPropertyName(node.callee) === "element"
+      ) {
+        return { calleeName: receiver.name, callee: receiver, rootCall: node };
+      }
       return findChainRoot(node.callee.object);
     }
     return null;
@@ -111,15 +122,26 @@ const getTerminalMethodName = (
   return isNodeOfType(callee, "MemberExpression") ? getStaticPropertyName(callee) : null;
 };
 
-const isCallableHandler = (argument: EsTreeNode | undefined): boolean => {
+const isCallableHandler = (
+  argument: EsTreeNode | undefined,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
   if (!argument) return false;
   const candidate = stripParenExpression(argument);
-  return (
-    isNodeOfType(candidate, "ArrowFunctionExpression") ||
-    isNodeOfType(candidate, "FunctionExpression") ||
-    isNodeOfType(candidate, "Identifier") ||
-    isNodeOfType(candidate, "MemberExpression")
-  );
+  if (isFunctionLike(candidate) || isNodeOfType(candidate, "MemberExpression")) return true;
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  if (candidate.name === "undefined" && context.scopes.isGlobalReference(candidate)) return false;
+  const symbol = context.scopes.symbolFor(candidate);
+  if (!symbol) return context.scopes.isGlobalReference(candidate);
+  if (visitedSymbolIds.has(symbol.id)) return false;
+  visitedSymbolIds.add(symbol.id);
+  if (symbol.kind === "function" || symbol.kind === "import" || symbol.kind === "parameter") {
+    return true;
+  }
+  return symbol.initializer
+    ? isCallableHandler(symbol.initializer, context, visitedSymbolIds)
+    : false;
 };
 
 const testCallName = (callee: EsTreeNode): string | null => {
@@ -128,6 +150,20 @@ const testCallName = (callee: EsTreeNode): string | null => {
   if (!isNodeOfType(expression, "MemberExpression")) return null;
   const receiver = stripParenExpression(expression.object as EsTreeNode);
   return isNodeOfType(receiver, "Identifier") ? receiver.name : null;
+};
+
+const isParameterizedTestCall = (callee: EsTreeNode): boolean => {
+  const expression = stripParenExpression(callee);
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  const eachMember = stripParenExpression(expression.callee);
+  if (
+    !isNodeOfType(eachMember, "MemberExpression") ||
+    getStaticPropertyName(eachMember) !== "each"
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(eachMember.object);
+  return isNodeOfType(receiver, "Identifier") && TEST_CALL_NAMES.has(receiver.name);
 };
 
 const isCallToBinding = (
@@ -197,12 +233,16 @@ const isCompletedByDoneCallback = (
   if (
     !isNodeOfType(testCall, "CallExpression") ||
     !testCall.arguments.some((argument) => argument === callbackRoot) ||
-    !TEST_CALL_NAMES.has(testCallName(testCall.callee as EsTreeNode) ?? "")
+    (!TEST_CALL_NAMES.has(testCallName(testCall.callee as EsTreeNode) ?? "") &&
+      !isParameterizedTestCall(testCall.callee as EsTreeNode))
   ) {
     return false;
   }
-  if (testCallback.params.length !== 1) return false;
-  const doneParameter = testCallback.params[0];
+  const isParameterized = isParameterizedTestCall(testCall.callee as EsTreeNode);
+  if ((!isParameterized && testCallback.params.length !== 1) || testCallback.params.length === 0) {
+    return false;
+  }
+  const doneParameter = testCallback.params.at(-1);
   if (!doneParameter || !isNodeOfType(doneParameter, "Identifier")) return false;
   const doneBindingIdentifier = context.scopes.symbolFor(doneParameter)?.bindingIdentifier;
   if (!doneBindingIdentifier) return false;
@@ -222,6 +262,7 @@ const isCompletedByDoneCallback = (
 
 const getDetoxOperationMethodName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
 ): string | null => {
   let currentCall = callExpression;
   while (true) {
@@ -229,9 +270,11 @@ const getDetoxOperationMethodName = (
     if (methodName === null) return null;
     if (!PROMISE_SETTLE_METHODS.has(methodName)) return methodName;
     if (methodName === "catch") {
-      if (isCallableHandler(currentCall.arguments[0] as EsTreeNode | undefined)) return null;
+      if (isCallableHandler(currentCall.arguments[0] as EsTreeNode | undefined, context))
+        return null;
     } else if (methodName === "then") {
-      if (isCallableHandler(currentCall.arguments[1] as EsTreeNode | undefined)) return null;
+      if (isCallableHandler(currentCall.arguments[1] as EsTreeNode | undefined, context))
+        return null;
     }
     const callee = currentCall.callee;
     if (!isNodeOfType(callee, "MemberExpression")) return null;
@@ -270,7 +313,7 @@ export const rnDetoxMissingAwait = defineRule({
             : node.expression;
         if (!isNodeOfType(expression, "CallExpression")) return;
         if (isCompletedByDoneCallback(expression, context)) return;
-        const terminalMethod = getDetoxOperationMethodName(expression);
+        const terminalMethod = getDetoxOperationMethodName(expression, context);
         // A bare `element(by.id('x'))` (callee is the `element` identifier,
         // no terminal method) only builds a matcher — nothing to await.
         if (terminalMethod === null) return;
@@ -279,7 +322,7 @@ export const rnDetoxMissingAwait = defineRule({
         const rootName = canonicalDetoxRootName(root, context);
         if (!rootName) return;
 
-        if (rootName === "element") {
+        if (rootName === "element" || rootName === "web") {
           if (!DETOX_ELEMENT_ACTIONS.has(terminalMethod)) return;
           context.report({
             node,

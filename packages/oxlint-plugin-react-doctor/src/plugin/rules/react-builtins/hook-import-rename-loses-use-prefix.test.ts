@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { hookImportRenameLosesUsePrefix } from "./hook-import-rename-loses-use-prefix.js";
 
 describe("hook-import-rename-loses-use-prefix", () => {
-  it("flags a useQuery alias that drops the use prefix and is called", () => {
+  it("does not infer hook semantics from an external export name alone", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useQuery as getProducts } from "@tanstack/react-query";
@@ -13,7 +13,7 @@ describe("hook-import-rename-loses-use-prefix", () => {
        };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags a useState alias to a lowercase name that is called", () => {
@@ -41,7 +41,7 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
-  it("flags a third-party hook rename that is called", () => {
+  it("does not infer hook semantics from a third-party package export", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useFormik as formik } from "formik";
@@ -50,7 +50,7 @@ describe("hook-import-rename-loses-use-prefix", () => {
          return null;
        };`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags a local-hooks-module hook rename that is called", () => {
@@ -65,7 +65,7 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a digit-named hook rename that loses the use prefix (react-div-100vh's use100vh)", () => {
+  it("does not infer digit-named hook semantics from an external package export", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { use100vh as viewportHeight } from "react-div-100vh";
@@ -74,7 +74,16 @@ describe("hook-import-rename-loses-use-prefix", () => {
          return null;
        };`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag MDX's use-prefixed component factory API", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useMDXComponents as getMDXComponents } from "nextra-theme-docs";
+       const components = getMDXComponents();`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags a renamed hook called through an event-handler callback", () => {
@@ -86,6 +95,19 @@ describe("hook-import-rename-loses-use-prefix", () => {
          return null;
        };`,
     );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags useEffect renamed to useBrowserEffect", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useEffect as useBrowserEffect } from "react";
+       const Row = () => {
+         useBrowserEffect(() => () => resetRow(), []);
+         return null;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
 
@@ -286,13 +308,13 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags an alias called from an async custom hook wrapper", () => {
+  it("does not infer hook provenance from an external package name", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useQuery as query } from "@tanstack/react-query";
        export const useProducts = async () => query({ queryKey: ["products"] });`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags renamed React dependency hooks inside unconditional custom hook wrappers", () => {
@@ -338,7 +360,7 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags a same-name wrapper that calls the alias after an early return", () => {
+  it("does not infer hook provenance from an external router package", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useNavigate as routerUseNavigate } from "react-router-dom";
@@ -347,19 +369,19 @@ describe("hook-import-rename-loses-use-prefix", () => {
          return routerUseNavigate();
        };`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags same-name wrappers with conditional-expression alias calls", () => {
+  it("does not infer external hook provenance in conditional expressions", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useQuery as query } from "@tanstack/react-query";
        export const useQuery = (enabled) => enabled && query();`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags same-name wrappers with looped alias calls", () => {
+  it("does not infer external hook provenance in loops", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useQuery as query } from "@tanstack/react-query";
@@ -367,10 +389,10 @@ describe("hook-import-rename-loses-use-prefix", () => {
          for (const key of keys) query({ queryKey: [key] });
        };`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags same-name wrappers with alias calls inside try blocks", () => {
+  it("does not infer external hook provenance inside try blocks", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useQuery as query } from "@tanstack/react-query";
@@ -382,7 +404,7 @@ describe("hook-import-rename-loses-use-prefix", () => {
          }
        };`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag an alias called from multiple unconditional hook wrappers", () => {
@@ -395,12 +417,21 @@ describe("hook-import-rename-loses-use-prefix", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags an alias that is also called outside a hook wrapper", () => {
+  it("does not infer external hook provenance from mixed call sites", () => {
     const result = runRule(
       hookImportRenameLosesUsePrefix,
       `import { useQuery as query } from "@tanstack/react-query";
        export const useQuery = () => query();
        export const Products = () => query({ queryKey: ["products"] });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a renamed hook imported from a relative local module", () => {
+    const result = runRule(
+      hookImportRenameLosesUsePrefix,
+      `import { useProject as project } from "./use-project";
+       export const Project = () => project();`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

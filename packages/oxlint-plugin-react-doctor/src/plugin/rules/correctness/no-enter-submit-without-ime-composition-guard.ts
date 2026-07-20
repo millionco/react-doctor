@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isJsxAttributePotentiallyTruthy } from "../../utils/is-jsx-attribute-potentially-truthy.js";
@@ -76,14 +77,7 @@ const getStringAttr = (
 };
 
 const memberPropertyName = (node: EsTreeNode): string | null => {
-  if (
-    isNodeOfType(node, "MemberExpression") &&
-    !node.computed &&
-    isNodeOfType(node.property, "Identifier")
-  ) {
-    return node.property.name;
-  }
-  return null;
+  return isNodeOfType(node, "MemberExpression") ? getStaticPropertyName(node) : null;
 };
 
 const argumentReadsValueMember = (argument: EsTreeNode): boolean => {

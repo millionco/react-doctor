@@ -29,7 +29,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const MESSAGE =
-  "Every consumer of this context redraws on each render because its `value` is a fresh object/array/function rebuilt each render — wrap it in useMemo/useCallback (or move it out of the component).";
+  "Every consumer of this context redraws on each render because its `value` is a fresh object/array/function rebuilt each render — memoize it in component scope (extract mapped providers into a child component first), or move it outside the component.";
 const JSX_CALLBACK_METHOD_NAMES: ReadonlySet<string> = new Set(["flatMap", "map"]);
 const REACT_COMPONENT_WRAPPER_NAMES: ReadonlySet<string> = new Set(["forwardRef", "memo"]);
 const REACT_MEMOIZATION_CALLBACK_NAMES: ReadonlySet<string> = new Set(["useCallback", "useMemo"]);
@@ -336,6 +336,14 @@ const isSynchronouslyInvokedInlineRenderFunction = (
   ) {
     return false;
   }
+  if (
+    call.arguments[0] === functionExpression &&
+    isNodeOfType(call.callee, "MemberExpression") &&
+    JSX_CALLBACK_METHOD_NAMES.has(getStaticPropertyName(call.callee) ?? "") &&
+    doesCallResultReachFunctionOutput(call, enclosingRenderFunction, context)
+  ) {
+    return true;
+  }
   return (
     (call.callee === functionExpression &&
       doesCallResultReachFunctionOutput(call, enclosingRenderFunction, context)) ||
@@ -354,7 +362,7 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
   category: "Performance",
   disabledWhen: ["react-compiler"],
   recommendation:
-    "Wrap the context value in useMemo/useCallback so consumers do not redraw every render, or move it outside the component if it never changes.",
+    "Memoize the context value in component scope so consumers do not redraw every render. For mapped providers, extract each item into a child component and memoize there.",
   create: (context: RuleContext) => {
     const isTestlikeFile = isTestlikeFilename(context.filename);
     const isProvenSynchronousNode = (node: EsTreeNode): boolean =>

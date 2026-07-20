@@ -28,7 +28,6 @@ const baseProject: ProjectInfo = {
   hasTanStackQuery: false,
   hasI18nLibrary: false,
   tanstackQueryVersion: null,
-  mobxVersion: null,
   styledComponentsVersion: null,
   valtioVersion: null,
   valtioMajorVersion: null,

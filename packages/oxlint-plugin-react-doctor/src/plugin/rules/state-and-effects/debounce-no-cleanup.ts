@@ -3,10 +3,12 @@ import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cl
 import { collectBindingAliases } from "../../utils/collect-binding-aliases.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import {
@@ -30,7 +32,6 @@ const DEBOUNCE_FACTORY_NAMES = new Set(["debounce", "throttle"]);
 const DEBOUNCE_RELEASE_METHOD_NAMES = new Set(["cancel", "flush"]);
 const BROWSER_GLOBAL_NAMES = new Set(["document", "window"]);
 const PROMISE_CHAIN_METHOD_NAMES = new Set(["then", "catch", "finally"]);
-const SAVE_LIKE_BINDING_NAME_PATTERN = /save|persist|submit|commit/i;
 
 type FunctionEsTreeNode = EsTreeNodeOfType<
   "ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration"
@@ -244,20 +245,32 @@ const buildFunctionUsageIndex = (
       }
     }
     if (!isNodeOfType(callee, "Identifier")) return;
+    if (!isReactHookName(callee.name)) return;
     const helper = findVariableInitializer(callee, callee.name)?.initializer;
     if (!helper || !isFunctionLike(helper)) return;
     const releasingParameterNames = new Set<string>();
     walkAst(helper, (helperChild: EsTreeNode) => {
-      if (!isNodeOfType(helperChild, "CallExpression")) return;
-      const helperCallee = stripParenExpression(helperChild.callee);
       if (
-        !isNodeOfType(helperCallee, "MemberExpression") ||
-        !DEBOUNCE_RELEASE_METHOD_NAMES.has(getStaticPropertyName(helperCallee) ?? "")
-      ) {
+        !isNodeOfType(helperChild, "CallExpression") ||
+        !isProvenEffectHookCall(helperChild, scopes)
+      )
         return;
+      const effectCallback = getEffectCallback(helperChild);
+      if (!effectCallback) return;
+      for (const cleanupFunction of collectReturnedCleanupFunctions(effectCallback)) {
+        walkAst(cleanupFunction, (cleanupChild: EsTreeNode) => {
+          if (!isNodeOfType(cleanupChild, "CallExpression")) return;
+          const cleanupCallee = stripParenExpression(cleanupChild.callee);
+          if (
+            !isNodeOfType(cleanupCallee, "MemberExpression") ||
+            !DEBOUNCE_RELEASE_METHOD_NAMES.has(getStaticPropertyName(cleanupCallee) ?? "")
+          ) {
+            return;
+          }
+          const receiver = baseReferenceIdentifier(cleanupCallee.object as EsTreeNode);
+          if (receiver) releasingParameterNames.add(receiver.name);
+        });
       }
-      const receiver = baseReferenceIdentifier(helperCallee.object as EsTreeNode);
-      if (receiver) releasingParameterNames.add(receiver.name);
     });
     for (const [parameterIndex, parameter] of (helper.params ?? []).entries()) {
       if (!isNodeOfType(parameter, "Identifier") || !releasingParameterNames.has(parameter.name)) {
@@ -564,8 +577,6 @@ export const debounceNoCleanup = defineRule({
           return;
         }
         const bindingName = declarator.id.name;
-        if (SAVE_LIKE_BINDING_NAME_PATTERN.test(bindingName)) return;
-
         const enclosingFunction = findEnclosingFunction(node);
         if (!enclosingFunction) return;
         let functionUsageIndex = functionUsageIndexes.get(enclosingFunction);

@@ -1,6 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { areNodesOnExclusiveConditionalBranches } from "../../utils/are-nodes-on-exclusive-conditional-branches.js";
-import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -99,12 +99,12 @@ const HIDDEN_CLASS_PATTERN = /sr-only|visually-hidden|offscreen/i;
 // change so each onChange delivers exactly the new character. Typing "doing
 // nothing" is their contract, not a bug.
 const hasHiddenOrDecoySignal = (attributes: EsTreeNode[]): boolean => {
-  const ariaHidden = findJsxAttribute(attributes, "aria-hidden");
+  const ariaHidden = getAuthoritativeJsxAttribute(attributes, "aria-hidden");
   if (ariaHidden) {
     const staticValue = getStaticStringAttributeValue(ariaHidden);
     if (ariaHidden.value === null || staticValue === "true") return true;
   }
-  const tabIndex = findJsxAttribute(attributes, "tabIndex");
+  const tabIndex = getAuthoritativeJsxAttribute(attributes, "tabIndex");
   if (tabIndex?.value && isNodeOfType(tabIndex.value, "Literal")) {
     const tabIndexValue = Number(tabIndex.value.value);
     if (Number.isFinite(tabIndexValue) && tabIndexValue < 0) return true;
@@ -121,7 +121,7 @@ const hasHiddenOrDecoySignal = (attributes: EsTreeNode[]): boolean => {
       return true;
     }
   }
-  const className = findJsxAttribute(attributes, "className");
+  const className = getAuthoritativeJsxAttribute(attributes, "className");
   if (className) {
     const staticValue = getStaticStringAttributeValue(className);
     if (staticValue !== null && HIDDEN_CLASS_PATTERN.test(staticValue)) return true;
@@ -340,7 +340,7 @@ const componentRendersStateDrivenAlternative = (
     if (!isNodeOfType(child.name, "JSXIdentifier") || !CONTROLLED_INPUT_TAGS.has(child.name.name)) {
       return;
     }
-    const siblingValue = findJsxAttribute(child.attributes ?? [], "value");
+    const siblingValue = getAuthoritativeJsxAttribute(child.attributes ?? [], "value");
     const siblingReturn = findReturnStatementAncestor(child, enclosingFunction);
     const dynamicValueKey =
       siblingValue?.value && isNodeOfType(siblingValue.value, "JSXExpressionContainer")
@@ -382,23 +382,37 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
         if (!CONTROLLED_INPUT_TAGS.has(tagName)) return;
 
         const attributes = node.attributes ?? [];
-        if (hasJsxSpreadAttribute(attributes)) return;
-
-        const valueAttribute = findJsxAttribute(attributes, "value");
+        if (
+          hasJsxSpreadAttribute(attributes) &&
+          [
+            "value",
+            "onChange",
+            "readOnly",
+            "disabled",
+            "className",
+            "aria-hidden",
+            "tabIndex",
+            ...(tagName === "input" ? ["type", "checked"] : []),
+          ].some((name) => getAuthoritativeJsxAttribute(attributes, name) === null)
+        ) {
+          return;
+        }
+        const valueAttribute = getAuthoritativeJsxAttribute(attributes, "value");
         if (!valueAttribute || !isLiteralValueAttribute(valueAttribute)) return;
 
-        const onChangeAttribute = findJsxAttribute(attributes, "onChange");
+        const onChangeAttribute = getAuthoritativeJsxAttribute(attributes, "onChange");
         if (!onChangeAttribute || isNoOpChangeHandler(onChangeAttribute)) return;
         if (
           READONLY_ATTRIBUTES.some((name) =>
-            isJsxAttributePotentiallyTruthy(findJsxAttribute(attributes, name)),
+            isJsxAttributePotentiallyTruthy(getAuthoritativeJsxAttribute(attributes, name)),
           )
         )
           return;
 
         if (tagName === "input") {
-          if (findJsxAttribute(attributes, "checked")) return;
-          const typeAttribute = findJsxAttribute(attributes, "type");
+          if (isJsxAttributePotentiallyTruthy(getAuthoritativeJsxAttribute(attributes, "checked")))
+            return;
+          const typeAttribute = getAuthoritativeJsxAttribute(attributes, "type");
           if (typeAttribute) {
             const inputType = getStaticStringAttributeValue(typeAttribute);
             if (inputType === null || VALUE_BYPASS_INPUT_TYPES.has(inputType.toLowerCase())) return;

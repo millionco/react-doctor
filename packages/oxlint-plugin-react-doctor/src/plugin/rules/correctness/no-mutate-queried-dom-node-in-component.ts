@@ -9,6 +9,7 @@ import {
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
@@ -276,12 +277,7 @@ const canReactClobberClassMutation = (elementInfos: OwnedElementInfo[]): boolean
 const styleAssignmentReceiver = (assignmentTarget: EsTreeNode): EsTreeNode | null => {
   if (!isNodeOfType(assignmentTarget, "MemberExpression")) return null;
   const object = assignmentTarget.object;
-  if (
-    isNodeOfType(object, "MemberExpression") &&
-    !object.computed &&
-    isNodeOfType(object.property, "Identifier") &&
-    object.property.name === "style"
-  ) {
+  if (isNodeOfType(object, "MemberExpression") && getStaticPropertyName(object) === "style") {
     return object.object;
   }
   return null;
@@ -289,16 +285,10 @@ const styleAssignmentReceiver = (assignmentTarget: EsTreeNode): EsTreeNode | nul
 
 // `X.classList.add|remove|toggle|replace(...)` → the mutated node `X`, else null.
 const classListMutationReceiver = (callee: EsTreeNode): EsTreeNode | null => {
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
-  if (!isNodeOfType(callee.property, "Identifier")) return null;
-  if (!CLASS_LIST_MUTATION_METHODS.has(callee.property.name)) return null;
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
+  if (!CLASS_LIST_MUTATION_METHODS.has(getStaticPropertyName(callee) ?? "")) return null;
   const object = callee.object;
-  if (
-    isNodeOfType(object, "MemberExpression") &&
-    !object.computed &&
-    isNodeOfType(object.property, "Identifier") &&
-    object.property.name === "classList"
-  ) {
+  if (isNodeOfType(object, "MemberExpression") && getStaticPropertyName(object) === "classList") {
     return object.object;
   }
   return null;
@@ -306,17 +296,14 @@ const classListMutationReceiver = (callee: EsTreeNode): EsTreeNode | null => {
 
 // `X.style.setProperty(...)` → the mutated node `X`, else null.
 const stylePropertyCallReceiver = (callee: EsTreeNode): EsTreeNode | null => {
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
-  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "setProperty") {
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    getStaticPropertyName(callee) !== "setProperty"
+  ) {
     return null;
   }
   const object = callee.object;
-  if (
-    isNodeOfType(object, "MemberExpression") &&
-    !object.computed &&
-    isNodeOfType(object.property, "Identifier") &&
-    object.property.name === "style"
-  ) {
+  if (isNodeOfType(object, "MemberExpression") && getStaticPropertyName(object) === "style") {
     return object.object;
   }
   return null;
@@ -593,9 +580,8 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
     // case any dynamic style prop on the element counts as a clobber risk.
     const mutatedStylePropertyName = (assignmentTarget: EsTreeNode): string | null => {
       if (!isNodeOfType(assignmentTarget, "MemberExpression")) return null;
-      if (assignmentTarget.computed) return null;
-      if (!isNodeOfType(assignmentTarget.property, "Identifier")) return null;
-      return assignmentTarget.property.name === "cssText" ? null : assignmentTarget.property.name;
+      const propertyName = getStaticPropertyName(assignmentTarget);
+      return propertyName === "cssText" ? null : propertyName;
     };
 
     const setPropertyArgumentName = (node: EsTreeNodeOfType<"CallExpression">): string | null => {
@@ -635,9 +621,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
           if (
             node.init &&
             isNodeOfType(node.init, "MemberExpression") &&
-            !node.init.computed &&
-            isNodeOfType(node.init.property, "Identifier") &&
-            node.init.property.name === "style"
+            getStaticPropertyName(node.init) === "style"
           ) {
             const styleElementInfos = elementInfosForReceiver(
               node.init.object,
@@ -706,9 +690,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
           if (
             styleElementInfos.length === 0 &&
             isNodeOfType(callee, "MemberExpression") &&
-            !callee.computed &&
-            isNodeOfType(callee.property, "Identifier") &&
-            callee.property.name === "setProperty" &&
+            getStaticPropertyName(callee) === "setProperty" &&
             isNodeOfType(callee.object, "Identifier")
           ) {
             const styleSymbol = context.scopes.symbolFor(callee.object);

@@ -70,7 +70,7 @@ const RENDER_OUTPUT_MAPPING_METHOD_NAMES: ReadonlySet<string> = new Set(["flatMa
 // them structurally by name so the whitelist doesn't have to grow one
 // framework helper at a time.
 const isComponentFactoryName = (calleeName: string): boolean =>
-  /(?:factory|forwardref|memo)$/i.test(calleeName);
+  /(?:factory|forwardref)$/i.test(calleeName) || /^(?:generic|typed)Memo$/i.test(calleeName);
 
 // Resolves the wrapper name of the CallExpression the inline function is
 // handed to. A bare `hoc(fn)` callee is the Identifier name; a curried
@@ -187,7 +187,7 @@ const functionReturnValueIsJsx = (functionNode: EsTreeNode, scopes: ScopeAnalysi
 // NOT hooks: chainable `.use(plugin)` pipelines (markdown-it, unified/remark,
 // postcss, i18next) would otherwise defeat the hook-free classic-HOC
 // exemption below via the React 19 bare-`use` special case.
-const isReactHookInvocation = (node: EsTreeNode): boolean => {
+const isReactHookInvocation = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   if (isNodeOfType(node.callee, "Identifier")) return isReactHookName(node.callee.name);
   if (
@@ -196,7 +196,11 @@ const isReactHookInvocation = (node: EsTreeNode): boolean => {
     node.callee.object.name === "React"
   ) {
     const propertyName = getStaticPropertyKeyName(node.callee, { allowComputedString: true });
-    return propertyName !== null && isReactHookName(propertyName);
+    return Boolean(
+      propertyName &&
+      isReactHookName(propertyName) &&
+      isReactApiCall(node, propertyName, scopes, { allowGlobalReactNamespace: true }),
+    );
   }
   return false;
 };
@@ -206,11 +210,11 @@ const isReactHookInvocation = (node: EsTreeNode): boolean => {
 // Hook-free inline wrappers are the documented idiom of classic pre-hooks
 // HOCs (react-sortable-hoc, react-instantsearch connectors), and the
 // remaining display-name nit alone is below reporting threshold.
-const callsHookInOwnScope = (functionNode: EsTreeNode): boolean => {
+const callsHookInOwnScope = (functionNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let didCallHook = false;
   walkOwnFunctionScope(functionNode, (child: EsTreeNode) => {
     if (didCallHook) return false;
-    if (isReactHookInvocation(child)) {
+    if (isReactHookInvocation(child, scopes)) {
       didCallHook = true;
       return false;
     }
@@ -277,7 +281,7 @@ export const noInlineHocOnComponent = defineRule({
       }
       if (isNamedComponentFunctionExpression(functionNode)) return;
       if (!functionReturnValueIsJsx(functionNode, context.scopes)) return;
-      if (!callsHookInOwnScope(functionNode)) return;
+      if (!callsHookInOwnScope(functionNode, context.scopes)) return;
       if (!producesComponentValue(wrappingCall)) return;
 
       context.report({

@@ -123,12 +123,12 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a hardcoded literal destination (Star-on-GitHub button idiom)", () => {
+  it("flags a hardcoded external literal destination", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
       `window.open('https://github.com/millionco/react-doctor', '_blank');`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a same-origin relative URL (print/report route idiom)", () => {

@@ -262,8 +262,8 @@ const functionHasUnhandledRejectableSource = (
   context: RuleContext,
 ): boolean => {
   let didFindRejectableSource = false;
-  const checkCandidate = (candidate: EsTreeNode): void => {
-    if (findGuardingTryStatement(candidate)) return;
+  const checkCandidate = (candidate: EsTreeNode, isAwaited: boolean): void => {
+    if (isAwaited && findGuardingTryStatement(candidate)) return;
     const chainWalk = walkPromiseChain(stripParenExpression(candidate), context);
     if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) return;
     if (isProvablyRejectableExpression(chainWalk.root, remainingDepth, context)) {
@@ -272,7 +272,7 @@ const functionHasUnhandledRejectableSource = (
   };
   const body = functionNode.body;
   if (body && !isNodeOfType(body, "BlockStatement")) {
-    checkCandidate(body);
+    checkCandidate(body, false);
   }
   walkOwnFunctionScope(functionNode, (child: EsTreeNode) => {
     if (didFindRejectableSource) return false;
@@ -281,10 +281,10 @@ const functionHasUnhandledRejectableSource = (
       return false;
     }
     if (isNodeOfType(child, "AwaitExpression")) {
-      checkCandidate(child.argument);
+      checkCandidate(child.argument, true);
     }
     if (isNodeOfType(child, "ReturnStatement") && child.argument) {
-      checkCandidate(child.argument);
+      checkCandidate(child.argument, isNodeOfType(child.argument, "AwaitExpression"));
     }
   });
   return didFindRejectableSource;

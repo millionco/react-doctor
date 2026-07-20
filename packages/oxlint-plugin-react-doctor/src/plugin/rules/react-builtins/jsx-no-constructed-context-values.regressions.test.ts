@@ -381,7 +381,7 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a legacy Provider from a destructured dynamic context import", () => {
+  it("does not infer context ownership from a destructured dynamic import", () => {
     const result = runRule(
       jsxNoConstructedContextValues,
       `async function loadApp() {
@@ -394,10 +394,10 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     );
 
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a renamed context binding from a destructured dynamic import", () => {
+  it("does not infer context ownership from a renamed dynamic import binding", () => {
     const result = runRule(
       jsxNoConstructedContextValues,
       `async function loadApp() {
@@ -409,7 +409,7 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
       { filename: "fixture.tsx" },
     );
 
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("does not treat an unawaited dynamic import promise as a context module", () => {
@@ -427,7 +427,7 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("supports unreassigned let bindings but rejects reassignment", () => {
+  it("does not infer context ownership from dynamic import let bindings", () => {
     const stableResult = runRule(
       jsxNoConstructedContextValues,
       `async function loadApp() {
@@ -450,7 +450,7 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
       { filename: "fixture.tsx" },
     );
 
-    expect(stableResult.diagnostics).toHaveLength(1);
+    expect(stableResult.diagnostics).toEqual([]);
     expect(reassignedResult.diagnostics).toEqual([]);
   });
 

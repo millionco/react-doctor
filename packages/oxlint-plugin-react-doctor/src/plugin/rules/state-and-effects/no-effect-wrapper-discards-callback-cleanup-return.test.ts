@@ -317,4 +317,16 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not treat a reassigned callback parameter as forwarding the original", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `import { useEffect, type EffectCallback } from "react";
+       export const useValue = (effect: EffectCallback) => {
+         effect = () => {};
+         useEffect(() => { effect(); }, [effect]);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

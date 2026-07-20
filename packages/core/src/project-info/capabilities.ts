@@ -189,7 +189,6 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (Boolean(project.hasTanStackQuery) || Boolean(project.tanstackQueryVersion)) {
     capabilities.add("tanstack-query");
   }
-  if (project.mobxVersion) capabilities.add("mobx");
   if (project.styledComponentsVersion) {
     capabilities.add("styled-components");
     const styledComponentsMajor = getLowestDependencyMajor(project.styledComponentsVersion);

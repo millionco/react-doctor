@@ -17,7 +17,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 const MESSAGE =
   "This async handler awaits a mutating request and only flips state after the await, so a fast double-click or double Enter fires the request twice. Add a leading `if (busy) return` guard (or set a flag before the await and disable the control) to close the re-entry window.";
 
-const REENTRY_GUARDED_EVENT_HANDLER_NAMES = new Set(["onClick", "onSubmit", "onPress"]);
+const REENTRY_GUARDED_EVENT_HANDLER_NAMES = new Set(["onClick", "onSubmit"]);
 const MUTATING_REQUEST_METHOD_NAMES = new Set([
   "post",
   "put",
@@ -435,7 +435,7 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
   title: "Async mutating handler without re-entry guard",
   severity: "warn",
   recommendation:
-    "An async onClick/onSubmit/onPress handler that awaits a mutating request and sets state only afterward stays interactive across the await, so a double-click fires the write twice. Add a leading `if (busy) return` guard, or set a flag before the await inside `try` and reset it in `finally` while the control is disabled.",
+    "An async onClick/onSubmit handler on a host control that awaits a mutating request and sets state only afterward stays interactive across the await, so a double-click fires the write twice. Add a leading `if (busy) return` guard, or set a flag before the await inside `try` and reset it in `finally` while the control is disabled.",
   create: (context: RuleContext) => {
     const analyzedFunctions = new WeakSet<EsTreeNode>();
     return {

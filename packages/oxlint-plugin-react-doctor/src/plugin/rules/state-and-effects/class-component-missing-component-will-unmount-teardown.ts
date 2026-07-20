@@ -1,6 +1,8 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
+import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import {
   getImportedNameFromModule,
   isNamespaceImportFromModule,
@@ -505,12 +507,12 @@ const cleanupReleaseKey = (
   return null;
 };
 
-const collectMobxDisposalReleaseKeys = (
+const collectMobxDisposalReleaseCalls = (
   mountBody: EsTreeNode,
   classBody: EsTreeNode | null,
-  scopes: ScopeAnalysis,
-): Set<string> => {
-  const releaseKeys = new Set<string>();
+  context: RuleContext,
+): Map<string, EsTreeNode[]> => {
+  const releaseCallsByKey = new Map<string, EsTreeNode[]>();
   walkSynchronousCallbackFlow(mountBody, (candidate) => {
     if (!isNodeOfType(candidate, "CallExpression")) return;
     const ownerArgument = candidate.arguments?.[0];
@@ -519,7 +521,7 @@ const collectMobxDisposalReleaseKeys = (
         ? stripParenExpression(ownerArgument)
         : null;
     if (
-      !isProvenDisposeOnUnmountCall(candidate, scopes) ||
+      !isProvenDisposeOnUnmountCall(candidate, context.scopes) ||
       !isNodeOfType(owner, "ThisExpression")
     ) {
       return;
@@ -528,12 +530,45 @@ const collectMobxDisposalReleaseKeys = (
     if (!cleanupArgument || isNodeOfType(cleanupArgument, "SpreadElement")) return;
     const cleanupFunction = resolveTimeoutCallbackFunction(cleanupArgument, classBody);
     if (!isFunctionLike(cleanupFunction)) return;
+    const cleanupCallsByKey = new Map<string, EsTreeNode[]>();
     walkSynchronousCallbackFlow(cleanupFunction, (cleanupCandidate) => {
       if (!isNodeOfType(cleanupCandidate, "CallExpression")) return;
-      const releaseKey = cleanupReleaseKey(cleanupCandidate, scopes);
-      if (releaseKey) releaseKeys.add(releaseKey);
+      const releaseKey = cleanupReleaseKey(cleanupCandidate, context.scopes);
+      if (!releaseKey) return;
+      const cleanupCalls = cleanupCallsByKey.get(releaseKey) ?? [];
+      cleanupCalls.push(cleanupCandidate);
+      cleanupCallsByKey.set(releaseKey, cleanupCalls);
     });
+    for (const [releaseKey, cleanupCalls] of cleanupCallsByKey) {
+      if (!doNodesCoverEveryPathFromFunctionEntry(cleanupFunction, cleanupCalls, context)) continue;
+      const disposalCalls = releaseCallsByKey.get(releaseKey) ?? [];
+      disposalCalls.push(candidate);
+      releaseCallsByKey.set(releaseKey, disposalCalls);
+    }
   });
+  return releaseCallsByKey;
+};
+
+const collectCleanupReleaseKeys = (
+  cleanupFunction: EsTreeNode | null,
+  context: RuleContext,
+): Set<string> => {
+  const releaseKeys = new Set<string>();
+  if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return releaseKeys;
+  const releaseCallsByKey = new Map<string, EsTreeNode[]>();
+  walkSynchronousCallbackFlow(cleanupFunction, (candidate) => {
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    const releaseKey = cleanupReleaseKey(candidate, context.scopes);
+    if (!releaseKey) return;
+    const releaseCalls = releaseCallsByKey.get(releaseKey) ?? [];
+    releaseCalls.push(candidate);
+    releaseCallsByKey.set(releaseKey, releaseCalls);
+  });
+  for (const [releaseKey, releaseCalls] of releaseCallsByKey) {
+    if (doNodesCoverEveryPathFromFunctionEntry(cleanupFunction, releaseCalls, context)) {
+      releaseKeys.add(releaseKey);
+    }
+  }
   return releaseKeys;
 };
 
@@ -635,6 +670,48 @@ const isRefOwnedReceiver = (
   return false;
 };
 
+const isD3SelectionRootedAtRefOwnedNode = (
+  expression: EsTreeNode,
+  classBody: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const receiver = stripParenExpression(expression);
+  if (isNodeOfType(receiver, "Identifier")) {
+    const symbol = scopes.symbolFor(receiver);
+    if (
+      !symbol ||
+      visitedSymbolIds.has(symbol.id) ||
+      hasSymbolWriteBefore(symbol, receiver, scopes)
+    ) {
+      return false;
+    }
+    const initializer = findVariableInitializer(receiver, receiver.name)?.initializer;
+    if (!initializer) return false;
+    visitedSymbolIds.add(symbol.id);
+    return isD3SelectionRootedAtRefOwnedNode(initializer, classBody, scopes, visitedSymbolIds);
+  }
+  if (!isNodeOfType(receiver, "CallExpression")) return false;
+  const callee = stripParenExpression(receiver.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyName(callee);
+  const calleeReceiver = stripParenExpression(callee.object);
+  if (
+    (methodName === "select" || methodName === "selectAll") &&
+    isNodeOfType(calleeReceiver, "Identifier") &&
+    (isNamespaceImportFromModule(receiver, calleeReceiver.name, "d3") ||
+      (calleeReceiver.name === "d3" && !scopes.symbolFor(calleeReceiver)))
+  ) {
+    const selectedNode = receiver.arguments?.[0];
+    return Boolean(
+      selectedNode &&
+      !isNodeOfType(selectedNode, "SpreadElement") &&
+      isRefOwnedReceiver(selectedNode, classBody, scopes),
+    );
+  }
+  return isD3SelectionRootedAtRefOwnedNode(callee.object, classBody, scopes, visitedSymbolIds);
+};
+
 const isMountHazard = (
   node: EsTreeNode,
   localReceiverSymbolIds: Set<number>,
@@ -656,6 +733,11 @@ const isMountHazard = (
     const isFunctionFactoryOnce = methodName === "once" && callArguments.length < 2;
     let receiverBase = stripParenExpression(callee.object);
     const receiverIsRefOwnedNode = isRefOwnedReceiver(receiverBase, classBody, scopes);
+    const receiverIsRefOwnedD3Selection = isD3SelectionRootedAtRefOwnedNode(
+      receiverBase,
+      classBody,
+      scopes,
+    );
     while (true) {
       receiverBase = stripParenExpression(receiverBase);
       if (isNodeOfType(receiverBase, "CallExpression")) {
@@ -686,7 +768,8 @@ const isMountHazard = (
       !isFunctionFactoryOnce &&
       !isLocalReceiver &&
       !isSelfRemovingListener &&
-      !receiverIsRefOwnedNode;
+      !receiverIsRefOwnedNode &&
+      !receiverIsRefOwnedD3Selection;
     if (!isHazard) return null;
     const signature = LISTENER_REGISTRATION_SIGNATURES.get(methodName);
     return {
@@ -708,10 +791,15 @@ const isMountHazard = (
   return null;
 };
 
-const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
+const getMemberFunction = (member: EsTreeNode): EsTreeNode | null => {
   const isRelevantMember =
     isNodeOfType(member, "MethodDefinition") || isNodeOfType(member, "PropertyDefinition");
-  return isRelevantMember && isFunctionLike(member.value) ? (member.value.body ?? null) : null;
+  return isRelevantMember && isFunctionLike(member.value) ? member.value : null;
+};
+
+const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
+  const memberFunction = getMemberFunction(member);
+  return memberFunction && isFunctionLike(memberFunction) ? (memberFunction.body ?? null) : null;
 };
 
 // KNOWN ACCEPTED NOISE: an app-root class component that never unmounts
@@ -736,10 +824,13 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
       if (!classNode || !isEs6Component(classNode)) return;
 
       const members = node.body ?? [];
-      const hasComponentWillUnmount = members.some(
+      const componentWillUnmountMember = members.find(
         (member) => getClassMemberName(member) === "componentWillUnmount",
       );
-      if (hasComponentWillUnmount) return;
+      const componentWillUnmountReleaseKeys = collectCleanupReleaseKeys(
+        componentWillUnmountMember ? getMemberFunction(componentWillUnmountMember) : null,
+        context,
+      );
 
       for (const member of members) {
         const memberName = getClassMemberName(member);
@@ -761,11 +852,13 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
           if (candidateHazard) mountHazards.push(candidateHazard);
         });
         if (mountHazards.length === 0) continue;
-        const mobxDisposalReleaseKeys = collectMobxDisposalReleaseKeys(body, node, context.scopes);
-        const undisposedHazard = mountHazards.find(
-          (mountHazard) =>
-            !mountHazard.releaseKey || !mobxDisposalReleaseKeys.has(mountHazard.releaseKey),
-        );
+        const mobxDisposalReleaseCalls = collectMobxDisposalReleaseCalls(body, node, context);
+        const undisposedHazard = mountHazards.find((mountHazard) => {
+          if (!mountHazard.releaseKey) return true;
+          if (componentWillUnmountReleaseKeys.has(mountHazard.releaseKey)) return false;
+          const disposalCalls = mobxDisposalReleaseCalls.get(mountHazard.releaseKey) ?? [];
+          return !doNodesCoverEveryPathAfterNode(mountHazard.node, disposalCalls, context);
+        });
         if (undisposedHazard) {
           context.report({ node: undisposedHazard.node, message: MESSAGE });
           return;

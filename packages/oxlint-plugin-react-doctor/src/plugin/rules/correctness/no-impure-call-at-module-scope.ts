@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -42,14 +43,15 @@ const impureBuiltinLabel = (node: EsTreeNode, context: RuleContext): string | nu
     return "Date()";
   }
   const callee = stripParenExpression(node.callee);
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
+  if (!isNodeOfType(callee, "MemberExpression")) return null;
   const receiver = stripParenExpression(callee.object);
   if (!isNodeOfType(receiver, "Identifier")) return null;
-  if (!isNodeOfType(callee.property, "Identifier")) return null;
+  const propertyName = getStaticPropertyName(callee);
+  if (!propertyName) return null;
   const allowedMethods = IMPURE_MEMBER_CALLS.get(receiver.name);
-  if (!allowedMethods?.has(callee.property.name)) return null;
+  if (!allowedMethods?.has(propertyName)) return null;
   if (!context.scopes.isGlobalReference(receiver)) return null;
-  return `${receiver.name}.${callee.property.name}()`;
+  return `${receiver.name}.${propertyName}()`;
 };
 
 const serverValueOfTypeofBrowserGlobalTest = (

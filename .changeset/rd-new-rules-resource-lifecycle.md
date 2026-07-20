@@ -3,4 +3,4 @@
 "eslint-plugin-react-doctor": patch
 ---
 
-Add eight resource-lifecycle diagnostics for class teardown, debounced callbacks, listener identity, observers, animation-frame loops, MobX reactions, and effect wrappers that discard cleanup returns.
+Add seven resource-lifecycle diagnostics for class teardown, debounced callbacks, listener identity, observers, animation-frame loops, and effect wrappers that discard cleanup returns.

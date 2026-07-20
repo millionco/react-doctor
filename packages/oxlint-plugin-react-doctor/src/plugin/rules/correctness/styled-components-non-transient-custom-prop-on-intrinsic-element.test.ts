@@ -58,6 +58,14 @@ describe("styled-components-non-transient-custom-prop-on-intrinsic-element", () 
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags custom props behind displayName-only withConfig chains", () => {
+    const result = runRule(
+      rule,
+      "const D = styled.div.withConfig({ displayName: 'D' })<{ active: boolean }>`color: red;`;",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag @emotion/styled, which filters invalid props on string tags by default", () => {
     const result = runRule(
       rule,

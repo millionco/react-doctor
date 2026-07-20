@@ -617,4 +617,23 @@ const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)
     expect(blockResult.diagnostics).toHaveLength(0);
     expect(literalResult.diagnostics).toHaveLength(0);
   });
+
+  it("reports when later explicit props authoritatively override a spread", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const C = ({ props }) => <input
+        {...props}
+        type="text"
+        checked={false}
+        readOnly={false}
+        disabled={false}
+        className="visible"
+        aria-hidden="false"
+        tabIndex={0}
+        value="fixed"
+        onChange={handleChange}
+      />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

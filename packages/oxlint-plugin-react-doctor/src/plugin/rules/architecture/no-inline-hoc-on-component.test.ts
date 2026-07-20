@@ -578,4 +578,27 @@ describe("no-inline-hoc-on-component", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags withMemo-like HOCs instead of treating every memo suffix as a primitive", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Row = withMemo((props) => {
+        const formatted = useFormatted(props.value);
+        return <td>{formatted}</td>;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a shadowed React object as hook provenance", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const React = { useState: () => [false] };
+       const Card = withTracking(() => {
+         const [active] = React.useState(false);
+         return <div>{active}</div>;
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

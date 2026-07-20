@@ -30,6 +30,23 @@ describe("rn-detox-missing-await", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags the complete Detox element action surface", () => {
+    for (const action of [
+      "getAttributes()",
+      'takeScreenshot("screen")',
+      "tapAtPoint({ x: 1, y: 1 })",
+      'pinchWithAngle("outward", 45)',
+    ]) {
+      const result = runRule(rnDetoxMissingAwait, `element(by.id("target")).${action};`, e2eFile);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("flags actions through Detox web elements", () => {
+    const result = runRule(rnDetoxMissingAwait, `web.element(by.web.id("target")).tap();`, e2eFile);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag awaited actions", () => {
     const code = `it("x", async () => { await element(by.id("submit")).tap(); });`;
     const result = runRule(rnDetoxMissingAwait, code, e2eFile);
@@ -60,6 +77,15 @@ describe("rn-detox-missing-await", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat undefined as a rejection handler", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `it("x", () => { element(by.id("submit")).tap().then(done, undefined); });`,
+      e2eFile,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a done-callback test completed from a fulfillment handler", () => {
     const result = runRule(
       rnDetoxMissingAwait,
@@ -85,6 +111,31 @@ describe("rn-detox-missing-await", () => {
       e2eFile,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes the final done parameter in test.each callbacks", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `test.each([1])("case %s", (value, done) => {
+        element(by.id(String(value))).tap().then(done);
+      });`,
+      e2eFile,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not recurse forever through cyclic rejection-handler aliases", () => {
+    const result = runRule(
+      rnDetoxMissingAwait,
+      `it("cyclic aliases", () => {
+        const first = second;
+        const second = first;
+        element(by.id("submit")).tap().then(undefined, first);
+      });`,
+      e2eFile,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags when the fulfillment handler calls a shadowed callback", () => {

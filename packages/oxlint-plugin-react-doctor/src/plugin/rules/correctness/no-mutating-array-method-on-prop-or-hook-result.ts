@@ -6,6 +6,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
@@ -724,9 +725,9 @@ export const noMutatingArrayMethodOnPropOrHookResult = defineRule({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;
-      if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
-      if (!isNodeOfType(callee.property, "Identifier")) return;
-      if (!REORDERING_ARRAY_METHODS.has(callee.property.name)) return;
+      if (!isNodeOfType(callee, "MemberExpression")) return;
+      const mutatingMethodName = getStaticPropertyName(callee);
+      if (!mutatingMethodName || !REORDERING_ARRAY_METHODS.has(mutatingMethodName)) return;
 
       const receiver = stripParenExpression(callee.object as EsTreeNode);
       if (receiverReachesThroughRefCurrent(receiver)) return;
@@ -735,7 +736,7 @@ export const noMutatingArrayMethodOnPropOrHookResult = defineRule({
       if (NON_ARRAY_RECEIVER_NAME_PATTERN.test(rootIdentifier.name)) return;
       if (scopeShowsPlaybackSiblingCall(rootIdentifier, context)) return;
       if (
-        callee.property.name === "splice" &&
+        mutatingMethodName === "splice" &&
         isRegistryCleanupMutation(node as EsTreeNode, rootIdentifier.name)
       ) {
         return;
@@ -744,7 +745,7 @@ export const noMutatingArrayMethodOnPropOrHookResult = defineRule({
       const source = resolveSharedArraySource(
         rootIdentifier,
         node,
-        callee.property.name,
+        mutatingMethodName,
         receiverIsMemberAccess,
         0,
         context,

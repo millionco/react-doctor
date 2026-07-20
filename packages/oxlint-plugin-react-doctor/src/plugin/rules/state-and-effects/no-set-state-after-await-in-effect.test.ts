@@ -61,6 +61,26 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an uncancelled Promise.all write when callback and row dependencies change", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const Rows = ({ createRow, rowIds }) => {
+         const [rows, setRows] = useState([]);
+         useEffect(() => {
+           void (async () => {
+             const loadedRows = await Promise.all(
+               rowIds.map(async (rowId) => createRow(rowId)),
+             );
+             setRows(loadedRows);
+           })();
+         }, [createRow, rowIds]);
+         return rows.length;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an unguarded post-await setter when the deps argument is omitted", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
@@ -958,6 +978,23 @@ const Search = ({ query }) => {
            }
          }, [isReferralEligible]);
        };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags literal writes because another writer can establish newer state", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const Status = ({ locale }) => {
+        const [, setReady] = useState(false);
+        useEffect(() => {
+          const pingServer = async () => {
+            await ping();
+            setReady(true);
+          };
+          pingServer();
+        }, [locale]);
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

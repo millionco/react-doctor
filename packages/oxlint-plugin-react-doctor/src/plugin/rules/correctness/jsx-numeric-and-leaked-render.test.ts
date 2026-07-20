@@ -452,4 +452,12 @@ describe("audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a static computed length guard", () => {
+    const result = runRule(
+      jsxNumericAndLeakedRender,
+      `const C = ({ items }) => <>{items["length"] && <X />}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

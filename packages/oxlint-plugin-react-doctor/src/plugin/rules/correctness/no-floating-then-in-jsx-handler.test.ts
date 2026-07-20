@@ -401,4 +401,12 @@ describe("audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a static computed then call", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const C = () => <button onClick={() => save()["then"](done)} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

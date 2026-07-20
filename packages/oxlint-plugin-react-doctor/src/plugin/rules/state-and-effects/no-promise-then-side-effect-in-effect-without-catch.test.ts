@@ -240,12 +240,27 @@ describe("no-promise-then-side-effect-in-effect-without-catch", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a chain wrapped in try/catch", () => {
+  it("does not mistake synchronous try/catch for promise rejection handling", () => {
     const result = runRule(
       noPromiseThenSideEffectInEffectWithoutCatch,
-      `useEffect(() => { try { fetch(url).then((x) => { setX(x); }); } catch (e) {} }, []);`,
+      `const C = () => {
+        const [, setX] = useState(null);
+        useEffect(() => { try { fetch(url).then((x) => { setX(x); }); } catch (e) {} }, []);
+      };`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not mistake returning a promise from try for handling its rejection", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => {
+        const [, setX] = useState(null);
+        const load = () => { try { return fetch(url); } catch { return Promise.resolve(null); } };
+        useEffect(() => { load().then(setX); }, []);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a .then with no state side effect", () => {

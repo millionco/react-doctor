@@ -3227,7 +3227,7 @@ export const windowOpenWithoutNoopener = defineRule({
   title: "window.open without noopener",
   severity: "warn",
   recommendation:
-    "Pass `'noopener'` in the third features argument of `window.open` so the opened page can't control your tab through `window.opener` or leak the referrer.",
+    "Pass `'noopener'` in the third features argument of `window.open` so the opened page can't control your tab through `window.opener`. Add `'noreferrer'` too when the destination must not receive the referrer.",
   create: (context) => {
     currentRuleContext = context;
     currentWindowOpenCall = undefined;
@@ -3303,7 +3303,11 @@ export const windowOpenWithoutNoopener = defineRule({
           currentWindowOpenCall = node;
 
           const urlArgument = node.arguments?.[0];
-          if (isTrustedTopLevelDestination(urlArgument)) return;
+          const isDirectExternalLiteral =
+            isStringLiteral(urlArgument) &&
+            urlArgument.value.trim().length > 0 &&
+            !isTrustedForeignStaticText(urlArgument.value);
+          if (!isDirectExternalLiteral && isTrustedTopLevelDestination(urlArgument)) return;
 
           const targetArgument = node.arguments?.[1];
           if (isStringLiteral(targetArgument) && NAVIGATING_TARGETS.has(targetArgument.value)) {

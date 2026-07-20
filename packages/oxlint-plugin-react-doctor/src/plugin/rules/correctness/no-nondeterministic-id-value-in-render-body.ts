@@ -6,6 +6,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { isProvenReactHookCall } from "../../utils/is-proven-effect-hook-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -35,6 +37,7 @@ const ID_GENERATOR_IMPORT_SOURCES = new Set([
   "nanoid",
   "shortid",
 ]);
+const USE_MEMO_HOOK_NAMES = new Set(["useMemo"]);
 
 // True when `identifier` resolves to a supported generator import, or to
 // the global `crypto` binding.
@@ -97,9 +100,9 @@ const isImpureIdGeneratorCall = (node: EsTreeNode, context: RuleContext): boolea
     return isImportedIdGeneratorFunction(callee, context);
   }
 
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
-  if (!isNodeOfType(callee.property, "Identifier")) return false;
-  const propertyName = callee.property.name;
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const propertyName = getStaticPropertyName(callee);
+  if (!propertyName) return false;
 
   if (propertyName === "randomUUID") {
     return (
@@ -195,7 +198,7 @@ const returnedExpressions = (callback: EsTreeNode): EsTreeNode[] => {
 const isUseMemoOneShotImpureGenerator = (node: EsTreeNode, context: RuleContext): boolean => {
   const unwrapped = stripParenExpression(node);
   if (!isNodeOfType(unwrapped, "CallExpression")) return false;
-  if (getCalleeName(unwrapped) !== "useMemo") return false;
+  if (!isProvenReactHookCall(unwrapped, USE_MEMO_HOOK_NAMES, context.scopes)) return false;
   const callback = unwrapped.arguments?.[0];
   const dependencies = unwrapped.arguments?.[1];
   if (!callback || !isFunctionLike(callback)) return false;

@@ -54,7 +54,6 @@ export type Capability =
   | "tanstack-query"
   | "valtio"
   | "i18n"
-  | "mobx"
   | "styled-components"
   | "styled-components:6"
   | "pre-es2023"

@@ -6,7 +6,7 @@ import { effectListenerCleanupReferenceMismatch } from "./effect-listener-cleanu
 import { effectObserverNeedsDisconnect } from "./effect-observer-needs-disconnect.js";
 import { effectRafLoopNeedsCancel } from "./effect-raf-loop-needs-cancel.js";
 import { effectRemoveListenerInlineHandler } from "./effect-remove-listener-inline-handler.js";
-import { mobxReactionDisposerDiscarded } from "./mobx-reaction-disposer-discarded.js";
+import { mobxReactionDisposerDiscarded } from "../mobx/mobx-reaction-disposer-discarded.js";
 import { noEffectWrapperDiscardsCallbackCleanupReturn } from "./no-effect-wrapper-discards-callback-cleanup-return.js";
 
 const expectDiagnosticCount = (
@@ -176,12 +176,12 @@ describe("resource lifecycle audit regressions", () => {
     );
     expectDiagnosticCount(
       effectRemoveListenerInlineHandler,
-      `mql.removeListener(() => update());`,
+      `mql.addListener(update); mql.removeListener(() => update());`,
       1,
     );
     expectDiagnosticCount(
       effectRemoveListenerInlineHandler,
-      `window["removeEventListener"]("resize", () => update());`,
+      `window.addEventListener("resize", update); window["removeEventListener"]("resize", () => update());`,
       1,
     );
   });

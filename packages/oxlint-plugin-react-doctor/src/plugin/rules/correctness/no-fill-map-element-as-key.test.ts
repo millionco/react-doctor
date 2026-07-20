@@ -298,4 +298,12 @@ describe("audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags static computed fill and map calls", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const C = () => <>{Array(3)["fill"](null)["map"]((item) => <X key={item} />)}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

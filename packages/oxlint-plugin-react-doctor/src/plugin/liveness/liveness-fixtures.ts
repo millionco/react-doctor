@@ -459,9 +459,6 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "mouse-events-have-key-events": {
     code: "<div onMouseOver={() => {}} />",
   },
-  "mobx-reaction-disposer-discarded": {
-    code: "import { autorun } from 'mobx'; class ViewState { start() { autorun(this.loadImages); } }",
-  },
   "nextjs-async-client-component": {
     code: '"use client";\nexport default async function Profile() {\n  const data = await loadProfile();\n  return <div>{data.name}</div>;\n}',
   },

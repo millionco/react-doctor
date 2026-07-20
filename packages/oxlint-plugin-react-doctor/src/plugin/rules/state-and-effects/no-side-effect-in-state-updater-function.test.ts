@@ -232,12 +232,20 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags external callbacks passed directly to synchronous collection methods", () => {
+  it("does not infer side effects from an on-prefixed collection callback", () => {
     const result = runRule(
       noSideEffectInStateUpdaterFunction,
       "const C=({onVisit})=>{const[,setRows]=useState([]);setRows(rows=>{rows.forEach(onVisit);return rows})}",
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not infer impurity from an on-prefixed predicate name", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({onFilter})=>{const[,setRows]=useState([]);setRows(rows=>rows.filter(onFilter))}",
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags an external callback stored in a fresh local object and then invoked", () => {

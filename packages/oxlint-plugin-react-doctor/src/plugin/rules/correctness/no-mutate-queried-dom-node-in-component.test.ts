@@ -698,4 +698,15 @@ export const Modal = ({ open, children }) => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a static computed classList mutation", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Card({ active }) {
+         document.querySelector(".owned").classList["add"]("fixed");
+         return <div className={\`owned ${"${active}"}\`} />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

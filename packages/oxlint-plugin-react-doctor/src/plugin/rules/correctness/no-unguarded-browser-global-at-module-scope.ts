@@ -524,6 +524,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
   recommendation:
     'Reading `window`/`navigator`/`localStorage` at module scope throws `ReferenceError: window is not defined` when the module is imported during SSR. Move the read inside a function/effect, or guard it with `typeof window !== "undefined"`.',
   create: (context: RuleContext): RuleVisitors => {
+    if (/\.d\.[cm]?ts$/i.test(context.filename ?? "")) return {};
     if (isTestlikeFilename(context.filename)) return {};
     if (isBrowserOnlyModuleFilename(context.filename)) return {};
 

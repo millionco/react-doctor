@@ -196,7 +196,7 @@ describe("no-unguarded-numeric-input-parse", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a wrapper-nested parse whose binding is isNaN-guarded on the next line", () => {
+  it("flags a wrapper-nested Number coercion whose NaN guard still accepts an empty value", () => {
     const result = runRule(
       noUnguardedNumericInputParse,
       `const F = () => <input type="text" onChange={(e) => {
@@ -204,7 +204,7 @@ describe("no-unguarded-numeric-input-parse", () => {
         if (!isNaN(v)) update("games", v);
       }} />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a wrapper-nested parse with no guard on its binding", () => {
@@ -265,7 +265,7 @@ describe("no-unguarded-numeric-input-parse", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag the parse-then-Number.isNaN-gate idiom the rule itself recommends", () => {
+  it("flags a parse-then-Number.isNaN gate that still stores zero for an empty value", () => {
     const result = runRule(
       noUnguardedNumericInputParse,
       `const F = () => <input onChange={(e) => {
@@ -273,7 +273,7 @@ describe("no-unguarded-numeric-input-parse", () => {
         if (!Number.isNaN(next)) setX(next);
       }} />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a stored parse gated by a Number.isFinite ternary", () => {
@@ -363,6 +363,17 @@ describe("no-unguarded-numeric-input-parse", () => {
       `const QtyField = ({ setQty }) => (
         <input type="text" onChange={(event) => setQty(Number(event.target.value) ?? 1)} />
       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept a NaN-only guard for Number of a clearable string value", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input onChange={(event) => {
+        const next = Number(event.target.value);
+        if (!Number.isNaN(next)) setValue(next);
+      }} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

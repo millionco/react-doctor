@@ -735,4 +735,13 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
       expect(result.diagnostics).toHaveLength(0);
     });
   });
+
+  it("does not report runtime-looking statements in declaration files", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `window.PdfViewer = window.PdfViewer || {};`,
+      { filename: "src/types/pdfjs.d.ts" },
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

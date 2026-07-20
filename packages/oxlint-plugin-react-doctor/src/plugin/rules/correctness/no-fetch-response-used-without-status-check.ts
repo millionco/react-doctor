@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -26,7 +27,7 @@ const MAX_URL_BINDING_RESOLUTION_DEPTH = 4;
 const BUILD_SCRIPT_BASENAME_PATTERN = /^gatsby-(?:node|config|ssr|browser)\.|\.config\./i;
 
 const MESSAGE =
-  "`fetch()` resolves (does not reject) on HTTP 4xx/5xx, so consuming this Response without checking `response.ok`/`response.status` parses an error body as success or crashes on a truthiness guard that is always true. Check `if (!response.ok) throw ...` before reading `.json()`/`.text()`/`.blob()`.";
+  "`fetch()` resolves (does not reject) on HTTP 4xx/5xx, so this unchecked body read may treat an HTTP error payload like a successful response. Check `response.ok`/`response.status`, or deliberately handle the API's error payload, before reading the body.";
 
 const getTransparentExpressionParent = (node: EsTreeNode): EsTreeNode | null =>
   findTransparentExpressionRoot(node).parent ?? null;
@@ -241,11 +242,9 @@ const isBodyConsumeCall = (node: EsTreeNode, responseName: string): boolean => {
     : null;
   return (
     isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
     isNodeOfType(receiver, "Identifier") &&
     receiver.name === responseName &&
-    isNodeOfType(callee.property, "Identifier") &&
-    BODY_CONSUMER_METHODS.has(callee.property.name)
+    BODY_CONSUMER_METHODS.has(getStaticPropertyName(callee) ?? "")
   );
 };
 
@@ -341,12 +340,7 @@ const makeExpressionGuaranteesStatusCheck = (
 const statusCheckGuardsNode = (statusReferences: EsTreeNode[], target: EsTreeNode): boolean => {
   const successfulStatusReferences = statusReferences.filter((reference) => {
     const inner = stripGroupingParens(reference);
-    return (
-      isNodeOfType(inner, "MemberExpression") &&
-      !inner.computed &&
-      isNodeOfType(inner.property, "Identifier") &&
-      inner.property.name === "ok"
-    );
+    return isNodeOfType(inner, "MemberExpression") && getStaticPropertyName(inner) === "ok";
   });
   const expressionGuaranteesStatusCheck = makeExpressionGuaranteesStatusCheck(statusReferences);
   const expressionGuaranteesSuccessfulStatus = makeExpressionGuaranteesStatusCheck(
@@ -440,9 +434,7 @@ const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
       stripParenExpression(member.object as EsTreeNode) !== chainLink ||
-      member.computed ||
-      !isNodeOfType(member.property, "Identifier") ||
-      !PROMISE_CHAIN_METHODS.has(member.property.name)
+      !PROMISE_CHAIN_METHODS.has(getStaticPropertyName(member) ?? "")
     ) {
       return chainLink;
     }
@@ -486,16 +478,11 @@ const isDiscardedChainWithRejectionHandler = (fetchCall: EsTreeNode): boolean =>
   while (true) {
     const member = getMeaningfulParent(chainLink);
     const methodName =
-      member &&
-      isNodeOfType(member, "MemberExpression") &&
-      isNodeOfType(member.property, "Identifier")
-        ? member.property.name
-        : null;
+      member && isNodeOfType(member, "MemberExpression") ? getStaticPropertyName(member) : null;
     if (
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
       stripGroupingParens(member.object as EsTreeNode) !== chainLink ||
-      member.computed ||
       methodName === null ||
       !PROMISE_CHAIN_METHODS.has(methodName)
     ) {
@@ -578,9 +565,7 @@ const reportUnguarded = ({
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
       member.object !== receiver ||
-      member.computed ||
-      !isNodeOfType(member.property, "Identifier") ||
-      !BODY_CONSUMER_METHODS.has(member.property.name)
+      !BODY_CONSUMER_METHODS.has(getStaticPropertyName(member) ?? "")
     ) {
       return null;
     }
@@ -613,9 +598,7 @@ const reportUnguarded = ({
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
       member.object !== receiver ||
-      member.computed ||
-      !isNodeOfType(member.property, "Identifier") ||
-      !STATUS_CHECK_PROPERTIES.has(member.property.name) ||
+      !STATUS_CHECK_PROPERTIES.has(getStaticPropertyName(member) ?? "") ||
       !isConditionUse(member)
     ) {
       return [];
@@ -726,9 +709,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
         if (
           isNodeOfType(parent, "MemberExpression") &&
           parent.object === fetchExpression &&
-          !parent.computed &&
-          isNodeOfType(parent.property, "Identifier") &&
-          parent.property.name === "then"
+          getStaticPropertyName(parent) === "then"
         ) {
           const thenCall = getMeaningfulParent(parent);
           if (!thenCall || !isNodeOfType(thenCall, "CallExpression")) return;
@@ -752,9 +733,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
         if (
           isNodeOfType(parent, "MemberExpression") &&
           parent.object === fetchExpression &&
-          !parent.computed &&
-          isNodeOfType(parent.property, "Identifier") &&
-          BODY_CONSUMER_METHODS.has(parent.property.name)
+          BODY_CONSUMER_METHODS.has(getStaticPropertyName(parent) ?? "")
         ) {
           context.report({ node: node as EsTreeNode, message: MESSAGE });
           return;
@@ -768,9 +747,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
           if (
             isNodeOfType(afterAwait, "MemberExpression") &&
             stripGroupingParens(afterAwait.object as EsTreeNode) === parent &&
-            !afterAwait.computed &&
-            isNodeOfType(afterAwait.property, "Identifier") &&
-            BODY_CONSUMER_METHODS.has(afterAwait.property.name)
+            BODY_CONSUMER_METHODS.has(getStaticPropertyName(afterAwait) ?? "")
           ) {
             context.report({ node: node as EsTreeNode, message: MESSAGE });
             return;

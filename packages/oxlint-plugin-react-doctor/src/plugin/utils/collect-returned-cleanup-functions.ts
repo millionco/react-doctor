@@ -7,7 +7,7 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
-const resolveCleanupFunctions = (
+export const resolveCleanupFunctions = (
   expression: EsTreeNode,
   referenceNode: EsTreeNode,
   scopes?: ScopeAnalysis,

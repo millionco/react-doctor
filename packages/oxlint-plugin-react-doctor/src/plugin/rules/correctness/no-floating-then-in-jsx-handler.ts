@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getCallMethodName } from "../../utils/get-call-method-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -10,6 +10,9 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const HANDLER_PROP_PATTERN = /^on[A-Z]/;
+
+const getCallMethodName = (callee: EsTreeNode): string | null =>
+  isNodeOfType(callee, "MemberExpression") ? getStaticPropertyName(callee) : null;
 
 // Returns the terminal `.then(...)` when it lacks a later callable
 // `.catch(...)`. Earlier rejection handlers do not cover errors thrown by

@@ -1,8 +1,13 @@
 import { EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS } from "../../constants/dom.js";
 import { collectBindingAliases } from "../../utils/collect-binding-aliases.js";
-import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import {
+  collectReturnedCleanupFunctions,
+  resolveCleanupFunctions,
+} from "../../utils/collect-returned-cleanup-functions.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
+import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -13,6 +18,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isProvenEffectHookCall } from "../../utils/is-proven-effect-hook-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -42,6 +48,7 @@ interface TrackedObserver {
   didReleaseAllViaCallbackParameter: boolean;
   callbackReleasedTargetKeys: Set<string>;
   didEscape: boolean;
+  observationCalls: EsTreeNodeOfType<"CallExpression">[];
   observedIterationTargetKeys: Set<string>;
   observedTargetKeys: Set<string>;
 }
@@ -271,6 +278,7 @@ const recordObserverUsage = (
     if (accessedMethodName === "observe") {
       tracked.didObserve = true;
       tracked.didReleaseAll = false;
+      tracked.observationCalls.push(methodCall);
       const targetArgument = methodCall.arguments?.[0];
       const iterationTargetKey = targetArgument
         ? serializeForEachTarget(methodCall, targetArgument as EsTreeNode, context)
@@ -512,6 +520,162 @@ const isBoundObserverDisconnect = (
   );
 };
 
+const findRetainedObserverCollectionKey = (
+  tracked: TrackedObserver,
+  context: RuleContext,
+): string | null => {
+  const pushCalls = new Set<EsTreeNodeOfType<"CallExpression">>();
+  for (const bindingIdentifier of tracked.bindingIdentifiers) {
+    const symbol = context.scopes.symbolFor(bindingIdentifier);
+    if (!symbol) continue;
+    for (const reference of symbol.references) {
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const callExpression = referenceRoot.parent;
+      if (
+        !isNodeOfType(callExpression, "CallExpression") ||
+        !callExpression.arguments.some((argument) => argument === referenceRoot)
+      ) {
+        continue;
+      }
+      const callee = stripParenExpression(callExpression.callee);
+      if (isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee) === "push") {
+        pushCalls.add(callExpression);
+      }
+    }
+  }
+  if (pushCalls.size !== 1) return null;
+  const pushCall = [...pushCalls][0];
+  if (
+    !pushCall ||
+    tracked.observationCalls.some(
+      (observationCall) => !doNodesCoverEveryPathAfterNode(observationCall, [pushCall], context),
+    )
+  ) {
+    return null;
+  }
+  const pushCallee = stripParenExpression(pushCall.callee);
+  if (!isNodeOfType(pushCallee, "MemberExpression")) return null;
+  const collection = stripParenExpression(pushCallee.object);
+  if (!isNodeOfType(collection, "Identifier")) return null;
+  const collectionSymbol = context.scopes.symbolFor(collection);
+  const collectionInitializer = collectionSymbol?.initializer
+    ? stripParenExpression(collectionSymbol.initializer)
+    : null;
+  if (
+    !collectionSymbol ||
+    collectionSymbol.kind !== "const" ||
+    !isNodeOfType(collectionInitializer, "ArrayExpression") ||
+    (collectionInitializer.elements?.length ?? 0) !== 0 ||
+    findEnclosingFunction(collectionSymbol.declarationNode) !==
+      findEnclosingFunction(tracked.construction)
+  ) {
+    return null;
+  }
+  const hasOnlyRetentionAndIteration = collectionSymbol.references.every((reference) => {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const memberExpression = referenceRoot.parent;
+    const callExpression = memberExpression?.parent;
+    return Boolean(
+      isNodeOfType(memberExpression, "MemberExpression") &&
+      memberExpression.object === referenceRoot &&
+      isNodeOfType(callExpression, "CallExpression") &&
+      callExpression.callee === memberExpression &&
+      ["forEach", "push"].includes(getStaticPropertyName(memberExpression) ?? ""),
+    );
+  });
+  if (!hasOnlyRetentionAndIteration) return null;
+  return serializeReferenceKey({ node: collection, scopes: context.scopes });
+};
+
+const doesCallbackDisconnectEachObserver = (
+  callback: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isFunctionLike(callback) || callback.async || callback.generator) return false;
+  const observerParameter = callback.params?.[0];
+  if (!observerParameter || !isNodeOfType(observerParameter, "Identifier")) return false;
+  const observerBinding = context.scopes.symbolFor(observerParameter)?.bindingIdentifier;
+  if (!observerBinding) return false;
+  const disconnectCalls: EsTreeNode[] = [];
+  walkSynchronousCallbackFlow(callback, (child) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      getStaticPropertyName(callee) !== "disconnect"
+    ) {
+      return;
+    }
+    const receiver = stripParenExpression(callee.object);
+    if (
+      isNodeOfType(receiver, "Identifier") &&
+      context.scopes.symbolFor(receiver)?.bindingIdentifier === observerBinding
+    ) {
+      disconnectCalls.push(child);
+    }
+  });
+  return doNodesCoverEveryPathFromFunctionEntry(callback, disconnectCalls, context);
+};
+
+const doesReturnedCleanupDisconnectCollection = (
+  effectCallback: EsTreeNode,
+  observationCalls: ReadonlyArray<EsTreeNode>,
+  collectionKey: string,
+  context: RuleContext,
+): boolean => {
+  const doesCleanupFunctionDisconnectCollection = (cleanupFunction: EsTreeNode): boolean => {
+    if (!isFunctionLike(cleanupFunction) || cleanupFunction.async || cleanupFunction.generator) {
+      return false;
+    }
+    const matchingForEachCalls: EsTreeNode[] = [];
+    walkAst(cleanupFunction.body, (child) => {
+      if (!isNodeOfType(child, "CallExpression")) return;
+      if (findEnclosingFunction(child) !== cleanupFunction) return;
+      const callee = stripParenExpression(child.callee);
+      if (
+        !isNodeOfType(callee, "MemberExpression") ||
+        getStaticPropertyName(callee) !== "forEach" ||
+        serializeReferenceKey({ node: callee.object, scopes: context.scopes }) !== collectionKey
+      ) {
+        return;
+      }
+      const callback = child.arguments?.[0];
+      if (callback && doesCallbackDisconnectEachObserver(callback, context)) {
+        matchingForEachCalls.push(child);
+      }
+    });
+    return doNodesCoverEveryPathFromFunctionEntry(cleanupFunction, matchingForEachCalls, context);
+  };
+  if (!isFunctionLike(effectCallback)) return false;
+  if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
+    const cleanupFunctions = resolveCleanupFunctions(
+      effectCallback.body,
+      effectCallback,
+      context.scopes,
+    );
+    return (
+      cleanupFunctions.length > 0 && cleanupFunctions.every(doesCleanupFunctionDisconnectCollection)
+    );
+  }
+  const matchingCleanupReturns = collectFunctionReturnStatements(effectCallback).filter(
+    (returnStatement) => {
+      if (!returnStatement.argument) return false;
+      const cleanupFunctions = resolveCleanupFunctions(
+        returnStatement.argument,
+        returnStatement,
+        context.scopes,
+      );
+      return (
+        cleanupFunctions.length > 0 &&
+        cleanupFunctions.every(doesCleanupFunctionDisconnectCollection)
+      );
+    },
+  );
+  return observationCalls.every((observationCall) =>
+    doNodesCoverEveryPathAfterNode(observationCall, matchingCleanupReturns, context),
+  );
+};
+
 export const effectObserverNeedsDisconnect = defineRule({
   id: "effect-observer-needs-disconnect",
   title: "Observer created in an effect never disconnected",
@@ -572,6 +736,7 @@ export const effectObserverNeedsDisconnect = defineRule({
             callbackRelease.didReleaseAll || callbackRelease.didReleaseObservedEntries,
           callbackReleasedTargetKeys: callbackRelease.releasedTargetKeys,
           didEscape: false,
+          observationCalls: [],
           observedIterationTargetKeys: new Set(),
           observedTargetKeys: new Set(),
         });
@@ -647,8 +812,19 @@ export const effectObserverNeedsDisconnect = defineRule({
           !tracked.didObserve ||
           tracked.didReleaseAll ||
           tracked.didReleaseAllViaCallbackParameter ||
-          didReleaseEveryActiveTarget ||
-          tracked.didEscape
+          didReleaseEveryActiveTarget
+        ) {
+          continue;
+        }
+        const retainedCollectionKey = findRetainedObserverCollectionKey(tracked, context);
+        if (
+          retainedCollectionKey &&
+          doesReturnedCleanupDisconnectCollection(
+            callback,
+            tracked.observationCalls,
+            retainedCollectionKey,
+            context,
+          )
         ) {
           continue;
         }

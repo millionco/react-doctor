@@ -1742,4 +1742,18 @@ describe("no-create-object-url-without-revoke", () => {
     );
     expect(unsafeResult.diagnostics).toHaveLength(1);
   });
+
+  it("accepts an unconditionally scheduled revoke when the timer handle is discarded", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const url = URL.createObjectURL(blob);
+       link.href = url;
+       link.click();
+       setTimeout(() => {
+         URL.revokeObjectURL(url);
+         link.remove();
+       }, 1000);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

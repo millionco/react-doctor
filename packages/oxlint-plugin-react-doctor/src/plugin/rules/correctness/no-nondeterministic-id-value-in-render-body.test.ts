@@ -339,4 +339,28 @@ describe("audit regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not treat a shadowed useMemo helper as React", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid } from "nanoid";
+      const useMemo = () => "fixed";
+      const C = () => { const id = useMemo(() => nanoid(), []); return <div>{id}</div>; };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("supports aliased React useMemo and static computed generators", () => {
+    const memoResult = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { useMemo as memo } from "react"; import { nanoid } from "nanoid";
+      const C = () => { const id = memo(() => nanoid(), []); return <label id={id} />; };`,
+    );
+    const computedResult = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `const C = () => <label id={crypto["randomUUID"]()} />;`,
+    );
+    expect(memoResult.diagnostics).toHaveLength(1);
+    expect(computedResult.diagnostics).toHaveLength(1);
+  });
 });

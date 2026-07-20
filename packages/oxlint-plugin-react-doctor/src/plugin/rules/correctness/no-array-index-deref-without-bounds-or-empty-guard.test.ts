@@ -631,4 +631,12 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a static computed TouchList read", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const C = () => <div onTouchEnd={(event) => event["touches"][0].clientX} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

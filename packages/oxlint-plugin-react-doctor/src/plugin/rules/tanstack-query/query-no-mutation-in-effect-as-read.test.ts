@@ -1131,4 +1131,15 @@ describe("query-no-mutation-in-effect-as-read", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("gives write intent precedence in mixed get-or-create names", () => {
+    const result = runMutationReadRule(
+      `function Component() {
+         const { mutateAsync: getOrCreateUser, data } = useMutation(options);
+         useEffect(() => { getOrCreateUser(params); }, [params]);
+         return <div>{data.user.name}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

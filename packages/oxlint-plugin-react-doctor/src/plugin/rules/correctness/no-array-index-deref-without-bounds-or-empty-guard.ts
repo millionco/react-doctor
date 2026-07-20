@@ -53,9 +53,7 @@ const isSplitCall = (node: EsTreeNode): boolean =>
 // touchend/touchcancel handlers.
 const isTouchListAccess = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "MemberExpression") &&
-  !node.computed &&
-  isNodeOfType(node.property, "Identifier") &&
-  TOUCH_LIST_PROPERTY_NAMES.has(node.property.name);
+  TOUCH_LIST_PROPERTY_NAMES.has(getStaticPropertyName(node) ?? "");
 
 // True when the nearest enclosing function is wired to a
 // `touchend`/`touchcancel` listener — the only touch phase where the

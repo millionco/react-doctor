@@ -347,10 +347,28 @@ describe("debounce-no-cleanup", () => {
         useEffect(() => {
           saveDraft();
         }, [doc, saveDraft]);
+        useEffect(() => () => saveDraft.flush(), [saveDraft]);
         return null;
       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not mistake an ordinary cancel helper call for teardown", () => {
+    const result = runRule(
+      debounceNoCleanup,
+      `${LODASH_DEBOUNCE_IMPORT}
+      function Search() {
+        const search = useMemo(() => debounce(async () => {
+          await fetchResults();
+        }, 300), []);
+        const cancel = (value) => value.cancel();
+        cancel(search);
+        useEffect(() => { search(); }, [search]);
+        return null;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not treat async binding names as save-like teardown", () => {

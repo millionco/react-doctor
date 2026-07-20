@@ -28,6 +28,15 @@ const giantComponentCode = [
   "}",
 ].join("\n");
 
+const reactRouterFrameworkSettings = {
+  "react-doctor": { capabilities: ["react-router-framework"] },
+};
+
+const reactRouterFrameworkRouteFixture = {
+  filePath: "/project/app/routes/dashboard.tsx",
+  settings: reactRouterFrameworkSettings,
+};
+
 export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "active-static-asset": {
     code: '<svg xmlns="http://www.w3.org/2000/svg">\n  <script>alert(1)</script>\n</svg>\n',
@@ -2226,15 +2235,18 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "react-router-guard-aborted-handle-error": {
     code: "export function handleError(error, { request }) { console.error(error); }",
     filePath: "/project/app/entry.server.tsx",
+    settings: reactRouterFrameworkSettings,
   },
   "react-router-internal-route-anchor": {
     code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ path: "/about", element: <About /> }]);\nexport const Nav = () => <a href="/about">About</a>;',
   },
   "react-router-loader-fetch-forwards-signal": {
     code: 'export async function loader({ request }) { return fetch("/api/profile"); }',
+    ...reactRouterFrameworkRouteFixture,
   },
   "react-router-loader-parallel-fetch": {
     code: 'export async function loader() { const user = await fetch("/api/user"); const teams = await fetch("/api/teams"); return { user, teams }; }',
+    ...reactRouterFrameworkRouteFixture,
   },
   "react-router-nested-route-requires-outlet": {
     code: 'import { createBrowserRouter } from "react-router";\ncreateBrowserRouter([{ Component: () => <main />, children: [{ path: "child", element: <Child /> }] }]);',
@@ -2262,6 +2274,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "react-router-no-loader-request-body": {
     code: "export async function loader({ request }) { return request.formData(); }",
+    ...reactRouterFrameworkRouteFixture,
   },
   "react-router-no-middleware-response-body-consumption": {
     code: "export const middleware = [async (_context, next) => { const response = await next(); await response.json(); return response; }];",
@@ -2284,6 +2297,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "react-router-no-redirect-in-try-catch": {
     code: 'import { redirect } from "react-router";\nexport async function loader() { try { throw redirect("/login"); } catch (error) { return null; } }',
+    ...reactRouterFrameworkRouteFixture,
   },
   "react-router-no-route-module-environment-suffix": {
     code: "export default function Route() { return null; }",
@@ -2294,6 +2308,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "react-router-no-session-mutation-in-loader": {
     code: 'import { createCookieSessionStorage } from "react-router";\nconst { getSession } = createCookieSessionStorage({ cookie: { name: "session" } });\nexport async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("notice", "hello"); return null; }',
+    ...reactRouterFrameworkRouteFixture,
   },
   "react-router-no-static-cookie-expires": {
     code: 'import { createCookie } from "react-router";\nexport const cookie = createCookie("session", { expires: new Date(Date.now() + 1000) });',
@@ -2303,6 +2318,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "react-router-no-use-loader-data-in-error-ui": {
     code: 'import { useLoaderData } from "react-router";\nexport function ErrorBoundary() { const data = useLoaderData(); return <pre>{data.message}</pre>; }',
+    ...reactRouterFrameworkRouteFixture,
   },
   "react-router-prefer-route-lazy": {
     code: 'import { lazy } from "react";\nimport { createBrowserRouter } from "react-router";\nconst Page = lazy(() => import("./page"));\ncreateBrowserRouter([{ path: "/", Component: Page }]);',
@@ -2322,6 +2338,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "react-router-session-mutation-requires-commit": {
     code: 'import { createCookieSessionStorage } from "react-router";\nconst { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } });\nexport async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
+    ...reactRouterFrameworkRouteFixture,
   },
   "react-router-v8-no-meta-data-field": {
     code: 'import { useMatches } from "react-router";\nexport function Breadcrumbs() { const [{ data }] = useMatches(); return data.title; }',

@@ -21,14 +21,13 @@ export const reactRouterRequireRootErrorBoundary = wrapReactRouterRule(
         const routeArray = node.parent;
         if (!isNodeOfType(routeArray, "ArrayExpression")) return;
         if (!isNodeOfType(routeArray.parent, "CallExpression")) return;
-        if (routeArray.elements?.[0] !== node) return;
         if (getStaticRouteProperty(node, "ErrorBoundary") !== null) return;
         if (getStaticRouteProperty(node, "errorElement") !== null) return;
         if (getStaticRouteProperty(node, "lazy") !== null) return;
         context.report({
           node,
           message:
-            "The root route has no error boundary, so failures fall through to React Router's generic default UI.",
+            "This top-level route branch has no error boundary, so failures fall through to React Router's generic default UI.",
         });
       },
     }),

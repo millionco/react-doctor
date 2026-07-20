@@ -69,7 +69,7 @@ export const isFrameworkRouteOrSpecialFilename = (
   }
   if (runtime === "tanstack") return TANSTACK_ROUTE_FILE_PATTERN.test(basename);
   if (runtime === "react-router" || runtime === "remix") {
-    return REACT_ROUTER_FILE_PATTERN.test(basename);
+    return REACT_ROUTER_FILE_PATTERN.test(basename) || isInProjectDirectory(context, "app/routes");
   }
   return false;
 };

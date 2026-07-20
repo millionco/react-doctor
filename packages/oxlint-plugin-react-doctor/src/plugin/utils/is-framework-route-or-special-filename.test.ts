@@ -23,6 +23,8 @@ describe("isFrameworkRouteOrSpecialFilename", () => {
     ["remix", "app/root.tsx"],
     ["react-router", "app/entry.client.tsx"],
     ["react-router", "app/entry.server.jsx"],
+    ["react-router", "app/routes/dashboard.tsx"],
+    ["remix", "app/routes/account/profile.tsx"],
   ] as const)("recognizes %s framework route/special file %s", (runtime, filename) => {
     expect(
       isFrameworkRouteOrSpecialFilename({ filename: `/repo/${filename}`, settings: {} }, runtime),
@@ -36,6 +38,7 @@ describe("isFrameworkRouteOrSpecialFilename", () => {
     ["expo", "app/page.tsx"],
     ["tanstack", "app/+not-found.tsx"],
     ["react-router", "pages/_document.tsx"],
+    ["react-router", "app/routes-helper.tsx"],
     ["generic", "pages/docs/_meta.tsx"],
     ["generic", "components/Page.tsx"],
     ["next", "src/components/layout.tsx"],

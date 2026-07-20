@@ -41,6 +41,16 @@ interface SafeRuleCase {
   settings?: Readonly<Record<string, unknown>>;
 }
 
+const REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS = {
+  filename: "/project/app/routes/dashboard.tsx",
+  settings: { "react-doctor": { capabilities: ["react-router-framework"] } },
+};
+
+const REACT_ROUTER_FRAMEWORK_SERVER_ENTRY_OPTIONS = {
+  filename: "/project/app/entry.server.tsx",
+  settings: { "react-doctor": { capabilities: ["react-router-framework"] } },
+};
+
 const safeRuleCases: SafeRuleCase[] = [
   {
     name: "ignores a shadowed router factory",
@@ -84,31 +94,45 @@ const safeRuleCases: SafeRuleCase[] = [
       "const parser = { async loader({ request }) { return request.formData(); } }; export default parser;",
   },
   {
+    name: "ignores exported loader helpers in data mode",
+    rule: reactRouterNoLoaderRequestBody,
+    source: "export async function loader({ request }) { return request.formData(); }",
+    filename: "/project/src/data.ts",
+    settings: { "react-doctor": { capabilities: ["react-router:6.4"] } },
+  },
+  {
+    name: "ignores exported loader helpers outside framework route modules",
+    rule: reactRouterNoLoaderRequestBody,
+    source: "export async function loader({ request }) { return request.formData(); }",
+    filename: "/project/app/utils/data.ts",
+    settings: { "react-doctor": { capabilities: ["react-router-framework"] } },
+  },
+  {
     name: "allows pure error formatting without an abort guard",
     rule: reactRouterGuardAbortedHandleError,
     source: "export function handleError(error, { request }) { return formatError(error); }",
-    filename: "/project/app/entry.server.tsx",
+    ...REACT_ROUTER_FRAMEWORK_SERVER_ENTRY_OPTIONS,
   },
   {
     name: "allows an early return for aborted requests before error reporting",
     rule: reactRouterGuardAbortedHandleError,
     source:
       "export function handleError(error, { request }) { if (request.signal.aborted) return; console.error(error); }",
-    filename: "/project/app/entry.server.tsx",
+    ...REACT_ROUTER_FRAMEWORK_SERVER_ENTRY_OPTIONS,
   },
   {
     name: "allows error reporting inside a non-aborted branch",
     rule: reactRouterGuardAbortedHandleError,
     source:
       "export function handleError(error, { request }) { if (!request.signal.aborted) { console.error(error); } }",
-    filename: "/project/app/entry.server.tsx",
+    ...REACT_ROUTER_FRAMEWORK_SERVER_ENTRY_OPTIONS,
   },
   {
     name: "allows unrelated object methods named logError",
     rule: reactRouterGuardAbortedHandleError,
     source:
       "const analytics = { logError() {} }; export function handleError(error, { request }) { analytics.logError(error); }",
-    filename: "/project/app/entry.server.tsx",
+    ...REACT_ROUTER_FRAMEWORK_SERVER_ENTRY_OPTIONS,
   },
   {
     name: "ignores handleError exports outside the server entry",
@@ -121,30 +145,35 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterLoaderFetchForwardsSignal,
     source:
       'export async function loader({ request }) { return fetch("/api/profile", { signal: request.signal }); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows an aliased loader request signal",
     rule: reactRouterLoaderFetchForwardsSignal,
     source:
       'export async function loader({ request: routeRequest }) { return fetch("/api/profile", { signal: routeRequest.signal }); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows dependent loader awaits",
     rule: reactRouterLoaderParallelFetch,
     source:
       "export async function loader() { const user = await getUser(); const teams = await getTeams(user.id); return { user, teams }; }",
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows redirect outside a catch",
     rule: reactRouterNoRedirectInTryCatch,
     source:
       'import { redirect } from "react-router"; export async function loader() { const user = await getUser(); if (!user) return redirect("/login"); return user; }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows returned redirects inside try-catch",
     rule: reactRouterNoRedirectInTryCatch,
     source:
       'import { redirect } from "react-router"; export async function loader() { try { return redirect("/login"); } catch (error) { return null; } }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows a deferred router factory",
@@ -181,6 +210,7 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterNoSessionMutationInLoader,
     source:
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); observe(session.set); return null; }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows mutually exclusive search param updates",
@@ -266,30 +296,35 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterSessionMutationRequiresCommit,
     source:
       'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return redirect("/", { headers: { "Set-Cookie": await commitSession(session) } }); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows action session mutations committed on every return path",
     rule: reactRouterSessionMutationRequiresCommit,
     source:
       'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request, redirectHome }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); if (redirectHome) return redirect("/", { headers: { "Set-Cookie": await commitSession(session) } }); return redirect("/profile", { headers: { "Set-Cookie": await commitSession(session) } }); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows reading a session mutator property without calling it",
     rule: reactRouterSessionMutationRequiresCommit,
     source:
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); observe(session.set); return null; }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "ignores session mutations inside a nested helper",
     rule: reactRouterSessionMutationRequiresCommit,
     source:
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); const updateLater = () => session.set("user", "a"); return null; }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "ignores statically unreachable session mutations",
     rule: reactRouterSessionMutationRequiresCommit,
     source:
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); if (false) session.set("user", "a"); return null; }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
     name: "allows the same CSP nonce on router and stream",
@@ -445,6 +480,25 @@ describe("React Router rule regressions", () => {
           "react-doctor": { capabilities: ["react-router-framework"] },
         },
       },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports every uncovered top-level route branch", () => {
+    const result = runRule(
+      reactRouterRequireRootErrorBoundary,
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", ErrorBoundary: RootError }, { path: "/admin", element: <Admin /> }, { path: "/account", lazy: () => import("./account") }]);',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes inline data-router loader properties without framework mode", () => {
+    const result = runRule(
+      reactRouterNoLoaderRequestBody,
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", loader: async ({ request }) => request.formData() }]);',
+      { settings: { "react-doctor": { capabilities: ["react-router:6.4"] } } },
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -618,6 +672,7 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterNoSessionMutationInLoader,
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("notice", "hello"); return null; }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -627,7 +682,7 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterGuardAbortedHandleError,
       "export function handleError(error, { request }) { console.error(error); if (request.signal.aborted) return; }",
-      { filename: "/project/app/entry.server.tsx" },
+      REACT_ROUTER_FRAMEWORK_SERVER_ENTRY_OPTIONS,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -637,7 +692,7 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterGuardAbortedHandleError,
       'import * as Sentry from "@sentry/node"; export function handleError(error, { request }) { Sentry.captureException(error); }',
-      { filename: "/project/app/entry.server.tsx" },
+      REACT_ROUTER_FRAMEWORK_SERVER_ENTRY_OPTIONS,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -647,6 +702,7 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterSessionMutationRequiresCommit,
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -656,6 +712,7 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterSessionMutationRequiresCommit,
       'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request, shouldCommit }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); if (shouldCommit) return redirect("/", { headers: { "Set-Cookie": await commitSession(session) } }); return null; }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -665,6 +722,7 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterSessionMutationRequiresCommit,
       'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); await commitSession(session); session.set("notice", "hello"); return null; }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

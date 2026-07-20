@@ -6,6 +6,7 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactRouterRouteFunction } from "../../utils/is-react-router-route-function.js";
 import { isReactRouterSessionMethod } from "../../utils/is-react-router-session-method.js";
+import { isReactRouterSessionMethodCall } from "../../utils/is-react-router-session-method-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
@@ -44,6 +45,22 @@ export const reactRouterNoSessionMutationInLoader = wrapReactRouterRule(
         if (sessionSymbol === null) return;
         for (const reference of sessionSymbol.references) {
           const memberExpression = reference.identifier.parent;
+          if (
+            isNodeOfType(memberExpression, "CallExpression") &&
+            isReactRouterSessionMethodCall(
+              context,
+              memberExpression,
+              sessionSymbol,
+              "destroySession",
+            )
+          ) {
+            context.report({
+              node: memberExpression,
+              message:
+                "loader destroys the session with destroySession(), which exposes logout to cross-site GET requests.",
+            });
+            continue;
+          }
           if (!isNodeOfType(memberExpression, "MemberExpression")) continue;
           const methodName = getStaticPropertyKeyName(memberExpression, {
             allowComputedString: true,

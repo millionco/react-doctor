@@ -380,6 +380,13 @@ const safeRuleCases: SafeRuleCase[] = [
     ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
+    name: "allows a destroyed action session returned as Set-Cookie",
+    rule: reactRouterSessionMutationRequiresCommit,
+    source:
+      'import { createCookieSessionStorage } from "react-router"; const { getSession, destroySession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); return redirect("/", { headers: { "Set-Cookie": await destroySession(session) } }); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+  },
+  {
     name: "allows reading a session mutator property without calling it",
     rule: reactRouterSessionMutationRequiresCommit,
     source:
@@ -885,6 +892,16 @@ describe("React Router rule regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports a loader that destroys its session", () => {
+    const result = runRule(
+      reactRouterNoSessionMutationInLoader,
+      'import { createCookieSessionStorage } from "react-router"; const { getSession, destroySession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); return redirect("/", { headers: { "Set-Cookie": await destroySession(session) } }); }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports a static expiry in file-backed session options", () => {
     const result = runRule(
       reactRouterNoStaticCookieExpires,
@@ -936,6 +953,16 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterSessionMutationRequiresCommit,
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a discarded destroyed-session cookie", () => {
+    const result = runRule(
+      reactRouterSessionMutationRequiresCommit,
+      'import { createCookieSessionStorage } from "react-router"; const { getSession, destroySession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); await destroySession(session); return redirect("/"); }',
       REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
     );
     expect(result.parseErrors).toEqual([]);

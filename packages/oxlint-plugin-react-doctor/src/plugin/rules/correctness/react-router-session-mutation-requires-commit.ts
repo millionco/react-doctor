@@ -11,6 +11,7 @@ import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-wit
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactRouterRouteFunction } from "../../utils/is-react-router-route-function.js";
 import { isReactRouterSessionMethod } from "../../utils/is-react-router-session-method.js";
+import { isReactRouterSessionMethodCall } from "../../utils/is-react-router-session-method-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
@@ -75,7 +76,7 @@ export const reactRouterSessionMutationRequiresCommit = wrapReactRouterRule(
     requires: ["react-router:7", "react-router-framework"],
     severity: "error",
     recommendation:
-      "Serialize the mutated session with commitSession and include its Set-Cookie value in the returned Response.",
+      "Serialize the session with commitSession or destroySession and include its Set-Cookie value in the returned Response.",
     create: (context: RuleContext) => ({
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isNodeOfType(node.id, "Identifier")) return;
@@ -102,49 +103,56 @@ export const reactRouterSessionMutationRequiresCommit = wrapReactRouterRule(
         }
         const sessionSymbol = context.scopes.symbolFor(node.id);
         if (sessionSymbol === null) return;
-        const mutationCalls = sessionSymbol.references.flatMap((reference) => {
-          if (context.cfg.enclosingFunction(reference.identifier) !== routeFunction) return [];
+        const mutationCalls: EsTreeNode[] = [];
+        for (const reference of sessionSymbol.references) {
+          if (context.cfg.enclosingFunction(reference.identifier) !== routeFunction) continue;
           const memberExpression = reference.identifier.parent;
-          if (!isNodeOfType(memberExpression, "MemberExpression")) return [];
-          if (memberExpression.object !== reference.identifier) return [];
+          if (
+            isNodeOfType(memberExpression, "CallExpression") &&
+            isReactRouterSessionMethodCall(
+              context,
+              memberExpression,
+              sessionSymbol,
+              "destroySession",
+            ) &&
+            isNodeReachableWithinFunction(memberExpression, context)
+          ) {
+            mutationCalls.push(memberExpression);
+            continue;
+          }
+          if (!isNodeOfType(memberExpression, "MemberExpression")) continue;
+          if (memberExpression.object !== reference.identifier) continue;
           const methodName = getStaticPropertyKeyName(memberExpression, {
             allowComputedString: true,
           });
           if (methodName === null || !REACT_ROUTER_SESSION_MUTATOR_NAMES.has(methodName)) {
-            return [];
+            continue;
           }
           const callExpression = memberExpression.parent;
           if (
             !isNodeOfType(callExpression, "CallExpression") ||
             callExpression.callee !== memberExpression
           ) {
-            return [];
+            continue;
           }
-          if (!isNodeReachableWithinFunction(callExpression, context)) return [];
-          return [memberExpression];
-        });
+          if (!isNodeReachableWithinFunction(callExpression, context)) continue;
+          mutationCalls.push(memberExpression);
+        }
         if (mutationCalls.length === 0) return;
 
         const serializedCookieSinks: EsTreeNode[] = [];
         walkAst(routeFunction, (descendant: EsTreeNode) => {
           if (descendant !== routeFunction && isFunctionLike(descendant)) return false;
           if (!isNodeOfType(descendant, "CallExpression")) return;
-          if (!isNodeOfType(descendant.callee, "Identifier")) return;
           if (
-            !isReactRouterSessionMethod(
-              context,
-              context.scopes.symbolFor(descendant.callee),
-              "commitSession",
-            )
+            !isReactRouterSessionMethodCall(context, descendant, sessionSymbol, "commitSession") &&
+            !isReactRouterSessionMethodCall(context, descendant, sessionSymbol, "destroySession")
           ) {
             return;
           }
-          const sessionArgument = descendant.arguments?.[0];
-          if (sessionArgument && context.scopes.symbolFor(sessionArgument) === sessionSymbol) {
-            serializedCookieSinks.push(
-              ...findSerializedCookieSinks(context, descendant, routeFunction),
-            );
-          }
+          serializedCookieSinks.push(
+            ...findSerializedCookieSinks(context, descendant, routeFunction),
+          );
         });
         const uncommittedMutation = mutationCalls.find(
           (mutationCall) =>
@@ -154,7 +162,7 @@ export const reactRouterSessionMutationRequiresCommit = wrapReactRouterRule(
         context.report({
           node: uncommittedMutation,
           message:
-            "This action has a path that returns after mutating a session without committing it to a Set-Cookie header.",
+            "This action has a path that returns after changing a session without serializing it to a Set-Cookie header.",
         });
       },
     }),

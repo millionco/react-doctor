@@ -43,15 +43,7 @@ const getResolvedInlineRouteContent = (
     (isNodeOfType(elementProperty.value, "JSXElement") ||
       isNodeOfType(elementProperty.value, "JSXFragment"))
   ) {
-    const openingName = isNodeOfType(elementProperty.value, "JSXElement")
-      ? elementProperty.value.openingElement.name
-      : null;
-    if (
-      isNodeOfType(openingName, "JSXIdentifier") &&
-      openingName.name[0]?.toUpperCase() === openingName.name[0]
-    ) {
-      return null;
-    }
+    if (containsDelegatedComponent(elementProperty.value)) return null;
     return elementProperty.value;
   }
   return null;

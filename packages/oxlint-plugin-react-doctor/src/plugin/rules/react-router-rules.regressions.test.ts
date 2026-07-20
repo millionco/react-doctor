@@ -77,6 +77,18 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ Component: () => <Layout />, children: [{ path: "child", element: <Child /> }] }]);',
   },
   {
+    name: "allows a nested route element to delegate through an intrinsic wrapper",
+    rule: reactRouterNestedRouteRequiresOutlet,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ element: <main><Layout /></main>, children: [{ path: "child", element: <Child /> }] }]);',
+  },
+  {
+    name: "allows a nested route element to delegate through a fragment",
+    rule: reactRouterNestedRouteRequiresOutlet,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ element: <><header /><Layout /></>, children: [{ path: "child", element: <Child /> }] }]);',
+  },
+  {
     name: "allows lazy to return mutable route properties",
     rule: reactRouterNoInvalidLazyRouteProperties,
     source:

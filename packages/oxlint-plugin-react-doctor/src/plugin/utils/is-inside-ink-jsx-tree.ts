@@ -9,5 +9,5 @@ export const isInsideInkJsxTree = (
 ): boolean =>
   Boolean(
     node &&
-      (findNearestInkJsxElement(node, scopes) !== null || containsInkJsxElement(node, scopes)),
+    (findNearestInkJsxElement(node, scopes) !== null || containsInkJsxElement(node, scopes)),
   );

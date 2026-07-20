@@ -10,7 +10,7 @@ export const isProcessStdoutMember = (
 ): boolean =>
   Boolean(
     node &&
-      isNodeOfType(node, "MemberExpression") &&
-      getStaticPropertyName(node) === "stdout" &&
-      isProvenGlobalNamespaceReference(node.object, "process", scopes),
+    isNodeOfType(node, "MemberExpression") &&
+    getStaticPropertyName(node) === "stdout" &&
+    isProvenGlobalNamespaceReference(node.object, "process", scopes),
   );

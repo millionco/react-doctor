@@ -62,7 +62,6 @@ export const RESOLVE_TARGET_REPOSITORY_REF_COMMAND = "git -C /workspace/target r
 export const SCAN_COMMAND = `node /workspace/react-doctor/packages/react-doctor/bin/react-doctor.js \
   --json \
   --diff false \
-  --no-parallel \
   --no-dead-code \
   --no-supply-chain \
   --no-telemetry \

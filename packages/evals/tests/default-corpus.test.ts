@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_CORPUS_REPOSITORY_COUNT,
   PINNED_REPOSITORY_REF_PATTERN,
+  SCAN_COMMAND,
 } from "../src/constants.js";
 import { groupCorpusRepositories } from "../src/group-corpus-repositories.js";
 import { loadCorpusRepositories } from "../src/load-corpus-repositories.js";
@@ -41,5 +42,9 @@ describe("default corpus", () => {
           !selectedRepositoryKeys.has(`${repository.org}/${repository.name}@${repository.ref}`),
       ),
     ).toBe(true);
+  });
+
+  it("uses parallel linting for large repositories", () => {
+    expect(SCAN_COMMAND).not.toContain("--no-parallel");
   });
 });

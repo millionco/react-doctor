@@ -39,6 +39,11 @@ describe("wrap-react-router-rule", () => {
     return path.join(packageDirectory, "src", "route.tsx");
   };
 
+  const createRootPackageFilename = (manifest: Record<string, unknown>): string => {
+    fs.writeFileSync(path.join(temporaryDirectory, "package.json"), JSON.stringify(manifest));
+    return path.join(temporaryDirectory, "src", "route.tsx");
+  };
+
   const rootDirectorySettings = () => ({
     "react-doctor": { rootDirectory: fs.realpathSync(temporaryDirectory) },
   });
@@ -65,6 +70,19 @@ describe("wrap-react-router-rule", () => {
   it("stays silent for Framework rules in a Data mode sibling package", () => {
     const result = runRule(wrappedFrameworkProbe, "export {};", {
       filename: createPackageFilename({ dependencies: { "react-router": "7.9.0" } }),
+      settings: {
+        "react-doctor": {
+          capabilities: ["react-router:7.9", "react-router-framework"],
+          rootDirectory: fs.realpathSync(temporaryDirectory),
+        },
+      },
+    });
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for Framework rules in a Data mode root package", () => {
+    const result = runRule(wrappedFrameworkProbe, "export {};", {
+      filename: createRootPackageFilename({ dependencies: { "react-router": "7.9.0" } }),
       settings: {
         "react-doctor": {
           capabilities: ["react-router:7.9", "react-router-framework"],

@@ -2,7 +2,7 @@ import {
   classifyPackagePlatform,
   findNearestPackageDirectory,
 } from "./classify-package-platform.js";
-import { isPackageNestedBelowProjectRoot } from "./is-package-nested-below-project-root.js";
+import { isPackageWithinProjectRoot } from "./is-package-within-project-root.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import type { RuleContext } from "./rule-context.js";
@@ -72,7 +72,7 @@ export const classifyReactNativeFileTarget = (context: RuleContext): ReactNative
     const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
     if (
       packageDirectory !== null &&
-      isPackageNestedBelowProjectRoot(packageDirectory, rootDirectory)
+      isPackageWithinProjectRoot(packageDirectory, rootDirectory, false)
     ) {
       return "web";
     }

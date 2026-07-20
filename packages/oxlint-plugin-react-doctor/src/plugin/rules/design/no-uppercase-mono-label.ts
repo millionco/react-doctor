@@ -6,6 +6,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
+import { isTechnicalLabelText } from "./utils/is-technical-label-text.js";
 
 const PREFORMATTED_ELEMENT_NAMES = new Set(["code", "kbd", "pre", "samp", "var"]);
 
@@ -27,7 +28,13 @@ export const noUppercaseMonoLabel = defineRule({
       }
       if (node.children.some((child) => isNodeOfType(child, "JSXExpressionContainer"))) return;
       const text = getStaticJsxText(node).replace(/\s+/g, " ").trim();
-      if (!text || text.length > SHORT_DECORATIVE_LABEL_MAX_CHARACTERS) return;
+      if (
+        !text ||
+        text.length > SHORT_DECORATIVE_LABEL_MAX_CHARACTERS ||
+        isTechnicalLabelText(text)
+      ) {
+        return;
+      }
       const classNameValue = getStringFromClassNameAttr(node.openingElement);
       if (!classNameValue) return;
       const tokens = getUnvariantClassNameTokens(classNameValue);

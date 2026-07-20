@@ -19,6 +19,17 @@ describe("no-nested-card-surface", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not treat controls or code blocks as nested cards", () => {
+    const result = runRule(
+      noNestedCardSurface,
+      `const Example = () => <div className="rounded-xl border p-6">
+        <button className="rounded-lg border bg-white p-4">Save</button>
+        <code className="rounded-lg border bg-white p-4">npm run build</code>
+      </div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not infer card styling from dynamic classes", () => {
     const result = runRule(
       noNestedCardSurface,

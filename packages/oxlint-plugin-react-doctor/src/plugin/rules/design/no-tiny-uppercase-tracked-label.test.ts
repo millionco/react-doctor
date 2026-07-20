@@ -6,9 +6,9 @@ describe("no-tiny-uppercase-tracked-label", () => {
   it("reports tiny uppercase labels with decorative tracking", () => {
     const result = runRule(
       noTinyUppercaseTrackedLabel,
-      `const Labels = () => <><span className="text-[10px] uppercase tracking-[0.18em]">Recent activity</span><p className="text-[0.6875rem] uppercase tracking-wide">Account details</p></>;`,
+      `const Labels = () => <><span className="text-[10px] uppercase tracking-[0.18em]">Recent activity</span><p className="text-[0.6875rem] uppercase tracking-wide">Account details</p><span className="text-[10px] uppercase tracking-wide">LATEST NEWS</span></>;`,
     );
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(3);
   });
 
   it("allows each ingredient on its own and readable label sizes", () => {

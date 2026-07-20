@@ -5,10 +5,31 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isTailwindCardSurface } from "./utils/is-tailwind-card-surface.js";
 
+const CARD_CONTAINER_ELEMENT_NAMES = new Set([
+  "article",
+  "aside",
+  "details",
+  "div",
+  "fieldset",
+  "figure",
+  "form",
+  "li",
+  "main",
+  "section",
+]);
+
+const isCardContainer = (node: EsTreeNodeOfType<"JSXElement">): boolean =>
+  isNodeOfType(node.openingElement.name, "JSXIdentifier") &&
+  CARD_CONTAINER_ELEMENT_NAMES.has(node.openingElement.name.name);
+
 const hasCardAncestor = (node: EsTreeNode): boolean => {
   let ancestor = node.parent;
   while (ancestor) {
-    if (isNodeOfType(ancestor, "JSXElement") && isTailwindCardSurface(ancestor.openingElement)) {
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      isCardContainer(ancestor) &&
+      isTailwindCardSurface(ancestor.openingElement)
+    ) {
       return true;
     }
     ancestor = ancestor.parent;
@@ -26,7 +47,13 @@ export const noNestedCardSurface = defineRule({
     "Flatten the inner surface and use spacing, a divider, or typography to communicate the hierarchy.",
   create: (context: RuleContext) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
-      if (!isTailwindCardSurface(node.openingElement) || !hasCardAncestor(node)) return;
+      if (
+        !isCardContainer(node) ||
+        !isTailwindCardSurface(node.openingElement) ||
+        !hasCardAncestor(node)
+      ) {
+        return;
+      }
       context.report({
         node: node.openingElement,
         message:

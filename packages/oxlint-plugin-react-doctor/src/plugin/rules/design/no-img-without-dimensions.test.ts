@@ -38,6 +38,16 @@ describe("no-img-without-dimensions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("skips boxes whose size may come from external or dynamic CSS", () => {
+    const result = runRule(
+      noImgWithoutDimensions,
+      `const A = () => <img className="profile-image" src="/photo.jpg" alt="" />;
+       const B = () => <div className="hero-frame"><img src="/hero.jpg" alt="" /></div>;
+       const C = ({ className, style }) => <img className={className} style={style} src="/photo.jpg" alt="" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("skips spreads and custom image components", () => {
     const result = runRule(
       noImgWithoutDimensions,

@@ -13,10 +13,10 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getLastMatchingToken } from "./utils/get-last-matching-token.js";
+import { isTechnicalLabelText } from "./utils/is-technical-label-text.js";
 
 const PREFORMATTED_ELEMENT_NAMES = new Set(["code", "kbd", "pre", "samp", "var"]);
 const CASE_TOKENS = new Set(["capitalize", "lowercase", "normal-case", "uppercase"]);
-const TECHNICAL_VALUE_PATTERN = /^[A-Z0-9][A-Z0-9_.:/-]*$/;
 const ARBITRARY_FONT_SIZE_PATTERN = /^text-\[([\d.]+)(px|rem)\](?:\/.+)?$/;
 const ZERO_TRACKING_PATTERN = /^tracking-\[(?:0|0\.0+)(?:em|px)\]$/;
 
@@ -60,7 +60,7 @@ export const noTinyUppercaseTrackedLabel = defineRule({
       if (
         !text ||
         text.length > SHORT_DECORATIVE_LABEL_MAX_CHARACTERS ||
-        TECHNICAL_VALUE_PATTERN.test(text)
+        isTechnicalLabelText(text)
       ) {
         return;
       }

@@ -21,6 +21,9 @@ const hasReservedClassBox = (node: EsTreeNodeOfType<"JSXOpeningElement">): boole
   );
 };
 
+const hasClassNameAttribute = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
+  Boolean(findJsxAttribute(node.attributes, "className"));
+
 const hasReservedInlineBox = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const styleAttribute = findJsxAttribute(node.attributes, "style");
   const expression = styleAttribute ? getInlineStyleExpression(styleAttribute) : null;
@@ -32,6 +35,11 @@ const hasReservedInlineBox = (node: EsTreeNodeOfType<"JSXOpeningElement">): bool
   );
 };
 
+const hasUnresolvedInlineBox = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const styleAttribute = findJsxAttribute(node.attributes, "style");
+  return Boolean(styleAttribute && !getInlineStyleExpression(styleAttribute));
+};
+
 const hasReservedParentBox = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const element = node.parent;
   const parentElement = element?.parent;
@@ -39,6 +47,18 @@ const hasReservedParentBox = (node: EsTreeNodeOfType<"JSXOpeningElement">): bool
     isNodeOfType(element, "JSXElement") &&
     isNodeOfType(parentElement, "JSXElement") &&
     hasReservedClassBox(parentElement.openingElement),
+  );
+};
+
+const hasUnresolvedParentBox = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const element = node.parent;
+  const parentElement = element?.parent;
+  if (!isNodeOfType(element, "JSXElement") || !isNodeOfType(parentElement, "JSXElement")) {
+    return false;
+  }
+  return (
+    hasClassNameAttribute(parentElement.openingElement) ||
+    hasUnresolvedInlineBox(parentElement.openingElement)
   );
 };
 
@@ -57,6 +77,13 @@ export const noImgWithoutDimensions = defineRule({
         return;
       if (hasReservedClassBox(node) || hasReservedInlineBox(node) || hasReservedParentBox(node))
         return;
+      if (
+        hasClassNameAttribute(node) ||
+        hasUnresolvedInlineBox(node) ||
+        hasUnresolvedParentBox(node)
+      ) {
+        return;
+      }
       context.report({
         node,
         message:

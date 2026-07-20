@@ -27,7 +27,27 @@ export {
   UNBOUNDED_CROSS_FILE_RULE_IDS,
   collectCrossFileDependencyProbes,
 } from "./plugin/cross-file-dependencies.js";
+export { analyzeComplexity } from "./plugin/semantic/complexity.js";
+export type { FileComplexity, FunctionComplexity } from "./plugin/semantic/complexity.js";
+export {
+  calculateBloatRatio,
+  calculateChangeComplexityScore,
+  calculateChangeEntropy,
+  calculateRawLinesChanged,
+  calculateSubtreeDeleteCost,
+  calculateSubtreeInsertCost,
+  calculateWeightedTreeEditDistance,
+  collectChangeComplexityFunctionEntries,
+  getChangeComplexityFunctionSource,
+} from "./plugin/semantic/change-complexity.js";
+export type {
+  ChangeComplexityDeltaMetrics,
+  ChangeComplexityFunctionEntry,
+  ChangeComplexitySummaryMetrics,
+  ChangeComplexityTreeEditResult,
+} from "./plugin/semantic/change-complexity.js";
 export type { CrossFileProbeTrace } from "./plugin/utils/cross-file-probe-recorder.js";
+export { parseSourceFile } from "./plugin/utils/parse-source-file.js";
 
 // Per-scan invalidation for the nearest-package.json memos. The memos are
 // sound while a scan's filesystem is frozen, but a long-lived host (the LSP

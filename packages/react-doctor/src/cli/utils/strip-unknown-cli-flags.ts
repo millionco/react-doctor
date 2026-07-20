@@ -128,10 +128,19 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
+const COMPLEXITY_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set(["--help", "--json"]),
+  longOptionsWithRequiredValues: new Set(["--diff", "--min", "--sort", "--top"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h"]),
+  shortOptionsWithRequiredValues: new Set(),
+};
+
 const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["install", INSTALL_FLAG_SPEC],
   ["setup", INSTALL_FLAG_SPEC],
   ["version", VERSION_FLAG_SPEC],
+  ["complexity", COMPLEXITY_FLAG_SPEC],
   ["rules", RULES_FLAG_SPEC],
   ["ci", CI_FLAG_SPEC],
   ["why", WHY_FLAG_SPEC],

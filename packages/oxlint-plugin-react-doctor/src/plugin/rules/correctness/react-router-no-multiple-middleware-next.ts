@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { areNodesInMutuallyExclusiveBranches } from "../../utils/are-nodes-in-mutually-exclusive-branches.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getReactRouterMiddlewareNextSymbol } from "../../utils/get-react-router-middleware-next-symbol.js";
@@ -59,6 +60,7 @@ export const reactRouterNoMultipleMiddlewareNext = wrapReactRouterRule(
             if (
               firstCall !== undefined &&
               secondCall !== undefined &&
+              !areNodesInMutuallyExclusiveBranches(firstCall, secondCall) &&
               (canReach(firstCall, secondCall) || canReach(secondCall, firstCall))
             ) {
               secondReachableCall = secondCall;

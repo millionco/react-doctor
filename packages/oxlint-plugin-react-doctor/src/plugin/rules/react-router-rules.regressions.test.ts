@@ -214,6 +214,11 @@ const safeRuleCases: SafeRuleCase[] = [
       "export const middleware = [async ({ admin }, next) => { if (admin) return next(); return next(); }];",
   },
   {
+    name: "allows mutually exclusive middleware continuations in a conditional expression",
+    rule: reactRouterNoMultipleMiddlewareNext,
+    source: "export const middleware = [async ({ enabled }, next) => enabled ? next() : next()];",
+  },
+  {
     name: "allows passing middleware continuation to helpers",
     rule: reactRouterNoMultipleMiddlewareNext,
     source:

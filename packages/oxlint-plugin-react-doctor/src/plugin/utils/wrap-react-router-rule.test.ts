@@ -17,6 +17,10 @@ const probeRule: Rule = {
 };
 
 const wrappedProbe = wrapReactRouterRule(probeRule);
+const wrappedFrameworkProbe = wrapReactRouterRule({
+  ...probeRule,
+  requires: ["react-router-framework"],
+});
 
 describe("wrap-react-router-rule", () => {
   let temporaryDirectory = "";
@@ -56,6 +60,34 @@ describe("wrap-react-router-rule", () => {
       settings: rootDirectorySettings(),
     });
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for Framework rules in a Data mode sibling package", () => {
+    const result = runRule(wrappedFrameworkProbe, "export {};", {
+      filename: createPackageFilename({ dependencies: { "react-router": "7.9.0" } }),
+      settings: {
+        "react-doctor": {
+          capabilities: ["react-router:7.9", "react-router-framework"],
+          rootDirectory: fs.realpathSync(temporaryDirectory),
+        },
+      },
+    });
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("fires Framework rules in a package declaring the Framework dev dependency", () => {
+    const result = runRule(wrappedFrameworkProbe, "export {};", {
+      filename: createPackageFilename({
+        dependencies: { "@react-router/dev": "7.9.0", "react-router": "7.9.0" },
+      }),
+      settings: {
+        "react-doctor": {
+          capabilities: ["react-router:7.9", "react-router-framework"],
+          rootDirectory: fs.realpathSync(temporaryDirectory),
+        },
+      },
+    });
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("keeps the project-level decision when no filename is available", () => {

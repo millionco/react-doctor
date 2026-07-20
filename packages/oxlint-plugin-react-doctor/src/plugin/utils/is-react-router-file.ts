@@ -10,25 +10,32 @@ import { normalizeFilename } from "./normalize-filename.js";
 import { readNearestPackageManifest } from "./read-nearest-package-manifest.js";
 import type { RuleContext } from "./rule-context.js";
 
-export const isReactRouterFileActive = (context: RuleContext): boolean => {
+interface ReactRouterFileActivationOptions {
+  requiresFramework?: boolean;
+}
+
+export const isReactRouterFileActive = (
+  context: RuleContext,
+  options: ReactRouterFileActivationOptions = {},
+): boolean => {
   const rawFilename = context.filename;
   if (!rawFilename) return true;
   const filename = normalizeFilename(rawFilename);
 
   const manifest = readNearestPackageManifest(filename);
   if (!manifest) return true;
+  const packageDirectory = findNearestPackageDirectory(filename);
+  const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
+  const isNestedPackage =
+    packageDirectory !== null && isPackageNestedBelowProjectRoot(packageDirectory, rootDirectory);
+  if (options.requiresFramework && isNestedPackage && declaresAnyDependency(manifest)) {
+    return declaresDependency(manifest, "@react-router/dev");
+  }
   if (REACT_ROUTER_PACKAGE_NAMES.some((packageName) => declaresDependency(manifest, packageName))) {
     return true;
   }
   if (!declaresAnyDependency(manifest)) return true;
 
-  const packageDirectory = findNearestPackageDirectory(filename);
-  const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
-  if (
-    packageDirectory !== null &&
-    isPackageNestedBelowProjectRoot(packageDirectory, rootDirectory)
-  ) {
-    return false;
-  }
+  if (isNestedPackage) return false;
   return true;
 };

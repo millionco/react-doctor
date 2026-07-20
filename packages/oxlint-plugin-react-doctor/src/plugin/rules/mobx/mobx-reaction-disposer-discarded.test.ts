@@ -220,6 +220,19 @@ describe("mobx-reaction-disposer-discarded", () => {
     ).toBe(0);
   });
 
+  it("treats only static class fields as module-lifetime wiring", () => {
+    expect(
+      diagnosticsFor(`
+        import { autorun } from "mobx";
+        import { externalStore } from "./external-store";
+        class Store {
+          initialized = (autorun(() => externalStore.value), true);
+          static initialized = (autorun(() => externalStore.other), true);
+        }
+      `),
+    ).toBe(1);
+  });
+
   it("exempts named bootstrap wiring only when every direct call is module-scoped", () => {
     expect(
       diagnosticsFor(`

@@ -68,6 +68,14 @@ const resolveLeakingSubscriptionName = (
 const isEvaluatedAtModuleScope = (node: EsTreeNode): boolean => {
   let ancestor = node.parent;
   while (ancestor) {
+    if (
+      isNodeOfType(ancestor, "PropertyDefinition") ||
+      isNodeOfType(ancestor, "AccessorProperty")
+    ) {
+      if (!ancestor.static) return false;
+      ancestor = ancestor.parent ?? null;
+      continue;
+    }
     if (isNodeOfType(ancestor, "StaticBlock")) {
       ancestor = ancestor.parent ?? null;
       continue;

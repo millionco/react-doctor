@@ -245,6 +245,12 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { useSearchParams } from "react-router"; export function Filters({ compact }) { const [, setParams] = useSearchParams(); if (compact) setParams({ view: "compact" }); else setParams({ view: "full" }); return null; }',
   },
   {
+    name: "allows mutually exclusive search param updates in a conditional expression",
+    rule: reactRouterNoMultipleSetSearchParamsInTick,
+    source:
+      'import { useSearchParams } from "react-router"; export function Filters({ compact }) { const [, setParams] = useSearchParams(); compact ? setParams({ view: "compact" }) : setParams({ view: "full" }); return null; }',
+  },
+  {
     name: "allows search param updates separated by await",
     rule: reactRouterNoMultipleSetSearchParamsInTick,
     source:
@@ -712,6 +718,34 @@ describe("React Router rule regressions", () => {
       reactRouterReturnNavigationPromiseInTransition,
       'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} useTransitions />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { navigate("/next"); })} />; };',
       { settings: { "react-doctor": { capabilities: ["react-router:7.15"] } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an explicitly discarded navigation promise inside a transition", () => {
+    const result = runRule(
+      reactRouterReturnNavigationPromiseInTransition,
+      'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router }) => <RouterProvider router={router} useTransitions />; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { void navigate("/next"); })} />; };',
+      { settings: { "react-doctor": { capabilities: ["react-router:7.15"] } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports search param updates in one sequence expression", () => {
+    const result = runRule(
+      reactRouterNoMultipleSetSearchParamsInTick,
+      'import { useSearchParams } from "react-router"; export function Filters() { const [, setParams] = useSearchParams(); const update = () => { (setParams({ page: "1" }), setParams({ sort: "name" })); }; return <button onClick={update} />; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports nested search param updates in one statement", () => {
+    const result = runRule(
+      reactRouterNoMultipleSetSearchParamsInTick,
+      'import { useSearchParams } from "react-router"; export function Filters() { const [, setParams] = useSearchParams(); const update = () => { setParams(setParams({ page: "1" })); }; return <button onClick={update} />; }',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

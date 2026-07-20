@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { areNodesInMutuallyExclusiveBranches } from "../../utils/are-nodes-in-mutually-exclusive-branches.js";
 import { containsDirectAwait } from "../../utils/contains-direct-await.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -9,16 +10,18 @@ import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 interface BlockStatementPosition {
   block: EsTreeNodeOfType<"BlockStatement">;
+  callExpression: EsTreeNode;
   statementIndex: number;
 }
 
 const findBlockStatementPosition = (node: EsTreeNode): BlockStatementPosition | null => {
+  const callExpression = node;
   let current: EsTreeNode | null | undefined = node;
   while (current !== null && current !== undefined) {
     const parent = current.parent;
     if (isNodeOfType(parent, "BlockStatement")) {
       const statementIndex = parent.body.findIndex((statement) => statement === current);
-      return statementIndex < 0 ? null : { block: parent, statementIndex };
+      return statementIndex < 0 ? null : { block: parent, callExpression, statementIndex };
     }
     if (
       isNodeOfType(current, "FunctionDeclaration") ||
@@ -73,7 +76,15 @@ export const reactRouterNoMultipleSetSearchParamsInTick = wrapReactRouterRule(
             previousCallByBlock.set(position.block, position);
             continue;
           }
-          if (previousPosition.statementIndex === position.statementIndex) continue;
+          if (
+            previousPosition.statementIndex === position.statementIndex &&
+            areNodesInMutuallyExclusiveBranches(
+              previousPosition.callExpression,
+              position.callExpression,
+            )
+          ) {
+            continue;
+          }
           const hasAwaitBetween = position.block.body
             .slice(previousPosition.statementIndex + 1, position.statementIndex)
             .some((statement) => containsDirectAwait(statement));

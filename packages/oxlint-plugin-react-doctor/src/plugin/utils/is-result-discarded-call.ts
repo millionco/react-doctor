@@ -3,6 +3,7 @@ import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 export interface IsResultDiscardedCallOptions {
+  areConciseArrowReturnsDiscarded?: boolean;
   isConciseArrowResultDiscarded?: (
     arrowFunction: EsTreeNodeOfType<"ArrowFunctionExpression">,
   ) => boolean;
@@ -29,7 +30,11 @@ export const isResultDiscardedCall = (
     // discarded no matter where the void expression itself flows.
     if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void") return true;
     if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === node) {
-      return options.isConciseArrowResultDiscarded?.(parent) ?? true;
+      return (
+        options.isConciseArrowResultDiscarded?.(parent) ??
+        options.areConciseArrowReturnsDiscarded ??
+        true
+      );
     }
     if (isNodeOfType(parent, "ChainExpression")) {
       node = parent;

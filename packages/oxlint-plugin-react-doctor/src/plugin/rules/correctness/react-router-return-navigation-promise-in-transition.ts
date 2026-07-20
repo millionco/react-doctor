@@ -7,6 +7,7 @@ import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-fr
 import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
@@ -56,7 +57,13 @@ export const reactRouterReturnNavigationPromiseInTransition = wrapReactRouterRul
             const navigationCall = reference.identifier.parent;
             if (!isNodeOfType(navigationCall, "CallExpression")) continue;
             if (navigationCall.callee !== reference.identifier) continue;
-            if (!isNodeOfType(navigationCall.parent, "ExpressionStatement")) continue;
+            if (
+              !isResultDiscardedCall(navigationCall, {
+                areConciseArrowReturnsDiscarded: false,
+              })
+            ) {
+              continue;
+            }
             const callback = findEnclosingFunction(navigationCall);
             if (callback === null) continue;
             const transitionCall = callback.parent;

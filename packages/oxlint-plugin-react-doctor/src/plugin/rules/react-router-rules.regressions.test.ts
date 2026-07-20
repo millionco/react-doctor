@@ -3,6 +3,7 @@ import { runRule } from "../../test-utils/run-rule.js";
 import type { Rule } from "../utils/rule.js";
 import { reactRouterCspNonceConsistency } from "./security/react-router-csp-nonce-consistency.js";
 import { reactRouterGuardAbortedHandleError } from "./correctness/react-router-guard-aborted-handle-error.js";
+import { reactRouterDescendantRoutesRequireSplat } from "./correctness/react-router-descendant-routes-require-splat.js";
 import { reactRouterInternalRouteAnchor } from "./correctness/react-router-internal-route-anchor.js";
 import { reactRouterLoaderFetchForwardsSignal } from "./performance/react-router-loader-fetch-forwards-signal.js";
 import { reactRouterLoaderParallelFetch } from "./performance/react-router-loader-parallel-fetch.js";
@@ -267,10 +268,28 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return redirect("/", { headers: { "Set-Cookie": await commitSession(session) } }); }',
   },
   {
+    name: "allows action session mutations committed on every return path",
+    rule: reactRouterSessionMutationRequiresCommit,
+    source:
+      'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request, redirectHome }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); if (redirectHome) return redirect("/", { headers: { "Set-Cookie": await commitSession(session) } }); return redirect("/profile", { headers: { "Set-Cookie": await commitSession(session) } }); }',
+  },
+  {
     name: "allows reading a session mutator property without calling it",
     rule: reactRouterSessionMutationRequiresCommit,
     source:
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); observe(session.set); return null; }',
+  },
+  {
+    name: "ignores session mutations inside a nested helper",
+    rule: reactRouterSessionMutationRequiresCommit,
+    source:
+      'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); const updateLater = () => session.set("user", "a"); return null; }',
+  },
+  {
+    name: "ignores statically unreachable session mutations",
+    rule: reactRouterSessionMutationRequiresCommit,
+    source:
+      'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); if (false) session.set("user", "a"); return null; }',
   },
   {
     name: "allows the same CSP nonce on router and stream",
@@ -530,6 +549,24 @@ describe("React Router rule regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not accept an Outlet rendered only by a nested helper", () => {
+    const result = runRule(
+      reactRouterNestedRouteRequiresOutlet,
+      'import { createBrowserRouter, Outlet } from "react-router"; createBrowserRouter([{ Component: () => { const Unused = () => <Outlet />; return <main />; }, children: [{ path: "child", element: <Child /> }] }]);',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores descendant routes declared only by a nested helper", () => {
+    const result = runRule(
+      reactRouterDescendantRoutesRequireSplat,
+      'import { createBrowserRouter, Routes } from "react-router"; createBrowserRouter([{ path: "/dashboard", Component: () => { const Unused = () => <Routes />; return <main />; } }]);',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("reports two direct middleware continuation calls", () => {
     const result = runRule(
       reactRouterNoMultipleMiddlewareNext,
@@ -610,6 +647,24 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterSessionMutationRequiresCommit,
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a session mutation when only one return path commits", () => {
+    const result = runRule(
+      reactRouterSessionMutationRequiresCommit,
+      'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request, shouldCommit }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); if (shouldCommit) return redirect("/", { headers: { "Set-Cookie": await commitSession(session) } }); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a session mutation that occurs after the last commit", () => {
+    const result = runRule(
+      reactRouterSessionMutationRequiresCommit,
+      'import { createCookieSessionStorage } from "react-router"; const { getSession, commitSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); await commitSession(session); session.set("notice", "hello"); return null; }',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

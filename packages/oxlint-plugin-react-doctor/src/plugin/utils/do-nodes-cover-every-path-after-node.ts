@@ -1,3 +1,4 @@
+import { collectExpressionPathCoverageNodes } from "./collect-expression-path-coverage-nodes.js";
 import { getRangeStart } from "./get-range-start.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { RuleContext } from "./rule-context.js";
@@ -16,8 +17,8 @@ export const doNodesCoverEveryPathAfterNode = (
   if (!anchorBlock) return false;
   const anchorStart = getRangeStart(orderingAnchorNode);
   const matchingBlocks = new Set(
-    matchingNodes.flatMap((matchingNode) => {
-      if (context.cfg.enclosingFunction(matchingNode) !== owner) return [];
+    [...collectExpressionPathCoverageNodes(owner, matchingNodes, context)].flatMap(
+      (matchingNode) => {
       const matchingBlock = functionCfg.blockOf(matchingNode);
       if (!matchingBlock) return [];
       const matchingStart = getRangeStart(matchingNode);
@@ -30,7 +31,8 @@ export const doNodesCoverEveryPathAfterNode = (
         return [];
       }
       return [matchingBlock];
-    }),
+      },
+    ),
   );
   if (matchingBlocks.has(anchorBlock)) return true;
   const visitedBlocks = new Set([anchorBlock]);

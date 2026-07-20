@@ -39,17 +39,17 @@ const isInkSetRawModeCall = (
 
 export const inkNoDirectRawMode = defineRule({
   id: "ink-no-direct-raw-mode",
-  title: "Raw mode managed outside Ink",
+  title: "Raw mode changed during render",
   severity: "error",
   minimumInkVersion: MINIMUM_INK_VERSIONS.base,
-  recommendation: "Let Ink's input hooks manage terminal raw mode and cleanup.",
+  recommendation: "Move `useStdin().setRawMode()` to an effect and restore it in cleanup.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isInkSetRawModeCall(node, context.scopes)) return;
       if (!findRenderPhaseComponentOrHook(node, context.scopes)) return;
       context.report({
         node,
-        message: "Direct `setRawMode` calls can leave the terminal corrupted after exit.",
+        message: "Changing terminal raw mode during render is an untracked side effect.",
       });
     },
   }),

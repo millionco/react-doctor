@@ -2,4 +2,4 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-Add 22 version-gated Ink rules for terminal layout, input, lifecycle, accessibility, rendering, and modern Ink APIs.
+Add a version-gated Ink ruleset with 19 default checks and an opt-in `usePaste` migration. Preserve the two disproven Newline and Suspense rule IDs as retired configuration aliases.

@@ -63,6 +63,7 @@ export const inkPreferUsePaste = defineRule({
   id: "ink-prefer-use-paste",
   title: "Paste interpreted through useInput",
   severity: "warn",
+  defaultEnabled: false,
   minimumInkVersion: MINIMUM_INK_VERSIONS.modernHooks,
   recommendation: "Use Ink's `usePaste()` for bracketed multi-character paste input.",
   create: (context) => ({

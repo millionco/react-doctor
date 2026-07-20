@@ -231,7 +231,7 @@ const isRenderUnmountedBefore = (
 
 export const inkNoRepeatedRender = defineRule({
   id: "ink-no-repeated-render",
-  title: "Ink rendered repeatedly to one process",
+  title: "Ink render reused before unmount",
   severity: "error",
   minimumInkVersion: MINIMUM_INK_VERSIONS.base,
   recommendation: "Call Ink `render()` once and update or rerender the returned instance.",
@@ -257,7 +257,7 @@ export const inkNoRepeatedRender = defineRule({
         context.report({
           node,
           message:
-            "A second Ink `render()` call can create competing renderers for the same output.",
+            "Ink reuses the existing output instance and ignores fresh renderer options; use its `rerender()` method or unmount it first.",
         });
       },
     };

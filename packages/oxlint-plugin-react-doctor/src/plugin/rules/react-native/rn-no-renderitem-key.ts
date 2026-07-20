@@ -11,7 +11,7 @@ import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 
 const collectTopLevelReturnExpressions = (
   functionNode:

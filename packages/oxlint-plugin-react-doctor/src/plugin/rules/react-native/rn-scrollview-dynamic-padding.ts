@@ -4,7 +4,7 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";

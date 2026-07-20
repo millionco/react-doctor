@@ -9,7 +9,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getInitializerModuleSource } from "../../utils/get-initializer-module-source.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";

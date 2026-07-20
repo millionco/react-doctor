@@ -1,5 +1,5 @@
-import type { EsTreeNode } from "../../../utils/es-tree-node.js";
-import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import type { EsTreeNode } from "./es-tree-node.js";
+import { isNodeOfType } from "./is-node-of-type.js";
 
 export const resolveJsxElementName = (openingElement: EsTreeNode): string | null => {
   if (!isNodeOfType(openingElement, "JSXOpeningElement")) return null;

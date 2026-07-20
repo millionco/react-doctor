@@ -288,9 +288,6 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "ink-ctrl-c-handler-requires-exit-option": {
     code: 'import {render,useInput} from "ink";const App=()=>{useInput((input,key)=>{if(key.ctrl&&input==="c")work()});return null};render(<App/>);',
   },
-  "ink-newline-inside-text": {
-    code: 'import {Box,Newline} from "ink";const App=()=> <Box><Newline/></Box>;',
-  },
   "ink-no-bare-process-exit": {
     code: 'import {useInput} from "ink";const App=()=>{useInput(()=>process.exit(0));return null};',
   },
@@ -335,9 +332,6 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "ink-static-requires-key": {
     code: 'import {Static,Text} from "ink";const App=({items})=> <Static items={items}>{item=><Text>{item}</Text>}</Static>;',
-  },
-  "ink-suspense-requires-concurrent": {
-    code: 'import {render,Text} from "ink";import {Suspense} from "react";render(<Suspense fallback={null}><Text/></Suspense>);',
   },
   "ink-use-reactive-window-size": {
     code: 'import {Text} from "ink";const App=()=> <Text>{process.stdout.columns}</Text>;',

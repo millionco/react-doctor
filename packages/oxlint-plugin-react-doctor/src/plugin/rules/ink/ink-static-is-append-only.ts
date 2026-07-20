@@ -41,7 +41,7 @@ export const inkStaticIsAppendOnly = defineRule({
       }
       context.report({
         node: itemsAttribute,
-        message: `\`<Static>\` never revises prior output, but \`.${methodName}()\` can reorder or remove it.`,
+        message: `\`<Static>\` never revises prior output, but \`.${methodName}()\` can change existing item order.`,
       });
     },
   }),

@@ -11,4 +11,7 @@ export const KNOWN_UNCOVERED: Readonly<Record<string, string>> = {
     "resolves the imported barrel module on the real filesystem to count its re-exports, which the in-memory liveness harness cannot fake",
   "rn-animate-layout-property": "retired rule: create() intentionally never reports",
   "rn-prefer-content-inset-adjustment": "retired rule: create() intentionally never reports",
+  "ink-newline-inside-text": "retired rule: Ink supports Newline as a standalone text node",
+  "ink-suspense-requires-concurrent":
+    "retired rule: Ink supports Suspense fallback rendering without concurrent mode",
 };

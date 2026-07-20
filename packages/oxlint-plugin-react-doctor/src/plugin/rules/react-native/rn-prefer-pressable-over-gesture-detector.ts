@@ -2,7 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 import { isImportedFromModule } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";

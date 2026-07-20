@@ -5,7 +5,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
+import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";

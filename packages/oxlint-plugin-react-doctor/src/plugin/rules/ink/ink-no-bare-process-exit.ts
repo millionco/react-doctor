@@ -8,10 +8,6 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { resolveInkApiName } from "../../utils/resolve-ink-api-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { walkAst } from "../../utils/walk-ast.js";
-
-const CLEANUP_METHOD_PATTERN =
-  /^(?:abort|cleanup|close|destroy|disconnect|dispose|restore|unmount)$/i;
 
 const findUseInputHandler = (node: EsTreeNode, context: RuleContext): EsTreeNode | null => {
   const enclosingFunction = findEnclosingFunction(node);
@@ -25,33 +21,12 @@ const findUseInputHandler = (node: EsTreeNode, context: RuleContext): EsTreeNode
     : null;
 };
 
-const hasCleanupBeforeExit = (handler: EsTreeNode, exitCall: EsTreeNode): boolean => {
-  let hasCleanup = false;
-  walkAst(handler, (descendantNode) => {
-    if (descendantNode === exitCall) return false;
-    if (
-      isNodeOfType(descendantNode, "CallExpression") &&
-      descendantNode.range[1] <= exitCall.range[0]
-    ) {
-      const callee = descendantNode.callee;
-      const methodName = isNodeOfType(callee, "Identifier")
-        ? callee.name
-        : isNodeOfType(callee, "MemberExpression")
-          ? getStaticPropertyName(callee)
-          : null;
-      if (methodName && CLEANUP_METHOD_PATTERN.test(methodName)) hasCleanup = true;
-    }
-  });
-  return hasCleanup;
-};
-
 export const inkNoBareProcessExit = defineRule({
   id: "ink-no-bare-process-exit",
   title: "Process exits before Ink cleanup",
   severity: "error",
   minimumInkVersion: MINIMUM_INK_VERSIONS.base,
-  recommendation:
-    "Use Ink's `useApp().exit()` or perform explicit cleanup before `process.exit()`.",
+  recommendation: "Use Ink's `useApp().exit()` so Ink restores terminal state.",
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (
@@ -61,8 +36,7 @@ export const inkNoBareProcessExit = defineRule({
       ) {
         return;
       }
-      const handler = findUseInputHandler(node, context);
-      if (!handler || hasCleanupBeforeExit(handler, node)) return;
+      if (!findUseInputHandler(node, context)) return;
       context.report({
         node,
         message: "`process.exit()` in an Ink input handler bypasses Ink's terminal cleanup.",

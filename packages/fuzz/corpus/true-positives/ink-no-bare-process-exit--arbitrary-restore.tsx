@@ -1,6 +1,5 @@
 // rule: ink-no-bare-process-exit
-// weakness: explicit-cleanup
-// source: explicit terminal restoration permits a deliberate process exit
+// source: an arbitrary restore helper does not prove complete Ink terminal cleanup
 import { useInput } from "ink";
 
 interface AppProperties {

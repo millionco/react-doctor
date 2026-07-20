@@ -1,10 +1,10 @@
-import type { EsTreeNode } from "../../../utils/es-tree-node.js";
-import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
-import { isJsxFragmentElement } from "../../../utils/is-jsx-fragment-element.js";
-import { isNodeOfType } from "../../../utils/is-node-of-type.js";
-import { isReactComponentName } from "../../../utils/is-react-component-name.js";
-import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
-import { walkAst } from "../../../utils/walk-ast.js";
+import type { EsTreeNode } from "./es-tree-node.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { isJsxFragmentElement } from "./is-jsx-fragment-element.js";
+import { isNodeOfType } from "./is-node-of-type.js";
+import { isReactComponentName } from "./is-react-component-name.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
+import { walkAst } from "./walk-ast.js";
 import { resolveJsxElementName } from "./resolve-jsx-element-name.js";
 
 type FunctionNode =
@@ -258,14 +258,14 @@ const isChildrenForwardingAttribute = (
 const jsxRootForwardsChildrenIntoText = (
   jsxRoot: EsTreeNode,
   bindings: ChildrenBindings,
-  isTextHandlingElement: (elementName: string) => boolean,
+  isTextHandlingElement: (elementName: string, contextNode: EsTreeNode) => boolean,
 ): boolean => {
   let didForwardIntoText = false;
   walkAst(jsxRoot, (node) => {
     if (didForwardIntoText || isFunctionNode(node)) return false;
     if (!isNodeOfType(node, "JSXElement")) return undefined;
     const elementName = resolveJsxElementName(node.openingElement);
-    if (!elementName || !isTextHandlingElement(elementName)) return;
+    if (!elementName || !isTextHandlingElement(elementName, node)) return;
     didForwardIntoText =
       (node.children ?? []).some((child) =>
         isChildrenForwardingJsxChildThroughFragments(child, bindings),
@@ -292,7 +292,7 @@ const isNonWhitespaceJsxChild = (child: EsTreeNode): boolean =>
 const jsxRootForwardsChildren = (
   jsxRoot: EsTreeNode,
   bindings: ChildrenBindings,
-  isTextHandlingElement: (elementName: string) => boolean,
+  isTextHandlingElement: (elementName: string, contextNode: EsTreeNode) => boolean,
   countsAsForwardTarget: (node: EsTreeNode) => boolean,
 ): boolean => {
   let didForward = false;
@@ -303,7 +303,7 @@ const jsxRootForwardsChildren = (
     }
     if (isNodeOfType(node, "JSXElement")) {
       const elementName = resolveJsxElementName(node.openingElement);
-      if (elementName && isTextHandlingElement(elementName)) return false;
+      if (elementName && isTextHandlingElement(elementName, node)) return false;
       const hasJsxChildren = (node.children ?? []).some(isNonWhitespaceJsxChild);
       if (
         !hasJsxChildren &&
@@ -335,7 +335,7 @@ const jsxRootForwardsChildren = (
 const jsxRootRendersChildrenOutsideText = (
   jsxRoot: EsTreeNode,
   bindings: ChildrenBindings,
-  isTextHandlingElement: (elementName: string) => boolean,
+  isTextHandlingElement: (elementName: string, contextNode: EsTreeNode) => boolean,
 ): boolean => jsxRootForwardsChildren(jsxRoot, bindings, isTextHandlingElement, () => true);
 
 // True when a return path forwards the component's children into a *known*
@@ -347,13 +347,13 @@ const jsxRootRendersChildrenOutsideText = (
 const jsxRootRendersChildrenIntoNonTextHost = (
   jsxRoot: EsTreeNode,
   bindings: ChildrenBindings,
-  isTextHandlingElement: (elementName: string) => boolean,
-  isNonTextHostElement: (elementName: string) => boolean,
+  isTextHandlingElement: (elementName: string, contextNode: EsTreeNode) => boolean,
+  isNonTextHostElement: (elementName: string, contextNode: EsTreeNode) => boolean,
 ): boolean =>
   jsxRootForwardsChildren(jsxRoot, bindings, isTextHandlingElement, (node) => {
     if (!isNodeOfType(node, "JSXElement")) return false;
     const elementName = resolveJsxElementName(node.openingElement);
-    return elementName !== null && isNonTextHostElement(elementName);
+    return elementName !== null && isNonTextHostElement(elementName, node);
   });
 
 // Resolves a styled-component factory back to its base element name —
@@ -410,8 +410,7 @@ const resolveClassRenderFunction = (classNode: EsTreeNode): FunctionNode | null 
 export interface ChildrenForwardingComponents {
   // Forward their children into a `<Text>` — raw text inside them is safe.
   textWrappers: ReadonlySet<string>;
-  // Proven to render their children into a non-text host — raw text inside them
-  // is a certain crash, so `rn-no-raw-text` reports it.
+  // Proven to render their children into a non-text host.
   nonTextWrappers: ReadonlySet<string>;
 }
 
@@ -419,7 +418,7 @@ export type ChildrenForwardingKind = "text" | "nonText" | "unknown";
 
 // Classifies a component definition by where it forwards its `children`:
 // "text" — into a `<Text>` (raw text inside it is safe); "nonText" — into a
-// known non-text host (a certain crash); "unknown" — into an unanalyzed import
+// known non-text host; "unknown" — into an unanalyzed import
 // that may itself wrap them in `<Text>`, or not forwarded at all (so raw text
 // renders nothing). `isTextHandlingElement` / `isNonTextHostElement` decide
 // which receiving elements count as text vs. host — pass the in-file-aware
@@ -427,14 +426,14 @@ export type ChildrenForwardingKind = "text" | "nonText" | "unknown";
 // component resolved from another file.
 export const classifyChildrenForwarding = (
   definitionNode: EsTreeNode,
-  isTextHandlingElement: (elementName: string) => boolean,
-  isNonTextHostElement: (elementName: string) => boolean,
+  isTextHandlingElement: (elementName: string, contextNode: EsTreeNode) => boolean,
+  isNonTextHostElement: (elementName: string, contextNode: EsTreeNode) => boolean,
 ): ChildrenForwardingKind => {
   const unwrapped = unwrapComponentDefinition(definitionNode);
   const styledBaseName = resolveStyledFactoryBaseName(unwrapped);
   if (styledBaseName) {
-    if (isTextHandlingElement(styledBaseName)) return "text";
-    if (isNonTextHostElement(styledBaseName)) return "nonText";
+    if (isTextHandlingElement(styledBaseName, definitionNode)) return "text";
+    if (isNonTextHostElement(styledBaseName, definitionNode)) return "nonText";
     return "unknown";
   }
   const functionNode =
@@ -456,7 +455,7 @@ export const classifyChildrenForwarding = (
     return "nonText";
   }
   // Forwarded somewhere non-text but not into a known host — an unanalyzed
-  // import that may itself wrap them in `<Text>`. Not safe, not a proven crash.
+  // import that may itself wrap them in `<Text>`. Not safe, but not proven non-text.
   if (
     jsxRoots.some((jsxRoot) =>
       jsxRootRendersChildrenOutsideText(jsxRoot, bindings, isTextHandlingElement),
@@ -467,7 +466,7 @@ export const classifyChildrenForwarding = (
   for (const jsxRoot of jsxRoots) {
     if (isNodeOfType(jsxRoot, "JSXElement")) {
       const rootName = resolveJsxElementName(jsxRoot.openingElement);
-      if (rootName && isTextHandlingElement(rootName)) return "text";
+      if (rootName && isTextHandlingElement(rootName, jsxRoot)) return "text";
     }
     if (jsxRootForwardsChildrenIntoText(jsxRoot, bindings, isTextHandlingElement)) return "text";
   }
@@ -479,8 +478,8 @@ export const classifyChildrenForwarding = (
 const recordWrapperFromDeclaration = (
   componentName: string | null,
   definitionNode: EsTreeNode | null | undefined,
-  isTextHandlingElement: (elementName: string) => boolean,
-  isNonTextHostElement: (elementName: string) => boolean,
+  isTextHandlingElement: (elementName: string, contextNode: EsTreeNode) => boolean,
+  isNonTextHostElement: (elementName: string, contextNode: EsTreeNode) => boolean,
   wrappers: Set<string>,
   nonTextWrappers: Set<string>,
 ): void => {
@@ -498,7 +497,7 @@ const recordWrapperFromDeclaration = (
 
 // Walks a program and classifies its in-file PascalCase components into
 // `textWrappers` / `nonTextWrappers` (see `ChildrenForwardingComponents`).
-// `isNonTextHostRoot` seeds the built-in crash hosts; the walk extends it
+// `isNonTextHostRoot` seeds the built-in non-text hosts; the walk extends it
 // transitively (a component forwarding into a proven non-text wrapper is itself
 // non-text), repeating to a fixpoint so wrappers-of-wrappers
 // (`const Badge = ({ children }) => <Chip>{children}</Chip>`) resolve regardless
@@ -510,17 +509,39 @@ const recordWrapperFromDeclaration = (
 // forwards into is known.
 export const collectTextWrapperComponents = (
   programNode: EsTreeNode,
-  isTextHandlingRoot: (elementName: string) => boolean,
-  isNonTextHostRoot: (elementName: string) => boolean,
+  isTextHandlingRoot: (elementName: string, contextNode: EsTreeNode) => boolean,
+  isNonTextHostRoot: (elementName: string, contextNode: EsTreeNode) => boolean,
 ): ChildrenForwardingComponents => {
   const wrappers = new Set<string>();
   const nonTextWrappers = new Set<string>();
-  const isTextHandlingElement = (elementName: string): boolean =>
-    isTextHandlingRoot(elementName) || wrappers.has(elementName);
-  const isNonTextHostElement = (elementName: string): boolean =>
-    isNonTextHostRoot(elementName) || nonTextWrappers.has(elementName);
+  const componentBindingCounts = new Map<string, number>();
+  walkAst(programNode, (node) => {
+    let componentName: string | null = null;
+    if (
+      (isNodeOfType(node, "ImportSpecifier") ||
+        isNodeOfType(node, "ImportDefaultSpecifier") ||
+        isNodeOfType(node, "ImportNamespaceSpecifier")) &&
+      isNodeOfType(node.local, "Identifier")
+    ) {
+      componentName = node.local.name;
+    } else if (isNodeOfType(node, "VariableDeclarator") && isNodeOfType(node.id, "Identifier")) {
+      componentName = node.id.name;
+    } else if (
+      (isNodeOfType(node, "FunctionDeclaration") || isNodeOfType(node, "ClassDeclaration")) &&
+      isNodeOfType(node.id, "Identifier")
+    ) {
+      componentName = node.id.name;
+    }
+    if (!componentName || !isReactComponentName(componentName)) return;
+    componentBindingCounts.set(componentName, (componentBindingCounts.get(componentName) ?? 0) + 1);
+  });
+  const isTextHandlingElement = (elementName: string, contextNode: EsTreeNode): boolean =>
+    isTextHandlingRoot(elementName, contextNode) || wrappers.has(elementName);
+  const isNonTextHostElement = (elementName: string, contextNode: EsTreeNode): boolean =>
+    isNonTextHostRoot(elementName, contextNode) || nonTextWrappers.has(elementName);
 
-  const recordDeclaration = (componentName: string | null, definitionNode: EsTreeNode | null) =>
+  const recordDeclaration = (componentName: string | null, definitionNode: EsTreeNode | null) => {
+    if (componentName && componentBindingCounts.get(componentName) !== 1) return;
     recordWrapperFromDeclaration(
       componentName,
       definitionNode,
@@ -529,6 +550,7 @@ export const collectTextWrapperComponents = (
       wrappers,
       nonTextWrappers,
     );
+  };
 
   while (true) {
     const wrappersSizeBeforePass = wrappers.size;

@@ -45,12 +45,6 @@ const RULE_CASES: ReadonlyArray<InkRuleCase> = [
     valid: `import {Text, Box} from "ink"; const App=()=> <Box><Text>ok</Text></Box>;`,
   },
   {
-    name: "newline placement",
-    rule: inkNewlineInsideText,
-    invalid: `import {Box, Newline} from "ink"; const App=()=> <Box><Newline /></Box>;`,
-    valid: `import {Text, Newline} from "ink"; const App=()=> <Text><Newline /></Text>;`,
-  },
-  {
     name: "Static key",
     rule: inkStaticRequiresKey,
     invalid: `import {Static, Text} from "ink"; const App=({items})=> <Static items={items}>{item => <Text>{item}</Text>}</Static>;`,
@@ -117,12 +111,6 @@ const RULE_CASES: ReadonlyArray<InkRuleCase> = [
     valid: `import {render, useInput} from "ink"; const App=()=> { useInput((input,key)=> { if (key.ctrl && input === "c") work(); }); return null; }; render(<App />, {exitOnCtrlC:false});`,
   },
   {
-    name: "Suspense concurrent mode",
-    rule: inkSuspenseRequiresConcurrent,
-    invalid: `import {render, Text} from "ink"; import {Suspense} from "react"; render(<Suspense fallback={null}><Text /></Suspense>);`,
-    valid: `import {render, Text} from "ink"; import {Suspense} from "react"; render(<Suspense fallback={null}><Text /></Suspense>, {concurrent:true});`,
-  },
-  {
     name: "renderToString live hooks",
     rule: inkNoLiveHooksInRenderToString,
     invalid: `import {renderToString, useInput, Text} from "ink"; const App=()=> { useInput(()=>{}); return <Text />; }; renderToString(<App />);`,
@@ -177,6 +165,21 @@ describe("Ink rules", () => {
     });
   }
 
+  it("keeps disproven rule IDs retired for config compatibility", () => {
+    const newlineCode = `import {Box,Newline} from "ink"; const App=()=> <Box><Newline /></Box>;`;
+    const suspenseCode = `import {render,Text} from "ink"; import {Suspense} from "react"; render(<Suspense fallback={null}><Text /></Suspense>);`;
+    expect(inkNewlineInsideText.lifecycle).toBe("retired");
+    expect(inkNewlineInsideText.defaultEnabled).toBe(false);
+    expect(runRule(inkNewlineInsideText, newlineCode).diagnostics).toHaveLength(0);
+    expect(inkSuspenseRequiresConcurrent.lifecycle).toBe("retired");
+    expect(inkSuspenseRequiresConcurrent.defaultEnabled).toBe(false);
+    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(0);
+  });
+
+  it("keeps paste migration opt-in", () => {
+    expect(inkPreferUsePaste.defaultEnabled).toBe(false);
+  });
+
   it("ignores same-named local APIs", () => {
     const code = `const Text=({children}) => <span>{children}</span>; const measureElement=()=>{}; const App=()=> { measureElement(); return <Text>hello</Text>; };`;
     expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(0);
@@ -185,6 +188,49 @@ describe("Ink rules", () => {
 
   it("stops at local JSX wrappers whose rendered host is unknown", () => {
     const code = `import {Box,Text} from "ink"; const Wrapper=({children}) => <Text>{children}</Text>; const App=()=> <Box><Wrapper>hello</Wrapper></Box>;`;
+    expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(0);
+  });
+
+  it("classifies same-file Ink children forwarders", () => {
+    const code = `
+      import {Box as InkBox,Text as InkText} from "ink";
+      const Unsafe=({children}) => <InkBox>{children}</InkBox>;
+      const Safe=({children}) => <InkText>{children}</InkText>;
+      const App=()=> <InkBox><Unsafe>bad</Unsafe><Safe>good</Safe></InkBox>;
+    `;
+    expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(1);
+  });
+
+  it("classifies Ink wrapper chains regardless of declaration order", () => {
+    const code = `
+      import {Box} from "ink";
+      const Outer=({children}) => <Inner>{children}</Inner>;
+      const Inner=({children}) => <Box>{children}</Box>;
+      const App=()=> <Outer>bad</Outer>;
+    `;
+    expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(1);
+  });
+
+  it("follows shorthand and named fragments to an Ink receiver", () => {
+    const code = `
+      import React,{Fragment as Group} from "react";
+      import {Box} from "ink";
+      const App=()=> <Box><>one</><Group>two</Group><React.Fragment>three</React.Fragment></Box>;
+    `;
+    expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(3);
+  });
+
+  it("stays quiet for custom receivers with unknown forwarding", () => {
+    const code = `import {Box} from "ink"; import {Panel} from "third-party-ui"; const App=()=> <Box><Panel>unknown</Panel></Box>;`;
+    expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(0);
+  });
+
+  it("does not mistake a local Fragment component for React.Fragment", () => {
+    const code = `
+      import {Box,Text} from "ink";
+      const Fragment=({children}) => <Text>{children}</Text>;
+      const App=()=> <Box><Fragment>safe</Fragment></Box>;
+    `;
     expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(0);
   });
 
@@ -280,9 +326,9 @@ describe("Ink rules", () => {
     expect(runRule(inkNoBareProcessExit, code).diagnostics).toHaveLength(1);
   });
 
-  it("allows process exit after explicit terminal cleanup", () => {
+  it("does not accept an arbitrary restore helper as complete Ink cleanup", () => {
     const code = `import {useInput} from "ink"; const App=()=> {useInput(()=>{restore(); process.exit(0);}); return null;};`;
-    expect(runRule(inkNoBareProcessExit, code).diagnostics).toHaveLength(0);
+    expect(runRule(inkNoBareProcessExit, code).diagnostics).toHaveLength(1);
   });
 
   it("allows separate renderers on different output streams", () => {
@@ -325,14 +371,6 @@ describe("Ink rules", () => {
   });
 
   it("associates renderer options with the component each call mounts", () => {
-    const suspenseCode = `
-      import {render,Text} from "ink";
-      import {Suspense} from "react";
-      const Safe=()=> <Suspense fallback={null}><Text>safe</Text></Suspense>;
-      const Unsafe=()=> <Suspense fallback={null}><Text>unsafe</Text></Suspense>;
-      render(<Safe/>,{concurrent:true});
-      render(<Unsafe/>);
-    `;
     const ctrlCCode = `
       import {render,useInput} from "ink";
       const Safe=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
@@ -340,21 +378,10 @@ describe("Ink rules", () => {
       render(<Safe/>,{exitOnCtrlC:false});
       render(<Unsafe/>);
     `;
-    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(1);
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(1);
   });
 
   it("associates renderer options through same-file component wrappers", () => {
-    const suspenseCode = `
-      import {render,Text} from "ink";
-      import {Suspense} from "react";
-      const SafeBoundary=()=> <Suspense fallback={null}><Text>safe</Text></Suspense>;
-      const UnsafeBoundary=()=> <Suspense fallback={null}><Text>unsafe</Text></Suspense>;
-      const SafeRoot=()=> <SafeBoundary/>;
-      const UnsafeRoot=()=> <UnsafeBoundary/>;
-      render(<SafeRoot/>,{concurrent:true});
-      render(<UnsafeRoot/>);
-    `;
     const ctrlCCode = `
       import {render,useInput} from "ink";
       const SafeInput=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
@@ -364,42 +391,26 @@ describe("Ink rules", () => {
       render(<SafeRoot/>,{exitOnCtrlC:false});
       render(<UnsafeRoot/>);
     `;
-    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(1);
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(1);
   });
 
   it("does not associate renderer options through unused nested components or JSX props", () => {
-    const suspenseCode = `
-      import {render,Text} from "ink";
-      import {Suspense} from "react";
-      const Root=()=> { const Unused=()=> <Suspense fallback={null}><Text /></Suspense>; return <Text />; };
-      render(<Root/>);
-    `;
     const ctrlCCode = `
       import {render,useInput} from "ink";
       const Unused=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
       const Root=()=> null;
       render(<Root unused={<Unused/>}/>);
     `;
-    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(0);
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(0);
   });
 
   it("fails closed for unresolved renderer options", () => {
-    const suspenseCode = `
-      import {render,Text} from "ink";
-      import {Suspense} from "react";
-      const App=()=> <Suspense fallback={null}><Text /></Suspense>;
-      const options={concurrent:true};
-      render(<App/>,options);
-    `;
     const ctrlCCode = `
       import {render,useInput} from "ink";
       const App=()=> { useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null; };
       const options={exitOnCtrlC:false};
       render(<App/>,{...options});
     `;
-    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(0);
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(0);
   });
 
@@ -487,6 +498,99 @@ describe("Ink rules", () => {
     expect(runRule(inkUseReactiveWindowSize, code).diagnostics).toHaveLength(0);
   });
 
+  it("does not let an unrelated resize listener hide a non-reactive dimension", () => {
+    const code = `
+      import {Text} from "ink";
+      import {useEffect} from "react";
+      const App=()=> {
+        useEffect(()=> {
+          const update=()=>console.info("resized");
+          process.stdout.on("resize",update);
+          return()=>process.stdout.off("resize",update);
+        },[]);
+        return <Text>{process.stdout.columns}</Text>;
+      };
+    `;
+    expect(runRule(inkUseReactiveWindowSize, code).diagnostics).toHaveLength(1);
+  });
+
+  it("does not use a resize listener from an unmounted nested component", () => {
+    const code = `
+      import {Text} from "ink";
+      import {useEffect,useState} from "react";
+      const App=()=> {
+        const [,refresh]=useState(0);
+        const Unmounted=()=> {
+          useEffect(()=>process.stdout.on("resize",()=>refresh(value=>value+1)),[]);
+          return <Text>unused</Text>;
+        };
+        return <Text>{process.stdout.columns}</Text>;
+      };
+    `;
+    expect(runRule(inkUseReactiveWindowSize, code).diagnostics).toHaveLength(1);
+  });
+
+  it("does not confuse shadowed Ink hosts with imported bindings", () => {
+    const code = `
+      import {Box,Text} from "ink";
+      const Wrapper=({children})=> {
+        const Box=({children})=><Text>{children}</Text>;
+        return <Box>{children}</Box>;
+      };
+      const App=()=> <Wrapper>safe</Wrapper>;
+    `;
+    expect(runRule(inkNoRawText, code).diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a proven resize-triggered render for every dimension", () => {
+    const code = `
+      import {Text} from "ink";
+      import {useEffect,useState} from "react";
+      const App=()=> {
+        const [columns,setColumns]=useState(process.stdout.columns);
+        useEffect(()=> {
+          process.stdout.on("resize",()=>setColumns(process.stdout.columns));
+        },[]);
+        return <Text>{columns+process.stdout.rows}</Text>;
+      };
+    `;
+    expect(runRule(inkUseReactiveWindowSize, code).diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a resize-triggered reducer dispatch", () => {
+    const code = `
+      import {Text} from "ink";
+      import {useEffect,useReducer} from "react";
+      const App=()=> {
+        const [,refresh]=useReducer(value=>value+1,0);
+        useEffect(()=> {
+          process.stdout.on("resize",refresh);
+          return()=>process.stdout.off("resize",refresh);
+        },[refresh]);
+        return <Text>{process.stdout.columns}</Text>;
+      };
+    `;
+    expect(runRule(inkUseReactiveWindowSize, code).diagnostics).toHaveLength(0);
+  });
+
+  it("ignores terminal dimensions in components that do not render Ink", () => {
+    const code = `import {Text} from "ink"; const Dashboard=()=> <div>{process.stdout.columns}</div>;`;
+    expect(runRule(inkUseReactiveWindowSize, code).diagnostics).toHaveLength(0);
+  });
+
+  it("allows raw mode changes in an effect with cleanup", () => {
+    const code = `
+      import {useStdin,Text} from "ink";
+      import {useEffect} from "react";
+      const App=()=> {
+        const {setRawMode}=useStdin();
+        useEffect(()=>{setRawMode(true);return()=>setRawMode(false)},[setRawMode]);
+        return <Text>ready</Text>;
+      };
+    `;
+    expect(runRule(inkNoDirectRawMode, code).diagnostics).toHaveLength(0);
+  });
+
   it("allows cursor lengths for provably ASCII-only strings", () => {
     const code = `import {useCursor} from "ink"; const App=()=> { const label="Ready"; const cursor=useCursor(); cursor.setCursorPosition({x:label.length,y:0}); return null; };`;
     expect(runRule(inkUseStringWidthForCursor, code).diagnostics).toHaveLength(0);
@@ -537,40 +641,6 @@ describe("Ink rules", () => {
       const Unmounted=()=> {useInput((input,key)=>{if(key.ctrl&&input==="c") work()}); return null};
       render(<Root/>);
     `;
-    const suspenseCode = `
-      import {render,Text} from "ink";
-      import {Suspense} from "react";
-      const Root=()=> <Text>root</Text>;
-      const Unmounted=()=> <Suspense fallback={null}><Text>unused</Text></Suspense>;
-      render(<Root/>);
-    `;
     expect(runRule(inkCtrlCHandlerRequiresExitOption, ctrlCCode).diagnostics).toHaveLength(0);
-    expect(runRule(inkSuspenseRequiresConcurrent, suspenseCode).diagnostics).toHaveLength(0);
-  });
-
-  it("does not associate renderer options through statically unreachable branches", () => {
-    const componentBranchCode = `
-      import {render,Text} from "ink";
-      import {Suspense} from "react";
-      const Root=()=> <>{false && <Suspense fallback={null}><Text /></Suspense>}</>;
-      render(<Root/>);
-    `;
-    const renderBranchCode = `
-      import {render,Text} from "ink";
-      import {Suspense} from "react";
-      false && render(<Suspense fallback={null}><Text /></Suspense>);
-    `;
-    expect(runRule(inkSuspenseRequiresConcurrent, componentBranchCode).diagnostics).toHaveLength(0);
-    expect(runRule(inkSuspenseRequiresConcurrent, renderBranchCode).diagnostics).toHaveLength(0);
-  });
-
-  it("recognizes Suspense boundaries owned by an Ink ancestor", () => {
-    const code = `
-      import {render,Box} from "ink";
-      import {Suspense,lazy} from "react";
-      const Lazy=lazy(()=>import("./screen"));
-      render(<Box><Suspense fallback={null}><Lazy/></Suspense></Box>);
-    `;
-    expect(runRule(inkSuspenseRequiresConcurrent, code).diagnostics).toHaveLength(1);
   });
 });

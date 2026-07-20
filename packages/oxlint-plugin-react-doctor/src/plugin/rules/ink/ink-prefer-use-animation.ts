@@ -1,13 +1,12 @@
 import { MINIMUM_INK_VERSIONS } from "../../constants/ink.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
+import { componentRendersInk } from "../../utils/component-renders-ink.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { resolveInkJsxElementName } from "../../utils/resolve-ink-api-name.js";
-import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
@@ -51,26 +50,6 @@ const isFrameIncrement = (callbackNode: EsTreeNode): boolean => {
   return hasFrameIncrement;
 };
 
-const componentRendersInk = (componentNode: EsTreeNode, context: RuleContext): boolean => {
-  let doesRenderInk = false;
-  walkAst(componentNode, (descendantNode) => {
-    if (
-      descendantNode !== componentNode &&
-      (/Function/.test(descendantNode.type) || isNodeOfType(descendantNode, "JSXAttribute"))
-    ) {
-      return false;
-    }
-    if (
-      isNodeOfType(descendantNode, "JSXOpeningElement") &&
-      resolveInkJsxElementName(descendantNode, context.scopes)
-    ) {
-      doesRenderInk = true;
-      return false;
-    }
-  });
-  return doesRenderInk;
-};
-
 export const inkPreferUseAnimation = defineRule({
   id: "ink-prefer-use-animation",
   title: "Animation loop implemented with setInterval",
@@ -101,7 +80,7 @@ export const inkPreferUseAnimation = defineRule({
       const intervalCallback = node.arguments[0];
       if (!effectCall || !intervalCallback || !isFrameIncrement(intervalCallback)) return;
       const componentNode = findRenderPhaseComponentOrHook(effectCall, context.scopes);
-      if (!componentNode || !componentRendersInk(componentNode, context)) return;
+      if (!componentNode || !componentRendersInk(componentNode, context.scopes)) return;
       context.report({
         node,
         message: "This frame-counter interval is an Ink animation; prefer `useAnimation()`.",

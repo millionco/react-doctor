@@ -7,10 +7,10 @@ import { resolveInkJsxElementName } from "../../utils/resolve-ink-api-name.js";
 
 export const inkNoMultipleStatic = defineRule({
   id: "ink-no-multiple-static",
-  title: "Multiple Static regions in one Ink tree",
+  title: "Multiple unconditional Static regions in one render root",
   severity: "warn",
   minimumInkVersion: MINIMUM_INK_VERSIONS.base,
-  recommendation: "Consolidate permanent output into one `<Static>` region when possible.",
+  recommendation: "Combine unconditional output in one render root into a single `<Static>`.",
   create: (context) => {
     const staticNodesByRenderRoot = new Map<EsTreeNode, EsTreeNodeOfType<"JSXOpeningElement">[]>();
     return {
@@ -40,8 +40,7 @@ export const inkNoMultipleStatic = defineRule({
         }
         context.report({
           node,
-          message:
-            "Multiple `<Static>` regions make permanent output ordering difficult to reason about.",
+          message: "Ink tracks one `<Static>` node per root; combine these unconditional regions.",
         });
       },
     };

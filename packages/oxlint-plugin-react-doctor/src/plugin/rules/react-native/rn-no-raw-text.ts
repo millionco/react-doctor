@@ -14,9 +14,9 @@ import { isInsidePlatformOsWebBranch } from "../../utils/is-inside-platform-os-w
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
-import { collectTextWrapperComponents } from "./utils/collect-text-wrapper-components.js";
-import { resolveImportedComponentForwarding } from "./utils/resolve-imported-component-forwarding.js";
+import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
+import { collectTextWrapperComponents } from "../../utils/collect-text-wrapper-components.js";
+import { resolveImportedComponentForwarding } from "../../utils/resolve-imported-component-forwarding.js";
 import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -151,10 +151,7 @@ export const rnNoRawText = defineRule({
 
     // Resolve an imported component cross-file: "nonText" (renders children into
     // a host) → reported; "text" or unresolvable (`node_modules`, namespace
-    // imports, unanalyzable exports) → left alone. Cached per name and gated on
-    // `context.filename` (which drives path resolution), so `runRule` tests with
-    // no filename keep single-file behavior.
-    const importedNonTextWrapperCache = new Map<string, boolean>();
+    // imports, shadowed bindings, unanalyzable exports) → left alone.
     const isImportedNonTextWrapper = (
       elementName: string | null,
       contextNode: EsTreeNode,
@@ -162,18 +159,15 @@ export const rnNoRawText = defineRule({
       if (elementName === null || !isReactComponentName(elementName)) return false;
       const { filename } = context;
       if (filename === undefined) return false;
-      const cached = importedNonTextWrapperCache.get(elementName);
-      if (cached !== undefined) return cached;
       const forwardingKind = resolveImportedComponentForwarding(
         contextNode,
+        context.scopes,
         filename,
         elementName,
         isTextHandlingComponent,
         isNonTextHostName,
       );
-      const isNonTextWrapper = forwardingKind === "nonText";
-      importedNonTextWrapperCache.set(elementName, isNonTextWrapper);
-      return isNonTextWrapper;
+      return forwardingKind === "nonText";
     };
 
     return {

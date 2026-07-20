@@ -34,9 +34,10 @@ describe("zustand-no-fresh-selector-result", () => {
         const active = useBearStore((state) => state.bears.filter((bear) => bear.active));
         const names = useBearStore((state) => state.bears.map((bear) => bear.name));
         const keys = useBearStore((state) => Object.keys(state.byId));
+        const sortedEntries = useBearStore((state) => Object.entries(state.byId).toSorted());
         const copied = useBearStore((state) => Array.from(state.byId.keys()));
       `,
-      4,
+      5,
     );
   });
 

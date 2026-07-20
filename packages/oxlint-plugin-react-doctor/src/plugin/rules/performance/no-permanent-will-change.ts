@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { RuleContext } from "../../utils/rule-context.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getClassNameLiteral } from "../react-ui/utils/get-class-name-literal.js";
+import { getJsxAttributeStaticString } from "../../utils/get-jsx-attribute-static-string.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 
 const isPermanentWillChangeClass = (token: string): boolean => {
   const utility = token.startsWith("!") ? token.slice(1) : token;
@@ -29,7 +29,7 @@ export const noPermanentWillChange = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       if (node.name.name === "className" || node.name.name === "class") {
-        const className = getClassNameLiteral(node);
+        const className = getJsxAttributeStaticString(node);
         const permanentUtility = className
           ?.split(/\s+/)
           .find((token) => isPermanentWillChangeClass(token));

@@ -49,7 +49,12 @@ export const reactRouterNoSessionMutationInLoader = wrapReactRouterRule(
             allowComputedString: true,
           });
           if (methodName === null || !REACT_ROUTER_SESSION_MUTATOR_NAMES.has(methodName)) continue;
-          if (!isNodeOfType(memberExpression.parent, "CallExpression")) continue;
+          if (
+            !isNodeOfType(memberExpression.parent, "CallExpression") ||
+            memberExpression.parent.callee !== memberExpression
+          ) {
+            continue;
+          }
           context.report({
             node: memberExpression.parent,
             message: `loader mutates the session with ${methodName}(), which can race parallel loader execution.`,

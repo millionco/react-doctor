@@ -42,7 +42,12 @@ export const reactRouterNoMiddlewareResponseBodyConsumption = wrapReactRouterRul
             if (methodName === null || !REACT_ROUTER_RESPONSE_BODY_READER_NAMES.has(methodName)) {
               continue;
             }
-            if (!isNodeOfType(memberExpression.parent, "CallExpression")) continue;
+            if (
+              !isNodeOfType(memberExpression.parent, "CallExpression") ||
+              memberExpression.parent.callee !== memberExpression
+            ) {
+              continue;
+            }
             context.report({
               node: memberExpression.parent,
               message: `${declarator.id.name}.${methodName}() consumes the Response body returned by next().`,

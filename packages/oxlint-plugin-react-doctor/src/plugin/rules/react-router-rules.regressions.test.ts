@@ -21,6 +21,7 @@ import { reactRouterNestedRouteRequiresOutlet } from "./correctness/react-router
 import { reactRouterNoRedirectInTryCatch } from "./correctness/react-router-no-redirect-in-try-catch.js";
 import { reactRouterNoRouteModuleEnvironmentSuffix } from "./correctness/react-router-no-route-module-environment-suffix.js";
 import { reactRouterNoRouterInRender } from "./correctness/react-router-no-router-in-render.js";
+import { reactRouterNoSessionMutationInLoader } from "./correctness/react-router-no-session-mutation-in-loader.js";
 import { reactRouterNoStaticCookieExpires } from "./correctness/react-router-no-static-cookie-expires.js";
 import { reactRouterNoUnsynchronizedSearchParamsMutation } from "./correctness/react-router-no-unsynchronized-search-params-mutation.js";
 import { reactRouterNoUseLoaderDataInErrorUi } from "./correctness/react-router-no-use-loader-data-in-error-ui.js";
@@ -58,6 +59,12 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { createBrowserRouter, useOutlet as useChildOutlet } from "react-router"; createBrowserRouter([{ Component: () => <main>{useChildOutlet()}</main>, children: [{ path: "child", element: <Child /> }] }]);',
   },
   {
+    name: "allows an inline route component to delegate to a layout component",
+    rule: reactRouterNestedRouteRequiresOutlet,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ Component: () => <Layout />, children: [{ path: "child", element: <Child /> }] }]);',
+  },
+  {
     name: "allows lazy to return mutable route properties",
     rule: reactRouterNoInvalidLazyRouteProperties,
     source:
@@ -78,6 +85,20 @@ const safeRuleCases: SafeRuleCase[] = [
     name: "allows pure error formatting without an abort guard",
     rule: reactRouterGuardAbortedHandleError,
     source: "export function handleError(error, { request }) { return formatError(error); }",
+    filename: "/project/app/entry.server.tsx",
+  },
+  {
+    name: "allows an early return for aborted requests before error reporting",
+    rule: reactRouterGuardAbortedHandleError,
+    source:
+      "export function handleError(error, { request }) { if (request.signal.aborted) return; console.error(error); }",
+    filename: "/project/app/entry.server.tsx",
+  },
+  {
+    name: "allows error reporting inside a non-aborted branch",
+    rule: reactRouterGuardAbortedHandleError,
+    source:
+      "export function handleError(error, { request }) { if (!request.signal.aborted) { console.error(error); } }",
     filename: "/project/app/entry.server.tsx",
   },
   {
@@ -139,6 +160,18 @@ const safeRuleCases: SafeRuleCase[] = [
     rule: reactRouterNoMiddlewareResponseBodyConsumption,
     source:
       "export const middleware = [async (_context, next) => { const response = await observe(next); await response.json(); return response; }];",
+  },
+  {
+    name: "allows passing a response body-reader method to a helper",
+    rule: reactRouterNoMiddlewareResponseBodyConsumption,
+    source:
+      "export const middleware = [async (_context, next) => { const response = await next(); observe(response.json); return response; }];",
+  },
+  {
+    name: "allows passing a loader session mutator method to a helper",
+    rule: reactRouterNoSessionMutationInLoader,
+    source:
+      'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); observe(session.set); return null; }',
   },
   {
     name: "allows mutually exclusive search param updates",
@@ -498,6 +531,25 @@ describe("React Router rule regressions", () => {
       reactRouterReturnNavigationPromiseInTransition,
       'import { startTransition } from "react"; import { RouterProvider, useNavigate } from "react-router"; export const App = ({ router, fallbackRouter }) => <><RouterProvider router={router} useTransitions /><RouterProvider router={fallbackRouter} /></>; export const Button = () => { const navigate = useNavigate(); return <button onClick={() => startTransition(() => { navigate("/next"); })} />; };',
       { settings: { "react-doctor": { capabilities: ["react-router:7.15"] } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a loader session mutator invocation", () => {
+    const result = runRule(
+      reactRouterNoSessionMutationInLoader,
+      'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("notice", "hello"); return null; }',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an abort check that occurs after error reporting", () => {
+    const result = runRule(
+      reactRouterGuardAbortedHandleError,
+      "export function handleError(error, { request }) { console.error(error); if (request.signal.aborted) return; }",
+      { filename: "/project/app/entry.server.tsx" },
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

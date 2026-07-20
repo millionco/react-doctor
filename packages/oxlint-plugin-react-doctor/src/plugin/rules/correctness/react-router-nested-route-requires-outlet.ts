@@ -7,15 +7,34 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const OUTLET_EXPORT_NAMES = new Set(["Outlet", "useOutlet"]);
+
+const containsDelegatedComponent = (routeContent: EsTreeNode): boolean => {
+  let hasDelegatedComponent = false;
+  walkAst(routeContent, (descendant) => {
+    if (descendant !== routeContent && isFunctionLike(descendant)) return false;
+    if (!isNodeOfType(descendant, "JSXElement")) return;
+    const openingName = descendant.openingElement.name;
+    if (
+      !isNodeOfType(openingName, "JSXIdentifier") ||
+      openingName.name[0]?.toUpperCase() === openingName.name[0]
+    ) {
+      hasDelegatedComponent = true;
+      return false;
+    }
+  });
+  return hasDelegatedComponent;
+};
 
 const getResolvedInlineRouteContent = (
   routeObject: EsTreeNodeOfType<"ObjectExpression">,
 ): EsTreeNode | null => {
   const componentProperty = getStaticRouteProperty(routeObject, "Component");
   if (componentProperty !== null && isFunctionLike(componentProperty.value)) {
+    if (containsDelegatedComponent(componentProperty.value)) return null;
     return componentProperty.value;
   }
   const elementProperty = getStaticRouteProperty(routeObject, "element");

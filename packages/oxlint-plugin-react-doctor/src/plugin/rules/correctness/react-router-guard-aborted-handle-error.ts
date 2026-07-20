@@ -3,12 +3,14 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactRouterRouteFunction } from "../../utils/is-react-router-route-function.js";
 import { isRouteRequestExpression } from "../../utils/is-route-request-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
@@ -20,6 +22,71 @@ const ERROR_REPORTING_EXPORT_NAMES = new Set([
 ]);
 const SERVER_ENTRY_PATTERN = /(?:^|\/)entry\.server\.[cm]?[jt]sx?$/;
 const EMPTY_VISITORS: RuleVisitors = {};
+
+const isAbortCheck = (
+  context: RuleContext,
+  expression: EsTreeNode,
+  functionNode: EsTreeNode,
+): boolean =>
+  isNodeOfType(expression, "MemberExpression") &&
+  getStaticPropertyKeyName(expression, { allowComputedString: true }) === "aborted" &&
+  isNodeOfType(expression.object, "MemberExpression") &&
+  getStaticPropertyKeyName(expression.object, { allowComputedString: true }) === "signal" &&
+  isRouteRequestExpression(context, expression.object.object, functionNode);
+
+const isNegatedAbortCheck = (
+  context: RuleContext,
+  expression: EsTreeNode,
+  functionNode: EsTreeNode,
+): boolean =>
+  isNodeOfType(expression, "UnaryExpression") &&
+  expression.operator === "!" &&
+  isAbortCheck(context, expression.argument, functionNode);
+
+const isReportingCallGuarded = (
+  context: RuleContext,
+  reportingCall: EsTreeNode,
+  functionNode: EsTreeNode,
+): boolean => {
+  let ancestor: EsTreeNode | null | undefined = reportingCall.parent;
+  while (ancestor && ancestor !== functionNode) {
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      if (
+        isAstDescendant(reportingCall, ancestor.consequent) &&
+        isNegatedAbortCheck(context, ancestor.test, functionNode)
+      ) {
+        return true;
+      }
+      if (
+        ancestor.alternate &&
+        isAstDescendant(reportingCall, ancestor.alternate) &&
+        isAbortCheck(context, ancestor.test, functionNode)
+      ) {
+        return true;
+      }
+    }
+    ancestor = ancestor.parent;
+  }
+
+  ancestor = reportingCall.parent;
+  while (ancestor && ancestor !== functionNode) {
+    if (isNodeOfType(ancestor, "BlockStatement")) {
+      for (const statement of ancestor.body) {
+        if (isAstDescendant(reportingCall, statement)) break;
+        if (
+          isNodeOfType(statement, "IfStatement") &&
+          !statement.alternate &&
+          isAbortCheck(context, statement.test, functionNode) &&
+          statementAlwaysExits(statement.consequent)
+        ) {
+          return true;
+        }
+      }
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
 
 const isErrorReportingCall = (
   context: RuleContext,
@@ -76,33 +143,20 @@ export const reactRouterGuardAbortedHandleError = wrapReactRouterRule(
         if (!isNodeOfType(errorParameter, "Identifier")) return;
         const errorSymbol = context.scopes.symbolFor(errorParameter);
         if (errorSymbol === null) return;
-        let hasAbortCheck = false;
-        let reportingCall: EsTreeNode | null = null;
+        const reportingCalls: EsTreeNode[] = [];
         walkAst(functionNode, (descendant) => {
-          if (isNodeOfType(descendant, "MemberExpression")) {
-            const propertyName = getStaticPropertyKeyName(descendant, {
-              allowComputedString: true,
-            });
-            if (
-              propertyName === "aborted" &&
-              isNodeOfType(descendant.object, "MemberExpression") &&
-              getStaticPropertyKeyName(descendant.object, { allowComputedString: true }) ===
-                "signal" &&
-              isRouteRequestExpression(context, descendant.object.object, functionNode)
-            ) {
-              hasAbortCheck = true;
-            }
-          }
           if (isErrorReportingCall(context, descendant, errorSymbol)) {
-            reportingCall = descendant;
+            reportingCalls.push(descendant);
           }
         });
-        if (hasAbortCheck || reportingCall === null) return;
-        context.report({
-          node: reportingCall,
-          message:
-            "handleError reports expected abort errors without checking request.signal.aborted.",
-        });
+        for (const reportingCall of reportingCalls) {
+          if (isReportingCallGuarded(context, reportingCall, functionNode)) continue;
+          context.report({
+            node: reportingCall,
+            message:
+              "handleError reports expected abort errors without checking request.signal.aborted.",
+          });
+        }
       };
       return {
         ArrowFunctionExpression: inspectFunction,

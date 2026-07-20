@@ -81,6 +81,41 @@ describe("runEvaluationAttempts", () => {
     expect(onFinalFailure).not.toHaveBeenCalled();
   });
 
+  it("isolates failed repositories into separate retry sandboxes", async () => {
+    const secondRepositoryGroup: CorpusRepositoryGroup = {
+      ...repositoryGroup,
+      name: "second-app",
+    };
+    const secondFailedRecord: CorpusEvaluationRecord = {
+      ...failedRecord,
+      repository: {
+        ...failedRecord.repository,
+        name: "second-app",
+      },
+    };
+    const evaluatedBatches: ReadonlyArray<CorpusRepositoryGroup>[] = [];
+
+    await runEvaluationAttempts({
+      repositoryGroups: [repositoryGroup, secondRepositoryGroup],
+      repositoriesPerSandbox: 10,
+      attemptConcurrencies: [500, 50],
+      evaluateRepositoryBatch: async (batch) => {
+        evaluatedBatches.push(batch);
+        return evaluatedBatches.length === 1 ? [failedRecord, secondFailedRecord] : [];
+      },
+      beforeRetry: async () => undefined,
+      onBeforeRetryFailure: vi.fn(),
+      onRetry: vi.fn(),
+      onFinalFailure: vi.fn(async () => undefined),
+    });
+
+    expect(evaluatedBatches).toEqual([
+      [repositoryGroup, secondRepositoryGroup],
+      [{ ...repositoryGroup, rootDirectories: ["packages/web"] }],
+      [{ ...secondRepositoryGroup, rootDirectories: ["packages/web"] }],
+    ]);
+  });
+
   it("records a failure once after exhausting all attempts", async () => {
     const evaluateRepositoryBatch = vi.fn(async () => [failedRecord]);
     const onFinalFailure = vi.fn(async () => undefined);

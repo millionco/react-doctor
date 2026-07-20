@@ -14,10 +14,17 @@ import {
   LATEST_KNOWN_VALTIO_MAJOR,
   LATEST_SUPPORTED_MOBX_MAJOR,
   LATEST_SUPPORTED_ZUSTAND_MAJOR,
+  MOBX_ABORT_SIGNAL_MAJOR,
+  MOBX_ABORT_SIGNAL_MINOR,
+  MOBX_REACT_LITE_OBSERVER_MEMO_GUARD_MAJOR,
+  MOBX_REACT_LITE_OBSERVER_MEMO_GUARD_MINOR,
+  MOBX_REACT_OBSERVER_MEMO_GUARD_MAJOR,
+  MOBX_REACT_OBSERVER_MEMO_GUARD_MINOR,
 } from "../constants.js";
 import {
   getLowestDependencyMajor,
   isMajorMinorAtLeast,
+  parseDependencyMajorMinor,
   parseReactMajorMinor,
   parseTailwindMajorMinor,
 } from "./version.js";
@@ -154,6 +161,27 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   if (project.hasMobxReact === true || project.hasMobxReactLite === true) {
     capabilities.add("mobx-react-binding");
   }
+  const mobxReactVersion = parseDependencyMajorMinor(project.mobxReactVersion);
+  const mobxReactLiteVersion = parseDependencyMajorMinor(project.mobxReactLiteVersion);
+  const hasMobxReactObserverMemoGuard =
+    mobxReactVersion !== null &&
+    isMajorMinorAtLeast(mobxReactVersion, {
+      major: MOBX_REACT_OBSERVER_MEMO_GUARD_MAJOR,
+      minor: MOBX_REACT_OBSERVER_MEMO_GUARD_MINOR,
+    });
+  const hasMobxReactLiteObserverMemoGuard =
+    mobxReactLiteVersion !== null &&
+    isMajorMinorAtLeast(mobxReactLiteVersion, {
+      major: MOBX_REACT_LITE_OBSERVER_MEMO_GUARD_MAJOR,
+      minor: MOBX_REACT_LITE_OBSERVER_MEMO_GUARD_MINOR,
+    });
+  if (hasMobxReactObserverMemoGuard) capabilities.add("mobx-react-observer-memo-guard");
+  if (hasMobxReactLiteObserverMemoGuard) {
+    capabilities.add("mobx-react-lite-observer-memo-guard");
+  }
+  if (hasMobxReactObserverMemoGuard || hasMobxReactLiteObserverMemoGuard) {
+    capabilities.add("mobx-react-binding-observer-memo-guard");
+  }
   if (project.hasMobxStateTree === true) capabilities.add("mobx-state-tree");
   if (project.hasMobxReactObserver === true) capabilities.add("mobx-react-observer");
   if (
@@ -169,6 +197,17 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
       EARLIEST_GATED_MOBX_MAJOR,
       LATEST_SUPPORTED_MOBX_MAJOR,
     );
+  }
+  const mobxVersion = parseDependencyMajorMinor(project.mobxVersion);
+  if (
+    project.mobxMajorVersion === MOBX_ABORT_SIGNAL_MAJOR &&
+    mobxVersion !== null &&
+    isMajorMinorAtLeast(mobxVersion, {
+      major: MOBX_ABORT_SIGNAL_MAJOR,
+      minor: MOBX_ABORT_SIGNAL_MINOR,
+    })
+  ) {
+    capabilities.add("mobx:6.10");
   }
   if (project.zustandVersion !== undefined && project.zustandVersion !== null) {
     capabilities.add("zustand");

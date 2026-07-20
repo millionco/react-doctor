@@ -452,6 +452,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "mobx-no-observer-wrapped-memo": {
     code: 'import { memo } from "react";\nimport { observer } from "mobx-react-lite";\nexport const Profile = observer(memo(ProfileView));',
+    settings: {
+      "react-doctor": { capabilities: ["mobx-react-lite-observer-memo-guard"] },
+    },
   },
   "mobx-reaction-disposer-discarded": {
     code: 'import { reaction } from "mobx";\nclass Store { start() { reaction(() => externalStore.value, refresh); } }',

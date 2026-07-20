@@ -22,7 +22,12 @@ import { frameworkMergeRank } from "./detectors.js";
 import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./rn-metadata.js";
 import { isPackageJsonSsrAware } from "./ssr-metadata.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";
-import { getLowestDependencyMajor, parseReactMajor } from "./version.js";
+import {
+  getDependencyMajorWithinSupportedRange,
+  getLowestDependencyMajor,
+  parseDependencyMajorMinor,
+  parseReactMajor,
+} from "./version.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 import { getStyledComponentsVersion } from "./get-styled-components-version.js";
 import { hasI18nDependency } from "./has-i18n-dependency.js";
@@ -61,7 +66,9 @@ export interface WorkspaceFacts {
   valtioVersion: string | null;
   mobx: DependencyFact;
   hasMobxReact: boolean;
+  mobxReactVersion: string | null;
   hasMobxReactLite: boolean;
+  mobxReactLiteVersion: string | null;
   hasMobxStateTree: boolean;
   hasMobxReactObserver: boolean;
   // Conservative representative across every declaring manifest: an
@@ -172,6 +179,65 @@ const shouldReplaceStyledComponentsVersion = (
   return nextMajor < currentMajor;
 };
 
+const selectOldestDependencyVersion = (
+  currentVersion: string | null,
+  nextVersion: string | null,
+): string | null => {
+  if (currentVersion === null || nextVersion === null) return null;
+  const current = parseDependencyMajorMinor(currentVersion);
+  const next = parseDependencyMajorMinor(nextVersion);
+  if (current === null) return currentVersion;
+  if (next === null) return nextVersion;
+  if (next.major !== current.major)
+    return next.major < current.major ? nextVersion : currentVersion;
+  return next.minor < current.minor ? nextVersion : currentVersion;
+};
+
+const shouldReplaceMobxFact = (currentFact: DependencyFact, nextFact: DependencyFact): boolean => {
+  if (currentFact.sourceDirectory === null) return true;
+  if (currentFact.version === null) return false;
+  if (nextFact.version === null) return true;
+
+  const currentMajor = getDependencyMajorWithinSupportedRange(
+    currentFact.version,
+    LATEST_SUPPORTED_MOBX_MAJOR,
+  );
+  const nextMajor = getDependencyMajorWithinSupportedRange(
+    nextFact.version,
+    LATEST_SUPPORTED_MOBX_MAJOR,
+  );
+  if (currentMajor === null) return false;
+  if (nextMajor === null) return true;
+  return selectOldestDependencyVersion(currentFact.version, nextFact.version) === nextFact.version;
+};
+
+const collectBindingVersion = (
+  facts: WorkspaceFacts,
+  packageJson: PackageJson,
+  directory: string,
+  packageName: typeof MOBX_REACT_PACKAGE_NAME | typeof MOBX_REACT_LITE_PACKAGE_NAME,
+): void => {
+  const version = getDependencySpec(packageJson, packageName);
+  if (version === null) return;
+  const resolvedVersion = resolveCatalogBackedDependencyVersion({
+    rootDirectory: directory,
+    rootPackageJson: packageJson,
+    packageName,
+    version,
+  });
+  if (packageName === MOBX_REACT_PACKAGE_NAME) {
+    facts.mobxReactVersion = facts.hasMobxReact
+      ? selectOldestDependencyVersion(facts.mobxReactVersion, resolvedVersion)
+      : resolvedVersion;
+    facts.hasMobxReact = true;
+    return;
+  }
+  facts.mobxReactLiteVersion = facts.hasMobxReactLite
+    ? selectOldestDependencyVersion(facts.mobxReactLiteVersion, resolvedVersion)
+    : resolvedVersion;
+  facts.hasMobxReactLite = true;
+};
+
 const evaluateManifestFacts = (
   facts: WorkspaceFacts,
   packageJson: PackageJson,
@@ -202,16 +268,12 @@ const evaluateManifestFacts = (
       }),
       sourceDirectory: directory,
     };
-    if (
-      shouldReplaceSupportedDependencyFact(facts.mobx, nextMobxFact, LATEST_SUPPORTED_MOBX_MAJOR)
-    ) {
+    if (shouldReplaceMobxFact(facts.mobx, nextMobxFact)) {
       facts.mobx = nextMobxFact;
     }
   }
-  facts.hasMobxReact =
-    facts.hasMobxReact || getDependencySpec(packageJson, MOBX_REACT_PACKAGE_NAME) !== null;
-  facts.hasMobxReactLite =
-    facts.hasMobxReactLite || getDependencySpec(packageJson, MOBX_REACT_LITE_PACKAGE_NAME) !== null;
+  collectBindingVersion(facts, packageJson, directory, MOBX_REACT_PACKAGE_NAME);
+  collectBindingVersion(facts, packageJson, directory, MOBX_REACT_LITE_PACKAGE_NAME);
   facts.hasMobxStateTree =
     facts.hasMobxStateTree || getDependencySpec(packageJson, MOBX_STATE_TREE_PACKAGE_NAME) !== null;
   facts.hasMobxReactObserver =
@@ -322,7 +384,9 @@ export const collectWorkspaceFacts = (
     valtioVersion: null,
     mobx: { version: null, sourceDirectory: null },
     hasMobxReact: false,
+    mobxReactVersion: null,
     hasMobxReactLite: false,
+    mobxReactLiteVersion: null,
     hasMobxStateTree: false,
     hasMobxReactObserver: false,
     zustand: { version: null, sourceDirectory: null },

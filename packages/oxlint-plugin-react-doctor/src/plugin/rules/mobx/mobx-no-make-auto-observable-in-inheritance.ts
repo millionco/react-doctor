@@ -16,26 +16,43 @@ import { walkAst } from "../../utils/walk-ast.js";
 const MESSAGE =
   "MobX does not support `makeAutoObservable(this)` in inherited classes. Use composition or explicit `makeObservable` annotations.";
 
-const getEnclosingConstructorClass = (
+const getEnclosingInstanceClass = (
   node: EsTreeNode,
 ): EsTreeNodeOfType<"ClassDeclaration" | "ClassExpression"> | null => {
   let ancestor = node.parent;
   while (ancestor) {
-    if (!isFunctionLike(ancestor)) {
+    if (isNodeOfType(ancestor, "ArrowFunctionExpression")) {
       ancestor = ancestor.parent ?? null;
       continue;
     }
-    const methodDefinition = ancestor.parent;
-    if (
-      !isNodeOfType(methodDefinition, "MethodDefinition") ||
-      methodDefinition.kind !== "constructor"
-    ) {
-      return null;
+    if (isFunctionLike(ancestor)) {
+      const methodDefinition = ancestor.parent;
+      if (isNodeOfType(methodDefinition, "PropertyDefinition")) {
+        if (methodDefinition.static) return null;
+        const classNode = methodDefinition.parent?.parent;
+        return isNodeOfType(classNode, "ClassDeclaration") ||
+          isNodeOfType(classNode, "ClassExpression")
+          ? classNode
+          : null;
+      }
+      if (!isNodeOfType(methodDefinition, "MethodDefinition") || methodDefinition.static) {
+        return null;
+      }
+      const classNode = methodDefinition.parent?.parent;
+      return isNodeOfType(classNode, "ClassDeclaration") ||
+        isNodeOfType(classNode, "ClassExpression")
+        ? classNode
+        : null;
     }
-    const classNode = methodDefinition.parent?.parent;
-    return isNodeOfType(classNode, "ClassDeclaration") || isNodeOfType(classNode, "ClassExpression")
-      ? classNode
-      : null;
+    if (isNodeOfType(ancestor, "PropertyDefinition")) {
+      if (ancestor.static) return null;
+      const classNode = ancestor.parent?.parent;
+      return isNodeOfType(classNode, "ClassDeclaration") ||
+        isNodeOfType(classNode, "ClassExpression")
+        ? classNode
+        : null;
+    }
+    ancestor = ancestor.parent ?? null;
   }
   return null;
 };
@@ -105,7 +122,7 @@ export const mobxNoMakeAutoObservableInInheritance = defineRule({
       if (!isMakeAutoObservableCall(callExpression, context.scopes)) return;
       const target = callExpression.arguments[0];
       if (!target || !isNodeOfType(stripParenExpression(target), "ThisExpression")) return;
-      const classNode = getEnclosingConstructorClass(callExpression);
+      const classNode = getEnclosingInstanceClass(callExpression);
       if (!classNode) return;
       const classSymbol = getClassBindingSymbol(classNode, context.scopes);
       const isSubclassed = Boolean(

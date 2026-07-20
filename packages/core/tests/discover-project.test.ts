@@ -3,6 +3,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
+  buildCapabilities,
   discoverProject,
   discoverReactSubprojects,
   formatFrameworkName,
@@ -2256,7 +2257,9 @@ describe("discoverProject — MobX", () => {
     expect(projectInfo.mobxVersion).toBe("^6.16.1");
     expect(projectInfo.mobxMajorVersion).toBe(6);
     expect(projectInfo.hasMobxReact).toBe(true);
+    expect(projectInfo.mobxReactVersion).toBe("^9.2.1");
     expect(projectInfo.hasMobxReactLite).toBe(true);
+    expect(projectInfo.mobxReactLiteVersion).toBe("^4.1.0");
     expect(projectInfo.hasMobxStateTree).toBe(true);
     expect(projectInfo.hasMobxReactObserver).toBe(true);
   });
@@ -2283,6 +2286,56 @@ describe("discoverProject — MobX", () => {
     expect(projectInfo.mobxMajorVersion).toBe(5);
   });
 
+  it("uses the oldest supported MobX minor across a mixed-version workspace", () => {
+    const rootDirectory = path.join(tempDirectory, "mixed-mobx-minor-monorepo");
+    const legacyDirectory = path.join(rootDirectory, "apps", "legacy");
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "mixed-mobx-minor-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0", mobx: "^6.10.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({ name: "legacy", dependencies: { mobx: "^6.9.0" } }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.mobxVersion).toBe("^6.9.0");
+    expect(buildCapabilities(projectInfo).has("mobx:6.10")).toBe(false);
+  });
+
+  it("uses the oldest React binding version across a mixed-version workspace", () => {
+    const rootDirectory = path.join(tempDirectory, "mixed-mobx-react-monorepo");
+    const legacyDirectory = path.join(rootDirectory, "apps", "legacy");
+    fs.mkdirSync(legacyDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "mixed-mobx-react-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: {
+          react: "^19.0.0",
+          mobx: "^6.16.1",
+          "mobx-react-lite": "^4.1.0",
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(legacyDirectory, "package.json"),
+      JSON.stringify({ name: "legacy", dependencies: { "mobx-react-lite": "^3.2.0" } }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.mobxReactLiteVersion).toBe("^3.2.0");
+    expect(buildCapabilities(projectInfo).has("mobx-react-binding-observer-memo-guard")).toBe(
+      false,
+    );
+  });
+
   it("fails closed when any workspace has an unparseable MobX declaration", () => {
     const rootDirectory = path.join(tempDirectory, "unknown-mobx-monorepo");
     const unknownDirectory = path.join(rootDirectory, "apps", "unknown");
@@ -2305,6 +2358,28 @@ describe("discoverProject — MobX", () => {
     expect(projectInfo.mobxMajorVersion).toBeNull();
   });
 
+  it("fails closed when an unparseable root MobX declaration precedes a supported workspace", () => {
+    const rootDirectory = path.join(tempDirectory, "unresolved-root-mobx-monorepo");
+    const supportedDirectory = path.join(rootDirectory, "apps", "supported");
+    fs.mkdirSync(supportedDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(rootDirectory, "package.json"),
+      JSON.stringify({
+        name: "unresolved-root-mobx-monorepo",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0", mobx: "catalog:" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(supportedDirectory, "package.json"),
+      JSON.stringify({ name: "supported", dependencies: { mobx: "^6.16.1" } }),
+    );
+
+    const projectInfo = discoverProject(rootDirectory);
+    expect(projectInfo.mobxVersion).toBe("catalog:");
+    expect(projectInfo.mobxMajorVersion).toBeNull();
+  });
+
   it("fails closed when any workspace declares a future MobX major", () => {
     const rootDirectory = path.join(tempDirectory, "future-mobx-monorepo");
     const futureDirectory = path.join(rootDirectory, "apps", "future");
@@ -2324,7 +2399,7 @@ describe("discoverProject — MobX", () => {
 
     const projectInfo = discoverProject(rootDirectory);
     expect(projectInfo.mobxVersion).toBe("^7.0.0");
-    expect(projectInfo.mobxMajorVersion).toBe(7);
+    expect(projectInfo.mobxMajorVersion).toBeNull();
   });
 
   it("resolves a MobX version from a package catalog", () => {
@@ -2342,6 +2417,37 @@ describe("discoverProject — MobX", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.mobxVersion).toBe("^6.16.1");
     expect(projectInfo.mobxMajorVersion).toBe(6);
+  });
+
+  it("fails closed when a MobX range includes a future major or has no upper bound", () => {
+    for (const [directoryName, mobxVersion] of [
+      ["branched", "^6.16.1 || ^7.0.0"],
+      ["unbounded", ">=6.0.0"],
+    ] as const) {
+      const projectDirectory = path.join(tempDirectory, `mobx-${directoryName}`);
+      fs.mkdirSync(projectDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `mobx-${directoryName}`,
+          dependencies: { react: "^19.0.0", mobx: mobxVersion },
+        }),
+      );
+      expect(discoverProject(projectDirectory).mobxMajorVersion).toBeNull();
+    }
+  });
+
+  it("accepts a MobX range explicitly bounded to a supported major", () => {
+    const projectDirectory = path.join(tempDirectory, "mobx-bounded");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "mobx-bounded",
+        dependencies: { react: "^19.0.0", mobx: ">=6.10.0 <7.0.0" },
+      }),
+    );
+    expect(discoverProject(projectDirectory).mobxMajorVersion).toBe(6);
   });
 });
 

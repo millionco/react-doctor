@@ -52,6 +52,16 @@ describe("mobx-no-make-auto-observable-in-inheritance", () => {
     ).toBe(1);
   });
 
+  it("reports assigned named base classes extended in the same file", () => {
+    expect(
+      diagnosticsFor(`
+        import { makeAutoObservable } from "mobx";
+        const Base = class BaseImpl { constructor() { makeAutoObservable(this); } };
+        class Child extends Base {}
+      `),
+    ).toBe(1);
+  });
+
   it("follows immutable aliases of the MobX function and namespace", () => {
     expect(
       diagnosticsFor(`
@@ -94,7 +104,7 @@ describe("mobx-no-make-auto-observable-in-inheritance", () => {
     ).toBe(0);
   });
 
-  it("does not treat calls in methods or nested callbacks as constructor setup", () => {
+  it("reports calls on an inherited instance from methods and lexical callbacks", () => {
     expect(
       diagnosticsFor(`
         import { makeAutoObservable } from "mobx";
@@ -104,6 +114,31 @@ describe("mobx-no-make-auto-observable-in-inheritance", () => {
             queueMicrotask(() => makeAutoObservable(this));
           }
           setup() { makeAutoObservable(this); }
+        }
+      `),
+    ).toBe(2);
+  });
+
+  it("reports calls from function-valued inherited instance fields", () => {
+    expect(
+      diagnosticsFor(`
+        import { makeAutoObservable } from "mobx";
+        class Store extends Base {
+          setup = function () { makeAutoObservable(this); };
+        }
+      `),
+    ).toBe(1);
+  });
+
+  it("does not attribute dynamic this in ordinary nested functions to the class instance", () => {
+    expect(
+      diagnosticsFor(`
+        import { makeAutoObservable } from "mobx";
+        class Store extends Base {
+          setup() {
+            function initialize() { makeAutoObservable(this); }
+            initialize();
+          }
         }
       `),
     ).toBe(0);

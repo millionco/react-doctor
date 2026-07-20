@@ -6,9 +6,9 @@ export const getClassBindingSymbol = (
   classNode: EsTreeNodeOfType<"ClassDeclaration" | "ClassExpression">,
   scopes: ScopeAnalysis,
 ): SymbolDescriptor | null => {
-  if (isNodeOfType(classNode.id, "Identifier")) return scopes.symbolFor(classNode.id);
   const parent = classNode.parent;
-  return isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")
-    ? scopes.symbolFor(parent.id)
-    : null;
+  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
+    return scopes.symbolFor(parent.id);
+  }
+  return isNodeOfType(classNode.id, "Identifier") ? scopes.symbolFor(classNode.id) : null;
 };

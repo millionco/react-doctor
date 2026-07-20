@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
 import type { PackageJson, ProjectInfo } from "../types/index.js";
+import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
 import { isFile } from "./fs-utils.js";
 import { countSourceFiles } from "./count-source-files.js";
 import {
@@ -31,6 +32,7 @@ import { resolveInstalledReactVersion } from "./resolve-installed-react-version.
 import { readPackageJson } from "./package-json.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 import {
+  getDependencyMajorWithinSupportedRange,
   getLowestDependencyMajor,
   parseReactMajor,
   resolveEffectiveReactMajor,
@@ -98,7 +100,9 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     mobxVersion: null,
     mobxMajorVersion: null,
     hasMobxReact: false,
+    mobxReactVersion: null,
     hasMobxReactLite: false,
+    mobxReactLiteVersion: null,
     hasMobxStateTree: false,
     hasMobxReactObserver: false,
     zustandVersion: null,
@@ -314,9 +318,14 @@ export const discoverProject = (directory: string): ProjectInfo => {
     zodVersion,
     zodMajorVersion: zodVersion === null ? null : getLowestDependencyMajor(zodVersion),
     mobxVersion,
-    mobxMajorVersion: mobxVersion === null ? null : getLowestDependencyMajor(mobxVersion),
+    mobxMajorVersion:
+      mobxVersion === null
+        ? null
+        : getDependencyMajorWithinSupportedRange(mobxVersion, LATEST_SUPPORTED_MOBX_MAJOR),
     hasMobxReact: workspaceFacts.hasMobxReact,
+    mobxReactVersion: workspaceFacts.mobxReactVersion,
     hasMobxReactLite: workspaceFacts.hasMobxReactLite,
+    mobxReactLiteVersion: workspaceFacts.mobxReactLiteVersion,
     hasMobxStateTree: workspaceFacts.hasMobxStateTree,
     hasMobxReactObserver: workspaceFacts.hasMobxReactObserver,
     zustandVersion,

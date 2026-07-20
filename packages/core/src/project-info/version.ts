@@ -218,6 +218,20 @@ export const getLowestDependencyMajor = (version: string): number | null => {
   return lowestMajor;
 };
 
+export const getDependencyMajorWithinSupportedRange = (
+  version: string,
+  latestSupportedMajor: number,
+): number | null => {
+  const normalizedVersion = normalizeDependencyVersion(version);
+  if (normalizedVersion === null) return null;
+  const validRange = semver.validRange(normalizedVersion);
+  if (validRange === null) return null;
+  const minimumVersion = semver.minVersion(validRange);
+  if (minimumVersion === null || minimumVersion.major > latestSupportedMajor) return null;
+  if (semver.intersects(validRange, `>=${latestSupportedMajor + 1}.0.0`)) return null;
+  return minimumVersion.major;
+};
+
 export const isConcreteDependencyVersion = (version: string): boolean => {
   const normalizedVersion = normalizeDependencyVersion(version);
   return normalizedVersion !== null && /\d/.test(normalizedVersion);
@@ -338,17 +352,21 @@ const parseLowerBoundVersion = (versionSpec: string): semver.SemVer | null =>
     ? semver.minVersion(versionSpec)
     : semver.coerce(versionSpec);
 
-export const parseTailwindMajorMinor = (
-  tailwindVersion: string | null | undefined,
+export const parseDependencyMajorMinor = (
+  dependencyVersion: string | null | undefined,
 ): MajorMinor | null => {
-  if (typeof tailwindVersion !== "string") return null;
-  const trimmed = tailwindVersion.trim();
+  if (typeof dependencyVersion !== "string") return null;
+  const trimmed = dependencyVersion.trim();
   if (trimmed.length === 0) return null;
 
   const lowerBound = parseLowerBoundVersion(trimmed);
   if (lowerBound === null || lowerBound.major <= 0) return null;
   return { major: lowerBound.major, minor: lowerBound.minor };
 };
+
+export const parseTailwindMajorMinor = (
+  tailwindVersion: string | null | undefined,
+): MajorMinor | null => parseDependencyMajorMinor(tailwindVersion);
 
 // HACK: extracts the lowest concrete React major from a peer-dependency
 // range. Used to compute the effective React version for libraries:

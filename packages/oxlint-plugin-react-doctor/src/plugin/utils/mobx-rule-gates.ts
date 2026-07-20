@@ -19,7 +19,7 @@ export const MOBX_RULE_GATES = {
     requires: ["mobx:4"],
   },
   "mobx-no-observer-wrapped-memo": {
-    requires: ["mobx:4", "mobx-react-binding", "react"],
+    requires: ["mobx:4", "mobx-react-binding-observer-memo-guard", "react"],
   },
   "mobx-make-observable-unconditional": {
     requires: ["mobx:6"],

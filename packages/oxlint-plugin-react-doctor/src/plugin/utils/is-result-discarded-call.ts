@@ -1,5 +1,12 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+
+export interface IsResultDiscardedCallOptions {
+  isConciseArrowResultDiscarded?: (
+    arrowFunction: EsTreeNodeOfType<"ArrowFunctionExpression">,
+  ) => boolean;
+}
 
 // True when a CallExpression's return value is discarded. Covers plain
 // statement position (`fn(x);`, `fn?.(x);`), the explicit discard operator
@@ -10,7 +17,10 @@ import { isNodeOfType } from "./is-node-of-type.js";
 // consumes. A call whose result flows into an argument, initializer, or
 // right-hand side (`setError(fn(x))`, `const y = fn(x)`) is NOT discarded:
 // its value is consumed locally, so it isn't a fire-and-forget side effect.
-export const isResultDiscardedCall = (callExpression: EsTreeNode): boolean => {
+export const isResultDiscardedCall = (
+  callExpression: EsTreeNode,
+  options: IsResultDiscardedCallOptions = {},
+): boolean => {
   let node: EsTreeNode = callExpression;
   let parent: EsTreeNode | null | undefined = node.parent;
   while (parent) {
@@ -18,7 +28,9 @@ export const isResultDiscardedCall = (callExpression: EsTreeNode): boolean => {
     // `void fn(x)` always evaluates to undefined — the call result is
     // discarded no matter where the void expression itself flows.
     if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void") return true;
-    if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === node) return true;
+    if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === node) {
+      return options.isConciseArrowResultDiscarded?.(parent) ?? true;
+    }
     if (isNodeOfType(parent, "ChainExpression")) {
       node = parent;
       parent = node.parent;
@@ -34,7 +46,10 @@ export const isResultDiscardedCall = (callExpression: EsTreeNode): boolean => {
       parent = node.parent;
       continue;
     }
-    if (isNodeOfType(parent, "LogicalExpression") && parent.right === node) {
+    if (
+      isNodeOfType(parent, "LogicalExpression") &&
+      (parent.right === node || (parent.left === node && parent.operator !== "&&"))
+    ) {
       node = parent;
       parent = node.parent;
       continue;

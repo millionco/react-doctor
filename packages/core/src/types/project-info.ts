@@ -18,7 +18,9 @@ export interface ProjectInfo {
   /** Parsed major from `mobxVersion`, or `null` when absent/unparseable. */
   mobxMajorVersion?: number | null;
   hasMobxReact?: boolean;
+  mobxReactVersion?: string | null;
   hasMobxReactLite?: boolean;
+  mobxReactLiteVersion?: string | null;
   hasMobxStateTree?: boolean;
   hasMobxReactObserver?: boolean;
   /** Declared Zustand version spec. Optional so existing `ProjectInfo` consumers remain source-compatible. */

@@ -2,8 +2,16 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { mobxNoObserverWrappedMemo } from "./mobx-no-observer-wrapped-memo.js";
 
-const diagnosticsFor = (source: string): number =>
-  runRule(mobxNoObserverWrappedMemo, source).diagnostics.length;
+const diagnosticsFor = (
+  source: string,
+  capabilities: ReadonlyArray<string> = [
+    "mobx-react-observer-memo-guard",
+    "mobx-react-lite-observer-memo-guard",
+  ],
+): number =>
+  runRule(mobxNoObserverWrappedMemo, source, {
+    settings: { "react-doctor": { capabilities } },
+  }).diagnostics.length;
 
 describe("mobx-no-observer-wrapped-memo", () => {
   it("reports observer wrapping named, namespace, and default React memo calls", () => {
@@ -26,6 +34,18 @@ describe("mobx-no-observer-wrapped-memo", () => {
         mobxReact.observer(mobxReact.observer(Settings));
       `),
     ).toBe(2);
+  });
+
+  it("checks each observer import against its own binding version capability", () => {
+    const source = `
+      import { memo } from "react";
+      import { observer as legacyObserver } from "mobx-react";
+      import { observer as liteObserver } from "mobx-react-lite";
+      legacyObserver(memo(LegacyProfile));
+      liteObserver(memo(Profile));
+    `;
+    expect(diagnosticsFor(source, ["mobx-react-lite-observer-memo-guard"])).toBe(1);
+    expect(diagnosticsFor(source, ["mobx-react-observer-memo-guard"])).toBe(1);
   });
 
   it("reports same-file immutable wrapper results and aliases", () => {

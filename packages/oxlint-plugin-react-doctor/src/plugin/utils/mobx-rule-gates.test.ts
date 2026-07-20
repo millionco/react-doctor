@@ -32,7 +32,7 @@ describe("MOBX_RULE_GATES", () => {
   it("gates React integration rules on React and the exact binding family", () => {
     expect(MOBX_RULE_GATES["mobx-no-observer-wrapped-memo"].requires).toEqual([
       "mobx:4",
-      "mobx-react-binding",
+      "mobx-react-binding-observer-memo-guard",
       "react",
     ]);
     expect(MOBX_RULE_GATES["mobx-observer-before-inject"].requires).toEqual([

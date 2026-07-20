@@ -400,6 +400,23 @@ describe("buildCapabilities", () => {
     expect(futureVersion.has("mobx:4")).toBe(false);
   });
 
+  it("emits AbortSignal support only for MobX 6.10 and newer", () => {
+    expect(
+      buildCapabilities({
+        ...baseProject,
+        mobxVersion: "^6.9.0",
+        mobxMajorVersion: 6,
+      }).has("mobx:6.10"),
+    ).toBe(false);
+    expect(
+      buildCapabilities({
+        ...baseProject,
+        mobxVersion: "^6.10.0",
+        mobxMajorVersion: 6,
+      }).has("mobx:6.10"),
+    ).toBe(true);
+  });
+
   it("keeps unparseable MobX declarations present but version-inapplicable", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
@@ -514,6 +531,48 @@ describe("buildCapabilities", () => {
     // A deprecation rule must not fire on an unprovable version — a v3 project
     // would otherwise get confidently-wrong "renamed in v4" warnings.
     expect(capabilities.has("tailwind:4")).toBe(false);
+  });
+
+  it("gates the observer memo guard on the binding version that introduced it", () => {
+    for (const projectOverrides of [
+      { hasMobxReactLite: true, mobxReactLiteVersion: "^3.3.0" },
+      { hasMobxReact: true, mobxReactVersion: "^7.3.0" },
+    ]) {
+      expect(
+        buildCapabilities({ ...baseProject, ...projectOverrides }).has(
+          "mobx-react-binding-observer-memo-guard",
+        ),
+      ).toBe(true);
+    }
+    expect(
+      buildCapabilities({
+        ...baseProject,
+        hasMobxReact: true,
+        mobxReactVersion: "^7.2.0",
+        hasMobxReactLite: true,
+        mobxReactLiteVersion: "^3.3.0",
+      }).has("mobx-react-observer-memo-guard"),
+    ).toBe(false);
+    expect(
+      buildCapabilities({
+        ...baseProject,
+        hasMobxReact: true,
+        mobxReactVersion: "^7.2.0",
+        hasMobxReactLite: true,
+        mobxReactLiteVersion: "^3.3.0",
+      }).has("mobx-react-lite-observer-memo-guard"),
+    ).toBe(true);
+    for (const projectOverrides of [
+      { hasMobxReactLite: true, mobxReactLiteVersion: "^3.2.0" },
+      { hasMobxReact: true, mobxReactVersion: "^7.2.0" },
+      { hasMobxReactLite: true, mobxReactLiteVersion: "workspace:*" },
+    ]) {
+      expect(
+        buildCapabilities({ ...baseProject, ...projectOverrides }).has(
+          "mobx-react-binding-observer-memo-guard",
+        ),
+      ).toBe(false);
+    }
   });
 
   it("emits `nextjs:15` capability for Next.js 15+ projects", () => {

@@ -1,13 +1,16 @@
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getClassBindingSymbol } from "../../utils/get-class-binding-symbol.js";
+import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { MOBX_RULE_GATES } from "../../utils/mobx-rule-gates.js";
@@ -20,7 +23,8 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE =
-  "This MobX reaction discards its disposer and can outlive its owner. Store and dispose it during teardown, or provide an AbortSignal.";
+  "This MobX reaction discards its disposer and can outlive its owner. Store and dispose it during teardown.";
+const MESSAGE_WITH_ABORT_SIGNAL = `${MESSAGE} MobX 6.10+ can also bind its lifetime to an AbortSignal.`;
 const LEAKING_SUBSCRIPTION_NAMES = new Set(["reaction", "autorun"]);
 const OPTIONS_ARGUMENT_INDEX: Readonly<Record<string, number>> = { autorun: 1, reaction: 2 };
 const DISPOSER_COERCION_NAMES = new Set(["Boolean", "Number", "String"]);
@@ -49,6 +53,8 @@ const REACTION_CALLBACK_INDEX: Readonly<Record<string, number>> = { autorun: 0, 
 const OBSERVATION_CALLBACK_INDEX: Readonly<Record<string, number>> = { autorun: 0, reaction: 0 };
 const PROCESS_LIFETIME_WIRING_NAME_PATTERN =
   /^(?:register.*(?:reactions?|autoruns?)|init.*(?:stores?|reactions?|autoruns?)|setup.*(?:stores?|reactions?|autoruns?)|bootstrap(?:app(?:lication)?|stores?|reactions?|autoruns?))$/i;
+const REACT_EFFECT_NAMES = new Set(["useEffect", "useInsertionEffect", "useLayoutEffect"]);
+const DISCARDING_CALLBACK_METHOD_NAMES = new Set(["forEach"]);
 
 const resolveLeakingSubscriptionName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
@@ -83,10 +89,7 @@ const isEvaluatedAtModuleScope = (node: EsTreeNode): boolean => {
     if (isFunctionLike(ancestor)) {
       const functionRoot = findTransparentExpressionRoot(ancestor);
       const invocation = functionRoot.parent;
-      if (
-        isNodeOfType(invocation, "CallExpression") &&
-        stripParenExpression(invocation.callee) === functionRoot
-      ) {
+      if (isImmediatelyInvokedFunction(ancestor) && isNodeOfType(invocation, "CallExpression")) {
         ancestor = invocation.parent ?? null;
         continue;
       }
@@ -235,11 +238,60 @@ const mayCarryAbortSignal = (
     const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
     if (propertyName === null) return true;
     if (propertyName !== "signal") return false;
-    const value = property.value;
+    const value = stripParenExpression(property.value);
     if (isNodeOfType(value, "Identifier") && value.name === "undefined") return false;
-    if (isNodeOfType(value, "Literal") && value.value == null) return false;
-    return !(isNodeOfType(value, "UnaryExpression") && value.operator === "void");
+    return !(
+      isNodeOfType(value, "Literal") ||
+      isNodeOfType(value, "TemplateLiteral") ||
+      isNodeOfType(value, "UnaryExpression") ||
+      isNodeOfType(value, "BinaryExpression") ||
+      isNodeOfType(value, "ArrayExpression") ||
+      isFunctionLike(value)
+    );
   });
+};
+
+const isCallExecutedWithinCallback = (
+  callExpression: EsTreeNode,
+  callback: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitingFunctions: ReadonlySet<EsTreeNode>,
+): boolean => {
+  let ancestor = callExpression.parent;
+  while (ancestor && ancestor !== callback) {
+    if (isFunctionLike(ancestor)) {
+      return isInvokedWithinCallback(ancestor, callback, scopes, visitingFunctions);
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return ancestor === callback;
+};
+
+const isInvokedWithinCallback = (
+  functionNode: EsTreeNode,
+  callback: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitingFunctions: ReadonlySet<EsTreeNode> = new Set(),
+): boolean => {
+  if (visitingFunctions.has(functionNode)) return false;
+  const nextVisitingFunctions = new Set(visitingFunctions);
+  nextVisitingFunctions.add(functionNode);
+
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const invocation = functionRoot.parent;
+  if (
+    isImmediatelyInvokedFunction(functionNode) &&
+    isNodeOfType(invocation, "CallExpression") &&
+    isCallExecutedWithinCallback(invocation, callback, scopes, nextVisitingFunctions)
+  ) {
+    return true;
+  }
+
+  return getDirectCalls(functionNode, scopes).some(
+    (callExpression) =>
+      !isAstDescendant(callExpression, functionNode) &&
+      isCallExecutedWithinCallback(callExpression, callback, scopes, nextVisitingFunctions),
+  );
 };
 
 const callbackDisposesReaction = (
@@ -257,6 +309,13 @@ const callbackDisposesReaction = (
   if (!reactionSymbol) return false;
   let doesDisposeReaction = false;
   walkAst(callback, (candidate) => {
+    if (
+      candidate !== callback &&
+      isFunctionLike(candidate) &&
+      !isInvokedWithinCallback(candidate, callback, scopes)
+    ) {
+      return false;
+    }
     if (doesDisposeReaction || !isNodeOfType(candidate, "CallExpression")) return;
     const callee = stripParenExpression(candidate.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;
@@ -270,6 +329,64 @@ const callbackDisposesReaction = (
     }
   });
   return doesDisposeReaction;
+};
+
+const isExternalIdentifierRead = (
+  candidate: EsTreeNode,
+  callback: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (
+    (symbol && isAstDescendant(symbol.declarationNode, callback)) ||
+    (scopes.isGlobalReference(candidate) &&
+      NON_OBSERVABLE_GLOBAL_RECEIVER_NAMES.has(candidate.name))
+  ) {
+    return false;
+  }
+  const candidateRoot = findTransparentExpressionRoot(candidate);
+  const parent = candidateRoot.parent;
+  if (!parent) return false;
+  if (
+    isNodeOfType(parent, "MemberExpression") &&
+    (parent.object === candidateRoot || (!parent.computed && parent.property === candidateRoot))
+  ) {
+    return false;
+  }
+  if (
+    isNodeOfType(parent, "Property") &&
+    parent.key === candidateRoot &&
+    parent.value !== candidateRoot &&
+    !parent.computed
+  ) {
+    return false;
+  }
+  if (isNodeOfType(parent, "Property") && parent.value === candidateRoot) return true;
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    parent.arguments.some((argument) => argument === candidateRoot)
+  ) {
+    return true;
+  }
+  if (isNodeOfType(parent, "SpreadElement") && parent.argument === candidateRoot) return true;
+  if (
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === candidateRoot &&
+    !isNodeOfType(parent.id, "Identifier")
+  ) {
+    return true;
+  }
+  if (
+    (isNodeOfType(parent, "ForInStatement") || isNodeOfType(parent, "ForOfStatement")) &&
+    parent.right === candidateRoot
+  ) {
+    return true;
+  }
+  return (
+    (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === candidateRoot) ||
+    (isNodeOfType(parent, "ReturnStatement") && parent.argument === candidateRoot)
+  );
 };
 
 const getMemberReceiverRoot = (memberExpression: EsTreeNode): EsTreeNode => {
@@ -292,7 +409,12 @@ const observesOnlyInstanceRootedState = (
   let observesExternalState = false;
   walkAst(callback, (candidate) => {
     if (candidate !== callback && isFunctionLike(candidate)) return false;
-    if (observesExternalState || !isNodeOfType(candidate, "MemberExpression")) return;
+    if (observesExternalState) return false;
+    if (isExternalIdentifierRead(candidate, callback, scopes)) {
+      observesExternalState = true;
+      return false;
+    }
+    if (!isNodeOfType(candidate, "MemberExpression")) return;
     const receiver = getMemberReceiverRoot(candidate);
     const candidateRoot = findTransparentExpressionRoot(candidate);
     const parent = candidateRoot.parent;
@@ -328,35 +450,52 @@ const observesOnlyInstanceRootedState = (
   return !observesExternalState;
 };
 
-const isForwardedFromConciseArrow = (callExpression: EsTreeNode): boolean => {
-  let expressionRoot = findTransparentExpressionRoot(callExpression);
-  let parent = expressionRoot.parent;
-  while (parent) {
-    if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === expressionRoot) {
-      return true;
-    }
-    if (
-      (isNodeOfType(parent, "LogicalExpression") &&
-        (parent.right === expressionRoot ||
-          (parent.left === expressionRoot && parent.operator !== "&&"))) ||
-      (isNodeOfType(parent, "ConditionalExpression") &&
-        (parent.consequent === expressionRoot || parent.alternate === expressionRoot)) ||
-      (isNodeOfType(parent, "SequenceExpression") &&
-        parent.expressions[parent.expressions.length - 1] === expressionRoot)
-    ) {
-      expressionRoot = findTransparentExpressionRoot(parent);
-      parent = expressionRoot.parent;
-      continue;
-    }
+const isReactEffectCleanup = (
+  arrowFunction: EsTreeNodeOfType<"ArrowFunctionExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callbackRoot = findTransparentExpressionRoot(arrowFunction);
+  const effectCall = callbackRoot.parent;
+  if (!isNodeOfType(effectCall, "CallExpression") || effectCall.arguments[0] !== callbackRoot) {
     return false;
   }
-  return false;
+  const reference = resolveImportedApiReference(effectCall.callee, scopes);
+  return Boolean(
+    reference?.source &&
+    REACT_RUNTIME_MODULE_SOURCES.has(reference.source) &&
+    reference.importedName &&
+    REACT_EFFECT_NAMES.has(reference.importedName),
+  );
 };
 
-const isDisposerDiscarded = (callExpression: EsTreeNode): boolean => {
-  if (isForwardedFromConciseArrow(callExpression)) return false;
+const isDiscardingCallback = (
+  arrowFunction: EsTreeNodeOfType<"ArrowFunctionExpression">,
+): boolean => {
+  const callbackRoot = findTransparentExpressionRoot(arrowFunction);
+  const callbackCall = callbackRoot.parent;
+  if (!isNodeOfType(callbackCall, "CallExpression")) return false;
+  const callee = stripParenExpression(callbackCall.callee);
+  return (
+    (isNodeOfType(callee, "MemberExpression") &&
+      DISCARDING_CALLBACK_METHOD_NAMES.has(
+        getStaticPropertyKeyName(callee, { allowComputedString: true }) ?? "",
+      )) ||
+    isResultDiscardedCall(callbackCall, {
+      isConciseArrowResultDiscarded: isDiscardingCallback,
+    })
+  );
+};
+
+const isDisposerDiscarded = (callExpression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const expressionRoot = findTransparentExpressionRoot(callExpression);
-  if (isResultDiscardedCall(callExpression)) return true;
+  if (
+    isResultDiscardedCall(callExpression, {
+      isConciseArrowResultDiscarded: (arrowFunction) =>
+        !isReactEffectCleanup(arrowFunction, scopes) && isDiscardingCallback(arrowFunction),
+    })
+  ) {
+    return true;
+  }
   const parent = expressionRoot.parent;
   if (!parent) return false;
   if (isNodeOfType(parent, "UnaryExpression") || isNodeOfType(parent, "BinaryExpression")) {
@@ -378,7 +517,7 @@ const isDisposerDiscarded = (callExpression: EsTreeNode): boolean => {
     return true;
   }
   if (isNodeOfType(parent, "LogicalExpression") && parent.left === expressionRoot) {
-    return parent.operator === "&&" || isResultDiscardedCall(parent);
+    return parent.operator === "&&";
   }
   const callee = isNodeOfType(parent, "CallExpression")
     ? stripParenExpression(parent.callee)
@@ -398,18 +537,22 @@ export const mobxReactionDisposerDiscarded = defineRule({
   category: "Bugs",
   requires: MOBX_RULE_GATES["mobx-reaction-disposer-discarded"].requires,
   recommendation:
-    "Keep the disposer returned by `reaction` or `autorun` and invoke it during teardown, or provide an AbortSignal.",
+    "Keep the disposer returned by `reaction` or `autorun` and invoke it during teardown.",
   create: (context: RuleContext) => ({
     CallExpression(callExpression: EsTreeNodeOfType<"CallExpression">) {
       const subscriptionName = resolveLeakingSubscriptionName(callExpression, context.scopes);
-      if (!subscriptionName || !isDisposerDiscarded(callExpression)) return;
+      if (!subscriptionName || !isDisposerDiscarded(callExpression, context.scopes)) return;
       if (isEvaluatedAtModuleScope(callExpression)) return;
       if (isProcessLifetimeWiring(callExpression, context.scopes)) return;
       if (callbackDisposesReaction(callExpression, subscriptionName, context.scopes)) return;
       if (observesOnlyInstanceRootedState(callExpression, subscriptionName, context.scopes)) return;
       const optionsArgument = callExpression.arguments[OPTIONS_ARGUMENT_INDEX[subscriptionName]];
-      if (mayCarryAbortSignal(optionsArgument, context.scopes)) return;
-      context.report({ node: callExpression, message: MESSAGE });
+      const supportsAbortSignal = hasCapability(context.settings, "mobx:6.10");
+      if (supportsAbortSignal && mayCarryAbortSignal(optionsArgument, context.scopes)) return;
+      context.report({
+        node: callExpression,
+        message: supportsAbortSignal ? MESSAGE_WITH_ABORT_SIGNAL : MESSAGE,
+      });
     },
   }),
 });

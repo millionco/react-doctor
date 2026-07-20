@@ -11,6 +11,8 @@ export {
   parseReactMajor,
   isMajorMinorAtLeast,
   parseReactMajorMinor,
+  parseDependencyMajorMinor,
+  getDependencyMajorWithinSupportedRange,
   peerRangeMinMajor,
   parseTailwindMajorMinor,
   resolveEffectiveReactMajor,

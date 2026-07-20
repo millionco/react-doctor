@@ -23,7 +23,7 @@ nr --silent eval \
   --concurrency 200 \
   --repositories-per-sandbox 10 \
   --project-roots-per-repository 1 \
-  --max-duration-minutes 20 \
+  --max-duration-minutes 30 \
   --react-doctor-ref <pushed_commit>
 ```
 
@@ -31,7 +31,7 @@ Text entries use each repository's default branch. Output records replace `HEAD`
 
 Candidate runs reject baseline records that still contain `HEAD`. Evaluation concurrency defaults to 200 batches, with a target of 10 repositories per sandbox. Sandbox creation is capped at 20 to avoid overloading Daytona, so a 2,000-repository run uses about 200 sandboxes instead of provisioning 2,000. Batches are balanced by project-root count so large monorepos do not collect on one worker.
 
-The default 20-minute wall-clock budget stops initial-pass commands after 14 minutes, the first retry after 16 minutes, and the final retry after 18 minutes. The last two minutes remain reserved for deleting sandboxes and the snapshot. Override the corpus size, batch size, concurrency, or duration for smaller investigations. After the initial pass, the evaluator retries failed projects at concurrency 50, then 10 in isolated sandboxes. Valid partial reports remain in the corpus. Execution failures, including work that exceeds the budget, make the command exit non-zero.
+The default 30-minute wall-clock budget stops initial-pass commands after 18 minutes, the first retry after 23 minutes, and the final retry after 28 minutes. The last two minutes remain reserved for deleting sandboxes and the snapshot. Override the corpus size, batch size, concurrency, or duration for smaller investigations. After the initial pass, the evaluator retries failed projects at concurrency 50, then 10 in isolated sandboxes. Valid partial reports remain in the corpus. Execution failures, including work that exceeds the budget, make the command exit non-zero.
 
 Progress and completion metrics use stderr. Results use stdout. The evaluator deletes every repository sandbox and the build snapshot after the run.
 

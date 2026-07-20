@@ -4,7 +4,7 @@ import { getEvaluationAttemptDeadlineMilliseconds } from "../src/utils/get-evalu
 
 describe("getEvaluationAttemptDeadlineMilliseconds", () => {
   it("reserves time for every remaining retry attempt", () => {
-    const evaluationDeadlineMilliseconds = 18 * 60_000;
+    const evaluationDeadlineMilliseconds = 28 * 60_000;
 
     expect(
       getEvaluationAttemptDeadlineMilliseconds({
@@ -12,14 +12,14 @@ describe("getEvaluationAttemptDeadlineMilliseconds", () => {
         attemptIndex: 0,
         totalAttempts: 3,
       }),
-    ).toBe(14 * 60_000);
+    ).toBe(18 * 60_000);
     expect(
       getEvaluationAttemptDeadlineMilliseconds({
         evaluationDeadlineMilliseconds,
         attemptIndex: 1,
         totalAttempts: 3,
       }),
-    ).toBe(16 * 60_000);
+    ).toBe(23 * 60_000);
     expect(
       getEvaluationAttemptDeadlineMilliseconds({
         evaluationDeadlineMilliseconds,
@@ -32,10 +32,10 @@ describe("getEvaluationAttemptDeadlineMilliseconds", () => {
   it("uses the evaluation deadline when no retries remain", () => {
     expect(
       getEvaluationAttemptDeadlineMilliseconds({
-        evaluationDeadlineMilliseconds: 18 * 60_000,
+        evaluationDeadlineMilliseconds: 28 * 60_000,
         attemptIndex: 0,
         totalAttempts: 1,
       }),
-    ).toBe(18 * 60_000);
+    ).toBe(28 * 60_000);
   });
 });

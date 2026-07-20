@@ -80,7 +80,7 @@ runs:
     # ABI. On a hit, the ~15s install collapses to a ~1-2s restore.
     - id: toolchain-cache
       if: ${{ steps.resolve-version.outputs.cacheable == 'true' }}
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/react-doctor-toolchain
         key: react-doctor-toolchain-${{ steps.resolve-version.outputs.resolved }}-node${{ inputs.node-version }}-${{ runner.os }}-${{ runner.arch }}
@@ -111,7 +111,7 @@ runs:
     # missing every run.
     - id: scan-cache
       if: ${{ steps.resolve-version.outputs.cacheable == 'true' }}
-      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/react-doctor-cache
         key: react-doctor-scan-cache-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.resolved }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -351,7 +351,7 @@ runs:
     # crash) rather than the job's.
     - name: Save scan cache
       if: ${{ always() && steps.scan.outcome == 'success' && steps.resolve-version.outputs.cacheable == 'true' }}
-      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/react-doctor-cache
         key: react-doctor-scan-cache-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.resolved }}-${{ github.run_id }}-${{ github.run_attempt }}

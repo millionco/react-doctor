@@ -65,9 +65,15 @@ const isRetainedByUnusedLocalReactRef = (reference: EsTreeNode, scopes: ScopeAna
   return Boolean(
     refSymbol &&
     isNodeOfType(assignmentTarget, "MemberExpression") &&
-    refSymbol.references.every(
-      (refReference) => refReference.identifier === assignmentTarget.object,
-    ) &&
+    refSymbol.references.every((refReference) => {
+      const referenceRoot = findTransparentExpressionRoot(refReference.identifier);
+      const memberExpression = referenceRoot.parent;
+      return (
+        isNodeOfType(memberExpression, "MemberExpression") &&
+        memberExpression.object === referenceRoot &&
+        getStaticPropertyName(memberExpression) === "current"
+      );
+    }) &&
     referenceFunction &&
     (referenceFunction === refOwnerFunction ||
       findEnclosingFunction(referenceFunction) === refOwnerFunction),

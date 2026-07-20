@@ -2,7 +2,7 @@ import * as semver from "semver";
 import type { PackageJson } from "../types/index.js";
 
 const UNRESOLVABLE_PROTOCOL_VERSION =
-  /^(?:file|git|github|https?|link|patch|portal|workspace|npm):/i;
+  /^(?:catalog|file|git|github|https?|link|patch|portal|workspace|npm):/i;
 const DIST_TAG_VERSION = /^[a-z][a-z0-9._-]*$/i;
 const WILDCARD_VERSION = /^[*xX](?:\.[*xX])*$/;
 const NPM_ALIAS_VERSION = /^npm:(?:@[^/]+\/[^@]+|[^@]+)@(.+)$/i;

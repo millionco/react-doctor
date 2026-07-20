@@ -15,6 +15,8 @@ describe("parseThreeRelease", () => {
     expect(parseThreeRelease(undefined)).toBeNull();
     expect(parseThreeRelease("latest")).toBeNull();
     expect(parseThreeRelease("workspace:*")).toBeNull();
+    expect(parseThreeRelease("catalog:146")).toBeNull();
+    expect(parseThreeRelease("catalog:three146")).toBeNull();
     expect(parseThreeRelease("*")).toBeNull();
     expect(parseThreeRelease("0.0.0")).toBeNull();
   });

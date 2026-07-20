@@ -78,6 +78,28 @@ describe("r3f-no-extend-in-render", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows module-cache registration in the falsy branch of a positive guard", () => {
+    const result = runRule(
+      r3fNoExtendInRender,
+      `
+        import { extend } from "@react-three/fiber";
+        const components = new WeakMap();
+        const wrap = (effect) => function Effect() {
+          let Component = components.get(effect);
+          if (Component) {
+            return <Component />;
+          } else {
+            const key = \`effect-\${effect.name}\`;
+            extend({ [key]: effect });
+            components.set(effect, (Component = key));
+          }
+          return <Component />;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("reports a render-time registration when the cache remains empty", () => {
     const result = runRule(
       r3fNoExtendInRender,
@@ -91,6 +113,25 @@ describe("r3f-no-extend-in-render", () => {
             components.set(effect, (Component = null));
           }
           return null;
+        };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports module-cache registration in the truthy branch of a positive guard", () => {
+    const result = runRule(
+      r3fNoExtendInRender,
+      `
+        import { extend } from "@react-three/fiber";
+        const components = new WeakMap();
+        const wrap = (effect) => function Effect() {
+          let Component = components.get(effect);
+          if (Component) {
+            extend({ Effect: effect });
+            components.set(effect, (Component = "effect"));
+          }
+          return <Component />;
         };
       `,
     );

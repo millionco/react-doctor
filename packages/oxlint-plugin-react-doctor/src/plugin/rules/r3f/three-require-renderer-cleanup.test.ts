@@ -214,6 +214,57 @@ describe("three-require-renderer-cleanup", () => {
     expect(runRule(threeRequireRendererCleanup, escapingRef).diagnostics).toHaveLength(0);
   });
 
+  it("retains ownership when the local ref is read and cleared", () => {
+    const missingCancel = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Scene({ canvas }) {
+        const rendererRef = useRef(null);
+        useEffect(() => {
+          if (rendererRef.current) return;
+          const renderer = new WebGLRenderer({ canvas });
+          rendererRef.current = renderer;
+          const animate = () => {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          return () => {
+            renderer.dispose();
+            rendererRef.current = null;
+          };
+        }, [canvas]);
+        return null;
+      }
+    `;
+    const complete = `
+      import { useEffect, useRef } from "react";
+      import { WebGLRenderer } from "three";
+      function Scene({ canvas }) {
+        const rendererRef = useRef(null);
+        useEffect(() => {
+          if (rendererRef.current) return;
+          const renderer = new WebGLRenderer({ canvas });
+          rendererRef.current = renderer;
+          let frameId;
+          const animate = () => {
+            frameId = requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+          };
+          animate();
+          return () => {
+            cancelAnimationFrame(frameId);
+            renderer.dispose();
+            rendererRef.current = null;
+          };
+        }, [canvas]);
+        return null;
+      }
+    `;
+    expect(runRule(threeRequireRendererCleanup, missingCancel).diagnostics).toHaveLength(1);
+    expect(runRule(threeRequireRendererCleanup, complete).diagnostics).toHaveLength(0);
+  });
+
   it("retains ownership when the component stores the renderer in an otherwise-unused local ref", () => {
     const code = `
       import { useRef } from "react";

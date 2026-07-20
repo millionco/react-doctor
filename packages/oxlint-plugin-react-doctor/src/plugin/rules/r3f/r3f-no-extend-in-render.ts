@@ -54,13 +54,15 @@ const isProtectedByModuleCache = (
   while (currentAncestor) {
     if (
       isNodeOfType(currentAncestor, "IfStatement") &&
-      currentAncestor.consequent === currentChild
+      (currentAncestor.consequent === currentChild || currentAncestor.alternate === currentChild)
     ) {
       const test = stripParenExpression(currentAncestor.test);
-      const guardedValue =
-        isNodeOfType(test, "UnaryExpression") && test.operator === "!"
-          ? stripParenExpression(test.argument)
-          : null;
+      let guardedValue: EsTreeNode | null = null;
+      if (currentAncestor.alternate === currentChild) {
+        guardedValue = test;
+      } else if (isNodeOfType(test, "UnaryExpression") && test.operator === "!") {
+        guardedValue = stripParenExpression(test.argument);
+      }
       if (!guardedValue || !isNodeOfType(guardedValue, "Identifier")) return false;
       const guardedSymbol = context.scopes.symbolFor(guardedValue);
       const initializer = guardedSymbol?.initializer
@@ -104,7 +106,7 @@ const isProtectedByModuleCache = (
         : null;
       if (cacheKeySymbolId === null || cacheKeySymbolId === undefined) return false;
       let didPopulateCache = false;
-      const guardedBranch = currentAncestor.consequent;
+      const guardedBranch = currentChild;
       walkAst(guardedBranch, (candidate) => {
         if (didPopulateCache) return false;
         if (candidate !== guardedBranch && isFunctionLike(candidate)) return false;

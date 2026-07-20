@@ -100,16 +100,19 @@ describe("resolveZustandStoreCreator", () => {
       const makeHook = create;
       const creator = (set, get) => ({ count: 0 });
       makeHook(creator);
+      const curriedHook = create<{ count: number }>();
+      curriedHook(creator);
       makeStore()((set, get) => ({ count: 0 }));
       createWithEqualityFn()(devtools(persist(immer((set, get) => ({ count: 0 })), {})));
     `);
-    expect(creators).toHaveLength(3);
+    expect(creators).toHaveLength(4);
     expect(creators.map((creator) => creator.factoryApiName)).toEqual([
+      "create",
       "create",
       "createStore",
       "createWithEqualityFn",
     ]);
-    expect([...creators[2].middlewareNames]).toEqual(["devtools", "persist", "immer"]);
+    expect([...creators[3].middlewareNames]).toEqual(["devtools", "persist", "immer"]);
   });
 
   it("resolves combine's second argument", () => {
@@ -145,11 +148,15 @@ describe("resolveZustandStoreFactoryCall", () => {
       create(creator);
       createStore()((set) => ({ count: 0 }));
       createWithEqualityFn()(creator, Object.is);
+      const makeStore = create<{ count: number }>();
+      const makeStoreAlias = makeStore;
+      makeStoreAlias(creator);
     `);
     expect(factoryCalls.map((factoryCall) => factoryCall.factoryApiName)).toEqual([
       "create",
       "createStore",
       "createWithEqualityFn",
+      "create",
     ]);
   });
 
@@ -157,7 +164,6 @@ describe("resolveZustandStoreFactoryCall", () => {
     const factoryCalls = collectResolvedFactoryCalls(`
       import { create } from "zustand";
       const makeStore = create();
-      makeStore(() => ({ count: 0 }));
       customCreate(() => ({ count: 0 }));
     `);
     expect(factoryCalls).toEqual([]);

@@ -187,6 +187,21 @@ const isStoreFactoryApi = (
   binding?.apiName === "createStore" ||
   binding?.apiName === "createWithEqualityFn";
 
+const resolveCurriedStoreFactoryBinding = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ZustandApiBinding | null => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = resolveConstIdentifierAlias(candidate, scopes);
+    if (symbol?.kind !== "const" || !symbol.initializer) return null;
+    return resolveCurriedStoreFactoryBinding(symbol.initializer, scopes);
+  }
+  if (!isNodeOfType(candidate, "CallExpression") || candidate.arguments.length > 0) return null;
+  const factoryBinding = resolveZustandApiBinding(candidate.callee, scopes);
+  return isStoreFactoryApi(factoryBinding) ? factoryBinding : null;
+};
+
 export const resolveZustandStoreCreator = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
@@ -209,10 +224,8 @@ export const resolveZustandStoreFactoryCall = (
 ): ZustandStoreFactoryCall | null => {
   let factoryBinding = resolveZustandApiBinding(callExpression.callee, scopes);
   if (!isStoreFactoryApi(factoryBinding)) {
-    const curriedFactoryCall = stripParenExpression(callExpression.callee);
-    if (!isNodeOfType(curriedFactoryCall, "CallExpression")) return null;
-    factoryBinding = resolveZustandApiBinding(curriedFactoryCall.callee, scopes);
-    if (!isStoreFactoryApi(factoryBinding) || curriedFactoryCall.arguments.length > 0) return null;
+    factoryBinding = resolveCurriedStoreFactoryBinding(callExpression.callee, scopes);
+    if (!isStoreFactoryApi(factoryBinding)) return null;
   }
   const creatorArgument = callExpression.arguments[0];
   if (!creatorArgument || isNodeOfType(creatorArgument, "SpreadElement")) return null;

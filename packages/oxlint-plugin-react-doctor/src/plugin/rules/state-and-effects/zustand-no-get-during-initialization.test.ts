@@ -102,6 +102,67 @@ describe("zustand-no-get-during-initialization", () => {
     );
   });
 
+  it("treats for-await bindings and bodies as post-suspension", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create(async (_set, get) => {
+          for await (get().current of loadItems()) {
+            get().consume();
+          }
+          return { count: 0 };
+        });
+      `,
+      0,
+    );
+  });
+
+  it("reports for-await iterable reads that execute before suspension", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create(async (_set, get) => {
+          for await (const item of get().items) {
+            consume(item);
+          }
+          return { count: 0 };
+        });
+      `,
+      1,
+    );
+  });
+
+  it("reports reads reachable before a conditional suspension", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create(async (_set, get) => {
+          if (shouldLoad) await loadCount();
+          return { count: get().count };
+        });
+      `,
+      1,
+    );
+  });
+
+  it("preserves synchronous IIFE timing in async creators", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        create(async (_set, get) => {
+          const count = (() => get().count)();
+          await loadCount();
+          return { count };
+        });
+        create(async (_set, get) => {
+          await loadCount();
+          return { count: (() => get().count)() };
+        });
+      `,
+      1,
+    );
+  });
+
   it("supports curried factories, aliases, namespaces, and traditional stores", () => {
     expectDiagnosticCount(
       `

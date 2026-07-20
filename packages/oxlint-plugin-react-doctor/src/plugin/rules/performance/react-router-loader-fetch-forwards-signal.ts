@@ -33,15 +33,16 @@ const isRequestSignal = (
   loaderFunction: EsTreeNode,
   visitedSymbolIds = new Set<number>(),
 ): boolean => {
+  const candidate = stripParenExpression(expression);
   if (
-    isNodeOfType(expression, "MemberExpression") &&
-    getStaticPropertyKeyName(expression, { allowComputedString: true }) === "signal" &&
-    isRouteRequestExpression(context, expression.object, loaderFunction)
+    isNodeOfType(candidate, "MemberExpression") &&
+    getStaticPropertyKeyName(candidate, { allowComputedString: true }) === "signal" &&
+    isRouteRequestExpression(context, candidate.object, loaderFunction)
   ) {
     return true;
   }
-  if (!isNodeOfType(expression, "Identifier")) return false;
-  const symbol = context.scopes.symbolFor(expression);
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(candidate);
   if (symbol === null || visitedSymbolIds.has(symbol.id)) return false;
   visitedSymbolIds.add(symbol.id);
   const destructuredPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier);
@@ -91,11 +92,14 @@ const requestInputForwardsSignal = (
   loaderFunction: EsTreeNode,
 ): boolean => {
   if (!input) return false;
-  if (isRouteRequestExpression(context, input, loaderFunction)) return true;
-  if (!isNodeOfType(input, "NewExpression")) return false;
-  if (!isNodeOfType(input.callee, "Identifier") || input.callee.name !== "Request") return false;
-  if (!context.scopes.isGlobalReference(input.callee)) return false;
-  return optionsForwardRequestSignal(context, input.arguments?.[1], loaderFunction);
+  const candidate = stripParenExpression(input);
+  if (isRouteRequestExpression(context, candidate, loaderFunction)) return true;
+  if (!isNodeOfType(candidate, "NewExpression")) return false;
+  if (!isNodeOfType(candidate.callee, "Identifier") || candidate.callee.name !== "Request") {
+    return false;
+  }
+  if (!context.scopes.isGlobalReference(candidate.callee)) return false;
+  return optionsForwardRequestSignal(context, candidate.arguments?.[1], loaderFunction);
 };
 
 export const reactRouterLoaderFetchForwardsSignal = wrapReactRouterRule(

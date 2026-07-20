@@ -199,6 +199,20 @@ const safeRuleCases: SafeRuleCase[] = [
     ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
   },
   {
+    name: "allows request signals through TypeScript wrappers",
+    rule: reactRouterLoaderFetchForwardsSignal,
+    source:
+      'export async function loader({ request }) { await fetch("/direct", { signal: request!.signal! }); return fetch(request!); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+  },
+  {
+    name: "allows a wrapped route argument request signal",
+    rule: reactRouterLoaderFetchForwardsSignal,
+    source:
+      'export async function loader(args) { return fetch("/member", { signal: args!.request.signal satisfies AbortSignal }); }',
+    ...REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+  },
+  {
     name: "allows loader options through a shadowed undefined binding",
     rule: reactRouterLoaderFetchForwardsSignal,
     source:
@@ -747,6 +761,15 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterNoInvalidLazyRouteProperties,
       'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", lazy: async () => { if (compact) { return { id: "compact" }; } return { path: "/changed" }; } }]);',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("reports forbidden lazy properties through TypeScript wrappers", () => {
+    const result = runRule(
+      reactRouterNoInvalidLazyRouteProperties,
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", lazy: async () => ({ path: "/changed" } as const) }, { path: "/other", lazy: async () => { return ({ id: "changed" } satisfies { id: string }); } }]);',
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);

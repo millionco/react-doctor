@@ -8,16 +8,20 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
 const collectReturnedObjects = (
   functionNode: EsTreeNode,
 ): EsTreeNodeOfType<"ObjectExpression">[] => {
   if (!isFunctionLike(functionNode)) return [];
-  if (isNodeOfType(functionNode.body, "ObjectExpression")) return [functionNode.body];
-  return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
-    isNodeOfType(returnStatement.argument, "ObjectExpression") ? [returnStatement.argument] : [],
-  );
+  const body = stripParenExpression(functionNode.body);
+  if (isNodeOfType(body, "ObjectExpression")) return [body];
+  return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) => {
+    if (returnStatement.argument === null) return [];
+    const argument = stripParenExpression(returnStatement.argument);
+    return isNodeOfType(argument, "ObjectExpression") ? [argument] : [];
+  });
 };
 
 export const reactRouterNoInvalidLazyRouteProperties = wrapReactRouterRule(

@@ -412,7 +412,10 @@ const isBoundedBooleanStateTransition = (
   let containingIf: EsTreeNodeOfType<"IfStatement"> | null = null;
   let current = setterCall.parent;
   while (current && current !== callback) {
-    if (isNodeOfType(current, "IfStatement")) containingIf = current;
+    if (isNodeOfType(current, "IfStatement")) {
+      containingIf = current;
+      break;
+    }
     current = current.parent;
   }
   if (!containingIf) return false;

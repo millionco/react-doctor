@@ -62,6 +62,24 @@ describe("r3f-no-state-in-use-frame", () => {
     expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(0);
   });
 
+  it("allows bounded state transitions nested under an outer guard", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber";
+      import { useState } from "react";
+      const Scene = ({ enabled, elapsed }) => {
+        const [active, setActive] = useState(false);
+        useFrame(() => {
+          if (enabled) {
+            if (elapsed > 3) setActive(false);
+            else if (elapsed < 1) setActive(true);
+          }
+        });
+        return active ? <mesh /> : null;
+      };
+    `;
+    expect(runRule(r3fNoStateInUseFrame, code).diagnostics).toHaveLength(0);
+  });
+
   it("reports a non-boolean update inside a bounded transition chain", () => {
     const code = `
       import { useFrame } from "@react-three/fiber";

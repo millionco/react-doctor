@@ -63,14 +63,6 @@ export const REACT_ROUTER_SESSION_STORAGE_FACTORY_EXPORT_NAMES = new Set([
   "createWorkersKVSessionStorage",
 ]);
 
-export const REACT_ROUTER_NAVIGATION_EXPORT_NAMES = new Set([
-  "Navigate",
-  "redirect",
-  "redirectDocument",
-  "replace",
-  "useNavigate",
-]);
-
 export const REACT_ROUTER_FACTORY_EXPORT_NAMES = new Set([
   "createBrowserRouter",
   "createHashRouter",
@@ -116,11 +108,4 @@ export const REACT_ROUTER_COMPONENT_ROUTER_EXPORT_NAMES = new Set([
   "MemoryRouter",
   "Router",
   "RouterProvider",
-]);
-
-export const REACT_ROUTER_ROUTE_EXPORT_NAMES = new Set([
-  "action",
-  "clientAction",
-  "clientLoader",
-  "loader",
 ]);

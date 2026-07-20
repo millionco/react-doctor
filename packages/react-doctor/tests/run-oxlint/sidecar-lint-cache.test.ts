@@ -24,6 +24,12 @@ const USER_CONFIG = {
   },
 } as const;
 
+const INK_USER_CONFIG = {
+  rules: {
+    "react-doctor/ink-no-raw-text": "error",
+  },
+} as const;
+
 const APP_SOURCE = `import { Button } from "./components";
 export const App = () => <div><Button /></div>;
 `;
@@ -78,6 +84,33 @@ const scan = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic
 
 const scanFull = (projectDir: string): Promise<Diagnostic[]> =>
   scan(projectDir, { perFileLintCacheEnabled: false, sidecarLintCacheEnabled: false });
+
+const setupInkFixture = (caseId: string): string => {
+  const projectDir = setupReactProject(tempRoot, caseId, {
+    files: {
+      "src/App.tsx": `import { Panel } from "./Panel";
+export const App = () => <Panel>raw text</Panel>;
+`,
+      "src/Panel.tsx": `import { Box } from "ink";
+export const Panel = ({ children }) => <Box>{children}</Box>;
+`,
+    },
+  });
+  writeFile(
+    path.join(projectDir, "node_modules/ink/package.json"),
+    `{ "name": "ink", "version": "7.1.1" }\n`,
+  );
+  return projectDir;
+};
+
+const scanInk = (projectDir: string, sidecarLintCacheEnabled: boolean): Promise<Diagnostic[]> =>
+  runOxlint({
+    rootDirectory: projectDir,
+    project: buildTestProject({ rootDirectory: projectDir, framework: "vite" }),
+    userConfig: INK_USER_CONFIG,
+    perFileLintCacheEnabled: false,
+    sidecarLintCacheEnabled,
+  });
 
 const serialize = (diagnostics: ReadonlyArray<Diagnostic>): string =>
   JSON.stringify(
@@ -153,6 +186,25 @@ describe("sidecar lint cache", () => {
 
     expect(serialize(incremental)).toBe(serialize(full));
     expect(ruleHitsOn(incremental, "no-barrel-import", "src/App.tsx")).toHaveLength(0);
+  });
+
+  it("flips an unchanged Ink importer's verdict when its wrapper changes", async () => {
+    const projectDir = setupInkFixture("ink-wrapper-flip");
+    const before = await scanInk(projectDir, true);
+    await scanInk(projectDir, true);
+    expect(ruleHitsOn(before, "ink-no-raw-text", "src/App.tsx")).toHaveLength(1);
+
+    writeFile(
+      path.join(projectDir, "src/Panel.tsx"),
+      `import { Text } from "ink";
+export const Panel = ({ children }) => <Text>{children}</Text>;
+`,
+    );
+    const incremental = await scanInk(projectDir, true);
+    const full = await scanInk(projectDir, false);
+
+    expect(serialize(incremental)).toBe(serialize(full));
+    expect(ruleHitsOn(incremental, "ink-no-raw-text", "src/App.tsx")).toHaveLength(0);
   });
 
   it("re-points the suggestion when the barrel's re-export target moves", async () => {

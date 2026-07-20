@@ -9,6 +9,7 @@ import {
 import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
 import { INK_RULE_IDS } from "./constants/ink.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
+import { collectImportedJsxComponentDependencies } from "./utils/collect-imported-jsx-component-dependencies.js";
 import { collectCrossFileProbes } from "./utils/cross-file-probe-recorder.js";
 import type { CrossFileProbeTrace } from "./utils/cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./utils/es-tree-node.js";
@@ -301,12 +302,10 @@ const collectMutatingReducerDependencies: CrossFileDependencyCollector = ({
   for (const staticImport of staticImports) {
     if (staticImport.moduleRequest.value !== "react") continue;
     for (const entry of staticImport.entries) {
-      if (entry.importName.kind === "Name" && entry.importName.name === "useReducer") {
+      const { importName } = entry;
+      if (importName.kind === "Name" && importName.name === "useReducer") {
         namedUseReducerLocals.add(entry.localName.value);
-      } else if (
-        entry.importName.kind === "Default" ||
-        entry.importName.kind === "NamespaceObject"
-      ) {
+      } else if (importName.kind === "Default" || importName.kind === "NamespaceObject") {
         reactObjectLocals.add(entry.localName.value);
       }
     }
@@ -366,31 +365,6 @@ const collectMutatingReducerDependencies: CrossFileDependencyCollector = ({
   }
 };
 
-// The JSX names rn-no-raw-text's boundary checks consult
-// (`resolveTextBoundaryName`): plain identifiers, the property of a member
-// tag, and the namespace of a namespaced tag.
-const collectJsxBoundaryNames = (program: EsTreeNode): Set<string> => {
-  const jsxNames = new Set<string>();
-  walkAst(program, (node) => {
-    if (node.type !== "JSXOpeningElement") return;
-    const nameNode = (node as { name?: EsTreeNode }).name;
-    if (!nameNode) return;
-    if (nameNode.type === "JSXIdentifier") {
-      const name = (nameNode as { name?: unknown }).name;
-      if (typeof name === "string") jsxNames.add(name);
-    } else if (nameNode.type === "JSXMemberExpression") {
-      const property = (nameNode as { property?: { type?: string; name?: unknown } }).property;
-      if (property?.type === "JSXIdentifier" && typeof property.name === "string") {
-        jsxNames.add(property.name);
-      }
-    } else if (nameNode.type === "JSXNamespacedName") {
-      const namespace = (nameNode as { namespace?: { name?: unknown } }).namespace;
-      if (typeof namespace?.name === "string") jsxNames.add(namespace.name);
-    }
-  });
-  return jsxNames;
-};
-
 // rn-no-raw-text reads other files two ways: the package-platform gate
 // (`wrapReactNativeRule` + the rule's own RN checks — probed on EVERY file
 // the rule is enabled for) and `resolveImportedComponentForwarding` for JSX
@@ -404,22 +378,7 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
   program,
 }) => {
   classifyPackagePlatform(absoluteFilePath);
-  const jsxNames = collectJsxBoundaryNames(program);
-  if (jsxNames.size === 0) return;
-  for (const staticImport of staticImports) {
-    for (const entry of staticImport.entries) {
-      if (entry.importName.kind === "NamespaceObject") continue;
-      if (!jsxNames.has(entry.localName.value)) continue;
-      const exportedName = entry.importName.kind === "Default" ? "default" : entry.importName.name;
-      if (exportedName) {
-        resolveCrossFileFunctionExport(
-          absoluteFilePath,
-          staticImport.moduleRequest.value,
-          exportedName,
-        );
-      }
-    }
-  }
+  collectImportedJsxComponentDependencies({ absoluteFilePath, staticImports, program });
 };
 
 // no-dynamic-import-path / no-full-lodash-import (`is-inside-node-cli-package`),
@@ -449,12 +408,20 @@ const collectInkVersionDependencies: CrossFileDependencyCollector = ({ absoluteF
   resolveInkVersion(absoluteFilePath);
 };
 
+// ink-no-raw-text also reads imported JSX wrapper implementations. Resolving
+// every imported JSX name is a safe superset of the wrappers the rule follows.
+const collectInkNoRawTextDependencies: CrossFileDependencyCollector = (input) => {
+  collectInkVersionDependencies(input);
+  collectImportedJsxComponentDependencies(input);
+};
+
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
   new Map([
     ...INK_RULE_IDS.map((ruleId): [string, CrossFileDependencyCollector] => [
       ruleId,
       collectInkVersionDependencies,
     ]),
+    ["ink-no-raw-text", collectInkNoRawTextDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],

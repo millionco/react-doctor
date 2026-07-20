@@ -55,6 +55,14 @@ export const REACT_ROUTER_RUNTIME_PACKAGE_NAMES = new Set([
 
 export const REACT_ROUTER_SESSION_MUTATOR_NAMES = new Set(["flash", "set", "unset"]);
 
+export const REACT_ROUTER_SESSION_STORAGE_FACTORY_EXPORT_NAMES = new Set([
+  "createCookieSessionStorage",
+  "createFileSessionStorage",
+  "createMemorySessionStorage",
+  "createSessionStorage",
+  "createWorkersKVSessionStorage",
+]);
+
 export const REACT_ROUTER_NAVIGATION_EXPORT_NAMES = new Set([
   "Navigate",
   "redirect",

@@ -89,6 +89,12 @@ const safeRuleCases: SafeRuleCase[] = [
       'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", lazy: async () => { if (compact) return { Component }; return { loader }; } }]);',
   },
   {
+    name: "ignores helper objects named lazy inside route implementations",
+    rule: reactRouterNoInvalidLazyRouteProperties,
+    source:
+      'import { createBrowserRouter } from "react-router"; createBrowserRouter([{ path: "/", Component: () => { const helper = { lazy: async () => ({ path: "/changed" }) }; return <button onClick={helper.lazy} />; } }]);',
+  },
+  {
     name: "allows request bodies in actions",
     rule: reactRouterNoLoaderRequestBody,
     source: "export async function action({ request }) { return request.formData(); }",
@@ -731,6 +737,25 @@ describe("React Router rule regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports a file-backed loader session mutator invocation", () => {
+    const result = runRule(
+      reactRouterNoSessionMutationInLoader,
+      'import { createFileSessionStorage } from "@react-router/node"; const { getSession } = createFileSessionStorage({ dir: "./sessions", cookie: { name: "session" } }); export async function loader({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("notice", "hello"); return null; }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a static expiry in file-backed session options", () => {
+    const result = runRule(
+      reactRouterNoStaticCookieExpires,
+      'import { createFileSessionStorage } from "@react-router/node"; export const sessions = createFileSessionStorage({ dir: "./sessions", cookie: { name: "session", expires: new Date(Date.now() + 1000) } });',
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports an abort check that occurs after error reporting", () => {
     const result = runRule(
       reactRouterGuardAbortedHandleError,
@@ -755,6 +780,16 @@ describe("React Router rule regressions", () => {
     const result = runRule(
       reactRouterSessionMutationRequiresCommit,
       'import { createCookieSessionStorage } from "react-router"; const { getSession } = createCookieSessionStorage({ cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
+      REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a file-backed session mutator invocation without a commit", () => {
+    const result = runRule(
+      reactRouterSessionMutationRequiresCommit,
+      'import { createFileSessionStorage } from "@react-router/node"; const { getSession } = createFileSessionStorage({ dir: "./sessions", cookie: { name: "session" } }); export async function action({ request }) { const session = await getSession(request.headers.get("Cookie")); session.set("user", "a"); return null; }',
       REACT_ROUTER_FRAMEWORK_ROUTE_OPTIONS,
     );
     expect(result.parseErrors).toEqual([]);

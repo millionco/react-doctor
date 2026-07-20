@@ -3,19 +3,12 @@ import { collectFunctionReturnStatements } from "../../utils/collect-function-re
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
-
-const ROUTE_CONFIG_EXPORT_NAMES = new Set([
-  "createBrowserRouter",
-  "createHashRouter",
-  "createMemoryRouter",
-  "useRoutes",
-]);
 
 const collectReturnedObjects = (
   functionNode: EsTreeNode,
@@ -25,22 +18,6 @@ const collectReturnedObjects = (
   return collectFunctionReturnStatements(functionNode).flatMap((returnStatement) =>
     isNodeOfType(returnStatement.argument, "ObjectExpression") ? [returnStatement.argument] : [],
   );
-};
-
-const isInsideRouteConfigCall = (context: RuleContext, node: EsTreeNode): boolean => {
-  let current = node.parent;
-  while (current !== null && current !== undefined) {
-    if (isNodeOfType(current, "CallExpression") && isNodeOfType(current.callee, "Identifier")) {
-      const importedName = getImportedNameFromReactRouter(
-        context,
-        current.callee,
-        current.callee.name,
-      );
-      return importedName !== null && ROUTE_CONFIG_EXPORT_NAMES.has(importedName);
-    }
-    current = current.parent;
-  }
-  return false;
 };
 
 export const reactRouterNoInvalidLazyRouteProperties = wrapReactRouterRule(
@@ -55,7 +32,9 @@ export const reactRouterNoInvalidLazyRouteProperties = wrapReactRouterRule(
     create: (context: RuleContext) => ({
       Property(node: EsTreeNodeOfType<"Property">) {
         if (getStaticPropertyKeyName(node, { allowComputedString: true }) !== "lazy") return;
-        if (!isInsideRouteConfigCall(context, node)) return;
+        const routeObject = node.parent;
+        if (!isNodeOfType(routeObject, "ObjectExpression")) return;
+        if (!isStaticReactRouterRouteObject(context, routeObject)) return;
         for (const returnedObject of collectReturnedObjects(node.value)) {
           for (const property of returnedObject.properties ?? []) {
             const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });

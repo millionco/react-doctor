@@ -1,3 +1,4 @@
+import { REACT_ROUTER_SESSION_STORAGE_FACTORY_EXPORT_NAMES } from "../../constants/react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -8,7 +9,10 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
 
-const COOKIE_FACTORY_EXPORT_NAMES = new Set(["createCookie", "createCookieSessionStorage"]);
+const COOKIE_FACTORY_EXPORT_NAMES = new Set([
+  "createCookie",
+  ...REACT_ROUTER_SESSION_STORAGE_FACTORY_EXPORT_NAMES,
+]);
 
 const findCookieFactoryCall = (context: RuleContext, node: EsTreeNode): boolean => {
   let current = node.parent;

@@ -1466,6 +1466,33 @@ interface AwaitSite {
 }
 
 const REACT_SETTER_CALLEE_PATTERN = /^set[A-Z]/;
+const SAFE_GLOBAL_OBJECTS = new Set([
+  "console",
+  "Math",
+  "Date",
+  "performance",
+  "Number",
+  "String",
+  "Boolean",
+  "Object",
+  "Array",
+  "JSON",
+]);
+
+const SAFE_GLOBAL_FUNCTIONS = new Set([
+  "String",
+  "Number",
+  "Boolean",
+  "parseInt",
+  "parseFloat",
+  "isNaN",
+  "isFinite",
+  "encodeURI",
+  "encodeURIComponent",
+  "decodeURI",
+  "decodeURIComponent",
+]);
+
 const isProvenNonThrowingSynchronousCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -1476,6 +1503,9 @@ const isProvenNonThrowingSynchronousCall = (
       isReactHookResultReference(callee, STATE_HOOK_NAMES, 1, context.scopes) ||
       (context.scopes.isGlobalReference(callee) && REACT_SETTER_CALLEE_PATTERN.test(callee.name))
     ) {
+      return true;
+    }
+    if (context.scopes.isGlobalReference(callee) && SAFE_GLOBAL_FUNCTIONS.has(callee.name)) {
       return true;
     }
     const localFunction = resolveExactLocalFunction(callee, context.scopes);
@@ -1495,7 +1525,7 @@ const isProvenNonThrowingSynchronousCall = (
   const receiver = stripParenExpression(callee.object);
   return Boolean(
     isNodeOfType(receiver, "Identifier") &&
-    receiver.name === "console" &&
+    SAFE_GLOBAL_OBJECTS.has(receiver.name) &&
     context.scopes.isGlobalReference(receiver),
   );
 };

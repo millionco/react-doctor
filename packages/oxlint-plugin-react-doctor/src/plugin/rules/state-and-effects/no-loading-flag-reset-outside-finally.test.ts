@@ -2581,4 +2581,33 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(finallyBefore.diagnostics).toHaveLength(1);
     expect(finallyAfter.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag when catch handler uses safe global functions and methods (issue #1421)", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function run() {
+      setLoading(true);
+      const start = performance.now();
+      try {
+        const res = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
+        const text = await res.text();
+        let body = text;
+        try {
+          body = JSON.stringify(JSON.parse(text), null, 2);
+        } catch {
+        }
+        setResult({ status: res.status, ok: res.ok, body, timeMs: Math.round(performance.now() - start) });
+      } catch (error) {
+        setResult({
+          status: 0,
+          ok: false,
+          body: error instanceof Error ? error.message : String(error),
+          timeMs: Math.round(performance.now() - start),
+        });
+      }
+      setLoading(false);
+    }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

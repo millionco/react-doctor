@@ -27,12 +27,12 @@ Create `tmp/parity-pr-<number>-<head-short-sha>` and preserve it after the run. 
 Run from `packages/evals`. The default corpus contains the 2,000 highest-ranked repositories, and the initial concurrency is 200. Sandbox creation is capped at 20 to avoid overloading Daytona. The evaluator cleans up resources and retries failed projects at concurrency 50, then 10.
 
 ```sh
-nr eval \
+nr --silent eval \
   --react-doctor-repository <base-repository-url> \
   --react-doctor-ref <baseRefOid> \
   > <absolute-run-directory>/baseline.ndjson
 
-nr eval \
+nr --silent eval \
   --repositories <absolute-run-directory>/baseline.ndjson \
   --react-doctor-repository <head-repository-url> \
   --react-doctor-ref <headRefOid> \

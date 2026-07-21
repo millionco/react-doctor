@@ -16,8 +16,17 @@ import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
 const NOOP_RULE: Rule = { id: "fuzz-smoke-noop", severity: "warn", create: () => ({}) };
+const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: ([^\r\n]+)$/m;
+const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 
 describe("fuzz harness oracles", () => {
+  it("reads corpus directives from CRLF files", () => {
+    const code = "// rule: example-rule\r\n// verdict: fail\r\n";
+
+    expect(RULE_DIRECTIVE_PATTERN.exec(code)?.[1]).toBe("example-rule");
+    expect(VERDICT_DIRECTIVE_PATTERN.exec(code)?.[1]).toBe("fail");
+  });
+
   // Generator health: every unmutated program must parse — a snippet-pool
   // typo would otherwise silently turn iterations into parse-error skips.
   it("generates programs that all parse cleanly", () => {
@@ -76,8 +85,8 @@ describe("fuzz harness oracles", () => {
     let declaredVerdictCount = 0;
 
     for (const entry of corpus) {
-      const ruleId = /^\/\/ rule: ([^\n]+)$/m.exec(entry.code)?.[1];
-      const verdict = /^\/\/ verdict: (pass|fail)$/m.exec(entry.code)?.[1];
+      const ruleId = RULE_DIRECTIVE_PATTERN.exec(entry.code)?.[1];
+      const verdict = VERDICT_DIRECTIVE_PATTERN.exec(entry.code)?.[1];
       if (!verdict) continue;
       declaredVerdictCount += 1;
       if (!ruleId) {

@@ -9,6 +9,7 @@ import { MATERIALIZE_ALL_RULES_CONFIG_COMMAND, SCAN_COMMAND } from "../src/const
 
 const temporaryDirectories: string[] = [];
 const INTEGRATION_TEST_TIMEOUT_MS = 30_000;
+const normalizeEmbeddedPath = (filePath: string): string => filePath.replaceAll("\\", "/");
 
 afterEach(() => {
   for (const temporaryDirectory of temporaryDirectories.splice(0)) {
@@ -17,6 +18,10 @@ afterEach(() => {
 });
 
 describe("MATERIALIZE_ALL_RULES_CONFIG_COMMAND", () => {
+  it("normalizes Windows paths before embedding them in JavaScript", () => {
+    expect(normalizeEmbeddedPath("C:\\Users\\runner\\repo")).toBe("C:/Users/runner/repo");
+  });
+
   it("keeps diagnostic findings advisory so nonzero exits mean execution failure", () => {
     expect(SCAN_COMMAND).toContain("--blocking none");
   });
@@ -55,8 +60,8 @@ export const REACT_DOCTOR_RULES = [
 
       const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
         "/workspace/react-doctor",
-        reactDoctorDirectory,
-      ).replaceAll("/workspace/target", targetDirectory);
+        normalizeEmbeddedPath(reactDoctorDirectory),
+      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
       execFileSync("sh", ["-c", command], {
         env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
       });
@@ -105,8 +110,8 @@ export const REACT_DOCTOR_RULES = [
 
       const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
         "/workspace/react-doctor",
-        reactDoctorDirectory,
-      ).replaceAll("/workspace/target", targetDirectory);
+        normalizeEmbeddedPath(reactDoctorDirectory),
+      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
       execFileSync("sh", ["-c", command], {
         env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
       });
@@ -145,8 +150,8 @@ export const REACT_DOCTOR_RULES = [
 
       const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
         "/workspace/react-doctor",
-        reactDoctorDirectory,
-      ).replaceAll("/workspace/target", targetDirectory);
+        normalizeEmbeddedPath(reactDoctorDirectory),
+      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
       const result = spawnSync("sh", ["-c", command], {
         encoding: "utf8",
         env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
@@ -179,8 +184,8 @@ export const REACT_DOCTOR_RULES = [
 
       const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
         "/workspace/react-doctor",
-        reactDoctorDirectory,
-      ).replaceAll("/workspace/target", targetDirectory);
+        normalizeEmbeddedPath(reactDoctorDirectory),
+      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
       const result = spawnSync("sh", ["-c", command], {
         encoding: "utf8",
         env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
@@ -224,8 +229,8 @@ export const REACT_DOCTOR_RULES = [
 
       const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
         "/workspace/react-doctor",
-        reactDoctorDirectory,
-      ).replaceAll("/workspace/target", targetDirectory);
+        normalizeEmbeddedPath(reactDoctorDirectory),
+      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
       execFileSync("sh", ["-c", command], {
         env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
       });

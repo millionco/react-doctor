@@ -85,10 +85,13 @@ export const MATERIALIZE_ALL_RULES_CONFIG_COMMAND = `node --input-type=module <<
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-  REACT_COMPILER_RULES,
-  REACT_DOCTOR_RULES,
-} from "/workspace/react-doctor/packages/oxlint-plugin-react-doctor/dist/index.js";
+import { pathToFileURL } from "node:url";
+
+const { REACT_COMPILER_RULES, REACT_DOCTOR_RULES } = await import(
+  pathToFileURL(
+    "/workspace/react-doctor/packages/oxlint-plugin-react-doctor/dist/index.js",
+  ).href
+);
 
 const ruleKeys = [
   ...REACT_DOCTOR_RULES.map((registryEntry) => registryEntry.key),

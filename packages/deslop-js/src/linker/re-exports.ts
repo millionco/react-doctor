@@ -1,7 +1,7 @@
 import type { DependencyGraph } from "../types.js";
 
 export const resolveReExportChains = (graph: DependencyGraph): void => {
-  const sourceToTargets = buildSourceTargetMap(graph);
+  const sourceToWildcardTargets = buildSourceWildcardTargetMap(graph);
   const maxIterations = graph.modules.length * 2 + 1;
   let didChange = true;
   let iterationCount = 0;
@@ -11,55 +11,54 @@ export const resolveReExportChains = (graph: DependencyGraph): void => {
     iterationCount++;
 
     for (const module of graph.modules) {
-      const originalExportCount = module.exports.length;
+      const namespaceReExport = module.exports.find(
+        (exportInfo) =>
+          exportInfo.isReExport &&
+          exportInfo.reExportSource !== undefined &&
+          exportInfo.isNamespaceReExport,
+      );
+      if (!namespaceReExport) continue;
 
-      for (let exportIndex = 0; exportIndex < originalExportCount; exportIndex++) {
-        const exportInfo = module.exports[exportIndex];
-        if (!exportInfo.isReExport || !exportInfo.reExportSource) continue;
-        if (!exportInfo.isNamespaceReExport) continue;
+      const targetIndices = sourceToWildcardTargets.get(module.fileId.index);
+      if (!targetIndices) continue;
+      const existingExportNames = new Set(
+        module.exports
+          .filter((exportInfo) => !exportInfo.isNamespaceReExport)
+          .map((exportInfo) => exportInfo.name),
+      );
 
-        const targetIndices = sourceToTargets.get(module.fileId.index);
-        if (!targetIndices) continue;
+      for (const targetIndex of targetIndices) {
+        const targetModule = graph.modules[targetIndex];
+        if (!targetModule) continue;
 
-        for (const targetIndex of targetIndices) {
-          const targetModule = graph.modules[targetIndex];
-          if (!targetModule) continue;
-
-          for (const targetExport of targetModule.exports) {
-            if (targetExport.name === "*" && targetExport.isNamespaceReExport) continue;
-
-            const isDuplicate = module.exports.some(
-              (existingExport) =>
-                existingExport.name === targetExport.name && !existingExport.isNamespaceReExport,
-            );
-
-            if (!isDuplicate) {
-              module.exports.push({
-                name: targetExport.name,
-                isDefault: targetExport.isDefault,
-                isTypeOnly: targetExport.isTypeOnly || exportInfo.isTypeOnly,
-                isReExport: true,
-                isSynthetic: true,
-                reExportSource: exportInfo.reExportSource,
-                reExportOriginalName: targetExport.name,
-                isNamespaceReExport: false,
-                line: exportInfo.line,
-                column: exportInfo.column,
-              });
-              didChange = true;
-            }
-          }
+        for (const targetExport of targetModule.exports) {
+          if (targetExport.name === "*" && targetExport.isNamespaceReExport) continue;
+          if (existingExportNames.has(targetExport.name)) continue;
+          existingExportNames.add(targetExport.name);
+          module.exports.push({
+            name: targetExport.name,
+            isDefault: targetExport.isDefault,
+            isTypeOnly: targetExport.isTypeOnly || namespaceReExport.isTypeOnly,
+            isReExport: true,
+            isSynthetic: true,
+            reExportSource: namespaceReExport.reExportSource,
+            reExportOriginalName: targetExport.name,
+            isNamespaceReExport: false,
+            line: namespaceReExport.line,
+            column: namespaceReExport.column,
+          });
+          didChange = true;
         }
       }
     }
   }
 };
 
-const buildSourceTargetMap = (graph: DependencyGraph): Map<number, number[]> => {
+const buildSourceWildcardTargetMap = (graph: DependencyGraph): Map<number, number[]> => {
   const sourceTargets = new Map<number, number[]>();
 
   for (const edge of graph.edges) {
-    if (!edge.isReExportEdge) continue;
+    if (!edge.isReExportEdge || !edge.reExportedNames.includes("*")) continue;
     const existing = sourceTargets.get(edge.source);
     if (existing) {
       if (!existing.includes(edge.target)) {

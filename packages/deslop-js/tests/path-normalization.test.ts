@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { toPosixPath } from "../src/utils/to-posix-path.js";
 import { buildDependencyGraph, type ModuleLinkInput } from "../src/linker/build.js";
 import { traceReachability } from "../src/linker/reachability.js";
+import { resolveReExportChains } from "../src/linker/re-exports.js";
 import { detectDeadExports } from "../src/report/exports.js";
 import type { ParsedSource } from "../src/collect/parse.js";
 import type { ResolvedImport } from "../src/resolver/resolve.js";
@@ -124,6 +125,78 @@ describe("buildDependencyGraph cross-platform path keying", () => {
       graph.modules[1].isReachable,
       true,
       "app.ts must be reachable from the entry point and not reported as an unused file",
+    );
+  });
+
+  it("propagates exports only from wildcard targets", () => {
+    const wildcardTargetNames = ["alpha", "beta", "gamma"];
+    const namedTargetName = "delta";
+    const barrel: ModuleLinkInput = {
+      fileId: { index: 0, path: "C:/project/src/index.ts" },
+      parsed: emptyParsed({
+        exports: [
+          ...wildcardTargetNames.map((targetName) =>
+            namedExport("*", {
+              isReExport: true,
+              reExportSource: `./${targetName}`,
+              reExportOriginalName: "*",
+              isNamespaceReExport: true,
+            }),
+          ),
+          namedExport(namedTargetName, {
+            isReExport: true,
+            reExportSource: `./${namedTargetName}`,
+            reExportOriginalName: namedTargetName,
+          }),
+        ],
+      }),
+      resolvedImports: new Map(
+        [...wildcardTargetNames, namedTargetName].map((targetName) => [
+          `./${targetName}`,
+          {
+            resolvedPath: `C:/project/src/${targetName}.ts`,
+            isExternal: false,
+            packageName: undefined,
+          },
+        ]),
+      ),
+      isEntryPoint: true,
+      isTestEntry: false,
+      isGitIgnored: false,
+    };
+    const wildcardTargets: ModuleLinkInput[] = wildcardTargetNames.map(
+      (targetName, targetIndex) => ({
+        fileId: { index: targetIndex + 1, path: `C:/project/src/${targetName}.ts` },
+        parsed: emptyParsed({ exports: [namedExport(targetName)] }),
+        resolvedImports: new Map(),
+        isEntryPoint: false,
+        isTestEntry: false,
+        isGitIgnored: false,
+      }),
+    );
+    const namedTarget: ModuleLinkInput = {
+      fileId: {
+        index: wildcardTargets.length + 1,
+        path: `C:/project/src/${namedTargetName}.ts`,
+      },
+      parsed: emptyParsed({
+        exports: [namedExport(namedTargetName), namedExport("namedOnly")],
+      }),
+      resolvedImports: new Map(),
+      isEntryPoint: false,
+      isTestEntry: false,
+      isGitIgnored: false,
+    };
+    const graph = buildDependencyGraph([barrel, ...wildcardTargets, namedTarget]);
+
+    resolveReExportChains(graph);
+
+    assert.deepEqual(
+      graph.modules[0].exports
+        .filter((exportInfo) => !exportInfo.isNamespaceReExport)
+        .map((exportInfo) => exportInfo.name)
+        .sort(),
+      [...wildcardTargetNames, namedTargetName].sort(),
     );
   });
 

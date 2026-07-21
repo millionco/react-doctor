@@ -1,10 +1,16 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { findGuardingTryStatement } from "../../utils/find-guarding-try-statement.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { chainCarriesRejectionHandler } from "../../utils/is-never-rejecting-expression.js";
+import {
+  chainCarriesRejectionHandler,
+  isDefinitelyNonThenableValue,
+} from "../../utils/is-never-rejecting-expression.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -50,36 +56,127 @@ interface ResolvedInitiator {
   initiator: EsTreeNode;
   hasUpstreamRejectionHandling: boolean;
 }
-const isKnownNonRejectingConciseHandler = (
+const isKnownNonThenableHandlerReturn = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  visitedBindingIdentifiers = new Set<EsTreeNode>(),
+): boolean => {
+  const strippedExpression = stripParenExpression(expression);
+  if (isDefinitelyNonThenableValue(strippedExpression)) return true;
+  if (!isNodeOfType(strippedExpression, "Identifier")) return false;
+  if (
+    strippedExpression.name === "undefined" &&
+    context.scopes.isGlobalReference(strippedExpression)
+  ) {
+    return true;
+  }
+  const symbol = context.scopes.symbolFor(strippedExpression);
+  if (!symbol || visitedBindingIdentifiers.has(symbol.bindingIdentifier)) return false;
+  visitedBindingIdentifiers.add(symbol.bindingIdentifier);
+  const initializer = getDirectUnreassignedInitializer(symbol);
+  return Boolean(
+    initializer && isKnownNonThenableHandlerReturn(initializer, context, visitedBindingIdentifiers),
+  );
+};
+const isKnownNonRejectingHandler = (
   argument: EsTreeNode | undefined,
   context: RuleContext,
 ): boolean => {
   if (!argument) return false;
-  const handler = stripParenExpression(argument);
-  if (
-    !isNodeOfType(handler, "ArrowFunctionExpression") ||
-    isNodeOfType(handler.body, "BlockStatement")
-  ) {
+  const strippedArgument = stripParenExpression(argument);
+  const handler = isNodeOfType(strippedArgument, "Identifier")
+    ? resolveExactLocalFunction(strippedArgument, context.scopes)
+    : strippedArgument;
+  if (!handler || !isFunctionLike(handler)) return false;
+  let didFindKnownNonRejectingCall = false;
+  let canReject = false;
+  walkOwnFunctionScope(handler, (child: EsTreeNode) => {
+    if (canReject) return false;
+    if (isNodeOfType(child, "ThrowStatement") || isNodeOfType(child, "AwaitExpression")) {
+      canReject = true;
+      return false;
+    }
+    if (
+      isNodeOfType(child, "ReturnStatement") &&
+      child.argument &&
+      !isKnownNonThenableHandlerReturn(child.argument, context)
+    ) {
+      const returnedExpression = stripParenExpression(child.argument);
+      if (!isNodeOfType(returnedExpression, "CallExpression")) {
+        canReject = true;
+        return false;
+      }
+    }
+    if (isNodeOfType(child, "NewExpression")) {
+      canReject = true;
+      return false;
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = stripParenExpression(child.callee);
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      isReactHookResultReference(callee, STATE_DISPATCHER_HOOK_NAMES, 1, context.scopes)
+    ) {
+      const symbol = context.scopes.symbolFor(callee);
+      if (symbol?.references.every((reference) => reference.flag === "read")) {
+        didFindKnownNonRejectingCall = true;
+        return;
+      }
+    }
+    if (isNodeOfType(callee, "MemberExpression")) {
+      const receiver = stripParenExpression(callee.object);
+      if (
+        isNodeOfType(receiver, "Identifier") &&
+        receiver.name === "console" &&
+        context.scopes.isGlobalReference(receiver) &&
+        NON_REJECTING_CONSOLE_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
+      ) {
+        didFindKnownNonRejectingCall = true;
+        return;
+      }
+    }
+    canReject = true;
+    return false;
+  });
+  return didFindKnownNonRejectingCall && !canReject;
+};
+const isTrustedNonThrowingMethodCallee = (
+  member: EsTreeNodeOfType<"MemberExpression">,
+  context: RuleContext,
+): boolean => {
+  const parent = member.parent;
+  if (!parent || !isNodeOfType(parent, "CallExpression") || parent.callee !== member) return false;
+  const receiver = stripParenExpression(member.object);
+  if (!isNodeOfType(receiver, "Identifier") || !context.scopes.isGlobalReference(receiver)) {
     return false;
   }
-  const body = stripParenExpression(handler.body);
-  if (!isNodeOfType(body, "CallExpression")) return false;
-  const callee = stripParenExpression(body.callee);
-  if (
-    isNodeOfType(callee, "Identifier") &&
-    isReactHookResultReference(callee, STATE_DISPATCHER_HOOK_NAMES, 1, context.scopes)
-  ) {
-    const symbol = context.scopes.symbolFor(callee);
-    return Boolean(symbol?.references.every((reference) => reference.flag === "read"));
+  const methodName = getStaticPropertyName(member);
+  if (receiver.name === "console") {
+    return NON_REJECTING_CONSOLE_METHOD_NAMES.has(methodName ?? "");
   }
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  const receiver = stripParenExpression(callee.object);
-  return (
-    isNodeOfType(receiver, "Identifier") &&
-    receiver.name === "console" &&
-    context.scopes.isGlobalReference(receiver) &&
-    NON_REJECTING_CONSOLE_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
-  );
+  return receiver.name === "Promise" && methodName === "resolve";
+};
+const handlerHasPotentiallyThrowingMemberRead = (
+  argument: EsTreeNode | undefined,
+  context: RuleContext,
+): boolean => {
+  if (!argument) return false;
+  const strippedArgument = stripParenExpression(argument);
+  const handler = isNodeOfType(strippedArgument, "Identifier")
+    ? resolveExactLocalFunction(strippedArgument, context.scopes)
+    : strippedArgument;
+  if (!handler || !isFunctionLike(handler)) return false;
+  let hasPotentiallyThrowingMemberRead = false;
+  walkOwnFunctionScope(handler, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "MemberExpression") &&
+      !isTrustedNonThrowingMethodCallee(child, context)
+    ) {
+      hasPotentiallyThrowingMemberRead = true;
+      return false;
+    }
+  });
+  return hasPotentiallyThrowingMemberRead;
 };
 
 const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): PromiseChainWalk => {
@@ -97,20 +194,19 @@ const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): Pr
     PROMISE_METHOD_NAMES.has(getStaticPropertyName(cursor.callee) ?? "")
   ) {
     const methodName = getStaticPropertyName(cursor.callee);
-    if (
-      !didReachTerminalThen &&
-      methodName === "catch" &&
+    const rejectionHandlerArgument =
+      methodName === "catch"
+        ? (cursor.arguments[0] as EsTreeNode | undefined)
+        : (cursor.arguments[1] as EsTreeNode | undefined);
+    const hasAbsorbingRejectionHandler =
+      !handlerHasPotentiallyThrowingMemberRead(rejectionHandlerArgument, context) &&
       (chainCarriesRejectionHandler(cursor, context.scopes) ||
-        isKnownNonRejectingConciseHandler(cursor.arguments[0] as EsTreeNode | undefined, context))
-    ) {
+        isKnownNonRejectingHandler(rejectionHandlerArgument, context));
+    if (!didReachTerminalThen && methodName === "catch" && hasAbsorbingRejectionHandler) {
       hasCatch = true;
     }
     if (methodName === "then") {
-      if (
-        !didReachTerminalThen &&
-        (chainCarriesRejectionHandler(cursor, context.scopes) ||
-          isKnownNonRejectingConciseHandler(cursor.arguments[1] as EsTreeNode | undefined, context))
-      ) {
+      if (!didReachTerminalThen && hasAbsorbingRejectionHandler) {
         hasRejectionHandlerArgument = true;
       }
       didReachTerminalThen = true;
@@ -316,24 +412,97 @@ const collectStateSideEffectNodes = (callback: EsTreeNode, context: RuleContext)
   });
   return sideEffectNodes;
 };
-const referenceHasRejectionHandler = (reference: EsTreeNode, context: RuleContext): boolean => {
+const getReferenceRejectionHandlerCall = (
+  reference: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
   const member = reference.parent;
   if (!member || !isNodeOfType(member, "MemberExpression") || member.object !== reference) {
-    return false;
+    return null;
   }
   const call = member.parent;
-  if (!call || !isNodeOfType(call, "CallExpression") || call.callee !== member) return false;
+  if (!call || !isNodeOfType(call, "CallExpression") || call.callee !== member) return null;
   const chainWalk = walkPromiseChain(call, context);
-  return chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument;
+  return chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument ? call : null;
 };
-const bindingHasRejectionHandler = (binding: EsTreeNode, context: RuleContext): boolean => {
+const collectBindingRejectionHandlerCalls = (
+  binding: EsTreeNode,
+  context: RuleContext,
+  visitedBindingIdentifiers = new Set<EsTreeNode>(),
+): EsTreeNode[] => {
+  if (!isNodeOfType(binding, "Identifier")) return [];
+  const symbol = context.scopes.symbolFor(binding);
+  if (!symbol || visitedBindingIdentifiers.has(symbol.bindingIdentifier)) return [];
+  visitedBindingIdentifiers.add(symbol.bindingIdentifier);
+  return symbol.references.flatMap((reference) => {
+    const rejectionHandlerCall = getReferenceRejectionHandlerCall(reference.identifier, context);
+    if (rejectionHandlerCall) return [rejectionHandlerCall];
+    const declarator = reference.identifier.parent;
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      declarator.init !== reference.identifier ||
+      !isNodeOfType(declarator.id, "Identifier")
+    ) {
+      return [];
+    }
+    const aliasSymbol = context.scopes.symbolFor(declarator.id);
+    if (
+      aliasSymbol?.kind !== "const" ||
+      aliasSymbol.references.some((aliasReference) => aliasReference.flag !== "read")
+    ) {
+      return [];
+    }
+    return collectBindingRejectionHandlerCalls(declarator.id, context, visitedBindingIdentifiers);
+  });
+};
+const bindingHasSingleWriteWithCoveringRejectionHandler = (
+  binding: EsTreeNode,
+  assignmentValue: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   if (!isNodeOfType(binding, "Identifier")) return false;
   const symbol = context.scopes.symbolFor(binding);
-  return Boolean(
-    symbol?.references.some((reference) =>
-      referenceHasRejectionHandler(reference.identifier, context),
-    ),
+  if (!symbol) return false;
+  const writeReferences = symbol.references.filter((reference) => reference.flag !== "read");
+  if (writeReferences.length !== 1 || writeReferences[0]?.identifier !== binding) return false;
+  const rejectionHandlerCalls = collectBindingRejectionHandlerCalls(binding, context);
+  const doesRejectionHandlerCoverEveryPath = doNodesCoverEveryPathAfterNode(
+    assignmentValue,
+    rejectionHandlerCalls,
+    context,
   );
+  if (!doesRejectionHandlerCoverEveryPath) return false;
+  const enclosingFunction = context.cfg.enclosingFunction(assignmentValue);
+  let ancestor = assignmentValue.parent ?? null;
+  let isInsideLoop = false;
+  while (ancestor && ancestor !== enclosingFunction) {
+    if (
+      isNodeOfType(ancestor, "ForStatement") ||
+      isNodeOfType(ancestor, "ForInStatement") ||
+      isNodeOfType(ancestor, "ForOfStatement") ||
+      isNodeOfType(ancestor, "WhileStatement") ||
+      isNodeOfType(ancestor, "DoWhileStatement")
+    ) {
+      isInsideLoop = true;
+      break;
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  const functionCfg = enclosingFunction ? context.cfg.cfgFor(enclosingFunction) : null;
+  const assignmentBlock = functionCfg?.blockOf(assignmentValue) ?? null;
+  const assignmentStart = getRangeStart(assignmentValue);
+  const hasSameIterationRejectionHandler = rejectionHandlerCalls.some((rejectionHandlerCall) => {
+    const rejectionHandlerStart = getRangeStart(rejectionHandlerCall);
+    return (
+      assignmentBlock !== null &&
+      functionCfg?.blockOf(rejectionHandlerCall) === assignmentBlock &&
+      assignmentStart !== null &&
+      rejectionHandlerStart !== null &&
+      rejectionHandlerStart > assignmentStart
+    );
+  });
+  return !isInsideLoop || hasSameIterationRejectionHandler;
 };
 const collectFloatingChains = (callback: EsTreeNode, context: RuleContext): EsTreeNode[] => {
   const chains: EsTreeNode[] = [];
@@ -346,7 +515,13 @@ const collectFloatingChains = (callback: EsTreeNode, context: RuleContext): EsTr
   }
   walkOwnFunctionScope(callback, (child: EsTreeNode) => {
     if (isNodeOfType(child, "VariableDeclarator") && child.init) {
-      if (!bindingHasRejectionHandler(child.id, context)) {
+      if (
+        !doNodesCoverEveryPathAfterNode(
+          child.init,
+          collectBindingRejectionHandlerCalls(child.id, context),
+          context,
+        )
+      ) {
         chains.push(stripParenExpression(child.init));
       }
       return;
@@ -355,6 +530,20 @@ const collectFloatingChains = (callback: EsTreeNode, context: RuleContext): EsTr
       let expression = child.expression as EsTreeNode;
       if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
         expression = expression.argument as EsTreeNode;
+      }
+      if (isNodeOfType(expression, "AssignmentExpression")) {
+        const assignmentTarget = stripParenExpression(expression.left);
+        if (
+          expression.operator === "=" &&
+          bindingHasSingleWriteWithCoveringRejectionHandler(
+            assignmentTarget,
+            expression.right,
+            context,
+          )
+        ) {
+          return;
+        }
+        expression = expression.right;
       }
       chains.push(stripParenExpression(expression));
     }

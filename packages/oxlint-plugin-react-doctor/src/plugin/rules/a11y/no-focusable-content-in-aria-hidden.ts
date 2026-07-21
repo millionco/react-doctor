@@ -2,10 +2,15 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getStaticJsxDescendantOpeningElements } from "../../utils/get-static-jsx-descendant-opening-elements.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { isFocusableJsxOpeningElement } from "../../utils/is-focusable-jsx-opening-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
+
+const BOOTSTRAP_MODAL_DISMISS_ATTRIBUTES = ["data-bs-dismiss", "data-dismiss"];
 
 const isStaticallyAriaHidden = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   if (
@@ -38,6 +43,28 @@ const getHiddenAncestor = (
   return null;
 };
 
+const isBootstrapManagedModal = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const classNameAttribute = getAuthoritativeJsxAttribute(
+    openingElement.attributes,
+    "className",
+    false,
+  );
+  const classNameValue = classNameAttribute
+    ? getStringLiteralAttributeValue(classNameAttribute)
+    : null;
+  if (!classNameValue || !splitTailwindClassName(classNameValue).includes("modal")) return false;
+  const element = openingElement.parent;
+  if (!element || !isNodeOfType(element, "JSXElement")) return false;
+  return getStaticJsxDescendantOpeningElements(element).some((descendant) =>
+    BOOTSTRAP_MODAL_DISMISS_ATTRIBUTES.some((attributeName) => {
+      const attribute = getAuthoritativeJsxAttribute(descendant.attributes, attributeName, false);
+      return attribute ? getStringLiteralAttributeValue(attribute) === "modal" : false;
+    }),
+  );
+};
+
 export const noFocusableContentInAriaHidden = defineRule({
   id: "no-focusable-content-in-aria-hidden",
   title: "aria-hidden subtree contains focusable content",
@@ -51,6 +78,7 @@ export const noFocusableContentInAriaHidden = defineRule({
       if (/^[A-Z]/.test(tagName) || !isFocusableJsxOpeningElement(node, tagName)) return;
       const hiddenAncestor = getHiddenAncestor(node);
       if (!hiddenAncestor) return;
+      if (isBootstrapManagedModal(hiddenAncestor)) return;
       context.report({
         node,
         message:

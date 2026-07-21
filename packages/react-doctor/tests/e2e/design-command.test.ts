@@ -46,6 +46,9 @@ const runDesignScan = (
 describe.skipIf(!hasBuiltCli)("design command", () => {
   it("activates opt-in design rules and excludes unrelated React diagnostics", async () => {
     const projectDirectory = setupReactProject(temporaryRoot, "focused-design", {
+      packageJsonExtras: {
+        devDependencies: { tailwindcss: "^4.0.0" },
+      },
       files: {
         "doctor.config.json": JSON.stringify({
           customRulesOnly: true,

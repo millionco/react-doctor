@@ -1,3 +1,4 @@
+import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -527,6 +528,8 @@ const reportUnguarded = ({
 }: UnguardedReportInput): void => {
   const symbol = context.scopes.symbolFor(responseBinding);
   if (!symbol) return;
+  const responseSymbols = collectConstAliasSymbols(symbol, context.scopes);
+  const responseReferences = responseSymbols.flatMap((responseSymbol) => responseSymbol.references);
   const isConditionUse = (candidate: EsTreeNode): boolean => {
     let current = findTransparentExpressionRoot(candidate);
     while (current.parent) {
@@ -572,11 +575,11 @@ const reportUnguarded = ({
     const call = getMeaningfulParent(member);
     return call && isNodeOfType(call, "CallExpression") && call.callee === member ? call : null;
   };
-  const consumptions = symbol.references
+  const consumptions = responseReferences
     .map((reference) => consumeCallForReference(reference.identifier))
     .filter((candidate): candidate is EsTreeNode => candidate !== null);
   if (!responseBindingCanBeUndefined) {
-    for (const reference of symbol.references) {
+    for (const reference of responseReferences) {
       const root = findTransparentExpressionRoot(reference.identifier);
       const parent = root.parent;
       if (
@@ -591,7 +594,7 @@ const reportUnguarded = ({
   }
   if (consumptions.length === 0) return;
 
-  const directStatusReferences = symbol.references.flatMap((reference) => {
+  const directStatusReferences = responseReferences.flatMap((reference) => {
     const receiver = findTransparentExpressionRoot(reference.identifier);
     const member = receiver.parent;
     if (
@@ -606,7 +609,7 @@ const reportUnguarded = ({
     return [member];
   });
 
-  const destructuredStatusReferences = symbol.references.flatMap((reference) => {
+  const destructuredStatusReferences = responseReferences.flatMap((reference) => {
     const declarator = reference.identifier.parent;
     if (
       !declarator ||
@@ -651,7 +654,7 @@ const reportUnguarded = ({
     ) {
       return true;
     }
-    return symbol.references.some((reference) => {
+    return responseReferences.some((reference) => {
       const parent = reference.identifier.parent;
       if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
       if (!parent.arguments.some((argument) => argument === reference.identifier)) return false;

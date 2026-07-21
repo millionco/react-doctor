@@ -24,7 +24,7 @@ Create `tmp/parity-pr-<number>-<head-short-sha>` and preserve it after the run. 
 
 ## Run both revisions
 
-Run from `packages/evals`. The default corpus contains the 100 highest-ranked repositories, and the initial concurrency is 500. Sandbox creation is capped at 20 to avoid overloading Daytona. The evaluator cleans up resources and retries failed projects at concurrency 50, then 10.
+Run from `packages/evals`. The default corpus contains the 2,000 highest-ranked repositories, and the initial concurrency is 200. Sandbox creation is capped at 20 to avoid overloading Daytona. The evaluator cleans up resources and retries failed projects at concurrency 50, then 10.
 
 ```sh
 nr eval \
@@ -41,10 +41,11 @@ nr eval \
 
 The baseline records resolved repository hashes. Reusing the baseline as the candidate corpus prevents default branches from moving between runs.
 
-Before the candidate run, confirm the baseline contains no unpinned records:
+Before the candidate run, stream-validate every baseline record. This rejects unpinned repositories, evaluation errors, malformed reports, and incomplete projects without loading the NDJSON corpus into memory:
 
 ```sh
-jq -e -s 'length > 0 and all(.[]; .repository.ref != "HEAD")' \
+jq -e -n \
+  -f <repository-root>/.agents/skills/run-parity/scripts/validate-parity-input.jq \
   <absolute-run-directory>/baseline.ndjson >/dev/null
 ```
 
@@ -69,12 +70,17 @@ Interpret exit codes:
 - `1`: comparison succeeded with diagnostic changes
 - `2`: inputs are incomplete or invalid
 
+The evaluator retries incomplete reports instead of recording them as successful. The comparator validates both inputs again and exits with invalid-input status if either side contains an evaluation error, a malformed report, a missing completion marker, or a partial legacy report. It canonicalizes diagnostics to report-relative identities across legacy and v3 report schemas, so overlapping workspace scans do not inflate counts and schema upgrades do not appear as diagnostic churn.
+
+The comparator streams both NDJSON inputs, stages baseline records in the system temporary directory, and writes large detail arrays incrementally. It retains changed diagnostic entries only long enough to sort them deterministically, so leave temporary-disk and output capacity proportional to the run size.
+
 For exit code `1`, inspect affected source locations before classifying changes.
 
 Validate comparator changes from the repository root:
 
 ```sh
 node --test .agents/skills/run-parity/scripts/compare-parity.test.mjs
+node --test .agents/skills/run-parity/scripts/validate-parity-input.test.mjs
 ```
 
 ## Report results

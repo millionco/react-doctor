@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import type { Capability } from "oxlint-plugin-react-doctor";
 import type { Framework, ProjectInfo } from "../types/index.js";
 import {
@@ -33,6 +34,8 @@ import {
   parseReactMajorMinor,
   parseTailwindMajorMinor,
 } from "./version.js";
+import { detectTargetBlankOpenerProtection } from "./detect-target-blank-opener-protection.js";
+import { readPackageJson } from "./package-json.js";
 
 // SPA / mobile frameworks with no server-side form handler at all —
 // `preventDefault()` on `<form onSubmit>` is the canonical pattern there,
@@ -326,7 +329,18 @@ const capabilitiesByProject = new WeakMap<ProjectInfo, ReadonlySet<Capability>>(
 export const getCapabilities = (project: ProjectInfo): ReadonlySet<Capability> => {
   const cached = capabilitiesByProject.get(project);
   if (cached !== undefined) return cached;
-  const capabilities = buildCapabilities(project);
+  const capabilities = new Set(buildCapabilities(project));
+  const packageJson = readPackageJson(path.join(project.rootDirectory, "package.json"));
+  const targetBlankOpenerProtection = detectTargetBlankOpenerProtection(
+    project.rootDirectory,
+    packageJson,
+  );
+  if (targetBlankOpenerProtection !== undefined) {
+    capabilities.add("target-blank-needs-explicit-protection");
+  }
+  if (targetBlankOpenerProtection === "noreferrer") {
+    capabilities.add("target-blank-needs-noreferrer");
+  }
   capabilitiesByProject.set(project, capabilities);
   return capabilities;
 };

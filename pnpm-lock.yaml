@@ -73,6 +73,9 @@ importers:
       '@effect/platform-node-shared':
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70(effect@4.0.0-beta.70)
+      browserslist:
+        specifier: ^4.28.1
+        version: 4.28.1
       confbox:
         specifier: ^0.2.4
         version: 0.2.4

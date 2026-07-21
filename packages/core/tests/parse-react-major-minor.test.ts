@@ -31,15 +31,20 @@ describe("parseReactMajorMinor", () => {
     expect(parseReactMajorMinor("<19.2-beta >=19.0")).toEqual({ major: 19, minor: 0 });
   });
 
-  it("returns null for tags, workspace protocols, and empty input", () => {
+  it("returns null for tags, unresolved sources, and empty input", () => {
     expect(parseReactMajorMinor(null)).toBeNull();
     expect(parseReactMajorMinor(undefined)).toBeNull();
     expect(parseReactMajorMinor("")).toBeNull();
     expect(parseReactMajorMinor("   ")).toBeNull();
+    expect(parseReactMajorMinor("catalog:react19")).toBeNull();
+    expect(parseReactMajorMinor("workspace:~19.2.0")).toBeNull();
+    expect(parseReactMajorMinor("git+https://github.com/acme/react.git#v19.2.0")).toBeNull();
+    expect(parseReactMajorMinor("acme/react#v19.2.0")).toBeNull();
   });
 
   it("ignores leading whitespace and npm: alias prefixes", () => {
     expect(parseReactMajorMinor("  ^19.2.0  ")).toEqual({ major: 19, minor: 2 });
     expect(parseReactMajorMinor("npm:react@^19.2.0")).toEqual({ major: 19, minor: 2 });
+    expect(parseReactMajorMinor("npm:react-v18@^19.2.0")).toEqual({ major: 19, minor: 2 });
   });
 });

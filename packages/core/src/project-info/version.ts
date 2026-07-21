@@ -1,5 +1,10 @@
 import * as semver from "semver";
 import type { PackageJson } from "../types/index.js";
+import {
+  TAILWIND_POSTCSS7_COMPAT_ALIAS,
+  TAILWIND_POSTCSS7_COMPAT_MAJOR,
+  TAILWIND_POSTCSS7_COMPAT_MINOR,
+} from "./constants.js";
 
 const UNRESOLVABLE_PROTOCOL_VERSION =
   /^(?:catalog|file|git|github|https?|link|patch|portal|workspace|npm):/i;
@@ -277,65 +282,6 @@ export const parseReactMajor = (reactVersion: string | null | undefined): number
   return getLowestDependencyMajor(reactVersion);
 };
 
-// HACK: react-doctor reads the project's React version straight out of
-// package.json (the `react` dep), which produces semver ranges
-// (`^19.2.0`, `~19.0.1`, `>=19 <20`, `19.x`, `latest`, etc.) — never a
-// normalized number. Some React-version-gated rules need the MINOR in
-// addition to the major (e.g. `<Activity>` shipped in React 19.2 — a
-// gate purely on `major >= 19` would mis-fire on 19.0 / 19.1).
-//
-// Mirrors `parse-tailwind-major-minor` exactly: pull the first
-// `<major>.<minor>` pair from the trimmed spec, fall back to
-// `{ major, minor: 0 }` when only a major is present.
-
-// HACK: CodeQL flags unbounded `\d+` on untrusted package.json input as
-// a polynomial-backtracking risk (even though the patterns here are
-// not actually polynomial — there's no nested quantifier). Bound the
-// digit count so the regex is provably O(1) on any input. React
-// major/minor numbers won't realistically exceed 4 digits anyway.
-const MAJOR_MINOR_PATTERN = /(\d{1,4})\.(\d{1,4})/;
-const MAJOR_ONLY_PATTERN = /(\d{1,4})/;
-
-// Strip upper-bound comparators (`<19.2`, `<=20.0.0`, `<19.2-beta`) from
-// the spec before regex-matching the lower bound. Without this, a spec
-// like `"<19.2 >=19.0"` matches `19.2` from the upper bound and reports
-// the project as React 19.2+ even though the range *excludes* 19.2.
-// Mirrors the same stripping that `dependency-version-spec`'s lower-
-// bound major extractor does, kept inline to keep this parser
-// dependency-free.
-//
-// HACK: CodeQL flags consecutive `\s*` groups as polynomial-backtracking
-// risk on attacker-controlled input. Use a single bounded `\s{0,8}` so
-// the regex is unambiguous and linear. Semver upper bounds never
-// contain internal whitespace between `<` and `=`; 8 chars between
-// `<=` and the digit is more than any real spec uses.
-const UPPER_BOUND_COMPARATOR_PATTERN = /<=?\s{0,8}\d{1,4}(?:\.\d{1,4}){0,2}(?:-[^\s,|]+)?/g;
-
-export const parseReactMajorMinor = (
-  reactVersion: string | null | undefined,
-): MajorMinor | null => {
-  if (typeof reactVersion !== "string") return null;
-  const trimmed = reactVersion.trim();
-  if (trimmed.length === 0) return null;
-  const lowerBoundsOnly = trimmed.replace(UPPER_BOUND_COMPARATOR_PATTERN, " ").trim();
-  if (lowerBoundsOnly.length === 0) return null;
-
-  const majorMinorMatch = lowerBoundsOnly.match(MAJOR_MINOR_PATTERN);
-  if (majorMinorMatch) {
-    const major = Number.parseInt(majorMinorMatch[1], 10);
-    const minor = Number.parseInt(majorMinorMatch[2], 10);
-    if (!Number.isFinite(major) || major <= 0) return null;
-    if (!Number.isFinite(minor) || minor < 0) return null;
-    return { major, minor };
-  }
-
-  const majorOnlyMatch = lowerBoundsOnly.match(MAJOR_ONLY_PATTERN);
-  if (!majorOnlyMatch) return null;
-  const major = Number.parseInt(majorOnlyMatch[1], 10);
-  if (!Number.isFinite(major) || major <= 0) return null;
-  return { major, minor: 0 };
-};
-
 // HACK: react-doctor reads the project's Tailwind version straight out
 // of package.json (the `tailwindcss` dep), which produces semver ranges
 // (`^3.4.1`, `~3.3.0`, `>=3 <5`, `4.x`, `latest`, etc.) — never a
@@ -344,13 +290,15 @@ export const parseReactMajorMinor = (
 // Tailwind v3.4 — gating purely on `major >= 3` would mis-fire on
 // v3.0 … v3.3 codebases).
 
-// Lower bound of a range (`>=3.4 <5` → 3.4.0), with `coerce` as the
-// fallback for non-range specs that still embed a version
-// (`npm:tailwindcss@^3.4.1`). Tags (`latest`, `next`) resolve to null.
-const parseLowerBoundVersion = (versionSpec: string): semver.SemVer | null =>
-  semver.validRange(versionSpec) !== null
-    ? semver.minVersion(versionSpec)
-    : semver.coerce(versionSpec);
+const parseLowerBoundVersion = (versionSpec: string): semver.SemVer | null => {
+  const validRange = semver.validRange(versionSpec);
+  return validRange === null ? null : semver.minVersion(validRange);
+};
+
+const VERSION_SOURCE_REFERENCE_PATTERN = /[:/#@]/;
+const MAJOR_MINOR_PATTERN = /(\d{1,4})\.(\d{1,4})/;
+const MAJOR_ONLY_PATTERN = /(\d{1,4})/;
+const UPPER_BOUND_COMPARATOR_PATTERN = /<=?\s{0,8}\d{1,4}(?:\.\d{1,4}){0,2}(?:-[^\s,|]+)?/g;
 
 export const parseThreeRelease = (threeVersion: string | null | undefined): number | null => {
   if (typeof threeVersion !== "string") return null;
@@ -367,17 +315,73 @@ export const parseDependencyMajorMinor = (
   dependencyVersion: string | null | undefined,
 ): MajorMinor | null => {
   if (typeof dependencyVersion !== "string") return null;
-  const trimmed = dependencyVersion.trim();
-  if (trimmed.length === 0) return null;
+  const normalizedVersion = normalizeDependencyVersion(dependencyVersion);
+  if (normalizedVersion === null) return null;
 
-  const lowerBound = parseLowerBoundVersion(trimmed);
+  const lowerBound = parseLowerBoundVersion(normalizedVersion);
   if (lowerBound === null || lowerBound.major <= 0) return null;
   return { major: lowerBound.major, minor: lowerBound.minor };
 };
 
+export const parseReactMajorMinor = (
+  reactVersion: string | null | undefined,
+): MajorMinor | null => {
+  if (typeof reactVersion !== "string") return null;
+  const normalizedVersion = normalizeDependencyVersion(reactVersion);
+  if (normalizedVersion === null) return null;
+
+  const lowerBound = parseLowerBoundVersion(normalizedVersion);
+  if (lowerBound !== null) {
+    if (lowerBound.major <= 0) return null;
+    return { major: lowerBound.major, minor: lowerBound.minor };
+  }
+  if (VERSION_SOURCE_REFERENCE_PATTERN.test(normalizedVersion)) return null;
+
+  const lowerBoundsOnly = normalizedVersion.replace(UPPER_BOUND_COMPARATOR_PATTERN, " ").trim();
+  const majorMinorMatch = lowerBoundsOnly.match(MAJOR_MINOR_PATTERN);
+  if (majorMinorMatch) {
+    const major = Number.parseInt(majorMinorMatch[1], 10);
+    const minor = Number.parseInt(majorMinorMatch[2], 10);
+    if (!Number.isFinite(major) || major <= 0 || !Number.isFinite(minor) || minor < 0) return null;
+    return { major, minor };
+  }
+
+  const majorOnlyMatch = lowerBoundsOnly.match(MAJOR_ONLY_PATTERN);
+  if (!majorOnlyMatch) return null;
+  const major = Number.parseInt(majorOnlyMatch[1], 10);
+  return Number.isFinite(major) && major > 0 ? { major, minor: 0 } : null;
+};
+
+export const isTailwindPostcss7CompatAlias = (tailwindVersion: string): boolean => {
+  const normalizedAlias = tailwindVersion.trim().toLowerCase();
+  if (normalizedAlias === TAILWIND_POSTCSS7_COMPAT_ALIAS) return true;
+  if (!normalizedAlias.startsWith(`${TAILWIND_POSTCSS7_COMPAT_ALIAS}@`)) return false;
+  const compatibilityAliasTarget = normalizedAlias.slice(TAILWIND_POSTCSS7_COMPAT_ALIAS.length + 1);
+  return (
+    DIST_TAG_VERSION.test(compatibilityAliasTarget) ||
+    WILDCARD_VERSION.test(compatibilityAliasTarget)
+  );
+};
+
 export const parseTailwindMajorMinor = (
   tailwindVersion: string | null | undefined,
-): MajorMinor | null => parseDependencyMajorMinor(tailwindVersion);
+): MajorMinor | null => {
+  if (typeof tailwindVersion !== "string") return null;
+  const parsedVersion = parseDependencyMajorMinor(tailwindVersion);
+  if (parsedVersion !== null) return parsedVersion;
+
+  if (isTailwindPostcss7CompatAlias(tailwindVersion)) {
+    return {
+      major: TAILWIND_POSTCSS7_COMPAT_MAJOR,
+      minor: TAILWIND_POSTCSS7_COMPAT_MINOR,
+    };
+  }
+
+  const normalizedVersion = normalizeDependencyVersion(tailwindVersion);
+  if (normalizedVersion === null || !hasUpperBoundComparator(normalizedVersion)) return null;
+  const lowerBound = parseLowerBoundVersion(normalizedVersion);
+  return lowerBound !== null && lowerBound.major === 0 ? { major: 0, minor: 0 } : null;
+};
 
 // HACK: extracts the lowest concrete React major from a peer-dependency
 // range. Used to compute the effective React version for libraries:

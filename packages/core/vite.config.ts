@@ -35,6 +35,20 @@ export default defineConfig({
     },
   ],
   test: {
+    alias: [
+      {
+        find: /^@react-doctor\/core$/,
+        replacement: path.join(packageRoot, "src/index.ts"),
+      },
+      {
+        find: /^@react-doctor\/core\/schemas$/,
+        replacement: path.join(packageRoot, "src/schemas.ts"),
+      },
+      {
+        find: /^oxlint-plugin-react-doctor$/,
+        replacement: path.join(packageRoot, "../oxlint-plugin-react-doctor/src/index.ts"),
+      },
+    ],
     testTimeout: 30_000,
   },
 });

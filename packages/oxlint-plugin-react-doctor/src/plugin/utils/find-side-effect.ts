@@ -1,6 +1,7 @@
 import { MUTATING_HTTP_METHODS, MUTATION_METHOD_NAMES } from "../constants/library.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isCookiesOrAwaitedCookiesCall } from "./is-cookies-or-awaited-cookies-call.js";
+import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isSafeReceiverChain } from "./is-safe-receiver-chain.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
@@ -9,6 +10,11 @@ import { walkAst } from "./walk-ast.js";
 export interface FindSideEffectOptions {
   locallyScopedSafeBindings?: Set<string>;
   locallyScopedCookieBindings?: Set<string>;
+  shouldTraverseNestedFunction?: (functionNode: EsTreeNode) => boolean;
+  isSafeReceiver?: (receiverNode: EsTreeNode) => boolean;
+  isCookieReceiver?: (receiverNode: EsTreeNode) => boolean;
+  useDefaultSafeReceiverDetection?: boolean;
+  useDefaultCookieReceiverDetection?: boolean;
 }
 
 const EMPTY_BINDING_SET = new Set<string>();
@@ -43,12 +49,18 @@ const isCookieReceiver = (
 const getCookieMutationMethodName = (
   node: EsTreeNode,
   locallyScopedCookieBindings: Set<string>,
+  isCustomCookieReceiver?: (receiverNode: EsTreeNode) => boolean,
+  useDefaultCookieReceiverDetection = true,
 ): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   if (!isNodeOfType(node.callee, "MemberExpression")) return null;
   if (!isNodeOfType(node.callee.property, "Identifier")) return null;
   if (!COOKIE_MUTATION_METHOD_NAMES.has(node.callee.property.name)) return null;
-  if (!isCookieReceiver(stripParenExpression(node.callee.object), locallyScopedCookieBindings)) {
+  const receiver = stripParenExpression(node.callee.object);
+  if (
+    !isCustomCookieReceiver?.(receiver) &&
+    (!useDefaultCookieReceiverDetection || !isCookieReceiver(receiver, locallyScopedCookieBindings))
+  ) {
     return null;
   }
   return node.callee.property.name;
@@ -62,13 +74,22 @@ export const isMutatingFetchCall = (node: EsTreeNode): boolean => {
   return Boolean(optionsArgument.properties?.some(isMutatingMethodProperty));
 };
 
-const isMutatingDbCall = (node: EsTreeNode, locallyScopedSafeBindings: Set<string>): boolean => {
+const isMutatingDbCall = (
+  node: EsTreeNode,
+  locallyScopedSafeBindings: Set<string>,
+  isSafeReceiver?: (receiverNode: EsTreeNode) => boolean,
+  useDefaultSafeReceiverDetection = true,
+): boolean => {
   if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "MemberExpression"))
     return false;
   const { property, object } = node.callee;
   if (!isNodeOfType(property, "Identifier") || !MUTATION_METHOD_NAMES.has(property.name))
     return false;
-  if (isSafeReceiverChain(stripParenExpression(object), locallyScopedSafeBindings)) return false;
+  const receiver = stripParenExpression(object);
+  if (isSafeReceiver?.(receiver)) return false;
+  if (useDefaultSafeReceiverDetection && isSafeReceiverChain(receiver, locallyScopedSafeBindings)) {
+    return false;
+  }
   return true;
 };
 
@@ -92,8 +113,21 @@ export const findSideEffect = (
   let sideEffectDescription: string | null = null;
   walkAst(node, (child: EsTreeNode) => {
     if (sideEffectDescription) return;
+    if (
+      child !== node &&
+      isFunctionLike(child) &&
+      options.shouldTraverseNestedFunction &&
+      !options.shouldTraverseNestedFunction(child)
+    ) {
+      return false;
+    }
 
-    const cookieMethodName = getCookieMutationMethodName(child, locallyScopedCookieBindings);
+    const cookieMethodName = getCookieMutationMethodName(
+      child,
+      locallyScopedCookieBindings,
+      options.isCookieReceiver,
+      options.useDefaultCookieReceiverDetection,
+    );
     if (cookieMethodName) {
       sideEffectDescription = `cookies().${cookieMethodName}()`;
       return;
@@ -117,7 +151,14 @@ export const findSideEffect = (
       return;
     }
 
-    if (isMutatingDbCall(child, locallyScopedSafeBindings)) {
+    if (
+      isMutatingDbCall(
+        child,
+        locallyScopedSafeBindings,
+        options.isSafeReceiver,
+        options.useDefaultSafeReceiverDetection,
+      )
+    ) {
       sideEffectDescription = getDbCallDescription(child);
     }
   });

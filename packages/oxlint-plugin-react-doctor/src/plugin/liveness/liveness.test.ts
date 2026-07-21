@@ -33,6 +33,7 @@ const INTRINSIC_STRING_ALIAS_RULE_IDS: ReadonlyArray<string> = [
   "img-redundant-alt",
   "interactive-supports-focus",
   "jsx-no-script-url",
+  "jsx-no-target-blank",
   "lang",
   "media-has-caption",
   "mouse-events-have-key-events",

@@ -38,6 +38,7 @@ import {
   parseThreeRelease,
   resolveEffectiveReactMajor,
 } from "./version.js";
+import { clearTargetBlankOpenerProtectionCache } from "./detect-target-blank-opener-protection.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
 export { formatFrameworkName } from "./detectors.js";
@@ -50,6 +51,7 @@ const cachedProjectInfos = new Map<string, ProjectInfo>();
 // tsconfig.json / monorepo manifests change between diagnose() calls.
 export const clearProjectCache = (): void => {
   cachedProjectInfos.clear();
+  clearTargetBlankOpenerProtectionCache();
 };
 
 /**

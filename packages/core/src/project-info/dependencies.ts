@@ -5,7 +5,7 @@ import { detectFramework } from "./detectors.js";
 import { isFile, isPlainObject } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
 import { readPackageJson } from "./package-json.js";
-import { isConcreteDependencyVersion } from "./version.js";
+import { isConcreteDependencyVersion, isTailwindPostcss7CompatAlias } from "./version.js";
 
 export const isCatalogReference = (version: unknown): version is string =>
   typeof version === "string" && version.startsWith("catalog:");
@@ -247,12 +247,15 @@ const pickConcreteVersion = (
   packageJson: PackageJson,
   packageName: string,
   sections: ReadonlyArray<"dependencies" | "peerDependencies" | "devDependencies">,
+  isAcceptedNonConcreteVersion?: (version: string) => boolean,
 ): string | null => {
   for (const section of sections) {
     const version = packageJson[section]?.[packageName];
     if (typeof version !== "string") continue;
     if (isCatalogReference(version)) return null;
-    if (isConcreteDependencyVersion(version)) return version;
+    if (isConcreteDependencyVersion(version) || Boolean(isAcceptedNonConcreteVersion?.(version))) {
+      return version;
+    }
   }
   return null;
 };
@@ -268,11 +271,12 @@ export const extractDependencyInfo = (packageJson: PackageJson): DependencyInfo 
     "peerDependencies",
     "devDependencies",
   ]);
-  const tailwindVersion = pickConcreteVersion(packageJson, "tailwindcss", [
-    "dependencies",
-    "devDependencies",
-    "peerDependencies",
-  ]);
+  const tailwindVersion = pickConcreteVersion(
+    packageJson,
+    "tailwindcss",
+    ["dependencies", "devDependencies", "peerDependencies"],
+    isTailwindPostcss7CompatAlias,
+  );
   const zodVersion = pickConcreteVersion(packageJson, "zod", [
     "dependencies",
     "devDependencies",

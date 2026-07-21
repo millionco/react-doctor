@@ -14,6 +14,13 @@ import {
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");
 const VALID_FRAMEWORKS = ["nextjs", "vite", "cra", "remix", "gatsby", "unknown"];
 
+interface ReactCompilerDetectionCase {
+  readonly name: string;
+  readonly config: string;
+  readonly expected: boolean;
+  readonly helper?: string;
+}
+
 describe("discoverProject", () => {
   it("detects React version from package.json", () => {
     const projectInfo = discoverProject(path.join(FIXTURES_DIRECTORY, "basic-react"));
@@ -171,6 +178,33 @@ describe("discoverProject", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.tailwindVersion).toBe("^3.4.1");
+  });
+
+  it("preserves bare and tagged PostCSS 7 compatibility aliases through capability detection", () => {
+    for (const [caseName, tailwindVersion] of [
+      ["bare", "npm:@tailwindcss/postcss7-compat"],
+      ["latest", "npm:@tailwindcss/postcss7-compat@latest"],
+      ["next", "npm:@tailwindcss/postcss7-compat@next"],
+      ["wildcard", "npm:@tailwindcss/postcss7-compat@*"],
+    ]) {
+      const projectDirectory = path.join(tempDirectory, `tw-postcss7-compat-${caseName}`);
+      fs.mkdirSync(projectDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `tw-postcss7-compat-${caseName}`,
+          dependencies: { react: "^18.0.0" },
+          devDependencies: { tailwindcss: tailwindVersion },
+        }),
+      );
+
+      const projectInfo = discoverProject(projectDirectory);
+      const capabilities = buildCapabilities(projectInfo);
+      expect(projectInfo.tailwindVersion).toBe(tailwindVersion);
+      expect(capabilities.has("tailwind")).toBe(true);
+      expect(capabilities.has("tailwind:3.4")).toBe(false);
+      expect(capabilities.has("tailwind:4")).toBe(false);
+    }
   });
 
   it("detects an i18n library from runtime dependencies", () => {
@@ -1160,6 +1194,784 @@ describe("discoverProject", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasReactCompiler).toBe(true);
+  });
+
+  it("detects React Compiler when a config enables it with a runtime condition", () => {
+    const projectDirectory = path.join(tempDirectory, "conditional-react-compiler");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "conditional-react-compiler",
+        dependencies: { next: "^15.0.0", react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.ts"),
+      "const isProduction = process.env.NODE_ENV === 'production';\nexport default { experimental: { reactCompiler: isProduction } };\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("detects React Compiler configured through a local build-config helper", () => {
+    const projectDirectory = path.join(tempDirectory, "indirect-react-compiler");
+    const pluginDirectory = path.join(projectDirectory, "build", "plugins");
+    fs.mkdirSync(pluginDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "indirect-react-compiler",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "babel-plugin-react-compiler": "^1.0.0", vite: "^7.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "import { createPlugins } from './build/plugins';\nexport default { plugins: createPlugins() };\n",
+    );
+    fs.writeFileSync(
+      path.join(pluginDirectory, "index.ts"),
+      "import { reactCompilerPreset } from '@vitejs/plugin-react';\nexport const createPlugins = () => [reactCompilerPreset()];\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("detects React Compiler configured through a required CommonJS helper", () => {
+    const projectDirectory = path.join(tempDirectory, "required-react-compiler-config");
+    fs.mkdirSync(path.join(projectDirectory, "build"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "required-react-compiler-config", dependencies: { react: "^19" } }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "babel.config.cjs"),
+      "module.exports = require('./build/babel-options');\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "build", "babel-options.cjs"),
+      "module.exports = { plugins: ['babel-plugin-react-compiler'] };\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("detects React Compiler inherited through Babel extends", () => {
+    const projectDirectory = path.join(tempDirectory, "extended-react-compiler-config");
+    fs.mkdirSync(path.join(projectDirectory, "build"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "extended-react-compiler-config", dependencies: { react: "^19" } }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, ".babelrc.json"),
+      JSON.stringify({ extends: "./build/babel-base.json" }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "build", "babel-base.json"),
+      JSON.stringify({ plugins: ["babel-plugin-react-compiler"] }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("does not treat an installed React Compiler transform package as an active transform", () => {
+    const projectDirectory = path.join(tempDirectory, "react-compiler-package-only");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-package-only",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "babel-plugin-react-compiler": "^1.0.0" },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
+  });
+
+  it("does not treat commented or type-only compiler references as active configuration", () => {
+    const projectDirectory = path.join(tempDirectory, "commented-react-compiler");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "commented-react-compiler",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "babel-plugin-react-compiler": "^1.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "import type { CompilerOptions as ReactCompilerOptions } from 'babel-plugin-react-compiler';\ninterface CompilerOptions { reactCompiler: boolean; options: ReactCompilerOptions }\nexport default { plugins: [react()] };\n// babel({ presets: [reactCompilerPreset()] })\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
+  });
+
+  it("does not treat an unused React Compiler import as active configuration", () => {
+    const projectDirectory = path.join(tempDirectory, "unused-react-compiler-import");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "unused-react-compiler-import",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "babel-plugin-react-compiler": "^1.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "import compiler from 'babel-plugin-react-compiler';\nexport default { plugins: [react()] };\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
+  });
+
+  it("does not confuse a shadowed config binding with an imported compiler", () => {
+    const projectDirectory = path.join(tempDirectory, "shadowed-react-compiler-import");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "shadowed-react-compiler-import",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "babel.config.ts"),
+      "import compiler from 'babel-plugin-react-compiler';\nconst makeConfig = (compiler) => ({ plugins: [compiler] });\nexport default makeConfig(otherPlugin);\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
+  });
+
+  it("does not treat an unused React Compiler option object as active configuration", () => {
+    const projectDirectory = path.join(tempDirectory, "unused-react-compiler-options");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "unused-react-compiler-options",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.ts"),
+      "const unusedOptions = { reactCompiler: true };\nexport default { images: { unoptimized: true } };\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
+  });
+
+  it("does not inspect an unused local build-config helper", () => {
+    const projectDirectory = path.join(tempDirectory, "unused-react-compiler-helper");
+    fs.mkdirSync(path.join(projectDirectory, "build"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "unused-react-compiler-helper",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "import { compilerPlugins } from './build/compiler-plugins';\nexport default { plugins: [react()] };\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "build", "compiler-plugins.ts"),
+      "export const compilerPlugins = ['babel-plugin-react-compiler'];\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
+  });
+
+  it("detects an imported React Compiler transform used in a Babel plugin array", () => {
+    const projectDirectory = path.join(tempDirectory, "imported-react-compiler-transform");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "imported-react-compiler-transform",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "babel.config.ts"),
+      "import compiler from 'babel-plugin-react-compiler';\nexport default { plugins: [compiler] };\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  const reactCompilerDetectionCases: ReactCompilerDetectionCase[] = [
+    {
+      name: "property-key-collision",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [{ compiler: other }] };",
+      expected: false,
+    },
+    {
+      name: "member-name-collision",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [object.compiler] };",
+      expected: false,
+    },
+    {
+      name: "named-function-collision",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [function compiler() {}] };",
+      expected: false,
+    },
+    {
+      name: "disabled-shorthand",
+      config: "const reactCompiler = false; export default { reactCompiler };",
+      expected: false,
+    },
+    {
+      name: "null-shorthand",
+      config: "const reactCompiler = null; export default { reactCompiler };",
+      expected: false,
+    },
+    {
+      name: "undefined-shorthand",
+      config: "const reactCompiler = undefined; export default { reactCompiler };",
+      expected: false,
+    },
+    {
+      name: "unreachable-plugin-array",
+      config:
+        "const unused = { plugins: ['babel-plugin-react-compiler'] }; export default { images: {} };",
+      expected: false,
+    },
+    {
+      name: "plugin-option-string",
+      config:
+        "export default { plugins: [['other-plugin', { name: 'babel-plugin-react-compiler' }]] };",
+      expected: false,
+    },
+    {
+      name: "compiler-after-another-plugin",
+      config: "export default { plugins: ['other-plugin', 'babel-plugin-react-compiler'] };",
+      expected: true,
+    },
+    {
+      name: "compiler-after-another-preset",
+      config: "export default { presets: ['other-preset', 'babel-plugin-react-compiler'] };",
+      expected: true,
+    },
+    {
+      name: "shadowed-require",
+      config:
+        "const require = () => other; module.exports = { plugins: [require('babel-plugin-react-compiler')] };",
+      expected: false,
+    },
+    {
+      name: "shadowed-vite-namespace",
+      config:
+        "import * as viteReact from '@vitejs/plugin-react'; const make = (viteReact) => ({ plugins: [viteReact.reactCompilerPreset()] }); export default make(other);",
+      expected: false,
+    },
+    {
+      name: "shadowed-function-declaration",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const makeConfig = () => { function compiler() {} return { plugins: [compiler] }; }; export default makeConfig();",
+      expected: false,
+    },
+    {
+      name: "shadowed-class-declaration",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const makeConfig = () => { class compiler {} return { plugins: [compiler] }; }; export default makeConfig();",
+      expected: false,
+    },
+    {
+      name: "hoisted-shadowed-function-declaration",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const makeConfig = () => { return { plugins: [compiler] }; function compiler() {} }; export default makeConfig();",
+      expected: false,
+    },
+    {
+      name: "destructured-shadowed-compiler-binding",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const makeConfig = () => { const { compiler } = other; return { plugins: [compiler] }; }; export default makeConfig();",
+      expected: false,
+    },
+    {
+      name: "selected-helper-export",
+      config: "import { ordinary } from './helper'; export default { plugins: [ordinary] };",
+      helper:
+        "export const ordinary = () => {}; export const unused = { plugins: ['babel-plugin-react-compiler'] };",
+      expected: false,
+    },
+    {
+      name: "selected-helper-re-export",
+      config: "export { ordinary as default } from './helper';",
+      helper:
+        "export const ordinary = {}; export const unused = { plugins: ['babel-plugin-react-compiler'] };",
+      expected: false,
+    },
+    {
+      name: "selected-compiler-re-export",
+      config: "export { compiled as default } from './helper';",
+      helper:
+        "export const ordinary = {}; export const compiled = { plugins: ['babel-plugin-react-compiler'] };",
+      expected: true,
+    },
+    {
+      name: "default-export-specifier",
+      config: "const config = { reactCompiler: true }; export { config as default };",
+      expected: true,
+    },
+    {
+      name: "default-function-config",
+      config: "export default function nextConfig() { return { reactCompiler: true }; }",
+      expected: true,
+    },
+    {
+      name: "factored-import-plugin-array",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const plugins = [compiler]; export default { plugins };",
+      expected: true,
+    },
+    {
+      name: "factored-string-plugin-array",
+      config: "const plugins = ['babel-plugin-react-compiler']; export default { plugins };",
+      expected: true,
+    },
+    {
+      name: "selected-helper-plugin-array",
+      config: "import { plugins } from './helper'; export default { plugins };",
+      helper: "export const plugins = ['babel-plugin-react-compiler'];",
+      expected: true,
+    },
+    {
+      name: "destructured-compiler-require",
+      config:
+        "const { default: compiler } = require('babel-plugin-react-compiler'); module.exports = { plugins: [compiler] };",
+      expected: true,
+    },
+    {
+      name: "compiler-require-default",
+      config:
+        "const compiler = require('babel-plugin-react-compiler').default; module.exports = { plugins: [compiler] };",
+      expected: true,
+    },
+    {
+      name: "destructured-vite-preset-require",
+      config:
+        "const { reactCompilerPreset } = require('@vitejs/plugin-react'); module.exports = { plugins: [reactCompilerPreset()] };",
+      expected: true,
+    },
+    {
+      name: "vite-namespace-require",
+      config:
+        "const viteReact = require('@vitejs/plugin-react'); module.exports = { plugins: [viteReact.reactCompilerPreset()] };",
+      expected: true,
+    },
+    {
+      name: "computed-react-compiler-property",
+      config: "export default { ['reactCompiler']: true };",
+      expected: true,
+    },
+    {
+      name: "computed-vite-preset-property",
+      config:
+        "import * as viteReact from '@vitejs/plugin-react'; export default { plugins: [viteReact['reactCompilerPreset']()] };",
+      expected: true,
+    },
+    {
+      name: "destructured-local-require",
+      config: "const { config } = require('./helper'); module.exports = config;",
+      helper: "exports.config = { plugins: ['babel-plugin-react-compiler'] };",
+      expected: true,
+    },
+    {
+      name: "local-require-member",
+      config: "module.exports = require('./helper').config;",
+      helper: "exports.config = { plugins: ['babel-plugin-react-compiler'] };",
+      expected: true,
+    },
+    {
+      name: "local-require-factory",
+      config: "const makeConfig = require('./helper'); module.exports = makeConfig();",
+      helper: "module.exports = () => ({ plugins: ['babel-plugin-react-compiler'] });",
+      expected: true,
+    },
+    {
+      name: "later-disabled-flag",
+      config: "export default { reactCompiler: true, reactCompiler: false };",
+      expected: false,
+    },
+    {
+      name: "later-disabled-spread-flag",
+      config:
+        "const enabled = { reactCompiler: true }; export default { ...enabled, reactCompiler: false };",
+      expected: false,
+    },
+    {
+      name: "statically-disabled-plugin",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [false && compiler] };",
+      expected: false,
+    },
+    {
+      name: "non-default-compiler-package-export",
+      config:
+        "import { parseOptions } from 'babel-plugin-react-compiler'; export default { plugins: [parseOptions] };",
+      expected: false,
+    },
+    {
+      name: "assigned-react-compiler-flag",
+      config: "const config = {}; config.reactCompiler = true; export default config;",
+      expected: true,
+    },
+    {
+      name: "function-local-assigned-react-compiler-flag",
+      config:
+        "export default () => { const config = {}; config.reactCompiler = true; return config; };",
+      expected: true,
+    },
+    {
+      name: "function-local-assigned-compiler-plugin",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default () => { const config = {}; config.plugins = [compiler]; return config; };",
+      expected: true,
+    },
+    {
+      name: "later-empty-plugin-assignment",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const config = { plugins: [compiler] }; config.plugins = []; export default config;",
+      expected: false,
+    },
+    {
+      name: "commonjs-assigned-react-compiler-flag",
+      config: "module.exports = {}; module.exports.reactCompiler = true;",
+      expected: true,
+    },
+    {
+      name: "later-commonjs-root-assignment",
+      config:
+        "module.exports.plugins = ['babel-plugin-react-compiler']; module.exports = { plugins: [] };",
+      expected: false,
+    },
+    {
+      name: "later-commonjs-member-assignment",
+      config:
+        "module.exports = { plugins: [] }; module.exports.plugins = ['babel-plugin-react-compiler'];",
+      expected: true,
+    },
+    {
+      name: "spread-snapshot-before-disabling-write",
+      config:
+        "const config = {}; config.reactCompiler = true; const exported = { ...config }; config.reactCompiler = false; export default exported;",
+      expected: true,
+    },
+    {
+      name: "spread-snapshot-before-enabling-write",
+      config:
+        "const config = {}; const exported = { ...config }; config.reactCompiler = true; export default exported;",
+      expected: false,
+    },
+    {
+      name: "export-spread-before-disabling-write",
+      config:
+        "const config = {}; config.reactCompiler = true; export default { ...config }; config.reactCompiler = false;",
+      expected: true,
+    },
+    {
+      name: "export-spread-before-enabling-write",
+      config: "const config = {}; export default { ...config }; config.reactCompiler = true;",
+      expected: false,
+    },
+    {
+      name: "later-plugin-override",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [compiler], plugins: [] };",
+      expected: false,
+    },
+    {
+      name: "later-plugin-spread-override",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const compilerConfig = { plugins: [compiler] }; export default { ...compilerConfig, plugins: [] };",
+      expected: false,
+    },
+    {
+      name: "later-irrelevant-known-spread",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const environmentConfig = { mode: 'production' }; export default { plugins: [compiler], ...environmentConfig };",
+      expected: true,
+    },
+    {
+      name: "later-known-spread-plugin-override",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const disabledConfig = { plugins: [] }; export default { plugins: [compiler], ...disabledConfig };",
+      expected: false,
+    },
+    {
+      name: "false-conditional-plugin",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [false ? compiler : other] };",
+      expected: false,
+    },
+    {
+      name: "zero-conditional-plugin",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [0 ? compiler : other] };",
+      expected: false,
+    },
+    {
+      name: "empty-string-and-plugin",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: ['' && compiler] };",
+      expected: false,
+    },
+    {
+      name: "nullish-plugin-fallback",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [null ?? compiler] };",
+      expected: true,
+    },
+    {
+      name: "zero-non-nullish-plugin-fallback",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [0 ?? compiler] };",
+      expected: false,
+    },
+    {
+      name: "empty-string-non-nullish-plugin-fallback",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: ['' ?? compiler] };",
+      expected: false,
+    },
+    {
+      name: "zero-non-nullish-react-compiler-flag",
+      config: "export default { reactCompiler: 0 ?? true };",
+      expected: false,
+    },
+    {
+      name: "nullish-react-compiler-flag-fallback",
+      config: "export default { reactCompiler: null ?? true };",
+      expected: true,
+    },
+    {
+      name: "false-or-plugin",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; export default { plugins: [false || compiler] };",
+      expected: true,
+    },
+    {
+      name: "plugin-option-call-string",
+      config: "export default { plugins: [otherPlugin({ name: 'babel-plugin-react-compiler' })] };",
+      expected: false,
+    },
+    {
+      name: "selected-local-object-member",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const choices = { selected: compiler }; export default { plugins: [choices.selected] };",
+      expected: true,
+    },
+    {
+      name: "unselected-local-object-member",
+      config:
+        "const choices = { selected: other, unused: { plugins: ['babel-plugin-react-compiler'] } }; export default { plugins: [choices.selected] };",
+      expected: false,
+    },
+    {
+      name: "imported-helper-disabled-argument",
+      config: "import { make } from './helper'; export default make(false);",
+      helper: "export const make = (reactCompiler) => ({ reactCompiler });",
+      expected: false,
+    },
+    {
+      name: "array-spread-plugin",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const compilerPlugins = [compiler]; export default { plugins: [...compilerPlugins] };",
+      expected: true,
+    },
+    {
+      name: "computed-assigned-plugins",
+      config:
+        "import compiler from 'babel-plugin-react-compiler'; const config = {}; config['plugins'] = [compiler]; export default config;",
+      expected: true,
+    },
+    {
+      name: "commonjs-exports-plugins",
+      config: "exports.plugins = ['babel-plugin-react-compiler'];",
+      expected: true,
+    },
+    {
+      name: "commonjs-computed-plugins",
+      config: "module.exports['plugins'] = ['babel-plugin-react-compiler'];",
+      expected: true,
+    },
+    {
+      name: "namespace-helper-disabled-argument",
+      config: "import * as helper from './helper'; export default helper.make(false);",
+      helper: "export const make = (reactCompiler) => ({ reactCompiler });",
+      expected: false,
+    },
+    {
+      name: "namespace-helper-enabled-argument",
+      config: "import * as helper from './helper'; export default helper.make(true);",
+      helper: "export const make = (reactCompiler) => ({ reactCompiler });",
+      expected: true,
+    },
+    {
+      name: "local-member-helper-disabled-argument",
+      config:
+        "const helper = { make: (reactCompiler) => ({ reactCompiler }) }; export default helper.make(false);",
+      expected: false,
+    },
+    {
+      name: "local-member-helper-enabled-argument",
+      config:
+        "const helper = { make: (reactCompiler) => ({ reactCompiler }) }; export default helper.make(true);",
+      expected: true,
+    },
+    {
+      name: "local-method-helper-disabled-argument",
+      config:
+        "const helper = { make(reactCompiler) { return { reactCompiler }; } }; export default helper.make(false);",
+      expected: false,
+    },
+    {
+      name: "local-method-helper-enabled-argument",
+      config:
+        "const helper = { make(reactCompiler) { return { reactCompiler }; } }; export default helper.make(true);",
+      expected: true,
+    },
+    {
+      name: "commonjs-member-helper-disabled-argument",
+      config: "module.exports = require('./helper').make(false);",
+      helper: "exports.make = (reactCompiler) => ({ reactCompiler });",
+      expected: false,
+    },
+    {
+      name: "commonjs-member-helper-enabled-argument",
+      config: "module.exports = require('./helper').make(true);",
+      helper: "exports.make = (reactCompiler) => ({ reactCompiler });",
+      expected: true,
+    },
+  ];
+
+  it.each(reactCompilerDetectionCases)(
+    "resolves only the selected React Compiler config value graph: $name",
+    (detectionCase) => {
+      const projectDirectory = path.join(tempDirectory, detectionCase.name);
+      fs.mkdirSync(projectDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({ name: detectionCase.name, dependencies: { react: "^19.0.0" } }),
+      );
+      fs.writeFileSync(path.join(projectDirectory, "vite.config.ts"), detectionCase.config);
+      if (detectionCase.helper) {
+        fs.writeFileSync(path.join(projectDirectory, "helper.ts"), detectionCase.helper);
+      }
+
+      expect(discoverProject(projectDirectory).hasReactCompiler).toBe(detectionCase.expected);
+    },
+  );
+
+  it("resolves an extensionless CommonJS React Compiler config from JSON", () => {
+    const projectDirectory = path.join(tempDirectory, "json-react-compiler-helper");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "json-react-compiler-helper", dependencies: { react: "^19.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "babel.config.cjs"),
+      "module.exports = require('./helper');",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "helper.json"),
+      JSON.stringify({ plugins: ["babel-plugin-react-compiler"] }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("detects React Compiler configured through the package.json Babel field", () => {
+    const projectDirectory = path.join(tempDirectory, "react-compiler-package-babel-config");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-package-babel-config",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "babel-plugin-react-compiler": "^1.0.0" },
+        babel: { plugins: ["other-plugin", "babel-plugin-react-compiler"] },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("does not read a compiler-looking Babel tuple option from package.json", () => {
+    const projectDirectory = path.join(tempDirectory, "react-compiler-package-babel-tuple-option");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-package-babel-tuple-option",
+        dependencies: { react: "^19.0.0" },
+        babel: {
+          plugins: [["other-plugin", { name: "babel-plugin-react-compiler" }]],
+        },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
+  });
+
+  it("inherits React Compiler activation from an ancestor build config", () => {
+    const workspaceDirectory = path.join(tempDirectory, "react-compiler-config-workspace");
+    const projectDirectory = path.join(workspaceDirectory, "packages", "app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-config-workspace",
+        private: true,
+        workspaces: ["packages/*"],
+        devDependencies: { "babel-plugin-react-compiler": "^1.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(workspaceDirectory, "babel.config.js"),
+      "module.exports = { plugins: ['babel-plugin-react-compiler'] };\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "app", dependencies: { react: "^19.0.0" } }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("does not inherit React Compiler activation from an ancestor app config", () => {
+    const workspaceDirectory = path.join(tempDirectory, "react-compiler-app-config-workspace");
+    const projectDirectory = path.join(workspaceDirectory, "packages", "app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceDirectory, "package.json"),
+      JSON.stringify({
+        name: "react-compiler-app-config-workspace",
+        private: true,
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(workspaceDirectory, "vite.config.ts"),
+      "export default { plugins: ['babel-plugin-react-compiler'] };",
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "app", dependencies: { react: "^19.0.0" } }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
   });
 
   it("does not treat the React Compiler ESLint plugin as a build transform", () => {

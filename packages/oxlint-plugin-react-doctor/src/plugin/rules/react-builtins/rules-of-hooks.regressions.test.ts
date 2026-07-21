@@ -206,6 +206,29 @@ describe("react-builtins/rules-of-hooks — invariant React capability guards", 
   });
 });
 
+describe("react-builtins/rules-of-hooks — regressions: TypeScript-wrapped Hook receivers", () => {
+  it.each([
+    {
+      name: "as expression",
+      call: "(React as any).useEffect(() => {}, [])",
+    },
+    {
+      name: "non-null expression",
+      call: "React!.useEffect(() => {}, [])",
+    },
+    {
+      name: "satisfies expression",
+      call: "(React satisfies typeof React).useEffect(() => {}, [])",
+    },
+  ])("still reports a module-level Hook call through a $name", ({ call }) => {
+    const result = runTsx(`
+      const React = require("react");
+      ${call};
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("react-builtins/rules-of-hooks — regressions: HoC callbacks under non-PascalCase bindings", () => {
   it("does not flag hooks in a forwardRef callback bound to an underscore-prefixed name", () => {
     const result = runTsx(`
@@ -826,6 +849,135 @@ describe("react-builtins/rules-of-hooks — regressions: plugin-registration .us
   });
 });
 
+describe("react-builtins/rules-of-hooks — regressions: package-imported member APIs", () => {
+  it.each([
+    {
+      name: "namespace import",
+      code: `
+        import * as Sinon from "sinon";
+        Sinon.useFakeTimers();
+      `,
+    },
+    {
+      name: "default import",
+      code: `
+        import Sinon from "sinon";
+        const TimerControl = ({ enabled }) => enabled ? Sinon.useFakeTimers() : null;
+      `,
+    },
+    {
+      name: "named import alias",
+      code: `
+        import { sandbox as Sinon } from "sinon";
+        Sinon.useFakeTimers();
+      `,
+    },
+    {
+      name: "immutable namespace alias",
+      code: `
+        import * as SinonApi from "sinon";
+        const Sinon = SinonApi;
+        Sinon.useFakeTimers();
+      `,
+    },
+    {
+      name: "as-wrapped receiver",
+      code: `
+        import * as Sinon from "sinon";
+        (Sinon as typeof Sinon).useFakeTimers();
+      `,
+    },
+    {
+      name: "non-null-wrapped receiver",
+      code: `
+        import * as Sinon from "sinon";
+        Sinon!.useFakeTimers();
+      `,
+    },
+    {
+      name: "satisfies-wrapped receiver",
+      code: `
+        import * as Sinon from "sinon";
+        (Sinon satisfies typeof Sinon).useFakeTimers();
+      `,
+    },
+  ])("does not flag a use*-named method on a non-React $name", ({ code }) => {
+    const result = runTsx(code);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a shadowing local Hook namespace", () => {
+    const result = runTsx(`
+      import * as SinonApi from "sinon";
+      const installTimers = (Sinon) => Sinon.useFakeTimers();
+      consume(SinonApi, installTimers);
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a reassigned mutable package alias", () => {
+    const result = runTsx(`
+      import * as SinonApi from "sinon";
+      let Sinon = SinonApi;
+      Sinon = { useFakeTimers: () => null };
+      Sinon.useFakeTimers();
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a reassigned package import binding", () => {
+    const result = runTsx(`
+      import Sinon from "sinon";
+      Sinon = { useFakeTimers: () => null };
+      Sinon.useFakeTimers();
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a reassigned method on a package namespace", () => {
+    const result = runTsx(`
+      import * as Sinon from "sinon";
+      Sinon.useFakeTimers = () => null;
+      Sinon.useFakeTimers();
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "relative custom Hook namespace",
+      code: `
+        import * as FeatureHooks from "./feature-hooks";
+        FeatureHooks.useFeature();
+      `,
+    },
+    {
+      name: "path-alias custom Hook namespace",
+      code: `
+        import * as FeatureHooks from "@/feature-hooks";
+        FeatureHooks.useFeature();
+      `,
+    },
+    {
+      name: "React namespace alias",
+      code: `
+        import * as ReactRuntime from "react";
+        ReactRuntime.useState(0);
+      `,
+    },
+    {
+      name: "React ecosystem namespace",
+      code: `
+        import * as ReactQuery from "@tanstack/react-query";
+        ReactQuery.useQuery({ queryKey: ["key"] });
+      `,
+    },
+  ])("still flags a module-level call through a $name", ({ code }) => {
+    const result = runTsx(code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("react-builtins/rules-of-hooks — regressions: non-Hook APIs called from classes", () => {
   it("does not flag package-alias imported helpers that borrow the use prefix", () => {
     const result = runTsx(`
@@ -837,6 +989,30 @@ describe("react-builtins/rules-of-hooks — regressions: non-Hook APIs called fr
       }
     `);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags useMediaQuery from usehooks-ts inside a class method", () => {
+    const result = runTsx(`
+      import { useMediaQuery } from "usehooks-ts";
+      class ResponsiveStore {
+        useLayout() {
+          return useMediaQuery("(min-width: 768px)");
+        }
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags useTheme from next-themes inside a class method", () => {
+    const result = runTsx(`
+      import { useTheme } from "next-themes";
+      class ThemeStore {
+        use() {
+          return useTheme();
+        }
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag use-prefixed methods on a default-imported service", () => {

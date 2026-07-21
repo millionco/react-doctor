@@ -4,29 +4,31 @@ import {
   TAILWIND_DISPLAY_TOKENS,
 } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
+import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getEffectiveTailwindClassNameToken } from "./utils/get-effective-tailwind-class-name-token.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
-import { getLastMatchingToken } from "./utils/get-last-matching-token.js";
 
-const BACKGROUND_IMAGE_PATTERN = /^(?:bg-(?:gradient|linear)-to-|bg-none$)/;
-const GRADIENT_UTILITY_PATTERN = /^bg-(?:gradient|linear)-to-/;
+const GRADIENT_UTILITY_PATTERN =
+  /^(?:bg-gradient-to-|bg-linear-(?:to-|\d|\[|\()|bg-(?:radial|conic)(?:-|$)|-bg-(?:linear|conic)-)/;
+const BACKGROUND_IMAGE_PATTERN = /^(?:bg-none)$/;
 const GRADIENT_STOP_PATTERN = /^(from|via|to)-([a-z]+)-/;
 const WHOLE_ELEMENT_ROUNDING_PATTERN = /^rounded(?:-(?:none|sm|md|lg|xl|2xl|3xl|full|\[.+\]))?$/;
 const SIZE_PATTERN = /^(h|size|w)-([\d.]+)$/;
 const PURPLE_STOP_COLORS = new Set(["indigo", "purple", "violet"]);
 const BLUE_STOP_COLORS = new Set(["blue", "cyan", "sky"]);
+const GRADIENT_STOP_NAMES = ["from", "via", "to"];
 
 const hasPurpleAndBlueStops = (tokens: string[]): boolean => {
-  const stopColors = new Map<string, string>();
-  for (const token of tokens) {
-    const stopMatch = token.match(GRADIENT_STOP_PATTERN);
-    if (stopMatch) stopColors.set(stopMatch[1], stopMatch[2]);
-  }
-  const effectiveColors = [...stopColors.values()];
+  const effectiveColors = GRADIENT_STOP_NAMES.map((stopName) =>
+    getEffectiveTailwindClassNameToken(tokens, (utility) => utility.startsWith(`${stopName}-`)),
+  )
+    .filter((utility): utility is string => utility !== null)
+    .map((utility) => utility.match(GRADIENT_STOP_PATTERN)?.[2] ?? null)
+    .filter((color): color is string => color !== null);
   return (
     effectiveColors.some((color) => PURPLE_STOP_COLORS.has(color)) &&
     effectiveColors.some((color) => BLUE_STOP_COLORS.has(color))
@@ -34,15 +36,16 @@ const hasPurpleAndBlueStops = (tokens: string[]): boolean => {
 };
 
 const hasCompactSquareSize = (tokens: string[]): boolean => {
-  let width: number | null = null;
-  let height: number | null = null;
-  for (const token of tokens) {
-    const sizeMatch = token.match(SIZE_PATTERN);
-    if (!sizeMatch) continue;
-    const sizeValue = Number.parseFloat(sizeMatch[2]);
-    if (sizeMatch[1] === "size" || sizeMatch[1] === "w") width = sizeValue;
-    if (sizeMatch[1] === "size" || sizeMatch[1] === "h") height = sizeValue;
-  }
+  const widthUtility = getEffectiveTailwindClassNameToken(tokens, (utility) =>
+    /^(?:size|w)-[\d.]+$/.test(utility),
+  );
+  const heightUtility = getEffectiveTailwindClassNameToken(tokens, (utility) =>
+    /^(?:h|size)-[\d.]+$/.test(utility),
+  );
+  const widthMatch = widthUtility?.match(SIZE_PATTERN);
+  const heightMatch = heightUtility?.match(SIZE_PATTERN);
+  const width = widthMatch ? Number.parseFloat(widthMatch[2]) : null;
+  const height = heightMatch ? Number.parseFloat(heightMatch[2]) : null;
   return Boolean(
     width !== null &&
     height !== null &&
@@ -70,17 +73,21 @@ export const noGenericPurpleBlueIconGradient = defineRule({
       }
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      const tokens = getUnvariantClassNameTokens(classNameValue);
-      const backgroundImage = getLastMatchingToken(tokens, (token) =>
-        BACKGROUND_IMAGE_PATTERN.test(token),
+      const tokens = splitTailwindClassName(classNameValue);
+      const backgroundImage = getEffectiveTailwindClassNameToken(
+        tokens,
+        (utility) =>
+          BACKGROUND_IMAGE_PATTERN.test(utility) || GRADIENT_UTILITY_PATTERN.test(utility),
       );
       if (!backgroundImage || !GRADIENT_UTILITY_PATTERN.test(backgroundImage)) return;
       if (!hasPurpleAndBlueStops(tokens)) return;
-      const rounding = getLastMatchingToken(tokens, (token) =>
-        WHOLE_ELEMENT_ROUNDING_PATTERN.test(token),
+      const rounding = getEffectiveTailwindClassNameToken(tokens, (utility) =>
+        WHOLE_ELEMENT_ROUNDING_PATTERN.test(utility),
       );
       if (!rounding || rounding === "rounded-none") return;
-      const display = getLastMatchingToken(tokens, (token) => TAILWIND_DISPLAY_TOKENS.has(token));
+      const display = getEffectiveTailwindClassNameToken(tokens, (utility) =>
+        TAILWIND_DISPLAY_TOKENS.has(utility),
+      );
       if (!display || !FLEX_OR_GRID_DISPLAY_TOKENS.has(display)) return;
       if (!hasCompactSquareSize(tokens)) return;
       context.report({

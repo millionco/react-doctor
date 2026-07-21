@@ -1,8 +1,8 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getDestructuredBindingPropertyName } from "./get-destructured-binding-property-name.js";
+import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
-import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import {
   hasPossibleStaticMemberCallWrite,
   hasPossibleStaticPropertyMutationOrEscape,
@@ -10,7 +10,6 @@ import {
 import { hasSymbolWriteBefore } from "./has-symbol-write-before.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 const COMMUTATIVE_COMPOUND_ASSIGNMENT_OPERATORS: ReadonlySet<string> = new Set([
@@ -174,40 +173,9 @@ const isOrderIndependentFunction = (functionNode: EsTreeNode, scopes: ScopeAnaly
   return true;
 };
 
-const getStaticStringValue = (expression: EsTreeNode): string | null => {
-  const unwrappedExpression = stripParenExpression(expression);
-  if (
-    isNodeOfType(unwrappedExpression, "Literal") &&
-    typeof unwrappedExpression.value === "string"
-  ) {
-    return unwrappedExpression.value;
-  }
-  if (
-    isNodeOfType(unwrappedExpression, "TemplateLiteral") &&
-    unwrappedExpression.expressions.length === 0 &&
-    unwrappedExpression.quasis.length === 1
-  ) {
-    return unwrappedExpression.quasis[0].value.cooked ?? unwrappedExpression.quasis[0].value.raw;
-  }
-  return null;
-};
-
-const resolveConstStaticString = (expression: EsTreeNode, scopes: ScopeAnalysis): string | null => {
-  const directValue = getStaticStringValue(expression);
-  if (directValue !== null) return directValue;
-  const unwrappedExpression = stripParenExpression(expression);
-  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
-  const symbol = resolveConstIdentifierAlias(unwrappedExpression, scopes);
-  return symbol?.kind === "const" && symbol.initializer
-    ? getStaticStringValue(symbol.initializer)
-    : null;
-};
-
 const getObjectPropertyName = (property: EsTreeNode, scopes: ScopeAnalysis): string | null => {
   if (!isNodeOfType(property, "Property")) return null;
-  const directPropertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-  if (directPropertyName !== null || !property.computed) return directPropertyName;
-  return resolveConstStaticString(property.key, scopes);
+  return getResolvedStaticPropertyName(property, scopes, { allowConstTemplateLiteral: true });
 };
 
 const resolveStaticMemberPropertyName = (
@@ -215,9 +183,9 @@ const resolveStaticMemberPropertyName = (
   scopes: ScopeAnalysis,
 ): string | null => {
   if (!isNodeOfType(memberExpression, "MemberExpression")) return null;
-  const directPropertyName = getStaticPropertyName(memberExpression);
-  if (directPropertyName !== null || !memberExpression.computed) return directPropertyName;
-  return resolveConstStaticString(memberExpression.property, scopes);
+  return getResolvedStaticPropertyName(memberExpression, scopes, {
+    allowConstTemplateLiteral: true,
+  });
 };
 
 const resolveStaticObjectPropertyFunction = (

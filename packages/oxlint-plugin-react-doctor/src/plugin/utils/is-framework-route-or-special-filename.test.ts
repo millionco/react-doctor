@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { getReactRouterFrameworkModuleKind } from "./get-react-router-framework-module-kind.js";
 import { isFrameworkRouteOrSpecialFilename } from "./is-framework-route-or-special-filename.js";
 
 describe("isFrameworkRouteOrSpecialFilename", () => {
@@ -77,5 +78,41 @@ describe("isFrameworkRouteOrSpecialFilename", () => {
 
   it("returns false without a filename", () => {
     expect(isFrameworkRouteOrSpecialFilename({ settings: {} }, "generic")).toBe(false);
+  });
+
+  it.each([
+    ["app/routes/profile.tsx", undefined, "route"],
+    ["src/app/routes/profile.tsx", undefined, "route"],
+    ["/repo/app/routes/profile.tsx", "/repo", "route"],
+    ["/repo/src/app/routes/profile.tsx", "/repo", "route"],
+    ["app/root.tsx", undefined, "root"],
+    ["src/app/root.tsx", undefined, "root"],
+    ["/repo/app/root.tsx", "/repo", "root"],
+    ["app/entry.client.tsx", undefined, "entry"],
+    ["/repo/src/app/entry.server.tsx", "/repo", "entry"],
+  ])("classifies React Router framework modules: %s", (filename, rootDirectory, expectedKind) => {
+    expect(
+      getReactRouterFrameworkModuleKind({
+        filename,
+        settings: rootDirectory === undefined ? {} : { "react-doctor": { rootDirectory } },
+      }),
+    ).toBe(expectedKind);
+  });
+
+  it.each([
+    ["src/components/widget.tsx", undefined],
+    ["app/components/widget.tsx", undefined],
+    ["src/components/root.tsx", undefined],
+    ["src/components/entry.client.tsx", undefined],
+    ["src/custom-router-app/root.tsx", undefined],
+    ["/repo/src/components/widget.tsx", "/repo"],
+    ["/other/app/routes/widget.tsx", "/repo"],
+  ])("rejects ordinary React Router modules: %s", (filename, rootDirectory) => {
+    expect(
+      getReactRouterFrameworkModuleKind({
+        filename,
+        settings: rootDirectory === undefined ? {} : { "react-doctor": { rootDirectory } },
+      }),
+    ).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoke
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -116,10 +117,14 @@ const hasOnlyStableIdentityDependencies = ({
 }): boolean =>
   (dependencyArray.elements ?? []).every((dependencyElement) => {
     if (!isNodeOfType(dependencyElement, "Identifier")) return false;
+    const useCallbackCall = getReactUseCallbackCall(dependencyElement, context.scopes);
+    const useCallbackDependencies = useCallbackCall?.arguments?.[1];
     return (
       isReactHookResultReference(dependencyElement, STATE_DISPATCHER_HOOKS, 1, context.scopes) ||
       isReactHookResultReference(dependencyElement, REF_HOOKS, null, context.scopes) ||
-      isModuleScopeConstBinding(dependencyArray, dependencyElement.name)
+      isModuleScopeConstBinding(dependencyArray, dependencyElement.name) ||
+      (isNodeOfType(useCallbackDependencies, "ArrayExpression") &&
+        useCallbackDependencies.elements.length === 0)
     );
   });
 

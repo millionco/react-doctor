@@ -17,6 +17,8 @@ describe("parseThreeRelease", () => {
     expect(parseThreeRelease("workspace:*")).toBeNull();
     expect(parseThreeRelease("catalog:146")).toBeNull();
     expect(parseThreeRelease("catalog:three146")).toBeNull();
+    expect(parseThreeRelease("git+https://github.com/acme/three.git#v0.180.0")).toBeNull();
+    expect(parseThreeRelease("acme/three#v0.180.0")).toBeNull();
     expect(parseThreeRelease("*")).toBeNull();
     expect(parseThreeRelease("0.0.0")).toBeNull();
   });

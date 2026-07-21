@@ -35,12 +35,12 @@ describe("no-cramped-container-padding", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("uses the final background utility when deciding whether a surface is visible", () => {
+  it("stays quiet when background utilities conflict at equal priority", () => {
     const result = runRule(
       noCrampedContainerPadding,
       `const Labels = () => <><div className="bg-blue-500 bg-transparent p-1">Plain</div><div className="bg-transparent bg-blue-500 p-1">Surface</div></>;`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not combine padding and boundaries from different variants", () => {
@@ -85,6 +85,20 @@ describe("no-cramped-container-padding", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("uses effective boundary resets and preserves variant scope", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <>
+        <div className="border !border-0 p-1">Reset border</div>
+        <div className="border-0 !border p-1">Restored border</div>
+        <div className="ring ring-0 p-1">Reset ring</div>
+        <div className="ring-0 ring p-1">Restored ring</div>
+        <div className="border md:border-0 p-1">Responsive reset only</div>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("recognizes physical, logical, and axis padding utilities", () => {
     const result = runRule(
       noCrampedContainerPadding,
@@ -111,6 +125,14 @@ describe("no-cramped-container-padding", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("stays quiet when equal-priority padding utilities conflict", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <><div className="border p-1 p-4">Normal conflict</div><div className="border !p-1 !p-4">Important conflict</div></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not retain a shorthand value overridden on every axis", () => {
     const result = runRule(
       noCrampedContainerPadding,
@@ -127,6 +149,14 @@ describe("no-cramped-container-padding", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("ignores non-drawing inline boundary shorthands", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <><div style={{ border: "0 solid red", padding: 4 }}>Zero border</div><div style={{ boxShadow: "0 0 0 transparent", padding: 4 }}>Transparent shadow</div></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("uses the last duplicate inline boundary and padding values", () => {
     const result = runRule(
       noCrampedContainerPadding,
@@ -135,6 +165,86 @@ describe("no-cramped-container-padding", () => {
         <div style={{ backgroundColor: "navy", padding: 4, padding: 16 }}>Roomy</div>
         <div style={{ backgroundColor: "transparent", backgroundColor: "navy", padding: 16, padding: 4 }}>Cramped</div>
       </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves shorthand and longhand inline padding overrides by side", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <>
+        <div style={{ backgroundColor: "navy", padding: 4, paddingTop: 12, paddingRight: 12, paddingBottom: 12, paddingLeft: 12 }}>Roomy</div>
+        <div style={{ backgroundColor: "navy", padding: 4, paddingTop: 12 }}>Still cramped</div>
+        <div className="border p-1" style={{ padding: 12 }}>Inline override</div>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("respects authoritative inline boundary resets over Tailwind surfaces", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <><div className="border p-1" style={{ border: "none" }}>No border</div><div className="border p-1" style={{ borderColor: "transparent" }}>No border color</div><div className="border p-1" style={{ borderStyle: "none" }}>No border style</div><div className="bg-blue-500 p-1" style={{ backgroundColor: "transparent" }}>No fill</div><div className="ring p-1" style={{ boxShadow: "none" }}>No ring</div><div className="border bg-blue-500 p-1" style={{ backgroundColor: "transparent" }}>Border remains</div></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("resolves related inline boundary declarations in source order", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <>
+        <div className="border p-1" style={{ border: "1px solid", borderWidth: 0 }}>No border</div>
+        <div className="border p-1" style={{ borderWidth: 0, border: "1px solid" }}>Restored border</div>
+        <div className="bg-blue-500 p-1" style={{ background: "navy", backgroundColor: "transparent" }}>No fill</div>
+        <div className="bg-blue-500 p-1" style={{ backgroundColor: "transparent", background: "navy" }}>Restored fill</div>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("honors important boundary and padding precedence", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <>
+        <div className="!border border-0 p-1">Border remains</div>
+        <div className="!border-0 border p-1">Border stays reset</div>
+        <div className="border !p-4 p-1">Roomy</div>
+        <div className="border !p-1 p-4">Cramped</div>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("merges important Tailwind boundaries and padding with inline styles", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = () => <>
+        <div className="bg-red-500 !p-0" style={{ padding: 16 }}>Important padding</div>
+        <div className="!bg-transparent p-0" style={{ backgroundColor: "red" }}>Transparent</div>
+        <div className="!bg-red-500 p-0" style={{ backgroundColor: "transparent" }}>Visible</div>
+        <div className="bg-red-500 p-0" style={{ padding: 16 }}>Roomy</div>
+        <div className="!border-0 p-0" style={{ border: "1px solid red" }}>No border</div>
+        <div className="!border p-0" style={{ borderWidth: 0 }}>Border</div>
+        <div className="!border-0 !border-red-500 p-0" style={{ border: "1px solid red" }}>Colored reset</div>
+        <div className="!bg-transparent !bg-opacity-100 p-0" style={{ backgroundColor: "red" }}>Transparent color</div>
+        <div className="!ring-0 !ring-red-500 p-0" style={{ boxShadow: "0 0 0 2px red" }}>Ring reset</div>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("stays quiet when a JSX spread can override class or style geometry", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Examples = ({ props }) => <><div className="border p-1" {...props}>Class override</div><div style={{ backgroundColor: "navy", padding: 4 }} {...props}>Style override</div></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports geometry proven by an explicit style after a leading spread", () => {
+    const result = runRule(
+      noCrampedContainerPadding,
+      `const Example = ({ props }) => <div {...props} style={{ backgroundColor: "navy", padding: 4 }}>Status</div>;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

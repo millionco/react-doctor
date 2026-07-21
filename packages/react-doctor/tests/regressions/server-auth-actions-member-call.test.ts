@@ -179,7 +179,7 @@ export async function publish(postId: string) {
       expect(hits[0].message).toContain("publish");
     });
 
-    it("a server action calls an unrelated `.something()` method that is not in AUTH_FUNCTION_NAMES", async () => {
+    it("a server action performs a mutation after an unrelated `.something()` method", async () => {
       const diagnostics = await writeActionAndLint(
         "issue-239-unrelated-member-call",
         `"use server";
@@ -188,7 +188,7 @@ declare const logger: { info: (message: string) => void };
 
 export async function track(eventName: string) {
   logger.info(eventName);
-  return { ok: true };
+  return db.event.create({ data: { eventName } });
 }
 `,
       );
@@ -212,7 +212,7 @@ export async function lateAuth() {
 ${noopStatements}
   const session = await auth0.getSession();
   if (!session) throw new Error("unauthorized");
-  return { ok: true };
+  return db.account.delete({ where: { id: "all" } });
 }
 `,
       );

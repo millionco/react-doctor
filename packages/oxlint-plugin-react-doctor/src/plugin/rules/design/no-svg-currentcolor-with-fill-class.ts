@@ -2,13 +2,14 @@ import { SVG_TAGS } from "../../constants/svg-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
+import { getEffectiveTailwindClassNameToken } from "./utils/get-effective-tailwind-class-name-token.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const NON_COLOR_PAINT_VALUES = new Set(["current", "none"]);
+const NON_COLOR_PAINT_VALUES = new Set(["current", "currentcolor", "none"]);
 const NON_COLOR_PAINT_VALUE_PREFIXES = [
   "dasharray-",
   "dashoffset-",
@@ -20,19 +21,33 @@ const NON_COLOR_PAINT_VALUE_PREFIXES = [
   "width-",
 ];
 
-const hasColorUtility = (classNameValue: string, prefix: "fill-" | "stroke-"): boolean =>
-  classNameValue.split(/\s+/).some((token) => {
-    const utility = getClassNameTokens(token)[0];
-    const tokenWithoutImportantModifier = token.replace(/^!|!$/g, "");
-    if (utility !== tokenWithoutImportantModifier || !utility.startsWith(prefix)) return false;
-    const value = utility.slice(prefix.length);
-    if (value === "" || NON_COLOR_PAINT_VALUES.has(value)) return false;
-    if (NON_COLOR_PAINT_VALUE_PREFIXES.some((valuePrefix) => value.startsWith(valuePrefix))) {
-      return false;
-    }
-    if (/^\d/.test(value) || /^\[(?:\d|\.\d)/.test(value)) return false;
-    return true;
-  });
+const isPaintPropertyUtility = (utility: string, prefix: "fill-" | "stroke-"): boolean => {
+  if (!utility.startsWith(prefix)) return false;
+  const value = utility.slice(prefix.length);
+  if (value === "") return false;
+  if (NON_COLOR_PAINT_VALUE_PREFIXES.some((valuePrefix) => value.startsWith(valuePrefix))) {
+    return false;
+  }
+  return !/^\d/.test(value) && !/^\[(?:\d|\.\d)/.test(value);
+};
+
+const isColorPaintUtility = (utility: string, prefix: "fill-" | "stroke-"): boolean => {
+  if (!isPaintPropertyUtility(utility, prefix)) return false;
+  const rawValue = utility.slice(prefix.length);
+  const normalizedValue = rawValue
+    .replace(/^\[|\]$/g, "")
+    .trim()
+    .toLowerCase();
+  return !NON_COLOR_PAINT_VALUES.has(normalizedValue);
+};
+
+const hasColorUtility = (classNameValue: string, prefix: "fill-" | "stroke-"): boolean => {
+  const effectiveUtility = getEffectiveTailwindClassNameToken(
+    splitTailwindClassName(classNameValue),
+    (utility) => isPaintPropertyUtility(utility, prefix),
+  );
+  return effectiveUtility !== null && isColorPaintUtility(effectiveUtility, prefix);
+};
 
 const isCurrentColor = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   const value = getStringLiteralAttributeValue(attribute);

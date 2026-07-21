@@ -94,7 +94,7 @@ syntax.
 - `no-danger` — Raw HTML injection can run unsafe markup.
 - `dangerous-html-sink` — HTML injection sink with dynamic content.
 - `jsx-no-script-url` — `javascript:` URL in JSX.
-- `jsx-no-target-blank` — Unsafe `target="_blank"` link.
+- `jsx-no-target-blank` — Unsafe `target="_blank"` link for a declared legacy browser or Electron target.
 - `no-eval` — `eval()` runs untrusted code strings.
 - `no-secrets-in-client-code` — Secret in client code.
 - `auth-token-in-web-storage` — Auth token in web storage.

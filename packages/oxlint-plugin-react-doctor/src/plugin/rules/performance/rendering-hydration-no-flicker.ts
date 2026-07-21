@@ -3,13 +3,14 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
-import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
+import { hasReactRefCurrentOrigin } from "../../utils/react-ref-origin.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
@@ -28,11 +29,21 @@ const REACT_API_CALL_OPTIONS = {
   allowUnboundBareCalls: true,
   resolveNamedAliases: true,
 };
+const MOUNT_FLASH_MESSAGE =
+  "`useEffect(setState, [])` runs after the first paint, so users can see the initial state flash. Initialize from a render-safe value or use `useSyncExternalStore` for external values.";
+
+interface PairedStateBinding {
+  componentFunction: EsTreeNode;
+  initializer: EsTreeNode | null;
+  stateIdentifier: EsTreeNodeOfType<"Identifier">;
+  stateSymbolId: number;
+}
 
 const expressionReadsDerivedSymbol = (
   context: RuleContext,
   expression: EsTreeNode,
   stateDerivedSymbolIds: ReadonlySet<number>,
+  shouldIncludeReference?: (identifier: EsTreeNodeOfType<"Identifier">) => boolean,
 ): boolean => {
   let readsDerivedSymbol = false;
   walkAst(expression, (node) => {
@@ -40,7 +51,8 @@ const expressionReadsDerivedSymbol = (
     if (node !== expression && isFunctionLike(node)) return false;
     if (
       isNodeOfType(node, "Identifier") &&
-      stateDerivedSymbolIds.has(context.scopes.symbolFor(node)?.id ?? -1)
+      stateDerivedSymbolIds.has(context.scopes.symbolFor(node)?.id ?? -1) &&
+      (!shouldIncludeReference || shouldIncludeReference(node))
     ) {
       readsDerivedSymbol = true;
     }
@@ -85,47 +97,53 @@ const isTransparentAssignmentTarget = (identifier: EsTreeNode): boolean => {
 // A setter fed by a `.current` read is the post-mount DOM-measurement
 // pattern (header widths, element rects) — there is no pre-hydration value
 // to render, so useSyncExternalStore is not an available alternative.
-const argumentsReadRefCurrent = (callArguments: EsTreeNode[]): boolean =>
+const argumentsReadReactRefCurrent = (context: RuleContext, callArguments: EsTreeNode[]): boolean =>
   callArguments.some((argument) => {
-    let readsCurrent = false;
+    let readsReactRefCurrent = false;
     walkAst(argument, (child) => {
-      if (
-        isNodeOfType(child, "MemberExpression") &&
-        isNodeOfType(child.property, "Identifier") &&
-        child.property.name === "current"
-      ) {
-        readsCurrent = true;
+      if (readsReactRefCurrent) return false;
+      if (hasReactRefCurrentOrigin(child, context.scopes)) {
+        readsReactRefCurrent = true;
       }
     });
-    return readsCurrent;
+    return readsReactRefCurrent;
   });
 
-const findPairedStateName = (setterCall: EsTreeNode, setterName: string): string | null => {
-  let cursor: EsTreeNode | null | undefined = setterCall;
-  while (cursor) {
-    if (isNodeOfType(cursor, "BlockStatement") || isNodeOfType(cursor, "Program")) {
-      for (const statement of cursor.body ?? []) {
-        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-        for (const declarator of statement.declarations ?? []) {
-          if (!isNodeOfType(declarator.init, "CallExpression")) continue;
-          if (!isHookCall(declarator.init, "useState")) continue;
-          if (!isNodeOfType(declarator.id, "ArrayPattern")) continue;
-          const elements = declarator.id.elements ?? [];
-          const setterElement = elements[1];
-          const stateElement = elements[0];
-          if (
-            isNodeOfType(setterElement, "Identifier") &&
-            setterElement.name === setterName &&
-            isNodeOfType(stateElement, "Identifier")
-          ) {
-            return stateElement.name;
-          }
-        }
-      }
-    }
-    cursor = cursor.parent ?? null;
+const findPairedStateBinding = (
+  context: RuleContext,
+  setterCall: EsTreeNode,
+  setterName: string,
+): PairedStateBinding | null => {
+  if (!isNodeOfType(setterCall, "CallExpression")) return null;
+  if (!isNodeOfType(setterCall.callee, "Identifier") || setterCall.callee.name !== setterName) {
+    return null;
   }
-  return null;
+  const setterSymbol = context.scopes.symbolFor(setterCall.callee);
+  if (!setterSymbol || !isNodeOfType(setterSymbol.declarationNode, "VariableDeclarator")) {
+    return null;
+  }
+  const declarator = setterSymbol.declarationNode;
+  if (!isNodeOfType(declarator.id, "ArrayPattern")) return null;
+  const stateIdentifier = declarator.id.elements?.[0];
+  const setterIdentifier = declarator.id.elements?.[1];
+  if (
+    !isNodeOfType(stateIdentifier, "Identifier") ||
+    !isNodeOfType(setterIdentifier, "Identifier") ||
+    setterIdentifier !== setterSymbol.bindingIdentifier ||
+    !isNodeOfType(declarator.init, "CallExpression") ||
+    !isReactApiCall(declarator.init, USE_STATE_ONLY, context.scopes, REACT_API_CALL_OPTIONS)
+  ) {
+    return null;
+  }
+  const stateSymbol = context.scopes.symbolFor(stateIdentifier);
+  const componentFunction = findEnclosingFunction(declarator);
+  if (!stateSymbol || !isFunctionLike(componentFunction)) return null;
+  return {
+    componentFunction,
+    initializer: declarator.init.arguments?.[0] ?? null,
+    stateIdentifier,
+    stateSymbolId: stateSymbol.id,
+  };
 };
 
 const isInsideIdOrAriaAttribute = (identifier: EsTreeNode): boolean => {
@@ -143,20 +161,20 @@ const isInsideIdOrAriaAttribute = (identifier: EsTreeNode): boolean => {
   return false;
 };
 
-// State that only feeds `id` / `aria-*` attributes (generated description
-// ids for aria wiring) changes nothing users can see — no flicker.
 const isStateUsedOnlyInIdOrAriaAttributes = (
-  setterCall: EsTreeNode,
-  setterName: string,
+  context: RuleContext,
+  pairedState: PairedStateBinding,
 ): boolean => {
-  const stateName = findPairedStateName(setterCall, setterName);
-  if (!stateName) return false;
-  const programRoot = findProgramRoot(setterCall);
-  if (!programRoot) return false;
   let referenceCount = 0;
   let nonAriaReferenceFound = false;
-  walkAst(programRoot, (node) => {
-    if (!isNodeOfType(node, "Identifier") || node.name !== stateName) return;
+  walkAst(pairedState.componentFunction, (node) => {
+    if (
+      !isNodeOfType(node, "Identifier") ||
+      context.scopes.symbolFor(node)?.id !== pairedState.stateSymbolId ||
+      node === pairedState.stateIdentifier
+    ) {
+      return;
+    }
     const parent = node.parent;
     if (
       parent &&
@@ -169,6 +187,175 @@ const isStateUsedOnlyInIdOrAriaAttributes = (
     if (!isInsideIdOrAriaAttribute(node)) nonAriaReferenceFound = true;
   });
   return referenceCount > 0 && !nonAriaReferenceFound;
+};
+
+const isInsideNonVisibleMountAnimationProperty = (identifier: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null | undefined = identifier.parent;
+  while (cursor) {
+    if (isNodeOfType(cursor, "JSXAttribute")) {
+      if (
+        !isNodeOfType(cursor.name, "JSXIdentifier") ||
+        (cursor.name.name !== "entering" && cursor.name.name !== "exiting") ||
+        !isNodeOfType(cursor.parent, "JSXOpeningElement")
+      ) {
+        return false;
+      }
+      return flattenJsxName(cursor.parent.name)?.startsWith("Animated.") ?? false;
+    }
+    if (isNodeOfType(cursor, "Property")) {
+      return getStaticObjectPropertyName(cursor) === "motionAppear";
+    }
+    if (isFunctionLike(cursor)) return false;
+    cursor = cursor.parent;
+  }
+  return false;
+};
+
+const isSameMountStateValue = (
+  context: RuleContext,
+  pairedState: PairedStateBinding,
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  if (setterCall.arguments?.length !== 1) return false;
+  const didOmitInitializer = pairedState.initializer === null;
+  const unwrappedInitializer = pairedState.initializer
+    ? stripParenExpression(pairedState.initializer)
+    : null;
+  const initializer =
+    unwrappedInitializer && isFunctionLike(unwrappedInitializer)
+      ? getSingleReturnExpression(unwrappedInitializer)
+      : unwrappedInitializer;
+  if (unwrappedInitializer && isFunctionLike(unwrappedInitializer) && !initializer) return false;
+  const nextValue = stripParenExpression(setterCall.arguments[0]);
+  const unwrappedInitialValue = initializer ? stripParenExpression(initializer) : null;
+  if (
+    unwrappedInitialValue &&
+    isNodeOfType(unwrappedInitialValue, "Literal") &&
+    isNodeOfType(nextValue, "Literal")
+  ) {
+    return Object.is(unwrappedInitialValue.value, nextValue.value);
+  }
+  const initialValueIsUndefined =
+    didOmitInitializer ||
+    (isNodeOfType(unwrappedInitialValue, "Identifier") &&
+      unwrappedInitialValue.name === "undefined" &&
+      context.scopes.isGlobalReference(unwrappedInitialValue)) ||
+    (isNodeOfType(unwrappedInitialValue, "UnaryExpression") &&
+      unwrappedInitialValue.operator === "void");
+  const nextValueIsUndefined =
+    (isNodeOfType(nextValue, "Identifier") &&
+      nextValue.name === "undefined" &&
+      context.scopes.isGlobalReference(nextValue)) ||
+    (isNodeOfType(nextValue, "UnaryExpression") && nextValue.operator === "void");
+  return initialValueIsUndefined && nextValueIsUndefined;
+};
+
+const functionBodyReturns = (node: EsTreeNode): boolean => {
+  let hasReturn = false;
+  walkAst(node, (child) => {
+    if (hasReturn) return false;
+    if (child !== node && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "ReturnStatement")) hasReturn = true;
+  });
+  return hasReturn;
+};
+
+const isStateUsedInFirstPaintOutput = (
+  context: RuleContext,
+  pairedState: PairedStateBinding,
+): boolean => {
+  const componentFunction = pairedState.componentFunction;
+  if (
+    !isFunctionLike(componentFunction) ||
+    !isNodeOfType(componentFunction.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const componentBody = componentFunction.body;
+  const outputDerivedSymbolIds = new Set([pairedState.stateSymbolId]);
+  let didAddDerivedSymbol = true;
+  while (didAddDerivedSymbol) {
+    didAddDerivedSymbol = false;
+    walkAst(componentBody, (node) => {
+      let bindingIdentifier: EsTreeNodeOfType<"Identifier"> | null = null;
+      let derivedExpression: EsTreeNode | null = null;
+      if (
+        isNodeOfType(node, "VariableDeclarator") &&
+        isNodeOfType(node.id, "Identifier") &&
+        node.init
+      ) {
+        bindingIdentifier = node.id;
+        derivedExpression = node.init;
+      } else if (isNodeOfType(node, "FunctionDeclaration") && node.id) {
+        bindingIdentifier = node.id;
+        derivedExpression = node;
+      }
+      if (
+        !bindingIdentifier ||
+        !derivedExpression ||
+        !expressionReadsDerivedSymbol(
+          context,
+          derivedExpression,
+          outputDerivedSymbolIds,
+          (identifier) => !isInsideNonVisibleMountAnimationProperty(identifier),
+        )
+      ) {
+        return;
+      }
+      const symbol = context.scopes.symbolFor(bindingIdentifier);
+      if (
+        symbol &&
+        (symbol.kind === "const" || symbol.kind === "function") &&
+        symbol.references.every(
+          (reference) =>
+            reference.flag === "read" && !isTransparentAssignmentTarget(reference.identifier),
+        ) &&
+        !outputDerivedSymbolIds.has(symbol.id)
+      ) {
+        outputDerivedSymbolIds.add(symbol.id);
+        didAddDerivedSymbol = true;
+      }
+    });
+  }
+
+  let hasRenderedReference = false;
+  walkAst(componentBody, (node) => {
+    if (hasRenderedReference) return false;
+    if (
+      !isNodeOfType(node, "Identifier") ||
+      !outputDerivedSymbolIds.has(context.scopes.symbolFor(node)?.id ?? -1) ||
+      node === pairedState.stateIdentifier
+    ) {
+      return;
+    }
+    if (isInsideNonVisibleMountAnimationProperty(node)) return;
+    if (isInsideIdOrAriaAttribute(node)) return;
+    let descendantNode: EsTreeNode = node;
+    let cursor: EsTreeNode | null | undefined = node.parent;
+    while (cursor && cursor !== componentBody) {
+      if (isNodeOfType(cursor, "JSXAttribute") && isEventHandlerAttribute(cursor)) return;
+      if (
+        isNodeOfType(cursor, "ReturnStatement") &&
+        findEnclosingFunction(cursor) === componentFunction
+      ) {
+        hasRenderedReference = true;
+        return false;
+      }
+      if (
+        isNodeOfType(cursor, "IfStatement") &&
+        cursor.test === descendantNode &&
+        findEnclosingFunction(cursor) === componentFunction &&
+        (functionBodyReturns(cursor.consequent) ||
+          (cursor.alternate ? functionBodyReturns(cursor.alternate) : false))
+      ) {
+        hasRenderedReference = true;
+        return false;
+      }
+      descendantNode = cursor;
+      cursor = cursor.parent;
+    }
+  });
+  return hasRenderedReference;
 };
 
 const isGlobalWindowMember = (
@@ -507,17 +694,21 @@ export const renderingHydrationNoFlicker = defineRule({
   id: "rendering-hydration-no-flicker",
   title: "useEffect setState flashes on mount",
   tags: ["test-noise"],
-  requires: ["ssr"],
   severity: "warn",
   recommendation:
-    "Read the value with `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` inside a reusable hook, or add `suppressHydrationWarning` to the element",
+    "Initialize state from a render-safe value before the first paint, or read external mutable values with `useSyncExternalStore`.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       // useLayoutEffect runs synchronously BEFORE paint, so a mount-time
       // setState there never flashes — it's the canonical DOM-measurement
       // pattern (react.dev "you might not need an effect"). Only the
       // post-paint useEffect variant can flicker.
-      if (!isHookCall(node, USE_EFFECT_ONLY) || (node.arguments?.length ?? 0) < 2) return;
+      if (
+        !isReactApiCall(node, USE_EFFECT_ONLY, context.scopes, REACT_API_CALL_OPTIONS) ||
+        (node.arguments?.length ?? 0) < 2
+      ) {
+        return;
+      }
 
       const depsNode = node.arguments[1];
       if (!isNodeOfType(depsNode, "ArrayExpression") || depsNode.elements?.length !== 0) return;
@@ -533,8 +724,7 @@ export const renderingHydrationNoFlicker = defineRule({
       if (isExactViewportSubscriptionEffect(context, node, callback)) {
         context.report({
           node,
-          message:
-            "This flashes for your users because useEffect(setState, []) runs after the first paint, so use useSyncExternalStore, or add suppressHydrationWarning",
+          message: MOUNT_FLASH_MESSAGE,
         });
         return;
       }
@@ -551,8 +741,12 @@ export const renderingHydrationNoFlicker = defineRule({
         isNodeOfType(expression.callee, "Identifier") &&
         isUseStateSetterInScope(expression, expression.callee.name)
       ) {
-        if (argumentsReadRefCurrent(expression.arguments ?? [])) return;
-        if (isStateUsedOnlyInIdOrAriaAttributes(expression, expression.callee.name)) return;
+        const pairedState = findPairedStateBinding(context, expression, expression.callee.name);
+        if (!pairedState) return;
+        if (isSameMountStateValue(context, pairedState, expression)) return;
+        if (!isStateUsedInFirstPaintOutput(context, pairedState)) return;
+        if (argumentsReadReactRefCurrent(context, expression.arguments ?? [])) return;
+        if (isStateUsedOnlyInIdOrAriaAttributes(context, pairedState)) return;
         // A setter fed by a locale/timezone read is the SSR-safe adoption
         // pattern this rule's sibling (no-locale-format-in-render) tells
         // users to write — the value cannot be produced during render
@@ -561,8 +755,7 @@ export const renderingHydrationNoFlicker = defineRule({
         if ((expression.arguments ?? []).some(containsLocaleEnvironmentRead)) return;
         context.report({
           node,
-          message:
-            "This flashes for your users because useEffect(setState, []) runs after the first paint, so use useSyncExternalStore, or add suppressHydrationWarning",
+          message: MOUNT_FLASH_MESSAGE,
         });
       }
     },

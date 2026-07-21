@@ -15,10 +15,15 @@ describe("no-redundant-display-class", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags important forms of redundant display utilities", () => {
+  it("does NOT flag important display utilities that can override authored CSS", () => {
     const code = `const A = () => <><div className="!block" /><span className="inline!" /></>;`;
     const result = runRule(noRedundantDisplayClass, code);
-    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("declares its Tailwind and React JSX capability gates", () => {
+    expect(noRedundantDisplayClass.requires).toContain("tailwind");
+    expect(noRedundantDisplayClass.tags).toContain("react-jsx-only");
   });
 
   it("does NOT flag `inline-block` on a span (different display)", () => {
@@ -54,6 +59,12 @@ describe("no-redundant-display-class", () => {
         <span className="inline-flex inline" />
       </>
     );`;
+    const result = runRule(noRedundantDisplayClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT treat arbitrary-value fragments as display utilities", () => {
+    const code = `const A = () => <div className="[--display:x block y]" />;`;
     const result = runRule(noRedundantDisplayClass, code);
     expect(result.diagnostics).toHaveLength(0);
   });

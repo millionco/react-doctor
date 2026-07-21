@@ -16,6 +16,11 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  "jsx-no-target-blank": {
+    failSkips: [31],
+    reason:
+      "Intentional: a later authoritative non-blank target overrides an earlier unknown spread.",
+  },
   "exhaustive-deps": {
     failSkips: [81, 125, 126, 127],
     reason:

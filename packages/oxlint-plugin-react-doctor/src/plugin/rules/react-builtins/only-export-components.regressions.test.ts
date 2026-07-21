@@ -84,7 +84,7 @@ describe("react-builtins/only-export-components — regressions", () => {
   });
 
   it.each(["export function loader() { return null; }", "export const loader = () => null;"])(
-    "allows route-contract function and const exports equally: %s",
+    "reports route-contract exports in ordinary component files: %s",
     (exportDeclaration) => {
       const result = runRule(
         onlyExportComponents,
@@ -98,7 +98,7 @@ describe("react-builtins/only-export-components — regressions", () => {
         },
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(0);
+      expect(result.diagnostics).toHaveLength(1);
     },
   );
 
@@ -240,11 +240,119 @@ export const api = axios.create({
       }
     `;
     const result = runRule(onlyExportComponents, remixRouteFile, {
-      filename: "src/routes/profile.tsx",
-      settings: settingsForFramework("remix"),
+      filename: "repo/app/routes/profile.tsx",
+      settings: { "react-doctor": { framework: "remix", rootDirectory: "repo" } },
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["remix", "app/routes/profile.tsx", undefined],
+    ["remix", "src/app/routes/profile.tsx", undefined],
+    ["remix", "repo/src/app/routes/profile.tsx", "repo"],
+    ["remix", "app/root.tsx", undefined],
+    ["remix", "src/app/root.tsx", undefined],
+  ])(
+    "allows route-contract exports only in a proven %s route or root module: %s",
+    (framework, filename, rootDirectory) => {
+      const result = runRule(
+        onlyExportComponents,
+        `export async function loader() { return null; }
+         export function Widget() { return <div />; }`,
+        {
+          filename,
+          settings: {
+            "react-doctor": {
+              framework,
+              ...(rootDirectory === undefined ? {} : { rootDirectory }),
+            },
+          },
+        },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ["remix", "src/components/widget.tsx", undefined],
+    ["remix", "app/components/widget.tsx", undefined],
+    ["remix", "repo/src/components/widget.tsx", "repo"],
+    ["remix", "src/components/root.tsx", undefined],
+  ])(
+    "does not grant %s route exports to an ordinary module: %s",
+    (framework, filename, rootDirectory) => {
+      const result = runRule(
+        onlyExportComponents,
+        `export async function loader() { return null; }
+         export function Widget() { return <div />; }`,
+        {
+          filename,
+          settings: {
+            "react-doctor": {
+              framework,
+              ...(rootDirectory === undefined ? {} : { rootDirectory }),
+            },
+          },
+        },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("keeps React Router entry modules exempt from component-boundary analysis", () => {
+    for (const filename of ["app/entry.client.tsx", "src/app/entry.server.tsx"]) {
+      const result = runRule(
+        onlyExportComponents,
+        `export const bootstrap = () => null;
+         export function Widget() { return <div />; }`,
+        {
+          filename,
+          settings: {
+            "react-doctor": {
+              framework: "remix",
+              rootDirectory: "/repo",
+            },
+          },
+        },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("reports a custom schema export in a React Router route module", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `export const UsernameSchema = z.object({ username: z.string() });
+       export const meta = () => [{ title: "Settings" }];
+       export async function loader() { return {}; }
+       export default function Settings() { return <div />; }`,
+      {
+        filename: "repo/app/routes/dashboard+/settings.tsx",
+        settings: { "react-doctor": { framework: "remix", rootDirectory: "repo" } },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports Remix PWA worker exports in a route module", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `export function loader() { return null; }
+       export const workerLoader = async ({ context }) => context.database.items.toArray();
+       export const workerAction = async ({ context }) => context.fetchFromServer();
+       export default function FlightsRoute() { return <div />; }`,
+      {
+        filename: "repo/src/app/routes/_app.flights.tsx",
+        settings: { "react-doctor": { framework: "remix", rootDirectory: "repo" } },
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("allows Next.js Pages Router data exports alongside the page component (#758)", () => {
@@ -274,6 +382,36 @@ export const api = axios.create({
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("recognizes an aliased React Router factory import outside route modules", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `import { createBrowserRouter as makeRouter } from "react-router-dom";
+       export const Root = () => <div />;
+       export const router = makeRouter([{ path: "/", element: <Root /> }]);`,
+      {
+        filename: "src/router-setup.tsx",
+        settings: settingsForFramework("remix"),
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a shadowing userland route-factory name", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `const createBrowserRouter = (routes) => ({ routes });
+       export const Root = () => <div />;
+       export const router = createBrowserRouter([{ path: "/", element: <Root /> }]);`,
+      {
+        filename: "src/router-setup.tsx",
+        settings: settingsForFramework("remix"),
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   // Framework route/special files are skipped via
@@ -342,15 +480,6 @@ export const api = axios.create({
          return <div>About</div>;
        }`,
     ],
-    [
-      "Remix / React Router root.tsx module",
-      "remix",
-      "app/root.tsx",
-      `export const headerLinks = [{ rel: "stylesheet", href: "/app.css" }];
-       export default function App() {
-         return <Outlet />;
-       }`,
-    ],
   ] as const)("skips framework route/special files — %s", (_label, framework, filename, code) => {
     const result = runRule(onlyExportComponents, code, {
       filename,
@@ -358,6 +487,36 @@ export const api = axios.create({
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows documented exports in Remix and React Router root modules", () => {
+    const result = runRule(
+      onlyExportComponents,
+      `export const links = () => [{ rel: "stylesheet", href: "/app.css" }];
+       export const meta = () => [{ title: "App" }];
+       export function Layout({ children }) { return <html><body>{children}</body></html>; }
+       export function ErrorBoundary() { return <main>Failed</main>; }
+       export default function App() { return <Outlet />; }`,
+      {
+        filename: "app/root.tsx",
+        settings: settingsForFramework("remix"),
+      },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports custom non-component exports in Remix and React Router root modules", () => {
+    for (const filename of ["app/root.tsx", "src/app/root.tsx"]) {
+      const result = runRule(
+        onlyExportComponents,
+        `export const headerLinks = [{ rel: "stylesheet", href: "/app.css" }];
+         export default function App() { return <Outlet />; }`,
+        { filename, settings: settingsForFramework("remix") },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
   });
 
   // Fuzz FP hunt: components declared inside another function — a test

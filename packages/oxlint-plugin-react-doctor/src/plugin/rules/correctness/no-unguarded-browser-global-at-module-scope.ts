@@ -6,6 +6,7 @@ import { getImportBindingForName } from "../../utils/find-import-source-for-name
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isDomGuardIdentifierName } from "../../utils/is-dom-guard-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNonSourceFilename } from "../../utils/is-non-source-filename.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { readBrowserGlobalAvailability } from "../../utils/read-browser-global-availability.js";
@@ -526,6 +527,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
   create: (context: RuleContext): RuleVisitors => {
     if (/\.d\.[cm]?ts$/i.test(context.filename ?? "")) return {};
     if (isTestlikeFilename(context.filename)) return {};
+    if (isNonSourceFilename(context.filename)) return {};
     if (isBrowserOnlyModuleFilename(context.filename)) return {};
 
     let guardAliasNames: ReadonlySet<string> = NO_GUARD_ALIASES;

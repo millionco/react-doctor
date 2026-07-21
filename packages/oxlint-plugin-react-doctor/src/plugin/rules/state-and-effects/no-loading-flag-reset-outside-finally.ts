@@ -1,6 +1,7 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { analyzeScopes, type ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
+import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -10,6 +11,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import {
   chainCarriesRejectionHandler,
+  isDefinitelyNonThenableValue,
   isInsideNonRethrowingTry,
   isNeverRejectingHelperCall,
   isNonRejectingPromiseConstruction,
@@ -23,6 +25,7 @@ import { isReactHookResultReference } from "../../utils/is-react-hook-result-ref
 import type { ResolvedCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveCrossFileExport } from "../../utils/resolve-cross-file-export.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { serializeReferenceKey } from "../../utils/serialize-reference-key.js";
@@ -30,6 +33,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { subtreeCanThrowSynchronously } from "../../utils/subtree-can-throw-synchronously.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
+import { walkSynchronousCallbackFlow } from "../../utils/walk-synchronous-callback-flow.js";
 
 const MESSAGE =
   "This resets a loading/busy flag only on the success path: if the awaited call rejects the reset never runs and the flag stays stuck truthy (a spinner that never stops, a button disabled forever). Move the reset into a `finally` block, or mirror it on every catch, so it clears on rejection too.";
@@ -69,7 +73,7 @@ const getNodeEnd = (node: EsTreeNode): number | null => {
 const getSetterBooleanValue = (
   node: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
-): { setterName: string; value: boolean } | null => {
+): { setterKey: string; setterName: string; value: boolean } | null => {
   if (!isNodeOfType(node.callee, "Identifier")) return null;
   if (
     !isReactHookResultReference(node.callee, STATE_HOOK_NAMES, 1, context.scopes) &&
@@ -77,12 +81,29 @@ const getSetterBooleanValue = (
   ) {
     return null;
   }
+  const setterKey = resolveExpressionKey(node.callee, context);
+  if (!setterKey) return null;
+  let setterSymbol = context.scopes.symbolFor(node.callee);
+  const visitedSymbolIds = new Set<number>();
+  while (
+    setterSymbol?.kind === "const" &&
+    setterSymbol.initializer &&
+    !visitedSymbolIds.has(setterSymbol.id)
+  ) {
+    visitedSymbolIds.add(setterSymbol.id);
+    const initializer = stripParenExpression(setterSymbol.initializer);
+    if (!isNodeOfType(initializer, "Identifier")) break;
+    setterSymbol = context.scopes.symbolFor(initializer);
+  }
+  const setterName = isNodeOfType(setterSymbol?.bindingIdentifier, "Identifier")
+    ? setterSymbol.bindingIdentifier.name
+    : node.callee.name;
   const firstArgument = node.arguments[0];
   if (!firstArgument) return null;
   const strippedArgument = stripParenExpression(firstArgument);
   if (isNodeOfType(strippedArgument, "Literal")) {
     if (typeof strippedArgument.value !== "boolean") return null;
-    return { setterName: node.callee.name, value: strippedArgument.value };
+    return { setterKey, setterName, value: strippedArgument.value };
   }
   if (
     isNodeOfType(strippedArgument, "ArrowFunctionExpression") &&
@@ -90,7 +111,7 @@ const getSetterBooleanValue = (
   ) {
     const returnedValue = stripParenExpression(strippedArgument.body);
     if (isNodeOfType(returnedValue, "Literal") && typeof returnedValue.value === "boolean") {
-      return { setterName: node.callee.name, value: returnedValue.value };
+      return { setterKey, setterName, value: returnedValue.value };
     }
   }
   return null;
@@ -122,7 +143,11 @@ const isThunkActionDispatchCall = (callNode: EsTreeNodeOfType<"CallExpression">)
   );
 };
 
-const getUseCallbackWrappedFunction = (expression: EsTreeNode): EsTreeNode => {
+const getUseCallbackWrappedFunction = (
+  expression: EsTreeNode,
+  scopes?: ScopeAnalysis,
+  requireReactProvenance = false,
+): EsTreeNode => {
   const stripped = stripParenExpression(expression);
   if (!isNodeOfType(stripped, "CallExpression")) return stripped;
   const callee = stripParenExpression(stripped.callee);
@@ -134,8 +159,48 @@ const getUseCallbackWrappedFunction = (expression: EsTreeNode): EsTreeNode => {
       ? callee.property.name
       : null;
   if (calleeName !== "useCallback") return stripped;
+  if (
+    requireReactProvenance &&
+    (!scopes ||
+      !isReactApiCall(stripped, "useCallback", scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      }))
+  ) {
+    return stripped;
+  }
   const wrappedFunction = stripped.arguments[0];
   return wrappedFunction && isFunctionLike(wrappedFunction) ? wrappedFunction : stripped;
+};
+const isDefinitelyNonRejectingArrayValue = (
+  expression: EsTreeNode,
+  depth: number,
+  scopes?: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const stripped = stripParenExpression(expression);
+  if (isDefinitelyNonThenableValue(stripped)) return true;
+  if (isNodeOfType(stripped, "CallExpression")) {
+    return isNeverRejectingExpression(stripped, depth, scopes);
+  }
+  if (!scopes || !isNodeOfType(stripped, "Identifier")) return false;
+  const symbol = scopes.symbolFor(stripped);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    visitedSymbolIds.has(symbol.id) ||
+    symbol.references.some((reference) => reference.flag !== "read")
+  ) {
+    return false;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return isDefinitelyNonRejectingArrayValue(
+    symbol.initializer,
+    depth - 1,
+    scopes,
+    visitedSymbolIds,
+  );
 };
 const isArrayBindingOfNeverRejectingPromises = (
   identifier: EsTreeNodeOfType<"Identifier">,
@@ -149,38 +214,78 @@ const isArrayBindingOfNeverRejectingPromises = (
   if (!isNodeOfType(initializer, "ArrayExpression")) return false;
   if (
     !initializer.elements.every(
-      (element) => element !== null && isNeverRejectingExpression(element, depth - 1, scopes),
+      (element) =>
+        element === null || isDefinitelyNonRejectingArrayValue(element, depth - 1, scopes),
     )
   ) {
     return false;
   }
-  let isRejectionProof = true;
-  walkAst(binding.scopeOwner, (child: EsTreeNode) => {
-    if (!isRejectionProof) return false;
-    if (isNodeOfType(child, "AssignmentExpression")) {
-      const target = child.left;
-      if (isNodeOfType(target, "Identifier") && target.name === identifier.name) {
-        isRejectionProof = false;
+  if (!scopes) return false;
+  const arraySymbol = scopes.symbolFor(identifier);
+  if (!arraySymbol) return false;
+  const synchronouslyExecutedNodes = new Set<EsTreeNode>();
+  walkSynchronousCallbackFlow(binding.scopeOwner, (node) => {
+    synchronouslyExecutedNodes.add(node);
+  });
+  for (const aliasSymbol of collectConstAliasSymbols(arraySymbol, scopes)) {
+    for (const reference of aliasSymbol.references) {
+      if (reference.identifier.range[0] > identifier.range[0]) continue;
+      if (!synchronouslyExecutedNodes.has(reference.identifier)) continue;
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const parent = referenceRoot.parent;
+      if (
+        isNodeOfType(parent, "VariableDeclarator") &&
+        parent.init === referenceRoot &&
+        isNodeOfType(parent.id, "Identifier")
+      ) {
+        continue;
+      }
+      if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceRoot) {
+        const memberParent = parent.parent;
+        if (isNodeOfType(memberParent, "AssignmentExpression") && memberParent.left === parent) {
+          const propertyName = getStaticPropertyName(parent);
+          const isNumericIndex =
+            (propertyName !== null && /^\d+$/.test(propertyName)) ||
+            (parent.computed &&
+              isNodeOfType(parent.property, "Literal") &&
+              typeof parent.property.value === "number" &&
+              Number.isInteger(parent.property.value) &&
+              parent.property.value >= 0);
+          if (
+            memberParent.operator === "=" &&
+            isNumericIndex &&
+            isDefinitelyNonRejectingArrayValue(memberParent.right, depth - 1, scopes)
+          ) {
+            continue;
+          }
+          return false;
+        }
+        if (
+          isNodeOfType(memberParent, "CallExpression") &&
+          memberParent.callee === parent &&
+          getStaticPropertyName(parent) === "push"
+        ) {
+          if (
+            !memberParent.arguments.every((argument) =>
+              isDefinitelyNonRejectingArrayValue(argument, depth - 1, scopes),
+            )
+          ) {
+            return false;
+          }
+          continue;
+        }
+        if (getStaticPropertyName(parent) === "length") continue;
         return false;
       }
-      return;
+      if (reference.flag !== "read") return false;
+      if (isNodeOfType(parent, "CallExpression")) {
+        if (getPromiseCombinatorMethodName(parent, scopes) === "all") continue;
+        return false;
+      }
+      if (isNodeOfType(parent, "ReturnStatement")) return false;
     }
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const callee = child.callee;
-    if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
-    if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "push") return;
-    const receiver = stripParenExpression(callee.object);
-    if (!isNodeOfType(receiver, "Identifier") || receiver.name !== identifier.name) return;
-    if (
-      !(child.arguments ?? []).every((argument) =>
-        isNeverRejectingExpression(argument, depth - 1, scopes),
-      )
-    ) {
-      isRejectionProof = false;
-      return false;
-    }
-  });
-  return isRejectionProof;
+  }
+  return true;
 };
 
 const getPromiseCombinatorMethodName = (
@@ -193,6 +298,123 @@ const getPromiseCombinatorMethodName = (
   if (scopes && !scopes.isGlobalReference(callee.object)) return null;
   return isNodeOfType(callee.property, "Identifier") ? callee.property.name : null;
 };
+
+const getCustomIteratorFunction = (
+  argument: EsTreeNode,
+  scopes?: ScopeAnalysis,
+): EsTreeNode | null => {
+  if (!isNodeOfType(argument, "ObjectExpression")) return null;
+  if (argument.properties.length !== 1) return null;
+  const property = argument.properties[0];
+  if (!isNodeOfType(property, "Property") || !property.computed) return null;
+  const key = stripParenExpression(property.key);
+  if (!isNodeOfType(key, "MemberExpression")) return null;
+  const receiver = stripParenExpression(key.object);
+  if (
+    !isNodeOfType(receiver, "Identifier") ||
+    receiver.name !== "Symbol" ||
+    (scopes && !scopes.isGlobalReference(receiver)) ||
+    getStaticPropertyName(key) !== "iterator"
+  ) {
+    return null;
+  }
+  const iteratorFunction = stripParenExpression(property.value);
+  return isFunctionLike(iteratorFunction) ? iteratorFunction : null;
+};
+
+const isAllSettledArrayExpressionEvaluationSafe = (
+  arrayExpression: EsTreeNodeOfType<"ArrayExpression">,
+  scopes?: ScopeAnalysis,
+): boolean =>
+  arrayExpression.elements.every((element) => {
+    if (element === null) return true;
+    const value = stripParenExpression(element);
+    if (isNodeOfType(value, "Literal")) return true;
+    if (isNodeOfType(value, "TemplateLiteral")) return value.expressions.length === 0;
+    if (isFunctionLike(value)) return true;
+    if (isNodeOfType(value, "ArrayExpression")) {
+      return isAllSettledArrayExpressionEvaluationSafe(value, scopes);
+    }
+    if (!scopes || !isNodeOfType(value, "Identifier")) return false;
+    const symbol = scopes.symbolFor(value);
+    return Boolean(
+      symbol &&
+      symbol.declarationNode.range[0] < value.range[0] &&
+      symbol.references.every((reference) => reference.flag === "read"),
+    );
+  });
+
+const isProvenLocalArrayBinding = (argument: EsTreeNode, scopes?: ScopeAnalysis): boolean => {
+  if (!scopes || !isNodeOfType(argument, "Identifier")) return false;
+  const symbol = scopes.symbolFor(argument);
+  const initializer = symbol?.initializer ? stripParenExpression(symbol.initializer) : null;
+  return Boolean(
+    symbol?.kind === "const" &&
+    isNodeOfType(initializer, "ArrayExpression") &&
+    isAllSettledArrayExpressionEvaluationSafe(initializer, scopes) &&
+    symbol.references.every(
+      (reference) => reference.flag === "read" && reference.identifier === argument,
+    ),
+  );
+};
+
+const isProvenNonThrowingArrayFactoryCall = (
+  argument: EsTreeNode,
+  depth: number,
+  scopes?: ScopeAnalysis,
+): boolean => {
+  if (!scopes || !isNodeOfType(argument, "CallExpression")) return false;
+  const callee = stripParenExpression(argument.callee);
+  if (!isNodeOfType(callee, "Identifier") || argument.arguments.length > 0) return false;
+  const factory = resolveExactLocalFunction(callee, scopes);
+  if (!isNodeOfType(factory, "ArrowFunctionExpression") || factory.async) return false;
+  const factoryResult = stripParenExpression(factory.body);
+  if (
+    isNodeOfType(factoryResult, "BlockStatement") ||
+    !isNodeOfType(factoryResult, "ArrayExpression") ||
+    !isAllSettledArrayExpressionEvaluationSafe(factoryResult, scopes)
+  ) {
+    return false;
+  }
+  return (
+    !subtreeCanThrowSynchronously(factory, factory, scopes) &&
+    !helperHasUnhandledSynchronousCall(factory, depth, scopes)
+  );
+};
+
+const isCustomIteratorExecutionProvenNonThrowing = (
+  iteratorFunction: EsTreeNodeOfType<"FunctionExpression">,
+  depth: number,
+  scopes?: ScopeAnalysis,
+): boolean => {
+  if (iteratorFunction.async || iteratorFunction.params.length > 0) return false;
+  let hasOpaqueOperation = false;
+  walkOwnFunctionScope(iteratorFunction, (candidate) => {
+    if (hasOpaqueOperation) return false;
+    if (
+      isNodeOfType(candidate, "MemberExpression") ||
+      isNodeOfType(candidate, "SpreadElement") ||
+      isNodeOfType(candidate, "NewExpression") ||
+      isNodeOfType(candidate, "AwaitExpression") ||
+      isNodeOfType(candidate, "TaggedTemplateExpression") ||
+      isNodeOfType(candidate, "ForInStatement") ||
+      isNodeOfType(candidate, "ForOfStatement") ||
+      (isNodeOfType(candidate, "VariableDeclarator") &&
+        (isNodeOfType(candidate.id, "ArrayPattern") ||
+          isNodeOfType(candidate.id, "ObjectPattern"))) ||
+      (isNodeOfType(candidate, "YieldExpression") && candidate.delegate)
+    ) {
+      hasOpaqueOperation = true;
+      return false;
+    }
+  });
+  if (hasOpaqueOperation) return false;
+  return scopes
+    ? !subtreeCanThrowSynchronously(iteratorFunction, iteratorFunction, scopes) &&
+        !helperHasUnhandledSynchronousCall(iteratorFunction, depth, scopes)
+    : !subtreeContainsThrow(iteratorFunction, false);
+};
+
 const isNeverRejectingPromiseCombinatorCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   depth: number,
@@ -201,35 +423,19 @@ const isNeverRejectingPromiseCombinatorCall = (
   const methodName = getPromiseCombinatorMethodName(callNode, scopes);
   if (methodName === "allSettled") {
     const argument = callNode.arguments[0] ? stripParenExpression(callNode.arguments[0]) : null;
-    const isDefinitelyNonIterableObjectLiteral =
-      isNodeOfType(argument, "ObjectExpression") &&
-      argument.properties.every((property) => {
-        if (!isNodeOfType(property, "Property")) return false;
-        if (!property.computed) return true;
-        const key = stripParenExpression(property.key);
-        if (isNodeOfType(key, "Literal")) return true;
-        if (!isNodeOfType(key, "MemberExpression")) return false;
-        const receiver = stripParenExpression(key.object);
-        if (
-          !isNodeOfType(receiver, "Identifier") ||
-          receiver.name !== "Symbol" ||
-          (scopes && !scopes.isGlobalReference(receiver))
-        ) {
-          return false;
-        }
-        return (
-          getStaticPropertyName(key) !== "iterator" ||
-          !isFunctionLike(stripParenExpression(property.value))
-        );
-      });
-    return !(
-      !argument ||
-      (isNodeOfType(argument, "Literal") &&
-        (argument.value === null ||
-          typeof argument.value === "number" ||
-          typeof argument.value === "boolean")) ||
-      isDefinitelyNonIterableObjectLiteral
-    );
+    if (!argument) return false;
+    if (isNodeOfType(argument, "ArrayExpression")) {
+      return isAllSettledArrayExpressionEvaluationSafe(argument, scopes);
+    }
+    if (isProvenLocalArrayBinding(argument, scopes)) return true;
+    if (isProvenNonThrowingArrayFactoryCall(argument, depth, scopes)) return true;
+    if (isNodeOfType(argument, "Literal")) return typeof argument.value === "string";
+    if (isNodeOfType(argument, "TemplateLiteral")) return argument.expressions.length === 0;
+    const iteratorFunction = getCustomIteratorFunction(argument, scopes);
+    if (!isNodeOfType(iteratorFunction, "FunctionExpression") || !iteratorFunction.generator) {
+      return false;
+    }
+    return isCustomIteratorExecutionProvenNonThrowing(iteratorFunction, depth, scopes);
   }
   if (methodName !== "all") return false;
   const argument = callNode.arguments[0];
@@ -237,7 +443,7 @@ const isNeverRejectingPromiseCombinatorCall = (
   const stripped = stripParenExpression(argument);
   if (isNodeOfType(stripped, "ArrayExpression")) {
     return stripped.elements.every(
-      (element) => element !== null && isNeverRejectingExpression(element, depth, scopes),
+      (element) => element === null || isDefinitelyNonRejectingArrayValue(element, depth, scopes),
     );
   }
   if (isNodeOfType(stripped, "Identifier")) {
@@ -267,14 +473,29 @@ const SYNC_ARRAY_METHOD_NAMES = new Set([
   "toSorted",
   "toReversed",
 ]);
-const isSyncArrayLiteralMethodCall = (callNode: EsTreeNodeOfType<"CallExpression">): boolean => {
+const isSyncArrayLiteralMethodCall = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  scopes?: ScopeAnalysis,
+): boolean => {
   const callee = stripParenExpression(callNode.callee);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;
   if (!SYNC_ARRAY_METHOD_NAMES.has(callee.property.name)) return false;
   const receiver = stripParenExpression(callee.object);
   if (!isNodeOfType(receiver, "ArrayExpression")) return false;
-  return (callNode.arguments ?? []).every((argument) => !subtreeContainsThrow(argument));
+  return (callNode.arguments ?? []).every((argument) => {
+    const strippedArgument = stripParenExpression(argument);
+    if (!isFunctionLike(strippedArgument)) return !subtreeContainsThrow(strippedArgument);
+    if (!scopes) return !subtreeContainsThrow(strippedArgument, false);
+    return (
+      !subtreeCanThrowSynchronously(strippedArgument, strippedArgument, scopes) &&
+      !helperHasUnhandledSynchronousCall(
+        strippedArgument,
+        NEVER_REJECTING_ANALYSIS_MAX_DEPTH,
+        scopes,
+      )
+    );
+  });
 };
 
 const returnedExpressionCanReject = (
@@ -284,7 +505,7 @@ const returnedExpressionCanReject = (
 ): boolean => {
   const returned = stripParenExpression(expression);
   if (isNodeOfType(returned, "CallExpression")) {
-    if (isSyncArrayLiteralMethodCall(returned)) return false;
+    if (isSyncArrayLiteralMethodCall(returned, scopes)) return false;
     return !isNeverRejectingExpression(returned, depth, scopes);
   }
   if (isNodeOfType(returned, "NewExpression")) {
@@ -294,31 +515,75 @@ const returnedExpressionCanReject = (
   }
   return false;
 };
-const findEnclosingClassMethodFunction = (
-  referenceNode: EsTreeNode,
-  methodName: string,
-): EsTreeNode | null => {
-  let cursor: EsTreeNode | null | undefined = referenceNode.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "ClassBody")) {
-      for (const member of cursor.body) {
-        if (
-          !isNodeOfType(member, "MethodDefinition") &&
-          !isNodeOfType(member, "PropertyDefinition")
-        )
-          continue;
-        if (member.computed) continue;
-        if (!isNodeOfType(member.key, "Identifier") || member.key.name !== methodName) continue;
-        const memberValue = member.value;
-        return memberValue && isFunctionLike(memberValue) ? memberValue : null;
-      }
-      return null;
-    }
-    cursor = cursor.parent ?? null;
+const getDirectThisMemberName = (expression: EsTreeNode): string | null => {
+  const stripped = stripParenExpression(expression);
+  if (!isNodeOfType(stripped, "MemberExpression")) return null;
+  if (!isNodeOfType(stripParenExpression(stripped.object), "ThisExpression")) return null;
+  return getStaticPropertyName(stripped);
+};
+
+const getClassMemberName = (member: EsTreeNode): string | null => {
+  if (!isNodeOfType(member, "MethodDefinition") && !isNodeOfType(member, "PropertyDefinition")) {
+    return null;
+  }
+  if (!member.computed && isNodeOfType(member.key, "Identifier")) return member.key.name;
+  if (member.computed && isNodeOfType(member.key, "Literal")) {
+    return typeof member.key.value === "string" ? member.key.value : null;
   }
   return null;
 };
 
+const resolveStableClassHelperFunction = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+): EsTreeNode | null => {
+  const helperName = getDirectThisMemberName(callNode.callee);
+  if (!helperName) return null;
+  let classNode: EsTreeNode | null | undefined = callNode.parent;
+  while (
+    classNode &&
+    !isNodeOfType(classNode, "ClassDeclaration") &&
+    !isNodeOfType(classNode, "ClassExpression")
+  ) {
+    classNode = classNode.parent ?? null;
+  }
+  if (!classNode) return null;
+  const matchingHelpers: EsTreeNode[] = [];
+  for (const member of classNode.body.body) {
+    if (getClassMemberName(member) !== helperName) continue;
+    if (isNodeOfType(member, "MethodDefinition") && member.kind === "method") {
+      matchingHelpers.push(member.value);
+      continue;
+    }
+    if (
+      isNodeOfType(member, "PropertyDefinition") &&
+      member.value &&
+      isFunctionLike(member.value)
+    ) {
+      matchingHelpers.push(member.value);
+    }
+  }
+  if (matchingHelpers.length !== 1) return null;
+  let isReassigned = false;
+  walkAst(classNode, (candidate) => {
+    if (isReassigned) return false;
+    if (
+      isNodeOfType(candidate, "AssignmentExpression") &&
+      getDirectThisMemberName(candidate.left) === helperName
+    ) {
+      isReassigned = true;
+      return false;
+    }
+    if (
+      (isNodeOfType(candidate, "UpdateExpression") ||
+        (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "delete")) &&
+      getDirectThisMemberName(candidate.argument) === helperName
+    ) {
+      isReassigned = true;
+      return false;
+    }
+  });
+  return isReassigned ? null : matchingHelpers[0];
+};
 const resolveSameFileHelperFunction = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   scopes?: ScopeAnalysis,
@@ -343,22 +608,182 @@ const resolveSameFileHelperFunction = (
     }
     return getUseCallbackWrappedFunction(binding.initializer);
   }
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.object, "ThisExpression") &&
-    isNodeOfType(callee.property, "Identifier")
-  ) {
-    return findEnclosingClassMethodFunction(callNode, callee.property.name);
-  }
-  return null;
+  return resolveStableClassHelperFunction(callNode);
 };
+
+const helperHasUnhandledSynchronousCall = (
+  helper: EsTreeNode,
+  depth: number,
+  scopes?: ScopeAnalysis,
+  visitedFunctions = new Set<EsTreeNode>(),
+): boolean => {
+  if (visitedFunctions.has(helper)) return false;
+  visitedFunctions.add(helper);
+  let hasUnhandledCall = false;
+  walkOwnFunctionScope(helper, (child: EsTreeNode) => {
+    if (hasUnhandledCall) return false;
+    if (isNodeOfType(child, "NewExpression")) {
+      if (
+        !isNonRejectingPromiseConstruction(child, scopes) &&
+        !isInsideNonRethrowingTry(child, helper)
+      ) {
+        hasUnhandledCall = true;
+        return false;
+      }
+      return;
+    }
+    if (isNodeOfType(child, "MemberExpression")) {
+      const parent = child.parent;
+      if (isNodeOfType(parent, "CallExpression") && parent.callee === child) return;
+      const receiver = stripParenExpression(child.object);
+      const propertyName = getStaticPropertyName(child);
+      let isKnownGetter = false;
+      if (propertyName && isNodeOfType(receiver, "Identifier")) {
+        const receiverInitializer = scopes?.symbolFor(receiver)?.initializer;
+        const objectExpression = receiverInitializer
+          ? stripParenExpression(receiverInitializer)
+          : null;
+        if (isNodeOfType(objectExpression, "ObjectExpression")) {
+          isKnownGetter = objectExpression.properties.some(
+            (property) =>
+              isNodeOfType(property, "Property") &&
+              property.kind === "get" &&
+              ((isNodeOfType(property.key, "Identifier") && property.key.name === propertyName) ||
+                (isNodeOfType(property.key, "Literal") && property.key.value === propertyName)),
+          );
+        }
+      }
+      if (propertyName && isNodeOfType(receiver, "ThisExpression")) {
+        let classNode: EsTreeNode | null | undefined = helper.parent;
+        while (
+          classNode &&
+          !isNodeOfType(classNode, "ClassDeclaration") &&
+          !isNodeOfType(classNode, "ClassExpression")
+        ) {
+          classNode = classNode.parent ?? null;
+        }
+        isKnownGetter = Boolean(
+          classNode?.body.body.some(
+            (member) =>
+              isNodeOfType(member, "MethodDefinition") &&
+              member.kind === "get" &&
+              getClassMemberName(member) === propertyName,
+          ),
+        );
+      }
+      if (isKnownGetter && !isInsideNonRethrowingTry(child, helper)) {
+        hasUnhandledCall = true;
+        return false;
+      }
+      return;
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    let ancestor: EsTreeNode | null | undefined = child.parent;
+    while (ancestor && ancestor !== helper) {
+      if (isNodeOfType(ancestor, "AwaitExpression")) return;
+      if (isNodeOfType(ancestor, "CallExpression")) return;
+      if (isNodeOfType(ancestor, "ReturnStatement")) break;
+      ancestor = ancestor.parent ?? null;
+    }
+    if (isInsideNonRethrowingTry(child, helper)) return;
+    if (
+      isPromiseResolveCall(child, scopes) ||
+      chainCarriesRejectionHandler(child, scopes) ||
+      isSyncArrayLiteralMethodCall(child, scopes) ||
+      isThunkActionDispatchCall(child) ||
+      isNeverRejectingPromiseCombinatorCall(child, depth, scopes)
+    ) {
+      return;
+    }
+    const callee = stripParenExpression(child.callee);
+    if (
+      scopes &&
+      isNodeOfType(callee, "Identifier") &&
+      isReactHookResultReference(callee, STATE_HOOK_NAMES, 1, scopes)
+    ) {
+      return;
+    }
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "queueMicrotask" &&
+      (!scopes || scopes.isGlobalReference(callee))
+    ) {
+      const callback = child.arguments[0];
+      const resolvedCallback = callback
+        ? isFunctionLike(stripParenExpression(callback))
+          ? stripParenExpression(callback)
+          : scopes
+            ? resolveExactLocalFunction(callback, scopes)
+            : null
+        : null;
+      if (resolvedCallback) return;
+    }
+    if (isNodeOfType(callee, "MemberExpression")) {
+      const receiver = stripParenExpression(callee.object);
+      if (
+        isNodeOfType(receiver, "Identifier") &&
+        receiver.name === "console" &&
+        (!scopes || scopes.isGlobalReference(receiver))
+      ) {
+        return;
+      }
+      if (getStaticPropertyName(callee) === "push" && isNodeOfType(receiver, "Identifier")) {
+        const receiverSymbol = scopes?.symbolFor(receiver);
+        const receiverInitializer = receiverSymbol?.initializer
+          ? stripParenExpression(receiverSymbol.initializer)
+          : null;
+        if (
+          isNodeOfType(receiverInitializer, "ArrayExpression") &&
+          receiverSymbol?.references.every((reference) => {
+            const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+            const referenceMember = referenceRoot.parent;
+            const assignment = referenceMember?.parent;
+            return !(
+              isNodeOfType(referenceMember, "MemberExpression") &&
+              referenceMember.object === referenceRoot &&
+              getStaticPropertyName(referenceMember) === "push" &&
+              isNodeOfType(assignment, "AssignmentExpression") &&
+              assignment.left === referenceMember
+            );
+          }) &&
+          child.arguments.every((argument) => {
+            const innerArgument = stripParenExpression(argument);
+            return (
+              isDefinitelyNonThenableValue(innerArgument) ||
+              isNeverRejectingExpression(innerArgument, depth - 1, scopes)
+            );
+          })
+        ) {
+          return;
+        }
+      }
+    }
+    const localFunction =
+      scopes && isNodeOfType(callee, "Identifier")
+        ? resolveExactLocalFunction(callee, scopes)
+        : null;
+    if (scopes && localFunction && isFunctionLike(localFunction)) {
+      if (localFunction.async) return;
+      if (
+        !subtreeCanThrowSynchronously(localFunction, localFunction, scopes) &&
+        !helperHasUnhandledSynchronousCall(localFunction, depth - 1, scopes, visitedFunctions)
+      ) {
+        return;
+      }
+    }
+    hasUnhandledCall = true;
+    return false;
+  });
+  return hasUnhandledCall;
+};
+
 const isRejectionProofAsyncHelperBody = (
   helper: EsTreeNode,
   depth: number,
   scopes?: ScopeAnalysis,
 ): boolean => {
   if (scopes && subtreeCanThrowSynchronously(helper, helper, scopes)) return false;
+  if (helperHasUnhandledSynchronousCall(helper, depth, scopes)) return false;
   let isRejectionProof = true;
   walkOwnFunctionScope(helper, (child: EsTreeNode) => {
     if (!isRejectionProof) return false;
@@ -393,6 +818,7 @@ const CROSS_FILE_RESOLUTION_BUDGET_PER_FILE = 3;
 let currentLintedFilename: string | undefined;
 let crossFileResolutionsRemaining = 0;
 const crossFileResolutionMemo = new Map<string, ResolvedCrossFileExport | null>();
+const budgetedCrossFileSpecifiers = new Set<string>();
 let isAnalyzingForeignHelperBody = false;
 
 const resolveCrossFileExportWithinBudget = (
@@ -403,17 +829,46 @@ const resolveCrossFileExportWithinBudget = (
   const memoKey = `${specifier}\u0000${exportedName}`;
   const memoized = crossFileResolutionMemo.get(memoKey);
   if (memoized !== undefined) return memoized;
-  if (crossFileResolutionsRemaining <= 0) return null;
-  crossFileResolutionsRemaining -= 1;
+  if (!budgetedCrossFileSpecifiers.has(specifier)) {
+    if (crossFileResolutionsRemaining <= 0) return null;
+    crossFileResolutionsRemaining -= 1;
+    budgetedCrossFileSpecifiers.add(specifier);
+  }
   const resolved = resolveCrossFileExport(currentLintedFilename, specifier, exportedName);
   crossFileResolutionMemo.set(memoKey, resolved);
   return resolved;
 };
 
-const isRejectionProofForeignHelperBody = (helper: EsTreeNode, depth: number): boolean => {
+const isStableForeignHelper = (helper: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const declaration = helper.parent;
+  if (isNodeOfType(helper, "FunctionDeclaration")) {
+    if (!helper.id) return false;
+    const symbol = scopes.scopeFor(helper).symbolsByName.get(helper.id.name);
+    return Boolean(symbol && symbol.references.every((reference) => reference.flag === "read"));
+  }
+  if (!isNodeOfType(declaration, "VariableDeclarator")) return true;
+  const variableDeclaration = declaration.parent;
+  if (
+    !isNodeOfType(variableDeclaration, "VariableDeclaration") ||
+    variableDeclaration.kind !== "const"
+  ) {
+    return false;
+  }
+  const binding = isNodeOfType(declaration.id, "Identifier")
+    ? scopes.symbolFor(declaration.id)
+    : null;
+  return Boolean(binding && binding.references.every((reference) => reference.flag === "read"));
+};
+
+const isRejectionProofForeignHelperBody = (
+  helper: EsTreeNode,
+  depth: number,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isStableForeignHelper(helper, scopes)) return false;
   isAnalyzingForeignHelperBody = true;
   try {
-    return isRejectionProofAsyncHelperBody(helper, depth);
+    return isRejectionProofAsyncHelperBody(helper, depth, scopes);
   } finally {
     isAnalyzingForeignHelperBody = false;
   }
@@ -429,9 +884,11 @@ const isNeverRejectingImportedAsyncHelperCall = (
     importBinding.exportedName,
   );
   if (!resolved) return false;
-  const foreignHelper = getUseCallbackWrappedFunction(resolved.node);
+  const foreignScopes = analyzeScopes(resolved.programNode);
+  const foreignHelper = getUseCallbackWrappedFunction(resolved.node, foreignScopes, true);
   if (!isFunctionLike(foreignHelper) || !foreignHelper.async) return false;
-  return isRejectionProofForeignHelperBody(foreignHelper, depth);
+  if (!isStableForeignHelper(resolved.node, foreignScopes)) return false;
+  return isRejectionProofForeignHelperBody(foreignHelper, depth, foreignScopes);
 };
 const resolveImportedHelperIdentifierThroughConstAliases = (
   callee: EsTreeNodeOfType<"Identifier">,
@@ -465,13 +922,20 @@ const resolveImportedHelperIdentifierThroughConstAliases = (
 };
 const getHookReturnedObjectExpression = (
   hookFunction: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): EsTreeNodeOfType<"ObjectExpression"> | null => {
   const unwrapReturnedExpression = (expression: EsTreeNode): EsTreeNode | null => {
     const stripped = stripParenExpression(expression);
     if (isNodeOfType(stripped, "ObjectExpression")) return stripped;
     if (!isNodeOfType(stripped, "CallExpression")) return null;
-    const memoCallee = stripParenExpression(stripped.callee);
-    if (!isNodeOfType(memoCallee, "Identifier") || memoCallee.name !== "useMemo") return null;
+    if (
+      !isReactApiCall(stripped, "useMemo", scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      return null;
+    }
     const memoFactory = stripped.arguments[0];
     if (!isFunctionLike(memoFactory)) return null;
     if (!isNodeOfType(memoFactory.body, "BlockStatement")) {
@@ -504,6 +968,7 @@ const getHookReturnedObjectExpression = (
 const resolveHookReturnedFunctionProperty = (
   returnedObject: EsTreeNodeOfType<"ObjectExpression">,
   propertyName: string,
+  scopes: ScopeAnalysis,
 ): EsTreeNode | null => {
   for (const property of returnedObject.properties) {
     if (!isNodeOfType(property, "Property") || property.computed) continue;
@@ -516,9 +981,17 @@ const resolveHookReturnedFunctionProperty = (
     const value = stripParenExpression(property.value as EsTreeNode);
     if (isFunctionLike(value)) return value;
     if (!isNodeOfType(value, "Identifier")) return null;
+    const symbol = scopes.symbolFor(value);
+    if (
+      !symbol ||
+      symbol.kind !== "const" ||
+      symbol.references.some((reference) => reference.flag !== "read")
+    ) {
+      return null;
+    }
     const binding = findVariableInitializer(value, value.name);
     if (!binding?.initializer) return null;
-    return getUseCallbackWrappedFunction(binding.initializer);
+    return getUseCallbackWrappedFunction(binding.initializer, scopes, true);
   }
   return null;
 };
@@ -527,6 +1000,7 @@ const HOOK_NAME_PATTERN = /^use[A-Z0-9]/;
 const isNeverRejectingImportedHookFunctionCall = (
   callee: EsTreeNodeOfType<"Identifier">,
   depth: number,
+  consumerScopes: ScopeAnalysis,
 ): boolean => {
   const binding = findVariableInitializer(callee, callee.name);
   if (!binding || binding.initializer) return false;
@@ -539,6 +1013,20 @@ const isNeverRejectingImportedHookFunctionCall = (
   if (!objectPattern || !isNodeOfType(objectPattern, "ObjectPattern")) return false;
   const declarator = objectPattern.parent;
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
+  const variableDeclaration = declarator.parent;
+  if (
+    !isNodeOfType(variableDeclaration, "VariableDeclaration") ||
+    variableDeclaration.kind !== "const"
+  ) {
+    return false;
+  }
+  const consumerBinding = consumerScopes.symbolFor(callee);
+  if (
+    !consumerBinding ||
+    consumerBinding.references.some((reference) => reference.flag !== "read")
+  ) {
+    return false;
+  }
   if (declarator.id !== objectPattern || !declarator.init) return false;
   const hookCall = stripParenExpression(declarator.init);
   if (!isNodeOfType(hookCall, "CallExpression")) return false;
@@ -554,14 +1042,20 @@ const isNeverRejectingImportedHookFunctionCall = (
     hookImportBinding.exportedName,
   );
   if (!resolved) return false;
-  const hookFunction = getUseCallbackWrappedFunction(resolved.node);
-  const returnedObject = getHookReturnedObjectExpression(hookFunction);
+  const foreignScopes = analyzeScopes(resolved.programNode);
+  const hookFunction = getUseCallbackWrappedFunction(resolved.node, foreignScopes, true);
+  if (!isStableForeignHelper(resolved.node, foreignScopes)) return false;
+  const returnedObject = getHookReturnedObjectExpression(hookFunction, foreignScopes);
   if (!returnedObject) return false;
-  const returnedFunction = resolveHookReturnedFunctionProperty(returnedObject, propertyName);
+  const returnedFunction = resolveHookReturnedFunctionProperty(
+    returnedObject,
+    propertyName,
+    foreignScopes,
+  );
   if (!returnedFunction || !isFunctionLike(returnedFunction) || !returnedFunction.async) {
     return false;
   }
-  return isRejectionProofForeignHelperBody(returnedFunction, depth);
+  return isRejectionProofForeignHelperBody(returnedFunction, depth, foreignScopes);
 };
 const isNeverRejectingLocalAsyncHelperCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
@@ -590,7 +1084,7 @@ const isNeverRejectingLocalAsyncHelperCall = (
     }
   }
   if (helper) return false;
-  return isNeverRejectingImportedHookFunctionCall(callee, depth);
+  return scopes ? isNeverRejectingImportedHookFunctionCall(callee, depth, scopes) : false;
 };
 
 const isNeverRejectingExpression = (
@@ -599,12 +1093,23 @@ const isNeverRejectingExpression = (
   scopes?: ScopeAnalysis,
 ): boolean => {
   const inner = stripParenExpression(expression);
+  if (isDefinitelyNonThenableValue(inner)) return true;
   if (isNonRejectingPromiseConstruction(inner, scopes)) return true;
   if (!isNodeOfType(inner, "CallExpression")) return false;
   if (isPromiseResolveCall(inner, scopes)) return true;
   if (isThunkActionDispatchCall(inner)) return true;
   if (chainCarriesRejectionHandler(inner, scopes)) return true;
   if (isNeverRejectingPromiseCombinatorCall(inner, depth, scopes)) return true;
+  const sameFileHelper = resolveSameFileHelperFunction(inner, scopes);
+  if (sameFileHelper && isFunctionLike(sameFileHelper)) {
+    if (sameFileHelper.async) {
+      return isRejectionProofAsyncHelperBody(sameFileHelper, depth, scopes);
+    }
+    return (
+      !helperHasUnhandledSynchronousCall(sameFileHelper, depth, scopes) &&
+      isNeverRejectingHelperCall(inner, scopes)
+    );
+  }
   if (isNeverRejectingHelperCall(inner, scopes)) return true;
   return isNeverRejectingLocalAsyncHelperCall(inner, depth, scopes);
 };
@@ -659,7 +1164,7 @@ const dedupeCatchPathStates = (states: CatchPathState[]): CatchPathState[] => {
 const catchHandlerCanBypassReset = (
   handler: EsTreeNode,
   functionNode: EsTreeNode,
-  setterName: string,
+  setterKey: string,
   context: RuleContext,
   doesContinuingPathReachReset: boolean,
 ): boolean => {
@@ -667,7 +1172,7 @@ const catchHandlerCanBypassReset = (
     const stripped = stripParenExpression(expression);
     if (isNodeOfType(stripped, "CallExpression")) {
       const setter = getSetterBooleanValue(stripped, context);
-      if (setter?.setterName === setterName && !setter.value) return true;
+      if (setter?.setterKey === setterKey && !setter.value) return true;
       const helper = resolveSameFileHelperFunction(stripped, context.scopes);
       if (!helper || !isFunctionLike(helper) || helper.async) return false;
       let clearsUnconditionally = false;
@@ -675,7 +1180,7 @@ const catchHandlerCanBypassReset = (
         if (!isNodeOfType(child, "CallExpression")) return;
         const helperSetter = getSetterBooleanValue(child, context);
         if (
-          helperSetter?.setterName === setterName &&
+          helperSetter?.setterKey === setterKey &&
           !helperSetter.value &&
           isUnconditionallyExecutedWithinFunction(child, helper, context)
         ) {
@@ -730,7 +1235,7 @@ const catchHandlerCanBypassReset = (
       };
     }
     if (
-      subtreeCanThrowSynchronously(stripped, functionNode, context.scopes) &&
+      subtreeHasAbruptSynchronousOperation(stripped, functionNode, context) &&
       states.some(
         (state) => !state.isCleared && !(doesContinuingPathReachReset && state.isCancellationPath),
       )
@@ -832,7 +1337,7 @@ const isRejectionSwallowedBeforeReset = (
   awaitNode: EsTreeNode,
   functionNode: EsTreeNode,
   resetStart: number,
-  setterName: string,
+  setterKey: string,
   context: RuleContext,
 ): boolean => {
   let child: EsTreeNode = awaitNode;
@@ -843,7 +1348,7 @@ const isRejectionSwallowedBeforeReset = (
       if (
         tryEnd !== null &&
         tryEnd < resetStart &&
-        !catchHandlerCanBypassReset(cursor.handler, functionNode, setterName, context, true)
+        !catchHandlerCanBypassReset(cursor.handler, functionNode, setterKey, context, true)
       ) {
         return true;
       }
@@ -960,6 +1465,66 @@ interface AwaitSite {
   start: number;
 }
 
+const REACT_SETTER_CALLEE_PATTERN = /^set[A-Z]/;
+const isProvenNonThrowingSynchronousCall = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(callNode.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    if (
+      isReactHookResultReference(callee, STATE_HOOK_NAMES, 1, context.scopes) ||
+      (context.scopes.isGlobalReference(callee) && REACT_SETTER_CALLEE_PATTERN.test(callee.name))
+    ) {
+      return true;
+    }
+    const localFunction = resolveExactLocalFunction(callee, context.scopes);
+    if (localFunction && isFunctionLike(localFunction) && !localFunction.async) {
+      return (
+        !subtreeCanThrowSynchronously(localFunction, localFunction, context.scopes) &&
+        !helperHasUnhandledSynchronousCall(
+          localFunction,
+          NEVER_REJECTING_ANALYSIS_MAX_DEPTH,
+          context.scopes,
+        )
+      );
+    }
+    return false;
+  }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object);
+  return Boolean(
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "console" &&
+    context.scopes.isGlobalReference(receiver),
+  );
+};
+
+const subtreeHasAbruptSynchronousOperation = (
+  root: EsTreeNode,
+  functionBoundary: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let canCompleteAbruptly = false;
+  walkAst(root, (candidate) => {
+    if (canCompleteAbruptly) return false;
+    if (candidate !== root && isFunctionLike(candidate)) return false;
+    if (isInsideNonRethrowingTry(candidate, functionBoundary)) return;
+    if (isNodeOfType(candidate, "ThrowStatement") || isNodeOfType(candidate, "NewExpression")) {
+      canCompleteAbruptly = true;
+      return false;
+    }
+    if (
+      isNodeOfType(candidate, "CallExpression") &&
+      !isProvenNonThrowingSynchronousCall(candidate, context)
+    ) {
+      canCompleteAbruptly = true;
+      return false;
+    }
+  });
+  return canCompleteAbruptly;
+};
+
 const hasAbruptCompletionBefore = (
   boundary: EsTreeNode,
   node: EsTreeNode,
@@ -977,9 +1542,13 @@ const hasAbruptCompletionBefore = (
       hasAbruptCompletion = true;
       return false;
     }
+    if (isNodeOfType(child, "NewExpression")) {
+      hasAbruptCompletion = true;
+      return false;
+    }
     if (
       isNodeOfType(child, "CallExpression") &&
-      subtreeCanThrowSynchronously(child, boundary, context.scopes)
+      !isProvenNonThrowingSynchronousCall(child, context)
     ) {
       hasAbruptCompletion = true;
       return false;
@@ -1271,7 +1840,7 @@ const findFirstAwaitAfter = (awaitSites: ReadonlyArray<AwaitSite>, start: number
 
 const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void => {
   const awaitSites: AwaitSite[] = [];
-  const settersByName = new Map<string, SetterCall[]>();
+  const settersByKey = new Map<string, SetterCall[]>();
   const registerHelperResets = (callNode: EsTreeNodeOfType<"CallExpression">): void => {
     if (!isNodeOfType(callNode.callee, "Identifier")) return;
     const start = getNodeStart(callNode);
@@ -1285,7 +1854,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       const helperSetter = getSetterBooleanValue(child, context);
       if (!helperSetter || helperSetter.value) return;
       if (!LOADING_FLAG_SETTER_PATTERN.test(helperSetter.setterName)) return;
-      const list = settersByName.get(helperSetter.setterName) ?? [];
+      const list = settersByKey.get(helperSetter.setterKey) ?? [];
       const protection = getExceptionalResetProtection(callNode, functionNode, context);
       list.push({
         value: false,
@@ -1297,7 +1866,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
           protection.isUnconditional &&
           isUnconditionallyExecutedWithinFunction(child, helper, context),
       });
-      settersByName.set(helperSetter.setterName, list);
+      settersByKey.set(helperSetter.setterKey, list);
     });
   };
 
@@ -1316,7 +1885,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
     if (!LOADING_FLAG_SETTER_PATTERN.test(setter.setterName)) return;
     const start = getNodeStart(node);
     if (start === null) return;
-    const list = settersByName.get(setter.setterName) ?? [];
+    const list = settersByKey.get(setter.setterKey) ?? [];
     const protection = getExceptionalResetProtection(node, functionNode, context);
     list.push({
       value: setter.value,
@@ -1325,7 +1894,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       node,
       ...protection,
     });
-    settersByName.set(setter.setterName, list);
+    settersByKey.set(setter.setterKey, list);
   });
 
   if (awaitSites.length === 0) return;
@@ -1335,7 +1904,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       .map((awaitSite) => awaitSite.node),
   );
 
-  for (const [setterName, calls] of settersByName) {
+  for (const [setterKey, calls] of settersByKey) {
     const truthySets = calls.filter((call) => call.value);
     if (truthySets.length === 0) continue;
     const exceptionallyProtectedAwaits = collectExceptionallyProtectedAwaits(awaitSites, calls);
@@ -1365,7 +1934,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       const catchHandler = reset.protectingTry?.handler;
       if (
         catchHandler &&
-        !catchHandlerCanBypassReset(catchHandler, functionNode, setterName, context, false)
+        !catchHandlerCanBypassReset(catchHandler, functionNode, setterKey, context, false)
       ) {
         continue;
       }
@@ -1399,7 +1968,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
               awaitSite.node,
               functionNode,
               reset.start,
-              setterName,
+              setterKey,
               context,
             )
           ) {
@@ -1426,6 +1995,7 @@ export const noLoadingFlagResetOutsideFinally = defineRule({
     currentLintedFilename = context.filename;
     crossFileResolutionsRemaining = CROSS_FILE_RESOLUTION_BUDGET_PER_FILE;
     crossFileResolutionMemo.clear();
+    budgetedCrossFileSpecifiers.clear();
     isAnalyzingForeignHelperBody = false;
     return {
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {

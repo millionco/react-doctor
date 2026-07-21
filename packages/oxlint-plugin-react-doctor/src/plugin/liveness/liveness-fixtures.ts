@@ -470,6 +470,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "jsx-no-script-url": {
     code: 'const A = () => <a href="javascript:void(0)">x</a>;',
   },
+  "jsx-no-target-blank": {
+    code: 'const A = () => <a href="https://example.com" target="_blank">x</a>;',
+    settings: {
+      "react-doctor": { capabilities: ["target-blank-needs-explicit-protection"] },
+    },
+  },
   "jsx-no-undef": {
     code: "\n        interface Foo {}\n        type Bar = {};\n        const App = () => <><Foo /><Bar /></>;\n      ",
   },
@@ -600,7 +606,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'export const Hero = () => <img src="/hero.png" alt="hero" />;',
   },
   "nextjs-no-native-script": {
-    code: 'const Layout = () => (\n        <head>\n          <script src="https://widget.example.com/embed.js" />\n        </head>\n      );',
+    code: 'const Layout = () => (\n        <head>\n          <script async blocking="render" src="https://widget.example.com/embed.js" />\n        </head>\n      );',
   },
   "nextjs-no-polyfill-script": {
     code: 'const El = () => <script src="https://polyfill.io/v3/polyfill.min.js" />;',
@@ -860,7 +866,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'requestAnimationFrame(() => {\n  document.documentElement.style.setProperty("--scroll", String(window.scrollY));\n});',
   },
   "no-gradient-text": {
-    code: 'const El = () => <span className="bg-clip-text bg-gradient-to-r from-pink-500 to-violet-500">Hi</span>;',
+    code: 'const El = () => <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-500">Hi</span>;',
   },
   "no-hairline-border-wide-shadow": {
     code: 'const Card = () => <div className="border shadow-2xl" />;',
@@ -2217,9 +2223,6 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-focusable-content-in-role-text": {
     code: 'const View = () => <span role="text"><button>Open</button></span>;',
-  },
-  "no-multiple-labels-for-control": {
-    code: 'const Form = () => <><label htmlFor="name">Name</label><label htmlFor="name">Required</label><input id="name" /></>;',
   },
   "no-server-side-image-map": {
     code: 'const Map = () => <img alt="Campus" src="map.png" isMap />;',

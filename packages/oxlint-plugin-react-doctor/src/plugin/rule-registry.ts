@@ -147,6 +147,7 @@ import { jsxNoNewArrayAsProp } from "./rules/react-builtins/jsx-no-new-array-as-
 import { jsxNoNewFunctionAsProp } from "./rules/react-builtins/jsx-no-new-function-as-prop.js";
 import { jsxNoNewObjectAsProp } from "./rules/react-builtins/jsx-no-new-object-as-prop.js";
 import { jsxNoScriptUrl } from "./rules/react-builtins/jsx-no-script-url.js";
+import { jsxNoTargetBlank } from "./rules/react-builtins/jsx-no-target-blank.js";
 import { jsxNoUndef } from "./rules/react-builtins/jsx-no-undef.js";
 import { jsxNoUselessFragment } from "./rules/react-builtins/jsx-no-useless-fragment.js";
 import { jsxNumericAndLeakedRender } from "./rules/correctness/jsx-numeric-and-leaked-render.js";
@@ -349,7 +350,6 @@ import { noMixedSrcsetDescriptors } from "./rules/correctness/no-mixed-srcset-de
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMonotonousPageSpacing } from "./rules/design/no-monotonous-page-spacing.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
-import { noMultipleLabelsForControl } from "./rules/a11y/no-multiple-labels-for-control.js";
 import { noMultipleMainLandmarks } from "./rules/a11y/no-multiple-main-landmarks.js";
 import { noMultipleUnlabeledNavigationLandmarks } from "./rules/a11y/no-multiple-unlabeled-navigation-landmarks.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
@@ -2403,6 +2403,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       requires: [...new Set<Capability>(["react", ...(jsxNoScriptUrl.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/jsx-no-target-blank",
+    id: "jsx-no-target-blank",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...jsxNoTargetBlank,
+      framework: "global",
+      category: "Security",
+      requires: [...new Set<Capability>(["react", ...(jsxNoTargetBlank.requires ?? [])])],
     },
   },
   {
@@ -4805,18 +4817,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(noMultiComp.requires ?? [])])],
-    },
-  },
-  {
-    key: "react-doctor/no-multiple-labels-for-control",
-    id: "no-multiple-labels-for-control",
-    source: "react-doctor",
-    originallyExternal: true,
-    rule: {
-      ...noMultipleLabelsForControl,
-      framework: "global",
-      category: "Accessibility",
-      requires: [...new Set<Capability>(["react", ...(noMultipleLabelsForControl.requires ?? [])])],
     },
   },
   {

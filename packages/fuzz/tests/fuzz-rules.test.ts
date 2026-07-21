@@ -71,7 +71,9 @@ const fuzzRuleEntries = [
 // files on top.
 const corpusDirectory = process.env.FUZZ_CORPUS_DIR;
 const builtinCorpus: FuzzCorpusEntry[] = isFuzzEnabled
-  ? loadFuzzCorpus(path.join(packageRoot, "corpus"))
+  ? loadFuzzCorpus(path.join(packageRoot, "corpus"), {
+      maximumFiles: Number.POSITIVE_INFINITY,
+    })
   : [];
 const externalCorpus: FuzzCorpusEntry[] =
   isFuzzEnabled && corpusDirectory ? loadFuzzCorpus(corpusDirectory) : [];

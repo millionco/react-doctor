@@ -49,7 +49,7 @@ describe("resource lifecycle audit regressions", () => {
     expectDiagnosticCount(
       classComponentMissingComponentWillUnmountTeardown,
       `class C extends React.Component { componentDidMount() { window.addEventListener("resize", this.handle, { ["once"]: true }); } render() { return null; } }`,
-      0,
+      1,
     );
   });
 

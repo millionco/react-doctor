@@ -163,6 +163,712 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not assume separately destructured prop handlers keep the same identity", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class PixelCanvas extends React.Component {
+        componentDidMount() {
+          const { updateGridBoundariesThrottle } = this.props;
+          window.addEventListener("resize", updateGridBoundariesThrottle);
+        }
+        componentWillUnmount() {
+          const { updateGridBoundariesThrottle } = this.props;
+          window.removeEventListener("resize", updateGridBoundariesThrottle);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not match renamed handlers separately read from a mutable prop", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class PixelCanvas extends React.Component {
+        componentDidMount() {
+          const { updateGridBoundariesThrottle: mountHandler } = this.props;
+          window.addEventListener("resize", mountHandler);
+        }
+        componentWillUnmount() {
+          const { updateGridBoundariesThrottle: unmountHandler } = this.props;
+          window.removeEventListener("resize", unmountHandler);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags same-named handlers destructured from different props", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class PixelCanvas extends React.Component {
+        componentDidMount() {
+          const { mountHandler: handler } = this.props;
+          window.addEventListener("resize", handler);
+        }
+        componentWillUnmount() {
+          const { unmountHandler: handler } = this.props;
+          window.removeEventListener("resize", handler);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags handlers destructured from state because the value can change before unmount", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class PixelCanvas extends React.Component {
+        componentDidMount() {
+          const { handler } = this.state;
+          window.addEventListener("resize", handler);
+        }
+        componentWillUnmount() {
+          const { handler } = this.state;
+          window.removeEventListener("resize", handler);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts removeAllListeners for the registered emitter event", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class GistEditor extends React.Component {
+        componentDidMount() {
+          ipcRenderer.on("submit-gist", () => this.submit());
+        }
+        componentWillUnmount() {
+          ipcRenderer.removeAllListeners("submit-gist");
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts removeAllListeners on a declared const emitter", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `declare const ipcRenderer: {
+        on(eventName: string, listener: () => void): void;
+        removeAllListeners(eventName: string): void;
+      };
+      class GistEditor extends React.Component {
+        componentDidMount() {
+          ipcRenderer.on("submit-gist", () => this.submit());
+        }
+        componentWillUnmount() {
+          ipcRenderer.removeAllListeners("submit-gist");
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts removeAllListeners without an event for the same emitter", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class GistEditor extends React.Component {
+        componentDidMount() {
+          ipcRenderer.on("submit-gist", () => this.submit());
+        }
+        componentWillUnmount() {
+          ipcRenderer.removeAllListeners();
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags removeAllListeners for another event or emitter", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class GistEditor extends React.Component {
+        componentDidMount() {
+          ipcRenderer.on("submit-gist", () => this.submit());
+        }
+        componentWillUnmount() {
+          ipcRenderer.removeAllListeners("open-gist");
+          otherEmitter.removeAllListeners("submit-gist");
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["on", "removeListener"],
+    ["addListener", "off"],
+    ["once", "removeListener"],
+    ["prependListener", "off"],
+    ["prependOnceListener", "removeListener"],
+  ])("accepts EventEmitter %s/%s aliases", (registrationMethod, releaseMethod) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { emitter.${registrationMethod}("change", this.handleChange); }
+        componentWillUnmount() { emitter.${releaseMethod}("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("matches stable aliases of an emitter and prototype handler", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          const mountedEmitter = sharedEmitter;
+          const mountedHandler = this.handleChange;
+          mountedEmitter.on("change", mountedHandler);
+        }
+        componentWillUnmount() {
+          const cleanupEmitter = sharedEmitter;
+          const cleanupHandler = this.handleChange;
+          cleanupEmitter.off("change", cleanupHandler);
+        }
+        handleChange() {}
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("matches stable function declarations used as DOM handlers", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `function handleResize() {}
+      class Listener extends React.Component {
+        componentDidMount() { window.addEventListener("resize", handleResize); }
+        componentWillUnmount() { window.removeEventListener("resize", handleResize); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("matches MediaQueryList listener cleanup and stable nested global receivers", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          mediaQuery.addListener(this.handleChange);
+          window.visualViewport.addEventListener("resize", this.handleResize);
+          document.body.addEventListener("click", this.handleClick);
+        }
+        componentWillUnmount() {
+          mediaQuery.removeListener(this.handleChange);
+          window.visualViewport.removeEventListener("resize", this.handleResize);
+          document.body.removeEventListener("click", this.handleClick);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["handler", `this.handler = this.nextHandler;`],
+    ["receiver", `this.bus = otherBus;`],
+    ["event", `this.state.event = "other";`],
+  ])("does not trust mutable instance %s identity", (_identity, mutation) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          this.bus.on(this.state.event, this.handler);
+          ${mutation}
+        }
+        componentWillUnmount() { this.bus.off(this.state.event, this.handler); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts identity mutation after the matching unmount cleanup", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { this.bus.on("change", this.handleChange); }
+        componentWillUnmount() {
+          this.bus.off("change", this.handleChange);
+          this.bus = otherBus;
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust getter-backed listener identities", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class GetterHandler extends React.Component {
+        get handler() { return this.props.handler; }
+        componentDidMount() { emitter.on("change", this.handler); }
+        componentWillUnmount() { emitter.off("change", this.handler); }
+        render() { return null; }
+      }
+      class GetterBus extends React.Component {
+        get bus() { return this.props.bus; }
+        componentDidMount() { this.bus.on("change", this.handleChange); }
+        componentWillUnmount() { this.bus.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not match identities through mutable object properties", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { registry.bus.on("change", registry.handler); }
+        componentWillUnmount() { registry.bus.off("change", registry.handler); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts stored subscription teardown APIs", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          this.storeSubscription = store.subscribe(this.handleChange);
+          this.keyboardSubscription = Keyboard.addListener("show", this.handleShow);
+          this.dimensionSubscription = Dimensions.addEventListener("change", this.handleResize);
+        }
+        componentWillUnmount() {
+          this.storeSubscription.unsubscribe();
+          this.keyboardSubscription.remove();
+          this.dimensionSubscription.remove();
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a stored callable unsubscribe", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { this.unsubscribe = store.subscribe(this.handleChange); }
+        componentWillUnmount() { this.unsubscribe(); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps a mount-local emitter quiet through a const alias", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          const emitter = new EventTarget();
+          const alias = emitter;
+          alias.addEventListener("change", this.handleChange);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts listener cleanup delegated to an instance method", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { this.attach(); }
+        attach() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() { this.detach(); }
+        detach() { emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts listener cleanup delegated to a stable local helper", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() {
+          const cleanup = () => emitter.off("change", this.handleChange);
+          cleanup();
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("counts repeated delegated cleanup invocations", () => {
+    const classHelper = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.on("change", this.handleChange);
+        }
+        componentWillUnmount() { this.detach(); this.detach(); }
+        detach() { emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    const localHelper = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.on("change", this.handleChange);
+        }
+        componentWillUnmount() {
+          const detach = () => emitter.off("change", this.handleChange);
+          detach();
+          detach();
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(classHelper.diagnostics).toHaveLength(0);
+    expect(localHelper.diagnostics).toHaveLength(0);
+  });
+
+  it("counts duplicate cleanup calls on every branch", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.on("change", this.handleChange);
+        }
+        componentWillUnmount() {
+          if (enabled) {
+            emitter.off("change", this.handleChange);
+            emitter.off("change", this.handleChange);
+          } else {
+            emitter.off("change", this.handleChange);
+            emitter.off("change", this.handleChange);
+          }
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust reassigned or duplicate cleanup methods", () => {
+    const reassigned = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() {
+          this.detach = () => {};
+          this.detach();
+        }
+        detach() { emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    const duplicate = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() { this.detach(); }
+        detach() { emitter.off("change", this.handleChange); }
+        detach() {}
+        render() { return null; }
+      }`,
+    );
+    expect(reassigned.diagnostics).toHaveLength(1);
+    expect(duplicate.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts AbortController signal cleanup", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        controller = new AbortController();
+        componentDidMount() {
+          window.addEventListener("resize", this.handleResize, {
+            signal: this.controller.signal,
+          });
+        }
+        componentWillUnmount() { this.controller.abort(); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags conditional same-mount removal and duplicate registrations", () => {
+    const conditionalRemoval = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          if (enabled) emitter.off("change", this.handleChange);
+        }
+        render() { return null; }
+      }`,
+    );
+    const duplicateRegistration = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.on("change", this.handleChange);
+          emitter.off("change", this.handleChange);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(conditionalRemoval.diagnostics).toHaveLength(1);
+    expect(duplicateRegistration.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts unconditional same-mount EventEmitter cleanup", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.off("change", this.handleChange);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("deduplicates identical DOM registrations but counts EventEmitter registrations", () => {
+    const domResult = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          window.addEventListener("resize", this.handleResize);
+          window.addEventListener("resize", this.handleResize);
+          window.removeEventListener("resize", this.handleResize);
+        }
+        render() { return null; }
+      }`,
+    );
+    const oneEmitterCleanup = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.on("change", this.handleChange);
+        }
+        componentWillUnmount() { emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    const twoEmitterCleanups = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.on("change", this.handleChange);
+        }
+        componentWillUnmount() {
+          emitter.off("change", this.handleChange);
+          emitter.removeListener("change", this.handleChange);
+        }
+        render() { return null; }
+      }`,
+    );
+    const sameMountRemoveAll = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.removeAllListeners("change");
+        }
+        render() { return null; }
+      }`,
+    );
+    const sameMountTwoCleanups = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() {
+          emitter.on("change", this.handleChange);
+          emitter.on("change", this.handleChange);
+          emitter.off("change", this.handleChange);
+          emitter.off("change", this.handleChange);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(domResult.diagnostics).toHaveLength(0);
+    expect(oneEmitterCleanup.diagnostics).toHaveLength(1);
+    expect(twoEmitterCleanups.diagnostics).toHaveLength(0);
+    expect(sameMountRemoveAll.diagnostics).toHaveLength(0);
+    expect(sameMountTwoCleanups.diagnostics).toHaveLength(0);
+  });
+
+  it("does not accept returned remove cleanup from a shadowed React Native receiver", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const Keyboard = {
+        addEventListener() { return { remove() {} }; },
+      };
+      class Listener extends React.Component {
+        componentDidMount() {
+          this.subscription = Keyboard.addEventListener("show", this.handleShow);
+        }
+        componentWillUnmount() { this.subscription.remove(); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts aliased React Native subscriptions but rejects wrong-module receivers", () => {
+    const aliased = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { Dimensions as RNDimensions } from "react-native";
+      class Listener extends React.Component {
+        componentDidMount() {
+          this.subscription = RNDimensions.addEventListener("change", this.handleChange);
+        }
+        componentWillUnmount() { this.subscription.remove(); }
+        render() { return null; }
+      }`,
+    );
+    const wrongModule = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { Keyboard } from "keyboard-kit";
+      class Listener extends React.Component {
+        componentDidMount() {
+          this.subscription = Keyboard.addListener("show", this.handleShow);
+        }
+        componentWillUnmount() { this.subscription.remove(); }
+        render() { return null; }
+      }`,
+    );
+    expect(aliased.diagnostics).toHaveLength(0);
+    expect(wrongModule.diagnostics).toHaveLength(1);
+  });
+
+  it("requires cleanup before any potentially throwing unmount call", () => {
+    const beforeCleanup = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const fail = () => { throw new Error("failed"); };
+      class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() { fail(); emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    const opaqueBeforeCleanup = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() { mayThrow(); emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    const afterCleanup = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() { emitter.off("change", this.handleChange); mayThrow(); }
+        render() { return null; }
+      }`,
+    );
+    expect(beforeCleanup.diagnostics).toHaveLength(1);
+    expect(opaqueBeforeCleanup.diagnostics).toHaveLength(1);
+    expect(afterCleanup.diagnostics).toHaveLength(0);
+  });
+
+  it("flags cleanup that happens only after an await", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        async componentWillUnmount() {
+          await flush();
+          emitter.off("change", this.handleChange);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags acquisition after mount suspension but accepts acquisition before it", () => {
+    const afterAwait = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        async componentDidMount() {
+          await prepare();
+          emitter.on("change", this.handleChange);
+        }
+        componentWillUnmount() { emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    const beforeAwait = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+        async componentDidMount() {
+          emitter.on("change", this.handleChange);
+          await prepare();
+        }
+        componentWillUnmount() { emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    );
+    expect(afterAwait.diagnostics).toHaveLength(1);
+    expect(beforeAwait.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["bare", `const schedule = setInterval;`],
+    ["member", `const schedule = window.setInterval;`],
+    ["destructured", `const { setInterval: schedule } = window;`],
+  ])("recognizes readonly %s aliases of global timers", (_shape, declaration) => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `${declaration}
+      class Clock extends React.Component {
+        componentDidMount() { schedule(() => this.setState({ tick: true }), 1000); }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags when componentWillUnmount does not release the mounted resource", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -173,6 +879,8 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("without a matching teardown");
+    expect(result.diagnostics[0]?.message).not.toContain("declares no `componentWillUnmount`");
   });
 
   it("flags when componentWillUnmount releases the resource only conditionally", () => {
@@ -671,7 +1379,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a self-removing addEventListener with { once: true }", () => {
+  it("flags an addEventListener with { once: true } because it can outlive an unmount", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
       `
@@ -683,7 +1391,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
       }
       `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("recognizes a static computed once option key", () => {
@@ -698,7 +1406,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
       }
       `,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a listener on a ref-owned DOM node (dies with the component)", () => {
@@ -1059,6 +1767,25 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each(["undefined", "null", "0", "{ capture: undefined }"])(
+    "normalizes a statically false capture option %s",
+    (captureOption) => {
+      const result = runRule(
+        classComponentMissingComponentWillUnmountTeardown,
+        `class Listener extends React.Component {
+          componentDidMount() {
+            window.addEventListener("resize", this.handleResize, ${captureOption});
+          }
+          componentWillUnmount() {
+            window.removeEventListener("resize", this.handleResize);
+          }
+          render() { return null; }
+        }`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
   it("flags mismatched capture values when the registration key is statically computed", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
@@ -1074,7 +1801,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: Self-removing { once: true } listener whose options object lives in a variable", () => {
+  it("flags a { once: true } listener whose options object lives in a variable", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,
       `class SplashScreen extends React.Component {
@@ -1089,7 +1816,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
 }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags listeners registered through nested mount-local helpers invoked synchronously (cboard connection-status idiom)", () => {
@@ -1398,7 +2125,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
          render() { return null; }
        }`,
     );
-    expect(result.diagnostics).toHaveLength(3);
+    expect(result.diagnostics).toHaveLength(4);
   });
 
   it("tracks state mutation through transparent this wrappers", () => {
@@ -1562,5 +2289,222 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
        }`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an earlier await whose branch exits before acquisition", () => {
+    const exclusiveAwait = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         async componentDidMount() {
+           if (this.skip) {
+             await prepare();
+             return;
+           }
+           emitter.on("change", this.handleChange);
+         }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    const flowingAwait = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         async componentDidMount() {
+           if (this.prepare) await prepare();
+           emitter.on("change", this.handleChange);
+         }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    expect(exclusiveAwait.diagnostics).toHaveLength(0);
+    expect(flowingAwait.diagnostics).toHaveLength(1);
+  });
+
+  it("propagates suspension state through invoked class helpers", () => {
+    const afterAwait = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         async componentDidMount() {
+           await prepare();
+           this.attach();
+         }
+         attach() { emitter.on("change", this.handleChange); }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    const beforeAwait = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         async componentDidMount() {
+           this.attach();
+           await prepare();
+         }
+         attach() { emitter.on("change", this.handleChange); }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    expect(afterAwait.diagnostics).toHaveLength(1);
+    expect(beforeAwait.diagnostics).toHaveLength(0);
+  });
+
+  it("propagates suspension state through invoked local helpers", () => {
+    const afterAwait = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         async componentDidMount() {
+           const attach = () => emitter.on("change", this.handleChange);
+           await prepare();
+           attach();
+         }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    const beforeAwait = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         async componentDidMount() {
+           const attach = () => emitter.on("change", this.handleChange);
+           attach();
+           await prepare();
+         }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    expect(afterAwait.diagnostics).toHaveLength(1);
+    expect(beforeAwait.diagnostics).toHaveLength(0);
+  });
+
+  it("tracks exact local resources stored on the component instance", () => {
+    const subscription = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { Keyboard } from "react-native";
+       class Listener extends React.Component {
+         componentDidMount() {
+           const subscription = Keyboard.addListener("show", this.handleShow);
+           this.subscription = subscription;
+         }
+         componentWillUnmount() { this.subscription.remove(); }
+         render() { return null; }
+       }`,
+    );
+    const controller = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         componentDidMount() {
+           const controller = new AbortController();
+           this.controller = controller;
+           window.addEventListener("resize", this.handleResize, { signal: controller.signal });
+         }
+         componentWillUnmount() { this.controller.abort(); }
+         render() { return null; }
+       }`,
+    );
+    const conditionalAlias = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `import { Keyboard } from "react-native";
+       class Listener extends React.Component {
+         componentDidMount() {
+           const subscription = Keyboard.addListener("show", this.handleShow);
+           if (this.keepSubscription) this.subscription = subscription;
+         }
+         componentWillUnmount() { this.subscription.remove(); }
+         render() { return null; }
+       }`,
+    );
+    expect(subscription.diagnostics).toHaveLength(0);
+    expect(controller.diagnostics).toHaveLength(0);
+    expect(conditionalAlias.diagnostics).toHaveLength(1);
+  });
+
+  it("counts registrations by executable path and repeating loops", () => {
+    const exclusiveBranches = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         componentDidMount() {
+           if (this.primary) emitter.on("change", this.handleChange);
+           else emitter.on("change", this.handleChange);
+         }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    const sequential = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         componentDidMount() {
+           emitter.on("change", this.handleChange);
+           emitter.on("change", this.handleChange);
+         }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    const repeatingLoop = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         componentDidMount() {
+           for (let index = 0; index < 3; index += 1) {
+             emitter.on("change", this.handleChange);
+           }
+         }
+         componentWillUnmount() { emitter.off("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    const repeatingLoopRemoveAll = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         componentDidMount() {
+           for (let index = 0; index < 3; index += 1) {
+             emitter.on("change", this.handleChange);
+           }
+         }
+         componentWillUnmount() { emitter.removeAllListeners("change"); }
+         render() { return null; }
+       }`,
+    );
+    const unreachableLoop = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         componentDidMount() {
+           for (; false; ) emitter.on("change", this.handleChange);
+         }
+         render() { return null; }
+       }`,
+    );
+    const unreachableHelper = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         componentDidMount() {
+           if (false) this.attach();
+         }
+         attach() { emitter.on("change", this.handleChange); }
+         render() { return null; }
+       }`,
+    );
+    const perIterationRemoval = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `class Listener extends React.Component {
+         componentDidMount() {
+           for (const item of this.items) {
+             emitter.on("change", this.handleChange);
+             emitter.off("change", this.handleChange);
+           }
+         }
+         render() { return null; }
+       }`,
+    );
+    expect(exclusiveBranches.diagnostics).toHaveLength(0);
+    expect(sequential.diagnostics).toHaveLength(1);
+    expect(repeatingLoop.diagnostics).toHaveLength(1);
+    expect(repeatingLoopRemoveAll.diagnostics).toHaveLength(0);
+    expect(unreachableLoop.diagnostics).toHaveLength(0);
+    expect(unreachableHelper.diagnostics).toHaveLength(0);
+    expect(perIterationRemoval.diagnostics).toHaveLength(0);
   });
 });

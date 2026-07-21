@@ -1,6 +1,7 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findVariableInitializer } from "./find-variable-initializer.js";
+import { getDirectUnreassignedInitializer } from "./get-direct-unreassigned-initializer.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isInsideTryStatement } from "./is-inside-try-statement.js";
@@ -43,7 +44,7 @@ export const isInsideNonRethrowingTry = (
   }
   return false;
 };
-const isDefinitelyNonThenableValue = (node: EsTreeNode): boolean => {
+export const isDefinitelyNonThenableValue = (node: EsTreeNode): boolean => {
   const inner = stripParenExpression(node);
   if (isNodeOfType(inner, "Literal")) return true;
   if (isNodeOfType(inner, "TemplateLiteral")) return true;
@@ -136,11 +137,39 @@ export const chainCarriesRejectionHandler = (node: EsTreeNode, scopes?: ScopeAna
       !isNonRejectingPromiseConstruction(result, scopes) &&
       !chainCarriesRejectionHandler(result, scopes);
     let canReject = false;
+    if (scopes && subtreeCanThrowSynchronously(resolvedCandidate, resolvedCandidate, scopes)) {
+      return false;
+    }
     walkOwnFunctionScope(resolvedCandidate, (child: EsTreeNode) => {
       if (canReject) return false;
       if (isNodeOfType(child, "ThrowStatement") || isNodeOfType(child, "AwaitExpression")) {
         canReject = true;
         return false;
+      }
+      if (isNodeOfType(child, "CallExpression")) {
+        const callee = stripParenExpression(child.callee);
+        const receiver = isNodeOfType(callee, "MemberExpression")
+          ? stripParenExpression(callee.object)
+          : null;
+        const isConsoleCall =
+          isNodeOfType(receiver, "Identifier") &&
+          receiver.name === "console" &&
+          (!scopes || scopes.isGlobalReference(receiver));
+        const localFunction =
+          scopes && isNodeOfType(callee, "Identifier")
+            ? resolveExactLocalFunction(callee, scopes)
+            : null;
+        if (
+          !isConsoleCall &&
+          !isPromiseResolveCall(child, scopes) &&
+          !chainCarriesRejectionHandler(child, scopes) &&
+          (!localFunction ||
+            !scopes ||
+            subtreeCanThrowSynchronously(localFunction, localFunction, scopes))
+        ) {
+          canReject = true;
+          return false;
+        }
       }
       if (
         isNodeOfType(child, "ReturnStatement") &&
@@ -161,6 +190,26 @@ export const chainCarriesRejectionHandler = (node: EsTreeNode, scopes?: ScopeAna
     return !canReject;
   };
   let cursor: EsTreeNode | null | undefined = stripParenExpression(node);
+  const hasPromiseLikeReceiver = (
+    candidate: EsTreeNode,
+    visitedBindingIdentifiers = new Set<EsTreeNode>(),
+  ): boolean => {
+    const strippedCandidate = stripParenExpression(candidate);
+    if (
+      isNodeOfType(strippedCandidate, "CallExpression") ||
+      isNodeOfType(strippedCandidate, "NewExpression")
+    ) {
+      return true;
+    }
+    if (!isNodeOfType(strippedCandidate, "Identifier")) return false;
+    const symbol = scopes?.symbolFor(strippedCandidate);
+    if (symbol && visitedBindingIdentifiers.has(symbol.bindingIdentifier)) return false;
+    if (symbol) visitedBindingIdentifiers.add(symbol.bindingIdentifier);
+    const initializer = symbol
+      ? getDirectUnreassignedInitializer(symbol)
+      : findVariableInitializer(strippedCandidate, strippedCandidate.name)?.initializer;
+    return Boolean(initializer && hasPromiseLikeReceiver(initializer, visitedBindingIdentifiers));
+  };
   while (cursor) {
     if (isNodeOfType(cursor, "ChainExpression")) {
       cursor = cursor.expression as EsTreeNode;
@@ -170,7 +219,11 @@ export const chainCarriesRejectionHandler = (node: EsTreeNode, scopes?: ScopeAna
       const callee: EsTreeNode = cursor.callee as EsTreeNode;
       if (isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee)) {
         const methodName = getStaticPropertyName(callee);
-        if (methodName === "catch" && isAbsorbingHandler(cursor.arguments?.[0] as EsTreeNode)) {
+        if (
+          methodName === "catch" &&
+          hasPromiseLikeReceiver(callee.object) &&
+          isAbsorbingHandler(cursor.arguments?.[0] as EsTreeNode)
+        ) {
           return true;
         }
         if (methodName === "then" && isAbsorbingHandler(cursor.arguments?.[1] as EsTreeNode)) {

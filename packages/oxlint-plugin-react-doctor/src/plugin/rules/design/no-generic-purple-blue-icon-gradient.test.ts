@@ -11,6 +11,14 @@ describe("no-generic-purple-blue-icon-gradient", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("reports Tailwind v4 angle and radial gradients", () => {
+    const result = runRule(
+      noGenericPurpleBlueIconGradient,
+      `const Brand = () => <><div className="size-8 rounded-lg bg-linear-45 from-purple-500 to-blue-500 flex" /><div className="size-8 rounded-lg bg-radial from-violet-500 to-cyan-500 grid" /><div className="size-8 rounded-lg bg-none from-purple-500 to-blue-500 flex" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("allows page gradients, large artwork, and restrained icon surfaces", () => {
     const result = runRule(
       noGenericPurpleBlueIconGradient,
@@ -43,11 +51,19 @@ describe("no-generic-purple-blue-icon-gradient", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("reports when the final utilities form the matching treatment", () => {
+  it("honors important utilities independently of class order", () => {
     const result = runRule(
       noGenericPurpleBlueIconGradient,
-      `const Icon = () => <div className="size-8 rounded-none rounded-lg bg-none bg-gradient-to-r from-red-500 from-purple-500 to-blue-500 hidden flex" />;`,
+      `const Icons = () => <><div className="size-64 !size-8 rounded-none !rounded-lg bg-none !bg-gradient-to-r from-red-500 !from-purple-500 to-blue-500 hidden !flex" /><div className="!size-8 size-64 !rounded-lg rounded-none !bg-gradient-to-r bg-none !from-purple-500 from-red-500 to-blue-500 !flex hidden" /></>;`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("abstains when important visual utilities conflict", () => {
+    const result = runRule(
+      noGenericPurpleBlueIconGradient,
+      `const Icons = () => <><div className="size-8 !rounded-lg !rounded-none bg-gradient-to-r from-purple-500 to-blue-500 flex" /><div className="size-8 rounded-lg !bg-gradient-to-r !bg-none from-purple-500 to-blue-500 flex" /><div className="size-8 rounded-lg bg-gradient-to-r !from-purple-500 !from-red-500 to-blue-500 flex" /><div className="!size-8 !size-12 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 flex" /></>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
   });
 });

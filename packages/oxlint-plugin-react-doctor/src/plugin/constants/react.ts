@@ -27,6 +27,7 @@ export const REACT_RUNTIME_MODULE_SOURCES = new Set([
 // (WebdriverIO's `useBrowser`, DI registries, codegen utilities).
 export const REACT_ECOSYSTEM_PACKAGE_NAMES = new Set([
   "next",
+  "next-themes",
   "@remix-run/react",
   "swr",
   "zustand",
@@ -36,6 +37,7 @@ export const REACT_ECOSYSTEM_PACKAGE_NAMES = new Set([
   "framer-motion",
   "@apollo/client",
   "urql",
+  "usehooks-ts",
 ]);
 
 export const LOADING_STATE_PATTERN = /^(?:isLoading|isPending)$/;
@@ -48,6 +50,10 @@ export const UNARY_LISTENER_ARGUMENT_COUNT = 1;
 export const UNARY_LISTENER_HANDLER_ARGUMENT_INDEX = 0;
 export const EVENT_LISTENER_HANDLER_ARGUMENT_INDEX = 1;
 export const WHOLE_RECEIVER_RELEASE_ARGUMENT_COUNT = 0;
+
+export const STATE_UPDATER_INITIAL_PROPERTY_WRITE_RANK = 0;
+export const STATE_UPDATER_INVOCATION_PROPERTY_WRITE_RANK = 1;
+export const STATE_UPDATER_CALL_PROPERTY_WRITE_RANK = 2;
 
 export const TRIVIAL_INITIALIZER_NAMES = new Set([
   "Boolean",

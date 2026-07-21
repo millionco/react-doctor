@@ -15,6 +15,10 @@ export const GENERATED_BUNDLE_FILE_PATTERN = /\.(iife|umd|global|min)\.m?js$/i;
 // actionable and linters conventionally exclude them.
 export const GENERATED_SOURCE_DIRECTORY_PATTERN = /(?:^|\/)__generated__\//;
 
+export const TAILWIND_POSTCSS7_COMPAT_ALIAS = "npm:@tailwindcss/postcss7-compat";
+export const TAILWIND_POSTCSS7_COMPAT_MAJOR = 2;
+export const TAILWIND_POSTCSS7_COMPAT_MINOR = 0;
+
 // Minified / generated files (e.g. a one-line `public/inject.js` bundle)
 // don't carry the `.min`/`.iife` extension we can match on, so we sniff
 // content. A file is treated as minified only when BOTH hold: it has a

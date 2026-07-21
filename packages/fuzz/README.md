@@ -45,6 +45,10 @@ that never fires is only having its early bails fuzzed.
 
 Each compatible canonical liveness fixture runs first, so the harness reaches
 a known reporting path before exploring generated and corpus-derived programs.
+Corpus seeds with a `// verdict: pass` or `// verdict: fail` header are also
+run deterministically by the smoke suite against the rule named in their
+`// rule:` header. Use `pass` for false-positive regressions and `fail` for
+confirmed true positives.
 
 Every case is reproducible from its seed; reproducers for findings are written
 to `tmp/fuzz-findings/`.

@@ -29,6 +29,22 @@ describe("no-arbitrary-px-font-size", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags supported arbitrary length forms", () => {
+    const result = runRule(
+      noArbitraryPxFontSize,
+      `const A = () => <><p className="text-[length:13px]">x</p><p className="text-[.5PX]">x</p></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("uses the authoritative className around JSX spreads and duplicates", () => {
+    const result = runRule(
+      noArbitraryPxFontSize,
+      `const A = ({ props }) => <><p {...props} className="text-[13px]">x</p><p className="text-[13px]" {...props}>x</p><p className="text-[13px]" className="text-sm">x</p><p className="text-sm" className="text-[13px]">x</p></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("does NOT flag `text-[0.8125rem]`", () => {
     const code = `const A = () => <p className="text-[0.8125rem]">x</p>;`;
     const result = runRule(noArbitraryPxFontSize, code);
@@ -44,6 +60,14 @@ describe("no-arbitrary-px-font-size", () => {
   it("does NOT flag pixel borders/outlines (`border-[1px]`)", () => {
     const code = `const A = () => <div className="border-[1px] outline-[2px]" />;`;
     const result = runRule(noArbitraryPxFontSize, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag zero because CSS zero is unit-invariant", () => {
+    const result = runRule(
+      noArbitraryPxFontSize,
+      `const A = () => <><p className="text-[0px]">x</p><p className="text-[0.0PX]">x</p></>;`,
+    );
     expect(result.diagnostics).toHaveLength(0);
   });
 });

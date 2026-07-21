@@ -19,6 +19,14 @@ describe("no-image-hover-transform", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags negative hover transforms while allowing negative neutral resets", () => {
+    const result = runRule(
+      noImageHoverTransform,
+      `const Card = () => <><img className="hover:-rotate-6" /><img className="group-hover:-scale-x-100" /><img className="hover:-rotate-0" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("flags stacked responsive and color-mode hover variants", () => {
     const result = runRule(
       noImageHoverTransform,
@@ -41,6 +49,30 @@ describe("no-image-hover-transform", () => {
       `const Card = () => <img src="/photo.jpg" alt="Landscape" className="hover:opacity-90" />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat arbitrary-value fragments as hover transforms", () => {
+    const result = runRule(
+      noImageHoverTransform,
+      `const Card = () => <img src="/photo.jpg" alt="Landscape" className="[--effect:x group-hover:scale-105 fallback]" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps conflicting hover transform utilities and important neutral resets quiet", () => {
+    const result = runRule(
+      noImageHoverTransform,
+      `const Card = () => <><img src="/a.jpg" alt="A" className="hover:scale-105 hover:scale-110" /><img src="/b.jpg" alt="B" className="hover:rotate-3 hover:!rotate-0" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("resolves hover transforms within their exact variant scope", () => {
+    const result = runRule(
+      noImageHoverTransform,
+      `const Card = () => <img src="/a.jpg" alt="A" className="group-hover/card:scale-105 group-hover/other:!scale-100" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not infer custom Image component behavior", () => {

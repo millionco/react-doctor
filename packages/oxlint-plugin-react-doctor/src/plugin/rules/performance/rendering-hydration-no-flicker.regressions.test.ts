@@ -564,6 +564,224 @@ describe("performance/rendering-hydration-no-flicker — regressions", () => {
     `);
   });
 
+  it("does not report mount state that cannot affect first-paint output", () => {
+    for (const source of [
+      `const UserDetails = ({ userDetails }) => {
+        const [user, setUser] = useState([]);
+        useEffect(() => {
+          setUser(userDetails);
+        }, []);
+        return <div>User details</div>;
+      };`,
+      `const Sender = () => {
+        const [initialized, setInitialized] = useState(false);
+        useEffect(() => {
+          setInitialized(true);
+        }, []);
+        useEffect(() => {
+          const handleOutsideClick = () => {
+            if (initialized) handleBlur();
+          };
+          document.addEventListener("click", handleOutsideClick);
+          return () => document.removeEventListener("click", handleOutsideClick);
+        }, [initialized]);
+        return <textarea />;
+      };`,
+      `const Listener = () => {
+        const [initialized, setInitialized] = useState(false);
+        useEffect(() => {
+          setInitialized(true);
+        }, []);
+        useEffect(() => {
+          const handleMessage = () => {
+            if (!initialized) return;
+            processMessage();
+          };
+          window.addEventListener("message", handleMessage);
+          return () => window.removeEventListener("message", handleMessage);
+        }, [initialized]);
+        return <main>Messages</main>;
+      };`,
+      `const Logger = ({ enabled }) => {
+        const [initialized, setInitialized] = useState(false);
+        useEffect(() => {
+          setInitialized(true);
+        }, []);
+        if (enabled) {
+          console.log(initialized);
+          return <main>Enabled</main>;
+        }
+        return <main>Disabled</main>;
+      };`,
+      `const Main = () => {
+        const [socket, setSocket] = useState();
+        const connect = () => {
+          if (socket) socket.on("connect", handleConnect);
+        };
+        useEffect(() => {
+          setSocket(createSocket());
+        }, []);
+        connect();
+        return <main>Redis dashboard</main>;
+      };`,
+      `const TargetSquare = () => {
+        const [canvasElement, setCanvasElement] = useState(null);
+        useEffect(() => {
+          setCanvasElement(document.getElementById("canvas"));
+        }, []);
+        useDraggable({ element: canvasElement });
+        return <div />;
+      };`,
+    ]) {
+      expectPass(`import { useEffect, useState } from "react"; ${source}`);
+    }
+  });
+
+  it("does not report a mount setter that repeats the initial snapshot", () => {
+    expectPass(`
+      import { useEffect, useState } from "react";
+      const ResourcePicker = () => {
+        const [resolvedPath, setResolvedPath] = useState(null);
+        useEffect(() => {
+          setResolvedPath(null);
+        }, []);
+        return <output>{resolvedPath}</output>;
+      };
+    `);
+
+    for (const initializer of ["() => false", "() => { return false; }"]) {
+      expectPass(`
+        import { useEffect, useState } from "react";
+        const StablePanel = () => {
+          const [isVisible, setIsVisible] = useState(${initializer});
+          useEffect(() => {
+            setIsVisible(false);
+          }, []);
+          return isVisible ? <Panel /> : null;
+        };
+      `);
+    }
+
+    expectFail(`
+      import { useEffect, useState } from "react";
+      const DeferredPanel = () => {
+        const [isVisible, setIsVisible] = useState(() => false);
+        useEffect(() => {
+          setIsVisible(true);
+        }, []);
+        return isVisible ? <Panel /> : null;
+      };
+    `);
+  });
+
+  it("keeps potentially changed snapshots and whitespace-preserving output in scope", () => {
+    expectFail(`
+      import { useEffect, useState } from "react";
+      const InstallationLogs = () => {
+        const [logs, setLogs] = useState("\\n");
+        useEffect(() => {
+          setLogs("");
+        }, []);
+        return <pre>{logs}</pre>;
+      };
+    `);
+
+    expectFail(`
+      import { useEffect, useState } from "react";
+      const useStoredValue = () => {
+        const readValue = () => localStorage.getItem("value") ?? "";
+        const [storedValue, setStoredValue] = useState(readValue);
+        useEffect(() => {
+          setStoredValue(readValue());
+        }, []);
+        return storedValue;
+      };
+    `);
+  });
+
+  it("does not treat mount-only animation configuration as first-paint output", () => {
+    expectPass(`
+      import { useEffect, useState } from "react";
+      const Gallery = () => {
+        const [mounted, setMounted] = useState(false);
+        useEffect(() => {
+          setMounted(true);
+        }, []);
+        return <Animated.View entering={mounted ? FadeIn : undefined} />;
+      };
+    `);
+
+    expectPass(`
+      import { useEffect, useState } from "react";
+      const UploadList = () => {
+        const [motionAppear, setMotionAppear] = useState(false);
+        useEffect(() => {
+          setMotionAppear(true);
+        }, []);
+        const motionConfig = { motionAppear };
+        return <MotionList {...motionConfig} />;
+      };
+    `);
+
+    for (const animationProperty of ["entering", "exiting"]) {
+      expectFail(`
+        import { useEffect, useState } from "react";
+        const CustomPanel = () => {
+          const [mounted, setMounted] = useState(false);
+          useEffect(() => {
+            setMounted(true);
+          }, []);
+          return <Panel ${animationProperty}={mounted ? FadeIn : undefined} />;
+        };
+      `);
+    }
+  });
+
+  it("does not treat state-derived id and aria values as visible output", () => {
+    for (const output of [
+      `<input aria-describedby={accessibilityId} />`,
+      `<div id={accessibilityId} />`,
+    ]) {
+      expectPass(`
+        import { useEffect, useState } from "react";
+        const AccessibleControl = () => {
+          const [mounted, setMounted] = useState(false);
+          const generatedId = mounted ? "mounted-description" : "server-description";
+          const accessibilityId = generatedId;
+          useEffect(() => {
+            setMounted(true);
+          }, []);
+          return ${output};
+        };
+      `);
+    }
+
+    expectFail(`
+      import { useEffect, useState } from "react";
+      const VisibleControl = () => {
+        const [mounted, setMounted] = useState(false);
+        const status = mounted ? "Mounted" : "Server";
+        useEffect(() => {
+          setMounted(true);
+        }, []);
+        return <output aria-label={status}>{status}</output>;
+      };
+    `);
+  });
+
+  it("tracks visible state through returned map callbacks", () => {
+    expectFail(`
+      import { useEffect, useState } from "react";
+      const Calendar = () => {
+        const [events, setEvents] = useState([]);
+        useEffect(() => {
+          setEvents([{ id: "conference", title: "Conference" }]);
+        }, []);
+        return <ul>{events.map((event) => <li key={event.id}>{event.title}</li>)}</ul>;
+      };
+    `);
+  });
+
   it("still flags the classic setIsClient(true) mount flag", () => {
     expectFail(`
       const useClient = () => {
@@ -572,6 +790,117 @@ describe("performance/rendering-hydration-no-flicker — regressions", () => {
           setIsClient(true);
         }, []);
         return isClient;
+      };
+    `);
+  });
+
+  it("resolves aliased React effect imports without trusting shadowed or non-React bindings", () => {
+    expectFail(`
+      import { useEffect as useMountEffect, useState } from "react";
+      const ClientPanel = () => {
+        const [mounted, setMounted] = useState(false);
+        useMountEffect(() => {
+          setMounted(true);
+        }, []);
+        return mounted ? <Panel /> : null;
+      };
+    `);
+
+    expectPass(`
+      import { useEffect as useMountEffect, useState } from "react";
+      const ClientPanel = ({ useMountEffect }) => {
+        const [mounted, setMounted] = useState(false);
+        useMountEffect(() => {
+          setMounted(true);
+        }, []);
+        return mounted ? <Panel /> : null;
+      };
+    `);
+
+    expectPass(`
+      import { useEffect as useMountEffect } from "effect-library";
+      import { useState } from "react";
+      const ClientPanel = () => {
+        const [mounted, setMounted] = useState(false);
+        useMountEffect(() => {
+          setMounted(true);
+        }, []);
+        return mounted ? <Panel /> : null;
+      };
+    `);
+  });
+
+  it("distinguishes arbitrary current properties from React ref measurements", () => {
+    expectFail(`
+      import { useEffect, useState } from "react";
+      const CurrentSetting = ({ settings }) => {
+        const [currentSetting, setCurrentSetting] = useState("");
+        useEffect(() => {
+          setCurrentSetting(settings.current);
+        }, []);
+        return <output>{currentSetting}</output>;
+      };
+    `);
+
+    expectPass(`
+      import { useEffect, useRef, useState } from "react";
+      const MeasuredPanel = () => {
+        const panelRef = useRef(null);
+        const [panelWidth, setPanelWidth] = useState(0);
+        useEffect(() => {
+          setPanelWidth(panelRef.current?.getBoundingClientRect().width ?? 0);
+        }, []);
+        return <output>{panelWidth}</output>;
+      };
+    `);
+
+    expectPass(`
+      import { useEffect, useState } from "react";
+      const CurrentSetting = ({ settings }) => {
+        const [currentSetting, setCurrentSetting] = useState("");
+        const eventProps = { onClick: () => console.log(currentSetting) };
+        useEffect(() => {
+          setCurrentSetting(settings.current);
+        }, []);
+        return <button {...eventProps}>Read</button>;
+      };
+    `);
+
+    expectPass(`
+      import { useEffect, useState } from "react";
+      const StablePanel = ({ settings }) => {
+        const [currentSetting, setCurrentSetting] = useState("");
+        let visibleSetting = currentSetting;
+        visibleSetting = "stable";
+        useEffect(() => {
+          setCurrentSetting(settings.current);
+        }, []);
+        return <output>{visibleSetting}</output>;
+      };
+    `);
+
+    for (const initializer of ["", "undefined"]) {
+      expectPass(`
+        import { useEffect, useState } from "react";
+        const EmptySetting = () => {
+          const [currentSetting, setCurrentSetting] = useState(${initializer});
+          useEffect(() => {
+            setCurrentSetting(undefined);
+          }, []);
+          return <output>{currentSetting}</output>;
+        };
+      `);
+    }
+
+    expectPass(`
+      import { useEffect, useRef, useState } from "react";
+      const Listener = () => {
+        const listenerRef = useRef(null);
+        const [listener, setListener] = useState(null);
+        useEffect(() => {
+          setListener(listenerRef.current);
+        }, []);
+        return <main>Listener ready</main>;
       };
     `);
   });

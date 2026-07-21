@@ -72,3 +72,12 @@ export const getReactDoctorStringArraySetting = (
 // project lacks the capability).
 export const hasCapability = (settings: RuleContext["settings"], capability: Capability): boolean =>
   getReactDoctorStringArraySetting(settings, "capabilities").includes(capability);
+
+export const hasCapabilityOrUnspecified = (
+  settings: RuleContext["settings"],
+  capability: Capability,
+): boolean => {
+  const bag = readReactDoctorSettingsBag(settings);
+  if (!bag || readOwnPropertyValue(bag, "capabilities") === undefined) return true;
+  return hasCapability(settings, capability);
+};

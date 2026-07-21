@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { NEXTJS_SOURCE_FILE_EXTENSION_GROUP } from "../constants/nextjs.js";
+import { getReactRouterFrameworkModuleKind } from "./get-react-router-framework-module-kind.js";
 import { getProjectRelativeFilename } from "./get-project-relative-filename.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { isInProjectDirectory } from "./is-in-project-directory.js";
@@ -20,10 +21,6 @@ const EXPO_ROUTE_FILE_PATTERN = new RegExp(
 const TANSTACK_ROUTE_FILE_PATTERN = new RegExp(
   `(?:^__root|\\.lazy)\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
 );
-const REACT_ROUTER_FILE_PATTERN = new RegExp(
-  `^(root|entry\\.client|entry\\.server)\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
-);
-
 const isInNextDirectory = (
   context: Pick<RuleContext, "filename" | "settings">,
   directoryPath: "app" | "pages",
@@ -69,7 +66,7 @@ export const isFrameworkRouteOrSpecialFilename = (
   }
   if (runtime === "tanstack") return TANSTACK_ROUTE_FILE_PATTERN.test(basename);
   if (runtime === "react-router" || runtime === "remix") {
-    return REACT_ROUTER_FILE_PATTERN.test(basename) || isInProjectDirectory(context, "app/routes");
+    return getReactRouterFrameworkModuleKind(context) !== null;
   }
   return false;
 };

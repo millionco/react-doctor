@@ -1,19 +1,102 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
-import { getStringFromClassNameAttr } from "../design/utils/get-string-from-class-name-attr.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { doesTailwindVariantScopeCover } from "../../utils/does-tailwind-variant-scope-cover.js";
+import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
+import { getTailwindTransitionAllState } from "../../utils/get-tailwind-transition-all-state.js";
+import { hasImportantTailwindClassNameToken } from "../../utils/has-important-tailwind-class-name-token.js";
+import { hasCapabilityOrUnspecified } from "../../utils/get-react-doctor-setting.js";
+import { parseTailwindClassNameToken } from "../../utils/parse-tailwind-class-name-token.js";
+import { resolveTailwindBooleanPropertyState } from "../../utils/resolve-tailwind-boolean-property-state.js";
+import { resolveTailwindTransitionDurationState } from "../../utils/resolve-tailwind-transition-duration-state.js";
+import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
+import { getEffectiveCssTransitionEvidence } from "../design/utils/get-effective-css-transition-evidence.js";
+import { getInlineStyleExpression } from "../design/utils/get-inline-style-expression.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
-// `transition-all` as a whole Tailwind token (the segment after any
-// variant prefixes), so `hover:transition-all` / `md:transition-all` match
-// but compound classes like `transition-all-custom` do not. Tailwind's bare
-// `transition` maps to a curated property list (color/bg/border/opacity/
-// shadow/transform/filter) — NOT `all` — so it is intentionally not flagged.
-const hasTransitionAllClass = (classNameValue: string): boolean =>
-  getClassNameTokens(classNameValue).some((token) => token === "transition-all");
+const ALL_TRANSITION_PROPERTY_NAMES = new Set(["all"]);
 
-const TRANSITION_ALL_VALUE_PATTERN = /(?:^|,)\s*all(?:\s|,|$)/i;
+const isTransitionDurationSetter = (utility: string): boolean =>
+  !utility.startsWith("[transition-property:") &&
+  (utility.startsWith("duration-") ||
+    utility.startsWith("[transition-duration:") ||
+    utility.startsWith("[transition:") ||
+    getTailwindTransitionAllState(utility) !== null);
+
+const hasTransitionAllClass = (classNameValue: string): boolean => {
+  const parsedTokens = splitTailwindClassName(classNameValue).map(parseTailwindClassNameToken);
+  return parsedTokens.some(
+    (parsedToken) =>
+      resolveTailwindBooleanPropertyState(
+        parsedTokens,
+        parsedToken.variants,
+        getTailwindTransitionAllState,
+      ) === true &&
+      resolveTailwindTransitionDurationState(
+        parsedTokens,
+        parsedToken.variants,
+        ALL_TRANSITION_PROPERTY_NAMES,
+      ) === true,
+  );
+};
+
+const hasMergedTransitionAll = (
+  classNameValue: string,
+  styleAttribute: EsTreeNodeOfType<"JSXAttribute"> | null,
+  reportNode: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const parsedTokens = splitTailwindClassName(classNameValue).map(parseTailwindClassNameToken);
+  const styleExpression = styleAttribute ? getInlineStyleExpression(styleAttribute, scopes) : null;
+  if (styleAttribute && !styleExpression) return false;
+  const variantScopes = [[], ...parsedTokens.map((parsedToken) => parsedToken.variants)];
+  return variantScopes.some((variantScope) => {
+    const hasApplicablePropertySetter = parsedTokens.some(
+      (parsedToken) =>
+        getTailwindTransitionAllState(parsedToken.utility) !== null &&
+        doesTailwindVariantScopeCover(parsedToken.variants, variantScope),
+    );
+    const transitionAllState = resolveTailwindBooleanPropertyState(
+      parsedTokens,
+      variantScope,
+      getTailwindTransitionAllState,
+    );
+    const durationState = resolveTailwindTransitionDurationState(
+      parsedTokens,
+      variantScope,
+      ALL_TRANSITION_PROPERTY_NAMES,
+    );
+    const hasImportantTransitionProperty = hasImportantTailwindClassNameToken(
+      parsedTokens,
+      variantScope,
+      (utility) => getTailwindTransitionAllState(utility) !== null,
+    );
+    const hasImportantTransitionDuration = hasImportantTailwindClassNameToken(
+      parsedTokens,
+      variantScope,
+      isTransitionDurationSetter,
+    );
+    const transitionEvidence = getEffectiveCssTransitionEvidence(
+      styleExpression?.properties,
+      [
+        {
+          hasPositiveDuration: durationState === true,
+          propertyName:
+            !hasApplicablePropertySetter || transitionAllState === true ? "all" : "opacity",
+          sourceNode: reportNode,
+        },
+      ],
+      {
+        duration: hasImportantTransitionDuration,
+        property: hasImportantTransitionProperty,
+      },
+    );
+    return transitionEvidence?.some(
+      (transition) => transition.propertyName === "all" && transition.durationMilliseconds > 0,
+    );
+  });
+};
 
 const TAILWIND_MESSAGE =
   "Your users see janky animation because `transition-all` animates every property that changes, including expensive layout ones and instant ones like focus rings. Name the properties: `transition-colors`, `transition-opacity`, or `transition-transform`.";
@@ -26,37 +109,27 @@ export const noTransitionAll = defineRule({
   recommendation:
     'List the specific properties: `transition: "opacity 200ms, transform 200ms"`. In Tailwind, use `transition-colors`, `transition-opacity`, or `transition-transform`',
   create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "style") return;
-      if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
-
-      const expression = node.value.expression;
-      if (!isNodeOfType(expression, "ObjectExpression")) return;
-
-      for (const property of expression.properties ?? []) {
-        if (!isNodeOfType(property, "Property")) continue;
-        const key = isNodeOfType(property.key, "Identifier") ? property.key.name : null;
-        if (key !== "transition" && key !== "transitionProperty") continue;
-
-        if (
-          isNodeOfType(property.value, "Literal") &&
-          typeof property.value.value === "string" &&
-          TRANSITION_ALL_VALUE_PATTERN.test(property.value.value.trim())
-        ) {
-          context.report({
-            node: property,
-            message:
-              'This can stutter because transition: "all" animates every property, even slow layout ones, so list only the properties you actually change',
-          });
-        }
-      }
-    },
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const classNameValue = getStringFromClassNameAttr(node);
-      if (!classNameValue) return;
-      if (hasTransitionAllClass(classNameValue)) {
-        context.report({ node, message: TAILWIND_MESSAGE });
-      }
+      const hasTailwind = hasCapabilityOrUnspecified(context.settings, "tailwind");
+      const classNameAttribute = getAuthoritativeJsxAttribute(node.attributes, "className");
+      const classNameValues =
+        hasTailwind && classNameAttribute
+          ? getJsxPropStaticStringValues(classNameAttribute, context.scopes)
+          : [""];
+      if (!classNameValues) return;
+      const styleAttribute = getAuthoritativeJsxAttribute(node.attributes, "style");
+      if (
+        !classNameValues.some((classNameValue) =>
+          hasMergedTransitionAll(classNameValue, styleAttribute, node, context.scopes),
+        )
+      )
+        return;
+      context.report({
+        node,
+        message: classNameValues.some(hasTransitionAllClass)
+          ? TAILWIND_MESSAGE
+          : 'This can stutter because transition: "all" animates every property, even slow layout ones, so list only the properties you actually change',
+      });
     },
   }),
 });

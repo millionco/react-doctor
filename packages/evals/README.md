@@ -1,6 +1,6 @@
 # React Doctor evals
 
-Run a pushed React Doctor revision against 2,000 pinned repositories with Daytona. The evaluator builds one snapshot, scans one representative project root per repository, reuses each sandbox for several repositories, and writes newline-delimited JSON (NDJSON) results.
+Run a pushed React Doctor revision against 2,000 pinned repositories with Daytona. The evaluator builds one snapshot, scans one representative project root per repository, reuses each sandbox for several repositories, and writes newline-delimited JSON (NDJSON) results. Every rule known to the evaluated revision is enabled at error severity in the requested root and every nested package. Inline disable directives and existing lint configs are ignored so parity runs expose detector changes across the full registry.
 
 Set `DAYTONA_API_KEY`, then run:
 
@@ -29,9 +29,9 @@ nr --silent eval \
 
 Text entries use each repository's default branch. Output records replace `HEAD` with the resolved commit hash, so a baseline NDJSON file can pin the candidate run.
 
-Candidate runs reject baseline records that still contain `HEAD`. Evaluation concurrency defaults to 200 batches, with a target of 10 repositories per sandbox. Sandbox creation is capped at 20 to avoid overloading Daytona, so a 2,000-repository run uses about 200 sandboxes instead of provisioning 2,000. Batches are balanced by project-root count so large monorepos do not collect on one worker.
+Candidate runs accept only complete, schema-valid baseline records pinned to full commit hashes. Evaluation concurrency defaults to 200 batches, with a target of 10 repositories per sandbox. Sandbox creation is capped at 20 to avoid overloading Daytona, so a 2,000-repository run uses about 200 sandboxes instead of provisioning 2,000. Batches are balanced by project-root count so large monorepos do not collect on one worker.
 
-The default 30-minute wall-clock budget stops initial-pass commands after 18 minutes, the first retry after 23 minutes, and the final retry after 28 minutes. The last two minutes remain reserved for deleting sandboxes and the snapshot. Override the corpus size, batch size, concurrency, or duration for smaller investigations. After the initial pass, the evaluator retries failed projects at concurrency 50, then 10 in isolated sandboxes. Valid partial reports remain in the corpus. Execution failures, including work that exceeds the budget, make the command exit non-zero.
+The default 30-minute wall-clock budget stops initial-pass commands after 18 minutes, the first retry after 23 minutes, and the final retry after 28 minutes. The last two minutes remain reserved for deleting sandboxes and the snapshot. Override the corpus size, batch size, concurrency, or duration for smaller investigations. After the initial pass, the evaluator retries failed or incomplete projects at concurrency 50, then 10 in isolated sandboxes. Malformed and incomplete reports make the command exit non-zero instead of presenting partial coverage as a completed evaluation.
 
 Progress and completion metrics use stderr. Results use stdout. The evaluator deletes every repository sandbox and the build snapshot after the run.
 

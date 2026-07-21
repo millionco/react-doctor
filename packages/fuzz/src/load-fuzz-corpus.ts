@@ -7,6 +7,10 @@ export interface FuzzCorpusEntry {
   code: string;
 }
 
+export interface FuzzCorpusLoadOptions {
+  maximumFiles?: number;
+}
+
 const CORPUS_FILE_PATTERN = /\.(tsx|jsx)$/;
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
 
@@ -48,7 +52,11 @@ const collectCorpusFilePaths = (rootDirectory: string, budget: number): string[]
 // subdirectories so a multi-repo corpus directory contributes files from
 // EVERY repo, not just the alphabetically first one. Deterministic for a
 // fixed directory state.
-export const loadFuzzCorpus = (corpusDirectory: string): FuzzCorpusEntry[] => {
+export const loadFuzzCorpus = (
+  corpusDirectory: string,
+  options: FuzzCorpusLoadOptions = {},
+): FuzzCorpusEntry[] => {
+  const maximumFiles = options.maximumFiles ?? MAX_CORPUS_FILES;
   let topLevelNames: string[];
   try {
     topLevelNames = fs.readdirSync(corpusDirectory).sort();
@@ -67,7 +75,7 @@ export const loadFuzzCorpus = (corpusDirectory: string): FuzzCorpusEntry[] => {
     }
     if (stats.isDirectory()) {
       if (SKIPPED_DIRECTORY_NAMES.has(name)) continue;
-      buckets.push(collectCorpusFilePaths(fullPath, MAX_CORPUS_FILES));
+      buckets.push(collectCorpusFilePaths(fullPath, maximumFiles));
       continue;
     }
     if (CORPUS_FILE_PATTERN.test(name) && stats.size <= MAX_CORPUS_FILE_BYTES && stats.size > 0) {
@@ -77,10 +85,10 @@ export const loadFuzzCorpus = (corpusDirectory: string): FuzzCorpusEntry[] => {
   if (looseFiles.length > 0) buckets.push(looseFiles);
 
   const selectedPaths: string[] = [];
-  for (let round = 0; selectedPaths.length < MAX_CORPUS_FILES; round += 1) {
+  for (let round = 0; selectedPaths.length < maximumFiles; round += 1) {
     let didSelect = false;
     for (const bucket of buckets) {
-      if (selectedPaths.length >= MAX_CORPUS_FILES) break;
+      if (selectedPaths.length >= maximumFiles) break;
       const candidate = bucket[round];
       if (candidate === undefined) continue;
       selectedPaths.push(candidate);

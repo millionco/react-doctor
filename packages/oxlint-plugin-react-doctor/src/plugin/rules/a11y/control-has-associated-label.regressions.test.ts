@@ -155,6 +155,15 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports a ref-wired file input whose arbitrary value contains a hidden fragment", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Demo = ({ fileInputRef }) => <input ref={fileInputRef} type="file" className="[--state:x hidden y]" />;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a ref-wired file input with an expression-container string className", () => {
     const result = runRule(
       controlHasAssociatedLabel,

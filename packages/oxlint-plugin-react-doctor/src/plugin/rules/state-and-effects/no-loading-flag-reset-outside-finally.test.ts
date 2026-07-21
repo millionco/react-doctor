@@ -342,6 +342,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `const loadAll = async () => {
+        const requests = [];
         setLoading(true);
         const results = await Promise.allSettled(requests);
         setItems(results);
@@ -816,7 +817,7 @@ const SaveButton = () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: useCallback-wrapped same-file helper whose awaits are all .catch-guarded", () => {
+  it("flags a guarded same-file helper with opaque synchronous calls", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `const TasteTab = () => {
@@ -839,7 +840,7 @@ const SaveButton = () => {
       };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags an await of a same-file helper whose own await is unguarded", () => {
@@ -873,7 +874,7 @@ const SaveButton = () => {
     expect(functionHelper.diagnostics).toHaveLength(1);
   });
 
-  it("stays quiet: same-file helper awaiting Promise.all over an array populated with dispatch pushes", () => {
+  it("flags Promise-array setup performed through an opaque iterator call", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `const ShareInviteDialog = (props) => {
@@ -895,7 +896,28 @@ const SaveButton = () => {
       };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["opaque member call", `risk.run();`],
+    ["setter-like call", `setDangerous();`],
+    ["dispatch-like call", `dangerousDispatch();`],
+    ["invalid queueMicrotask call", `queueMicrotask();`],
+  ])("flags a guarded helper containing an unproven %s", (_shape, statement) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const guarded = async () => {
+        ${statement}
+        try { await request(); } catch {}
+      };
+      const load = async () => {
+        setLoading(true);
+        await guarded();
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags Promise.all over an array populated with unguarded request pushes", () => {
@@ -1378,6 +1400,55 @@ describe("no-loading-flag-reset-outside-finally cross-file helpers", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("still flags a non-async resolve-only helper imported through a directory barrel", () => {
+    writeFile(
+      "src/util/helpers.ts",
+      `export const timeout = (milliseconds) =>
+        new Promise((resolve) => setTimeout(resolve, milliseconds));`,
+    );
+    writeFile("src/util/index.ts", `export { timeout } from "./helpers";`);
+    const source = `import { timeout } from "./util";
+      const Demo = () => {
+        const process = async () => {
+          setProcessing(true);
+          await timeout(2_000);
+          setProcessing(false);
+        };
+      };`;
+    const consumerFilename = writeFile("src/Demo.tsx", source);
+    const result = runRule(noLoadingFlagResetOutsideFinally, source, {
+      filename: consumerFilename,
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["throws synchronously", `export const wait = () => { throw new Error("failed"); };`],
+    ["calls an unknown function", `export const wait = () => request();`],
+    [
+      "calls an unknown function before returning",
+      `export const wait = () => { recordAttempt(); return Promise.resolve(); };`,
+    ],
+    ["returns a rejected promise", `export const wait = () => Promise.reject(new Error());`],
+  ])("still flags when a non-async imported helper %s", (_description, helperSource) => {
+    writeFile("src/wait.ts", helperSource);
+    const source = `import { wait } from "./wait";
+      const Demo = () => {
+        const process = async () => {
+          setProcessing(true);
+          await wait();
+          setProcessing(false);
+        };
+      };`;
+    const consumerFilename = writeFile("src/Demo.tsx", source);
+    const result = runRule(noLoadingFlagResetOutsideFinally, source, {
+      filename: consumerFilename,
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("resolves a foreign const initializer wrapping useCallback", () => {
     writeFile(
       "src/utils/file-upload.ts",
@@ -1510,6 +1581,173 @@ describe("no-loading-flag-reset-outside-finally cross-file helpers", () => {
       filename: consumerFilename,
     });
     expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a reassigned imported helper", () => {
+    writeFile(
+      "src/wait.ts",
+      `export let wait = async () => { try { await safe(); } catch {} };
+      wait = async () => risky();`,
+    );
+    const consumer = `import { wait } from "./wait";
+      const run = async () => {
+        setLoading(true);
+        await wait();
+        setLoading(false);
+      };`;
+    const consumerFilename = writeFile("src/consumer.tsx", consumer);
+    const result = runRule(noLoadingFlagResetOutsideFinally, consumer, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust reassigned exported declarations or useCallback bindings", () => {
+    writeFile(
+      "src/function-helper.ts",
+      `export async function wait() { try { await safe(); } catch {} }
+      wait = async () => risky();`,
+    );
+    writeFile(
+      "src/callback-helper.ts",
+      `import { useCallback } from "react";
+      export let wait = useCallback(async () => { try { await safe(); } catch {} }, []);
+      wait = async () => risky();`,
+    );
+    const functionConsumer = `import { wait } from "./function-helper";
+      const run = async () => { setLoading(true); await wait(); setLoading(false); };`;
+    const callbackConsumer = `import { wait } from "./callback-helper";
+      const run = async () => { setLoading(true); await wait(); setLoading(false); };`;
+    const functionFilename = writeFile("src/function-consumer.tsx", functionConsumer);
+    const callbackFilename = writeFile("src/callback-consumer.tsx", callbackConsumer);
+    const functionResult = runRule(noLoadingFlagResetOutsideFinally, functionConsumer, {
+      filename: functionFilename,
+    });
+    const callbackResult = runRule(noLoadingFlagResetOutsideFinally, callbackConsumer, {
+      filename: callbackFilename,
+    });
+    expect(functionResult.diagnostics).toHaveLength(1);
+    expect(callbackResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a mutable function returned by an imported hook", () => {
+    writeFile(
+      "src/use-media-annotations.ts",
+      `export const useMediaAnnotations = () => {
+        const safe = async () => { try { await persist(); } catch {} };
+        let annotate = safe;
+        annotate = async () => persist();
+        return { annotate };
+      };`,
+    );
+    const consumerFilename = writeFile("src/Editor.tsx", hookConsumerCode);
+    const result = runRule(noLoadingFlagResetOutsideFinally, hookConsumerCode, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a mutable imported-hook consumer binding", () => {
+    writeFile(
+      "src/use-safe-action.ts",
+      `export const useSafeAction = () => {
+        const save = async () => { try { await persist(); } catch {} };
+        return { save };
+      };`,
+    );
+    const consumer = `import { useSafeAction } from "./use-safe-action";
+      const run = async () => {
+        let { save } = useSafeAction();
+        save = risky;
+        setLoading(true);
+        await save();
+        setLoading(false);
+      };`;
+    const consumerFilename = writeFile("src/mutable-consumer.tsx", consumer);
+    const result = runRule(noLoadingFlagResetOutsideFinally, consumer, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires foreign useCallback and useMemo wrappers to come from React", () => {
+    writeFile(
+      "src/shadowed-callback.ts",
+      `const useCallback = (callback) => risky(callback);
+      export const save = useCallback(async () => { try { await persist(); } catch {} });`,
+    );
+    writeFile(
+      "src/shadowed-memo.ts",
+      `const useMemo = (factory) => risky(factory);
+      export const useSafeAction = () => {
+        const save = async () => { try { await persist(); } catch {} };
+        return useMemo(() => ({ save }));
+      };`,
+    );
+    const callbackConsumer = `import { save } from "./shadowed-callback";
+      const run = async () => { setLoading(true); await save(); setLoading(false); };`;
+    const memoConsumer = `import { useSafeAction } from "./shadowed-memo";
+      const run = async () => {
+        const { save } = useSafeAction();
+        setLoading(true);
+        await save();
+        setLoading(false);
+      };`;
+    const callbackFilename = writeFile("src/shadowed-callback-consumer.tsx", callbackConsumer);
+    const memoFilename = writeFile("src/shadowed-memo-consumer.tsx", memoConsumer);
+    expect(
+      runRule(noLoadingFlagResetOutsideFinally, callbackConsumer, {
+        filename: callbackFilename,
+      }).diagnostics,
+    ).toHaveLength(1);
+    expect(
+      runRule(noLoadingFlagResetOutsideFinally, memoConsumer, {
+        filename: memoFilename,
+      }).diagnostics,
+    ).toHaveLength(1);
+  });
+
+  it("does not let a shadowed Promise make a foreign helper rejection-proof", () => {
+    writeFile(
+      "src/wait.ts",
+      `const Promise = { resolve: () => risky() };
+      export const wait = async () => Promise.resolve();`,
+    );
+    const consumer = `import { wait } from "./wait";
+      const run = async () => {
+        setLoading(true);
+        await wait();
+        setLoading(false);
+      };`;
+    const consumerFilename = writeFile("src/consumer.tsx", consumer);
+    const result = runRule(noLoadingFlagResetOutsideFinally, consumer, {
+      filename: consumerFilename,
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("budgets cross-file parsing by module rather than exported name", () => {
+    writeFile(
+      "src/waits.ts",
+      `export const waitOne = async () => { try { await first(); } catch {} };
+      export const waitTwo = async () => { try { await second(); } catch {} };
+      export const waitThree = async () => { try { await third(); } catch {} };
+      export const waitFour = async () => { try { await fourth(); } catch {} };`,
+    );
+    const consumer = `import { waitOne, waitTwo, waitThree, waitFour } from "./waits";
+      const run = async () => {
+        setLoading(true);
+        await waitOne();
+        await waitTwo();
+        await waitThree();
+        await waitFour();
+        setLoading(false);
+      };`;
+    const consumerFilename = writeFile("src/consumer.tsx", consumer);
+    const result = runRule(noLoadingFlagResetOutsideFinally, consumer, {
+      filename: consumerFilename,
+    });
     expect(result.diagnostics).toHaveLength(0);
   });
 });
@@ -1801,12 +2039,173 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     );
     const iterableAllSettledInput = runRule(
       noLoadingFlagResetOutsideFinally,
-      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await Promise.allSettled({ *[Symbol.iterator]() { yield fetch("/value"); } }); setLoading(false); }; };`,
+      `import { useState } from "react"; const C = () => { const [, setLoading] = useState(false); const run = async () => { setLoading(true); await Promise.allSettled({ *[Symbol.iterator]() { yield 1; } }); setLoading(false); }; };`,
     );
     expect(executorCall.diagnostics).toHaveLength(1);
     expect(asyncHelperCall.diagnostics).toHaveLength(1);
     expect(invalidAllSettledInput.diagnostics).toHaveLength(1);
     expect(iterableAllSettledInput.diagnostics).toHaveLength(0);
+  });
+
+  it("flags Promise.allSettled when producing the iterable can throw synchronously", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const Component = () => {
+        const [, setLoading] = useState(false);
+        const run = async () => {
+          setLoading(true);
+          await Promise.allSettled(getTasks());
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["opaque call", "getTask()"],
+    ["member read", "taskSource.current"],
+    ["iterable spread", "...tasks"],
+  ])("flags Promise.allSettled when an array element %s can throw", (_shape, element) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await Promise.allSettled([${element}]);
+        setLoading(false);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags Promise.allSettled when an unresolved iterable binding can hide a throwing iterator", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await Promise.allSettled(tasks);
+        setLoading(false);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags Promise.allSettled when its custom iterator throws", () => {
+    const throwingIterator = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const Component = () => {
+        const [, setLoading] = useState(false);
+        const run = async () => {
+          setLoading(true);
+          await Promise.allSettled({
+            [Symbol.iterator]() {
+              throw new Error("iterator failed");
+            },
+          });
+          setLoading(false);
+        };
+      };`,
+    );
+    const opaqueIterator = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await Promise.allSettled({
+          *[Symbol.iterator]() {
+            prepareIteration();
+            yield 1;
+          },
+        });
+        setLoading(false);
+      };`,
+    );
+    const getterIterator = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const source = { get value() { throw new Error("getter failed"); } };
+      const run = async () => {
+        setLoading(true);
+        await Promise.allSettled({
+          *[Symbol.iterator]() {
+            yield source.value;
+          },
+        });
+        setLoading(false);
+      };`,
+    );
+    expect(throwingIterator.parseErrors).toEqual([]);
+    expect(throwingIterator.diagnostics).toHaveLength(1);
+    expect(opaqueIterator.diagnostics).toHaveLength(1);
+    expect(getterIterator.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps Promise.allSettled safe for precomputed iterables and non-throwing custom iterators", () => {
+    const precomputedIterable = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        const tasks = [];
+        setLoading(true);
+        await Promise.allSettled(tasks);
+        setLoading(false);
+      };`,
+    );
+    const customIterable = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await Promise.allSettled({
+          *[Symbol.iterator]() {
+            yield 1;
+          },
+        });
+        setLoading(false);
+      };`,
+    );
+    expect(precomputedIterable.diagnostics).toHaveLength(0);
+    expect(customIterable.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps Promise.allSettled safe for an exact non-throwing local array factory", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const getTasks = () => [];
+      const run = async () => {
+        setLoading(true);
+        await Promise.allSettled(getTasks());
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps Promise.allSettled safe for literal array elements and stable references", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const stableTask = 1;
+      const run = async () => {
+        setLoading(true);
+        await Promise.allSettled([, null, "ready", 42, stableTask]);
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a local array factory whose elements require opaque evaluation", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const getTasks = () => [getTask()];
+      const run = async () => {
+        setLoading(true);
+        await Promise.allSettled(getTasks());
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("recognizes an unconditional call to a known-throwing catch helper", () => {
@@ -1864,7 +2263,7 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
   it("keeps catch-path analysis bounded across many conditional branches", () => {
     const conditionalStatements = Array.from(
       { length: STRESS_SITE_COUNT },
-      (_, conditionIndex) => `if (conditions[${conditionIndex}]) report(${conditionIndex});`,
+      (_, conditionIndex) => `if (conditions[${conditionIndex}]) status = ${conditionIndex};`,
     ).join("\n");
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -1881,5 +2280,305 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("groups stable setter aliases by binding identity", () => {
+    const aliasedReset = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const clear = setLoading;
+        const run = async () => {
+          setLoading(true);
+          await load();
+          clear(false);
+        };
+      };`,
+    );
+    const aliasedStart = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const start = setLoading;
+        const run = async () => {
+          start(true);
+          await load();
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(aliasedReset.diagnostics).toHaveLength(1);
+    expect(aliasedStart.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a helper clearing another setter binding protect the hook setter", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const clear = () => setLoading(false);
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const run = async () => {
+          setLoading(true);
+          try { await load(); } catch { clear(); return; }
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust sync helpers or unguarded sync calls inside async helpers", () => {
+    const syncHelper = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const wait = () => { mayThrow(); return Promise.resolve(); };
+      const run = async () => {
+        setLoading(true);
+        await wait();
+        setLoading(false);
+      };`,
+    );
+    const asyncHelper = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const wait = async () => {
+        try { await fetch("/safe"); } catch {}
+        mayThrow();
+      };
+      const run = async () => {
+        setLoading(true);
+        await wait();
+        setLoading(false);
+      };`,
+    );
+    expect(syncHelper.diagnostics).toHaveLength(1);
+    expect(asyncHelper.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks aliases and indexed writes to Promise.all arrays", () => {
+    const aliasPush = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        const pending = requests;
+        pending.push(fetch("/bad"));
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    const indexedWrite = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        requests[0] = fetch("/bad");
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    expect(aliasPush.diagnostics).toHaveLength(1);
+    expect(indexedWrite.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores deferred and shadowed Promise array mutations", () => {
+    const deferredMutation = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        const mutateLater = () => requests.push(fetch("/bad"));
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    const shadowedMutation = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        const mutateLater = () => {
+          const requests = [];
+          requests.push(fetch("/bad"));
+        };
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    const mutationAfterAwait = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const requests = [];
+        await Promise.all(requests);
+        requests.push(fetch("/later"));
+        setLoading(false);
+      };`,
+    );
+    expect(deferredMutation.diagnostics).toHaveLength(0);
+    expect(shadowedMutation.diagnostics).toHaveLength(0);
+    expect(mutationAfterAwait.diagnostics).toHaveLength(0);
+  });
+
+  it("proves stable class helpers and rejects mutable class helpers", () => {
+    const stable = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `class Loader {
+        async safe() { try { await fetch("/value"); } catch {} }
+        async run() { setLoading(true); await this.safe(); setLoading(false); }
+      }`,
+    );
+    const mutable = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `class Loader {
+        async safe() { try { await fetch("/value"); } catch {} }
+        replace() { this.safe = risky; }
+        async run() { setLoading(true); await this.safe(); setLoading(false); }
+      }`,
+    );
+    expect(stable.diagnostics).toHaveLength(0);
+    expect(mutable.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts definitely non-thenable Promise.all values, holes, bindings, and indexed writes", () => {
+    const literalValues = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const value = 1;
+        await Promise.all([, null, "ready", value]);
+        setLoading(false);
+      };`,
+    );
+    const indexedValues = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        const value = 1;
+        const requests = [];
+        requests[0] = value;
+        await Promise.all(requests);
+        setLoading(false);
+      };`,
+    );
+    expect(literalValues.diagnostics).toHaveLength(0);
+    expect(indexedValues.diagnostics).toHaveLength(0);
+  });
+
+  it.each(["42", "null", `"ready"`, "`ready`", "[]", "({})"])(
+    "accepts a direct await of the definitely non-thenable value %s",
+    (awaitedValue) => {
+      const result = runRule(
+        noLoadingFlagResetOutsideFinally,
+        `const run = async () => {
+          setLoading(true);
+          await ${awaitedValue};
+          setLoading(false);
+        };`,
+      );
+      expect(result.diagnostics).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ["constructor", `new Risky();`],
+    ["known getter", `const value = source.result;`],
+    ["mutated array push", `requests.push = risky; requests.push(Promise.resolve());`],
+    ["opaque array callback", `[].forEach(() => risky());`],
+  ])("rejects a helper containing a synchronous %s", (_shape, statement) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const source = { get result() { throw new Error("failed"); } };
+      const safe = async () => {
+        const requests = [];
+        ${statement}
+        try { await fetch("/value"); } catch {}
+      };
+      const run = async () => { setLoading(true); await safe(); setLoading(false); };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows a proven React state setter inside a guarded helper", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const Component = () => {
+        const [, setValue] = useState(null);
+        const safe = async () => {
+          setValue("ready");
+          try { await fetch("/value"); } catch {}
+        };
+        const run = async () => { setLoading(true); await safe(); setLoading(false); };
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not accept .catch on an arbitrary non-promise object", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const cache = { catch: () => null };
+      const run = async () => {
+        setLoading(true);
+        await cache.catch(() => null);
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a synchronously throwing catch handler as rejection-absorbing", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const fail = () => { throw new Error("failed"); };
+      const run = async () => {
+        setLoading(true);
+        await fetch("/value").catch(() => { fail(); return null; });
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["catch", `fetch("/value").catch(() => { mayThrow(); return null; })`],
+    [
+      "then rejection handler",
+      `fetch("/value").then(undefined, () => { mayThrow(); return null; })`,
+    ],
+  ])("does not trust an opaque call in a %s", (_shape, awaitedExpression) => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => {
+        setLoading(true);
+        await ${awaitedExpression};
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("distinguishes opaque calls before and after catch and finally resets", () => {
+    const catchBefore = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => { setLoading(true); try { await load(); } catch { risky(); setLoading(false); } };`,
+    );
+    const catchAfter = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => { setLoading(true); try { await load(); } catch { setLoading(false); risky(); } };`,
+    );
+    const finallyBefore = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => { setLoading(true); try { await load(); } finally { risky(); setLoading(false); } };`,
+    );
+    const finallyAfter = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const run = async () => { setLoading(true); try { await load(); } finally { setLoading(false); risky(); } };`,
+    );
+    expect(catchBefore.diagnostics).toHaveLength(1);
+    expect(catchAfter.diagnostics).toHaveLength(0);
+    expect(finallyBefore.diagnostics).toHaveLength(1);
+    expect(finallyAfter.diagnostics).toHaveLength(0);
   });
 });

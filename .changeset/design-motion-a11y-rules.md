@@ -74,7 +74,6 @@ Add `react-doctor design [directory]` for a focused UI audit. The command runs t
 - **`empty-table-header`** — opt-in detection for native or ARIA table headers with no accessible content or explicit name.
 - **`html-xml-lang-mismatch`** — opt-in detection for conflicting static base languages in root `lang` and `xml:lang` declarations.
 - **`no-duplicate-static-id-reference`** — opt-in static-tree detection for duplicated literal IDs used by labels or ARIA ID references.
-- **`no-multiple-labels-for-control`** — opt-in static-tree detection for multiple explicit labels pointing to the same literal control ID.
 - **`iframe-title-unique`** — opt-in static-tree detection for frames whose normalized literal titles are duplicated.
 - **`no-server-side-image-map`** — opt-in detection for statically enabled server-side image maps.
 - **`no-presentation-role-conflict`** — opt-in detection for presentational elements that remain focusable or expose global ARIA state.

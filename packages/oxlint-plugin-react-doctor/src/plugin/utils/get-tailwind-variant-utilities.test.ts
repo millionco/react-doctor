@@ -23,4 +23,13 @@ describe("getTailwindVariantUtilities", () => {
       ),
     ).toEqual(["bg-[url(https://example.com/a:b)]"]);
   });
+
+  it("preserves whitespace inside arbitrary values", () => {
+    expect(
+      getTailwindVariantUtilities(
+        `hover:content-['hello world'] focus:grid-cols-[minmax(0, 1fr)_auto]`,
+        "hover",
+      ),
+    ).toEqual(["content-['hello world']"]);
+  });
 });

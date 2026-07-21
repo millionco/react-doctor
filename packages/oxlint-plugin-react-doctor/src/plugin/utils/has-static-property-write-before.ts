@@ -4,6 +4,7 @@ import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { getExecutionReferenceOffset } from "./get-execution-reference-offset.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
+import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
@@ -32,26 +33,6 @@ const CONDITIONAL_EXECUTION_NODE_TYPES: ReadonlySet<string> = new Set([
   "TryStatement",
   "WhileStatement",
 ]);
-
-const getResolvedStaticPropertyName = (
-  memberExpression: EsTreeNode,
-  scopes: ScopeAnalysis,
-): string | null => {
-  if (!isNodeOfType(memberExpression, "MemberExpression")) return null;
-  const directPropertyName = getStaticPropertyName(memberExpression);
-  if (directPropertyName || !memberExpression.computed) return directPropertyName;
-  const property = stripParenExpression(memberExpression.property);
-  if (!isNodeOfType(property, "Identifier")) return null;
-  const propertySymbol = resolveConstIdentifierAlias(property, scopes);
-  const initializer = propertySymbol?.initializer
-    ? stripParenExpression(propertySymbol.initializer)
-    : null;
-  return initializer &&
-    isNodeOfType(initializer, "Literal") &&
-    typeof initializer.value === "string"
-    ? initializer.value
-    : null;
-};
 
 const collectScopeSymbols = (
   scope: ScopeAnalysis["rootScope"],
@@ -397,6 +378,26 @@ const isStableStaticPropertyReference = (identifier: EsTreeNode): boolean => {
   );
 };
 
+const isNonMutatingStaticPropertyReference = (identifier: EsTreeNode): boolean => {
+  if (isDirectAliasSourceReference(identifier)) return true;
+  const identifierRoot = findTransparentExpressionRoot(identifier);
+  const memberExpression = identifierRoot.parent;
+  if (
+    !memberExpression ||
+    !isNodeOfType(memberExpression, "MemberExpression") ||
+    stripParenExpression(memberExpression.object) !== identifierRoot
+  ) {
+    return false;
+  }
+  const memberRoot = findTransparentExpressionRoot(memberExpression);
+  const memberParent = memberRoot.parent;
+  return !(
+    memberParent &&
+    isNodeOfType(memberParent, "CallExpression") &&
+    memberParent.callee === memberRoot
+  );
+};
+
 export const hasPossibleStaticPropertyWrite = (
   identifier: EsTreeNode,
   propertyName: string,
@@ -454,6 +455,25 @@ export const hasPossibleStaticPropertyMutationOrEscape = (
   if (hasPossibleStaticPropertyWrite(identifier, propertyName, scopes)) return true;
   return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
     symbol.references.some((reference) => !isStableStaticPropertyReference(reference.identifier)),
+  );
+};
+
+export const hasPossibleStaticPropertyMutationOrEscapeBefore = (
+  identifier: EsTreeNode,
+  propertyName: string,
+  referenceNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(identifier, "Identifier")) return false;
+  if (hasPossibleStaticPropertyWriteBefore(identifier, propertyName, referenceNode, scopes)) {
+    return true;
+  }
+  return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
+    symbol.references.some(
+      (reference) =>
+        !isNonMutatingStaticPropertyReference(reference.identifier) &&
+        canExecuteBefore(reference.identifier, referenceNode, scopes),
+    ),
   );
 };
 

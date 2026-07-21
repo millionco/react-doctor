@@ -2,10 +2,10 @@ import { TAILWIND_DISPLAY_TOKENS } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { splitTailwindClassName } from "../../utils/split-tailwind-class-name.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// Host elements whose default `display` is already `block`.
 const BLOCK_DEFAULT_TAGS = new Set([
   "div",
   "p",
@@ -36,7 +36,6 @@ const BLOCK_DEFAULT_TAGS = new Set([
   "h6",
 ]);
 
-// Host elements whose default `display` is already `inline`.
 const INLINE_DEFAULT_TAGS = new Set([
   "span",
   "a",
@@ -64,7 +63,8 @@ const INLINE_DEFAULT_TAGS = new Set([
 export const noRedundantDisplayClass = defineRule({
   id: "no-redundant-display-class",
   title: "Redundant display utility",
-  tags: ["design", "test-noise"],
+  tags: ["design", "test-noise", "react-jsx-only"],
+  requires: ["tailwind"],
   severity: "warn",
   recommendation:
     "Drop the display class that matches the element's default (`block` on a `<div>`, `inline` on a `<span>`). It is pure noise; keep only display changes like `flex`, `grid`, or `hidden`.",
@@ -74,12 +74,12 @@ export const noRedundantDisplayClass = defineRule({
       const tagName = node.name.name;
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      const classNameTokens = classNameValue.split(/\s+/);
+      const classNameTokens = splitTailwindClassName(classNameValue);
       const displayTokens = new Set<string>();
       for (const classNameToken of classNameTokens) {
-        const tokenWithoutImportantModifier = classNameToken.replace(/^!|!$/g, "");
-        if (TAILWIND_DISPLAY_TOKENS.has(tokenWithoutImportantModifier)) {
-          displayTokens.add(tokenWithoutImportantModifier);
+        if (classNameToken.startsWith("!") || classNameToken.endsWith("!")) continue;
+        if (TAILWIND_DISPLAY_TOKENS.has(classNameToken)) {
+          displayTokens.add(classNameToken);
         }
       }
       if (displayTokens.size !== 1) return;

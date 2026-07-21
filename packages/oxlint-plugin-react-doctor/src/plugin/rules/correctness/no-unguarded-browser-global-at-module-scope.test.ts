@@ -277,6 +277,33 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet in public assets that are served directly instead of imported during SSR", () => {
+    const relativeResult = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `window.VditorI18n = { save: "Save" };`,
+      { filename: "public/vditor/en_US.js" },
+    );
+    const monorepoResult = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `window.analyticsQueue = window.analyticsQueue || [];`,
+      { filename: "/repo/apps/landing/public/static/analytics.js" },
+    );
+    expect(relativeResult.parseErrors).toEqual([]);
+    expect(monorepoResult.parseErrors).toEqual([]);
+    expect(relativeResult.diagnostics).toHaveLength(0);
+    expect(monorepoResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a public-prefixed source directory as a static public asset directory", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const language = navigator.language;`,
+      { filename: "/repo/src/public-api/runtime.js" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat an unrelated cache-dir path as Gatsby browser runtime", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,

@@ -74,10 +74,34 @@ describe("no-svg-currentcolor-with-fill-class", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT flag arbitrary currentColor or none paint values", () => {
+    const code = `const A = () => <><svg fill="currentColor" className="fill-[currentColor]" /><svg stroke="currentColor" className="stroke-[NONE]" /><svg fill="currentColor" className="fill-[#ef4444]" /></>;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag a `fill-*` class with no currentColor attribute", () => {
     const code = `const A = () => <svg className="fill-zinc-400" />;`;
     const result = runRule(noSvgCurrentcolorWithFillClass, code);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT treat arbitrary-value fragments as paint utilities", () => {
+    const code = `const A = () => <svg fill="currentColor" className="[--paint:x fill-red-500 y]" />;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps conflicting paint utilities and important non-color resets quiet", () => {
+    const code = `const A = () => <><svg fill="currentColor" className="fill-red-500 fill-blue-500" /><svg stroke="currentColor" className="stroke-green-500 !stroke-none" /></>;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports an important paint color over a normal reset", () => {
+    const code = `const A = () => <svg fill="currentColor" className="!fill-red-500 fill-none" />;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it('does NOT flag `fill="currentColor"` with no color class', () => {

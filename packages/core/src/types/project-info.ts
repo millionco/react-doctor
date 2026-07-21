@@ -163,6 +163,7 @@ export interface PackageJson {
   name?: string;
   version?: string;
   main?: string;
+  babel?: unknown;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;

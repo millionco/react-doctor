@@ -43,6 +43,11 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
 });
 
 const viteWebProject = buildProject({ framework: "vite", hasReactNativeWorkspace: false });
+const tailwindViteWebProject = buildProject({
+  framework: "vite",
+  hasReactNativeWorkspace: false,
+  tailwindVersion: "^4.0.0",
+});
 
 describe("createOxlintConfig settings", () => {
   it("enables the Valtio rule only when the project declares Valtio", () => {
@@ -313,7 +318,7 @@ describe("createOxlintConfig settings", () => {
   it("runs only an explicitly included tag and activates that tag's opt-in rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
-      project: viteWebProject,
+      project: tailwindViteWebProject,
       includedTags: new Set(["design"]),
       includeTagDefaults: true,
     });
@@ -326,7 +331,7 @@ describe("createOxlintConfig settings", () => {
   it("preserves an explicit off override inside an included tag", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
-      project: viteWebProject,
+      project: tailwindViteWebProject,
       includedTags: new Set(["design"]),
       includeTagDefaults: true,
       severityControls: {

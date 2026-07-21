@@ -26,6 +26,45 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("follows const aliases of an awaited Response", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() {
+         const response = await fetch(endpoint);
+         const firstAlias = response as Response;
+         const secondAlias = firstAlias;
+         return secondAlias.json();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes a status guard through a const Response alias", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() {
+         const response = await fetch(endpoint);
+         const checkedResponse = response;
+         if (!checkedResponse.ok) throw new Error(checkedResponse.statusText);
+         return response.json();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not follow a mutable Response alias", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() {
+         const response = await fetch(endpoint);
+         let currentResponse = response;
+         currentResponse = await loadFallbackResponse();
+         return currentResponse.json();
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags type-wrapped response body consumers without treating the response as escaped", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,

@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { exportAllAddsRuntimeValues } from "../../utils/export-all-adds-runtime-values.js";
+import { getReactRouterFrameworkModuleKind } from "../../utils/get-react-router-framework-module-kind.js";
 import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-route-or-special-filename.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -548,14 +549,23 @@ export const onlyExportComponents = defineRule({
     const filename = normalizeFilename(context.filename ?? "");
     const fastRefreshStatus = getFastRefreshFileStatus(context);
     if (!fastRefreshStatus.isActive) return {};
-    if (isFrameworkRouteOrSpecialFilename(context, fastRefreshStatus.runtime)) return {};
+    const reactRouterModuleKind =
+      fastRefreshStatus.runtime === "react-router" || fastRefreshStatus.runtime === "remix"
+        ? getReactRouterFrameworkModuleKind(context)
+        : null;
+    const isReactRouterRouteModule =
+      reactRouterModuleKind === "route" || reactRouterModuleKind === "root";
+    const isFrameworkFileExempt =
+      !isReactRouterRouteModule &&
+      isFrameworkRouteOrSpecialFilename(context, fastRefreshStatus.runtime);
+    if (isFrameworkFileExempt) return {};
     if (!isFileNameAllowed(filename, settings.checkJS)) return {};
     const allowedRouteExportNames =
       fastRefreshStatus.runtime === "next"
         ? NEXT_ALLOWED_EXPORT_NAMES
         : fastRefreshStatus.runtime === "expo"
           ? EXPO_ALLOWED_EXPORT_NAMES
-          : fastRefreshStatus.runtime === "react-router" || fastRefreshStatus.runtime === "remix"
+          : isReactRouterRouteModule
             ? REACT_ROUTER_ALLOWED_EXPORT_NAMES
             : EMPTY_NAME_SET;
     const routeFactoryMemberNames =

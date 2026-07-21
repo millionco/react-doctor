@@ -665,10 +665,11 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a useCallback dependency because this rule does not infer hook stability", () => {
+  it("does not flag an effect whose only dependency is a React useCallback with empty deps", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
-      `const Dashboard = () => {
+      `import { useCallback, useEffect, useState } from "react";
+const Dashboard = () => {
   const loadStats = useCallback(async () => statsApi.fetchSummary(), []);
   const [stats, setStats] = useState(null);
   useEffect(() => {
@@ -680,7 +681,7 @@ describe("no-set-state-after-await-in-effect", () => {
   }, [loadStats]);
 };`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags a custom dispatch hook dependency without an exact React identity proof", () => {

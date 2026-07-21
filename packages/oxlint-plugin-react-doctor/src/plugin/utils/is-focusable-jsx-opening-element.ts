@@ -4,6 +4,7 @@ import { getJsxPropStringValue } from "./get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "./has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { parseJsxValue } from "./parse-jsx-value.js";
+import { splitTailwindClassName } from "./split-tailwind-class-name.js";
 
 const ALWAYS_FOCUSABLE_TAGS: ReadonlySet<string> = new Set([
   "button",
@@ -98,7 +99,9 @@ const hasHidingClassName = (openingElement: EsTreeNodeOfType<"JSXOpeningElement"
   }
   return Boolean(
     classNameText &&
-    classNameText.split(/\s+/).some((token) => token === "hidden" || token.endsWith("-hidden")),
+    splitTailwindClassName(classNameText).some(
+      (token) => token === "hidden" || token.endsWith("-hidden"),
+    ),
   );
 };
 

@@ -29,11 +29,25 @@ export const SANDBOX_CREATE_CONCURRENCY = 20;
 
 export const EVALUATION_SCHEMA_VERSION = 1;
 export const REACT_DOCTOR_REPORT_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([1, 2, 3]);
+export const REACT_DOCTOR_BASELINE_REPORT_SCHEMA_VERSION = 2;
+export const REACT_DOCTOR_COMPLETE_REPORT_SCHEMA_VERSION = 3;
 export const REACT_DOCTOR_REPORT_MODES: ReadonlySet<string> = new Set([
   "full",
   "diff",
   "staged",
   "baseline",
+]);
+export const REACT_DOCTOR_REPORT_FRAMEWORKS: ReadonlySet<string> = new Set([
+  "nextjs",
+  "vite",
+  "cra",
+  "remix",
+  "gatsby",
+  "expo",
+  "react-native",
+  "tanstack-start",
+  "preact",
+  "unknown",
 ]);
 export const SUCCESS_EXIT_CODE = 0;
 export const FAILURE_EXIT_CODE = 1;
@@ -67,8 +81,94 @@ git -C /workspace/target checkout -q --detach FETCH_HEAD`;
 
 export const RESOLVE_TARGET_REPOSITORY_REF_COMMAND = "git -C /workspace/target rev-parse HEAD";
 
-export const SCAN_COMMAND = `node /workspace/react-doctor/packages/react-doctor/bin/react-doctor.js \
+export const MATERIALIZE_ALL_RULES_CONFIG_COMMAND = `node --input-type=module <<'REACT_DOCTOR_EVAL_CONFIG'
+import { randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import {
+  REACT_COMPILER_RULES,
+  REACT_DOCTOR_RULES,
+} from "/workspace/react-doctor/packages/oxlint-plugin-react-doctor/dist/index.js";
+
+const ruleKeys = [
+  ...REACT_DOCTOR_RULES.map((registryEntry) => registryEntry.key),
+  ...Object.keys(REACT_COMPILER_RULES),
+];
+const rules = Object.fromEntries(ruleKeys.map((ruleKey) => [ruleKey, "error"]));
+const config = {
+  adoptExistingLintConfig: false,
+  respectInlineDisables: false,
+  rules,
+  warnings: true,
+};
+const configContents = "export default " + JSON.stringify(config) + ";\\n";
+const CONFIG_FILE_MODE = 0o600;
+const targetCheckoutDirectory = fs.realpathSync("/workspace/target");
+const targetRootDirectory = path.join(
+  targetCheckoutDirectory,
+  process.env.TARGET_ROOT_DIRECTORY ?? ".",
+);
+const targetRootStats = fs.lstatSync(targetRootDirectory);
+const resolvedTargetRootDirectory = fs.realpathSync(targetRootDirectory);
+const targetRootRelativePath = path.relative(
+  targetCheckoutDirectory,
+  resolvedTargetRootDirectory,
+);
+if (
+  !targetRootStats.isDirectory() ||
+  targetRootRelativePath === ".." ||
+  targetRootRelativePath.startsWith(".." + path.sep) ||
+  path.isAbsolute(targetRootRelativePath)
+) {
+  throw new Error("Target root must be a real directory inside the target checkout");
+}
+const pendingDirectories = [resolvedTargetRootDirectory];
+const configuredDirectories = new Set([resolvedTargetRootDirectory]);
+
+while (pendingDirectories.length > 0) {
+  const currentDirectory = pendingDirectories.pop();
+  for (const entry of fs.readdirSync(currentDirectory, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === ".git" || entry.name === "node_modules") continue;
+    const childDirectory = path.join(currentDirectory, entry.name);
+    pendingDirectories.push(childDirectory);
+    if (fs.existsSync(path.join(childDirectory, "package.json"))) {
+      configuredDirectories.add(childDirectory);
+    }
+  }
+}
+
+for (const configuredDirectory of configuredDirectories) {
+  const resolvedConfiguredDirectory = fs.realpathSync(configuredDirectory);
+  const configuredDirectoryRelativePath = path.relative(
+    resolvedTargetRootDirectory,
+    resolvedConfiguredDirectory,
+  );
+  if (
+    configuredDirectoryRelativePath === ".." ||
+    configuredDirectoryRelativePath.startsWith(".." + path.sep) ||
+    path.isAbsolute(configuredDirectoryRelativePath)
+  ) {
+    throw new Error("Config directory escaped the target root");
+  }
+  const configPath = path.join(resolvedConfiguredDirectory, "doctor.config.ts");
+  const temporaryConfigPath = path.join(
+    resolvedConfiguredDirectory,
+    ".doctor.config.ts." + process.pid + "." + randomUUID(),
+  );
+  try {
+    fs.writeFileSync(temporaryConfigPath, configContents, { flag: "wx", mode: CONFIG_FILE_MODE });
+    fs.renameSync(temporaryConfigPath, configPath);
+  } finally {
+    fs.rmSync(temporaryConfigPath, { force: true });
+  }
+}
+REACT_DOCTOR_EVAL_CONFIG`;
+
+export const SCAN_COMMAND = `set -eu
+${MATERIALIZE_ALL_RULES_CONFIG_COMMAND}
+node /workspace/react-doctor/packages/react-doctor/bin/react-doctor.js \
   --json \
+  --blocking none \
   --diff false \
   --no-dead-code \
   --no-supply-chain \

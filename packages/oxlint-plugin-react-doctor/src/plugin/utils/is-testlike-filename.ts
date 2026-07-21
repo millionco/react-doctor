@@ -225,7 +225,15 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   return lastResult;
 };
 
-const computeIsTestlikeFilename = (rawFilename: string): boolean => {
+export const isTestlikeFilenameIgnoringPathSegments = (
+  rawFilename: string | undefined,
+  ignoredPathSegments: ReadonlySet<string>,
+): boolean => (rawFilename ? computeIsTestlikeFilename(rawFilename, ignoredPathSegments) : false);
+
+const computeIsTestlikeFilename = (
+  rawFilename: string,
+  ignoredPathSegments: ReadonlySet<string> = new Set(),
+): boolean => {
   const filename = rawFilename.replaceAll("\\", "/");
   const lastSlash = filename.lastIndexOf("/");
   const basename = lastSlash === -1 ? filename : filename.slice(lastSlash + 1);
@@ -241,6 +249,7 @@ const computeIsTestlikeFilename = (rawFilename: string): boolean => {
   // slash-prefixed `/.dumi/` segment.
   const rootedFilename = filename.startsWith("/") ? filename : `/${filename}`;
   for (const dotDirectorySegment of DOT_PREFIXED_NON_PRODUCTION_PATH_SEGMENTS) {
+    if (ignoredPathSegments.has(dotDirectorySegment)) continue;
     if (rootedFilename.includes(dotDirectorySegment)) return true;
   }
   // The PATH-segment check scopes itself to "below the source root":
@@ -256,6 +265,7 @@ const computeIsTestlikeFilename = (rawFilename: string): boolean => {
   // path, before the source-root cut hides them.
   const scopedFilename = sliceBelowSourceRoot(filename);
   for (const segment of NON_PRODUCTION_PATH_SEGMENTS) {
+    if (ignoredPathSegments.has(segment)) continue;
     const haystack = segment.startsWith("/.") ? filename : scopedFilename;
     if (haystack.includes(segment)) return true;
   }

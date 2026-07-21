@@ -21,6 +21,49 @@ const makeTemporaryDirectory = async (): Promise<string> => {
   return directory;
 };
 
+const buildCompleteLegacyReport = (diagnosticCount = 0) => {
+  const diagnostics = Array.from({ length: diagnosticCount }, (_, diagnosticIndex) => ({
+    filePath: `src/file-${diagnosticIndex}.tsx`,
+    line: diagnosticIndex + 1,
+    column: 1,
+    plugin: "react-doctor",
+    rule: "example",
+    severity: "warning",
+    message: "Example diagnostic",
+    help: "Fix the example.",
+    category: "Correctness",
+  }));
+  return {
+    schemaVersion: 1,
+    version: "0.8.1",
+    ok: true,
+    directory: "/workspace/target",
+    mode: "full",
+    diff: null,
+    projects: [
+      {
+        directory: "/workspace/target",
+        project: {},
+        diagnostics,
+        score: null,
+        skippedChecks: [],
+        elapsedMilliseconds: 1,
+      },
+    ],
+    diagnostics,
+    summary: {
+      errorCount: 0,
+      warningCount: diagnosticCount,
+      affectedFileCount: diagnosticCount,
+      totalDiagnosticCount: diagnosticCount,
+      score: null,
+      scoreLabel: null,
+    },
+    elapsedMilliseconds: 1,
+    error: null,
+  };
+};
+
 describe("loadCorpusRepositories", () => {
   it("keeps the default corpus at the selected repository count", async () => {
     const repositories = await loadCorpusRepositories(["./repositories.json"]);
@@ -128,7 +171,7 @@ describe("loadCorpusRepositories", () => {
           ref: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           rootDir: ".",
         },
-        report: {},
+        report: buildCompleteLegacyReport(),
       })}\n`,
     );
 
@@ -140,6 +183,38 @@ describe("loadCorpusRepositories", () => {
         rootDir: ".",
       },
     ]);
+  });
+
+  it("streams multiple resolved repositories from evaluation NDJSON", async () => {
+    const directory = await makeTemporaryDirectory();
+    const resultsPath = Path.join(directory, "baseline.ndjson");
+    const records = [
+      {
+        schemaVersion: 1,
+        repository: {
+          org: "example",
+          name: "app",
+          ref: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          rootDir: ".",
+        },
+        report: buildCompleteLegacyReport(1_000),
+      },
+      {
+        schemaVersion: 1,
+        repository: {
+          org: "example",
+          name: "other",
+          ref: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          rootDir: "packages/web",
+        },
+        report: buildCompleteLegacyReport(),
+      },
+    ];
+    await writeFile(resultsPath, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`);
+
+    await expect(loadCorpusRepositories([resultsPath])).resolves.toEqual(
+      records.map((record) => record.repository),
+    );
   });
 
   it("rejects unpinned repositories from evaluation NDJSON", async () => {
@@ -156,6 +231,33 @@ describe("loadCorpusRepositories", () => {
 
     await expect(loadCorpusRepositories([resultsPath])).rejects.toThrow(
       "contains an unpinned eval result",
+    );
+  });
+
+  it("rejects incomplete reports from evaluation NDJSON", async () => {
+    const directory = await makeTemporaryDirectory();
+    const resultsPath = Path.join(directory, "baseline.ndjson");
+    const completeReport = buildCompleteLegacyReport();
+    const report = {
+      ...completeReport,
+      projects: [{ ...completeReport.projects[0], skippedChecks: ["lint"] }],
+    };
+    await writeFile(
+      resultsPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        repository: {
+          org: "example",
+          name: "app",
+          ref: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          rootDir: ".",
+        },
+        report,
+      })}\n`,
+    );
+
+    await expect(loadCorpusRepositories([resultsPath])).rejects.toThrow(
+      "contains an incomplete or invalid eval result",
     );
   });
 });

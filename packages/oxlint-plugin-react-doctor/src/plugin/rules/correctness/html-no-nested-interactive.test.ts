@@ -91,6 +91,36 @@ describe("html-no-nested-interactive", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("uses the first valid ARIA role token case-insensitively", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Menu = () => <><div role="unknown button"><input /></div><div role="UNKNOWN BUTTON"><a href="/details">Details</a></div><div role="unknown region"><button type="button">Independent action</button></div></>;`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("preserves native semantics when every explicit role token is invalid", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Menu = () => <button role="unknown future-role"><input /></button>;`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("honors source order around static and dynamic role spreads", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Menu = ({ props }) => <><div {...props} role="unknown button"><input /></div><div role="button" {...props}><input /></div><div role="region" {...{ className: "landmark" }}><button type="button">Independent action</button></div></>;`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not infer a presentational-child role from a dynamic override", () => {
     const result = runRule(
       htmlNoNestedInteractive,
@@ -116,6 +146,41 @@ describe("html-no-nested-interactive", () => {
     );
 
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a CSS-hidden button revealed on hover inside a button", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Card = () => (
+        <button type="button" className="group">
+          Open
+          <button type="button" className="hidden group-hover:block">Delete</button>
+        </button>
+      );`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a disabled button inside a button", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Card = () => <button type="button"><button type="button" disabled>Delete</button></button>;`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("leaves a hidden button inside a presentational ARIA role alone", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const Graphic = () => <div role="img"><button type="button" hidden>Hidden metadata</button></div>;`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("does not flag adjacent siblings", () => {

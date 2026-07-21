@@ -608,6 +608,33 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("tailwind:4")).toBe(false);
   });
 
+  it("does not enable Tailwind version gates from digits in npm alias package names", () => {
+    for (const tailwindVersion of [
+      "npm:@tailwindcss/postcss7-compat@^2.2.17",
+      "npm:@tailwindcss/postcss7-compat",
+      "npm:@tailwindcss/postcss7-compat@latest",
+      "npm:@tailwindcss/postcss7-compat@next",
+      "npm:@tailwindcss/postcss7-compat@*",
+    ]) {
+      const capabilities = buildCapabilities({
+        ...baseProject,
+        tailwindVersion,
+      });
+      expect(capabilities.has("tailwind")).toBe(true);
+      expect(capabilities.has("tailwind:3.4")).toBe(false);
+      expect(capabilities.has("tailwind:4")).toBe(false);
+    }
+  });
+
+  it("does not enable Tailwind 3.4 for ranges that explicitly cap the version below it", () => {
+    for (const tailwindVersion of ["<3.4", "<=3.3.99"]) {
+      const capabilities = buildCapabilities({ ...baseProject, tailwindVersion });
+      expect(capabilities.has("tailwind")).toBe(true);
+      expect(capabilities.has("tailwind:3.4")).toBe(false);
+      expect(capabilities.has("tailwind:4")).toBe(false);
+    }
+  });
+
   it("stays optimistic for `tailwind:3.4` but withholds `tailwind:4` when the version is unparseable", () => {
     const capabilities = buildCapabilities({ ...baseProject, tailwindVersion: "workspace:*" });
     expect(capabilities.has("tailwind")).toBe(true);
@@ -753,12 +780,19 @@ describe("buildCapabilities", () => {
   });
 
   it("emits only the bare React Router capability for an unparseable version", () => {
-    const capabilities = buildCapabilities({
-      ...baseProject,
-      reactRouterVersion: "workspace:*",
-    });
-    expect(capabilities.has("react-router")).toBe(true);
-    expect(capabilities.has("react-router:6.4")).toBe(false);
+    for (const reactRouterVersion of [
+      "workspace:*",
+      "catalog:router8",
+      "git+https://github.com/acme/router.git#v7.9.0",
+      "acme/router#v7.9.0",
+    ]) {
+      const capabilities = buildCapabilities({
+        ...baseProject,
+        reactRouterVersion,
+      });
+      expect(capabilities.has("react-router")).toBe(true);
+      expect(capabilities.has("react-router:6.4")).toBe(false);
+    }
   });
 
   it("omits `nextjs:15` when the Next.js version is unparseable", () => {

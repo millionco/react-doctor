@@ -1,44 +1,61 @@
+import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getElementType } from "./get-element-type.js";
-import { getJsxPropStringValue } from "./get-jsx-prop-string-value.js";
-import { hasJsxPropIgnoreCase } from "./has-jsx-prop-ignore-case.js";
+import { getStaticStringExpression } from "./get-static-string-expression.js";
+import { getStringLiteralAttributeValue } from "./get-string-literal-attribute-value.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveStaticJsxAttribute } from "./resolve-static-jsx-attribute.js";
+import type { StaticJsxAttributeResolution } from "./resolve-static-jsx-attribute.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
 
-// Returns true iff the JSX element is hidden from assistive
-// technology — covered cases:
-//   - <input type="hidden" />
-//   - aria-hidden (no value, "true", or truthy expression)
-//
-// Mirrors oxc_linter::utils::react::is_hidden_from_screen_reader.
+const getResolvedStaticString = (resolution: StaticJsxAttributeResolution): string | null =>
+  resolution.attribute
+    ? getStringLiteralAttributeValue(resolution.attribute)
+    : getStaticStringExpression(resolution.expression);
+
+const getResolvedExpression = (resolution: StaticJsxAttributeResolution): EsTreeNode | null => {
+  const expression = resolution.expression ?? resolution.attribute?.value;
+  if (!expression) return null;
+  return stripParenExpression(
+    isNodeOfType(expression, "JSXExpressionContainer") ? expression.expression : expression,
+  );
+};
+
 export const isHiddenFromScreenReader = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   settings: Readonly<Record<string, unknown>> | undefined,
 ): boolean => {
   const tag = getElementType(openingElement, settings);
   if (tag.toLowerCase() === "input") {
-    const typeAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "type");
-    if (typeAttribute) {
-      const typeValue = getJsxPropStringValue(typeAttribute);
-      if (typeValue && typeValue.toLowerCase() === "hidden") return true;
-    }
+    const typeResolution = resolveStaticJsxAttribute(openingElement.attributes, "type", false);
+    const typeValue = getResolvedStaticString(typeResolution);
+    if (typeValue?.toLowerCase() === "hidden") return true;
   }
 
-  const ariaHidden = hasJsxPropIgnoreCase(openingElement.attributes, "aria-hidden");
-  if (!ariaHidden) return false;
-  // Bare attribute (no value) → treated as `aria-hidden="true"`.
-  const value = ariaHidden.value;
-  if (!value) return true;
-  if (isNodeOfType(value, "Literal") && typeof value.value === "string") {
-    return value.value === "true";
+  const hiddenResolution = resolveStaticJsxAttribute(openingElement.attributes, "hidden", false);
+  if (hiddenResolution.isPresent) {
+    if (hiddenResolution.attribute && !hiddenResolution.attribute.value) return true;
+    const staticStringValue = getResolvedStaticString(hiddenResolution);
+    if (staticStringValue !== null) return staticStringValue.length > 0;
+    const hiddenExpression = getResolvedExpression(hiddenResolution);
+    if (isNodeOfType(hiddenExpression, "Literal") && Boolean(hiddenExpression.value)) return true;
   }
-  if (isNodeOfType(value, "JSXExpressionContainer")) {
-    const expression = value.expression;
-    if (isNodeOfType(expression, "Literal")) {
-      return Boolean(expression.value);
-    }
-    if (isNodeOfType(expression, "Identifier") && expression.name === "true") {
-      return true;
-    }
+
+  const ariaHiddenResolution = resolveStaticJsxAttribute(
+    openingElement.attributes,
+    "aria-hidden",
+    false,
+  );
+  if (!ariaHiddenResolution.isPresent) return false;
+  const staticStringValue = getResolvedStaticString(ariaHiddenResolution);
+  if (staticStringValue !== null) return staticStringValue.toLowerCase() === "true";
+  if (ariaHiddenResolution.attribute && !ariaHiddenResolution.attribute.value) return true;
+  const ariaHiddenExpression = getResolvedExpression(ariaHiddenResolution);
+  if (isNodeOfType(ariaHiddenExpression, "Literal")) {
+    return (
+      ariaHiddenExpression.value === true ||
+      ariaHiddenExpression.value?.toString().toLowerCase() === "true"
+    );
   }
   return false;
 };

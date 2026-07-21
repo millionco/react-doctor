@@ -19,6 +19,7 @@ import { findExportedValue } from "../../utils/find-exported-value.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVisibleSymbol } from "../../utils/find-visible-symbol.js";
 import { hasCapability } from "../../utils/get-react-doctor-setting.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { getSingleReturnExpression } from "../../utils/get-single-return-expression.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -143,13 +144,6 @@ const getStaticStringValue = (context: RuleContext, expression: EsTreeNode): str
   return symbol?.initializer ? getStaticStringValue(context, symbol.initializer) : null;
 };
 
-const getResolvedStaticPropertyName = (
-  context: RuleContext,
-  memberExpression: EsTreeNodeOfType<"MemberExpression">,
-): string | null =>
-  getStaticPropertyName(memberExpression) ??
-  (memberExpression.computed ? getStaticStringValue(context, memberExpression.property) : null);
-
 const isNextHeadersDynamicCall = (
   context: RuleContext,
   expression: EsTreeNode,
@@ -173,7 +167,7 @@ const isNextHeadersDynamicCall = (
       const initializer = stripParenExpression(localSymbol.initializer);
       if (isNodeOfType(initializer, "MemberExpression")) {
         const namespaceExpression = stripParenExpression(initializer.object);
-        const importedName = getResolvedStaticPropertyName(context, initializer);
+        const importedName = getResolvedStaticPropertyName(initializer, context.scopes);
         if (
           isNodeOfType(namespaceExpression, "Identifier") &&
           importedName !== null &&
@@ -241,7 +235,7 @@ const isNextHeadersDynamicCall = (
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const namespaceObject = stripParenExpression(callee.object);
-  const memberName = getResolvedStaticPropertyName(context, callee);
+  const memberName = getResolvedStaticPropertyName(callee, context.scopes);
   if (
     !isNodeOfType(namespaceObject, "Identifier") ||
     memberName === null ||
@@ -314,7 +308,7 @@ const isPromiseSettleAccess = (
   context: RuleContext,
   memberExpression: EsTreeNodeOfType<"MemberExpression">,
 ): boolean => {
-  const propertyName = getResolvedStaticPropertyName(context, memberExpression);
+  const propertyName = getResolvedStaticPropertyName(memberExpression, context.scopes);
   return propertyName !== null && PROMISE_SETTLE_METHODS.has(propertyName);
 };
 
@@ -576,7 +570,7 @@ const memberExpressionMatchesOfficialProperty = (
   const node = stripParenExpression(expression);
   if (
     !isNodeOfType(node, "MemberExpression") ||
-    getResolvedStaticPropertyName(context, node) !== propertyName
+    getResolvedStaticPropertyName(node, context.scopes) !== propertyName
   ) {
     return false;
   }
@@ -1079,7 +1073,7 @@ const expressionMayRetainOfficialPendingValue = (
       if (isNextHeadersDynamicCall(context, nestedCandidate)) return nestedCandidate;
       if (isNodeOfType(nestedCandidate, "MemberExpression")) {
         const receiver = stripParenExpression(nestedCandidate.object);
-        const propertyName = getResolvedStaticPropertyName(context, nestedCandidate);
+        const propertyName = getResolvedStaticPropertyName(nestedCandidate, context.scopes);
         const propsSource = isNodeOfType(receiver, "Identifier")
           ? findOfficialPropsObjectSource(context, receiver)
           : null;
@@ -1410,7 +1404,7 @@ const isGlobalCoercionCallForArgument = (
     isNodeOfType(receiver, "Identifier") &&
     receiver.name === "JSON" &&
     context.scopes.isGlobalReference(receiver) &&
-    getResolvedStaticPropertyName(context, callee) === "stringify" &&
+    getResolvedStaticPropertyName(callee, context.scopes) === "stringify" &&
     callExpression.arguments[0] === argumentExpression,
   );
 };
@@ -2062,7 +2056,7 @@ const getDirectInvocationSites = (
       }
       const parent = memberExpression.parent;
       if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === memberExpression) {
-        const methodName = getResolvedStaticPropertyName(context, memberExpression);
+        const methodName = getResolvedStaticPropertyName(memberExpression, context.scopes);
         if (!methodName || !MUTATING_ARRAY_METHODS.has(methodName)) continue;
         if (methodName === "push" || methodName === "unshift") {
           if (parent.arguments.some((argument) => isNodeOfType(argument, "SpreadElement"))) {
@@ -2098,7 +2092,7 @@ const getDirectInvocationSites = (
       ) {
         continue;
       }
-      const propertyName = getResolvedStaticPropertyName(context, memberExpression);
+      const propertyName = getResolvedStaticPropertyName(memberExpression, context.scopes);
       if (propertyName === "length" && isNodeOfType(parent.right, "Literal")) {
         const nextLength = parent.right.value;
         if (typeof nextLength !== "number" || !Number.isInteger(nextLength) || nextLength < 0) {
@@ -2241,7 +2235,7 @@ const getDirectInvocationSites = (
     ) {
       return null;
     }
-    const methodName = getResolvedStaticPropertyName(context, callee);
+    const methodName = getResolvedStaticPropertyName(callee, context.scopes);
     if (methodName === "from") {
       const sourceArgument = node.arguments?.[0];
       if (!sourceArgument || isNodeOfType(sourceArgument, "SpreadElement")) return null;
@@ -2276,7 +2270,7 @@ const getDirectInvocationSites = (
     if (!isNodeOfType(callee, "MemberExpression")) {
       return !options.requireGuaranteedCallbackExecution;
     }
-    const methodName = getResolvedStaticPropertyName(context, callee);
+    const methodName = getResolvedStaticPropertyName(callee, context.scopes);
     if (
       methodName === "from" &&
       isNodeOfType(callee.object, "Identifier") &&
@@ -3216,7 +3210,7 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
           !isNodeOfType(receiver, "Identifier") ||
           receiver.name !== "String" ||
           !context.scopes.isGlobalReference(receiver) ||
-          getResolvedStaticPropertyName(context, tag) !== "raw"
+          getResolvedStaticPropertyName(tag, context.scopes) !== "raw"
         ) {
           return;
         }

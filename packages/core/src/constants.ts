@@ -263,9 +263,152 @@ export const GIT_SHOW_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
 export const TSCONFIG_EXTENDS_MAX_DEPTH = 8;
 
+export const REACT_COMPILER_CONFIG_IMPORT_MAX_DEPTH = 4;
+
 export const ES2023_YEAR = 2023;
 
 export const UNKNOWN_FUTURE_ES_YEAR = 9999;
+
+export interface TargetBlankBrowserSupport {
+  browserName: string;
+  supportsTargetBlankBrowsingContext: boolean;
+  implicitNoopenerVersion: number | null;
+  explicitNoopenerVersion: number | null;
+  explicitNoreferrerVersion: number | null;
+}
+
+export const TARGET_BLANK_BROWSER_SUPPORT: ReadonlyArray<TargetBlankBrowserSupport> = [
+  {
+    browserName: "chrome",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 16,
+    explicitNoopenerVersion: 49,
+    implicitNoopenerVersion: 88,
+  },
+  {
+    browserName: "and_chr",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 16,
+    explicitNoopenerVersion: 49,
+    implicitNoopenerVersion: 88,
+  },
+  {
+    browserName: "android",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 2.3,
+    explicitNoopenerVersion: 49,
+    implicitNoopenerVersion: 88,
+  },
+  {
+    browserName: "edge",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 13,
+    explicitNoopenerVersion: 79,
+    implicitNoopenerVersion: 88,
+  },
+  {
+    browserName: "firefox",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 33,
+    explicitNoopenerVersion: 52,
+    implicitNoopenerVersion: 79,
+  },
+  {
+    browserName: "and_ff",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 33,
+    explicitNoopenerVersion: 52,
+    implicitNoopenerVersion: 79,
+  },
+  {
+    browserName: "kaios",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 2.5,
+    explicitNoopenerVersion: 3,
+    implicitNoopenerVersion: 3,
+  },
+  {
+    browserName: "safari",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 5,
+    explicitNoopenerVersion: 10.1,
+    implicitNoopenerVersion: 12.1,
+  },
+  {
+    browserName: "ios_saf",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 4,
+    explicitNoopenerVersion: 10.3,
+    implicitNoopenerVersion: 12.2,
+  },
+  {
+    browserName: "opera",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 15,
+    explicitNoopenerVersion: 36,
+    implicitNoopenerVersion: 74,
+  },
+  {
+    browserName: "op_mob",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 80,
+    explicitNoopenerVersion: 80,
+    implicitNoopenerVersion: 80,
+  },
+  {
+    browserName: "op_mini",
+    supportsTargetBlankBrowsingContext: false,
+    explicitNoreferrerVersion: null,
+    explicitNoopenerVersion: null,
+    implicitNoopenerVersion: null,
+  },
+  {
+    browserName: "samsung",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 4,
+    explicitNoopenerVersion: 5,
+    implicitNoopenerVersion: 15,
+  },
+  {
+    browserName: "and_uc",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 15.5,
+    explicitNoopenerVersion: 15.5,
+    implicitNoopenerVersion: null,
+  },
+  {
+    browserName: "and_qq",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 14.9,
+    explicitNoopenerVersion: 14.9,
+    implicitNoopenerVersion: null,
+  },
+  {
+    browserName: "baidu",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: 13.52,
+    explicitNoopenerVersion: 13.52,
+    implicitNoopenerVersion: null,
+  },
+  {
+    browserName: "ie",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: null,
+    explicitNoopenerVersion: null,
+    implicitNoopenerVersion: null,
+  },
+  {
+    browserName: "ie_mob",
+    supportsTargetBlankBrowsingContext: true,
+    explicitNoreferrerVersion: null,
+    explicitNoopenerVersion: null,
+    implicitNoopenerVersion: null,
+  },
+];
+
+export const ELECTRON_EXPLICIT_NOOPENER_MIN_VERSION = "0.37.0";
+
+export const ELECTRON_IMPLICIT_NOOPENER_MIN_VERSION = "12.0.0";
 
 export const ES_TARGET_YEAR_BY_NAME: Readonly<Record<string, number>> = {
   es3: 1999,

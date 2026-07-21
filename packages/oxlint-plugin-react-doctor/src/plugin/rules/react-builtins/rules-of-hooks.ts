@@ -22,8 +22,13 @@ import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-ar
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
+import {
+  hasPossibleStaticPropertyMutationOrEscape,
+  hasPossibleStaticPropertyWriteBefore,
+} from "../../utils/has-static-property-write-before.js";
+import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isReactNamespaceImport } from "../../utils/is-react-api-call.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -208,8 +213,9 @@ const isHookCall = (
     isNodeOfType(callee.property, "Identifier") &&
     isReactHookName(callee.property.name)
   ) {
-    const callObject = callee.object;
+    const callObject = stripParenExpression(callee.object);
     const propertyName = callee.property.name;
+    if (isPackageImportedNonReactHookMemberCallee(call, scopes)) return null;
     // Upstream's heuristic: a use-prefixed member call IS a hook iff
     // the object reads like a "namespace" — PascalCase identifier
     // (`Hook` / `This` / `Super` / `React` / `FooStore` / `Namespace`)
@@ -750,6 +756,26 @@ const isPackageImportedNonReactHookCallee = (call: EsTreeNodeOfType<"CallExpress
   if (importSource.startsWith(".")) return false;
   if (PATH_ALIAS_IMPORT_PATTERN.test(importSource)) return false;
   return !isReactEcosystemImportSource(importSource);
+};
+
+const isPackageImportedNonReactHookMemberCallee = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const propertyName = getStaticPropertyName(callee);
+  if (!propertyName || !isReactHookName(propertyName)) return false;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const receiverSymbol = scopes.symbolFor(receiver);
+  if (!receiverSymbol || hasSymbolWriteBefore(receiverSymbol, call, scopes)) return false;
+  if (hasPossibleStaticPropertyWriteBefore(receiver, propertyName, call, scopes)) return false;
+  const importedReceiver = resolveImportedApiReference(receiver, scopes);
+  if (!importedReceiver) return false;
+  if (importedReceiver.source.startsWith(".")) return false;
+  if (PATH_ALIAS_IMPORT_PATTERN.test(importedReceiver.source)) return false;
+  return !isReactEcosystemImportSource(importedReceiver.source);
 };
 
 const isDefaultImportedClassApiMemberCallee = (

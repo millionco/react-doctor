@@ -12,7 +12,10 @@ export const areNodesOnExclusiveConditionalBranches = (
   let firstAncestor: EsTreeNode | null | undefined = firstNode.parent;
   while (firstAncestor) {
     if (isFunctionLike(firstAncestor)) break;
-    if (isNodeOfType(firstAncestor, "ConditionalExpression")) {
+    if (
+      isNodeOfType(firstAncestor, "ConditionalExpression") ||
+      isNodeOfType(firstAncestor, "IfStatement")
+    ) {
       if (firstAncestor.consequent === firstChild) firstBranches.set(firstAncestor, "consequent");
       if (firstAncestor.alternate === firstChild) firstBranches.set(firstAncestor, "alternate");
     }
@@ -25,7 +28,10 @@ export const areNodesOnExclusiveConditionalBranches = (
   let secondAncestor: EsTreeNode | null | undefined = secondNode.parent;
   while (secondAncestor) {
     if (isFunctionLike(secondAncestor)) break;
-    if (isNodeOfType(secondAncestor, "ConditionalExpression")) {
+    if (
+      isNodeOfType(secondAncestor, "ConditionalExpression") ||
+      isNodeOfType(secondAncestor, "IfStatement")
+    ) {
       const firstBranch = firstBranches.get(secondAncestor);
       if (firstBranch === "consequent" && secondAncestor.alternate === secondChild) return true;
       if (firstBranch === "alternate" && secondAncestor.consequent === secondChild) return true;

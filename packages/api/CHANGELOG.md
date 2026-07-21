@@ -1,5 +1,12 @@
 # @react-doctor/api
 
+## 0.8.2
+
+### Patch Changes
+
+- Updated dependencies [[`f4aa821`](https://github.com/millionco/react-doctor/commit/f4aa8214bfac4b52c5613f25bbad29e68cbeb28d), [`8c4959b`](https://github.com/millionco/react-doctor/commit/8c4959bb7400a6d5f21cc35a8d54d0ed7faf6971), [`0b0b5ac`](https://github.com/millionco/react-doctor/commit/0b0b5ac52301cbfbb5abdffe4d0d9bf673325a94), [`af33723`](https://github.com/millionco/react-doctor/commit/af337232873fa5c96ec69fac453868f14a9be071), [`3598138`](https://github.com/millionco/react-doctor/commit/3598138c7bdd55dac55bf17bc72ccfef1e4c2efd), [`cd9ca68`](https://github.com/millionco/react-doctor/commit/cd9ca68faa25d287c02f4bbdc5007e1fbe1c6fc1), [`1839566`](https://github.com/millionco/react-doctor/commit/18395664810b9e08d024f4b679d7ab2089b05b7e)]:
+  - @react-doctor/core@0.8.2
+
 ## 0.8.1
 
 ### Patch Changes

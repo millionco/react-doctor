@@ -1,6 +1,6 @@
 {
   "name": "deslop-js",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Remove AI slop from JavaScript code.",
   "keywords": [
     "dead-code",

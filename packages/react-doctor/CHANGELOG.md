@@ -1,5 +1,15 @@
 # react-doctor
 
+## 0.8.3
+
+### Patch Changes
+
+- [`8d4d5a8`](https://github.com/millionco/react-doctor/commit/8d4d5a82d945a02efec4a4fe033b8851df3b6729) Thanks [@aidenybai](https://github.com/aidenybai)! - Remove extraneous usage copy from the package README.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.8.3
+  - deslop-js@0.8.3
+
 ## 0.8.2
 
 ### Patch Changes

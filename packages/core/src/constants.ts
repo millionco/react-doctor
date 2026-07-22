@@ -858,7 +858,9 @@ export const SOCKET_FREE_USER_AGENT = "react-doctor-supply-chain";
 // Per-file lint cache (`runners/oxlint/file-lint-cache.ts`). Caches the raw
 // oxlint diagnostics of unchanged files keyed by content hash + ruleset hash,
 // so repeat scans re-lint only the files that actually changed.
-export const FILE_LINT_CACHE_SCHEMA_VERSION = 1;
+// Bumped to 2 when declaration-file parser diagnostic compatibility filtering
+// changed the stored diagnostic set.
+export const FILE_LINT_CACHE_SCHEMA_VERSION = 2;
 
 export const FILE_LINT_CACHE_FILENAME = "file-lint-cache.json";
 
@@ -876,7 +878,8 @@ export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
 // ruleset hash, each entry guarded by the file's cross-file dependency probe
 // set, so a warm rescan replays the sidecar instead of re-linting every
 // unchanged file. Shares the file cache's bucket/file caps.
-export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 2;
+// Bumped to 3 with the same parser-diagnostic compatibility change.
+export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 3;
 
 export const SIDECAR_LINT_CACHE_FILENAME = "sidecar-lint-cache.json";
 

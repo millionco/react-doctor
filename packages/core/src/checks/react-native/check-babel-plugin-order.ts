@@ -57,7 +57,7 @@ const checkReanimatedPluginOrder = (
     ];
   }
 
-  const workletsPluginIndex = pluginNames.indexOf(WORKLETS_PLUGIN_NAME);
+  const workletsPluginIndex = pluginNames.lastIndexOf(WORKLETS_PLUGIN_NAME);
   if (workletsPluginIndex === -1 || workletsPluginIndex === pluginNames.length - 1) return [];
   return [
     buildReactNativeDiagnostic({

@@ -549,6 +549,45 @@ describe("checkReactNativeProject — Babel plugin order", () => {
     );
   });
 
+  it.each([
+    {
+      title: "does NOT flag a final duplicate Worklets entry",
+      plugins: ["react-native-worklets/plugin", "other-plugin", "react-native-worklets/plugin"],
+      shouldReport: false,
+    },
+    {
+      title: "flags a plugin after the last duplicate Worklets entry",
+      plugins: [
+        "react-native-worklets/plugin",
+        "other-plugin",
+        "react-native-worklets/plugin",
+        "final-plugin",
+      ],
+      shouldReport: true,
+    },
+  ])("$title", ({ plugins, shouldReport }) => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "4.1.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ${JSON.stringify(plugins)} };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "4.1.0",
+    });
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, project)).includes(
+        "rn-reanimated-worklets-plugin-last",
+      ),
+    ).toBe(shouldReport);
+  });
+
   it("flags an explicitly configured React Compiler plugin that is not first", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {

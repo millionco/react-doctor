@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { functionHasReactComponentEvidence } from "../../utils/function-has-react-component-evidence.js";
+import { functionIsReferencedAsJsxElement } from "../../utils/function-is-referenced-as-jsx-element.js";
 import { isInsideStableReactInitializer } from "../../utils/is-inside-stable-react-initializer.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
@@ -31,7 +32,8 @@ export const threeNoObjectConstructionInRender = defineRule({
       if (
         !renderOwnerName ||
         (!isReactHookName(renderOwnerName) &&
-          !functionHasReactComponentEvidence(renderOwner, context.scopes, context.cfg))
+          !functionHasReactComponentEvidence(renderOwner, context.scopes, context.cfg) &&
+          !functionIsReferencedAsJsxElement(renderOwner, context.scopes))
       ) {
         return;
       }

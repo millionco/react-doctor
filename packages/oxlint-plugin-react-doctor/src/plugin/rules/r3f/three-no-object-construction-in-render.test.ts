@@ -8,6 +8,7 @@ describe("three-no-object-construction-in-render", () => {
     `import * as THREE from "three"; function useCamera() { return new THREE.PerspectiveCamera(); }`,
     `import { Scene } from "three"; import { useRef } from "react"; const View = () => { const scene = useRef(new Scene()); return <canvas />; };`,
     `import { Scene } from "three"; import { useState } from "react"; const View = () => { const [scene] = useState(new Scene()); return <canvas />; };`,
+    `import { Vector3 } from "three"; import { useFrame } from "@react-three/fiber"; function View() { return <CameraRig />; } function CameraRig({ vector = new Vector3() }) { return useFrame(() => vector.set(0, 0, 0)); }`,
   ])("flags Three.js construction during React render", (code) => {
     expect(runRule(threeNoObjectConstructionInRender, code).diagnostics).toHaveLength(1);
   });
@@ -19,6 +20,7 @@ describe("three-no-object-construction-in-render", () => {
     `import { Scene } from "three"; const View = () => <button onClick={() => new Scene()} />;`,
     `import { Vector3 } from "three"; export const THROW_ALPHA = () => new Vector3();`,
     `import { Mesh } from "three"; export function CSGArray2R3fComponent() { return [new Mesh()]; }`,
+    `import { BufferGeometry } from "three"; const View = ({ points }) => <primitive object={TriangleGeometry({ points })} />; export function TriangleGeometry({ points }) { const geometry = new BufferGeometry(); return geometry; }`,
     `import { Scene } from "other"; const View = () => { const scene = new Scene(); return <canvas />; };`,
   ])("allows stable, deferred, or unrelated construction", (code) => {
     expect(runRule(threeNoObjectConstructionInRender, code).diagnostics).toHaveLength(0);

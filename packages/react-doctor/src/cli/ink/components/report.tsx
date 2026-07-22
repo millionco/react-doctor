@@ -17,6 +17,7 @@ import {
   TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
   TUI_REPORT_MIN_LIST_ROWS,
   TUI_REPORT_MIN_WIDTH_CHARS,
+  TUI_REPORT_STACKED_MAX_LIST_ROWS,
   TUI_REPORT_STATUS_ROWS,
   TUI_REPORT_WIDE_MIN_COLUMNS,
   TUI_REPORT_WIDE_MIN_ROWS,
@@ -78,6 +79,7 @@ export const Report = ({
   const isWide = columns >= TUI_REPORT_WIDE_MIN_COLUMNS && terminalRows >= TUI_REPORT_WIDE_MIN_ROWS;
   const isCompact = !isWide && terminalRows <= TUI_REPORT_COMPACT_MAX_ROWS;
   const didRecordCompactReport = useRef(false);
+  const didRecordStackedReportCap = useRef(false);
   useEffect(() => {
     if (!isCompact || didRecordCompactReport.current) return;
     didRecordCompactReport.current = true;
@@ -92,15 +94,26 @@ export const Report = ({
           terminalRows - STACKED_FIXED_ROWS - TUI_REPORT_MIN_LIST_ROWS,
         ),
       );
-  const listHeight = isCompact
-    ? Math.max(
-        TUI_REPORT_MIN_LIST_ROWS,
-        terminalRows - TUI_REPORT_COMPACT_HEADER_ROWS - TUI_REPORT_COMPACT_STATUS_ROWS,
-      )
-    : Math.max(
-        TUI_REPORT_MIN_LIST_ROWS,
-        terminalRows - (isWide ? SPLIT_CHROME_ROWS : STACKED_FIXED_ROWS + detailHeight),
-      );
+  const availableListHeight = Math.max(
+    TUI_REPORT_MIN_LIST_ROWS,
+    terminalRows - (isWide ? SPLIT_CHROME_ROWS : STACKED_FIXED_ROWS + detailHeight),
+  );
+  const isStackedReportCapped =
+    !isCompact && !isWide && availableListHeight > TUI_REPORT_STACKED_MAX_LIST_ROWS;
+  useEffect(() => {
+    if (!isStackedReportCapped || didRecordStackedReportCap.current) return;
+    didRecordStackedReportCap.current = true;
+    recordCount(METRIC.tuiStackedReportCapped);
+  }, [isStackedReportCapped]);
+  let listHeight = availableListHeight;
+  if (isCompact) {
+    listHeight = Math.max(
+      TUI_REPORT_MIN_LIST_ROWS,
+      terminalRows - TUI_REPORT_COMPACT_HEADER_ROWS - TUI_REPORT_COMPACT_STATUS_ROWS,
+    );
+  } else if (!isWide) {
+    listHeight = Math.min(TUI_REPORT_STACKED_MAX_LIST_ROWS, availableListHeight);
+  }
   const detailColumnWidth = Math.max(
     TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
     Math.floor(width * TUI_REPORT_DETAIL_WIDTH_FRACTION),

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import {
   TUI_REPORT_COMPACT_MAX_ROWS,
+  TUI_REPORT_STACKED_MAX_LIST_ROWS,
+  TUI_REPORT_WIDE_MIN_COLUMNS,
   TUI_REPORT_WIDE_MIN_ROWS,
 } from "../../src/cli/utils/constants.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
@@ -340,7 +342,10 @@ describe("ScanApp", () => {
 
     const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
     await flush();
-    resizeTerminal(stdout, { columns: 140, rows: TUI_REPORT_WIDE_MIN_ROWS });
+    resizeTerminal(stdout, {
+      columns: TUI_REPORT_WIDE_MIN_COLUMNS,
+      rows: TUI_REPORT_WIDE_MIN_ROWS,
+    });
     await flush();
 
     const frame = lastFrame() ?? "";
@@ -348,6 +353,44 @@ describe("ScanApp", () => {
     // so a row's title and its detail headline share a line.
     expect(frame).toContain("│");
     expect(frame).toMatch(/react-doctor\/rules-of-hooks.*│/);
+    unmount();
+  });
+
+  it("caps the issue list in a tall stacked layout", async () => {
+    const store = createScanStore();
+    const diagnostics = Array.from(
+      { length: TUI_REPORT_STACKED_MAX_LIST_ROWS * 2 },
+      (_, diagnosticIndex) =>
+        makeDiagnostic({
+          rule: `rule-${String(diagnosticIndex).padStart(2, "0")}`,
+          severity: diagnosticIndex === 0 ? "error" : "warning",
+          category: "Correctness",
+        }),
+    );
+    store.setReport({
+      diagnostics,
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: process.cwd(),
+      scannedFileCount: diagnostics.length,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, {
+      columns: TUI_REPORT_WIDE_MIN_COLUMNS - 1,
+      rows: TUI_REPORT_COMPACT_MAX_ROWS * 2,
+    });
+    await flush();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("Your users briefly see stale state");
+    expect(frame).toContain("react-doctor/rule-00");
+    expect(frame).not.toContain(`react-doctor/rule-${TUI_REPORT_STACKED_MAX_LIST_ROWS}`);
+    expect(frame.split("\n").length).toBeLessThan(TUI_REPORT_COMPACT_MAX_ROWS * 2);
     unmount();
   });
 

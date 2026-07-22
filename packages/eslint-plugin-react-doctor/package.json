@@ -1,6 +1,6 @@
 {
   "name": "eslint-plugin-react-doctor",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "description": "React Doctor rules for ESLint.",
   "keywords": [
     "accessibility",

@@ -1,5 +1,11 @@
 # deslop-js
 
+## 0.9.0
+
+### Patch Changes
+
+- [#1423](https://github.com/millionco/react-doctor/pull/1423) [`3d7ea66`](https://github.com/millionco/react-doctor/commit/3d7ea66c3f45fa55828559fce5cc38e879b9907a) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up custom Hook and wildcard re-export analysis, and upgrade the Oxc toolchain.
+
 ## 0.8.3
 
 ## 0.8.2

@@ -1,5 +1,21 @@
 # react-doctor
 
+## 0.9.0
+
+### Minor Changes
+
+- [#979](https://github.com/millionco/react-doctor/pull/979) [`9155bc0`](https://github.com/millionco/react-doctor/commit/9155bc0bc9c64a2831bc3fe755f75b3e73b5e289) Thanks [@aidenybai](https://github.com/aidenybai)! - Add an experimental Ink TUI at `react-doctor experimental-tui`. It streams diagnostics during the scan, then renders the complete score-sorted report with keyboard navigation, inline code frames, focused fix prompts, and optional agent handoff. Monorepos get interactive project selection and one combined report with project-qualified paths. Ink and React load lazily, so the default static, JSON, and score-only paths are unaffected.
+
+### Patch Changes
+
+- [#1423](https://github.com/millionco/react-doctor/pull/1423) [`3d7ea66`](https://github.com/millionco/react-doctor/commit/3d7ea66c3f45fa55828559fce5cc38e879b9907a) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up custom Hook and wildcard re-export analysis, and upgrade the Oxc toolchain.
+
+- [#1424](https://github.com/millionco/react-doctor/pull/1424) [`76263ec`](https://github.com/millionco/react-doctor/commit/76263ecc08496003fd7f8e750cc0b044b427a042) Thanks [@aidenybai](https://github.com/aidenybai)! - Add direct Three.js and WebGL diagnostics derived from the React Three Fiber suite, covering hot animation and pointer paths, render-time construction, resource cleanup, device pixel ratio, shadowed point lights, frame delta, instance-buffer and projection updates, WebGPU legacy APIs, TSL uniform branches, and synchronous GPU readbacks. Prevent cyclic config bindings from crashing project discovery.
+
+- Updated dependencies [[`3d7ea66`](https://github.com/millionco/react-doctor/commit/3d7ea66c3f45fa55828559fce5cc38e879b9907a), [`599e30d`](https://github.com/millionco/react-doctor/commit/599e30d9e1ce4a526e5ba28d801452938f5618c0), [`76263ec`](https://github.com/millionco/react-doctor/commit/76263ecc08496003fd7f8e750cc0b044b427a042)]:
+  - deslop-js@0.9.0
+  - oxlint-plugin-react-doctor@0.9.0
+
 ## 0.8.3
 
 ### Patch Changes

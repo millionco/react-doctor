@@ -1,5 +1,15 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.0
+
+### Patch Changes
+
+- [#1423](https://github.com/millionco/react-doctor/pull/1423) [`3d7ea66`](https://github.com/millionco/react-doctor/commit/3d7ea66c3f45fa55828559fce5cc38e879b9907a) Thanks [@aidenybai](https://github.com/aidenybai)! - Speed up custom Hook and wildcard re-export analysis, and upgrade the Oxc toolchain.
+
+- [#1422](https://github.com/millionco/react-doctor/pull/1422) [`599e30d`](https://github.com/millionco/react-doctor/commit/599e30d9e1ce4a526e5ba28d801452938f5618c0) Thanks [@skoshx](https://github.com/skoshx)! - Fix false positives in loading-reset, promise-handler, effect-cleanup, and class-unmount rules when control flow includes proven-safe global formatting calls such as `Math.round()`, `performance.now()`, and static console methods. Keep dynamic, unknown, and shadowed global lookalikes conservative.
+
+- [#1424](https://github.com/millionco/react-doctor/pull/1424) [`76263ec`](https://github.com/millionco/react-doctor/commit/76263ecc08496003fd7f8e750cc0b044b427a042) Thanks [@aidenybai](https://github.com/aidenybai)! - Add direct Three.js and WebGL diagnostics derived from the React Three Fiber suite, covering hot animation and pointer paths, render-time construction, resource cleanup, device pixel ratio, shadowed point lights, frame delta, instance-buffer and projection updates, WebGPU legacy APIs, TSL uniform branches, and synchronous GPU readbacks. Prevent cyclic config bindings from crashing project discovery.
+
 ## 0.8.3
 
 ## 0.8.2

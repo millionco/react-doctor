@@ -25,7 +25,7 @@ export const threeNoObjectConstructionInRender = defineRule({
       }
       context.report({
         node,
-        message: `new ${provenance.apiName}() creates a fresh mutable Three.js object during this render. Preserve it with useMemo, useState, useRef, or module scope`,
+        message: `new ${provenance.apiName}() creates a fresh mutable Three.js object during this render. Move it to useMemo, a lazy useState initializer, an initialized-once ref, or module scope`,
       });
     },
   }),

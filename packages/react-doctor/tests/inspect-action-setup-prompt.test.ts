@@ -8,7 +8,8 @@ import { inspectAction } from "../src/cli/commands/inspect.js";
 import { inspect } from "../src/inspect.js";
 
 const mockState = vi.hoisted(() => ({
-  projectDirectories: [] as string[],
+  projectDirectories: new Array<string>(),
+  lifecycleEvents: new Array<string>(),
 }));
 
 vi.mock("ora", () => ({
@@ -36,12 +37,15 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
       configSourceDirectory: null,
       didRedirectViaRootDir: false,
     })),
-    getDiffInfo: vi.fn(async () => ({
-      currentBranch: "feature",
-      baseBranch: "main",
-      changedFiles: ["apps/web/src/App.tsx"],
-      isCurrentChanges: false,
-    })),
+    getDiffInfo: vi.fn(async () => {
+      mockState.lifecycleEvents.push("diff");
+      return {
+        currentBranch: "feature",
+        baseBranch: "main",
+        changedFiles: ["apps/web/src/App.tsx"],
+        isCurrentChanges: false,
+      };
+    }),
     filterDiagnosticsForSurface: vi.fn((diagnostics) => diagnostics),
   };
 });
@@ -88,6 +92,23 @@ vi.mock("../src/cli/utils/select-projects.js", () => ({
   selectProjects: vi.fn(async () => mockState.projectDirectories),
 }));
 
+vi.mock("../src/cli/utils/spinner.js", () => ({
+  spinner: vi.fn(() => ({
+    start: () => {
+      mockState.lifecycleEvents.push("spinner");
+      return {
+        update: vi.fn(),
+        succeed: vi.fn(),
+        fail: vi.fn(),
+        warn: vi.fn(),
+        stop: vi.fn(),
+      };
+    },
+  })),
+  isSpinnerSilent: vi.fn(() => false),
+  setSpinnerSilent: vi.fn(),
+}));
+
 vi.mock("../src/cli/utils/should-skip-prompts.js", () => ({
   shouldSkipPrompts: vi.fn(() => false),
 }));
@@ -117,7 +138,8 @@ describe("inspectAction setup prompt", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
-    mockState.projectDirectories = [];
+    mockState.projectDirectories.length = 0;
+    mockState.lifecycleEvents.length = 0;
     for (const tempDirectory of tempDirectories.splice(0)) {
       fs.rmSync(tempDirectory, { recursive: true, force: true });
     }
@@ -148,6 +170,17 @@ describe("inspectAction setup prompt", () => {
         includePaths: ["src/App.tsx"],
       }),
     );
+  });
+
+  it("starts scan feedback before detecting the diff", async () => {
+    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-inspect-action-"));
+    tempDirectories.push(rootDirectory);
+    writePackageJson(rootDirectory, { name: "app", scripts: {} });
+    mockState.projectDirectories = [rootDirectory];
+
+    await inspectAction(rootDirectory, { diff: true, lint: false });
+
+    expect(mockState.lifecycleEvents.slice(0, 2)).toEqual(["spinner", "diff"]);
   });
 
   it("scans project-relative paths from an explicit changed-files file", async () => {

@@ -257,6 +257,7 @@ export const METRIC = {
   projectConfigSelected: "project.config_selected",
   scanCompleted: "scan.completed",
   scanDuration: "scan.duration",
+  scanFeedbackDelay: "scan.feedback_delay",
   scanPhaseDuration: "scan.phase_duration",
   scanFiles: "scan.files",
   scanScore: "scan.score",

@@ -15,6 +15,7 @@ import { collectR3fHostRefSymbolIds } from "./utils/collect-r3f-host-ref-symbol-
 import { isR3fUseThreeStateProperty } from "./utils/is-r3f-use-three-state-property.js";
 import { resolveR3fCallback } from "./utils/resolve-r3f-callback.js";
 import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
+import { resolveStaticNumber } from "./utils/resolve-static-number.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const TRANSFORM_PROPERTIES = new Set(["position", "rotation", "scale", "quaternion"]);
@@ -122,48 +123,6 @@ const expressionReferencesDelta = (
     }
   });
   return referencesDelta;
-};
-
-const resolveStaticNumber = (
-  expression: EsTreeNode,
-  context: RuleContext,
-  visitedSymbolIds: Set<number> = new Set(),
-): number | null => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Literal") && typeof candidate.value === "number") {
-    return Number.isFinite(candidate.value) ? candidate.value : null;
-  }
-  if (isNodeOfType(candidate, "Identifier")) {
-    const symbol = context.scopes.symbolFor(candidate);
-    if (
-      symbol?.kind !== "const" ||
-      !symbol.initializer ||
-      visitedSymbolIds.has(symbol.id) ||
-      symbol.references.some((reference) => reference.flag !== "read")
-    ) {
-      return null;
-    }
-    visitedSymbolIds.add(symbol.id);
-    return resolveStaticNumber(symbol.initializer, context, visitedSymbolIds);
-  }
-  if (isNodeOfType(candidate, "UnaryExpression")) {
-    const argument = resolveStaticNumber(candidate.argument, context, visitedSymbolIds);
-    if (argument === null) return null;
-    if (candidate.operator === "+") return argument;
-    if (candidate.operator === "-") return -argument;
-    return null;
-  }
-  if (!isNodeOfType(candidate, "BinaryExpression")) return null;
-  const left = resolveStaticNumber(candidate.left, context, new Set(visitedSymbolIds));
-  const right = resolveStaticNumber(candidate.right, context, new Set(visitedSymbolIds));
-  if (left === null || right === null) return null;
-  let result: number | null = null;
-  if (candidate.operator === "+") result = left + right;
-  if (candidate.operator === "-") result = left - right;
-  if (candidate.operator === "*") result = left * right;
-  if (candidate.operator === "/") result = left / right;
-  if (candidate.operator === "**") result = left ** right;
-  return result !== null && Number.isFinite(result) ? result : null;
 };
 
 const isThreeMathUtils = (expression: EsTreeNode, context: RuleContext): boolean => {
@@ -306,7 +265,7 @@ const getFixedInterpolationFactor = (
   if (factorArgumentIndex === undefined) return null;
   const factor = node.arguments[factorArgumentIndex];
   if (!factor || isNodeOfType(factor, "SpreadElement")) return null;
-  const staticFactor = resolveStaticNumber(factor, context);
+  const staticFactor = resolveStaticNumber(factor, context.scopes);
   return staticFactor !== null && staticFactor > 0 && staticFactor < 1 ? factor : null;
 };
 

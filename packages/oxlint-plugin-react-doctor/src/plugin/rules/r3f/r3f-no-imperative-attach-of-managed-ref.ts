@@ -13,6 +13,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
+import { isThreeModuleSource } from "./utils/is-three-module-source.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
 import { isR3fHostIntrinsic } from "./utils/is-r3f-host-intrinsic.js";
@@ -46,9 +47,6 @@ const THREE_OBJECT3D_CONSTRUCTOR_NAMES = new Set([
   "SpotLight",
   "Sprite",
 ]);
-
-const isThreeModuleSource = (moduleSource: string): boolean =>
-  moduleSource === "three" || moduleSource === "three-stdlib" || moduleSource.startsWith("three/");
 
 const hasThreeObject3DProvenance = (
   expression: EsTreeNode,

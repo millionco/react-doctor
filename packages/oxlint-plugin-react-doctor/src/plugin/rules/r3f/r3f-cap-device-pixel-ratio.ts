@@ -10,104 +10,14 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isR3fCanvas } from "./utils/is-r3f-canvas.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
 import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
+import { resolveRawDevicePixelRatio } from "./utils/resolve-raw-device-pixel-ratio.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
-
-const THREE_RENDERER_CONSTRUCTOR_NAMES = new Set(["WebGLRenderer", "WebGPURenderer"]);
-
-const isThreeModuleSource = (moduleSource: string): boolean =>
-  moduleSource === "three" || moduleSource.startsWith("three/") || moduleSource === "three-stdlib";
-
-const resolveRawDevicePixelRatio = (
-  expression: EsTreeNode,
-  context: RuleContext,
-  visitedSymbolIds: Set<number> = new Set(),
-): EsTreeNode | null => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "+") {
-    return resolveRawDevicePixelRatio(candidate.argument, context, visitedSymbolIds);
-  }
-  if (isNodeOfType(candidate, "BinaryExpression")) {
-    const rawLeft = resolveRawDevicePixelRatio(candidate.left, context, new Set(visitedSymbolIds));
-    const rawRight = resolveRawDevicePixelRatio(
-      candidate.right,
-      context,
-      new Set(visitedSymbolIds),
-    );
-    if (rawLeft && !rawRight) {
-      const rightOperand = stripParenExpression(candidate.right);
-      if (
-        isNodeOfType(rightOperand, "Literal") &&
-        typeof rightOperand.value === "number" &&
-        Number.isFinite(rightOperand.value) &&
-        (candidate.operator === "+" ||
-          candidate.operator === "-" ||
-          ((candidate.operator === "*" ||
-            candidate.operator === "/" ||
-            candidate.operator === "**") &&
-            rightOperand.value > 0))
-      ) {
-        return rawLeft;
-      }
-    }
-    if (rawRight && !rawLeft) {
-      const leftOperand = stripParenExpression(candidate.left);
-      if (
-        isNodeOfType(leftOperand, "Literal") &&
-        typeof leftOperand.value === "number" &&
-        Number.isFinite(leftOperand.value) &&
-        (candidate.operator === "+" || (candidate.operator === "*" && leftOperand.value > 0))
-      ) {
-        return rawRight;
-      }
-    }
-    return null;
-  }
-  if (isNodeOfType(candidate, "ArrayExpression") && candidate.elements.length === 2) {
-    const upperBound = candidate.elements[1];
-    return upperBound && !isNodeOfType(upperBound, "SpreadElement")
-      ? resolveRawDevicePixelRatio(upperBound, context, new Set(visitedSymbolIds))
-      : null;
-  }
-  if (isNodeOfType(candidate, "MemberExpression")) {
-    const receiver = stripParenExpression(candidate.object);
-    return getStaticPropertyName(candidate) === "devicePixelRatio" &&
-      isNodeOfType(receiver, "Identifier") &&
-      (receiver.name === "window" || receiver.name === "globalThis") &&
-      context.scopes.isGlobalReference(receiver)
-      ? candidate
-      : null;
-  }
-  if (!isNodeOfType(candidate, "Identifier")) return null;
-  const symbol = context.scopes.symbolFor(candidate);
-  if (
-    symbol?.kind !== "const" ||
-    !symbol.initializer ||
-    visitedSymbolIds.has(symbol.id) ||
-    !isNodeOfType(symbol.declarationNode, "VariableDeclarator")
-  ) {
-    return null;
-  }
-  visitedSymbolIds.add(symbol.id);
-  if (getDestructuredBindingPropertyName(symbol.bindingIdentifier) === "devicePixelRatio") {
-    const initializer = stripParenExpression(symbol.initializer);
-    if (
-      isNodeOfType(initializer, "Identifier") &&
-      (initializer.name === "window" || initializer.name === "globalThis") &&
-      context.scopes.isGlobalReference(initializer)
-    ) {
-      return candidate;
-    }
-  }
-  if (symbol.declarationNode.id !== symbol.bindingIdentifier) return null;
-  return resolveRawDevicePixelRatio(symbol.initializer, context, visitedSymbolIds);
-};
 
 const getExplicitObjectPropertyValue = (
   expression: EsTreeNode,
@@ -179,35 +89,6 @@ const isR3fRootReceiver = (
   return isR3fRootReceiver(symbol.initializer, context, visitedSymbolIds);
 };
 
-const isThreeRendererReceiver = (
-  expression: EsTreeNode,
-  context: RuleContext,
-  visitedSymbolIds: Set<number> = new Set(),
-): boolean => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "NewExpression")) {
-    const provenance = getApiReferenceProvenance(candidate.callee, context.scopes);
-    return Boolean(
-      provenance &&
-      isThreeModuleSource(provenance.moduleSource) &&
-      THREE_RENDERER_CONSTRUCTOR_NAMES.has(provenance.apiName),
-    );
-  }
-  if (!isNodeOfType(candidate, "Identifier")) return false;
-  const symbol = context.scopes.symbolFor(candidate);
-  if (
-    symbol?.kind !== "const" ||
-    !symbol.initializer ||
-    visitedSymbolIds.has(symbol.id) ||
-    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-    symbol.declarationNode.id !== symbol.bindingIdentifier
-  ) {
-    return false;
-  }
-  visitedSymbolIds.add(symbol.id);
-  return isThreeRendererReceiver(symbol.initializer, context, visitedSymbolIds);
-};
-
 const useThreeSelectsSetDpr = (
   call: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -268,7 +149,7 @@ export const r3fCapDevicePixelRatio = defineRule({
   create: (context: RuleContext) => {
     let importsReactThreeFiber = false;
     const reportRawDpr = (expression: EsTreeNode): void => {
-      const rawDpr = resolveRawDevicePixelRatio(expression, context);
+      const rawDpr = resolveRawDevicePixelRatio(expression, context.scopes);
       if (!rawDpr) return;
       context.report({
         node: rawDpr,
@@ -302,13 +183,6 @@ export const r3fCapDevicePixelRatio = defineRule({
         if (methodName === "configure" && isR3fRootReceiver(node.callee.object, context)) {
           const dprValue = getExplicitObjectPropertyValue(firstArgument, "dpr");
           if (dprValue) reportRawDpr(dprValue);
-          return;
-        }
-        if (
-          methodName === "setPixelRatio" &&
-          isThreeRendererReceiver(node.callee.object, context)
-        ) {
-          reportRawDpr(firstArgument);
           return;
         }
       },

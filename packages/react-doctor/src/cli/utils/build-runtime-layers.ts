@@ -66,6 +66,8 @@ export interface BuildRuntimeLayersInput {
    * count) in place.
    */
   readonly oxlintConcurrency?: number;
+  readonly reporterLayer?: Layer.Layer<Reporter>;
+  readonly progressLayer?: Layer.Layer<Progress>;
 }
 
 /**
@@ -122,9 +124,12 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     input.projectInfoOverride === undefined
       ? Project.layerNode
       : Project.layerOf(input.projectInfoOverride);
-  const progressLayer = input.shouldShowProgressSpinners
-    ? Progress.layerOra(buildSpinnerProgressHandle)
-    : Progress.layerNoop;
+  const progressLayer =
+    input.progressLayer ??
+    (input.shouldShowProgressSpinners
+      ? Progress.layerOra(buildSpinnerProgressHandle)
+      : Progress.layerNoop);
+  const reporterLayer = input.reporterLayer ?? Reporter.layerNoop;
   const configLayer = input.hasConfigOverride
     ? Config.layerOf({
         config: input.userConfig,
@@ -147,7 +152,7 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     LintPartialFailures.layerLive,
     deadCodeLayer,
     progressLayer,
-    Reporter.layerNoop,
+    reporterLayer,
     scoreLayer,
     supplyChainLayer,
   );

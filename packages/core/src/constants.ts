@@ -702,6 +702,21 @@ export const DIAGNOSTIC_CATEGORY_BUCKETS = [
 // flag (see `resolveMatchByOccurrence` in `runners/oxlint/parse-output`).
 export const OCCURRENCE_MATCHED_CATEGORIES: ReadonlySet<string> = new Set(["Accessibility"]);
 
+export const CATEGORY_IMPACT = {
+  Security: "An attacker can read user data, act as your users, or run code you never shipped.",
+  Bugs: "Real users hit crashes, wrong output, or state that silently corrupts.",
+  Performance: "Users feel extra latency and wasted renders on every interaction.",
+  Accessibility: "Users on screen readers, keyboards, or assistive tech get locked out.",
+  Maintainability: "Every future change gets slower and riskier to make.",
+} satisfies Record<(typeof DIAGNOSTIC_CATEGORY_BUCKETS)[number], string>;
+
+const CATEGORY_IMPACT_BY_NAME: ReadonlyMap<string, string> = new Map(
+  Object.entries(CATEGORY_IMPACT),
+);
+
+export const getCategoryImpact = (category: string): string | undefined =>
+  CATEGORY_IMPACT_BY_NAME.get(category);
+
 // Rules whose heuristic only makes sense in application code. A published
 // library deliberately exposes flexible primitives (components built in
 // render to capture closures, many `render*` slots for composition), so these

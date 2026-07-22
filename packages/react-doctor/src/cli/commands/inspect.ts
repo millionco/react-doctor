@@ -32,7 +32,6 @@ import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-stage
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
-import { hasLintHardFailure } from "../utils/has-lint-hard-failure.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
 import { isExpectedUserError } from "../utils/is-expected-user-error.js";
@@ -75,7 +74,7 @@ import { projectManifestChanged } from "../utils/project-manifest-changed.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
 import { isSpinnerSilent, setSpinnerSilent, spinner } from "../utils/spinner.js";
-import { shouldBlockCi } from "../utils/should-block-ci.js";
+import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
 import { warnIfAiTrainingEnvironment } from "../utils/warn-ai-training-environment.js";
@@ -205,16 +204,13 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   }
 
   const blockingLevel = resolveBlockingLevel(input.flags, input.userConfig);
-  const hasHardFailedScan = input.completedScans.some(({ result }) => hasLintHardFailure(result));
-  if (hasHardFailedScan && blockingLevel !== "none") {
-    process.exitCode = 1;
-    return;
-  }
-
-  if (input.isScoreOnly || baselineDegraded) return;
-
-  const ciFailureDiagnostics = filterScansForSurface(input.completedScans, "ciFailure");
-  if (shouldBlockCi(ciFailureDiagnostics, blockingLevel)) {
+  if (
+    shouldFailScanGate({
+      scans: input.completedScans,
+      blockingLevel,
+      diagnosticsAreGateExempt: input.isScoreOnly || baselineDegraded,
+    })
+  ) {
     process.exitCode = 1;
   }
 };
@@ -736,7 +732,7 @@ export const inspectAction = async (
     }
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
-      const shouldShowShareLink =
+      const showShareLink =
         !isShareOptedOut(completedScans, scanOptions.noScore) && !scanOptions.isCi;
       await Effect.runPromise(
         printMultiProjectSummary({
@@ -744,7 +740,7 @@ export const inspectAction = async (
           categoryFilters,
           verbose: Boolean(flags.verbose),
           outputDirectory: flags.outputDir,
-          isOffline: !shouldShowShareLink,
+          isOffline: !showShareLink,
           projectName: path.basename(resolvedDirectory),
           totalElapsedMilliseconds: performance.now() - scanLoopStartTime,
         }),

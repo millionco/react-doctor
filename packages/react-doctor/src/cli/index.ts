@@ -18,6 +18,7 @@ import {
 import { versionAction } from "./commands/version.js";
 import { whyAction } from "./commands/why.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
+import { METRIC, TUI_MIN_NODE_MAJOR_VERSION } from "./utils/constants.js";
 import { ensureWindowsUtf8Console } from "./utils/ensure-windows-utf8-console.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { guardStdin } from "./utils/guard-stdin.js";
@@ -25,8 +26,10 @@ import { handleError, handleUserError } from "./utils/handle-error.js";
 import { isDebugFlagEnabled } from "./utils/is-debug-flag.js";
 import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
+import { isNonInteractiveEnvironment } from "./utils/is-non-interactive-environment.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
 import { printDebugTrace } from "./utils/print-debug-trace.js";
+import { recordCount } from "./utils/record-metric.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
@@ -438,6 +441,59 @@ program
   .description("[experimental] run the React Doctor language server over stdio (for editors)")
   .allowUnknownOption()
   .action(() => {});
+
+interface ExperimentalTuiOptions {
+  readonly blocking?: string;
+  readonly deadCode?: boolean;
+  readonly score?: boolean;
+  readonly project?: string;
+  readonly yes?: boolean;
+}
+
+program
+  .command("experimental-tui [directory]", { hidden: true })
+  .description("[experimental] interactive, scrollable scan report")
+  .option(
+    "--blocking <level>",
+    "severity that fails CI: error (default), warning, or none (advisory)",
+  )
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .option("--no-dead-code", "skip dead-code analysis")
+  .option("--no-score", "skip the score API, the share URL, and crash reporting")
+  .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
+  .option("-y, --yes", "skip the project prompt and scan every discovered project")
+  .action(async (directory = ".", _localOptions: ExperimentalTuiOptions, command) => {
+    const options: ExperimentalTuiOptions = command.optsWithGlobals();
+    const deadCode = options.deadCode === false ? false : undefined;
+    const noScore = options.score === false ? true : undefined;
+    const nodeMajorVersion = Number(process.versions.node.split(".")[0]);
+    if (
+      process.stdout.isTTY !== true ||
+      process.stdin.isTTY !== true ||
+      isNonInteractiveEnvironment() ||
+      nodeMajorVersion < TUI_MIN_NODE_MAJOR_VERSION
+    ) {
+      await inspectAction(directory, {
+        deadCode,
+        score: options.score === false ? false : undefined,
+        project: options.project,
+        yes: options.yes,
+        blocking: options.blocking,
+      });
+      return;
+    }
+    recordCount(METRIC.cliInvoked, 1, { command: "experimental-tui" });
+    const { runScanApp } = await import("./ink/run-scan-app.js");
+    const { shouldFail } = await runScanApp({
+      directory,
+      options: { deadCode, noScore },
+      projectFlag: options.project,
+      skipPrompts: options.yes ?? false,
+      blocking: options.blocking,
+    });
+    if (shouldFail) process.exitCode = 1;
+  });
 
 // HACK: when stdout is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next

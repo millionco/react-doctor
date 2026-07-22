@@ -116,6 +116,16 @@ export default defineConfig({
           "oxlint-plugin-react-doctor",
           "prompts",
           "typescript",
+          // The interactive Ink report (lazy-loaded for `experimental-tui`).
+          // Ink pulls `yoga-layout` (a wasm module) and React resolves
+          // `react/jsx-runtime` via the automatic JSX transform — both break
+          // when inlined, so keep them external and let Node resolve them from
+          // node_modules on install.
+          "ink",
+          "ink-spinner",
+          "react",
+          "react/jsx-runtime",
+          "react/jsx-dev-runtime",
         ],
       },
       dts: true,

@@ -4,7 +4,7 @@ import type { Diagnostic } from "@react-doctor/core";
 import { highlighter } from "@react-doctor/core";
 import { buildHandoffPayload } from "./build-handoff-payload.js";
 import { cliLogger as logger } from "./cli-logger.js";
-import { detectAvailableAgents } from "./detect-agents.js";
+import { detectLaunchableAgents } from "./detect-launchable-agents.js";
 import { findNearestPackageDirectory } from "./install-doctor-script.js";
 import {
   isReactDoctorWorkflowInstalled,
@@ -20,7 +20,6 @@ import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
 import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
 import { setUpGitHubActions } from "./set-up-github-actions.js";
 import { installReactDoctorSkillForAgent } from "./install-skill-for-agent.js";
-import { isCommandAvailable } from "./is-command-available.js";
 import { METRIC } from "./constants.js";
 import { openWorkflowPullRequest, stageWorkflowFile } from "./open-workflow-pull-request.js";
 import { recordCount } from "./record-metric.js";
@@ -159,17 +158,6 @@ const maybeOfferActionUpgrade = async (projectRoot: string): Promise<void> => {
 
   const didApplyUpgrade = await upgradeGitHubActionsWorkflow(workflow);
   if (didApplyUpgrade) recordActionUpgradeDecision(projectRoot, "accepted");
-};
-
-// CLI agents we can launch: detected as installed by `agent-install`
-// (filesystem config dir) AND with their launch binary on PATH (since we
-// hand the prompt to that CLI). `agent-install` has no command-availability
-// check, so `isCommandAvailable` covers the launchability half.
-const detectLaunchableAgents = async (): Promise<CliAgentId[]> => {
-  const detected = new Set(await detectAvailableAgents());
-  return (Object.keys(CLI_AGENT_BINARIES) as CliAgentId[]).filter(
-    (agentId) => detected.has(agentId) && isCommandAvailable(CLI_AGENT_BINARIES[agentId]),
-  );
 };
 
 // Two-phase post-scan handoff: first asks whether to wire up GitHub Actions

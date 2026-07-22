@@ -14,17 +14,22 @@ import { METRIC } from "./constants.js";
 import { prompts } from "./prompts.js";
 import { recordCount } from "./record-metric.js";
 
+export const discoverWorkspacePackages = (rootDirectory: string): WorkspacePackage[] => {
+  const hasRootPackageJson = isFile(path.join(rootDirectory, "package.json"));
+  const packages = listWorkspacePackages(rootDirectory);
+  if (packages.length === 0 && (!hasRootPackageJson || isMonorepoRoot(rootDirectory))) {
+    return discoverReactSubprojects(rootDirectory);
+  }
+  return packages;
+};
+
 export const selectProjects = async (
   rootDirectory: string,
   projectFlag: string | undefined,
   skipPrompts: boolean,
   configProjects?: readonly string[],
 ): Promise<string[]> => {
-  const hasRootPackageJson = isFile(path.join(rootDirectory, "package.json"));
-  let packages = listWorkspacePackages(rootDirectory);
-  if (packages.length === 0 && (!hasRootPackageJson || isMonorepoRoot(rootDirectory))) {
-    packages = discoverReactSubprojects(rootDirectory);
-  }
+  const packages = discoverWorkspacePackages(rootDirectory);
 
   // The flag wins over workspace discovery: entries can name packages OR
   // point at arbitrary directories, so it must resolve even when discovery

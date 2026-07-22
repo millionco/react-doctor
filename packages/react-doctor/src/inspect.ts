@@ -18,6 +18,8 @@ import {
   runInspect as runInspectEffect,
   SidecarLintCacheEnabled,
 } from "@react-doctor/core";
+import type * as Layer from "effect/Layer";
+import type { Progress, Reporter } from "@react-doctor/core";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
 import {
@@ -60,6 +62,7 @@ import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
 import { filterDiagnosticsByCategories } from "./cli/utils/filter-diagnostics-by-categories.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
 import { shouldRenderHyperlinks } from "./cli/utils/should-render-hyperlinks.js";
+import { shouldShowShareLink } from "./cli/utils/should-show-share-link.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
 import {
   canAnimateOnboarding,
@@ -141,6 +144,18 @@ const buildChangedLineMatcher = (
   };
 };
 
+/**
+ * CLI-only: layer overrides an interactive UI supplies so the scan streams
+ * live diagnostics (and optionally progress) into it instead of the console.
+ * When present, all console rendering is suppressed — the UI owns the screen
+ * and reads the returned result. The scan engine never learns the UI's
+ * concrete store type; it only sees these generic service layers.
+ */
+export interface InspectUiLayers {
+  readonly reporter: Layer.Layer<Reporter>;
+  readonly progress?: Layer.Layer<Progress>;
+}
+
 export interface ReactDoctorInspectOptions extends InspectOptions {
   categoryFilters?: string[];
   includedTags?: ReadonlySet<string>;
@@ -154,6 +169,8 @@ export interface ReactDoctorInspectOptions extends InspectOptions {
    * the deadline is derived from `maxDurationMs` at call start.
    */
   deadlineEpochMs?: number;
+  /** See {@link InspectUiLayers}. */
+  uiLayers?: InspectUiLayers;
 }
 
 export interface ResolvedInspectOptions {
@@ -202,6 +219,8 @@ export interface ResolvedInspectOptions {
   changedLineRanges: ReadonlyArray<ChangedFileLineRanges> | null;
   /** See `InspectOptions.supplyChainManifestChanged`. */
   supplyChainManifestChanged: boolean;
+  /** Interactive UI layer overrides, or `null` for the static console path. */
+  uiLayers: InspectUiLayers | null;
 }
 
 const buildIgnoredTags = (
@@ -247,7 +266,8 @@ const mergeInspectOptions = (
     includeTagDefaults: inputOptions.includeTagDefaults ?? false,
     scoreDisabledMessage: inputOptions.scoreDisabledMessage,
     outputSurface: inputOptions.outputSurface ?? "cli",
-    suppressRendering: inputOptions.suppressRendering ?? false,
+    suppressRendering: (inputOptions.suppressRendering ?? false) || inputOptions.uiLayers != null,
+    uiLayers: inputOptions.uiLayers ?? null,
     concurrentScan: inputOptions.concurrentScan ?? false,
     concurrency: inputOptions.concurrency,
     maxDurationMs: inputOptions.maxDurationMs ?? null,
@@ -670,6 +690,8 @@ const runInspectWithRuntime = async (
     shouldComputeScore: !options.noScore,
     shouldShowProgressSpinners,
     oxlintConcurrency: options.concurrency,
+    reporterLayer: options.uiLayers?.reporter,
+    progressLayer: options.uiLayers?.progress,
   });
 
   const program = runInspectEffect(
@@ -748,6 +770,7 @@ const runInspectWithRuntime = async (
   // `message.includes(...)`).
   if (
     !options.scoreOnly &&
+    !options.uiLayers &&
     !lintBindingMissing &&
     output.didLintFail &&
     lintFailureReason !== null
@@ -1256,7 +1279,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
         )
       : null;
 
-    const shouldShowShareLink = !options.noScore && options.share && !options.isCi;
+    const showShareLink = shouldShowShareLink(options);
     yield* pause;
     yield* printSummary({
       diagnostics: [...printedDiagnostics],
@@ -1283,7 +1306,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       diagnostics: [...printedDiagnostics],
       scoreResult: score,
       projectName: project.projectName,
-      isOffline: !shouldShowShareLink,
+      isOffline: !showShareLink,
     });
 
     return buildResult();

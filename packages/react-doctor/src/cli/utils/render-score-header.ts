@@ -1,14 +1,9 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import {
-  highlighter,
-  PERFECT_SCORE,
-  SCORE_BAR_WIDTH_CHARS,
-  SCORE_GOOD_THRESHOLD,
-  SCORE_OK_THRESHOLD,
-} from "@react-doctor/core";
+import { highlighter, PERFECT_SCORE, SCORE_BAR_WIDTH_CHARS } from "@react-doctor/core";
 import type { ScoreResult } from "@react-doctor/core";
 import { colorizeByScore } from "./colorize-by-score.js";
+import { doctorFace } from "./doctor-face.js";
 import {
   PERFECT_SCORE_RAINBOW_FRAME_COUNT,
   PERFECT_SCORE_RAINBOW_FRAME_DELAY_MS,
@@ -185,17 +180,11 @@ const buildProjectedScoreBar = (currentScore: number, potentialScore: number): s
   );
 };
 
-const getDoctorFace = (score: number): string[] => {
-  if (score >= SCORE_GOOD_THRESHOLD) return ["◠ ◠", " ▽ "];
-  if (score >= SCORE_OK_THRESHOLD) return ["• •", " ─ "];
-  return ["x x", " ▽ "];
-};
-
 const BRANDING_LINE = `React Doctor ${highlighter.dim("(https://react.doctor)")}`;
 const RAW_BRANDING_LINE = "React Doctor (https://react.doctor)";
 
 const buildRawFaceLines = (score: number): string[] => {
-  const [eyes, mouth] = getDoctorFace(score);
+  const [eyes, mouth] = doctorFace(score);
   return [FACE_BOX_TOP_BORDER, `│ ${eyes} │`, `│ ${mouth} │`, "└─────┘"];
 };
 

@@ -82,6 +82,37 @@ const C = () => (<FlashList data={items} renderItem={({ item }) => ${renderItemE
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a heterogeneous renderItem wrapped in React useCallback", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { useCallback } from "react";
+import { FlashList } from "@shopify/flash-list";
+const C = () => {
+  const renderItem = useCallback(
+    ({ item }) => item.kind === "header" ? <Header /> : <Row />,
+    [],
+  );
+  return <FlashList data={items} renderItem={renderItem} />;
+};`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a locally shadowed useCallback wrapper", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const useCallback = (callback) => ({ callback });
+const renderItem = useCallback(({ item }) => item.kind === "header" ? <Header /> : <Row />);
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a homogeneous FlashList v2", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,

@@ -1,13 +1,11 @@
-import {
-  FLASH_LIST_V2_MAJOR,
-  RECYCLABLE_LIST_PACKAGE_SOURCES,
-} from "../../constants/react-native.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { RECYCLABLE_LIST_PACKAGE_SOURCES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { getReactDoctorNumberSetting } from "../../utils/get-react-doctor-setting.js";
+import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
+import { isFlashListV2OrNewer } from "./utils/is-flash-list-v2-or-newer.js";
 import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -41,35 +39,53 @@ const collectReturnedJsxRootNames = (expression: EsTreeNode, names: Set<string>)
   }
 };
 
-const resolveRenderItemFunction = (
-  attribute: EsTreeNodeOfType<"JSXAttribute">,
+const resolveFunctionFromInitializer = (
+  initializer: EsTreeNode,
+  resultSymbol: SymbolDescriptor | null,
+  scopes: ScopeAnalysis,
 ): EsTreeNode | null => {
-  if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
-  const expression = stripParenExpression(attribute.value.expression);
+  const expression = stripParenExpression(initializer);
   if (
     isNodeOfType(expression, "ArrowFunctionExpression") ||
-    isNodeOfType(expression, "FunctionExpression")
+    isNodeOfType(expression, "FunctionExpression") ||
+    isNodeOfType(expression, "FunctionDeclaration")
   ) {
     return expression;
   }
-  if (!isNodeOfType(expression, "Identifier")) return null;
-  const binding = findVariableInitializer(attribute, expression.name);
-  const initializer = binding?.initializer;
+  const callbackArgument = getTransparentReactCallbackWrapperArgument(
+    expression,
+    resultSymbol,
+    scopes,
+  );
   if (
-    initializer &&
-    (isNodeOfType(initializer, "ArrowFunctionExpression") ||
-      isNodeOfType(initializer, "FunctionExpression") ||
-      isNodeOfType(initializer, "FunctionDeclaration"))
+    callbackArgument &&
+    (isNodeOfType(callbackArgument, "ArrowFunctionExpression") ||
+      isNodeOfType(callbackArgument, "FunctionExpression"))
   ) {
-    return initializer;
+    return callbackArgument;
   }
   return null;
 };
 
+const resolveRenderItemFunction = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
+  const expression = stripParenExpression(attribute.value.expression);
+  const directFunction = resolveFunctionFromInitializer(expression, null, scopes);
+  if (directFunction) return directFunction;
+  if (!isNodeOfType(expression, "Identifier")) return null;
+  const symbol = scopes.symbolFor(expression);
+  if (!symbol?.initializer) return null;
+  return resolveFunctionFromInitializer(symbol.initializer, symbol, scopes);
+};
+
 const renderItemHasHeterogeneousRootTypes = (
   attribute: EsTreeNodeOfType<"JSXAttribute">,
+  scopes: ScopeAnalysis,
 ): boolean => {
-  const renderItemFunction = resolveRenderItemFunction(attribute);
+  const renderItemFunction = resolveRenderItemFunction(attribute, scopes);
   if (
     !renderItemFunction ||
     (!isNodeOfType(renderItemFunction, "ArrowFunctionExpression") &&
@@ -96,14 +112,6 @@ const renderItemHasHeterogeneousRootTypes = (
     });
   }
   return returnedRootNames.size > 1;
-};
-
-const isFlashListV2OrNewer = (context: RuleContext): boolean => {
-  const flashListMajorVersion = getReactDoctorNumberSetting(
-    context.settings,
-    "shopifyFlashListMajorVersion",
-  );
-  return flashListMajorVersion !== undefined && flashListMajorVersion >= FLASH_LIST_V2_MAJOR;
 };
 
 export const rnListRecyclableWithoutTypes = defineRule({
@@ -161,7 +169,7 @@ export const rnListRecyclableWithoutTypes = defineRule({
           hasRecycleItemsEnabled &&
           !hasGetItemType &&
           renderItemAttribute &&
-          renderItemHasHeterogeneousRootTypes(renderItemAttribute)
+          renderItemHasHeterogeneousRootTypes(renderItemAttribute, context.scopes)
         ) {
           context.report({
             node,

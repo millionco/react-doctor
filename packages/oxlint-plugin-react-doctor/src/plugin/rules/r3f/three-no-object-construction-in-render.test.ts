@@ -17,6 +17,8 @@ describe("three-no-object-construction-in-render", () => {
     `import { Scene } from "three"; import { useMemo } from "react"; const View = () => { const scene = useMemo(() => new Scene(), []); return <canvas />; };`,
     `import { Scene } from "three"; import { useState } from "react"; const View = () => { const [scene] = useState(() => new Scene()); return <canvas />; };`,
     `import { Scene } from "three"; const View = () => <button onClick={() => new Scene()} />;`,
+    `import { Vector3 } from "three"; export const THROW_ALPHA = () => new Vector3();`,
+    `import { Mesh } from "three"; export function CSGArray2R3fComponent() { return [new Mesh()]; }`,
     `import { Scene } from "other"; const View = () => { const scene = new Scene(); return <canvas />; };`,
   ])("allows stable, deferred, or unrelated construction", (code) => {
     expect(runRule(threeNoObjectConstructionInRender, code).diagnostics).toHaveLength(0);

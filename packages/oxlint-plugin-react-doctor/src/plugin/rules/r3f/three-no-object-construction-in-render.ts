@@ -1,7 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
+import { functionHasReactComponentEvidence } from "../../utils/function-has-react-component-evidence.js";
 import { isInsideStableReactInitializer } from "../../utils/is-inside-stable-react-initializer.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { isThreeModuleSource } from "./utils/is-three-module-source.js";
@@ -15,11 +18,20 @@ export const threeNoObjectConstructionInRender = defineRule({
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       const provenance = getApiReferenceProvenance(node.callee, context.scopes);
+      const renderOwner = findRenderPhaseComponentOrHook(node, context.scopes);
       if (
         !provenance ||
         !isThreeModuleSource(provenance.moduleSource) ||
-        !findRenderPhaseComponentOrHook(node, context.scopes) ||
+        !renderOwner ||
         isInsideStableReactInitializer(node, context.scopes)
+      ) {
+        return;
+      }
+      const renderOwnerName = componentOrHookDisplayNameForFunction(renderOwner);
+      if (
+        !renderOwnerName ||
+        (!isReactHookName(renderOwnerName) &&
+          !functionHasReactComponentEvidence(renderOwner, context.scopes, context.cfg))
       ) {
         return;
       }

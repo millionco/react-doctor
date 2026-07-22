@@ -18,6 +18,7 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -1163,16 +1164,10 @@ const functionHasPotentialSynchronousThrow = (
     }
     if (!isNodeOfType(candidate, "CallExpression")) return;
     if (cleanupReleaseKeys(candidate, scopes, classBody).length > 0) return;
+    if (isProvenNonThrowingBuiltInCall(candidate, scopes)) return;
     const callee = stripParenExpression(candidate.callee);
     if (isNodeOfType(callee, "MemberExpression")) {
       const receiver = stripParenExpression(callee.object);
-      if (
-        isNodeOfType(receiver, "Identifier") &&
-        receiver.name === "console" &&
-        scopes.isGlobalReference(receiver)
-      ) {
-        return;
-      }
       if (isNodeOfType(receiver, "ThisExpression")) {
         const memberName = getStaticPropertyName(callee);
         const memberFunction = memberName

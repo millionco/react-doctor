@@ -59,6 +59,7 @@ import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capt
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
+import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isSynchronousIteratorCallback } from "../../utils/is-synchronous-iterator-callback.js";
 import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-target.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -1933,11 +1934,12 @@ const hasPotentialInterruptionAfterGuard = (
     if (child !== callback.body && isFunctionLike(child)) return false;
     const childStart = getRangeStart(child);
     if (childStart === null || childStart <= guardStart || childStart >= usageStart) return;
-    if (
-      isNodeOfType(child, "CallExpression") ||
+    const isPotentialInterruption =
       isNodeOfType(child, "AwaitExpression") ||
-      isNodeOfType(child, "YieldExpression")
-    ) {
+      isNodeOfType(child, "YieldExpression") ||
+      (isNodeOfType(child, "CallExpression") &&
+        !isProvenNonThrowingBuiltInCall(child, context.scopes));
+    if (isPotentialInterruption) {
       if (
         canNodeReachLaterNodeWithinFunction(child, usageNode, callback, context) ||
         canInterruptionReachUsageThroughCatch(child, usageNode, callback, context)
@@ -2332,11 +2334,12 @@ const hasGuardedDeferredCleanup = (
     walkAst(argument, (argumentChild: EsTreeNode) => {
       if (hasPotentialInterruption) return false;
       if (isFunctionLike(argumentChild)) return false;
-      if (
-        isNodeOfType(argumentChild, "CallExpression") ||
+      const isPotentialInterruption =
         isNodeOfType(argumentChild, "AwaitExpression") ||
-        isNodeOfType(argumentChild, "YieldExpression")
-      ) {
+        isNodeOfType(argumentChild, "YieldExpression") ||
+        (isNodeOfType(argumentChild, "CallExpression") &&
+          !isProvenNonThrowingBuiltInCall(argumentChild, context.scopes));
+      if (isPotentialInterruption) {
         hasPotentialInterruption = true;
         return false;
       }

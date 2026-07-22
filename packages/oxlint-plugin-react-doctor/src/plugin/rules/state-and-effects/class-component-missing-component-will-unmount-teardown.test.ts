@@ -811,6 +811,49 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(afterCleanup.diagnostics).toHaveLength(0);
   });
 
+  it("accepts proven non-throwing built-ins before unmount cleanup", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `const startedAt = performance.now();
+      class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() {
+          console.info(Math.round(performance.now() - startedAt));
+          emitter.off("change", this.handleChange);
+        }
+        render() { return null; }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust dynamic, unknown, or shadowed console methods before cleanup", () => {
+    const invalidSources = [
+      `const method = "log";
+      class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() { console[method]("cleanup"); emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+      `class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() { console.missing("cleanup"); emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+      `const console = { log() { throw new Error("failed"); } };
+      class Listener extends React.Component {
+        componentDidMount() { emitter.on("change", this.handleChange); }
+        componentWillUnmount() { console.log("cleanup"); emitter.off("change", this.handleChange); }
+        render() { return null; }
+      }`,
+    ];
+    for (const source of invalidSources) {
+      expect(
+        runRule(classComponentMissingComponentWillUnmountTeardown, source).diagnostics,
+      ).toHaveLength(1);
+    }
+  });
+
   it("flags cleanup that happens only after an await", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

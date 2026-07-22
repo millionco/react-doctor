@@ -7522,6 +7522,32 @@ export const Component = ({ load, runBeforeSchedule }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("accepts proven non-throwing built-ins after the lifecycle guard", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Component = ({ load }) => {
+  useEffect(() => {
+    const startedAt = performance.now();
+    let isActive = true;
+    let timeoutId;
+    load().then(() => {
+      if (!isActive) return;
+      console.info(Math.round(performance.now() - startedAt));
+      timeoutId = setTimeout(task, Math.round(performance.now() - startedAt));
+    });
+    return () => {
+      isActive = false;
+      clearTimeout(timeoutId);
+    };
+  }, [load]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts a synchronous call before the lifecycle guard is rechecked", () => {
     const result = runRule(
       effectNeedsCleanup,

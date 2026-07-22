@@ -20,6 +20,7 @@ import {
 } from "../../utils/is-never-rejecting-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import type { ResolvedCrossFileExport } from "../../utils/resolve-cross-file-export.js";
@@ -686,6 +687,7 @@ const helperHasUnhandledSynchronousCall = (
       ancestor = ancestor.parent ?? null;
     }
     if (isInsideNonRethrowingTry(child, helper)) return;
+    if (scopes && isProvenNonThrowingBuiltInCall(child, scopes)) return;
     if (
       isPromiseResolveCall(child, scopes) ||
       chainCarriesRejectionHandler(child, scopes) ||
@@ -720,13 +722,6 @@ const helperHasUnhandledSynchronousCall = (
     }
     if (isNodeOfType(callee, "MemberExpression")) {
       const receiver = stripParenExpression(callee.object);
-      if (
-        isNodeOfType(receiver, "Identifier") &&
-        receiver.name === "console" &&
-        (!scopes || scopes.isGlobalReference(receiver))
-      ) {
-        return;
-      }
       if (getStaticPropertyName(callee) === "push" && isNodeOfType(receiver, "Identifier")) {
         const receiverSymbol = scopes?.symbolFor(receiver);
         const receiverInitializer = receiverSymbol?.initializer
@@ -1466,74 +1461,11 @@ interface AwaitSite {
 }
 
 const REACT_SETTER_CALLEE_PATTERN = /^set[A-Z]/;
-const NON_THROWING_NUMBER_BINARY_OPERATORS = new Set(["+", "-", "*", "/", "%", "**"]);
-const isGlobalPerformanceNowCall = (
-  callNode: EsTreeNodeOfType<"CallExpression">,
-  context: RuleContext,
-): boolean => {
-  const callee = stripParenExpression(callNode.callee);
-  if (!isNodeOfType(callee, "MemberExpression") || callNode.arguments.length !== 0) return false;
-  const receiver = stripParenExpression(callee.object);
-  return (
-    isNodeOfType(receiver, "Identifier") &&
-    receiver.name === "performance" &&
-    context.scopes.isGlobalReference(receiver) &&
-    getStaticPropertyName(callee) === "now"
-  );
-};
-
-const isProvenNonThrowingNumberExpression = (
-  expression: EsTreeNode,
-  context: RuleContext,
-  visitedSymbolIds = new Set<number>(),
-): boolean => {
-  const strippedExpression = stripParenExpression(expression);
-  if (isNodeOfType(strippedExpression, "Literal")) {
-    return typeof strippedExpression.value === "number";
-  }
-  if (isNodeOfType(strippedExpression, "CallExpression")) {
-    return isGlobalPerformanceNowCall(strippedExpression, context);
-  }
-  if (isNodeOfType(strippedExpression, "Identifier")) {
-    const symbol = context.scopes.symbolFor(strippedExpression);
-    if (
-      symbol?.kind !== "const" ||
-      !symbol.initializer ||
-      symbol.declarationNode.range[0] >= strippedExpression.range[0] ||
-      visitedSymbolIds.has(symbol.id) ||
-      symbol.references.some((reference) => reference.flag !== "read")
-    ) {
-      return false;
-    }
-    visitedSymbolIds.add(symbol.id);
-    return isProvenNonThrowingNumberExpression(symbol.initializer, context, visitedSymbolIds);
-  }
-  if (isNodeOfType(strippedExpression, "UnaryExpression")) {
-    return (
-      (strippedExpression.operator === "+" || strippedExpression.operator === "-") &&
-      isProvenNonThrowingNumberExpression(strippedExpression.argument, context, visitedSymbolIds)
-    );
-  }
-  if (!isNodeOfType(strippedExpression, "BinaryExpression")) return false;
-  if (!NON_THROWING_NUMBER_BINARY_OPERATORS.has(strippedExpression.operator)) return false;
-  return (
-    isProvenNonThrowingNumberExpression(
-      strippedExpression.left,
-      context,
-      new Set(visitedSymbolIds),
-    ) &&
-    isProvenNonThrowingNumberExpression(
-      strippedExpression.right,
-      context,
-      new Set(visitedSymbolIds),
-    )
-  );
-};
-
 const isProvenNonThrowingSynchronousCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
+  if (isProvenNonThrowingBuiltInCall(callNode, context.scopes)) return true;
   const callee = stripParenExpression(callNode.callee);
   if (isNodeOfType(callee, "Identifier")) {
     if (
@@ -1565,22 +1497,7 @@ const isProvenNonThrowingSynchronousCall = (
     }
     return false;
   }
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  if (isGlobalPerformanceNowCall(callNode, context)) return true;
-  const receiver = stripParenExpression(callee.object);
-  if (!isNodeOfType(receiver, "Identifier") || !context.scopes.isGlobalReference(receiver)) {
-    return false;
-  }
-  if (receiver.name === "console") return true;
-  const methodName = getStaticPropertyName(callee);
-  const firstArgument = callNode.arguments[0];
-  return Boolean(
-    receiver.name === "Math" &&
-    methodName === "round" &&
-    callNode.arguments.length === 1 &&
-    firstArgument &&
-    isProvenNonThrowingNumberExpression(firstArgument, context),
-  );
+  return false;
 };
 
 const subtreeHasAbruptSynchronousOperation = (

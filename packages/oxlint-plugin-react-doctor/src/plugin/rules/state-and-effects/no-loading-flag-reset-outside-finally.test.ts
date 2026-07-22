@@ -2629,6 +2629,25 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts proven non-throwing formatting wrapped in an exact local helper", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function run() {
+        setLoading(true);
+        const start = performance.now();
+        const formatDuration = () => Math.round(performance.now() - start);
+        try {
+          await load();
+        } catch (error) {
+          console.info(error);
+          setDuration(formatDuration());
+        }
+        setLoading(false);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("keeps potentially throwing and dynamic global calls conservative", () => {
     const catchBodies = [
       'JSON.parse("invalid")',
@@ -2639,6 +2658,9 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
       "Math.round(performance.now() - start); const start = performance.now()",
       'String({ toString() { throw new Error("failed") } })',
       'const method = "round"; Math[method](1)',
+      'const method = "log"; console[method](error)',
+      "console.missing(error)",
+      'const console = { log() { throw new Error("failed") } }; console.log(error)',
       'const performance = { now() { throw new Error("failed") } }; performance.now()',
       'const String = () => { throw new Error("failed") }; String(error)',
     ];

@@ -6,6 +6,7 @@ import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isInsideTryStatement } from "./is-inside-try-statement.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isProvenNonThrowingBuiltInCall } from "./is-proven-non-throwing-built-in-call.js";
 import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { subtreeCanThrowSynchronously } from "./subtree-can-throw-synchronously.js";
@@ -148,19 +149,15 @@ export const chainCarriesRejectionHandler = (node: EsTreeNode, scopes?: ScopeAna
       }
       if (isNodeOfType(child, "CallExpression")) {
         const callee = stripParenExpression(child.callee);
-        const receiver = isNodeOfType(callee, "MemberExpression")
-          ? stripParenExpression(callee.object)
-          : null;
-        const isConsoleCall =
-          isNodeOfType(receiver, "Identifier") &&
-          receiver.name === "console" &&
-          (!scopes || scopes.isGlobalReference(receiver));
+        const isKnownNonThrowingBuiltInCall = Boolean(
+          scopes && isProvenNonThrowingBuiltInCall(child, scopes),
+        );
         const localFunction =
           scopes && isNodeOfType(callee, "Identifier")
             ? resolveExactLocalFunction(callee, scopes)
             : null;
         if (
-          !isConsoleCall &&
+          !isKnownNonThrowingBuiltInCall &&
           !isPromiseResolveCall(child, scopes) &&
           !chainCarriesRejectionHandler(child, scopes) &&
           (!localFunction ||

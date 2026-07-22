@@ -7,6 +7,7 @@ import { getImportSourceForName } from "../../utils/find-import-source-for-name.
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import {
   chainCarriesRejectionHandler,
   isDefinitelyNonThenableValue,
@@ -26,15 +27,6 @@ const REJECTING_PROMISE_COMBINATOR_NAMES = new Set(["all", "race", "any"]);
 const MAX_INITIATOR_RESOLUTION_DEPTH = 3;
 const STATE_DISPATCHER_HOOK_NAMES = new Set(["useState", "useReducer"]);
 const REF_HOOK_NAMES = new Set(["useRef"]);
-const NON_REJECTING_CONSOLE_METHOD_NAMES = new Set([
-  "debug",
-  "error",
-  "info",
-  "log",
-  "trace",
-  "warn",
-]);
-
 const MESSAGE =
   "This promise chain runs in an effect, ends in a `.then` that sets state or mutates a ref, and has no `.catch` or enclosing try/catch, so a rejection leaves the state unset and surfaces as an unhandled rejection. Add a `.catch` handler on the chain (`.finally` does not count).";
 
@@ -112,6 +104,10 @@ const isKnownNonRejectingHandler = (
       return false;
     }
     if (!isNodeOfType(child, "CallExpression")) return;
+    if (isProvenNonThrowingBuiltInCall(child, context.scopes)) {
+      didFindKnownNonRejectingCall = true;
+      return;
+    }
     const callee = stripParenExpression(child.callee);
     if (
       isNodeOfType(callee, "Identifier") &&
@@ -119,18 +115,6 @@ const isKnownNonRejectingHandler = (
     ) {
       const symbol = context.scopes.symbolFor(callee);
       if (symbol?.references.every((reference) => reference.flag === "read")) {
-        didFindKnownNonRejectingCall = true;
-        return;
-      }
-    }
-    if (isNodeOfType(callee, "MemberExpression")) {
-      const receiver = stripParenExpression(callee.object);
-      if (
-        isNodeOfType(receiver, "Identifier") &&
-        receiver.name === "console" &&
-        context.scopes.isGlobalReference(receiver) &&
-        NON_REJECTING_CONSOLE_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
-      ) {
         didFindKnownNonRejectingCall = true;
         return;
       }
@@ -146,15 +130,12 @@ const isTrustedNonThrowingMethodCallee = (
 ): boolean => {
   const parent = member.parent;
   if (!parent || !isNodeOfType(parent, "CallExpression") || parent.callee !== member) return false;
+  if (isProvenNonThrowingBuiltInCall(parent, context.scopes)) return true;
   const receiver = stripParenExpression(member.object);
   if (!isNodeOfType(receiver, "Identifier") || !context.scopes.isGlobalReference(receiver)) {
     return false;
   }
-  const methodName = getStaticPropertyName(member);
-  if (receiver.name === "console") {
-    return NON_REJECTING_CONSOLE_METHOD_NAMES.has(methodName ?? "");
-  }
-  return receiver.name === "Promise" && methodName === "resolve";
+  return receiver.name === "Promise" && getStaticPropertyName(member) === "resolve";
 };
 const handlerHasPotentiallyThrowingMemberRead = (
   argument: EsTreeNode | undefined,

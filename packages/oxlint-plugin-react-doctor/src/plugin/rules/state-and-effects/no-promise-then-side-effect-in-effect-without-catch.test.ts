@@ -787,10 +787,49 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
           fetch("/x").then(setValue).catch(() => Promise.resolve(null));
         }, []);
       };`,
+      `const C = () => {
+        const [, setValue] = useState();
+        const startedAt = performance.now();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            console.info(Math.round(performance.now() - startedAt));
+            setValue(null);
+          });
+        }, [startedAt]);
+      };`,
     ];
     for (const source of validSources) {
       expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
         0,
+      );
+    }
+  });
+
+  it("does not trust dynamic, unknown, or shadowed console rejection handlers", () => {
+    const invalidSources = [
+      `const C = ({ method }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch((error) => console[method](error));
+        }, [method]);
+      };`,
+      `const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch((error) => console.missing(error));
+        }, []);
+      };`,
+      `const console = { log() { throw new Error("failed"); } };
+      const C = () => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch((error) => console.log(error));
+        }, []);
+      };`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        1,
       );
     }
   });

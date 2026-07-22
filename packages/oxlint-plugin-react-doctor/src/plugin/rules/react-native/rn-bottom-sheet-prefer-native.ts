@@ -20,7 +20,7 @@ export const rnBottomSheetPreferNative = defineRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    'On RN v7+, use `<Modal presentationStyle="formSheet">` so the sheet uses platform-native gestures, detents, accessibility, and presentation behavior.',
+    'When native presentation fits the design, use `<Modal presentationStyle="formSheet">` for platform-native gestures, accessibility, and presentation behavior.',
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;

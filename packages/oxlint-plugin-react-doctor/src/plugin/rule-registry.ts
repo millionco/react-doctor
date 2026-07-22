@@ -632,7 +632,10 @@ import { rerenderStateOnlyInHandlers } from "./rules/state-and-effects/rerender-
 import { rerenderTransitionsScroll } from "./rules/performance/rerender-transitions-scroll.js";
 import { rnAnimateLayoutProperty } from "./rules/react-native/rn-animate-layout-property.js";
 import { rnAnimationReactionAsDerived } from "./rules/react-native/rn-animation-reaction-as-derived.js";
+import { rnBottomSheetNoIgnoredScrollProp } from "./rules/react-native/rn-bottom-sheet-no-ignored-scroll-prop.js";
+import { rnBottomSheetNoStateInOnAnimate } from "./rules/react-native/rn-bottom-sheet-no-state-in-on-animate.js";
 import { rnBottomSheetPreferNative } from "./rules/react-native/rn-bottom-sheet-prefer-native.js";
+import { rnBottomSheetUseIntegratedScrollable } from "./rules/react-native/rn-bottom-sheet-use-integrated-scrollable.js";
 import { rnDetoxMissingAwait } from "./rules/react-native/rn-detox-missing-await.js";
 import { rnListCallbackPerRow } from "./rules/react-native/rn-list-callback-per-row.js";
 import { rnListDataMapped } from "./rules/react-native/rn-list-data-mapped.js";
@@ -655,12 +658,16 @@ import { rnNoScrollState } from "./rules/react-native/rn-no-scroll-state.js";
 import { rnNoScrollviewMappedList } from "./rules/react-native/rn-no-scrollview-mapped-list.js";
 import { rnNoSetNativeProps } from "./rules/react-native/rn-no-set-native-props.js";
 import { rnNoSingleElementStyleArray } from "./rules/react-native/rn-no-single-element-style-array.js";
+import { rnPlatformShakingUseDirectImport } from "./rules/react-native/rn-platform-shaking-use-direct-import.js";
 import { rnPreferContentInsetAdjustment } from "./rules/react-native/rn-prefer-content-inset-adjustment.js";
 import { rnPreferExpoImage } from "./rules/react-native/rn-prefer-expo-image.js";
 import { rnPreferPressable } from "./rules/react-native/rn-prefer-pressable.js";
 import { rnPreferPressableOverGestureDetector } from "./rules/react-native/rn-prefer-pressable-over-gesture-detector.js";
 import { rnPreferReanimated } from "./rules/react-native/rn-prefer-reanimated.js";
 import { rnPressableSharedValueMutation } from "./rules/react-native/rn-pressable-shared-value-mutation.js";
+import { rnReanimated4NoLegacySpringThresholds } from "./rules/react-native/rn-reanimated-4-no-legacy-spring-thresholds.js";
+import { rnReanimated4NoRemovedApi } from "./rules/react-native/rn-reanimated-4-no-removed-api.js";
+import { rnReanimated4UseWorkletsScheduler } from "./rules/react-native/rn-reanimated-4-use-worklets-scheduler.js";
 import { rnScrollviewDynamicPadding } from "./rules/react-native/rn-scrollview-dynamic-padding.js";
 import { rnScrollviewFlexInContentContainer } from "./rules/react-native/rn-scrollview-flex-in-content-container.js";
 import { rnStylePreferBoxShadow } from "./rules/react-native/rn-style-prefer-box-shadow.js";
@@ -8341,6 +8348,30 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/rn-bottom-sheet-no-ignored-scroll-prop",
+    id: "rn-bottom-sheet-no-ignored-scroll-prop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnBottomSheetNoIgnoredScrollProp,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnBottomSheetNoIgnoredScrollProp.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-bottom-sheet-no-state-in-on-animate",
+    id: "rn-bottom-sheet-no-state-in-on-animate",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnBottomSheetNoStateInOnAnimate,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnBottomSheetNoStateInOnAnimate.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/rn-bottom-sheet-prefer-native",
     id: "rn-bottom-sheet-prefer-native",
     source: "react-doctor",
@@ -8350,6 +8381,18 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "Bugs",
       tags: [...new Set(["react-native", ...(rnBottomSheetPreferNative.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-bottom-sheet-use-integrated-scrollable",
+    id: "rn-bottom-sheet-use-integrated-scrollable",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnBottomSheetUseIntegratedScrollable,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnBottomSheetUseIntegratedScrollable.tags ?? [])])],
     },
   },
   {
@@ -8617,6 +8660,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/rn-platform-shaking-use-direct-import",
+    id: "rn-platform-shaking-use-direct-import",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnPlatformShakingUseDirectImport,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnPlatformShakingUseDirectImport.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/rn-prefer-content-inset-adjustment",
     id: "rn-prefer-content-inset-adjustment",
     source: "react-doctor",
@@ -8686,6 +8741,42 @@ export const reactDoctorRules = [
       framework: "react-native",
       category: "Bugs",
       tags: [...new Set(["react-native", ...(rnPressableSharedValueMutation.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-reanimated-4-no-legacy-spring-thresholds",
+    id: "rn-reanimated-4-no-legacy-spring-thresholds",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnReanimated4NoLegacySpringThresholds,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnReanimated4NoLegacySpringThresholds.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-reanimated-4-no-removed-api",
+    id: "rn-reanimated-4-no-removed-api",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnReanimated4NoRemovedApi,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnReanimated4NoRemovedApi.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/rn-reanimated-4-use-worklets-scheduler",
+    id: "rn-reanimated-4-use-worklets-scheduler",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...rnReanimated4UseWorkletsScheduler,
+      framework: "react-native",
+      category: "Bugs",
+      tags: [...new Set(["react-native", ...(rnReanimated4UseWorkletsScheduler.tags ?? [])])],
     },
   },
   {

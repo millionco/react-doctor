@@ -17,7 +17,7 @@ const C = () => (<FlashList recycleItems data={items} renderItem={r} />);`,
     const result = runRule(
       rnListRecyclableWithoutTypes,
       `import { FlashList } from "@shopify/flash-list";
-const C = () => (<FlashList recycleItems data={items} renderItem={r} />);`,
+const C = () => (<FlashList recycleItems data={items} renderItem={({ item }) => item.kind === "header" ? <Header /> : <Row />} />);`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
@@ -27,7 +27,7 @@ const C = () => (<FlashList recycleItems data={items} renderItem={r} />);`,
     const result = runRule(
       rnListRecyclableWithoutTypes,
       `import * as FL from "@shopify/flash-list";
-const C = () => (<FL.FlashList recycleItems data={items} renderItem={r} />);`,
+const C = () => (<FL.FlashList recycleItems data={items} renderItem={({ item }) => item.kind === "header" ? <Header /> : <Row />} />);`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
@@ -37,7 +37,7 @@ const C = () => (<FL.FlashList recycleItems data={items} renderItem={r} />);`,
     const result = runRule(
       rnListRecyclableWithoutTypes,
       `import { FlashList as List } from "@shopify/flash-list";
-const C = () => (<List recycleItems data={items} renderItem={r} />);`,
+const C = () => (<List recycleItems data={items} renderItem={({ item }) => item.kind === "header" ? <Header /> : <Row />} />);`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
@@ -48,6 +48,43 @@ const C = () => (<List recycleItems data={items} renderItem={r} />);`,
       rnListRecyclableWithoutTypes,
       `import * as FL from "./my-lists";
 const C = () => (<FL.FlashList recycleItems data={items} renderItem={r} />);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a heterogeneous FlashList v2 without an explicit recycleItems prop", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const renderItem = ({ item }) => {
+  if (item.kind === "header") return <Header />;
+  return <Row />;
+};
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a homogeneous FlashList v2", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (<FlashList data={items} renderItem={({ item }) => <Row item={item} />} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when getItemType separates the recycle pools", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (<FlashList data={items} getItemType={item => item.kind} renderItem={({ item }) => item.kind === "header" ? <Header /> : <Row />} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);

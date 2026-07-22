@@ -40,9 +40,9 @@ const bindsNavigatorFactory = (node: EsTreeNodeOfType<"ImportDeclaration">): boo
   });
 
 // HACK: @react-navigation/stack uses a JS-implemented stack with
-// imperfect native gesture/feel. native-stack (and native-tabs in v7+)
-// uses platform-native UINavigationController / Fragment, giving real
-// iOS/Android transitions, swipe-back, and large titles for free.
+// imperfect native gesture/feel. native-stack uses platform-native
+// UINavigationController / Fragment, giving real iOS/Android transitions,
+// swipe-back, and large titles for free.
 export const rnNoNonNativeNavigator = defineRule({
   id: "rn-no-non-native-navigator",
   title: "Non-native JS navigator",
@@ -50,7 +50,7 @@ export const rnNoNonNativeNavigator = defineRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for real native transitions and gestures.",
+    "Use `@react-navigation/native-stack` for stack navigation. Treat drawers separately because standalone React Navigation has no native drawer replacement.",
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;

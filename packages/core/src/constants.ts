@@ -990,3 +990,6 @@ export const SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS = 160;
 export const SUPPLY_CHAIN_IGNORED_PACKAGES: ReadonlySet<string> = new Set(["next"]);
 
 export const LINE_FEED_UTF8_BYTE = 10;
+
+export const EXPO_PLATFORM_TREE_SHAKING_MINIMUM_SDK_VERSION = 54;
+export const REANIMATED_WORKLETS_MINIMUM_MAJOR_VERSION = 4;

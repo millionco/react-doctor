@@ -11,6 +11,7 @@ import {
   EARLIEST_GATED_THREE_RELEASE,
   EARLIEST_GATED_VALTIO_MAJOR,
   EARLIEST_GATED_ZUSTAND_MAJOR,
+  EXPO_PLATFORM_TREE_SHAKING_MINIMUM_SDK_VERSION,
   LATEST_KNOWN_PREACT_MAJOR,
   LATEST_KNOWN_R3F_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
@@ -26,6 +27,7 @@ import {
   MOBX_REACT_OBSERVER_MEMO_GUARD_MAJOR,
   MOBX_REACT_OBSERVER_MEMO_GUARD_MINOR,
   REACT_ROUTER_CAPABILITY_THRESHOLDS,
+  REANIMATED_WORKLETS_MINIMUM_MAJOR_VERSION,
 } from "../constants.js";
 import {
   getLowestDependencyMajor,
@@ -100,7 +102,16 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   ) {
     capabilities.add("react-native");
   }
-  if (project.expoVersion !== null) capabilities.add("expo");
+  if (project.expoVersion !== null) {
+    capabilities.add("expo");
+    const expoSdkMajorVersion = getLowestDependencyMajor(project.expoVersion);
+    if (
+      expoSdkMajorVersion !== null &&
+      expoSdkMajorVersion >= EXPO_PLATFORM_TREE_SHAKING_MINIMUM_SDK_VERSION
+    ) {
+      capabilities.add("expo:54");
+    }
+  }
   // Derived framework trait: the project ships a first-class server-mutation
   // story tied to a plain `<form action>` (Next.js Server Actions, TanStack
   // server functions, Remix actions). Lets rules ask one question instead of
@@ -251,6 +262,16 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   }
   if (project.isPreES2023Target) capabilities.add("pre-es2023");
   if (project.hasReactCompiler) capabilities.add("react-compiler");
+  if (project.reanimatedVersion !== undefined && project.reanimatedVersion !== null) {
+    capabilities.add("reanimated");
+    const reanimatedMajorVersion = getLowestDependencyMajor(project.reanimatedVersion);
+    if (
+      reanimatedMajorVersion !== null &&
+      reanimatedMajorVersion >= REANIMATED_WORKLETS_MINIMUM_MAJOR_VERSION
+    ) {
+      capabilities.add("reanimated:4");
+    }
+  }
   if (Boolean(project.hasTanStackQuery) || Boolean(project.tanstackQueryVersion)) {
     capabilities.add("tanstack-query");
   }

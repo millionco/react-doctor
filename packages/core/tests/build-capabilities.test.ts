@@ -48,12 +48,61 @@ const baseProject: ProjectInfo = {
   preactVersion: null,
   preactMajorVersion: null,
   hasReanimated: false,
+  reanimatedVersion: null,
   isPreES2023Target: false,
   isStaticExport: false,
   sourceFileCount: 1,
 };
 
 describe("buildCapabilities", () => {
+  it("emits Expo 54 only when tree shaking is enabled by default", () => {
+    const expoFiftyThreeCapabilities = buildCapabilities({
+      ...baseProject,
+      framework: "expo",
+      expoVersion: "~53.0.0",
+    });
+    const expoFiftyFourCapabilities = buildCapabilities({
+      ...baseProject,
+      framework: "expo",
+      expoVersion: "~54.0.0",
+    });
+
+    expect(expoFiftyThreeCapabilities.has("expo")).toBe(true);
+    expect(expoFiftyThreeCapabilities.has("expo:54")).toBe(false);
+    expect(expoFiftyFourCapabilities.has("expo:54")).toBe(true);
+  });
+
+  it("emits Reanimated 4 only for a parseable v4-or-newer dependency", () => {
+    const reanimatedThreeCapabilities = buildCapabilities({
+      ...baseProject,
+      hasReanimated: true,
+      reanimatedVersion: "^3.19.0",
+    });
+    const reanimatedFourCapabilities = buildCapabilities({
+      ...baseProject,
+      hasReanimated: true,
+      reanimatedVersion: "^4.1.0",
+    });
+    const unknownReanimatedCapabilities = buildCapabilities({
+      ...baseProject,
+      hasReanimated: true,
+      reanimatedVersion: "workspace:*",
+    });
+
+    expect(reanimatedThreeCapabilities.has("reanimated")).toBe(true);
+    expect(reanimatedThreeCapabilities.has("reanimated:4")).toBe(false);
+    expect(reanimatedFourCapabilities.has("reanimated:4")).toBe(true);
+    expect(unknownReanimatedCapabilities.has("reanimated")).toBe(true);
+    expect(unknownReanimatedCapabilities.has("reanimated:4")).toBe(false);
+  });
+
+  it("accepts legacy project snapshots without reanimatedVersion", () => {
+    const legacyProject = { ...baseProject };
+    Reflect.deleteProperty(legacyProject, "reanimatedVersion");
+
+    expect(buildCapabilities(legacyProject).has("reanimated")).toBe(false);
+  });
+
   it("emits the remotion capability without replacing the web framework capability", () => {
     const capabilities = buildCapabilities({
       ...baseProject,

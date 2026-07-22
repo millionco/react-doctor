@@ -15,15 +15,15 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 const REMOVAL_MESSAGE_BY_REACT_API_NAME = new Map<string, string>([
   [
     "useMemo",
-    "This `useMemo` is dead weight, since React Compiler already caches every value here. Delete it.",
+    "React Compiler can cache this value automatically. Verify that removing `useMemo` preserves behavior before simplifying it.",
   ],
   [
     "useCallback",
-    "This `useCallback` is dead weight, since React Compiler already caches every function here. Delete it.",
+    "React Compiler can cache this function automatically. Verify that removing `useCallback` preserves behavior before simplifying it.",
   ],
   [
     "memo",
-    "This `memo()` is dead weight, since React Compiler already caches the component's output. Delete it.",
+    "React Compiler can cache this component output automatically. Verify that removing `memo()` preserves behavior before simplifying it.",
   ],
 ]);
 
@@ -142,16 +142,11 @@ const isCompilerInferableFunction = (functionNode: EsTreeNode): boolean => {
 // safely auto-memoize.
 export const reactCompilerNoManualMemoization = defineRule({
   id: "react-compiler-no-manual-memoization",
-  title: "Redundant manual memoization",
-  // Redundant-memo cleanup is correctness-neutral: the code already works,
-  // the compiler just makes the `useMemo` / `useCallback` / `memo` redundant.
-  // On a compiler-enabled codebase that's hundreds of low-priority hits, so
-  // it ships as a warning (hidden in the default report). Opt back into
-  // errors with the `compiler-cleanup` severity bucket.
+  title: "Manual memoization in compiler-managed code",
   severity: "warn",
   requires: ["react-compiler"],
   recommendation:
-    "Delete the `useMemo` / `useCallback` / `memo` call and use the plain value or component. React Compiler caches it for you.",
+    "Profile compiler-managed code and remove `useMemo`, `useCallback`, or `memo` only when the manual cache no longer carries behavioral or performance intent.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const apiName = resolveReactApiNameForCallee(node.callee, context);

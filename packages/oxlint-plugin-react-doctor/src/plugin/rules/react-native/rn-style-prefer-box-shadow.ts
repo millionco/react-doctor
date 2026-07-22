@@ -136,7 +136,7 @@ const reportLegacyShadowProperty = (
   return false;
 };
 
-// HACK: React Native v7+ supports the standard CSS `boxShadow` string
+// HACK: React Native's New Architecture supports the standard CSS `boxShadow` string
 // (`"0 2px 8px rgba(0,0,0,0.1)"`) which renders identically on iOS and
 // Android. The legacy `shadowColor`/`shadowOffset`/`shadowOpacity`/
 // `shadowRadius` keys only work on iOS, and `elevation` is Android-only,
@@ -149,7 +149,7 @@ export const rnStylePreferBoxShadow = defineRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    'These shadow keys only work on one platform. On RN v7+, use the CSS `boxShadow` string instead, like `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"`, which works on both.',
+    'These shadow keys only work on one platform. On the New Architecture, use a CSS `boxShadow` string like `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"`, which works on both.',
   create: (context: RuleContext) => {
     // The doc's FP carve-out: boxShadow shipped in RN 0.76 and needs the New
     // Architecture, so on older or legacy-arch apps the platform-specific

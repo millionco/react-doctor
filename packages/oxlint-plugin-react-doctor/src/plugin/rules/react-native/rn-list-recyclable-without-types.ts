@@ -1,23 +1,106 @@
-import { RECYCLABLE_LIST_PACKAGE_SOURCES } from "../../constants/react-native.js";
+import {
+  FLASH_LIST_V2_MAJOR,
+  RECYCLABLE_LIST_PACKAGE_SOURCES,
+} from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getReactDoctorNumberSetting } from "../../utils/get-react-doctor-setting.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// HACK: <FlashList recycleItems> (or LegendList) reuses row component
-// instances across rows. For HETEROGENEOUS lists (rows of different
-// types — section headers, message bubbles, separators), recycling
-// without `getItemType` causes wrong-type rows to mount into the
-// recycled cells and produces flickers / measurement errors. The fix
-// is to provide `getItemType={item => item.kind}` (or similar) so
-// FlashList keeps separate recycle pools per type.
-//
-// We fire when `recycleItems` is present (explicit opt-in or FlashList
-// v2 default) AND `getItemType` is absent. Bare `recycleItems` (no
-// value) or `recycleItems={true}` counts as enabled.
+const getJsxElementQualifiedName = (node: EsTreeNode): string | null => {
+  if (isNodeOfType(node, "JSXIdentifier")) return node.name;
+  if (!isNodeOfType(node, "JSXMemberExpression")) return null;
+  const objectName = getJsxElementQualifiedName(node.object);
+  if (!objectName || !isNodeOfType(node.property, "JSXIdentifier")) return null;
+  return `${objectName}.${node.property.name}`;
+};
+
+const collectReturnedJsxRootNames = (expression: EsTreeNode, names: Set<string>): void => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (isNodeOfType(unwrappedExpression, "JSXElement")) {
+    const elementName = getJsxElementQualifiedName(unwrappedExpression.openingElement.name);
+    if (elementName) names.add(elementName);
+    return;
+  }
+  if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
+    collectReturnedJsxRootNames(unwrappedExpression.consequent, names);
+    collectReturnedJsxRootNames(unwrappedExpression.alternate, names);
+  }
+};
+
+const resolveRenderItemFunction = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): EsTreeNode | null => {
+  if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
+  const expression = stripParenExpression(attribute.value.expression);
+  if (
+    isNodeOfType(expression, "ArrowFunctionExpression") ||
+    isNodeOfType(expression, "FunctionExpression")
+  ) {
+    return expression;
+  }
+  if (!isNodeOfType(expression, "Identifier")) return null;
+  const binding = findVariableInitializer(attribute, expression.name);
+  const initializer = binding?.initializer;
+  if (
+    initializer &&
+    (isNodeOfType(initializer, "ArrowFunctionExpression") ||
+      isNodeOfType(initializer, "FunctionExpression") ||
+      isNodeOfType(initializer, "FunctionDeclaration"))
+  ) {
+    return initializer;
+  }
+  return null;
+};
+
+const renderItemHasHeterogeneousRootTypes = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): boolean => {
+  const renderItemFunction = resolveRenderItemFunction(attribute);
+  if (
+    !renderItemFunction ||
+    (!isNodeOfType(renderItemFunction, "ArrowFunctionExpression") &&
+      !isNodeOfType(renderItemFunction, "FunctionExpression") &&
+      !isNodeOfType(renderItemFunction, "FunctionDeclaration"))
+  ) {
+    return false;
+  }
+  const returnedRootNames = new Set<string>();
+  if (!isNodeOfType(renderItemFunction.body, "BlockStatement")) {
+    collectReturnedJsxRootNames(renderItemFunction.body, returnedRootNames);
+  } else {
+    walkAst(renderItemFunction.body, (child) => {
+      if (
+        isNodeOfType(child, "ArrowFunctionExpression") ||
+        isNodeOfType(child, "FunctionExpression") ||
+        isNodeOfType(child, "FunctionDeclaration")
+      ) {
+        return false;
+      }
+      if (isNodeOfType(child, "ReturnStatement") && child.argument) {
+        collectReturnedJsxRootNames(child.argument, returnedRootNames);
+      }
+    });
+  }
+  return returnedRootNames.size > 1;
+};
+
+const isFlashListV2OrNewer = (context: RuleContext): boolean => {
+  const flashListMajorVersion = getReactDoctorNumberSetting(
+    context.settings,
+    "shopifyFlashListMajorVersion",
+  );
+  return flashListMajorVersion !== undefined && flashListMajorVersion >= FLASH_LIST_V2_MAJOR;
+};
+
 export const rnListRecyclableWithoutTypes = defineRule({
   id: "rn-list-recyclable-without-types",
   title: "Recyclable list missing getItemType",
@@ -40,15 +123,15 @@ export const rnListRecyclableWithoutTypes = defineRule({
         // from `@shopify/flash-list` / `@legendapp/list` — named, aliased, or
         // namespace member access. A name-only match on a homegrown `FlashList`
         // (`const FlashList = MyOwnList`) isn't a recycler.
-        if (
-          resolveImportedRecyclerName(node, elementName, {
-            allowNamespaceMemberAccess: true,
-          }) === null
-        )
-          return;
+        const canonicalRecyclerName = resolveImportedRecyclerName(node, elementName, {
+          allowNamespaceMemberAccess: true,
+        });
+        if (canonicalRecyclerName === null) return;
 
-        let hasRecycleItemsEnabled = false;
+        let hasRecycleItemsEnabled =
+          canonicalRecyclerName === "FlashList" && isFlashListV2OrNewer(context);
         let hasGetItemType = false;
+        let renderItemAttribute: EsTreeNodeOfType<"JSXAttribute"> | null = null;
 
         for (const attr of node.attributes ?? []) {
           if (!isNodeOfType(attr, "JSXAttribute")) continue;
@@ -66,12 +149,18 @@ export const rnListRecyclableWithoutTypes = defineRule({
             }
           }
           if (attr.name.name === "getItemType") hasGetItemType = true;
+          if (attr.name.name === "renderItem") renderItemAttribute = attr;
         }
 
-        if (hasRecycleItemsEnabled && !hasGetItemType) {
+        if (
+          hasRecycleItemsEnabled &&
+          !hasGetItemType &&
+          renderItemAttribute &&
+          renderItemHasHeterogeneousRootTypes(renderItemAttribute)
+        ) {
           context.report({
             node,
-            message: `Your users see rows of different shapes reuse the wrong cells when <${elementName} recycleItems> has no \`getItemType\`.`,
+            message: `Your users see rows of different shapes reuse the wrong cells when <${elementName}> recycles them without \`getItemType\`.`,
           });
         }
       },

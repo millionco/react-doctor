@@ -717,6 +717,9 @@ import { threeRequireAnimationMixerCleanup } from "./rules/r3f/three-require-ani
 import { threeRequireControlsCleanup } from "./rules/r3f/three-require-controls-cleanup.js";
 import { threeRequireFrameDelta } from "./rules/r3f/three-require-frame-delta.js";
 import { threeRequireInstancedBufferUpdate } from "./rules/r3f/three-require-instanced-buffer-update.js";
+import { threeRequireOwnedGeometryCleanup } from "./rules/r3f/three-require-owned-geometry-cleanup.js";
+import { threeRequireOwnedMaterialCleanup } from "./rules/r3f/three-require-owned-material-cleanup.js";
+import { threeRequireOwnedTextureCleanup } from "./rules/r3f/three-require-owned-texture-cleanup.js";
 import { threeRequirePostprocessingCleanup } from "./rules/r3f/three-require-postprocessing-cleanup.js";
 import { threeRequireProjectionMatrixUpdate } from "./rules/r3f/three-require-projection-matrix-update.js";
 import { threeRequireRenderTargetCleanup } from "./rules/r3f/three-require-render-target-cleanup.js";
@@ -9382,6 +9385,63 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeRequireInstancedBufferUpdate.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["three", ...(threeRequireInstancedBufferUpdate.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-owned-geometry-cleanup",
+    id: "three-require-owned-geometry-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireOwnedGeometryCleanup,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeRequireOwnedGeometryCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "three",
+          ...(threeRequireOwnedGeometryCleanup.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-owned-material-cleanup",
+    id: "three-require-owned-material-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireOwnedMaterialCleanup,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeRequireOwnedMaterialCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "three",
+          ...(threeRequireOwnedMaterialCleanup.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-owned-texture-cleanup",
+    id: "three-require-owned-texture-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireOwnedTextureCleanup,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeRequireOwnedTextureCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "three",
+          ...(threeRequireOwnedTextureCleanup.requires ?? []),
+        ]),
       ],
     },
   },

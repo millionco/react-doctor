@@ -1902,6 +1902,15 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "three-require-instanced-buffer-update": {
     code: 'import { InstancedMesh } from "three"; const mesh = new InstancedMesh(geometry, material, count); const update = () => { mesh.setMatrixAt(0, matrix); };',
   },
+  "three-require-owned-geometry-cleanup": {
+    code: 'import { useMemo } from "react"; import { BoxGeometry } from "three"; const Scene = () => { const geometry = useMemo(() => new BoxGeometry(), []); return geometry.name; };',
+  },
+  "three-require-owned-material-cleanup": {
+    code: 'import { useMemo } from "react"; import { MeshBasicMaterial } from "three"; const Scene = () => { const material = useMemo(() => new MeshBasicMaterial(), []); return material.name; };',
+  },
+  "three-require-owned-texture-cleanup": {
+    code: 'import { useMemo } from "react"; import { Texture } from "three"; const Scene = () => { const texture = useMemo(() => new Texture(), []); return texture.name; };',
+  },
   "three-require-projection-matrix-update": {
     code: 'import { PerspectiveCamera } from "three"; const camera = new PerspectiveCamera(); const resize = () => { camera.aspect = width / height; };',
   },

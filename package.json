@@ -35,8 +35,7 @@
     "smoke:json-report": "node --experimental-strip-types --no-warnings scripts/smoke-json-report.ts",
     "smoke:packed-cli-install": "node --experimental-strip-types --no-warnings scripts/smoke-packed-cli-install.ts",
     "smoke:tty-prompt": "python3 scripts/smoke-tty-prompt.py",
-    "fn-mining": "tsx scripts/fn-mining/run-fn-mining.ts",
-    "build:schema": "node --experimental-strip-types --no-warnings scripts/generate-config-schema.ts"
+    "fn-mining": "tsx scripts/fn-mining/run-fn-mining.ts"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
@@ -48,7 +47,6 @@
     "commander": "^14.0.3",
     "cross-env": "^10.1.0",
     "simple-statistics": "^7.9.3",
-    "ts-json-schema-generator": "^2.9.0",
     "tsx": "^4.22.4",
     "turbo": "^2.9.7",
     "typescript": "^6.0.3",

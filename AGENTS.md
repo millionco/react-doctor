@@ -70,7 +70,6 @@ packages/
                                  `react-native-dependency-names.ts` (re-exported from
                                  core to break the rule-package ↔ core cycle)
   eslint-plugin-react-doctor/    PUBLISHED  ESLint mirror of the oxlint plugin
-  website/                       PRIVATE   docs site
 ```
 
 ## Effect v4 Conventions

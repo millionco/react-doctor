@@ -26,6 +26,8 @@ Sleep 2s
 Wait+Screen /No issues found!/
 Sleep 2s
 
+Type "clear"
+Enter
 Type "react-doctor experimental-tui --no-score --project app-a"
 Enter
 Wait+Screen /add CI/

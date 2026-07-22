@@ -125,6 +125,9 @@ export const TUI_REPORT_STATUS_ROWS = 2;
 export const TUI_REPORT_DIVIDER_ROWS = 1;
 export const TUI_REPORT_LIST_MARGIN_ROWS = 1;
 export const TUI_REPORT_MIN_LIST_ROWS = 3;
+export const TUI_REPORT_COMPACT_MAX_ROWS = 24;
+export const TUI_REPORT_COMPACT_HEADER_ROWS = 1;
+export const TUI_REPORT_COMPACT_STATUS_ROWS = 1;
 export const TUI_REPORT_MIN_WIDTH_CHARS = 24;
 export const TUI_REPORT_WIDE_MIN_COLUMNS = 120;
 export const TUI_REPORT_WIDE_MIN_ROWS = 22;
@@ -304,6 +307,7 @@ export const METRIC = {
   lspScanCompleted: "lsp.scan.completed",
   lspScanDuration: "lsp.scan.duration",
   lspScanDiagnostics: "lsp.scan.diagnostics",
+  tuiCompactReportShown: "tui.compact_report_shown",
   aiTrainingWarningShown: "ai.training.warning_shown",
   jsonOutUsed: "json.out_used",
 } as const;

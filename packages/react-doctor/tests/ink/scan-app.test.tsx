@@ -1,5 +1,5 @@
 import { render } from "ink-testing-library";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { TUI_DEFAULT_TERMINAL_ROWS } from "../../src/cli/utils/constants.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
@@ -48,6 +48,8 @@ const resizeTerminal = (stdout: TerminalStdout, dimensions: TerminalDimensions):
   stdout.emit("resize");
 };
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("ScanApp", () => {
   it("renders the live scan view before a report settles", () => {
     const store = createScanStore();
@@ -61,7 +63,26 @@ describe("ScanApp", () => {
     unmount();
   });
 
-  it("renders the score header and the full sorted rule list once settled", () => {
+  it("renders repeated live diagnostics without duplicate React keys", () => {
+    const store = createScanStore();
+    const repeatedDiagnostic = makeDiagnostic({
+      filePath: "package.json",
+      plugin: "deslop",
+      rule: "unused-dev-dependency",
+      line: 0,
+      column: 0,
+    });
+    store.emitDiagnostic(repeatedDiagnostic);
+    store.emitDiagnostic(repeatedDiagnostic);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { unmount } = render(<ScanApp store={store} />);
+
+    expect(consoleError.mock.calls.flat().join(" ")).not.toContain("same key");
+    unmount();
+  });
+
+  it("renders the score header and the full sorted rule list once settled", async () => {
     const store = createScanStore();
     // All in one category so the grouped list shows a single "Correctness"
     // header with both rules under it (fits the small test viewport).
@@ -92,7 +113,10 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    await flush();
+    resizeTerminal(stdout, { rows: 30 });
+    await flush();
     const frame = lastFrame() ?? "";
     expect(frame).toContain("72");
     expect(frame).toContain("demo-app");
@@ -105,7 +129,7 @@ describe("ScanApp", () => {
     unmount();
   });
 
-  it("shows the score projection and per-category breakdown", () => {
+  it("shows the score projection and per-category breakdown", async () => {
     const store = createScanStore();
     store.setReport({
       diagnostics: [
@@ -122,7 +146,10 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    await flush();
+    resizeTerminal(stdout, { rows: 30 });
+    await flush();
     const frame = lastFrame() ?? "";
     expect(frame).toContain("You could improve");
     expect(frame).toContain("+16%");
@@ -171,7 +198,7 @@ describe("ScanApp", () => {
     unmount();
   });
 
-  it("renders a flat monorepo summary: aggregate score, combined list, folder-qualified paths", () => {
+  it("renders a flat monorepo summary: aggregate score, combined list, folder-qualified paths", async () => {
     const store = createScanStore();
     // Combined diagnostics carry folder-qualified paths (rewritten relative to
     // the monorepo root in `runScanApp`) so the flat list shows each finding's
@@ -233,7 +260,10 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    await flush();
+    resizeTerminal(stdout, { rows: 30 });
+    await flush();
     const frame = lastFrame() ?? "";
     // Aggregate score is the worst project's (58, not 91).
     expect(frame).toContain("58");
@@ -267,7 +297,9 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdin, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    await flush();
+    resizeTerminal(stdout, { rows: 30 });
     await flush();
 
     // First row selected by default → detail pane shows the first rule's title
@@ -304,6 +336,7 @@ describe("ScanApp", () => {
     });
 
     const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    await flush();
     resizeTerminal(stdout, { columns: 140, rows: 40 });
     await flush();
 
@@ -315,36 +348,68 @@ describe("ScanApp", () => {
     unmount();
   });
 
-  it("keeps stacked report controls visible in a 24-row terminal", async () => {
+  it("uses the full compact viewport for a navigable issue list", async () => {
     const store = createScanStore();
+    const diagnostics = Array.from({ length: 30 }, (_, diagnosticIndex) =>
+      makeDiagnostic({
+        rule: `rule-${String(diagnosticIndex).padStart(2, "0")}`,
+        severity: diagnosticIndex === 0 ? "error" : "warning",
+        category: "Correctness",
+      }),
+    );
     store.setReport({
-      diagnostics: [
-        makeDiagnostic({
-          rule: "rules-of-hooks",
-          severity: "error",
-          category: "Correctness",
-          filePath: "tests/ink/scan-app.test.tsx",
-        }),
-      ],
+      diagnostics,
       score: SCORE,
       projectedScore: null,
       projectName: "demo-app",
       rootDirectory: process.cwd(),
+      scannedFileCount: diagnostics.length,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { rows: TUI_DEFAULT_TERMINAL_ROWS });
+    await flush();
+
+    expect((lastFrame() ?? "").split("\n").length).toBeLessThanOrEqual(TUI_DEFAULT_TERMINAL_ROWS);
+    expect(lastFrame()).not.toContain("┌─────┐");
+    expect(lastFrame()).not.toContain("Your users briefly see stale state");
+    expect(lastFrame()).toContain("30 issues");
+
+    stdin.write("G");
+    await flush();
+
+    expect(lastFrame()).toContain("30/30");
+    expect(lastFrame()).toContain("react-doctor/rule-29");
+    unmount();
+  });
+
+  it("offers CI setup as an explicit shortcut without running it on exit", async () => {
+    const store = createScanStore();
+    const onAddToCi = vi.fn();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
       scannedFileCount: 1,
       elapsedMilliseconds: 10,
       isOffline: true,
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
-    resizeTerminal(stdout, { rows: TUI_DEFAULT_TERMINAL_ROWS });
+    const { lastFrame, stdin, unmount } = render(
+      <ScanApp store={store} canAddToCi onAddToCi={onAddToCi} />,
+    );
     await flush();
 
-    const frame = lastFrame() ?? "";
-    expect(frame.split("\n").length).toBeLessThanOrEqual(TUI_DEFAULT_TERMINAL_ROWS);
-    expect(frame).toContain('"ink-testing-library"');
-    expect(frame).toContain("1 issue");
-    expect(frame).toContain("q to quit");
+    expect(lastFrame()).toContain("a add CI");
+    stdin.write("q");
+    await flush();
+    expect(onAddToCi).not.toHaveBeenCalled();
     unmount();
   });
 });

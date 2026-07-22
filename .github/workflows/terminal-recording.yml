@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.24.5"
+          go-version: "1.25.8"
           cache: false
 
       - name: Install dependencies
@@ -114,7 +114,7 @@ jobs:
               "",
               `![React Doctor interactive terminal recording](${recordingUrl})`,
               "",
-              `Recorded from the built CLI at \`${process.env.COMMIT_SHA.slice(0, 7)}\` in a real terminal. The fixture holds Git busy for three seconds; \`Scanning...\` must appear immediately after project selection.`,
+              `Recorded from the built CLI at \`${process.env.COMMIT_SHA.slice(0, 7)}\` in a real terminal. The fixture holds Git busy for three seconds, so \`Scanning...\` must appear immediately after project selection, then exercises the compact interactive report.`,
               "",
               `[Download the GIF and MP4 artifact](${process.env.ARTIFACT_URL})`,
             ].join("\n");

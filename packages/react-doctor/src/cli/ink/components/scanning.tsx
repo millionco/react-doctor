@@ -25,12 +25,12 @@ export const Scanning = ({ progressText, liveCount, recent }: ScanningProps) => 
           </Text>
         ) : null}
       </Text>
-      {recent.map((diagnostic) => {
+      {recent.map((diagnostic, diagnosticIndex) => {
         const variant = severityVariant(diagnostic.severity === "error" ? "error" : "warning");
         const location = formatDiagnosticSite(diagnostic);
         return (
           <Text
-            key={`${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column}:${diagnostic.plugin}:${diagnostic.rule}`}
+            key={`${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column}:${diagnostic.plugin}:${diagnostic.rule}:${diagnosticIndex}`}
             wrap="truncate-end"
           >
             {"  "}

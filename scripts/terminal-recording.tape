@@ -2,8 +2,8 @@ Output artifacts/react-doctor-terminal.gif
 Output artifacts/react-doctor-terminal.mp4
 
 Set Shell "bash"
-Set Width 1000
-Set Height 600
+Set Width 1200
+Set Height 480
 Set FontSize 18
 Set TypingSpeed 35ms
 Set Framerate 30
@@ -25,3 +25,13 @@ Wait+Screen /Scanning.../
 Sleep 2s
 Wait+Screen /No issues found!/
 Sleep 2s
+
+Type "react-doctor experimental-tui --no-score --project app-a"
+Enter
+Wait+Screen /add CI/
+Sleep 2s
+Down
+Sleep 1s
+Type "G"
+Sleep 2s
+Type "q"

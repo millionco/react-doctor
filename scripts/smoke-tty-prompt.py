@@ -119,14 +119,37 @@ def create_workspace_fixture(root_directory):
     )
     for package_name in ("app-a", "app-b"):
         package_directory = os.path.join(root_directory, "packages", package_name)
+        package_json = {
+            "name": package_name,
+            "version": "0.0.0",
+            "dependencies": {"react": "18.3.1"},
+        }
+        if package_name == "app-a":
+            package_json["devDependencies"] = {
+                "typescript": "5.9.2",
+                "vite": "7.1.3",
+                "vitest": "3.2.4",
+            }
         write_package_json(
             package_directory,
-            {"name": package_name, "version": "0.0.0", "dependencies": {"react": "18.3.1"}},
+            package_json,
         )
         source_directory = os.path.join(package_directory, "src")
         os.makedirs(source_directory, exist_ok=True)
         with open(os.path.join(source_directory, "index.tsx"), "w", encoding="utf-8") as handle:
-            handle.write("export const Component = () => null;\n")
+            if package_name == "app-a":
+                handle.write(
+                    'import { useEffect, useState } from "react";\n'
+                    'const items = ["first", "second"];\n'
+                    "export const Component = () => {\n"
+                    "  const [count, setCount] = useState(0);\n"
+                    "  useEffect(() => setCount(1), []);\n"
+                    "  const Nested = () => <span>{count}</span>;\n"
+                    "  return items.map((item, index) => <Nested key={index}>{item}</Nested>);\n"
+                    "};\n"
+                )
+            else:
+                handle.write("export const Component = () => null;\n")
 
 
 def initialize_git_repository(fixture_directory):

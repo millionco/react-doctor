@@ -16,7 +16,7 @@ import { DiagnosticDetail } from "./diagnostic-detail.js";
 import { DiagnosticItem } from "./diagnostic-item.js";
 import { StatusBar } from "./status-bar.js";
 
-export type DiagnosticListLayout = "split" | "stacked";
+export type DiagnosticListLayout = "compact" | "split" | "stacked";
 
 export interface DiagnosticListProps {
   readonly header: ReactNode;
@@ -89,6 +89,7 @@ export const DiagnosticList = ({
   const [menuIndex, setMenuIndex] = useState(0);
 
   const isSplit = layout === "split";
+  const isCompact = layout === "compact";
   const { rows: terminalRows } = useStdoutDimensions();
 
   const { selectedIndex, visibleStart, visibleEnd } = useScrollViewport({
@@ -229,7 +230,7 @@ export const DiagnosticList = ({
   );
 
   const statusBar = (
-    <Box marginTop={1}>
+    <Box marginTop={isCompact ? 0 : 1}>
       <StatusBar
         total={sumSites(rows)}
         errorCount={sumSites(errorRows)}
@@ -287,6 +288,17 @@ export const DiagnosticList = ({
             {detailContent}
           </Box>
         </Box>
+        {statusBar}
+        {overlay}
+      </Box>
+    );
+  }
+
+  if (isCompact) {
+    return (
+      <Box flexDirection="column" width={width} position="relative">
+        {header}
+        {listColumn}
         {statusBar}
         {overlay}
       </Box>

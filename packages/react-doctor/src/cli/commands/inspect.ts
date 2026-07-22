@@ -476,6 +476,7 @@ export const inspectAction = async (
       skipPrompts,
       userConfig?.projects,
     );
+    const projectSelectionCompletedTime = performance.now();
     const changedFilesDiffInfo = flags.changedFilesFrom
       ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
       : null;
@@ -494,12 +495,15 @@ export const inspectAction = async (
     // promotion), so a working-tree scope from a flag, `config.scope` /
     // `config.diff`, or that internal path all satisfy the requirement.
     validateIncludeUntrackedScope(includeUntracked, scopeRequest.scope);
-    const scanFeedbackStartTime = performance.now();
     scanStartupSpinner = !isQuiet ? spinner("Scanning...").start() : null;
     if (scanStartupSpinner !== null) {
-      recordDistribution(METRIC.scanFeedbackDelay, performance.now() - scanFeedbackStartTime, {
-        unit: "millisecond",
-      });
+      recordDistribution(
+        METRIC.scanFeedbackDelay,
+        performance.now() - projectSelectionCompletedTime,
+        {
+          unit: "millisecond",
+        },
+      );
     }
     const wantsDiffMode = scopeRequest.scope !== undefined && scopeRequest.scope !== "full";
     // HACK: also call getDiffInfo when we MIGHT prompt the user — without it the

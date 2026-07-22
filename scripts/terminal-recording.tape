@@ -31,7 +31,7 @@ Wait+Screen /No issues found!/
 Sleep 2s
 
 Hide
-Type "cd \"$TERMINAL_RECORDING_TUI_DIRECTORY\""
+Type "use-terminal-recording-tui-fixture"
 Enter
 Show
 

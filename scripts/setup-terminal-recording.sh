@@ -48,6 +48,11 @@ react-doctor() {
 }
 export -f react-doctor
 
+use-terminal-recording-tui-fixture() {
+  cd "$TERMINAL_RECORDING_TUI_DIRECTORY"
+}
+export -f use-terminal-recording-tui-fixture
+
 cd "$TERMINAL_RECORDING_DIRECTORY"
 clear
 printf 'terminal-recording-ready\n'

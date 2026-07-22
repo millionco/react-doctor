@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getConditionalExecutionRegions } from "../../utils/get-conditional-execution-regions.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
@@ -97,6 +98,20 @@ const getOpaqueProjectionUpdates = (
   return updates;
 };
 
+const moduleUpdateCoversMutation = (
+  mutation: DirectProjectionMutation,
+  update: DirectProjectionUpdate,
+  program: EsTreeNode,
+): boolean => {
+  const mutationStart = getRangeStart(mutation.node);
+  const updateStart = getRangeStart(update.node);
+  if (mutationStart === null || updateStart === null || updateStart <= mutationStart) return false;
+  if (!isNodeConditionallyExecuted(update.node, program)) return true;
+  const mutationRegions = getConditionalExecutionRegions(mutation.node, program);
+  const updateRegions = getConditionalExecutionRegions(update.node, program);
+  return [...updateRegions].every((region) => mutationRegions.has(region));
+};
+
 const updateCoversMutation = (
   mutation: DirectProjectionMutation,
   updates: ReadonlyArray<DirectProjectionUpdate>,
@@ -116,17 +131,7 @@ const updateCoversMutation = (
       context,
     );
   }
-  if (isNodeConditionallyExecuted(mutation.node, program)) return true;
-  const mutationStart = getRangeStart(mutation.node);
-  return matchingUpdates.some((update) => {
-    const updateStart = getRangeStart(update.node);
-    return (
-      mutationStart !== null &&
-      updateStart !== null &&
-      updateStart > mutationStart &&
-      !isNodeConditionallyExecuted(update.node, program)
-    );
-  });
+  return matchingUpdates.some((update) => moduleUpdateCoversMutation(mutation, update, program));
 };
 
 export const threeRequireProjectionMatrixUpdate = defineRule({

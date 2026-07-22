@@ -16,6 +16,19 @@ describe("three-require-projection-matrix-update", () => {
        camera.aspect = width / height;
        if (shouldRefresh) camera.updateProjectionMatrix();
      };`,
+    `import { PerspectiveCamera } from "three";
+     const camera = new PerspectiveCamera();
+     if (shouldResize) camera.aspect = width / height;`,
+    `import { PerspectiveCamera } from "three";
+     const camera = new PerspectiveCamera();
+     if (shouldResize) {
+       camera.aspect = width / height;
+       if (shouldRefresh) camera.updateProjectionMatrix();
+     }`,
+    `import { PerspectiveCamera } from "three";
+     const camera = new PerspectiveCamera();
+     if (shouldResize) camera.aspect = width / height;
+     else camera.updateProjectionMatrix();`,
   ])("flags projection changes without a matching update on every path", (code) => {
     expect(runRule(threeRequireProjectionMatrixUpdate, code).diagnostics).toHaveLength(1);
   });
@@ -33,6 +46,16 @@ describe("three-require-projection-matrix-update", () => {
     `import { PerspectiveCamera } from "three";
      const camera = new PerspectiveCamera();
      camera.aspect = width / height; camera.updateProjectionMatrix();`,
+    `import { PerspectiveCamera } from "three";
+     const camera = new PerspectiveCamera();
+     if (shouldResize) {
+       camera.aspect = width / height;
+       camera.updateProjectionMatrix();
+     }`,
+    `import { PerspectiveCamera } from "three";
+     const camera = new PerspectiveCamera();
+     if (shouldResize) camera.aspect = width / height;
+     camera.updateProjectionMatrix();`,
     `import { PerspectiveCamera } from "three"; import { refreshCamera } from "./camera";
      const camera = new PerspectiveCamera();
      const resize = () => { camera.aspect = width / height; refreshCamera(camera); };`,

@@ -58,15 +58,16 @@ export const STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES = [
   "vitest.config.ts",
 ] as const;
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
-// Bump on any breaking change to `CachedScanPayload`'s shape so a stale on-disk
-// cache (missing a newly-required field) is discarded wholesale by
-// `readPersistedCache` instead of deserializing into an invalid payload.
+// Bump on any breaking change to `CachedScanPayload`'s shape or diagnostic
+// semantics so stale on-disk results are discarded wholesale.
 // Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`
 // (supply-chain overlap) and `deadCodeOverlapped` (dead-code overlap) fields.
 // Bumped to 3: gained the required `suppressedRuleCounts` field (suppression telemetry).
 // Bumped to 4: gained the `manifestContentHash` replay guard, which every
 // `lookup` verifies — pre-bump entries without it would never hit again.
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 5;
+// Bumped to 6: declaration-file parser diagnostic compatibility filtering
+// changed the cached diagnostic set.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 6;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const SCAN_RESULT_CACHE_FILENAME = "scan-cache.json";
 // The dirty-worktree cache-key fingerprint content-hashes every path `git

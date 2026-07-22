@@ -1474,6 +1474,12 @@ describe("discoverProject", () => {
       expected: false,
     },
     {
+      name: "same-name-forwarded-method-receiver",
+      config:
+        "const wrapper = { run(config) { return config.plugin(); } }; const config = {}; export default wrapper.run(config);",
+      expected: false,
+    },
+    {
       name: "shadowed-function-declaration",
       config:
         "import compiler from 'babel-plugin-react-compiler'; const makeConfig = () => { function compiler() {} return { plugins: [compiler] }; }; export default makeConfig();",

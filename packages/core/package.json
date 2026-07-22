@@ -29,7 +29,7 @@
     "effect": "4.0.0-beta.70",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "^2.7.0",
-    "oxlint": ">=1.66.0 <1.67.0",
+    "oxlint": ">=1.74.0 <1.75.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "picomatch": "^4.0.4",
     "semver": "^7.7.4",

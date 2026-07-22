@@ -4,6 +4,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
+import { isThreeModuleSource } from "./utils/is-three-module-source.js";
 import {
   analyzeOwnedLifecycleCleanup,
   analyzeOwnedLifecycleResource,
@@ -22,9 +23,6 @@ const RENDER_TARGET_BORROWING_METHODS = new Set([
   "setRenderTarget",
   "setRenderTargetTextures",
 ]);
-
-const isThreeModuleSource = (moduleSource: string): boolean =>
-  moduleSource === "three" || moduleSource === "three-stdlib" || moduleSource.startsWith("three/");
 
 export const threeRequireRenderTargetCleanup = defineRule({
   id: "three-require-render-target-cleanup",

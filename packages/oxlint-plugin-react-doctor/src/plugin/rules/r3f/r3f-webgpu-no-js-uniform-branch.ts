@@ -9,11 +9,13 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { getControlFlowTest } from "./utils/get-control-flow-test.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 import { isApiCallFromModules } from "./utils/is-api-call-from-modules.js";
 import { isR3fCallbackStateProperty } from "./utils/is-r3f-callback-state-property.js";
 import { R3F_WEBGPU_MODULES } from "./utils/r3f-webgpu-modules.js";
 import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.js";
+import { resolvesToTslUniform } from "./utils/resolves-to-tsl-uniform.js";
 
 const WEBGPU_GRAPH_HOOKS = new Set([
   "useLocalNodes",
@@ -25,29 +27,6 @@ const WEBGPU_TWO_CALLBACK_HOOKS: ReadonlySet<string> = new Set([
   "usePostProcessing",
   "useRenderPipeline",
 ]);
-const TSL_UNIFORM_MODULES: ReadonlySet<string> = new Set(["three/tsl", "three/webgpu"]);
-
-const resolvesToTslUniform = (
-  expression: EsTreeNode,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number> = new Set(),
-): boolean => {
-  const candidate = stripParenExpression(expression);
-  if (isApiCallFromModules(candidate, "uniform", TSL_UNIFORM_MODULES, scopes)) return true;
-  if (!isNodeOfType(candidate, "Identifier")) return false;
-  const symbol = scopes.symbolFor(candidate);
-  if (
-    symbol?.kind !== "const" ||
-    !symbol.initializer ||
-    visitedSymbolIds.has(symbol.id) ||
-    symbol.references.some((reference) => reference.flag !== "read")
-  ) {
-    return false;
-  }
-  visitedSymbolIds.add(symbol.id);
-  return resolvesToTslUniform(symbol.initializer, scopes, visitedSymbolIds);
-};
-
 const isUniformValueMember = (
   expression: EsTreeNode,
   callback: EsTreeNode,
@@ -99,21 +78,6 @@ const expressionReferencesUniformValue = (
     }
   });
   return didFindUniformValue;
-};
-
-const getControlFlowTest = (node: EsTreeNode): EsTreeNode | null => {
-  if (
-    isNodeOfType(node, "IfStatement") ||
-    isNodeOfType(node, "WhileStatement") ||
-    isNodeOfType(node, "DoWhileStatement") ||
-    isNodeOfType(node, "ConditionalExpression")
-  ) {
-    return node.test;
-  }
-  if (isNodeOfType(node, "SwitchStatement")) return node.discriminant;
-  if (isNodeOfType(node, "ForStatement")) return node.test;
-  if (isNodeOfType(node, "LogicalExpression")) return node.left;
-  return null;
 };
 
 const getWebgpuGraphHookName = (node: EsTreeNode, context: RuleContext): string | null => {

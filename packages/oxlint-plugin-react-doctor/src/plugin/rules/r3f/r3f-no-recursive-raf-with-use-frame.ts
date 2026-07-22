@@ -5,14 +5,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGlobalBrowserFunctionCall } from "../../utils/is-global-browser-function-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
-import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveRecursiveAnimationFrameCallback } from "../../utils/resolve-recursive-animation-frame-callback.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { isR3fApiCall } from "./utils/is-r3f-api-call.js";
 import { isR3fReactApiCall } from "./utils/is-r3f-react-api-call.js";
@@ -21,30 +19,6 @@ import { resolveLocalReactCallback } from "./utils/resolve-local-react-callback.
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useInsertionEffect", "useLayoutEffect"]);
-
-const getAnimationFrameCallback = (
-  call: EsTreeNodeOfType<"CallExpression">,
-  scopes: ScopeAnalysis,
-): EsTreeNode | null => {
-  const callbackArgument = call.arguments[0];
-  if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) return null;
-  return resolveExactLocalFunction(callbackArgument, scopes);
-};
-
-const callbackDirectlySchedulesItself = (callback: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  let doesScheduleItself = false;
-  walkAst(callback, (candidate) => {
-    if (doesScheduleItself || (candidate !== callback && isFunctionLike(candidate))) return false;
-    if (
-      !isNodeOfType(candidate, "CallExpression") ||
-      !isGlobalBrowserFunctionCall(candidate, "requestAnimationFrame", scopes)
-    ) {
-      return;
-    }
-    doesScheduleItself = getAnimationFrameCallback(candidate, scopes) === callback;
-  });
-  return doesScheduleItself;
-};
 
 const collectRecursiveAnimationFrameStarts = (
   executedFunction: EsTreeNode,
@@ -58,8 +32,7 @@ const collectRecursiveAnimationFrameStarts = (
     ) {
       return;
     }
-    const callback = getAnimationFrameCallback(candidate, scopes);
-    if (callback && callbackDirectlySchedulesItself(callback, scopes)) starts.add(candidate);
+    if (resolveRecursiveAnimationFrameCallback(candidate, scopes)) starts.add(candidate);
   });
   return starts;
 };

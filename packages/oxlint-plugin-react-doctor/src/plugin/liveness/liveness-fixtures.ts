@@ -1866,8 +1866,53 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "three-require-controls-cleanup": {
     code: 'import { useMemo } from "react"; import { OrbitControls } from "three/addons/controls/OrbitControls.js"; import "@react-three/fiber"; const Scene = ({ camera, element }) => { const controls = useMemo(() => new OrbitControls(camera, element), [camera, element]); return <primitive object={controls} />; };',
   },
+  "three-cap-device-pixel-ratio": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setPixelRatio(window.devicePixelRatio);',
+  },
+  "three-limit-shadowed-point-lights": {
+    code: 'import { PointLight, Scene } from "three"; const scene = new Scene(); const first = new PointLight(); const second = new PointLight(); const third = new PointLight(); first.castShadow = true; second.castShadow = true; third.castShadow = true; scene.add(first); scene.add(second); scene.add(third);',
+  },
+  "three-no-allocation-in-pointer-move": {
+    code: 'import { Vector2, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.domElement.addEventListener("pointermove", () => new Vector2());',
+  },
+  "three-no-async-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(async () => update());',
+  },
+  "three-no-clone-in-animation-loop": {
+    code: 'import { Mesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const mesh = new Mesh(); renderer.setAnimationLoop(() => mesh.clone());',
+  },
+  "three-no-new-in-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => new Vector3());',
+  },
+  "three-no-object-construction-in-render": {
+    code: 'import { BoxGeometry } from "three"; const Scene = () => <primitive object={new BoxGeometry()} />;',
+  },
+  "three-no-state-in-animation-loop": {
+    code: 'import { useState } from "react"; import { WebGLRenderer } from "three"; const Scene = () => { const [, setFrame] = useState(0); const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => setFrame((frame) => frame + 1)); };',
+  },
+  "three-no-state-in-pointer-move": {
+    code: 'import { useState } from "react"; import { WebGLRenderer } from "three"; const Scene = () => { const [, setPoint] = useState(null); const renderer = new WebGLRenderer(); renderer.domElement.addEventListener("pointermove", (event) => setPoint(event.clientX)); return null; };',
+  },
   "three-require-animation-mixer-cleanup": {
     code: 'import { useMemo } from "react"; import { AnimationMixer } from "three"; const Scene = ({ root, clip }) => { const mixer = useMemo(() => new AnimationMixer(root), [root]); mixer.clipAction(clip); return null; };',
+  },
+  "three-require-frame-delta": {
+    code: 'import { Mesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const mesh = new Mesh(); renderer.setAnimationLoop(() => { mesh.rotation.y += 0.01; });',
+  },
+  "three-require-instanced-buffer-update": {
+    code: 'import { InstancedMesh } from "three"; const mesh = new InstancedMesh(geometry, material, count); const update = () => { mesh.setMatrixAt(0, matrix); };',
+  },
+  "three-require-owned-geometry-cleanup": {
+    code: 'import { useMemo } from "react"; import { BoxGeometry } from "three"; const Scene = () => { const geometry = useMemo(() => new BoxGeometry(), []); return geometry.name; };',
+  },
+  "three-require-owned-material-cleanup": {
+    code: 'import { useMemo } from "react"; import { MeshBasicMaterial } from "three"; const Scene = () => { const material = useMemo(() => new MeshBasicMaterial(), []); return material.name; };',
+  },
+  "three-require-owned-texture-cleanup": {
+    code: 'import { useMemo } from "react"; import { Texture } from "three"; const Scene = () => { const texture = useMemo(() => new Texture(), []); return texture.name; };',
+  },
+  "three-require-projection-matrix-update": {
+    code: 'import { PerspectiveCamera } from "three"; const camera = new PerspectiveCamera(); const resize = () => { camera.aspect = width / height; };',
   },
   "r3f-webgpu-no-gl-state": {
     code: 'import { useThree } from "@react-three/fiber/webgpu"; const renderer = useThree((state) => state.gl);',
@@ -1887,6 +1932,18 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "three-require-postprocessing-cleanup": {
     code: 'import { useMemo } from "react"; import "three"; import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js"; const Scene = ({ renderer }) => { const composer = useMemo(() => new EffectComposer(renderer), [renderer]); composer.render(); return null; };',
     settings: { "react-doctor": { capabilities: ["three", "three:145", "three:146"] } },
+  },
+  "three-tsl-no-js-uniform-branch": {
+    code: 'import { Fn, uniform } from "three/tsl"; const mode = uniform(0); const shader = Fn(() => { if (mode.value) return red; return blue; });',
+  },
+  "three-webgpu-no-legacy-effect-composer": {
+    code: 'import { WebGPURenderer } from "three/webgpu"; import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js"; const renderer = new WebGPURenderer(); const composer = new EffectComposer(renderer);',
+  },
+  "three-webgpu-no-legacy-material-api": {
+    code: 'import { ShaderMaterial } from "three"; import { WebGPURenderer } from "three/webgpu"; const renderer = new WebGPURenderer(); const material = new ShaderMaterial();',
+  },
+  "webgl-no-sync-readback-in-animation-loop": {
+    code: 'const gl = canvas.getContext("webgl"); const pixels = new Uint8Array(4); const frame = () => { gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels); requestAnimationFrame(frame); }; requestAnimationFrame(frame);',
   },
   "tanstack-start-no-anchor-element": {
     code: 'const C = () => <a href="/dashboard">Go</a>;',

@@ -931,6 +931,7 @@ const getSelectedObjectProperty = (
   expression: ts.Expression,
   propertyName: string,
   analysis: ConfigExpressionAnalysis,
+  visitedExpressions: Set<ts.Expression> = new Set(),
 ): ts.Expression | ts.MethodDeclaration | null => {
   let resolvedExpression = expression;
   while (
@@ -942,22 +943,29 @@ const getSelectedObjectProperty = (
   ) {
     resolvedExpression = resolvedExpression.expression;
   }
+  if (visitedExpressions.has(resolvedExpression)) return null;
+  visitedExpressions.add(resolvedExpression);
   if (ts.isIdentifier(resolvedExpression)) {
     if (analysis.localBindings.has(resolvedExpression.text)) {
       const localInitializer = analysis.localBindings.get(resolvedExpression.text);
       return localInitializer
-        ? getSelectedObjectProperty(localInitializer, propertyName, analysis)
+        ? getSelectedObjectProperty(localInitializer, propertyName, analysis, visitedExpressions)
         : null;
     }
     const scopedBinding = getScopedConfigBinding(resolvedExpression);
     if (scopedBinding.wasFound) {
       return scopedBinding.initializer
-        ? getSelectedObjectProperty(scopedBinding.initializer, propertyName, analysis)
+        ? getSelectedObjectProperty(
+            scopedBinding.initializer,
+            propertyName,
+            analysis,
+            visitedExpressions,
+          )
         : null;
     }
     const topLevelBinding = getTopLevelBinding(analysis.sourceFile, resolvedExpression.text);
     return topLevelBinding && ts.isExpression(topLevelBinding)
-      ? getSelectedObjectProperty(topLevelBinding, propertyName, analysis)
+      ? getSelectedObjectProperty(topLevelBinding, propertyName, analysis, visitedExpressions)
       : null;
   }
   if (!ts.isObjectLiteralExpression(resolvedExpression)) return null;
@@ -975,7 +983,12 @@ const getSelectedObjectProperty = (
       return property.name;
     }
     if (ts.isSpreadAssignment(property)) {
-      const spreadProperty = getSelectedObjectProperty(property.expression, propertyName, analysis);
+      const spreadProperty = getSelectedObjectProperty(
+        property.expression,
+        propertyName,
+        analysis,
+        visitedExpressions,
+      );
       if (spreadProperty) return spreadProperty;
     }
   }

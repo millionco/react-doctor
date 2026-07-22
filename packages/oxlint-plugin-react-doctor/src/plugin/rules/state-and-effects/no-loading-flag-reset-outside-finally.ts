@@ -1466,6 +1466,7 @@ interface AwaitSite {
 }
 
 const REACT_SETTER_CALLEE_PATTERN = /^set[A-Z]/;
+const NON_THROWING_NUMBER_BINARY_OPERATORS = new Set(["+", "-", "*", "/", "%", "**"]);
 const isGlobalPerformanceNowCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -1481,40 +1482,51 @@ const isGlobalPerformanceNowCall = (
   );
 };
 
-const isProvenPerformanceNumberExpression = (
+const isProvenNonThrowingNumberExpression = (
   expression: EsTreeNode,
   context: RuleContext,
   visitedSymbolIds = new Set<number>(),
 ): boolean => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Literal")) return typeof candidate.value === "number";
-  if (isNodeOfType(candidate, "CallExpression")) {
-    return isGlobalPerformanceNowCall(candidate, context);
+  const strippedExpression = stripParenExpression(expression);
+  if (isNodeOfType(strippedExpression, "Literal")) {
+    return typeof strippedExpression.value === "number";
   }
-  if (isNodeOfType(candidate, "Identifier")) {
-    const symbol = context.scopes.symbolFor(candidate);
+  if (isNodeOfType(strippedExpression, "CallExpression")) {
+    return isGlobalPerformanceNowCall(strippedExpression, context);
+  }
+  if (isNodeOfType(strippedExpression, "Identifier")) {
+    const symbol = context.scopes.symbolFor(strippedExpression);
     if (
       symbol?.kind !== "const" ||
       !symbol.initializer ||
+      symbol.declarationNode.range[0] >= strippedExpression.range[0] ||
       visitedSymbolIds.has(symbol.id) ||
       symbol.references.some((reference) => reference.flag !== "read")
     ) {
       return false;
     }
     visitedSymbolIds.add(symbol.id);
-    return isProvenPerformanceNumberExpression(symbol.initializer, context, visitedSymbolIds);
+    return isProvenNonThrowingNumberExpression(symbol.initializer, context, visitedSymbolIds);
   }
-  if (isNodeOfType(candidate, "UnaryExpression")) {
+  if (isNodeOfType(strippedExpression, "UnaryExpression")) {
     return (
-      (candidate.operator === "+" || candidate.operator === "-") &&
-      isProvenPerformanceNumberExpression(candidate.argument, context, visitedSymbolIds)
+      (strippedExpression.operator === "+" || strippedExpression.operator === "-") &&
+      isProvenNonThrowingNumberExpression(strippedExpression.argument, context, visitedSymbolIds)
     );
   }
-  if (!isNodeOfType(candidate, "BinaryExpression")) return false;
-  if (!["+", "-", "*", "/", "%", "**"].includes(candidate.operator)) return false;
+  if (!isNodeOfType(strippedExpression, "BinaryExpression")) return false;
+  if (!NON_THROWING_NUMBER_BINARY_OPERATORS.has(strippedExpression.operator)) return false;
   return (
-    isProvenPerformanceNumberExpression(candidate.left, context, new Set(visitedSymbolIds)) &&
-    isProvenPerformanceNumberExpression(candidate.right, context, new Set(visitedSymbolIds))
+    isProvenNonThrowingNumberExpression(
+      strippedExpression.left,
+      context,
+      new Set(visitedSymbolIds),
+    ) &&
+    isProvenNonThrowingNumberExpression(
+      strippedExpression.right,
+      context,
+      new Set(visitedSymbolIds),
+    )
   );
 };
 
@@ -1531,13 +1543,13 @@ const isProvenNonThrowingSynchronousCall = (
       return true;
     }
     if (context.scopes.isGlobalReference(callee) && callee.name === "String") {
-      const argument = callNode.arguments[0];
-      const candidate = argument ? stripParenExpression(argument) : null;
+      const firstArgument = callNode.arguments[0];
+      const strippedArgument = firstArgument ? stripParenExpression(firstArgument) : null;
       return Boolean(
         callNode.arguments.length === 1 &&
-        candidate &&
-        isNodeOfType(candidate, "Identifier") &&
-        context.scopes.symbolFor(candidate)?.kind === "catch-clause-parameter",
+        strippedArgument &&
+        isNodeOfType(strippedArgument, "Identifier") &&
+        context.scopes.symbolFor(strippedArgument)?.kind === "catch-clause-parameter",
       );
     }
     const localFunction = resolveExactLocalFunction(callee, context.scopes);
@@ -1561,13 +1573,13 @@ const isProvenNonThrowingSynchronousCall = (
   }
   if (receiver.name === "console") return true;
   const methodName = getStaticPropertyName(callee);
-  const argument = callNode.arguments[0];
+  const firstArgument = callNode.arguments[0];
   return Boolean(
     receiver.name === "Math" &&
     methodName === "round" &&
     callNode.arguments.length === 1 &&
-    argument &&
-    isProvenPerformanceNumberExpression(argument, context),
+    firstArgument &&
+    isProvenNonThrowingNumberExpression(firstArgument, context),
   );
 };
 

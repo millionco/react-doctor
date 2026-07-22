@@ -7,7 +7,7 @@ const formatDuration = () => {
   throw new Error("formatting failed");
 };
 
-async function run() {
+const run = async () => {
   setLoading(true);
   try {
     await load();
@@ -17,4 +17,4 @@ async function run() {
     JSON.parse(String(error));
   }
   setLoading(false);
-}
+};

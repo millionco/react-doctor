@@ -3,7 +3,7 @@
 // weakness: control-flow
 // source: https://github.com/millionco/react-doctor/issues/1421
 
-async function run() {
+const run = async () => {
   setLoading(true);
   const start = performance.now();
   try {
@@ -28,4 +28,4 @@ async function run() {
     });
   }
   setLoading(false);
-}
+};

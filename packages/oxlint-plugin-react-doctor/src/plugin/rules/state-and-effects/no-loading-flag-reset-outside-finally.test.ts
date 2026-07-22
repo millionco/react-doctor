@@ -2582,31 +2582,31 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(finallyAfter.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag the non-throwing formatting calls from issue #1421", () => {
+  it("does not flag the reported formatting calls from issue #1421", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `async function run() {
-      setLoading(true);
-      const start = performance.now();
-      try {
-        const res = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
-        const text = await res.text();
-        let body = text;
+        setLoading(true);
+        const start = performance.now();
         try {
-          body = JSON.stringify(JSON.parse(text), null, 2);
-        } catch {
+          const res = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
+          const text = await res.text();
+          let body = text;
+          try {
+            body = JSON.stringify(JSON.parse(text), null, 2);
+          } catch {
+          }
+          setResult({ status: res.status, ok: res.ok, body, timeMs: Math.round(performance.now() - start) });
+        } catch (error) {
+          setResult({
+            status: 0,
+            ok: false,
+            body: error instanceof Error ? error.message : String(error),
+            timeMs: Math.round(performance.now() - start),
+          });
         }
-        setResult({ status: res.status, ok: res.ok, body, timeMs: Math.round(performance.now() - start) });
-      } catch (error) {
-        setResult({
-          status: 0,
-          ok: false,
-          body: error instanceof Error ? error.message : String(error),
-          timeMs: Math.round(performance.now() - start),
-        });
-      }
-      setLoading(false);
-    }`,
+        setLoading(false);
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -2636,6 +2636,7 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
       'Object.defineProperty(null, "value", {})',
       "Math.round(1n)",
       "Math.round(formatDuration())",
+      "Math.round(performance.now() - start); const start = performance.now()",
       'String({ toString() { throw new Error("failed") } })',
       'const method = "round"; Math[method](1)',
       'const performance = { now() { throw new Error("failed") } }; performance.now()',

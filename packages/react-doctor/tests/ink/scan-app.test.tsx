@@ -1,7 +1,7 @@
 import { render } from "ink-testing-library";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
-import { TUI_DEFAULT_TERMINAL_ROWS } from "../../src/cli/utils/constants.js";
+import { TUI_REPORT_COMPACT_MAX_ROWS } from "../../src/cli/utils/constants.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
 import { createScanStore } from "../../src/cli/ink/scan-store.js";
 
@@ -348,7 +348,7 @@ describe("ScanApp", () => {
     unmount();
   });
 
-  it("uses the full compact viewport for a navigable issue list", async () => {
+  it("keeps the compact viewport until stacked details fit beside a navigable list", async () => {
     const store = createScanStore();
     const diagnostics = Array.from({ length: 30 }, (_, diagnosticIndex) =>
       makeDiagnostic({
@@ -370,10 +370,10 @@ describe("ScanApp", () => {
     });
 
     const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
-    resizeTerminal(stdout, { rows: TUI_DEFAULT_TERMINAL_ROWS });
+    resizeTerminal(stdout, { rows: TUI_REPORT_COMPACT_MAX_ROWS });
     await flush();
 
-    expect((lastFrame() ?? "").split("\n").length).toBeLessThanOrEqual(TUI_DEFAULT_TERMINAL_ROWS);
+    expect((lastFrame() ?? "").split("\n").length).toBeLessThanOrEqual(TUI_REPORT_COMPACT_MAX_ROWS);
     expect(lastFrame()).not.toContain("┌─────┐");
     expect(lastFrame()).not.toContain("Your users briefly see stale state");
     expect(lastFrame()).toContain("30 issues");

@@ -32,6 +32,11 @@ jobs:
           node-version: "22.18.0"
           cache: pnpm
 
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.24.5"
+          cache: false
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
@@ -41,11 +46,23 @@ jobs:
       - name: Create recording directory
         run: mkdir -p artifacts
 
+      - name: Install VHS runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          mkdir -p "$RUNNER_TEMP/vhs-bin"
+          curl --fail --location --silent --show-error \
+            https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
+            --output "$RUNNER_TEMP/vhs-bin/ttyd"
+          echo "8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55  $RUNNER_TEMP/vhs-bin/ttyd" \
+            | sha256sum --check
+          chmod +x "$RUNNER_TEMP/vhs-bin/ttyd"
+          go install github.com/charmbracelet/vhs@v0.11.0
+          echo "$RUNNER_TEMP/vhs-bin" >> "$GITHUB_PATH"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Render terminal recording
-        uses: charmbracelet/vhs-action@59641cdc7fadf3978db65eb8c6937ea2752f4ec3 # v2.1.0
-        with:
-          path: scripts/terminal-recording.tape
-          version: v0.11.0
+        run: vhs scripts/terminal-recording.tape
 
       - name: Upload recording artifact
         id: upload

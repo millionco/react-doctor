@@ -153,9 +153,7 @@ def create_workspace_fixture(root_directory):
 
 
 def initialize_git_repository(fixture_directory):
-    git_binary_path = shutil.which("git")
-    if git_binary_path is None:
-        fail("`git` not found on PATH.")
+    git_binary_path = resolve_git_binary()
     subprocess.run([git_binary_path, "init", "-q", "-b", "main"], cwd=fixture_directory, check=True)
     subprocess.run(
         [git_binary_path, "config", "user.email", "tty-smoke@react.doctor"],
@@ -173,6 +171,13 @@ def initialize_git_repository(fixture_directory):
         cwd=fixture_directory,
         check=True,
     )
+    return git_binary_path
+
+
+def resolve_git_binary():
+    git_binary_path = shutil.which("git")
+    if git_binary_path is None:
+        fail("`git` not found on PATH.")
     return git_binary_path
 
 
@@ -277,13 +282,19 @@ def run_prompt_in_pty(fixture_directory, delayed_git_directory):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--prepare-fixture")
+    preparation_mode = parser.add_mutually_exclusive_group()
+    preparation_mode.add_argument("--prepare-fixture")
+    preparation_mode.add_argument("--prepare-git-wrapper")
     arguments = parser.parse_args()
     if arguments.prepare_fixture:
         fixture_directory = os.path.abspath(arguments.prepare_fixture)
         create_workspace_fixture(fixture_directory)
         git_binary_path = initialize_git_repository(fixture_directory)
         create_delayed_git_wrapper(fixture_directory, git_binary_path)
+        return
+    if arguments.prepare_git_wrapper:
+        fixture_directory = os.path.abspath(arguments.prepare_git_wrapper)
+        create_delayed_git_wrapper(fixture_directory, resolve_git_binary())
         return
 
     if not os.path.isfile(CLI_BINARY_PATH):

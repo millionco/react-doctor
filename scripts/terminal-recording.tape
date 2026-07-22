@@ -13,9 +13,13 @@ Set Theme "Catppuccin Mocha"
 Hide
 Type "source scripts/setup-terminal-recording.sh"
 Enter
+Wait+Screen /terminal-recording-ready/
+Type "clear"
+Enter
+Sleep 500ms
 Show
 
-Type "react-doctor --no-lint --no-dead-code --no-score"
+Type "react-doctor --no-lint --no-dead-code --no-supply-chain --no-score"
 Enter
 Wait+Screen /Select projects/
 Sleep 500ms
@@ -26,7 +30,12 @@ Sleep 2s
 Wait+Screen /No issues found!/
 Sleep 2s
 
-Type "clear && react-doctor experimental-tui --no-score --project app-a"
+Hide
+Type "cd \"$TERMINAL_RECORDING_TUI_DIRECTORY\""
+Enter
+Show
+
+Type "clear && react-doctor experimental-tui --no-score --no-supply-chain --project app-a"
 Enter
 Wait+Screen /add CI/
 Sleep 2s

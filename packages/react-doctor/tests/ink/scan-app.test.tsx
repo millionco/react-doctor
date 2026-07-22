@@ -1,7 +1,10 @@
 import { render } from "ink-testing-library";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
-import { TUI_REPORT_COMPACT_MAX_ROWS } from "../../src/cli/utils/constants.js";
+import {
+  TUI_REPORT_COMPACT_MAX_ROWS,
+  TUI_REPORT_WIDE_MIN_ROWS,
+} from "../../src/cli/utils/constants.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
 import { createScanStore } from "../../src/cli/ink/scan-store.js";
 
@@ -337,7 +340,7 @@ describe("ScanApp", () => {
 
     const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
     await flush();
-    resizeTerminal(stdout, { columns: 140, rows: 40 });
+    resizeTerminal(stdout, { columns: 140, rows: TUI_REPORT_WIDE_MIN_ROWS });
     await flush();
 
     const frame = lastFrame() ?? "";

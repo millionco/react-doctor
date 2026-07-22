@@ -117,6 +117,14 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps the supply-chain opt-out on the experimental TUI command", () => {
+    expect(stripUserArguments(["experimental-tui", ".", "--no-supply-chain"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--no-supply-chain",
+    ]);
+  });
+
   it("keeps the --no-telemetry alias for --no-score", () => {
     expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
   });

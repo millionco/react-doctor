@@ -128,10 +128,10 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
-// `experimental-tui [directory]` mirrors the root scan's negatable dead-code /
-// score knobs plus project selection. Without this entry the pre-parse strip
-// falls back to ROOT_FLAG_SPEC, which drops `-p` and turns its value into the
-// directory positional.
+// `experimental-tui [directory]` mirrors the root scan's negatable dead-code,
+// supply-chain, and score knobs plus project selection. Without this entry the
+// pre-parse strip falls back to ROOT_FLAG_SPEC, which drops `-p` and turns its
+// value into the directory positional.
 const EXPERIMENTAL_TUI_FLAG_SPEC: CliFlagSpec = {
   longOptionsWithoutValues: new Set([
     "--color",
@@ -139,6 +139,7 @@ const EXPERIMENTAL_TUI_FLAG_SPEC: CliFlagSpec = {
     "--no-color",
     "--no-dead-code",
     "--no-score",
+    "--no-supply-chain",
     "--yes",
   ]),
   longOptionsWithRequiredValues: new Set(["--blocking", "--project"]),

@@ -75,11 +75,8 @@ export const Report = ({
   );
 
   const width = Math.max(TUI_REPORT_MIN_WIDTH_CHARS, columns - TUI_HORIZONTAL_PADDING_COLUMNS);
-  const isCompact = terminalRows <= TUI_REPORT_COMPACT_MAX_ROWS;
-  const isWide =
-    !isCompact &&
-    columns >= TUI_REPORT_WIDE_MIN_COLUMNS &&
-    terminalRows >= TUI_REPORT_WIDE_MIN_ROWS;
+  const isWide = columns >= TUI_REPORT_WIDE_MIN_COLUMNS && terminalRows >= TUI_REPORT_WIDE_MIN_ROWS;
+  const isCompact = !isWide && terminalRows <= TUI_REPORT_COMPACT_MAX_ROWS;
   const didRecordCompactReport = useRef(false);
   useEffect(() => {
     if (!isCompact || didRecordCompactReport.current) return;

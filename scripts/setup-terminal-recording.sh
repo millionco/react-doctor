@@ -24,3 +24,6 @@ export -f react-doctor
 trap 'rm -rf "$TERMINAL_RECORDING_DIRECTORY"' EXIT
 cd "$TERMINAL_RECORDING_DIRECTORY"
 clear
+
+set +e +u
+set +o pipefail

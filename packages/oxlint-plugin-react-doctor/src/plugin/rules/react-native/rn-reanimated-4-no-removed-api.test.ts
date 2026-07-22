@@ -45,6 +45,18 @@ describe("react-native/rn-reanimated-4-no-removed-api", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("resolves an API destructured from a namespace alias", () => {
+    const result = runRule(
+      rnReanimated4NoRemovedApi,
+      `import * as Reanimated from "react-native-reanimated";
+      const Animation = Reanimated;
+      const { useWorkletCallback: makeWorklet } = Animation;
+      makeWorklet(() => {});`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a same-named local function", () => {
     const result = runRule(
       rnReanimated4NoRemovedApi,
@@ -93,6 +105,16 @@ describe("react-native/rn-reanimated-4-no-removed-api", () => {
       rnReanimated4NoRemovedApi,
       `import type { useAnimatedGestureHandler } from "react-native-reanimated";
       useAnimatedGestureHandler({});`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a type-only namespace import", () => {
+    const result = runRule(
+      rnReanimated4NoRemovedApi,
+      `import type * as Reanimated from "react-native-reanimated";
+      Reanimated.useAnimatedGestureHandler({});`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);

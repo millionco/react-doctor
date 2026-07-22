@@ -68,6 +68,20 @@ const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it.each([
+    `(item.kind === "header" && <Header />) || <Row />`,
+    `(item.kind === "header" ? <Header /> : null) ?? <Row />`,
+  ])("flags heterogeneous logical render roots: %s", (renderItemExpression) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (<FlashList data={items} renderItem={({ item }) => ${renderItemExpression}} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a homogeneous FlashList v2", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,

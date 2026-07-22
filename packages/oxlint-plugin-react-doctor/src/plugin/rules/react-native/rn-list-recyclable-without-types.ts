@@ -33,6 +33,11 @@ const collectReturnedJsxRootNames = (expression: EsTreeNode, names: Set<string>)
   if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
     collectReturnedJsxRootNames(unwrappedExpression.consequent, names);
     collectReturnedJsxRootNames(unwrappedExpression.alternate, names);
+    return;
+  }
+  if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    collectReturnedJsxRootNames(unwrappedExpression.left, names);
+    collectReturnedJsxRootNames(unwrappedExpression.right, names);
   }
 };
 

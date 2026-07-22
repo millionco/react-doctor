@@ -29,7 +29,7 @@ git -C "$TERMINAL_RECORDING_DIRECTORY" init --quiet
 git -C "$TERMINAL_RECORDING_DIRECTORY" remote add origin "${TERMINAL_RECORDING_FIXTURE[0]}"
 git -C "$TERMINAL_RECORDING_DIRECTORY" fetch --quiet --depth=1 --filter=blob:none \
   origin "${TERMINAL_RECORDING_FIXTURE[1]}"
-git -C "$TERMINAL_RECORDING_DIRECTORY" checkout --quiet --detach FETCH_HEAD
+git -C "$TERMINAL_RECORDING_DIRECTORY" checkout --quiet -b main FETCH_HEAD
 
 python3 "$TERMINAL_RECORDING_REPOSITORY_ROOT/scripts/smoke-tty-prompt.py" \
   --prepare-git-wrapper "$TERMINAL_RECORDING_DIRECTORY"

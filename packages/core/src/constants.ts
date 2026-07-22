@@ -15,6 +15,18 @@ export {
 
 export const JSX_FILE_PATTERN = /\.(tsx|jsx)$/;
 
+export const TYPESCRIPT_DECLARATION_FILE_PATTERN = /\.d\.(?:ts|mts|cts)$/;
+
+// HACK: Oxlint 1.68 added ambient-context parser diagnostics that ignore
+// projects' skipLibCheck setting. Preserve the existing report and score
+// contract while keeping earlier TypeScript parser diagnostics visible.
+export const OXLINT_IGNORED_DECLARATION_DIAGNOSTIC_CODES: ReadonlySet<string> = new Set([
+  "TS(1036)",
+  "TS(1038)",
+  "TS(1183)",
+  "TS(1319)",
+]);
+
 // Whether `"warning"`-severity diagnostics surface when neither the
 // caller (`--warnings` / `warnings:`) nor `config.warnings` decide.
 // Warnings show by default — only `"error"` is too generous a bar for a

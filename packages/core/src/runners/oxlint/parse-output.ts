@@ -8,7 +8,12 @@ import type {
   OxlintOutput,
   ProjectInfo,
 } from "../../types/index.js";
-import { ERROR_PREVIEW_LENGTH_CHARS, OCCURRENCE_MATCHED_CATEGORIES } from "../../constants.js";
+import {
+  ERROR_PREVIEW_LENGTH_CHARS,
+  OCCURRENCE_MATCHED_CATEGORIES,
+  OXLINT_IGNORED_DECLARATION_DIAGNOSTIC_CODES,
+  TYPESCRIPT_DECLARATION_FILE_PATTERN,
+} from "../../constants.js";
 import { findJsxOpenerSpan } from "../../find-jsx-opener-span.js";
 import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
 import { isRecord } from "../../utils/is-record.js";
@@ -415,6 +420,10 @@ export const parseOxlintOutput = (
       (diagnostic) =>
         isMappableOxlintDiagnostic(diagnostic) &&
         isLintableSourceFile(diagnostic.filename) &&
+        !(
+          TYPESCRIPT_DECLARATION_FILE_PATTERN.test(diagnostic.filename) &&
+          OXLINT_IGNORED_DECLARATION_DIAGNOSTIC_CODES.has(diagnostic.code)
+        ) &&
         !isMinifiedDiagnosticFile(diagnostic.filename) &&
         !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory) &&
         !shouldSuppressCompilerFindingInWorklet(diagnostic, project, rootDirectory),

@@ -115,7 +115,6 @@ interface FinalizeScopeInput {
   readonly diffInfo: DiffInfo | null;
   readonly skipPrompts: boolean;
   readonly isQuiet: boolean;
-  readonly beforePrompt?: () => void;
 }
 
 /**
@@ -129,7 +128,6 @@ export const finalizeScope = async ({
   diffInfo,
   skipPrompts,
   isQuiet,
-  beforePrompt,
 }: FinalizeScopeInput): Promise<ScopeValue> => {
   if (requested.scope !== undefined) {
     if (requested.scope === "full") return "full";
@@ -149,7 +147,6 @@ export const finalizeScope = async ({
     ? "Compare working tree changes against HEAD"
     : `Compare against ${diffInfo.baseBranch} from the branch merge-base`;
 
-  beforePrompt?.();
   const { scanScope } = await prompts({
     type: "select",
     name: "scanScope",

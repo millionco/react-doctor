@@ -101,7 +101,9 @@ vi.mock("../src/cli/utils/spinner.js", () => ({
         succeed: vi.fn(),
         fail: vi.fn(),
         warn: vi.fn(),
-        stop: vi.fn(),
+        stop: vi.fn(() => {
+          mockState.lifecycleEvents.push("stop");
+        }),
       };
     },
   })),
@@ -180,7 +182,13 @@ describe("inspectAction setup prompt", () => {
 
     await inspectAction(rootDirectory, { diff: true, lint: false });
 
-    expect(mockState.lifecycleEvents.slice(0, 2)).toEqual(["spinner", "diff"]);
+    expect(mockState.lifecycleEvents.slice(0, 5)).toEqual([
+      "spinner",
+      "diff",
+      "stop",
+      "spinner",
+      "stop",
+    ]);
   });
 
   it("scans project-relative paths from an explicit changed-files file", async () => {

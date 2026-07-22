@@ -476,14 +476,6 @@ export const inspectAction = async (
       skipPrompts,
       userConfig?.projects,
     );
-    const scanFeedbackStartTime = performance.now();
-    scanStartupSpinner = !isQuiet ? spinner("Scanning...").start() : null;
-    if (scanStartupSpinner !== null) {
-      recordDistribution(METRIC.scanFeedbackDelay, performance.now() - scanFeedbackStartTime, {
-        unit: "millisecond",
-      });
-    }
-
     const changedFilesDiffInfo = flags.changedFilesFrom
       ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
       : null;
@@ -502,6 +494,13 @@ export const inspectAction = async (
     // promotion), so a working-tree scope from a flag, `config.scope` /
     // `config.diff`, or that internal path all satisfy the requirement.
     validateIncludeUntrackedScope(includeUntracked, scopeRequest.scope);
+    const scanFeedbackStartTime = performance.now();
+    scanStartupSpinner = !isQuiet ? spinner("Scanning...").start() : null;
+    if (scanStartupSpinner !== null) {
+      recordDistribution(METRIC.scanFeedbackDelay, performance.now() - scanFeedbackStartTime, {
+        unit: "millisecond",
+      });
+    }
     const wantsDiffMode = scopeRequest.scope !== undefined && scopeRequest.scope !== "full";
     // HACK: also call getDiffInfo when we MIGHT prompt the user — without it the
     // "full vs changed" prompt never appears for users on a feature branch who
@@ -514,19 +513,15 @@ export const inspectAction = async (
       (shouldDetectDiff
         ? await getDiffInfo(resolvedDirectory, scopeRequest.base, includeUntracked)
         : null);
+    scanStartupSpinner?.stop();
+    scanStartupSpinner = null;
     const scope = await finalizeScope({
       requested: scopeRequest,
       diffInfo,
       skipPrompts,
       isQuiet,
-      beforePrompt: () => {
-        scanStartupSpinner?.stop();
-        scanStartupSpinner = null;
-      },
     });
-    if (!isQuiet && scanStartupSpinner === null) {
-      scanStartupSpinner = spinner("Scanning...").start();
-    }
+    scanStartupSpinner = !isQuiet ? spinner("Scanning...").start() : null;
     const isDiffMode = scope !== "full";
 
     // The commit a baseline / line-range diff compares against. When diffing
@@ -569,6 +564,8 @@ export const inspectAction = async (
             includeUntracked,
           })
         : null;
+    scanStartupSpinner?.stop();
+    scanStartupSpinner = null;
     if (scope === "lines" && changedLineRanges === null && !isQuiet) {
       logger.warn(
         "Could not determine changed lines (no base ref or git diff failed); reporting all issues in changed files.",
@@ -660,8 +657,6 @@ export const inspectAction = async (
           !supplyChainManifestChanged &&
           !hasBaselineOnlyFiles
         ) {
-          scanStartupSpinner?.stop();
-          scanStartupSpinner = null;
           if (!isQuiet) {
             logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
             logger.break();
@@ -681,8 +676,6 @@ export const inspectAction = async (
       }
 
       if (!isQuiet && !isMultiProject) {
-        scanStartupSpinner?.stop();
-        scanStartupSpinner = null;
         logger.dim("  ");
       }
       const scanResult = await inspect(scanDirectory, {
@@ -723,10 +716,6 @@ export const inspectAction = async (
     // Single-project runs keep their inline rendering on the same path.
     const scanLoopStartTime = performance.now();
     const projectCount = projectDirectories.length;
-    if (isMultiProject) {
-      scanStartupSpinner?.stop();
-      scanStartupSpinner = null;
-    }
     const batchSpinner =
       isMultiProject && !isQuiet ? spinner(`Scanning ${projectCount} projects…`).start() : null;
     // Concurrent pool members skip the per-scan toggle of the module-level

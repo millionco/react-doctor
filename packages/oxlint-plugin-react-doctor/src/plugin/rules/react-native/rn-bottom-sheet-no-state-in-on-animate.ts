@@ -3,7 +3,6 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
@@ -49,17 +48,7 @@ export const rnBottomSheetNoStateInOnAnimate = defineRule({
         if (!isNodeOfType(child, "CallExpression") || !isNodeOfType(child.callee, "Identifier")) {
           return;
         }
-        const statePair = resolveReactUseStatePair(child.callee, context.scopes);
-        if (
-          !statePair ||
-          !statePair.declarator.init ||
-          !isReactApiCall(statePair.declarator.init, "useState", context.scopes, {
-            allowGlobalReactNamespace: true,
-            resolveNamedAliases: true,
-          })
-        ) {
-          return;
-        }
+        if (!resolveReactUseStatePair(child.callee, context.scopes)) return;
         stateSetterCall = child;
         return false;
       });

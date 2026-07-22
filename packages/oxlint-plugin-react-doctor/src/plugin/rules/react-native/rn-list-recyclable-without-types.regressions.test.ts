@@ -82,6 +82,105 @@ const C = () => (<FlashList data={items} renderItem={({ item }) => ${renderItemE
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a fragment root mixed with an element root", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => item.kind === "header"
+      ? <><Header /><Metadata /></>
+      : <Row />}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags differently shaped fragment-only roots", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => item.kind === "header"
+      ? <><Header /><Metadata /></>
+      : <><Row /></>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent for one stable multi-child fragment root", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList data={items} renderItem={() => <><Row /><Metadata /></>} />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("treats a one-child fragment like its rendered element root", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => item.active ? <><Row /></> : <Row />}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("treats whitespace, comments, and nested fragments as shape-transparent", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => item.active
+      ? <><Row />{/* stable */}<><Metadata /></></>
+      : <><Row /><Metadata /></>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a fragment shape contains dynamic children", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => item.active ? <>{item.content}</> : <Row />}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a heterogeneous renderItem wrapped in React useCallback", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,

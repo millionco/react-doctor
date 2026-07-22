@@ -18,6 +18,19 @@ describe("rn-bottom-sheet-no-state-in-on-animate", () => {
     expect(result.diagnostics[0].message).toContain("starts a React state update");
   });
 
+  it("flags a setter from an auto-imported bare useState call", () => {
+    const code = `
+      import BottomSheet from "@gorhom/bottom-sheet";
+      const Screen = () => {
+        const [isAnimating, setIsAnimating] = useState(false);
+        return <BottomSheet onAnimate={() => setIsAnimating(true)} />;
+      };
+    `;
+    const result = runRule(rnBottomSheetNoStateInOnAnimate, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("resolves local handlers, import aliases, namespace sheets, and setter aliases", () => {
     const code = `
       import { useState as state } from "react";

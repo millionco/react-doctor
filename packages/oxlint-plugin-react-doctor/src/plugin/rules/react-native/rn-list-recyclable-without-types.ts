@@ -21,11 +21,50 @@ const getJsxElementQualifiedName = (node: EsTreeNode): string | null => {
   return `${objectName}.${node.property.name}`;
 };
 
+const getStaticRenderedRootNames = (node: EsTreeNode): ReadonlyArray<string> | null => {
+  if (isNodeOfType(node, "JSXElement")) {
+    const elementName = getJsxElementQualifiedName(node.openingElement.name);
+    return elementName === null ? null : [elementName];
+  }
+  if (isNodeOfType(node, "JSXFragment")) {
+    const rootNames: string[] = [];
+    for (const child of node.children) {
+      const childRootNames = getStaticRenderedRootNames(child);
+      if (childRootNames === null) return null;
+      rootNames.push(...childRootNames);
+    }
+    return rootNames;
+  }
+  if (isNodeOfType(node, "JSXText")) return node.value?.trim() ? null : [];
+  if (!isNodeOfType(node, "JSXExpressionContainer")) return null;
+  const expression = stripParenExpression(node.expression);
+  if (isNodeOfType(expression, "JSXEmptyExpression")) return [];
+  if (
+    isNodeOfType(expression, "Literal") &&
+    (expression.value === null || typeof expression.value === "boolean")
+  ) {
+    return [];
+  }
+  return getStaticRenderedRootNames(expression);
+};
+
+const getJsxFragmentRootName = (fragment: EsTreeNodeOfType<"JSXFragment">): string | null => {
+  const childRootNames = getStaticRenderedRootNames(fragment);
+  if (childRootNames === null) return null;
+  if (childRootNames.length === 1) return childRootNames[0];
+  return `fragment:${JSON.stringify(childRootNames)}`;
+};
+
 const collectReturnedJsxRootNames = (expression: EsTreeNode, names: Set<string>): void => {
   const unwrappedExpression = stripParenExpression(expression);
   if (isNodeOfType(unwrappedExpression, "JSXElement")) {
     const elementName = getJsxElementQualifiedName(unwrappedExpression.openingElement.name);
     if (elementName) names.add(elementName);
+    return;
+  }
+  if (isNodeOfType(unwrappedExpression, "JSXFragment")) {
+    const fragmentRootName = getJsxFragmentRootName(unwrappedExpression);
+    if (fragmentRootName) names.add(fragmentRootName);
     return;
   }
   if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {

@@ -2,8 +2,9 @@ import { getSkillAgentConfig } from "agent-install";
 import { Box, Text, useInput } from "ink";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { TUI_MODAL_FOOTER_ROWS, TUI_MODAL_MIN_BODY_ROWS } from "../../utils/constants.js";
+import { METRIC, TUI_MODAL_FOOTER_ROWS, TUI_MODAL_MIN_BODY_ROWS } from "../../utils/constants.js";
 import { copyToClipboard, type CliAgentId } from "../../utils/launch-agent.js";
+import { recordCount } from "../../utils/record-metric.js";
 import { useScrollViewport } from "../hooks/use-scroll-viewport.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { buildDiagnosticListEntries } from "../lib/diagnostic-list-entries.js";
@@ -157,6 +158,7 @@ export const DiagnosticList = ({
         return onExit();
       }
       if (key.return && selected) {
+        recordCount(METRIC.tuiActionMenuOpened);
         setMenuIndex(0);
         setIsMenuOpen(true);
       }
@@ -177,6 +179,24 @@ export const DiagnosticList = ({
     },
     { isActive: isMenuOpen },
   );
+
+  if (isMenuOpen && selected) {
+    return (
+      <Box
+        width={width}
+        height={Math.max(TUI_MODAL_MIN_BODY_ROWS, terminalRows - TUI_MODAL_FOOTER_ROWS)}
+        justifyContent="center"
+        alignItems="center"
+      >
+        <DiagnosticActionMenu
+          title={selected.title}
+          itemLabels={menuLabels}
+          focusedIndex={menuIndex}
+          maxWidth={width}
+        />
+      </Box>
+    );
+  }
 
   const errorRows = rows.filter((row) => row.severity === "error");
   const warningRows = rows.filter((row) => row.severity === "warning");
@@ -204,29 +224,19 @@ export const DiagnosticList = ({
     </>
   );
 
-  const keyHints = useMemo(
-    () =>
-      isMenuOpen ? (
+  const keyHints = (
+    <>
+      <Text dimColor>↑/↓ move · </Text>
+      <Text color="cyan">enter</Text>
+      <Text dimColor> fix this</Text>
+      {showCiCallout ? (
         <>
-          <Text dimColor>↑/↓ select · </Text>
-          <Text color="cyan">enter</Text>
-          <Text dimColor> run · esc close</Text>
+          <Text dimColor> · </Text>
+          <Text color="green">{ADD_TO_CI_KEY}</Text>
+          <Text dimColor> add CI</Text>
         </>
-      ) : (
-        <>
-          <Text dimColor>↑/↓ move · </Text>
-          <Text color="cyan">enter</Text>
-          <Text dimColor> fix this</Text>
-          {showCiCallout ? (
-            <>
-              <Text dimColor> · </Text>
-              <Text color="green">{ADD_TO_CI_KEY}</Text>
-              <Text dimColor> add CI</Text>
-            </>
-          ) : null}
-        </>
-      ),
-    [isMenuOpen, showCiCallout],
+      ) : null}
+    </>
   );
 
   const statusBar = (
@@ -245,29 +255,9 @@ export const DiagnosticList = ({
     </Box>
   );
 
-  const overlay =
-    isMenuOpen && selected ? (
-      <Box
-        position="absolute"
-        top={0}
-        left={0}
-        width={width}
-        height={Math.max(TUI_MODAL_MIN_BODY_ROWS, terminalRows - TUI_MODAL_FOOTER_ROWS)}
-        justifyContent="center"
-        alignItems="center"
-      >
-        <DiagnosticActionMenu
-          title={selected.title}
-          itemLabels={menuLabels}
-          focusedIndex={menuIndex}
-          maxWidth={width}
-        />
-      </Box>
-    ) : null;
-
   if (isSplit) {
     return (
-      <Box flexDirection="column" width={width} position="relative">
+      <Box flexDirection="column" width={width}>
         <Box flexDirection="row">
           <Box flexDirection="column" width={listColumnWidth} marginRight={1}>
             {header}
@@ -289,24 +279,22 @@ export const DiagnosticList = ({
           </Box>
         </Box>
         {statusBar}
-        {overlay}
       </Box>
     );
   }
 
   if (isCompact) {
     return (
-      <Box flexDirection="column" width={width} position="relative">
+      <Box flexDirection="column" width={width}>
         {header}
         {listColumn}
         {statusBar}
-        {overlay}
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column" width={width} position="relative">
+    <Box flexDirection="column" width={width}>
       {header}
       <Box marginTop={1}>{listColumn}</Box>
       <Text dimColor>{"─".repeat(width)}</Text>
@@ -314,7 +302,6 @@ export const DiagnosticList = ({
         {detailContent}
       </Box>
       {statusBar}
-      {overlay}
     </Box>
   );
 };

@@ -323,6 +323,46 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("shows fix actions on a dedicated theme-safe screen", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [
+        makeDiagnostic({ rule: "rules-of-hooks", severity: "error", category: "Correctness" }),
+      ],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(
+      <ScanApp store={store} launchableAgents={["codex"]} />,
+    );
+    resizeTerminal(stdout, { rows: 40 });
+    await flush();
+
+    stdin.write("\r");
+    await flush();
+
+    expect(lastFrame()).toContain("Fix react-doctor/rules-of-hooks");
+    expect(lastFrame()).toContain("› Copy prompt");
+    expect(lastFrame()).toContain("Codex");
+    expect(lastFrame()).not.toContain("Correctness · error");
+
+    stdin.write("j");
+    await flush();
+    expect(lastFrame()).toContain("› Codex");
+
+    stdin.write("\u001B");
+    await flush();
+    expect(lastFrame()).toContain("Correctness · error");
+    unmount();
+  });
+
   it("uses the side-by-side layout on a wide terminal", async () => {
     const store = createScanStore();
     store.setReport({

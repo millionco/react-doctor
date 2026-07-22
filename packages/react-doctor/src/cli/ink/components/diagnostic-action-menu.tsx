@@ -12,9 +12,6 @@ export interface DiagnosticActionMenuProps {
   readonly maxWidth: number;
 }
 
-const MODAL_BACKGROUND = "black";
-const MODAL_SELECTED_BACKGROUND = "white";
-
 export const DiagnosticActionMenu = ({
   title,
   itemLabels,
@@ -29,8 +26,7 @@ export const DiagnosticActionMenu = ({
     <Box
       width={width}
       borderStyle="round"
-      borderColor="gray"
-      backgroundColor={MODAL_BACKGROUND}
+      borderColor="cyan"
       paddingX={TUI_HORIZONTAL_PADDING_COLUMNS}
       paddingY={1}
       flexDirection="column"
@@ -43,12 +39,16 @@ export const DiagnosticActionMenu = ({
         {itemLabels.map((label, index) => {
           const isFocused = index === focusedIndex;
           return (
-            <Box key={label} backgroundColor={isFocused ? MODAL_SELECTED_BACKGROUND : undefined}>
-              <Text wrap="truncate-end" bold={isFocused} color={isFocused ? "black" : "gray"}>
-                {isFocused ? "› " : "  "}
-                {label}
-              </Text>
-            </Box>
+            <Text
+              key={label}
+              wrap="truncate-end"
+              bold={isFocused}
+              color={isFocused ? "cyan" : undefined}
+              dimColor={!isFocused}
+            >
+              {isFocused ? "› " : "  "}
+              {label}
+            </Text>
           );
         })}
       </Box>

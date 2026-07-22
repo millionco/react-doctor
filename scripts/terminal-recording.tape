@@ -39,6 +39,11 @@ Type "clear && react-doctor experimental-tui --no-score --no-supply-chain --proj
 Enter
 Wait+Screen /add CI/
 Sleep 2s
+Enter
+Wait+Screen /Copy prompt/
+Sleep 2s
+Escape
+Wait+Screen /add CI/
 Down
 Sleep 1s
 Type "G"

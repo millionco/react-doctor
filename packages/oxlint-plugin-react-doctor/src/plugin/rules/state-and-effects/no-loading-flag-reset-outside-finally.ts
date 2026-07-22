@@ -1466,32 +1466,57 @@ interface AwaitSite {
 }
 
 const REACT_SETTER_CALLEE_PATTERN = /^set[A-Z]/;
-const SAFE_GLOBAL_OBJECTS = new Set([
-  "console",
-  "Math",
-  "Date",
-  "performance",
-  "Number",
-  "String",
-  "Boolean",
-  "Object",
-  "Array",
-  "JSON",
-]);
+const isGlobalPerformanceNowCall = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(callNode.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || callNode.arguments.length !== 0) return false;
+  const receiver = stripParenExpression(callee.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === "performance" &&
+    context.scopes.isGlobalReference(receiver) &&
+    getStaticPropertyName(callee) === "now"
+  );
+};
 
-const SAFE_GLOBAL_FUNCTIONS = new Set([
-  "String",
-  "Number",
-  "Boolean",
-  "parseInt",
-  "parseFloat",
-  "isNaN",
-  "isFinite",
-  "encodeURI",
-  "encodeURIComponent",
-  "decodeURI",
-  "decodeURIComponent",
-]);
+const isProvenPerformanceNumberExpression = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Literal")) return typeof candidate.value === "number";
+  if (isNodeOfType(candidate, "CallExpression")) {
+    return isGlobalPerformanceNowCall(candidate, context);
+  }
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = context.scopes.symbolFor(candidate);
+    if (
+      symbol?.kind !== "const" ||
+      !symbol.initializer ||
+      visitedSymbolIds.has(symbol.id) ||
+      symbol.references.some((reference) => reference.flag !== "read")
+    ) {
+      return false;
+    }
+    visitedSymbolIds.add(symbol.id);
+    return isProvenPerformanceNumberExpression(symbol.initializer, context, visitedSymbolIds);
+  }
+  if (isNodeOfType(candidate, "UnaryExpression")) {
+    return (
+      (candidate.operator === "+" || candidate.operator === "-") &&
+      isProvenPerformanceNumberExpression(candidate.argument, context, visitedSymbolIds)
+    );
+  }
+  if (!isNodeOfType(candidate, "BinaryExpression")) return false;
+  if (!["+", "-", "*", "/", "%", "**"].includes(candidate.operator)) return false;
+  return (
+    isProvenPerformanceNumberExpression(candidate.left, context, new Set(visitedSymbolIds)) &&
+    isProvenPerformanceNumberExpression(candidate.right, context, new Set(visitedSymbolIds))
+  );
+};
 
 const isProvenNonThrowingSynchronousCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
@@ -1505,8 +1530,15 @@ const isProvenNonThrowingSynchronousCall = (
     ) {
       return true;
     }
-    if (context.scopes.isGlobalReference(callee) && SAFE_GLOBAL_FUNCTIONS.has(callee.name)) {
-      return true;
+    if (context.scopes.isGlobalReference(callee) && callee.name === "String") {
+      const argument = callNode.arguments[0];
+      const candidate = argument ? stripParenExpression(argument) : null;
+      return Boolean(
+        callNode.arguments.length === 1 &&
+        candidate &&
+        isNodeOfType(candidate, "Identifier") &&
+        context.scopes.symbolFor(candidate)?.kind === "catch-clause-parameter",
+      );
     }
     const localFunction = resolveExactLocalFunction(callee, context.scopes);
     if (localFunction && isFunctionLike(localFunction) && !localFunction.async) {
@@ -1522,11 +1554,20 @@ const isProvenNonThrowingSynchronousCall = (
     return false;
   }
   if (!isNodeOfType(callee, "MemberExpression")) return false;
+  if (isGlobalPerformanceNowCall(callNode, context)) return true;
   const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "Identifier") || !context.scopes.isGlobalReference(receiver)) {
+    return false;
+  }
+  if (receiver.name === "console") return true;
+  const methodName = getStaticPropertyName(callee);
+  const argument = callNode.arguments[0];
   return Boolean(
-    isNodeOfType(receiver, "Identifier") &&
-    SAFE_GLOBAL_OBJECTS.has(receiver.name) &&
-    context.scopes.isGlobalReference(receiver),
+    receiver.name === "Math" &&
+    methodName === "round" &&
+    callNode.arguments.length === 1 &&
+    argument &&
+    isProvenPerformanceNumberExpression(argument, context),
   );
 };
 

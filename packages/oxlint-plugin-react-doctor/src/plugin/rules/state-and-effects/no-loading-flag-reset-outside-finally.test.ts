@@ -2582,7 +2582,7 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(finallyAfter.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag when catch handler uses safe global functions and methods (issue #1421)", () => {
+  it("does not flag the non-throwing formatting calls from issue #1421", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `async function run() {
@@ -2609,5 +2609,52 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     }`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("supports transparent wrappers and static computed spellings for issue #1421", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function run() {
+        setLoading(true);
+        const start = (performance["now"]() as number);
+        try {
+          await load();
+        } catch (error) {
+          setResult((String)(error));
+          setDuration(Math["round"](performance?.now() - start));
+        }
+        setLoading(false);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps potentially throwing and dynamic global calls conservative", () => {
+    const catchBodies = [
+      'JSON.parse("invalid")',
+      "Date.parse(Symbol())",
+      'Object.defineProperty(null, "value", {})',
+      "Math.round(1n)",
+      "Math.round(formatDuration())",
+      'String({ toString() { throw new Error("failed") } })',
+      'const method = "round"; Math[method](1)',
+      'const performance = { now() { throw new Error("failed") } }; performance.now()',
+      'const String = () => { throw new Error("failed") }; String(error)',
+    ];
+    for (const catchBody of catchBodies) {
+      const result = runRule(
+        noLoadingFlagResetOutsideFinally,
+        `async function run() {
+          setLoading(true);
+          try {
+            await load();
+          } catch (error) {
+            ${catchBody};
+          }
+          setLoading(false);
+        }`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    }
   });
 });

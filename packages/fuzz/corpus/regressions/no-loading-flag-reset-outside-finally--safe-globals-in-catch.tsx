@@ -1,3 +1,8 @@
+// rule: no-loading-flag-reset-outside-finally
+// verdict: pass
+// weakness: control-flow
+// source: https://github.com/millionco/react-doctor/issues/1421
+
 async function run() {
   setLoading(true);
   const start = performance.now();
@@ -7,9 +12,13 @@ async function run() {
     let body = text;
     try {
       body = JSON.stringify(JSON.parse(text), null, 2);
-    } catch {
-    }
-    setResult({ status: res.status, ok: res.ok, body, timeMs: Math.round(performance.now() - start) });
+    } catch {}
+    setResult({
+      status: res.status,
+      ok: res.ok,
+      body,
+      timeMs: Math.round(performance.now() - start),
+    });
   } catch (error) {
     setResult({
       status: 0,

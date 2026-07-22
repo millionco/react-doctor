@@ -181,6 +181,104 @@ const C = () => (
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("flags differently shaped named React Fragment roots", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { Fragment as ReactFragment } from "react";
+import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => item.active
+      ? <ReactFragment><Header /><Metadata /></ReactFragment>
+      : <ReactFragment><Row /></ReactFragment>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      reactImport: `import { Fragment } from "react";`,
+      openingFragment: "<Fragment>",
+      closingFragment: "</Fragment>",
+    },
+    {
+      reactImport: `import React from "react";`,
+      openingFragment: "<React.Fragment>",
+      closingFragment: "</React.Fragment>",
+    },
+    {
+      reactImport: `import * as ReactNamespace from "react";`,
+      openingFragment: "<ReactNamespace.Fragment>",
+      closingFragment: "</ReactNamespace.Fragment>",
+    },
+  ])(
+    "treats $openingFragment like shorthand fragment syntax",
+    ({ reactImport, openingFragment, closingFragment }) => {
+      const result = runRule(
+        rnListRecyclableWithoutTypes,
+        `${reactImport}
+import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => item.active
+      ? ${openingFragment}<Row /><Metadata />${closingFragment}
+      : <><Row /><Metadata /></>}
+  />
+);`,
+        { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("keeps a locally shadowed Fragment component opaque", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { Fragment } from "react";
+import { FlashList } from "@shopify/flash-list";
+const C = () => {
+  const Fragment = ({ children }) => <View>{children}</View>;
+  return (
+    <FlashList
+      data={items}
+      renderItem={({ item }) => item.active
+        ? <Fragment><Header /></Fragment>
+        : <Fragment><Row /></Fragment>}
+    />
+  );
+};`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a non-React Fragment import opaque", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { Fragment } from "./ui";
+import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => item.active
+      ? <Fragment><Header /></Fragment>
+      : <Fragment><Row /></Fragment>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a heterogeneous renderItem wrapped in React useCallback", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,

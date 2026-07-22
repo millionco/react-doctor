@@ -3,6 +3,7 @@ import { RECYCLABLE_LIST_PACKAGE_SOURCES } from "../../constants/react-native.js
 import { defineRule } from "../../utils/define-rule.js";
 import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
+import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 import { isFlashListV2OrNewer } from "./utils/is-flash-list-v2-or-newer.js";
@@ -21,15 +22,18 @@ const getJsxElementQualifiedName = (node: EsTreeNode): string | null => {
   return `${objectName}.${node.property.name}`;
 };
 
-const getStaticRenderedRootNames = (node: EsTreeNode): ReadonlyArray<string> | null => {
-  if (isNodeOfType(node, "JSXElement")) {
+const getStaticRenderedRootNames = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<string> | null => {
+  if (isNodeOfType(node, "JSXElement") && !isJsxFragmentElement(node.openingElement, scopes)) {
     const elementName = getJsxElementQualifiedName(node.openingElement.name);
     return elementName === null ? null : [elementName];
   }
-  if (isNodeOfType(node, "JSXFragment")) {
+  if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
     const rootNames: string[] = [];
     for (const child of node.children) {
-      const childRootNames = getStaticRenderedRootNames(child);
+      const childRootNames = getStaticRenderedRootNames(child, scopes);
       if (childRootNames === null) return null;
       rootNames.push(...childRootNames);
     }
@@ -45,36 +49,41 @@ const getStaticRenderedRootNames = (node: EsTreeNode): ReadonlyArray<string> | n
   ) {
     return [];
   }
-  return getStaticRenderedRootNames(expression);
+  return getStaticRenderedRootNames(expression, scopes);
 };
 
-const getJsxFragmentRootName = (fragment: EsTreeNodeOfType<"JSXFragment">): string | null => {
-  const childRootNames = getStaticRenderedRootNames(fragment);
+const getRenderedRootName = (
+  root: EsTreeNodeOfType<"JSXElement"> | EsTreeNodeOfType<"JSXFragment">,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const childRootNames = getStaticRenderedRootNames(root, scopes);
   if (childRootNames === null) return null;
   if (childRootNames.length === 1) return childRootNames[0];
   return `fragment:${JSON.stringify(childRootNames)}`;
 };
 
-const collectReturnedJsxRootNames = (expression: EsTreeNode, names: Set<string>): void => {
+const collectReturnedJsxRootNames = (
+  expression: EsTreeNode,
+  names: Set<string>,
+  scopes: ScopeAnalysis,
+): void => {
   const unwrappedExpression = stripParenExpression(expression);
-  if (isNodeOfType(unwrappedExpression, "JSXElement")) {
-    const elementName = getJsxElementQualifiedName(unwrappedExpression.openingElement.name);
-    if (elementName) names.add(elementName);
-    return;
-  }
-  if (isNodeOfType(unwrappedExpression, "JSXFragment")) {
-    const fragmentRootName = getJsxFragmentRootName(unwrappedExpression);
-    if (fragmentRootName) names.add(fragmentRootName);
+  if (
+    isNodeOfType(unwrappedExpression, "JSXElement") ||
+    isNodeOfType(unwrappedExpression, "JSXFragment")
+  ) {
+    const rootName = getRenderedRootName(unwrappedExpression, scopes);
+    if (rootName) names.add(rootName);
     return;
   }
   if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
-    collectReturnedJsxRootNames(unwrappedExpression.consequent, names);
-    collectReturnedJsxRootNames(unwrappedExpression.alternate, names);
+    collectReturnedJsxRootNames(unwrappedExpression.consequent, names, scopes);
+    collectReturnedJsxRootNames(unwrappedExpression.alternate, names, scopes);
     return;
   }
   if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
-    collectReturnedJsxRootNames(unwrappedExpression.left, names);
-    collectReturnedJsxRootNames(unwrappedExpression.right, names);
+    collectReturnedJsxRootNames(unwrappedExpression.left, names, scopes);
+    collectReturnedJsxRootNames(unwrappedExpression.right, names, scopes);
   }
 };
 
@@ -135,7 +144,7 @@ const renderItemHasHeterogeneousRootTypes = (
   }
   const returnedRootNames = new Set<string>();
   if (!isNodeOfType(renderItemFunction.body, "BlockStatement")) {
-    collectReturnedJsxRootNames(renderItemFunction.body, returnedRootNames);
+    collectReturnedJsxRootNames(renderItemFunction.body, returnedRootNames, scopes);
   } else {
     walkAst(renderItemFunction.body, (child) => {
       if (
@@ -146,7 +155,7 @@ const renderItemHasHeterogeneousRootTypes = (
         return false;
       }
       if (isNodeOfType(child, "ReturnStatement") && child.argument) {
-        collectReturnedJsxRootNames(child.argument, returnedRootNames);
+        collectReturnedJsxRootNames(child.argument, returnedRootNames, scopes);
       }
     });
   }

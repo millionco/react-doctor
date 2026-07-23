@@ -134,6 +134,40 @@ const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each(["let", "var"])(
+    "stays silent when a %s renderItem changes from heterogeneous to homogeneous",
+    (declarationKind) => {
+      const result = runRule(
+        rnListRecyclableWithoutTypes,
+        `import { FlashList } from "@shopify/flash-list";
+${declarationKind} renderItem = ({ item }) =>
+  item.kind === "header" ? <Header /> : <Row />;
+renderItem = ({ item }) => <Row item={item} />;
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+        { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it.each(["let", "var"])(
+    "stays silent when a %s renderItem changes from homogeneous to heterogeneous",
+    (declarationKind) => {
+      const result = runRule(
+        rnListRecyclableWithoutTypes,
+        `import { FlashList } from "@shopify/flash-list";
+${declarationKind} renderItem = ({ item }) => <Row item={item} />;
+renderItem = ({ item }) =>
+  item.kind === "header" ? <Header /> : <Row />;
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+        { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
   it("uses the nearest shadowed function declaration", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,

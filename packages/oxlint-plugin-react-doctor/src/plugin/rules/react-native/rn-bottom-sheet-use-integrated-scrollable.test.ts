@@ -53,6 +53,36 @@ describe("rn-bottom-sheet-use-integrated-scrollable", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("ignores JSX discarded before the final sequence value", () => {
+    const code = `
+      import BottomSheet from "@gorhom/bottom-sheet";
+      import { FlatList } from "react-native";
+      const Screen = () => (
+        <BottomSheet>
+          {visible && (<FlatList data={items} />, null)}
+        </BottomSheet>
+      );
+    `;
+    const result = runRule(rnBottomSheetUseIntegratedScrollable, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("collects JSX returned by the final sequence value", () => {
+    const code = `
+      import BottomSheet from "@gorhom/bottom-sheet";
+      import { FlatList } from "react-native";
+      const Screen = () => (
+        <BottomSheet>
+          {visible && (null, <FlatList data={items} />)}
+        </BottomSheet>
+      );
+    `;
+    const result = runRule(rnBottomSheetUseIntegratedScrollable, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports a scrollable only once when Bottom Sheets are nested", () => {
     const code = `
       import BottomSheet from "@gorhom/bottom-sheet";

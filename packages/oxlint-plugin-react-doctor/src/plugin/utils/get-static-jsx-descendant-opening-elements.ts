@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { getFinalSequenceExpressionValue } from "./get-final-sequence-expression-value.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
@@ -50,9 +51,8 @@ const appendDescendant = (
     return;
   }
   if (isNodeOfType(expression, "SequenceExpression")) {
-    for (const sequenceExpression of expression.expressions) {
-      appendDescendant(sequenceExpression, descendants, true);
-    }
+    if (expression.expressions.length === 0) return;
+    appendDescendant(getFinalSequenceExpressionValue(expression), descendants, true);
   }
 };
 

@@ -128,8 +128,7 @@ const resolveRenderItemFunction = (
   const localFunction = resolveExactLocalFunction(expression, scopes);
   if (localFunction) return localFunction;
   const symbol = scopes.symbolFor(expression);
-  if (symbol?.kind === "function") return null;
-  if (!symbol?.initializer) return null;
+  if (symbol?.kind !== "const" || !symbol.initializer) return null;
   return resolveFunctionFromInitializer(symbol.initializer, symbol, scopes);
 };
 

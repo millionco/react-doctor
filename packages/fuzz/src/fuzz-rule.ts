@@ -1,6 +1,7 @@
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
-import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import type { ParseFixtureResult } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
+import { runRuleOnParsedFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import { runScanRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-scan-rule.js";
 import {
   CORPUS_PROGRAM_PROBABILITY,
@@ -65,31 +66,37 @@ interface RunOutcome {
   diagnosticSignature?: string[];
   crashDetail?: string;
   elapsedMs: number;
+  hasParseErrors?: boolean;
 }
 
-// Parseability is checked BEFORE the crash oracle runs — oxlint never runs
-// rules on unparseable files, so a rule throw on one is not a real crash.
-// `forceJsx` mirrors the run below: the rotated filename's extension is for
-// path gating, not lang selection.
-const hasParseErrors = (code: string, filename: string): boolean => {
-  try {
-    return parseFixture(code, { filename, forceJsx: true }).errors.length > 0;
-  } catch {
-    return true;
-  }
-};
-
 const runRuleOnCode = (rule: Rule, code: string, filename: string): RunOutcome => {
-  const startedAt = performance.now();
-  try {
-    if (typeof rule.scan === "function") {
+  if (typeof rule.scan === "function") {
+    const startedAt = performance.now();
+    try {
       const findings = runScanRule(rule, { relativePath: filename, content: code });
       return {
         diagnosticSignature: findings.map((finding) => finding.message).sort(),
         elapsedMs: performance.now() - startedAt,
       };
+    } catch (thrown) {
+      const detail = thrown instanceof Error ? (thrown.stack ?? thrown.message) : String(thrown);
+      return { crashDetail: detail, elapsedMs: performance.now() - startedAt };
     }
-    const result = runRule(rule, code, { filename, forceJsx: true });
+  }
+
+  let parsed: ParseFixtureResult;
+  try {
+    parsed = parseFixture(code, { filename, forceJsx: true });
+  } catch {
+    return { elapsedMs: 0, hasParseErrors: true };
+  }
+  if (parsed.errors.length > 0) {
+    return { elapsedMs: 0, hasParseErrors: true };
+  }
+
+  const startedAt = performance.now();
+  try {
+    const result = runRuleOnParsedFixture(rule, code, parsed, { filename, forceJsx: true });
     return {
       diagnosticSignature: result.diagnostics
         .map((diagnostic) => `${diagnostic.nodeType}: ${diagnostic.message}`)
@@ -143,11 +150,11 @@ export const fuzzRuleWithStats = (
     iteration: number,
     variantLabel?: string,
   ): RunOutcome | null => {
-    if (!isScanRule && hasParseErrors(code, filename)) {
+    const outcome = runRuleOnCode(rule, code, filename);
+    if (!isScanRule && outcome.hasParseErrors === true) {
       stats.skippedParseErrorCount += 1;
       return null;
     }
-    const outcome = runRuleOnCode(rule, code, filename);
     stats.executedProgramCount += 1;
     if (outcome.crashDetail !== undefined) {
       findings.push({
@@ -278,6 +285,7 @@ export const fuzzRuleWithStats = (
       for (const variant of buildVerdictPreservingVariants(code, filename)) {
         if (!variant.mustPreserveVerdict) continue;
         const variantOutcome = runRuleOnCode(rule, variant.code, filename);
+        if (variantOutcome.hasParseErrors === true) continue;
         if (variantOutcome.crashDetail !== undefined) {
           findings.push({
             ruleId,
@@ -308,8 +316,8 @@ export const fuzzRuleWithStats = (
       ...buildEquivalentFuzzVariants(code, sections),
       ...buildAstEquivalentFuzzVariants(code, filename, EFFECT_CALLBACK_ALIAS_RULE_IDS.has(ruleId)),
     ]) {
-      if (hasParseErrors(variant.code, filename)) continue;
       const variantOutcome = runRuleOnCode(rule, variant.code, filename);
+      if (variantOutcome.hasParseErrors === true) continue;
       if (variantOutcome.crashDetail !== undefined) {
         findings.push({
           ruleId,

@@ -313,6 +313,7 @@ describe("createOxlintConfig settings", () => {
     });
 
     expect(config.rules).not.toHaveProperty("react-doctor/forbid-component-props");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-all-caps-body-text");
   });
 
   it("runs only an explicitly included tag and activates that tag's opt-in rules", () => {
@@ -324,6 +325,7 @@ describe("createOxlintConfig settings", () => {
     });
 
     expect(config.rules).toHaveProperty("react-doctor/no-uppercase-mono-label");
+    expect(config.rules).toHaveProperty("react-doctor/no-all-caps-body-text");
     expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
     expect(hasReactHooksJsEntry(config)).toBe(false);
   });

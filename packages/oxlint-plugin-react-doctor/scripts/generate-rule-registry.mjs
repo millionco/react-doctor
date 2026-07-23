@@ -99,6 +99,8 @@ const BUCKET_TO_AUTO_TAGS = {
   server: ["server-action"],
 };
 
+const BUCKETS_OPT_IN_BY_DEFAULT = new Set(["design"]);
+
 const getAutoTags = (bucketName, ruleId) => {
   if (bucketName === "r3f" && ruleId.startsWith("three-")) return ["three", "webgl"];
   return BUCKET_TO_AUTO_TAGS[bucketName] ?? [];
@@ -287,6 +289,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
     }
     const categoryMatch = source.match(/^\s*category:\s*"([^"]+)",?\s*$/m);
     const severityMatch = source.match(/^\s*severity:\s*"(error|warn)",?\s*$/m);
+    const isDefaultDisabledInSource = /^\s*defaultEnabled:\s*false,?\s*$/m.test(source);
     if (!severityMatch) {
       console.error(
         `Rule file missing \`severity: "error" | "warn"\` field: ${path.relative(PACKAGE_ROOT, filePath)}`,
@@ -321,6 +324,8 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       autoTags,
       requiredCapabilities,
       originallyExternal,
+      shouldSynthesizeDefaultDisabled:
+        BUCKETS_OPT_IN_BY_DEFAULT.has(bucket.name) && !isDefaultDisabledInSource,
     });
   }
 }
@@ -388,7 +393,7 @@ const formatRequiresLine = (entry) => {
 };
 
 // Per-entry shape:
-//   { key, id, source, originallyExternal, rule: { ...sourceRule, framework, category, tags? } }
+//   { key, id, source, originallyExternal, rule: { ...sourceRule, framework, category, defaultEnabled?, tags? } }
 //
 // `framework` / `category` / `severity` live on the inner `rule` object
 // (set by the spread + codegen merge) — consumers that need them read
@@ -407,6 +412,7 @@ const ruleLines = ruleEntries
       `      ...${entry.identifier},\n` +
       `      framework: "${entry.framework}",\n` +
       `      category: "${entry.category}",\n` +
+      (entry.shouldSynthesizeDefaultDisabled ? `      defaultEnabled: false,\n` : "") +
       formatAutoTagsLine(entry) +
       formatRequiresLine(entry) +
       `    },\n` +
@@ -417,9 +423,9 @@ const ruleLines = ruleEntries
 const generatedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm gen\` to regenerate.
 // Source of truth: every \`export const <name> = defineRule({ id: "...", ... })\`
 // under \`src/plugin/rules/<bucket>/<name>.ts\`. The rule's \`framework\` and
-// default \`category\` come from the bucket directory (see
-// \`scripts/generate-rule-registry.mjs\`) — rule files only override
-// \`category\` when needed. Adding a rule is a single-file operation:
+// default \`category\`, tags, and activation status come from the bucket
+// directory (see \`scripts/generate-rule-registry.mjs\`) — rule files only
+// override \`category\` when needed. Adding a rule is a single-file operation:
 // create the rule file, set its \`id\`, re-run codegen.
 
 import type { Capability } from "./utils/capability.js";

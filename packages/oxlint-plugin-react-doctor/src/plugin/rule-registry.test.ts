@@ -103,6 +103,13 @@ describe("rule registry", () => {
     }
   });
 
+  it("keeps every design rule opt-in by default", () => {
+    for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
+      if (!(rule.tags ?? []).includes("design")) continue;
+      expect(rule.defaultEnabled, `${ruleId} should be opt-in`).toBe(false);
+    }
+  });
+
   it("registers exactly the 42 known security-scan rules", () => {
     const taggedIds = Object.entries(ruleRegistry)
       .filter(([, rule]) => (rule.tags ?? []).includes("security-scan"))

@@ -124,7 +124,7 @@ ${formatExampleLines([
 ])}
 
 ${highlighter.dim("Scope:")}
-  Runs only rules tagged ${highlighter.info("design")}, including focused rules that stay opt-in during a general health scan.
+  Runs every rule tagged ${highlighter.info("design")}; all design rules stay opt-in during a general health scan.
   Dead-code, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
   Standard scan flags such as ${highlighter.info("--scope")}, ${highlighter.info("--project")}, ${highlighter.info("--verbose")}, and ${highlighter.info("--json")} still work.
 `;

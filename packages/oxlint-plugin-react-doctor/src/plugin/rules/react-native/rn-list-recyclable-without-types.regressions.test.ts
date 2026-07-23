@@ -75,6 +75,96 @@ const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("flags a heterogeneous named function declaration", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+function renderItem({ item }) {
+  if (item.kind === "header") return <Header />;
+  return <Row />;
+}
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a const alias of a heterogeneous function declaration", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+function renderRow({ item }) {
+  return item.kind === "header" ? <Header /> : <Row />;
+}
+const renderItem = renderRow;
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a homogeneous function declaration", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+function renderItem({ item }) {
+  return <Row item={item} />;
+}
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a reassigned function declaration", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+function renderItem({ item }) {
+  return item.kind === "header" ? <Header /> : <Row />;
+}
+renderItem = ({ item }) => <Row item={item} />;
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("uses the nearest shadowed function declaration", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+function renderItem({ item }) {
+  return item.kind === "header" ? <Header /> : <Row />;
+}
+const C = () => {
+  function renderItem({ item }) {
+    return <Row item={item} />;
+  }
+  return <FlashList data={items} renderItem={renderItem} />;
+};`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an imported renderItem handler", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+import { renderItem } from "./render-item";
+const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each([
     `(item.kind === "header" && <Header />) || <Row />`,
     `(item.kind === "header" ? <Header /> : null) ?? <Row />`,

@@ -5,6 +5,7 @@ import { hasImportFromModules } from "../../utils/find-import-source-for-name.js
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 import { isFlashListV2OrNewer } from "./utils/is-flash-list-v2-or-newer.js";
 import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-name.js";
@@ -124,7 +125,10 @@ const resolveRenderItemFunction = (
   const directFunction = resolveFunctionFromInitializer(expression, null, scopes);
   if (directFunction) return directFunction;
   if (!isNodeOfType(expression, "Identifier")) return null;
+  const localFunction = resolveExactLocalFunction(expression, scopes);
+  if (localFunction) return localFunction;
   const symbol = scopes.symbolFor(expression);
+  if (symbol?.kind === "function") return null;
   if (!symbol?.initializer) return null;
   return resolveFunctionFromInitializer(symbol.initializer, symbol, scopes);
 };

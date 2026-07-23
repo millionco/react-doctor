@@ -19,7 +19,7 @@ export const classifyVersionSpec = (version) => {
   if (isLocalPath) {
     return { cacheable: false, spec: trimmed, registryRange: undefined };
   }
-  const range = trimmed || "0.x";
+  const range = trimmed === "" || trimmed === "latest" ? "0.x" : trimmed;
   return { cacheable: true, spec: `react-doctor@${range}`, registryRange: range };
 };
 

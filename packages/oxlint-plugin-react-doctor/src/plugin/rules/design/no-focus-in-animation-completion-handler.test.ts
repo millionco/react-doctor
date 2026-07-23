@@ -149,6 +149,34 @@ describe("no-focus-in-animation-completion-handler", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("allows an attached ref identity in an exact React useCallback dependency list", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useCallback, useRef } from "react";
+       const Panel = () => {
+         const inputRef = useRef(null);
+         const finish = useCallback(() => inputRef.current.focus(), [inputRef]);
+         return <><input ref={inputRef} /><div onAnimationEnd={finish} /></>;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags focus on an intrinsic completion event currentTarget", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `const Panel = () => {
+         const finish = (event) => event.currentTarget.focus();
+         return <>
+           <button onAnimationEnd={(event) => event.currentTarget.focus()} />
+           <div tabIndex={-1} onTransitionEnd={finish} />
+           <div onAnimationEnd={(event) => other.currentTarget.focus()} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("follows synchronous IIFEs but prunes forEach and promise callbacks", () => {
     const result = runRule(
       noFocusInAnimationCompletionHandler,
@@ -351,6 +379,171 @@ describe("no-focus-in-animation-completion-handler", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("requires the ref attachment and handler to belong to the same returned JSX tree", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = ({ mode, show }) => {
+         const unusedTargetRef = useRef(null);
+         const unusedHandlerRef = useRef(null);
+         const crossComponentRef = useRef(null);
+         const branchRef = useRef(null);
+         const unusedTarget = <input ref={unusedTargetRef} />;
+         const unusedHandler = <div onAnimationEnd={() => unusedHandlerRef.current.focus()} />;
+         const Nested = () => <div onAnimationEnd={() => crossComponentRef.current.focus()} />;
+         if (mode === "target") return <input ref={branchRef} />;
+         if (mode === "handler") {
+           return <div onAnimationEnd={() => branchRef.current.focus()} />;
+         }
+         return show
+           ? <><input ref={unusedHandlerRef} /><input ref={crossComponentRef} /></>
+           : <><Nested /><div onAnimationEnd={() => unusedTargetRef.current.focus()} /></>;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not infer mounting through unresolved local JSX values or opaque composition", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = ({ show }) => {
+         const localValueRef = useRef(null);
+         const wrappedRef = useRef(null);
+         const localInput = <input ref={localValueRef} />;
+         return <>
+           {show ? localInput : <div onAnimationEnd={() => localValueRef.current.focus()} />}
+           <Wrapper><input ref={wrappedRef} /></Wrapper>
+           <div onTransitionEnd={() => wrappedRef.current.focus()} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat a discarded logical-and left operand as rendered JSX", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = () => {
+         const discardedTargetRef = useRef(null);
+         const discardedHandlerRef = useRef(null);
+         return <>
+           {(<input ref={discardedTargetRef} /> && false)}
+           <div onAnimationEnd={() => discardedTargetRef.current.focus()} />
+           <input ref={discardedHandlerRef} />
+           {(<div onTransitionEnd={() => discardedHandlerRef.current.focus()} /> && false)}
+         </>;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("correlates the focus-call path with the rendered ref attachment", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = ({ open }) => {
+         const inputRef = useRef(null);
+         return <>
+           {open && <input ref={inputRef} />}
+           <div onAnimationEnd={() => {
+             if (!open) inputRef.current.focus();
+           }} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores statically impossible completion-handler paths", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = ({ open }) => {
+         const inputRef = useRef(null);
+         return <>
+           <input ref={inputRef} />
+           <div onAnimationEnd={() => {
+             if (0) inputRef.current.focus();
+             if (open && !open) inputRef.current.focus();
+             if (true) return;
+             inputRef.current.focus();
+           }} />
+           <div onTransitionEnd={() => {
+             switch ("first") {
+               case "second": inputRef.current.focus();
+             }
+           }} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores generator handlers and generator IIFEs", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = () => {
+         const inputRef = useRef(null);
+         function* finish() { inputRef.current.focus(); }
+         return <>
+           <input ref={inputRef} />
+           <div onAnimationEnd={finish} />
+           <div onTransitionEnd={() => {
+             (function* () { inputRef.current.focus(); })();
+           }} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores targets excluded by inert, hidden, disabled, or visibility ancestry", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = () => {
+         const inertRef = useRef(null);
+         const hiddenRef = useRef(null);
+         const fieldsetRef = useRef(null);
+         const invisibleRef = useRef(null);
+         const collapsedRef = useRef(null);
+         return <>
+           <button inert ref={inertRef} />
+           <div hidden><button ref={hiddenRef} /></div>
+           <fieldset disabled><button ref={fieldsetRef} /></fieldset>
+           <button className="invisible" ref={invisibleRef} />
+           <div style={{ visibility: "collapse" }}><button ref={collapsedRef} /></div>
+           <div onAnimationEnd={() => inertRef.current.focus()} />
+           <div onAnimationEnd={() => hiddenRef.current.focus()} />
+           <div onAnimationEnd={() => fieldsetRef.current.focus()} />
+           <div onAnimationEnd={() => invisibleRef.current.focus()} />
+           <div onAnimationEnd={() => collapsedRef.current.focus()} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores dynamically typed inputs that may be hidden", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = ({ hidden }) => {
+         const inputRef = useRef(null);
+         return <>
+           <input type={hidden ? "hidden" : "text"} ref={inputRef} />
+           {hidden && <div onAnimationEnd={() => inputRef.current.focus()} />}
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("treats refs passed to calls or custom-component non-ref props as escaped", () => {
     const result = runRule(
       noFocusInAnimationCompletionHandler,
@@ -376,7 +569,7 @@ describe("no-focus-in-animation-completion-handler", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("resolves an unreassigned alias of attached ref.current", () => {
+  it("requires direct ref.current focus without an escaping node alias", () => {
     const result = runRule(
       noFocusInAnimationCompletionHandler,
       `import { useRef } from "react";
@@ -389,7 +582,27 @@ describe("no-focus-in-animation-completion-handler", () => {
          </>;
        };`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("treats ref.current and focus-method mutations as uncertain", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = () => {
+         const assignedRef = useRef(null);
+         const escapedRef = useRef(null);
+         assignedRef.current.focus = cleanup;
+         mutate(escapedRef.current);
+         return <>
+           <input ref={assignedRef} />
+           <input ref={escapedRef} />
+           <div onAnimationEnd={() => assignedRef.current.focus()} />
+           <div onAnimationEnd={() => escapedRef.current.focus()} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("deduplicates a shared focus call wired through multiple handler attributes", () => {
@@ -447,6 +660,39 @@ describe("no-focus-in-animation-completion-handler", () => {
            <div onTransitionEnd={() => hiddenAgainRef.current.focus()} {...{ onTransitionEnd: cleanup }} />
          </>;
        };`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("resolves exact completion handlers from static inline spreads", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import { useRef } from "react";
+       const Panel = () => {
+         const inputRef = useRef(null);
+         return <>
+           <input ref={inputRef} />
+           <div {...{ onAnimationEnd: () => inputRef.current.focus() }} />
+           <div {...{ onTransitionEnd: () => cleanup() }} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("supports exact attached React createRef receivers", () => {
+    const result = runRule(
+      noFocusInAnimationCompletionHandler,
+      `import React, { createRef } from "react";
+       const firstRef = createRef();
+       const secondRef = React.createRef();
+       const finish = () => firstRef.current.focus();
+       const Panel = () => <>
+         <input ref={firstRef} />
+         <button ref={secondRef} />
+         <div onAnimationEnd={finish} />
+         <div onTransitionEnd={() => secondRef.current.focus()} />
+       </>;`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });

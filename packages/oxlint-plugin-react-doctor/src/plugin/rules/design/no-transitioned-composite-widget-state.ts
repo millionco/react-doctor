@@ -13,6 +13,7 @@ import { getTailwindTopLevelCharacterIndices } from "../../utils/get-tailwind-to
 import { getTailwindTransitionPropertyEffect } from "../../utils/get-tailwind-transition-property-effect.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { normalizeTailwindArbitraryUtilityValue } from "../../utils/normalize-tailwind-arbitrary-utility-value.js";
@@ -259,7 +260,8 @@ const canBothConditionOutcomesReachElement = (
     parameterSymbol.references.some((reference) => reference.flag !== "read") ||
     !hasStableElementKey(node, parameterSymbol, context) ||
     !context.cfg.isUnconditionalFromEntry(node) ||
-    isMountedWithinSelectorBranch(node, parameterSymbol, context)
+    isMountedWithinSelectorBranch(node, parameterSymbol, context) ||
+    isGatedByFalsyInitialState(node, context.scopes)
   ) {
     return false;
   }

@@ -59,6 +59,22 @@ describe("no-responsive-hidden-accessible-name", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("preserves intrinsic ancestor visibility through rendered arrays", () => {
+    const result = runRule(
+      noResponsiveHiddenAccessibleName,
+      `const Action = () => <section className="md:hidden">{[<button key="save"><span className="md:hidden">Save</span></button>]}</section>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("abstains when a callback boundary prevents proving rendered ancestry", () => {
+    const result = runRule(
+      noResponsiveHiddenAccessibleName,
+      `const Actions = ({ items }) => <section className="md:hidden">{items.map(() => <button><span className="md:hidden">Save</span></button>)}</section>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("reports static expression and numeric text contributors", () => {
     const result = runRule(
       noResponsiveHiddenAccessibleName,
@@ -150,7 +166,7 @@ describe("no-responsive-hidden-accessible-name", () => {
   it("skips unsupported Tailwind visibility variant scopes", () => {
     const result = runRule(
       noResponsiveHiddenAccessibleName,
-      `const Actions = () => <><button><span className="md:hidden data-[state=open]:block">Data</span></button><button><span className="md:hidden aria-[expanded=true]:inline">ARIA</span></button><button><span className="md:hidden group-hover:flex">Group</span></button><button><span className="md:invisible tablet:visible">Custom breakpoint</span></button></>;`,
+      `const Actions = () => <><button><span className="md:hidden data-[state=open]:block">Data</span></button><button><span aria-expanded="true" className="md:hidden aria-expanded:block">ARIA</span></button><button><span className="md:hidden group-hover:flex">Group</span></button><button><span className="md:invisible tablet:visible">Custom breakpoint</span></button></>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -230,7 +246,15 @@ describe("no-responsive-hidden-accessible-name", () => {
   it("skips wrapped controls across custom prop, render, and child boundaries", () => {
     const result = runRule(
       noResponsiveHiddenAccessibleName,
-      `const Actions = () => <><Composer action={(<button><span className="md:hidden">Prop</span></button>)} /><Composer render={() => (<button><span className="md:hidden">Render</span></button>)} /><Wrapper>{(<button><span className="md:hidden">Child</span></button>)}</Wrapper></>;`,
+      `const Actions = ({ condition }) => <><Composer actions={[<button><span className="md:hidden">Array prop</span></button>]} /><Composer action={condition ? <button><span className="md:hidden">Conditional prop</span></button> : null} /><Composer render={() => <button><span className="md:hidden">Render</span></button>} /><Wrapper>{condition && <button><span className="md:hidden">Logical child</span></button>}</Wrapper></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("skips non-JSX component props and expressions that do not prove rendering", () => {
+    const result = runRule(
+      noResponsiveHiddenAccessibleName,
+      `const unused = <button><span className="md:hidden">Unused</span></button>; const Actions = () => <><div>{() => <button><span className="md:hidden">Function child</span></button>}</div>{(<button><span className="md:hidden">Discarded</span></button>, null)}</>; const Created = () => createElement(Composer, { action: <button><span className="md:hidden">Prop</span></button> });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -255,6 +279,14 @@ describe("no-responsive-hidden-accessible-name", () => {
     const result = runRule(
       noResponsiveHiddenAccessibleName,
       `const Actions = () => <><button className="before:content-['Save']"><span className="md:hidden">Save</span></button><button><span className="after:content-['menu'] md:hidden">Open</span></button></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("skips mixed-case arbitrary generated-content alternatives", () => {
+    const result = runRule(
+      noResponsiveHiddenAccessibleName,
+      `const Action = () => <button className="before:[CoNtEnT:'Save']"><span className="md:hidden">Save</span></button>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

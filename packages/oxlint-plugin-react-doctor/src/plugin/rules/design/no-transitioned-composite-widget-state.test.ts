@@ -32,7 +32,7 @@ describe("no-transitioned-composite-widget-state", () => {
 
   it("leaves data-state styling out of v1", () => {
     const result = run(
-      `const Item = ({ checked }) => <div role="treeitem" aria-checked={checked ? "true" : "false"} data-state={checked ? "checked" : "unchecked"} className="bg-[#fff] transition-colors data-[state=checked]:bg-[#000]">Value</div>;`,
+      `const Items = ({ checked, loading }) => <><div role="treeitem" aria-checked={checked ? "true" : "false"} data-state={checked ? "checked" : "unchecked"} className="bg-[#fff] transition-colors data-[state=checked]:bg-[#000]">Value</div><div role="treeitem" aria-checked={checked ? "true" : "false"} data-state={loading ? "checked" : "unchecked"} className="bg-[#fff] transition-colors data-[state=checked]:bg-[#000]">Loading</div></>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -284,7 +284,14 @@ describe("no-transitioned-composite-widget-state", () => {
 
   it("allows locally constant and unresolved selector conditions", () => {
     const result = run(
-      `const LOCAL_SELECTED = true; const Options = () => <><div role="option" aria-selected={LOCAL_SELECTED ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" /><div role="option" aria-selected={externalSelected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" /></>;`,
+      `const ALWAYS_SELECTED = true; const NEVER_SELECTED = false; const Options = () => <><div role="option" aria-selected={ALWAYS_SELECTED ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" /><div role="option" aria-selected={NEVER_SELECTED ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" /><div role="option" aria-selected={externalSelected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" /></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows elements in const-resolved unreachable render branches", () => {
+    const result = run(
+      `const SHOW_FIRST = false; const HIDE_SECOND = true; const Options = ({ selected }) => <>{SHOW_FIRST ? <div role="option" aria-selected={selected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" /> : null}{HIDE_SECOND ? null : <div role="option" aria-selected={selected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" />}{SHOW_FIRST && <div role="option" aria-selected={selected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]" />}</>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -312,7 +319,7 @@ describe("no-transitioned-composite-widget-state", () => {
 
   it("treats bare white and black utilities as theme-dependent", () => {
     const result = run(
-      `const Option = ({ selected }) => <div role="option" aria-selected={selected ? "true" : "false"} className="bg-white transition-colors aria-selected:bg-black" />;`,
+      `const Options = ({ selected }) => <><div role="option" aria-selected={selected ? "true" : "false"} className="bg-white transition-colors aria-selected:bg-black" /><div role="option" aria-selected={selected ? "true" : "false"} className="bg-white transition-colors aria-selected:bg-[#000]" /><div role="option" aria-selected={selected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-black" /></>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

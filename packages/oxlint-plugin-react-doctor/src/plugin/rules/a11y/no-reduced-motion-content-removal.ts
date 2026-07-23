@@ -273,7 +273,7 @@ const isSupportedSatisfiableReducedMotionScope = (variants: ReadonlyArray<string
   if (
     variants.some((variant) => {
       if (isTailwindReducedMotionVariant(variant) || isTailwindMotionSafeVariant(variant)) {
-        return false;
+        return variant !== "motion-reduce" && variant !== "motion-safe";
       }
       if (TAILWIND_BREAKPOINT_NAMES.indexOf(variant) > 0) return false;
       return (
@@ -673,9 +673,8 @@ const summarizeSemanticElement = (
   const rootVisibility = skipRootTailwindVisibility
     ? getElementNonTailwindVisibility(openingElement, context)
     : getElementVisibilityInScope(openingElement, targetVariantScope, context);
-  if (rootVisibility !== "visible") {
-    return summary;
-  }
+  if (rootVisibility === "unknown") summary.hasUnknownSemantics = true;
+  if (rootVisibility !== "visible") return summary;
   if (tagName === "svg" || tagName === "canvas" || tagName === "template") return summary;
   const childSummary = summarizeSemanticChildren(element.children, targetVariantScope, context);
   mergeSemanticSummary(summary, childSummary);

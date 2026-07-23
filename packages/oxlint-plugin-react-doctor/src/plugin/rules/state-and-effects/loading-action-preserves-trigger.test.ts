@@ -126,6 +126,7 @@ describe("loading-action-preserves-trigger", () => {
     ["an as expression", `true as boolean`],
     ["a satisfies expression", `true satisfies boolean`],
     ["a non-null expression", `true!`],
+    ["nested transparent wrappers", `((true as const) satisfies boolean)!`],
   ])("flags when the pending setter receives %s", (_description, setterValue) => {
     const result = run(`
       import { useState } from "react";
@@ -363,6 +364,10 @@ describe("loading-action-preserves-trigger", () => {
       "resets pending before the suspension",
       `setPending(true); setPending(false); await fetch("/api/save");`,
     ],
+    [
+      "resets pending through transparent wrappers before the suspension",
+      `setPending(true as boolean); setPending(false satisfies boolean); await fetch("/api/save");`,
+    ],
   ])("stays quiet when the handler %s", (_description, body) => {
     const result = run(`
       import { useState } from "react";
@@ -381,6 +386,7 @@ describe("loading-action-preserves-trigger", () => {
     ["uses a router", `router.push("/done")`],
     ["uses a receiver navigation method", `router.navigate("/done")`],
     ["assigns a location href", `window.location.href = "/done"`],
+    ["assigns window.location", `window.location = "/done"`],
     ["requests a form submission", `formRef.current.requestSubmit()`],
     ["submits a form", `formRef.current.submit()`],
   ])("stays quiet when the handler intentionally %s", (_description, transfer) => {
@@ -401,23 +407,31 @@ describe("loading-action-preserves-trigger", () => {
   });
 
   it.each([
-    ["a custom action", `<Button onClick={save}>Save</Button>`],
-    ["an action spread", `<button {...buttonProps} onClick={save}>Save</button>`],
-    ["an imported handler", `<button onClick={save}>Save</button>`],
-    ["a useCallback handler", `<button onClick={save}>Save</button>`],
-  ])("stays quiet for %s", (description, action) => {
-    const handler =
-      description === "an imported handler"
-        ? ""
-        : description === "a useCallback handler"
-          ? `const save = useCallback(async () => { setPending(true); await fetch("/api/save"); }, []);`
-          : `async function save() { setPending(true); await fetch("/api/save"); }`;
-    const imports =
-      description === "an imported handler"
-        ? `import { save } from "./actions";`
-        : description === "a useCallback handler"
-          ? `import { useCallback, useState } from "react";`
-          : `import { useState } from "react";`;
+    [
+      "a custom action",
+      `<Button onClick={save}>Save</Button>`,
+      `import { useState } from "react";`,
+      `async function save() { setPending(true); await fetch("/api/save"); }`,
+    ],
+    [
+      "an action spread",
+      `<button {...buttonProps} onClick={save}>Save</button>`,
+      `import { useState } from "react";`,
+      `async function save() { setPending(true); await fetch("/api/save"); }`,
+    ],
+    [
+      "an imported handler",
+      `<button onClick={save}>Save</button>`,
+      `import { save } from "./actions";`,
+      "",
+    ],
+    [
+      "a useCallback handler",
+      `<button onClick={save}>Save</button>`,
+      `import { useCallback, useState } from "react";`,
+      `const save = useCallback(async () => { setPending(true); await fetch("/api/save"); }, []);`,
+    ],
+  ])("stays quiet for %s", (_description, action, imports, handler) => {
     const result = run(`
       ${imports}
       const Save = () => {

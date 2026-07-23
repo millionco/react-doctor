@@ -148,7 +148,10 @@ const areVisibilityStatesEqual = (
 const hasTailwindGeneratedContent = (className: string): boolean =>
   splitTailwindClassName(className)
     .map(parseTailwindClassNameToken)
-    .some(({ utility }) => utility.startsWith("content-") || utility.startsWith("[content:"));
+    .some(({ utility }) => {
+      const normalizedUtility = utility.toLowerCase();
+      return normalizedUtility.startsWith("content-") || normalizedUtility.startsWith("[content:");
+    });
 
 const getResponsiveVariantApplicability = (
   variants: ReadonlyArray<string>,
@@ -506,6 +509,7 @@ const resolveControlVisibility = (
   context: RuleContext,
 ): ControlVisibilityEvidence | null => {
   const elementChain: Array<EsTreeNodeOfType<"JSXElement">> = [];
+  const enclosingFunction = context.cfg.enclosingFunction(controlElement);
   let current: EsTreeNode | null | undefined = controlElement;
   while (current) {
     if (isNodeOfType(current, "JSXElement")) {
@@ -514,12 +518,23 @@ const resolveControlVisibility = (
       isNodeOfType(current, "JSXExpressionContainer") ||
       isNodeOfType(current, "LogicalExpression") ||
       isNodeOfType(current, "ConditionalExpression") ||
+      isNodeOfType(current, "ArrayExpression") ||
       TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(current.type)
     ) {
       current = current.parent;
       continue;
-    } else if (!isNodeOfType(current, "JSXFragment")) {
+    } else if (isNodeOfType(current, "ReturnStatement")) {
       break;
+    } else if (current === enclosingFunction && isNodeOfType(current, "ArrowFunctionExpression")) {
+      if (
+        !isNodeOfType(current.parent, "VariableDeclarator") &&
+        !isNodeOfType(current.parent, "ExportDefaultDeclaration")
+      ) {
+        return null;
+      }
+      break;
+    } else if (!isNodeOfType(current, "JSXFragment")) {
+      return null;
     }
     current = current.parent;
   }

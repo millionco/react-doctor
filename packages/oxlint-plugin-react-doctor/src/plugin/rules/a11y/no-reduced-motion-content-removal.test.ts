@@ -210,6 +210,7 @@ describe("no-reduced-motion-content-removal", () => {
         <p className="motion-reduce:hover:hidden">Interaction state</p>
         <p className="motion-reduce:data-[state=open]:hidden">Data state</p>
         <p className="motion-reduce:group-hover:hidden">Group state</p>
+        <p className="motion-reduce/compact:hidden">Modified preference variant</p>
         <p className="motion-reduce:max-[700px]:hidden">Arbitrary breakpoint</p>
         <p className="motion-reduce:tablet:hidden">Custom breakpoint</p>
       </>;`,
@@ -274,6 +275,7 @@ describe("no-reduced-motion-content-removal", () => {
         <div><p className="motion-reduce:hidden">Saved</p><Fallback /></div>
         <div><p className="motion-reduce:hidden">Saved</p>{fallback}</div>
         <div><p className="motion-reduce:hidden">Saved</p><span className={className}>Saved</span></div>
+        <div><p className="motion-reduce:hidden">Saved</p><span><i className={className}>Saved</i></span></div>
       </>;`,
     );
     expect(result.diagnostics).toEqual([]);

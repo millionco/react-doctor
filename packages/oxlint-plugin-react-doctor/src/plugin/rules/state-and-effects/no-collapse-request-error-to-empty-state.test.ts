@@ -819,6 +819,45 @@ describe("no-collapse-request-error-to-empty-state", () => {
        };`,
     ],
     [
+      "empty-result copy that says files could not be loaded",
+      `import { useState } from "react";
+       const Search = () => {
+         const [items, setItems] = useState([]);
+         const load = async () => {
+           try { setItems(await (await fetch("/api/items")).json()); }
+           catch { setItems([]); }
+         };
+         if (!items.length) return <p>No files could be loaded because the request failed</p>;
+         return <List items={items} />;
+       };`,
+    ],
+    [
+      "empty-result copy that names a loading error",
+      `import { useState } from "react";
+       const Search = () => {
+         const [items, setItems] = useState([]);
+         const load = async () => {
+           try { setItems(await (await fetch("/api/items")).json()); }
+           catch { setItems([]); }
+         };
+         if (!items.length) return <p>No items — error loading results</p>;
+         return <List items={items} />;
+       };`,
+    ],
+    [
+      "empty-result copy that names a network failure",
+      `import { useState } from "react";
+       const Search = () => {
+         const [items, setItems] = useState([]);
+         const load = async () => {
+           try { setItems(await (await fetch("/api/items")).json()); }
+           catch { setItems([]); }
+         };
+         if (!items.length) return <p>No results due to a network failure</p>;
+         return <List items={items} />;
+       };`,
+    ],
+    [
       "a directly absorbed fetch rejection",
       `import { useState } from "react";
        const Search = () => {
@@ -974,6 +1013,19 @@ describe("no-collapse-request-error-to-empty-state", () => {
            catch { setItems([]); }
          };
          if (!items.length) return <p class="hidden!">No items</p>;
+         return <List items={items} />;
+       };`,
+    ],
+    [
+      "a trailing-important arbitrary visibility utility",
+      `import { useState } from "react";
+       const Search = () => {
+         const [items, setItems] = useState([]);
+         const load = async () => {
+           try { setItems(await (await fetch("/api/items")).json()); }
+           catch { setItems([]); }
+         };
+         if (!items.length) return <p className="md:[display:none]!">No items</p>;
          return <List items={items} />;
        };`,
     ],

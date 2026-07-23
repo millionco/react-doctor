@@ -116,7 +116,7 @@ export const TUI_MODAL_TARGET_WIDTH_CHARS = 44;
 export const TUI_MODAL_MIN_WIDTH_CHARS = 24;
 export const TUI_MODAL_FOOTER_ROWS = 2;
 export const TUI_MODAL_MIN_BODY_ROWS = 6;
-export const TUI_DETAIL_INDENT_COLUMNS = 4;
+export const TUI_DETAIL_INDENT_COLUMNS = 2;
 export const TUI_PROJECT_SELECT_CHROME_ROWS = 3;
 export const TUI_PROJECT_SELECT_MIN_LIST_ROWS = 1;
 export const TUI_REPORT_HEADER_ROWS = 6;
@@ -316,6 +316,7 @@ export const METRIC = {
   lspScanDiagnostics: "lsp.scan.diagnostics",
   tuiActionMenuOpened: "tui.action_menu_opened",
   tuiCompactReportShown: "tui.compact_report_shown",
+  tuiFindingNavigated: "tui.finding_navigated",
   tuiStackedReportCapped: "tui.stacked_report_capped",
   aiTrainingWarningShown: "ai.training.warning_shown",
   jsonOutUsed: "json.out_used",

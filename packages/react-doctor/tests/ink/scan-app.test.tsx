@@ -125,6 +125,9 @@ describe("ScanApp", () => {
     const frame = lastFrame() ?? "";
     expect(frame).toContain("72");
     expect(frame).toContain("demo-app");
+    expect(frame).toContain("React Doctor");
+    expect(frame).toContain("┌─────┐");
+    expect(frame).toContain("› ✖ react-doctor/rules-of-hooks");
     // No `title` on the test diagnostics → the row falls back to `plugin/rule`.
     // The detail headline is the title alone; category + severity ride a dim tag.
     expect(frame).toContain("react-doctor/rules-of-hooks");

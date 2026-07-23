@@ -1,6 +1,6 @@
 import { getSkillAgentConfig } from "agent-install";
 import { Box, Text, useInput } from "ink";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { METRIC, TUI_MODAL_FOOTER_ROWS, TUI_MODAL_MIN_BODY_ROWS } from "../../utils/constants.js";
 import { copyToClipboard, type CliAgentId } from "../../utils/launch-agent.js";
@@ -104,6 +104,8 @@ export const DiagnosticList = ({
   const selectedEntry = entries[selectedIndex];
   const selected = selectedEntry?.kind === "item" ? selectedEntry.row : null;
   const selectedRuleKey = selected?.ruleKey ?? null;
+  const initialSelectedRuleKey = useRef(selectedRuleKey);
+  const didRecordFindingNavigation = useRef(false);
 
   const [readRuleKeys, setReadRuleKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [copiedRuleKey, setCopiedRuleKey] = useState<string | null>(null);
@@ -121,6 +123,17 @@ export const DiagnosticList = ({
     setReadRuleKeys((previous) =>
       previous.has(selectedRuleKey) ? previous : new Set(previous).add(selectedRuleKey),
     );
+  }, [selectedRuleKey]);
+
+  useEffect(() => {
+    if (
+      !selectedRuleKey ||
+      selectedRuleKey === initialSelectedRuleKey.current ||
+      didRecordFindingNavigation.current
+    )
+      return;
+    didRecordFindingNavigation.current = true;
+    recordCount(METRIC.tuiFindingNavigated);
   }, [selectedRuleKey]);
 
   const copySelectedPrompt = (): void => {
@@ -251,6 +264,7 @@ export const DiagnosticList = ({
         projectCount={projectCount}
         keyHints={keyHints}
         exitHint={exitHint}
+        compact={isCompact}
       />
     </Box>
   );

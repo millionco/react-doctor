@@ -57,7 +57,7 @@ a rule-backed finding. Never approximate the fix.
 ## Verification
 
 - **Mechanical**:
-  - `npx react-doctor@latest --scope changed` clears the targeted diagnostic and
+  - `npx react-doctor@0.x --scope changed` clears the targeted diagnostic and
     the score does not regress.
   - Run the repository's typecheck, lint, and focused/full tests.
 - **Behavior check**: Interact with `<specific route/control>` and confirm
@@ -75,7 +75,7 @@ a rule-backed finding. Never approximate the fix.
   same fix pattern.
 - Pull the exact fix from the canonical per-rule prompt at
   `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md`, or from
-  `npx react-doctor@latest rules explain <rule>`.
+  `npx react-doctor@0.x rules explain <rule>`.
 - The behavior check is not optional. For performance work, the Profiler and
   “Highlight updates” check are not optional either.
 - After writing plans, create or update `plans/README.md` with plan status,

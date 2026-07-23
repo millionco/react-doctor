@@ -10,17 +10,17 @@ Scans React codebases for security, performance, correctness, and architecture i
 
 ## After making React code changes:
 
-Run `npx react-doctor@latest --verbose --scope changed` and check the score did not regress.
+Run `npx react-doctor@0.x --verbose --scope changed` and check the score did not regress.
 
 If the score dropped, fix the regressions before committing.
 
 ## For general cleanup or code improvement:
 
-Run `npx react-doctor@latest --verbose` (the default `--scope full`) to scan the full codebase. Fix issues by severity — errors first, then warnings.
+Run `npx react-doctor@0.x --verbose` (the default `--scope full`) to scan the full codebase. Fix issues by severity — errors first, then warnings.
 
 ## For a focused UI design audit:
 
-Run `npx react-doctor@latest design --verbose`. This selects only design-tagged UI composition, typography, interaction, accessibility, and motion rules, including focused rules that remain opt-in during a general health scan.
+Run `npx react-doctor@0.x design --verbose`. This selects only design-tagged UI composition, typography, interaction, accessibility, and motion rules, including focused rules that remain opt-in during a general health scan.
 
 ## /doctor — full local triage workflow
 
@@ -36,14 +36,21 @@ The playbook is the single source of truth — a scan → filter → triage → 
 
 Pair it with the matching per-rule prompts at `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md` (fetched on demand inside the playbook) so each fix uses the canonical, reviewer-tested recipe.
 
+**Security note:** For environments that require vendored instructions, download and commit the playbook locally:
+```bash
+mkdir -p .react-doctor
+curl https://www.react.doctor/prompts/react-doctor-agent.md > .react-doctor/playbook.md
+# Then reference .react-doctor/playbook.md instead of fetching
+```
+
 ## Configuring or explaining rules
 
-When the user wants to understand a rule, disagrees with one, or wants to disable / tune which rules run (not fix code), read [references/explain.md](references/explain.md) and follow it. Start with `npx react-doctor@latest rules explain <rule>`, then apply the narrowest control via `npx react-doctor@latest rules disable|set|category|ignore-tag …`, which edits your `doctor.config.*` (or `package.json#reactDoctor`).
+When the user wants to understand a rule, disagrees with one, or wants to disable / tune which rules run (not fix code), read [references/explain.md](references/explain.md) and follow it. Start with `npx react-doctor@0.x rules explain <rule>`, then apply the narrowest control via `npx react-doctor@0.x rules disable|set|category|ignore-tag …`, which edits your `doctor.config.*` (or `package.json#reactDoctor`).
 
 ## Command
 
 ```bash
-npx react-doctor@latest --verbose --scope changed
+npx react-doctor@0.x --verbose --scope changed
 ```
 
 | Flag              | Purpose                                                          |
@@ -54,3 +61,7 @@ npx react-doctor@latest --verbose --scope changed
 | `--scope lines`   | Only report issues on the changed lines                          |
 | `--score`         | Output only the numeric score                                    |
 | `design`          | Run only the focused UI design diagnostics                       |
+
+## Security Note
+
+This skill uses version range `@0.x` to receive automatic patch and minor updates while protecting against breaking changes. For security-sensitive environments, pin to an exact version (e.g., `react-doctor@0.9.1`) or use a local dependency. See [SECURITY.md](../../SECURITY.md) for the full trust model and hardening options.

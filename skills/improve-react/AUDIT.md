@@ -2,7 +2,7 @@
 
 For any finding that maps to a React Doctor rule, never invent the fix. Copy the
 reviewer-tested recipe from `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md`,
-or run `npx react-doctor@latest rules explain <rule>`. The exact fix is not yours
+or run `npx react-doctor@0.x rules explain <rule>`. The exact fix is not yours
 to approximate; the canonical prompt is.
 
 Use these five categories as the user-facing audit buckets. Judge leverage from

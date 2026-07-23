@@ -623,6 +623,29 @@ const C = () => <FlashList data={items} renderItem={renderItem} />;`,
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("allows imported enum members in item comparisons", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+import { BaseItemKind } from "./types";
+const renderItem = ({ item: track }) => {
+  switch (typeof track) {
+    case "string":
+      if (sortBy) return null;
+      return <HeaderItem />;
+    case "object":
+      return track.Type === BaseItemKind.Audio ? <TrackItem /> : <RowItem />;
+    default:
+      return null;
+  }
+};
+const C = () => <FlashList data={items} renderItem={renderItem} />;`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("follows a stable selector alias derived from the item", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,
@@ -641,6 +664,318 @@ const C = () => <FlashList data={items} renderItem={renderItem} />;`,
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("correlates a stable selector alias with its source", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      const show = item.show;
+      return <>{show ? <Row /> : null}{!item.show ? <Row /> : null}</>;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      caseName: "derived call",
+      firstSelector: "show",
+      secondSelector: "!show",
+      selectorDeclaration: "const show = Boolean(item.show);",
+    },
+    {
+      caseName: "direct destructuring",
+      firstSelector: "show",
+      secondSelector: "!item.show",
+      selectorDeclaration: "const { show } = item;",
+    },
+    {
+      caseName: "nested destructuring",
+      firstSelector: "show",
+      secondSelector: "!item.meta.show",
+      selectorDeclaration: "const { meta: { show } } = item;",
+    },
+    {
+      caseName: "array destructuring",
+      firstSelector: "show",
+      secondSelector: "!item.flags[0]",
+      selectorDeclaration: "const [show] = item.flags;",
+    },
+    {
+      caseName: "false default",
+      firstSelector: "show",
+      secondSelector: "!item.show",
+      selectorDeclaration: "const { show = false } = item;",
+    },
+  ])(
+    "correlates complementary reads of a stable selector binding: $caseName",
+    ({ firstSelector, secondSelector, selectorDeclaration }) => {
+      const result = runRule(
+        rnListRecyclableWithoutTypes,
+        `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      ${selectorDeclaration}
+      return <>{${firstSelector} ? <Row /> : null}{${secondSelector} ? <Row /> : null}</>;
+    }}
+  />
+);`,
+        { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("reuses an already-inspected stable selector alias", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      const show = item.show;
+      return show && show ? <HeaderItem /> : <MessageItem />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps raw truthiness distinct from an exact boolean comparison", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }: { item: { value: boolean | string } }) => (
+      <>{item.value ? <Row /> : null}{item.value !== true ? <Row /> : null}</>
+    )}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("correlates complementary typeof comparisons", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => (
+      <>{typeof item === "string" ? <Row /> : null}{typeof item !== "string" ? <Row /> : null}</>
+    )}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    {
+      imports: `import { THRESHOLD } from "./constants";`,
+      selector: "item.score > THRESHOLD",
+    },
+    {
+      imports: `import { HeaderData } from "./types";`,
+      selector: "item instanceof HeaderData",
+    },
+    {
+      imports: `import { TYPES } from "./constants";`,
+      selector: "item.kind in TYPES",
+    },
+  ])("correlates an exact negated comparison expression", ({ imports, selector }) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+${imports}
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => (
+      <>{${selector} ? <Row /> : null}{!(${selector}) ? <Row /> : null}</>
+    )}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps an ambient member-call receiver from proving item-driven roots", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ theme }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => theme.matches(item.kind) ? <HeaderItem /> : <MessageItem />}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps an ambient bare call receiver from proving item-driven roots", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ matches }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => matches(item.kind) ? <HeaderItem /> : <MessageItem />}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("allows an imported static member call to select item roots", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+import { predicates } from "./predicates";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => predicates.isHeader(item) ? <HeaderItem /> : <MessageItem />}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([`getKind({ item })`, `getKind({ kind: item })`, `getKind([item])`])(
+    "follows item reads through a nested call argument",
+    (selector) => {
+      const result = runRule(
+        rnListRecyclableWithoutTypes,
+        `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => ${selector} ? <HeaderItem /> : <MessageItem />}
+  />
+);`,
+        { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
+  it("keeps a local runtime selector alias from proving item-driven roots", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      const compact = useCompact();
+      return item.kind && compact ? <HeaderItem /> : <MessageItem />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `const selector = () => item.kind;`,
+    `const selector = function () { return item.kind; };`,
+    `const selector = class { read() { return item.kind; } };`,
+    `const selector = { item };`,
+    `const selector = [item];`,
+    `const selector = <Selector item={item} />;`,
+    `const selector = new Selector(item);`,
+  ])("keeps a statically truthy selector container opaque", (selectorDeclaration) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const renderItem = ({ item }) => {
+  ${selectorDeclaration}
+  if (selector) return <HeaderItem />;
+  return <MessageItem />;
+};
+const C = () => <FlashList data={items} renderItem={renderItem} />;`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `const selector = () => item.kind;`,
+    `const selector = { item };`,
+    `function selector() { return item.kind; }`,
+    `class selector {}`,
+  ])("ignores returns after a statically truthy selector alias", (selectorDeclaration) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const renderItem = ({ item }) => {
+  ${selectorDeclaration}
+  if (selector) return <SharedItem />;
+  if (item.kind) return <HeaderItem />;
+  return <MessageItem />;
+};
+const C = () => <FlashList data={items} renderItem={renderItem} />;`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps a mixed item and ambient selector from proving item-driven roots", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      if (item.kind && compact) return <SharedItem />;
+      if (compact) return <SharedItem />;
+      return <DetailedItem />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("keeps an ambient direct renderer selection opaque", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,
@@ -657,7 +992,149 @@ const C = ({ compact }) => (
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("retains an item-driven split through a later opaque selector", () => {
+  it("keeps item proof inside its ambient branch", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      if (compact) {
+        if (item.kind) return <SharedItem />;
+        return <SharedItem />;
+      }
+      return <DetailedItem />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `if (item.kind) return <SharedItem />;
+        else return <SharedItem />;`,
+    `switch (item.kind) {
+          case "header":
+            return <SharedItem />;
+          default:
+            return <SharedItem />;
+        }`,
+  ])("keeps same-root item branches inside their ambient path", (itemSelection) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      if (compact) {
+        ${itemSelection}
+      }
+      return <DetailedItem />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("retains distinct item roots inside an ambient branch", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      if (compact) {
+        if (item.kind) return <HeaderItem />;
+        return <CompactItem />;
+      }
+      return <DetailedItem />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains distinct switch-selected roots inside an ambient branch", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      if (compact) {
+        switch (item.kind) {
+          case "header":
+            return <HeaderItem />;
+          default:
+            return <MessageItem />;
+        }
+      }
+      return <DetailedItem />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains an item root difference shared by one ambient mode", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      if (item.kind) return compact ? <HeaderItem /> : <SharedItem />;
+      return <SharedItem />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `if (item.kind) return <SharedItem />;
+      return compact ? <HeaderItem /> : <SharedItem />;`,
+    `if (item.kind) return compact ? <HeaderItem /> : <SharedItem />;
+      return compact ? <SharedItem /> : <HeaderItem />;`,
+  ])("retains correlated item root differences across ambient modes", (itemSelection) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      ${itemSelection}
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains Polar's string and notification root split", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,
       `import { FlashList } from "@shopify/flash-list";
@@ -1528,6 +2005,125 @@ const C = ({ compact }) => (
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    {
+      fragment: `<>
+  {item.show ? <Row /> : null}
+  {!item.show ? <Row /> : null}
+</>`,
+      name: "conditional complements",
+    },
+    {
+      fragment: `<>
+  {item.show === true && <Row />}
+  {item.show !== true && <Row />}
+</>`,
+      name: "logical complements",
+    },
+    {
+      fragment: `<>
+  {item.kind === "header" ? <Row /> : null}
+  {item.kind !== "header" ? <Row /> : null}
+</>`,
+      name: "string conditional complements",
+    },
+    {
+      fragment: `<>
+  {item.kind === "header" && <Row />}
+  {item.kind !== "header" && <Row />}
+</>`,
+      name: "string logical complements",
+    },
+    {
+      fragment: `<>
+  {item.value === 0 ? <Row /> : null}
+  {item.value !== -0 ? <Row /> : null}
+</>`,
+      name: "positive and negative zero complements",
+    },
+    {
+      fragment: `<>
+  {item.show ? <Row /> : null}
+  {!item.show ? <Row /> : null}
+  {compact ? <Compact /> : <Detailed />}
+</>`,
+      name: "complements with an ambient sibling",
+    },
+  ])("does not invent cross-products for $name", ({ fragment }) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList data={items} renderItem={({ item }) => (${fragment})} />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("follows a stable comparison selector alias across fragment siblings", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      const isHeader = item.kind === "header";
+      const showHeader = isHeader;
+      return <>{showHeader ? <Row /> : null}{!isHeader ? <Row /> : null}</>;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `<>{item["a.b"] ? <Header /> : null}{!item.a.b ? <Header /> : null}</>`,
+    `<>{item["a.b"] === "header" ? <Header /> : null}{item.a.b !== "header" ? <Header /> : null}</>`,
+  ])("keeps distinct property paths independent", (fragment) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList data={items} renderItem={({ item }) => (${fragment})} />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `{item.show === true && <Header />}
+        {compact ? <Compact /> : <Detailed />}`,
+    `{compact ? <Compact /> : <Detailed />}
+        {item.show === true && <Header />}`,
+  ])("retains an item-driven logical fragment shape beside an ambient sibling", (children) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => (
+      <>
+        <Badge />
+        ${children}
+      </>
+    )}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps fragment shape alternatives bounded", () => {
     const fragmentChildren = Array.from(
       { length: LOGICAL_CHAIN_LENGTH },
@@ -1540,6 +2136,65 @@ const C = () => (
   <FlashList
     data={items}
     renderItem={({ item }) => <>${fragmentChildren}</>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains an early item fragment difference beyond the shape alternative budget", () => {
+    const fragmentChildren = ["a", "b", "c", "d", "e", "f", "g"]
+      .map((propertyName) => `{item.${propertyName} === true && <${propertyName.toUpperCase()} />}`)
+      .join("");
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => <><Base />${fragmentChildren}</>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains a late item fragment difference after finalized ambient facts", () => {
+    const ambientChildren = ["a", "b", "c", "d", "e", "f", "g"]
+      .map(
+        (propertyName) => `{compact.${propertyName} === true && <${propertyName.toUpperCase()} />}`,
+      )
+      .join("");
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => <><Base />${ambientChildren}{item.show === true && <Header />}</>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains an item fragment difference through nested fragments beyond the budget", () => {
+    const fragmentChildren = ["a", "b", "c", "d", "e", "f", "g"]
+      .map((propertyName) => `{item.${propertyName} ? <${propertyName.toUpperCase()} /> : null}`)
+      .join("");
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => <><Badge /><>${fragmentChildren}</></>}
   />
 );`,
       { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },

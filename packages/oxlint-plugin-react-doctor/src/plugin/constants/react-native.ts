@@ -90,6 +90,7 @@ export const LEGACY_EXPO_PACKAGE_REPLACEMENTS = new Map<string, string>([
 ]);
 
 export const FLASH_LIST_V2_MAJOR = 2;
+export const MAX_RENDERED_ROOT_SHAPE_ALTERNATIVE_COUNT = 64;
 
 // Expo's Universal UI (`@expo/ui`) entry points. The universal package
 // re-exports the platform-specific builds, so a component may be imported

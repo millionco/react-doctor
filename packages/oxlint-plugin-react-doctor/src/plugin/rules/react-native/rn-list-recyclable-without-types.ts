@@ -1,5 +1,6 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import {
+  MAX_RENDERED_ROOT_SHAPE_ALTERNATIVE_COUNT,
   RECYCLABLE_LIST_PACKAGE_SOURCES,
   SHOPIFY_FLASH_LIST_COMPONENTS,
 } from "../../constants/react-native.js";
@@ -22,14 +23,16 @@ import { isImportedFromReact, isReactApiCall } from "../../utils/is-react-api-ca
 import { isReactNamespaceImport } from "../../utils/is-react-api-call.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
 import { isFlashListV2OrNewer } from "./utils/is-flash-list-v2-or-newer.js";
 import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import {
+  stripParenExpression,
+  TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
+} from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
 import { unwrapProvenReactHocFunction } from "../../utils/unwrap-proven-react-hoc-function.js";
@@ -61,10 +64,44 @@ interface InputSelectionAnalysis {
   readonly hasUnrelatedSelection: boolean;
 }
 
+interface StaticSelectorIdentity {
+  readonly isInverted: boolean;
+  readonly key: string;
+}
+
+interface RenderedRootSelectorFact {
+  readonly outcome: boolean;
+  readonly selector: EsTreeNode;
+}
+
+interface RenderedRootShapeAlternative {
+  readonly facts: ReadonlyMap<string, RenderedRootSelectorFact>;
+  readonly roots: ReadonlyArray<string>;
+}
+
 const RENDER_ITEM_INPUT_NAMES = new Set(["item", "index"]);
+const EMPTY_RENDERED_ROOT_NAME = "empty";
 
 const isSymbolStable = (symbol: SymbolDescriptor): boolean =>
   symbol.references.every((reference) => reference.flag === "read");
+
+const getSymbolVariableDeclarator = (
+  symbol: SymbolDescriptor,
+): EsTreeNodeOfType<"VariableDeclarator"> | null => {
+  let declaration: EsTreeNode | null | undefined = symbol.declarationNode;
+  while (declaration && !isNodeOfType(declaration, "VariableDeclarator")) {
+    declaration = declaration.parent;
+  }
+  return declaration && isNodeOfType(declaration, "VariableDeclarator") ? declaration : null;
+};
+
+const getConstInitializerExpressions = (symbol: SymbolDescriptor): ReadonlyArray<EsTreeNode> => {
+  if (symbol.kind !== "const" || !symbol.initializer) return [];
+  const declarationInitializer = getSymbolVariableDeclarator(symbol)?.init;
+  return declarationInitializer && declarationInitializer !== symbol.initializer
+    ? [declarationInitializer, symbol.initializer]
+    : [symbol.initializer];
+};
 
 const getSymbolIdentity = (symbol: SymbolDescriptor): string => {
   if (symbol.kind !== "import") return `symbol:${symbol.id}`;
@@ -166,42 +203,6 @@ const getJsxElementIdentity = (node: EsTreeNode, scopes: ScopeAnalysis): string 
   return appendComponentMemberIdentity(objectIdentity, node.property.name);
 };
 
-const mergeRenderedRootShapes = (
-  existingShapes: ReadonlyArray<ReadonlyArray<string>>,
-  appendedShapes: ReadonlyArray<ReadonlyArray<string>>,
-): ReadonlyArray<ReadonlyArray<string>> => {
-  const mergedShapes: string[][] = [];
-  const shapeKeys = new Set<string>();
-  for (const existingShape of existingShapes) {
-    for (const appendedShape of appendedShapes) {
-      const mergedShape = [...existingShape, ...appendedShape];
-      const shapeKey = JSON.stringify(mergedShape);
-      if (shapeKeys.has(shapeKey)) continue;
-      shapeKeys.add(shapeKey);
-      mergedShapes.push(mergedShape);
-      if (mergedShapes.length > 1) return mergedShapes;
-    }
-  }
-  return mergedShapes;
-};
-
-const combineRenderedRootShapeAlternatives = (
-  alternatives: ReadonlyArray<ReadonlyArray<ReadonlyArray<string>>>,
-): ReadonlyArray<ReadonlyArray<string>> => {
-  const combinedShapes: string[][] = [];
-  const shapeKeys = new Set<string>();
-  for (const alternativeShapes of alternatives) {
-    for (const alternativeShape of alternativeShapes) {
-      const shapeKey = JSON.stringify(alternativeShape);
-      if (shapeKeys.has(shapeKey)) continue;
-      shapeKeys.add(shapeKey);
-      combinedShapes.push([...alternativeShape]);
-      if (combinedShapes.length > 1) return combinedShapes;
-    }
-  }
-  return combinedShapes;
-};
-
 const isStaticallyEmptyJsxChild = (node: EsTreeNode): boolean => {
   const expression = getFinalSequenceExpressionValue(node);
   if (isNodeOfType(expression, "JSXEmptyExpression")) return true;
@@ -232,55 +233,567 @@ const isStaticallyEmptyJsxChild = (node: EsTreeNode): boolean => {
   }
 };
 
-const getStaticRenderedRootShapes = (
+const getStaticSelectorBindingPath = (
+  pattern: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<string> | null => {
+  if (pattern === bindingIdentifier) return [];
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    return readStaticSelectorTruthiness(pattern.right, scopes) === false
+      ? getStaticSelectorBindingPath(pattern.left, bindingIdentifier, scopes)
+      : null;
+  }
+  if (isNodeOfType(pattern, "RestElement")) return null;
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    for (const [elementIndex, element] of pattern.elements.entries()) {
+      if (!element) continue;
+      const nestedPath = getStaticSelectorBindingPath(element, bindingIdentifier, scopes);
+      if (nestedPath !== null) return [String(elementIndex), ...nestedPath];
+    }
+    return null;
+  }
+  if (!isNodeOfType(pattern, "ObjectPattern")) return null;
+  for (const property of pattern.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const nestedPath = getStaticSelectorBindingPath(property.value, bindingIdentifier, scopes);
+    if (nestedPath === null) continue;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    return propertyName === null ? null : [propertyName, ...nestedPath];
+  }
+  return null;
+};
+
+const getStaticSelectorPropertyName = (
+  memberExpression: EsTreeNodeOfType<"MemberExpression">,
+): string | null =>
+  getStaticPropertyName(memberExpression) ??
+  getStaticPropertyKeyName(memberExpression, {
+    allowComputedString: true,
+    stringifyNonStringLiterals: true,
+  });
+
+const getSelectorReferenceKey = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): string | null => {
+  const selector = stripParenExpression(expression);
+  if (isNodeOfType(selector, "Identifier")) {
+    const reference = scopes.referenceFor(selector);
+    const symbol = reference?.resolvedSymbol;
+    if (!symbol || !isSymbolStable(symbol) || visitedSymbolIds.has(symbol.id)) return null;
+    if (symbol.kind === "const" && symbol.initializer) {
+      visitedSymbolIds.add(symbol.id);
+      const declaration = getSymbolVariableDeclarator(symbol);
+      if (declaration?.id === symbol.bindingIdentifier) {
+        return (
+          getSelectorReferenceKey(symbol.initializer, scopes, visitedSymbolIds) ??
+          JSON.stringify(["symbol", symbol.id])
+        );
+      }
+      if (declaration?.init) {
+        const bindingPath = getStaticSelectorBindingPath(
+          declaration.id,
+          symbol.bindingIdentifier,
+          scopes,
+        );
+        let receiverKey = getSelectorReferenceKey(declaration.init, scopes, visitedSymbolIds);
+        if (bindingPath !== null && receiverKey !== null) {
+          for (const propertyName of bindingPath) {
+            receiverKey = JSON.stringify(["member", receiverKey, propertyName]);
+          }
+          return receiverKey;
+        }
+      }
+      return JSON.stringify(["symbol", symbol.id]);
+    }
+    return JSON.stringify(["symbol", symbol.id]);
+  }
+  if (!isNodeOfType(selector, "MemberExpression")) return null;
+  const propertyName = getStaticSelectorPropertyName(selector);
+  if (propertyName === null) return null;
+  const receiverKey = getSelectorReferenceKey(selector.object, scopes, visitedSymbolIds);
+  return receiverKey === null ? null : JSON.stringify(["member", receiverKey, propertyName]);
+};
+
+const getStaticComparisonOperandKey = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): string | null => {
+  const operand = stripParenExpression(expression);
+  if (isNodeOfType(operand, "Identifier")) {
+    const symbol = scopes.referenceFor(operand)?.resolvedSymbol;
+    if (
+      symbol?.kind === "const" &&
+      symbol.initializer &&
+      isSymbolStable(symbol) &&
+      getSymbolVariableDeclarator(symbol)?.id === symbol.bindingIdentifier &&
+      !visitedSymbolIds.has(symbol.id)
+    ) {
+      visitedSymbolIds.add(symbol.id);
+      return (
+        getStaticComparisonOperandKey(symbol.initializer, scopes, visitedSymbolIds) ??
+        JSON.stringify(["symbol", symbol.id])
+      );
+    }
+  }
+  if (isNodeOfType(operand, "UnaryExpression") && operand.operator === "typeof") {
+    const argumentKey = getSelectorReferenceKey(operand.argument, scopes, visitedSymbolIds);
+    return argumentKey === null ? null : JSON.stringify(["typeof", argumentKey]);
+  }
+  return getSelectorReferenceKey(operand, scopes, visitedSymbolIds);
+};
+
+const getStaticPrimitiveLiteralKey = (expression: EsTreeNode): string | null => {
+  const literal = stripParenExpression(expression);
+  if (
+    isNodeOfType(literal, "UnaryExpression") &&
+    (literal.operator === "-" || literal.operator === "+")
+  ) {
+    const argument = stripParenExpression(literal.argument);
+    if (isNodeOfType(argument, "Literal") && typeof argument.value === "number") {
+      const numericValue = literal.operator === "-" ? -argument.value : argument.value;
+      return `number:${String(numericValue)}`;
+    }
+  }
+  if (!isNodeOfType(literal, "Literal")) return null;
+  if (literal.value === null) return "null";
+  if (typeof literal.value === "string") return `string:${JSON.stringify(literal.value)}`;
+  if (typeof literal.value === "number") return `number:${String(literal.value)}`;
+  if (typeof literal.value === "boolean") return `boolean:${String(literal.value)}`;
+  if (typeof literal.value === "bigint") return `bigint:${String(literal.value)}`;
+  return null;
+};
+
+const getImportedStaticReferenceKey = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null => {
+  const reference = stripParenExpression(expression);
+  if (isNodeOfType(reference, "Identifier")) {
+    const symbol = scopes.referenceFor(reference)?.resolvedSymbol;
+    return symbol?.kind === "import" ? getSymbolIdentity(symbol) : null;
+  }
+  if (!isNodeOfType(reference, "MemberExpression")) return null;
+  const propertyName = getStaticPropertyName(reference);
+  if (propertyName === null) return null;
+  const receiverKey = getImportedStaticReferenceKey(reference.object, scopes);
+  return receiverKey === null ? null : JSON.stringify(["member", receiverKey, propertyName]);
+};
+
+const getStaticComparisonConstantKey = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null =>
+  getStaticPrimitiveLiteralKey(expression) ?? getImportedStaticReferenceKey(expression, scopes);
+
+const getStaticSelectorIdentity = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): StaticSelectorIdentity | null => {
+  const selector = getFinalSequenceExpressionValue(expression);
+  if (isNodeOfType(selector, "Identifier")) {
+    const symbol = scopes.referenceFor(selector)?.resolvedSymbol;
+    if (
+      symbol?.kind === "const" &&
+      symbol.initializer &&
+      isSymbolStable(symbol) &&
+      getSymbolVariableDeclarator(symbol)?.id === symbol.bindingIdentifier &&
+      !visitedSymbolIds.has(symbol.id)
+    ) {
+      visitedSymbolIds.add(symbol.id);
+      const initializerIdentity = getStaticSelectorIdentity(
+        symbol.initializer,
+        scopes,
+        visitedSymbolIds,
+      );
+      if (initializerIdentity) return initializerIdentity;
+    }
+  }
+  if (isNodeOfType(selector, "UnaryExpression") && selector.operator === "!") {
+    const argumentIdentity = getStaticSelectorIdentity(selector.argument, scopes, visitedSymbolIds);
+    return argumentIdentity
+      ? { isInverted: !argumentIdentity.isInverted, key: argumentIdentity.key }
+      : null;
+  }
+  if (
+    isNodeOfType(selector, "BinaryExpression") &&
+    ["==", "!=", "===", "!=="].includes(selector.operator)
+  ) {
+    const operandPairs = [
+      { literal: selector.right, selectorOperand: selector.left },
+      { literal: selector.left, selectorOperand: selector.right },
+    ];
+    for (const operandPair of operandPairs) {
+      const constantKey = getStaticComparisonConstantKey(operandPair.literal, scopes);
+      if (constantKey === null) continue;
+      const operandKey = getStaticComparisonOperandKey(operandPair.selectorOperand, scopes);
+      if (operandKey === null) continue;
+      const isInequality = selector.operator === "!=" || selector.operator === "!==";
+      return {
+        isInverted: isInequality,
+        key: JSON.stringify([
+          "comparison",
+          selector.operator.length === 3 ? "strict" : "loose",
+          operandKey,
+          constantKey,
+        ]),
+      };
+    }
+    return null;
+  }
+  if (
+    isNodeOfType(selector, "BinaryExpression") &&
+    ["<", "<=", ">", ">=", "in", "instanceof"].includes(selector.operator)
+  ) {
+    const leftKey =
+      getStaticPrimitiveLiteralKey(selector.left) ??
+      getStaticComparisonOperandKey(selector.left, scopes);
+    const rightKey =
+      getStaticPrimitiveLiteralKey(selector.right) ??
+      getStaticComparisonOperandKey(selector.right, scopes);
+    if (leftKey !== null && rightKey !== null) {
+      return {
+        isInverted: false,
+        key: JSON.stringify(["binary-comparison", selector.operator, leftKey, rightKey]),
+      };
+    }
+  }
+  const key = getSelectorReferenceKey(selector, scopes);
+  return key === null ? null : { isInverted: false, key };
+};
+
+const getRenderedRootShapeAlternativeKey = (alternative: RenderedRootShapeAlternative): string =>
+  JSON.stringify({
+    facts: [...alternative.facts]
+      .map(([key, fact]) => ({ key, outcome: fact.outcome }))
+      .sort((firstFact, secondFact) => firstFact.key.localeCompare(secondFact.key)),
+    roots: alternative.roots,
+  });
+
+const getRenderedRootFactStateKey = (alternative: RenderedRootShapeAlternative): string =>
+  JSON.stringify(
+    [...alternative.facts]
+      .map(([key, fact]) => ({ key, outcome: fact.outcome }))
+      .sort((firstFact, secondFact) => firstFact.key.localeCompare(secondFact.key)),
+  );
+
+const deduplicateRenderedRootShapeAlternatives = (
+  alternatives: ReadonlyArray<RenderedRootShapeAlternative>,
+): ReadonlyArray<RenderedRootShapeAlternative> | null => {
+  const deduplicatedAlternatives: RenderedRootShapeAlternative[] = [];
+  const alternativeKeys = new Set<string>();
+  const alternativeCountsByFactState = new Map<string, number>();
+  for (const alternative of alternatives) {
+    const alternativeKey = getRenderedRootShapeAlternativeKey(alternative);
+    if (alternativeKeys.has(alternativeKey)) continue;
+    const factStateKey = getRenderedRootFactStateKey(alternative);
+    const factStateAlternativeCount = alternativeCountsByFactState.get(factStateKey) ?? 0;
+    if (factStateAlternativeCount > 1) continue;
+    alternativeKeys.add(alternativeKey);
+    alternativeCountsByFactState.set(factStateKey, factStateAlternativeCount + 1);
+    deduplicatedAlternatives.push(alternative);
+    if (deduplicatedAlternatives.length > MAX_RENDERED_ROOT_SHAPE_ALTERNATIVE_COUNT) return null;
+  }
+  return deduplicatedAlternatives;
+};
+
+const addRenderedRootSelectorFact = (
+  alternatives: ReadonlyArray<RenderedRootShapeAlternative>,
+  identity: StaticSelectorIdentity,
+  expressionOutcome: boolean,
+  selector: EsTreeNode,
+): ReadonlyArray<RenderedRootShapeAlternative> => {
+  const outcome = identity.isInverted ? !expressionOutcome : expressionOutcome;
+  const constrainedAlternatives: RenderedRootShapeAlternative[] = [];
+  for (const alternative of alternatives) {
+    const existingFact = alternative.facts.get(identity.key);
+    if (existingFact && existingFact.outcome !== outcome) continue;
+    constrainedAlternatives.push({
+      facts: new Map(alternative.facts).set(identity.key, { outcome, selector }),
+      roots: alternative.roots,
+    });
+  }
+  return constrainedAlternatives;
+};
+
+const mergeRenderedRootShapeAlternatives = (
+  existingAlternatives: ReadonlyArray<RenderedRootShapeAlternative>,
+  appendedAlternatives: ReadonlyArray<RenderedRootShapeAlternative>,
+): ReadonlyArray<RenderedRootShapeAlternative> | null => {
+  const mergedAlternatives: RenderedRootShapeAlternative[] = [];
+  for (const existingAlternative of existingAlternatives) {
+    for (const appendedAlternative of appendedAlternatives) {
+      const mergedFacts = new Map(existingAlternative.facts);
+      let hasContradictoryFact = false;
+      for (const [key, appendedFact] of appendedAlternative.facts) {
+        const existingFact = mergedFacts.get(key);
+        if (existingFact && existingFact.outcome !== appendedFact.outcome) {
+          hasContradictoryFact = true;
+          break;
+        }
+        mergedFacts.set(key, appendedFact);
+      }
+      if (hasContradictoryFact) continue;
+      mergedAlternatives.push({
+        facts: mergedFacts,
+        roots: [...existingAlternative.roots, ...appendedAlternative.roots],
+      });
+    }
+  }
+  return deduplicateRenderedRootShapeAlternatives(mergedAlternatives);
+};
+
+const combineRenderedRootShapeAlternativeBranches = (
+  branches: ReadonlyArray<ReadonlyArray<RenderedRootShapeAlternative>>,
+): ReadonlyArray<RenderedRootShapeAlternative> | null =>
+  deduplicateRenderedRootShapeAlternatives(branches.flat());
+
+const getStaticRenderedRootAlternatives = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
-): ReadonlyArray<ReadonlyArray<string>> | null => {
+): ReadonlyArray<RenderedRootShapeAlternative> | null => {
   const renderedNode = getFinalSequenceExpressionValue(node);
   if (
     isNodeOfType(renderedNode, "JSXElement") &&
     !isJsxFragmentElement(renderedNode.openingElement, scopes)
   ) {
     const elementIdentity = getJsxElementIdentity(renderedNode.openingElement.name, scopes);
-    return elementIdentity === null ? null : [[elementIdentity]];
+    return elementIdentity === null ? null : [{ facts: new Map(), roots: [elementIdentity] }];
   }
   if (isNodeOfType(renderedNode, "JSXElement") || isNodeOfType(renderedNode, "JSXFragment")) {
-    let rootShapes: ReadonlyArray<ReadonlyArray<string>> = [[]];
+    let alternatives: ReadonlyArray<RenderedRootShapeAlternative> = [
+      { facts: new Map(), roots: [] },
+    ];
     for (const child of renderedNode.children) {
-      const childRootShapes = getStaticRenderedRootShapes(child, scopes);
-      if (childRootShapes === null) return null;
-      rootShapes = mergeRenderedRootShapes(rootShapes, childRootShapes);
+      const childAlternatives = getStaticRenderedRootAlternatives(child, scopes);
+      if (childAlternatives === null) return null;
+      const mergedAlternatives = mergeRenderedRootShapeAlternatives(
+        alternatives,
+        childAlternatives,
+      );
+      if (mergedAlternatives === null) return null;
+      alternatives = mergedAlternatives;
     }
-    return rootShapes;
+    return alternatives;
   }
-  if (isNodeOfType(renderedNode, "JSXText")) return renderedNode.value?.trim() ? null : [[]];
+  if (isNodeOfType(renderedNode, "JSXText")) {
+    return renderedNode.value?.trim() ? null : [{ facts: new Map(), roots: [] }];
+  }
   if (isNodeOfType(renderedNode, "JSXExpressionContainer")) {
-    return getStaticRenderedRootShapes(renderedNode.expression, scopes);
+    return getStaticRenderedRootAlternatives(renderedNode.expression, scopes);
   }
-  if (isStaticallyEmptyJsxChild(renderedNode)) return [[]];
+  if (isStaticallyEmptyJsxChild(renderedNode)) return [{ facts: new Map(), roots: [] }];
   if (isNodeOfType(renderedNode, "ConditionalExpression")) {
-    const staticTestValue = readStaticSelectorTruthiness(renderedNode.test);
+    const staticTestValue = readStaticSelectorTruthiness(renderedNode.test, scopes);
     if (staticTestValue !== null) {
-      return getStaticRenderedRootShapes(
+      return getStaticRenderedRootAlternatives(
         staticTestValue ? renderedNode.consequent : renderedNode.alternate,
         scopes,
       );
     }
-    const consequentShapes = getStaticRenderedRootShapes(renderedNode.consequent, scopes);
-    const alternateShapes = getStaticRenderedRootShapes(renderedNode.alternate, scopes);
-    if (consequentShapes === null || alternateShapes === null) return null;
-    return combineRenderedRootShapeAlternatives([consequentShapes, alternateShapes]);
+    const consequentAlternatives = getStaticRenderedRootAlternatives(
+      renderedNode.consequent,
+      scopes,
+    );
+    const alternateAlternatives = getStaticRenderedRootAlternatives(renderedNode.alternate, scopes);
+    if (consequentAlternatives === null || alternateAlternatives === null) return null;
+    const selectorIdentity = getStaticSelectorIdentity(renderedNode.test, scopes);
+    return combineRenderedRootShapeAlternativeBranches([
+      selectorIdentity
+        ? addRenderedRootSelectorFact(
+            consequentAlternatives,
+            selectorIdentity,
+            true,
+            renderedNode.test,
+          )
+        : consequentAlternatives,
+      selectorIdentity
+        ? addRenderedRootSelectorFact(
+            alternateAlternatives,
+            selectorIdentity,
+            false,
+            renderedNode.test,
+          )
+        : alternateAlternatives,
+    ]);
   }
   if (isNodeOfType(renderedNode, "LogicalExpression")) {
-    const resultShapeAlternatives: Array<ReadonlyArray<ReadonlyArray<string>>> = [];
-    for (const resultBranch of getStaticLogicalExpressionResultBranches(renderedNode)) {
-      const resultShapes = getStaticRenderedRootShapes(resultBranch, scopes);
-      if (resultShapes === null) return null;
-      resultShapeAlternatives.push(resultShapes);
+    const selectorIdentity =
+      (renderedNode.operator === "&&" || renderedNode.operator === "||") &&
+      isStaticallyEmptyJsxChild(renderedNode.left)
+        ? getStaticSelectorIdentity(renderedNode.left, scopes)
+        : null;
+    if (selectorIdentity) {
+      const rightAlternatives = getStaticRenderedRootAlternatives(renderedNode.right, scopes);
+      if (rightAlternatives === null) return null;
+      const emptyAlternatives: ReadonlyArray<RenderedRootShapeAlternative> = [
+        { facts: new Map(), roots: [] },
+      ];
+      return combineRenderedRootShapeAlternativeBranches([
+        addRenderedRootSelectorFact(
+          renderedNode.operator === "&&" ? rightAlternatives : emptyAlternatives,
+          selectorIdentity,
+          true,
+          renderedNode.left,
+        ),
+        addRenderedRootSelectorFact(
+          renderedNode.operator === "&&" ? emptyAlternatives : rightAlternatives,
+          selectorIdentity,
+          false,
+          renderedNode.left,
+        ),
+      ]);
     }
-    return combineRenderedRootShapeAlternatives(resultShapeAlternatives);
+    const resultAlternatives: Array<ReadonlyArray<RenderedRootShapeAlternative>> = [];
+    for (const resultBranch of getStaticLogicalExpressionResultBranches(renderedNode)) {
+      const branchAlternatives = getStaticRenderedRootAlternatives(resultBranch, scopes);
+      if (branchAlternatives === null) return null;
+      resultAlternatives.push(branchAlternatives);
+    }
+    return combineRenderedRootShapeAlternativeBranches(resultAlternatives);
   }
   return null;
+};
+
+const getFlattenedFragmentChildren = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<EsTreeNode> | null => {
+  const flattenChild = (child: EsTreeNode): ReadonlyArray<EsTreeNode> => {
+    const renderedChild = getFinalSequenceExpressionValue(child);
+    if (isNodeOfType(renderedChild, "JSXExpressionContainer")) {
+      return flattenChild(renderedChild.expression);
+    }
+    if (
+      !isNodeOfType(renderedChild, "JSXFragment") &&
+      (!isNodeOfType(renderedChild, "JSXElement") ||
+        !isJsxFragmentElement(renderedChild.openingElement, scopes))
+    ) {
+      return [child];
+    }
+    return renderedChild.children.flatMap(flattenChild);
+  };
+
+  const renderedNode = getFinalSequenceExpressionValue(node);
+  if (
+    !isNodeOfType(renderedNode, "JSXFragment") &&
+    (!isNodeOfType(renderedNode, "JSXElement") ||
+      !isJsxFragmentElement(renderedNode.openingElement, scopes))
+  ) {
+    return null;
+  }
+  return renderedNode.children.flatMap(flattenChild);
+};
+
+const forgetFinalizedRenderedRootFacts = (
+  alternatives: ReadonlyArray<RenderedRootShapeAlternative>,
+  futureFactKeyCounts: ReadonlyMap<string, number>,
+): ReadonlyArray<RenderedRootShapeAlternative> | null =>
+  deduplicateRenderedRootShapeAlternatives(
+    alternatives.map((alternative) => ({
+      facts: new Map(
+        [...alternative.facts].filter(([key]) => (futureFactKeyCounts.get(key) ?? 0) > 0),
+      ),
+      roots: alternative.roots,
+    })),
+  );
+
+const getStaticRenderedRootShapes = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<ReadonlyArray<string>> | null => {
+  let alternatives = getStaticRenderedRootAlternatives(node, scopes);
+  if (alternatives === null) {
+    const fragmentChildren = getFlattenedFragmentChildren(node, scopes);
+    if (fragmentChildren === null) return null;
+    const childAlternatives: Array<ReadonlyArray<RenderedRootShapeAlternative>> = [];
+    for (const child of fragmentChildren) {
+      const staticChildAlternatives = getStaticRenderedRootAlternatives(child, scopes);
+      if (staticChildAlternatives === null) return null;
+      childAlternatives.push(staticChildAlternatives);
+    }
+    const futureFactKeyCounts = new Map<string, number>();
+    for (const staticChildAlternatives of childAlternatives) {
+      const childFactKeys = new Set<string>();
+      for (const alternative of staticChildAlternatives) {
+        for (const key of alternative.facts.keys()) childFactKeys.add(key);
+      }
+      for (const key of childFactKeys) {
+        futureFactKeyCounts.set(key, (futureFactKeyCounts.get(key) ?? 0) + 1);
+      }
+    }
+    let prefixAlternatives: ReadonlyArray<RenderedRootShapeAlternative> = [
+      { facts: new Map(), roots: [] },
+    ];
+    let witnessAlternatives: ReadonlyArray<RenderedRootShapeAlternative> | null = null;
+    for (const staticChildAlternatives of childAlternatives) {
+      const currentFactKeys = new Set<string>();
+      for (const alternative of staticChildAlternatives) {
+        for (const key of alternative.facts.keys()) currentFactKeys.add(key);
+      }
+      for (const key of currentFactKeys) {
+        futureFactKeyCounts.set(key, (futureFactKeyCounts.get(key) ?? 1) - 1);
+      }
+      const mergedAlternatives = mergeRenderedRootShapeAlternatives(
+        prefixAlternatives,
+        staticChildAlternatives,
+      );
+      if (mergedAlternatives === null) break;
+      prefixAlternatives = mergedAlternatives;
+      for (
+        let firstAlternativeIndex = 0;
+        firstAlternativeIndex < prefixAlternatives.length;
+        firstAlternativeIndex += 1
+      ) {
+        const firstAlternative = prefixAlternatives[firstAlternativeIndex]!;
+        for (
+          let secondAlternativeIndex = firstAlternativeIndex + 1;
+          secondAlternativeIndex < prefixAlternatives.length;
+          secondAlternativeIndex += 1
+        ) {
+          const secondAlternative = prefixAlternatives[secondAlternativeIndex]!;
+          if (JSON.stringify(firstAlternative.roots) === JSON.stringify(secondAlternative.roots)) {
+            continue;
+          }
+          const hasFinalizedOppositeFact = [...firstAlternative.facts].some(([key, firstFact]) => {
+            const secondFact = secondAlternative.facts.get(key);
+            return (
+              futureFactKeyCounts.get(key) === 0 &&
+              secondFact !== undefined &&
+              secondFact.outcome !== firstFact.outcome
+            );
+          });
+          if (hasFinalizedOppositeFact) {
+            witnessAlternatives = [firstAlternative, secondAlternative];
+            break;
+          }
+        }
+        if (witnessAlternatives) break;
+      }
+      if (witnessAlternatives) break;
+      const remainingAlternatives = forgetFinalizedRenderedRootFacts(
+        prefixAlternatives,
+        futureFactKeyCounts,
+      );
+      if (remainingAlternatives === null) break;
+      prefixAlternatives = remainingAlternatives;
+    }
+    if (witnessAlternatives === null) return null;
+    alternatives = witnessAlternatives;
+  }
+  const rootShapes: string[][] = [];
+  const rootShapeKeys = new Set<string>();
+  for (const alternative of alternatives) {
+    const rootShapeKey = JSON.stringify(alternative.roots);
+    if (rootShapeKeys.has(rootShapeKey)) continue;
+    rootShapeKeys.add(rootShapeKey);
+    rootShapes.push([...alternative.roots]);
+  }
+  return rootShapes;
 };
 
 const getRenderedRootNames = (
@@ -351,16 +864,40 @@ const isUnconditionallyTerminalStatement = (statement: EsTreeNode): boolean => {
 
 const getReachableFunctionReturnStatements = (
   functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): ReadonlyArray<EsTreeNodeOfType<"ReturnStatement">> =>
   collectFunctionReturnStatements(functionNode).filter((returnStatement) => {
     let descendant: EsTreeNode = returnStatement;
     let ancestor = returnStatement.parent;
     while (ancestor && ancestor !== functionNode) {
+      if (isNodeOfType(ancestor, "IfStatement")) {
+        const staticTestValue = readStaticSelectorTruthiness(ancestor.test, scopes);
+        if (
+          staticTestValue !== null &&
+          ((staticTestValue && ancestor.alternate === descendant) ||
+            (!staticTestValue && ancestor.consequent === descendant))
+        ) {
+          return false;
+        }
+      }
       if (isNodeOfType(ancestor, "BlockStatement")) {
         const descendantIndex = ancestor.body.findIndex((statement) => statement === descendant);
         if (
           descendantIndex > 0 &&
-          ancestor.body.slice(0, descendantIndex).some(isUnconditionallyTerminalStatement)
+          ancestor.body.slice(0, descendantIndex).some((statement) => {
+            if (isNodeOfType(statement, "IfStatement")) {
+              const staticTestValue = readStaticSelectorTruthiness(statement.test, scopes);
+              if (staticTestValue === true) {
+                return isUnconditionallyTerminalStatement(statement.consequent);
+              }
+              if (staticTestValue === false) {
+                return Boolean(
+                  statement.alternate && isUnconditionallyTerminalStatement(statement.alternate),
+                );
+              }
+            }
+            return isUnconditionallyTerminalStatement(statement);
+          })
         ) {
           return false;
         }
@@ -406,6 +943,16 @@ const getRenderItemInputReferences = (
   return references;
 };
 
+const isStaticallyTruthyContainer = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ArrayExpression") ||
+  isNodeOfType(node, "ObjectExpression") ||
+  isNodeOfType(node, "ArrowFunctionExpression") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "ClassExpression") ||
+  isNodeOfType(node, "NewExpression") ||
+  isNodeOfType(node, "JSXElement") ||
+  isNodeOfType(node, "JSXFragment");
+
 const expressionReadsInput = (
   expression: EsTreeNode,
   inputReferences: ReadonlyArray<RendererInputReference>,
@@ -413,6 +960,7 @@ const expressionReadsInput = (
   visitedSymbolIds = new Set<number>(),
 ): boolean => {
   const inputExpression = getFinalSequenceExpressionValue(expression);
+  if (isStaticallyTruthyContainer(inputExpression)) return false;
   let didReadInput = false;
   walkAst(inputExpression, (node) => {
     if (didReadInput) return false;
@@ -447,9 +995,11 @@ const expressionReadsInput = (
         !visitedSymbolIds.has(symbol.id)
       ) {
         visitedSymbolIds.add(symbol.id);
-        if (expressionReadsInput(symbol.initializer, inputReferences, scopes, visitedSymbolIds)) {
-          didReadInput = true;
-          return false;
+        for (const initializer of getConstInitializerExpressions(symbol)) {
+          if (expressionReadsInput(initializer, inputReferences, scopes, visitedSymbolIds)) {
+            didReadInput = true;
+            return false;
+          }
         }
       }
     }
@@ -475,6 +1025,265 @@ const expressionReadsInput = (
   return didReadInput;
 };
 
+const climbTransparentExpressionWrappers = (node: EsTreeNode): EsTreeNode => {
+  let expression = node;
+  while (
+    expression.parent &&
+    TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(expression.parent.type) &&
+    "expression" in expression.parent &&
+    expression.parent.expression === expression
+  ) {
+    expression = expression.parent;
+  }
+  return expression;
+};
+
+const isProvenStaticCallableReference = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): boolean => {
+  const reference = stripParenExpression(expression);
+  if (isNodeOfType(reference, "MemberExpression")) {
+    return getImportedStaticReferenceKey(reference, scopes) !== null;
+  }
+  if (!isNodeOfType(reference, "Identifier")) return false;
+  const symbol = scopes.referenceFor(reference)?.resolvedSymbol;
+  if (!symbol) return scopes.isGlobalReference(reference);
+  if (!isSymbolStable(symbol) || visitedSymbolIds.has(symbol.id)) return false;
+  if (symbol.kind === "import" || symbol.kind === "function") return true;
+  if (symbol.kind !== "const" || !symbol.initializer) return false;
+  visitedSymbolIds.add(symbol.id);
+  const initializer = stripParenExpression(symbol.initializer);
+  if (isFunctionLike(initializer)) return true;
+  return isNodeOfType(initializer, "Identifier") || isNodeOfType(initializer, "MemberExpression")
+    ? isProvenStaticCallableReference(initializer, scopes, visitedSymbolIds)
+    : false;
+};
+
+const isProvenStaticCallCallee = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let callee = climbTransparentExpressionWrappers(identifier);
+  while (isNodeOfType(callee.parent, "MemberExpression") && callee.parent.object === callee) {
+    callee = climbTransparentExpressionWrappers(callee.parent);
+  }
+  return (
+    isNodeOfType(callee.parent, "CallExpression") &&
+    callee.parent.callee === callee &&
+    isProvenStaticCallableReference(callee, scopes)
+  );
+};
+
+const isInsideComparisonOperand = (identifier: EsTreeNode): boolean => {
+  let descendant = climbTransparentExpressionWrappers(identifier);
+  let ancestor = descendant.parent;
+  while (
+    isNodeOfType(ancestor, "MemberExpression") &&
+    (ancestor.object === descendant || ancestor.property === descendant)
+  ) {
+    descendant = climbTransparentExpressionWrappers(ancestor);
+    ancestor = descendant.parent;
+  }
+  return (
+    isNodeOfType(ancestor, "BinaryExpression") &&
+    ["==", "!=", "===", "!==", "<", "<=", ">", ">=", "in", "instanceof"].includes(ancestor.operator)
+  );
+};
+
+const expressionReadsOnlyInput = (
+  expression: EsTreeNode,
+  inputReferences: ReadonlyArray<RendererInputReference>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!expressionReadsInput(expression, inputReferences, scopes)) return false;
+  const selector = getFinalSequenceExpressionValue(expression);
+  let hasUnrelatedRead = false;
+  const visitedSymbolIds = new Set<number>();
+  const inspectExpression = (candidate: EsTreeNode): void => {
+    walkAst(candidate, (node) => {
+      if (hasUnrelatedRead) return false;
+      if (
+        node !== candidate &&
+        (isFunctionLike(node) ||
+          isNodeOfType(node, "ClassDeclaration") ||
+          isNodeOfType(node, "ClassExpression"))
+      ) {
+        return false;
+      }
+      if (!isNodeOfType(node, "Identifier")) return;
+      const parent = node.parent;
+      if (
+        (isNodeOfType(parent, "MemberExpression") &&
+          parent.property === node &&
+          !parent.computed) ||
+        (isNodeOfType(parent, "Property") && parent.key === node && !parent.computed) ||
+        isProvenStaticCallCallee(node, scopes)
+      ) {
+        return;
+      }
+      const reference = scopes.referenceFor(node);
+      const symbol = reference?.resolvedSymbol;
+      const isDirectInput = inputReferences.some(
+        (inputReference) =>
+          inputReference.isStable &&
+          inputReference.propertyName === null &&
+          inputReference.symbolId === symbol?.id,
+      );
+      const isInputContainer =
+        isNodeOfType(parent, "MemberExpression") &&
+        parent.object === node &&
+        inputReferences.some(
+          (inputReference) =>
+            inputReference.isStable &&
+            inputReference.propertyName === getStaticPropertyName(parent) &&
+            inputReference.symbolId === symbol?.id,
+        );
+      if (isDirectInput || isInputContainer) return;
+      if (symbol?.kind === "import" && isInsideComparisonOperand(node)) return;
+      if (
+        symbol?.kind === "const" &&
+        symbol.initializer &&
+        isSymbolStable(symbol) &&
+        visitedSymbolIds.has(symbol.id)
+      ) {
+        return;
+      }
+      if (
+        symbol?.kind === "const" &&
+        symbol.initializer &&
+        isSymbolStable(symbol) &&
+        !visitedSymbolIds.has(symbol.id)
+      ) {
+        visitedSymbolIds.add(symbol.id);
+        const initializers = getConstInitializerExpressions(symbol);
+        if (
+          !initializers.some((initializer) =>
+            expressionReadsInput(initializer, inputReferences, scopes),
+          ) &&
+          initializers.some(
+            (initializer) => readStaticSelectorTruthiness(initializer, scopes) === null,
+          )
+        ) {
+          hasUnrelatedRead = true;
+          return false;
+        }
+        for (const initializer of initializers) inspectExpression(initializer);
+        return;
+      }
+      hasUnrelatedRead = true;
+      return false;
+    });
+  };
+  inspectExpression(selector);
+  return !hasUnrelatedRead;
+};
+
+const hasInputDependentRenderedRootDifference = (
+  expression: EsTreeNode,
+  inputReferences: ReadonlyArray<RendererInputReference>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const alternativesHaveInputDependentDifference = (
+    alternatives: ReadonlyArray<RenderedRootShapeAlternative>,
+    eligibleFactKeys?: ReadonlySet<string>,
+  ): boolean => {
+    for (
+      let firstAlternativeIndex = 0;
+      firstAlternativeIndex < alternatives.length;
+      firstAlternativeIndex += 1
+    ) {
+      const firstAlternative = alternatives[firstAlternativeIndex]!;
+      for (
+        let secondAlternativeIndex = firstAlternativeIndex + 1;
+        secondAlternativeIndex < alternatives.length;
+        secondAlternativeIndex += 1
+      ) {
+        const secondAlternative = alternatives[secondAlternativeIndex]!;
+        if (JSON.stringify(firstAlternative.roots) === JSON.stringify(secondAlternative.roots)) {
+          continue;
+        }
+        let hasInputDependentDifference = false;
+        let hasAmbientConflict = false;
+        for (const [key, firstFact] of firstAlternative.facts) {
+          const secondFact = secondAlternative.facts.get(key);
+          if (!secondFact || firstFact.outcome === secondFact.outcome) continue;
+          if (
+            (!eligibleFactKeys || eligibleFactKeys.has(key)) &&
+            expressionReadsOnlyInput(firstFact.selector, inputReferences, scopes) &&
+            expressionReadsOnlyInput(secondFact.selector, inputReferences, scopes)
+          ) {
+            hasInputDependentDifference = true;
+          } else {
+            hasAmbientConflict = true;
+          }
+        }
+        if (hasInputDependentDifference && !hasAmbientConflict) return true;
+      }
+    }
+    return false;
+  };
+
+  const renderedExpression = getFinalSequenceExpressionValue(expression);
+  const fragmentChildren = getFlattenedFragmentChildren(renderedExpression, scopes);
+  if (fragmentChildren !== null) {
+    const childAlternatives: Array<ReadonlyArray<RenderedRootShapeAlternative>> = [];
+    for (const child of fragmentChildren) {
+      const alternatives = getStaticRenderedRootAlternatives(child, scopes);
+      if (alternatives === null) return false;
+      childAlternatives.push(alternatives);
+    }
+    const futureFactKeyCounts = new Map<string, number>();
+    for (const alternatives of childAlternatives) {
+      const childFactKeys = new Set<string>();
+      for (const alternative of alternatives) {
+        for (const key of alternative.facts.keys()) childFactKeys.add(key);
+      }
+      for (const key of childFactKeys) {
+        futureFactKeyCounts.set(key, (futureFactKeyCounts.get(key) ?? 0) + 1);
+      }
+    }
+    let prefixAlternatives: ReadonlyArray<RenderedRootShapeAlternative> = [
+      { facts: new Map(), roots: [] },
+    ];
+    for (const alternatives of childAlternatives) {
+      const currentFactKeys = new Set<string>();
+      for (const alternative of alternatives) {
+        for (const key of alternative.facts.keys()) currentFactKeys.add(key);
+      }
+      for (const key of currentFactKeys) {
+        futureFactKeyCounts.set(key, (futureFactKeyCounts.get(key) ?? 1) - 1);
+      }
+      const mergedAlternatives = mergeRenderedRootShapeAlternatives(
+        prefixAlternatives,
+        alternatives,
+      );
+      if (mergedAlternatives === null) return false;
+      prefixAlternatives = mergedAlternatives;
+      const finalFactKeys = new Set<string>();
+      for (const alternative of prefixAlternatives) {
+        for (const key of alternative.facts.keys()) {
+          if (futureFactKeyCounts.get(key) === 0) finalFactKeys.add(key);
+        }
+      }
+      if (
+        finalFactKeys.size > 0 &&
+        alternativesHaveInputDependentDifference(prefixAlternatives, finalFactKeys)
+      ) {
+        return true;
+      }
+      const remainingAlternatives = forgetFinalizedRenderedRootFacts(
+        prefixAlternatives,
+        futureFactKeyCounts,
+      );
+      if (remainingAlternatives === null) return false;
+      prefixAlternatives = remainingAlternatives;
+    }
+    return false;
+  }
+
+  const alternatives = getStaticRenderedRootAlternatives(renderedExpression, scopes);
+  return alternatives !== null && alternativesHaveInputDependentDifference(alternatives);
+};
+
 const getKnownReturnedRootNames = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -487,11 +1296,8 @@ const getKnownReturnedRootNames = (
     const rootNames = getRenderedRootNames(returnedExpression, scopes);
     return rootNames === null ? null : new Set(rootNames);
   }
-  if (
-    isNodeOfType(returnedExpression, "Literal") &&
-    (returnedExpression.value === null || typeof returnedExpression.value === "boolean")
-  ) {
-    return new Set();
+  if (isStaticallyEmptyJsxChild(returnedExpression)) {
+    return new Set([EMPTY_RENDERED_ROOT_NAME]);
   }
   let branches: ReadonlyArray<EsTreeNode>;
   if (isNodeOfType(returnedExpression, "ConditionalExpression")) {
@@ -510,17 +1316,210 @@ const getKnownReturnedRootNames = (
   return rootNames;
 };
 
-const readStaticSelectorTruthiness = (expression: EsTreeNode): boolean | null => {
+const collectKnownStatementRootNames = (
+  statement: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlySet<string> | null => {
+  const rootNames = new Set<string>();
+  let hasUnknownRoot = false;
+  walkAst(statement, (node) => {
+    if (hasUnknownRoot) return false;
+    if (
+      node !== statement &&
+      (isFunctionLike(node) ||
+        isNodeOfType(node, "ClassDeclaration") ||
+        isNodeOfType(node, "ClassExpression"))
+    ) {
+      return false;
+    }
+    if (!isNodeOfType(node, "ReturnStatement")) return;
+    const returnedRootNames = node.argument
+      ? getKnownReturnedRootNames(node.argument, scopes)
+      : new Set([EMPTY_RENDERED_ROOT_NAME]);
+    if (returnedRootNames === null) {
+      hasUnknownRoot = true;
+      return false;
+    }
+    for (const rootName of returnedRootNames) rootNames.add(rootName);
+    return false;
+  });
+  return hasUnknownRoot || rootNames.size === 0 ? null : rootNames;
+};
+
+const collectKnownContinuationRootNames = (
+  ifStatement: EsTreeNodeOfType<"IfStatement">,
+  scopes: ScopeAnalysis,
+): ReadonlySet<string> | null => {
+  const parent = ifStatement.parent;
+  if (!parent || !isNodeOfType(parent, "BlockStatement")) return null;
+  const statementIndex = parent.body.findIndex((statement) => statement === ifStatement);
+  if (statementIndex < 0) return null;
+  const rootNames = new Set<string>();
+  for (const statement of parent.body.slice(statementIndex + 1)) {
+    const statementRootNames = collectKnownStatementRootNames(statement, scopes);
+    if (statementRootNames) {
+      for (const rootName of statementRootNames) rootNames.add(rootName);
+    }
+    if (isUnconditionallyTerminalStatement(statement)) break;
+  }
+  return rootNames.size === 0 ? null : rootNames;
+};
+
+const getDirectStatementRootAlternatives = (
+  statement: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<RenderedRootShapeAlternative> | null => {
+  if (isNodeOfType(statement, "ReturnStatement")) {
+    return statement.argument
+      ? getStaticRenderedRootAlternatives(statement.argument, scopes)
+      : [{ facts: new Map(), roots: [] }];
+  }
+  if (isNodeOfType(statement, "BlockStatement") && statement.body.length === 1) {
+    return getDirectStatementRootAlternatives(statement.body[0]!, scopes);
+  }
+  return null;
+};
+
+const getContinuationRootAlternatives = (
+  ifStatement: EsTreeNodeOfType<"IfStatement">,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<RenderedRootShapeAlternative> | null => {
+  const parent = ifStatement.parent;
+  if (!parent || !isNodeOfType(parent, "BlockStatement")) return null;
+  const statementIndex = parent.body.findIndex((statement) => statement === ifStatement);
+  if (statementIndex < 0) return null;
+  for (const statement of parent.body.slice(statementIndex + 1)) {
+    const alternatives = getDirectStatementRootAlternatives(statement, scopes);
+    if (alternatives !== null) return alternatives;
+    if (isUnconditionallyTerminalStatement(statement)) return null;
+  }
+  return null;
+};
+
+const renderedRootFactsAreCompatible = (
+  firstFacts: ReadonlyMap<string, RenderedRootSelectorFact>,
+  secondFacts: ReadonlyMap<string, RenderedRootSelectorFact>,
+): boolean => {
+  for (const [key, firstFact] of firstFacts) {
+    const secondFact = secondFacts.get(key);
+    if (secondFact && secondFact.outcome !== firstFact.outcome) return false;
+  }
+  return true;
+};
+
+const hasDistinctKnownIfRootOutcomes = (
+  ifStatement: EsTreeNodeOfType<"IfStatement">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isUnconditionallyTerminalStatement(ifStatement.consequent)) return false;
+  const consequentAlternatives = getDirectStatementRootAlternatives(ifStatement.consequent, scopes);
+  const alternateAlternatives = ifStatement.alternate
+    ? isUnconditionallyTerminalStatement(ifStatement.alternate)
+      ? getDirectStatementRootAlternatives(ifStatement.alternate, scopes)
+      : null
+    : getContinuationRootAlternatives(ifStatement, scopes);
+  if (consequentAlternatives && alternateAlternatives) {
+    return consequentAlternatives.some((consequentAlternative) =>
+      alternateAlternatives.some(
+        (alternateAlternative) =>
+          renderedRootFactsAreCompatible(consequentAlternative.facts, alternateAlternative.facts) &&
+          JSON.stringify(consequentAlternative.roots) !==
+            JSON.stringify(alternateAlternative.roots),
+      ),
+    );
+  }
+  const consequentRootNames = collectKnownStatementRootNames(ifStatement.consequent, scopes);
+  const alternateRootNames = ifStatement.alternate
+    ? isUnconditionallyTerminalStatement(ifStatement.alternate)
+      ? collectKnownStatementRootNames(ifStatement.alternate, scopes)
+      : null
+    : collectKnownContinuationRootNames(ifStatement, scopes);
+  if (!consequentRootNames || !alternateRootNames) return false;
+  return (
+    [...consequentRootNames].some((rootName) => !alternateRootNames.has(rootName)) ||
+    [...alternateRootNames].some((rootName) => !consequentRootNames.has(rootName))
+  );
+};
+
+const hasDistinctKnownSwitchRootOutcomes = (
+  switchStatement: EsTreeNodeOfType<"SwitchStatement">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !switchStatement.cases.some((switchCase) => switchCase.test === null) ||
+    !switchStatement.cases.every((switchCase) =>
+      switchCase.consequent.some(isUnconditionallyTerminalStatement),
+    )
+  ) {
+    return false;
+  }
+  const caseRootNames: Array<ReadonlySet<string>> = [];
+  for (const switchCase of switchStatement.cases) {
+    const rootNames = collectKnownStatementRootNames(switchCase, scopes);
+    if (!rootNames) return false;
+    caseRootNames.push(rootNames);
+  }
+  for (let firstCaseIndex = 0; firstCaseIndex < caseRootNames.length; firstCaseIndex += 1) {
+    const firstRootNames = caseRootNames[firstCaseIndex]!;
+    for (
+      let secondCaseIndex = firstCaseIndex + 1;
+      secondCaseIndex < caseRootNames.length;
+      secondCaseIndex += 1
+    ) {
+      const secondRootNames = caseRootNames[secondCaseIndex]!;
+      if ([...firstRootNames].every((rootName) => !secondRootNames.has(rootName))) return true;
+    }
+  }
+  return false;
+};
+
+const readStaticSelectorTruthiness = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
+): boolean | null => {
   const selector = getFinalSequenceExpressionValue(expression);
-  const staticBoolean = readStaticBoolean(selector);
-  if (staticBoolean !== null) return staticBoolean;
+  if (isStaticallyTruthyContainer(selector)) return true;
+  if (isNodeOfType(selector, "Literal")) return Boolean(selector.value);
+  if (isNodeOfType(selector, "Identifier")) {
+    const symbol = scopes.symbolFor(selector);
+    if (
+      symbol &&
+      (symbol.kind === "function" || symbol.kind === "class") &&
+      isSymbolStable(symbol)
+    ) {
+      return true;
+    }
+    if (
+      symbol?.kind === "const" &&
+      symbol.initializer &&
+      isSymbolStable(symbol) &&
+      getSymbolVariableDeclarator(symbol)?.id === symbol.bindingIdentifier &&
+      !visitedSymbolIds.has(symbol.id)
+    ) {
+      visitedSymbolIds.add(symbol.id);
+      return readStaticSelectorTruthiness(symbol.initializer, scopes, visitedSymbolIds);
+    }
+  }
   if (isNodeOfType(selector, "UnaryExpression") && selector.operator === "!") {
-    const argumentTruthiness = readStaticSelectorTruthiness(selector.argument);
+    const argumentTruthiness = readStaticSelectorTruthiness(
+      selector.argument,
+      scopes,
+      visitedSymbolIds,
+    );
     return argumentTruthiness === null ? null : !argumentTruthiness;
   }
   if (!isNodeOfType(selector, "LogicalExpression")) return null;
-  const leftTruthiness = readStaticSelectorTruthiness(selector.left);
-  const rightTruthiness = readStaticSelectorTruthiness(selector.right);
+  const leftTruthiness = readStaticSelectorTruthiness(
+    selector.left,
+    scopes,
+    new Set(visitedSymbolIds),
+  );
+  const rightTruthiness = readStaticSelectorTruthiness(
+    selector.right,
+    scopes,
+    new Set(visitedSymbolIds),
+  );
   if (selector.operator === "&&") {
     if (leftTruthiness === false || rightTruthiness === false) return false;
     return leftTruthiness === true ? rightTruthiness : null;
@@ -551,22 +1550,24 @@ const analyzeReturnedExpressionSelections = (
       isJsxFragmentElement(returnedExpression.openingElement, scopes))
   ) {
     let hasInputDependentSelection = false;
-    let hasProvenInputDependentRootSelection = false;
     let hasUnrelatedSelection = false;
     for (const child of returnedExpression.children) {
       const childAnalysis = analyzeReturnedExpressionSelections(child, inputReferences, scopes);
       hasInputDependentSelection ||= childAnalysis.hasInputDependentSelection;
-      hasProvenInputDependentRootSelection ||= childAnalysis.hasProvenInputDependentRootSelection;
       hasUnrelatedSelection ||= childAnalysis.hasUnrelatedSelection;
     }
     return {
       hasInputDependentSelection,
-      hasProvenInputDependentRootSelection,
+      hasProvenInputDependentRootSelection: hasInputDependentRenderedRootDifference(
+        returnedExpression,
+        inputReferences,
+        scopes,
+      ),
       hasUnrelatedSelection,
     };
   }
   if (isNodeOfType(returnedExpression, "ConditionalExpression")) {
-    const staticTestValue = readStaticSelectorTruthiness(returnedExpression.test);
+    const staticTestValue = readStaticSelectorTruthiness(returnedExpression.test, scopes);
     if (staticTestValue !== null) {
       return analyzeReturnedExpressionSelections(
         staticTestValue ? returnedExpression.consequent : returnedExpression.alternate,
@@ -584,7 +1585,7 @@ const analyzeReturnedExpressionSelections = (
       inputReferences,
       scopes,
     );
-    const selectorReadsInput = expressionReadsInput(
+    const selectorReadsInput = expressionReadsOnlyInput(
       returnedExpression.test,
       inputReferences,
       scopes,
@@ -627,7 +1628,7 @@ const analyzeReturnedExpressionSelections = (
       inputReferences,
       scopes,
     );
-    const selectorReadsInput = expressionReadsInput(
+    const selectorReadsInput = expressionReadsOnlyInput(
       returnedExpression.left,
       inputReferences,
       scopes,
@@ -686,7 +1687,7 @@ const analyzeFunctionInputSelections = (
   let hasProvenInputDependentRootSelection = false;
   let hasUnrelatedSelection = false;
   const analyzedAncestors = new Set<EsTreeNode>();
-  for (const returnStatement of getReachableFunctionReturnStatements(functionNode)) {
+  for (const returnStatement of getReachableFunctionReturnStatements(functionNode, scopes)) {
     const returnedRootNames = returnStatement.argument
       ? getKnownReturnedRootNames(returnStatement.argument, scopes)
       : new Set<string>();
@@ -700,7 +1701,12 @@ const analyzeFunctionInputSelections = (
       hasProvenInputDependentRootSelection ||= returnAnalysis.hasProvenInputDependentRootSelection;
       hasUnrelatedSelection ||= returnAnalysis.hasUnrelatedSelection;
     }
-    if (returnedRootNames?.size === 0) continue;
+    if (
+      returnedRootNames &&
+      [...returnedRootNames].every((rootName) => rootName === EMPTY_RENDERED_ROOT_NAME)
+    ) {
+      continue;
+    }
     let ancestor = returnStatement.parent;
     while (ancestor && ancestor !== functionNode) {
       if (analyzedAncestors.has(ancestor)) break;
@@ -719,10 +1725,16 @@ const analyzeFunctionInputSelections = (
         hasUnrelatedSelection = true;
       }
       if (selector) {
-        if (expressionReadsInput(selector, inputReferences, scopes)) {
+        if (expressionReadsOnlyInput(selector, inputReferences, scopes)) {
           hasInputDependentSelection = true;
-          hasProvenInputDependentRootSelection ||=
-            returnedRootNames !== null && returnedRootNames.size > 0;
+          if (
+            (isNodeOfType(ancestor, "IfStatement") &&
+              hasDistinctKnownIfRootOutcomes(ancestor, scopes)) ||
+            (isNodeOfType(ancestor, "SwitchStatement") &&
+              hasDistinctKnownSwitchRootOutcomes(ancestor, scopes))
+          ) {
+            hasProvenInputDependentRootSelection = true;
+          }
         } else {
           hasUnrelatedSelection = true;
         }
@@ -1005,7 +2017,7 @@ const collectFunctionRenderedRootNames = (
     collectReturnedJsxRootNames(functionNode.body, names, scopes, analysis);
     return;
   }
-  for (const returnStatement of getReachableFunctionReturnStatements(functionNode)) {
+  for (const returnStatement of getReachableFunctionReturnStatements(functionNode, scopes)) {
     if (returnStatement.argument) {
       collectReturnedJsxRootNames(returnStatement.argument, names, scopes, analysis);
     }
@@ -1225,7 +2237,7 @@ const collectReturnedJsxRootNames = (
     }
   }
   if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
-    const staticTestValue = readStaticSelectorTruthiness(unwrappedExpression.test);
+    const staticTestValue = readStaticSelectorTruthiness(unwrappedExpression.test, scopes);
     if (staticTestValue !== null) {
       collectReturnedJsxRootNames(
         staticTestValue ? unwrappedExpression.consequent : unwrappedExpression.alternate,
@@ -1315,7 +2327,7 @@ const renderItemHasHeterogeneousRootTypes = (
     scopes,
   );
   const returnStatements = isNodeOfType(renderItemFunction.body, "BlockStatement")
-    ? getReachableFunctionReturnStatements(renderItemFunction)
+    ? getReachableFunctionReturnStatements(renderItemFunction, scopes)
     : [];
   if (
     (selectionAnalysis.hasUnrelatedSelection &&

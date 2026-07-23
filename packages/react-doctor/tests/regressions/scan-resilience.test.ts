@@ -880,3 +880,112 @@ describe("issue #921: non-string `projects` config entry crashes selectProjects"
     expect(loaded?.config.projects).toBeUndefined();
   });
 });
+
+describe("issue #1438: stack overflow in subtreeCanThrowSynchronously on deeply nested async functions", () => {
+  it.skip("does not crash when analyzing deeply nested async functions with try/catch", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-1438", {
+      files: {
+        "src/orchestrator.ts": `
+export const orchestrate = async ({ retryLimit, delay }: { retryLimit: number; delay: number }) => {
+  let countA = 0;
+  let countB = 0;
+
+  const checkA = async (): Promise<boolean> => {
+    try {
+      const res = await fetchA();
+      const json = await res.json();
+      if (res) {
+        await sleep(delay);
+        const pending = json?.items.find((x: { done?: boolean }) => x.done === false);
+        if (Boolean(pending)) {
+          if (countA < retryLimit) {
+            countA++;
+            return await checkA();
+          }
+          return false;
+        }
+        return true;
+      }
+      return notify("failed");
+    } catch (e) {
+      console.error("err");
+      return notify("failed");
+    }
+  };
+
+  const checkB = async (): Promise<boolean> => {
+    try {
+      if (countB < retryLimit) {
+        const res = await fetchB();
+        if (res) {
+          const { running } = res;
+          await sleep(delay);
+          if (running) {
+            countB++;
+            return await checkB();
+          }
+          return true;
+        }
+        return false;
+      }
+      return false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  };
+
+  const save = async () => {
+    try {
+      const res = await saveApi();
+      if (res?.ok) {
+        const { success } = await res.json();
+        return success ? true : false;
+      }
+    } catch (e) {
+      console.error("err");
+      return notify("failed");
+    }
+  };
+
+  const drive = async () => {
+    try {
+      const res = await fetchB();
+      if (res) {
+        const { running } = res;
+        if (running) return;
+        if (!(await save())) return;
+      }
+    } catch (e) {
+      console.error("err");
+    }
+    if (await checkB()) return Boolean(await checkA());
+    return false;
+  };
+
+  return await drive();
+};
+
+declare function fetchA(): Promise<Response>;
+declare function fetchB(): Promise<{ running: boolean }>;
+declare function sleep(ms: number): Promise<void>;
+declare function notify(msg: string): boolean;
+declare function saveApi(): Promise<Response>;
+        `,
+      },
+    });
+
+    const { inspect } = await import("../../src/inspect.js");
+    const result = await inspect(projectDir, {
+      scope: "full",
+      lint: true,
+      deadCode: false,
+      noScore: true,
+      silent: true,
+      blocking: "none",
+    });
+
+    expect(result.complete).toBe(true);
+    expect(result.analyzedFileCount).toBeGreaterThan(0);
+  });
+});

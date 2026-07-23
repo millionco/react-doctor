@@ -41,13 +41,18 @@ export const forEachChildNode = (node: EsTreeNode, visit: (child: EsTreeNode) =>
 // stop walking into nested functions when collecting `await` expressions
 // for the enclosing function only). Returning anything else (including
 // `undefined`, the natural value of statements) continues the walk.
+// Uses an explicit stack to avoid stack overflow on deeply nested ASTs.
 export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolean | void): void => {
-  // Root guard only: bodyless function-likes (`declare function`) surface
-  // as null/undefined bodies on TS-ESLint ASTs via eslint-plugin-react-doctor.
   if (!node || typeof node !== "object") return;
-  const visitNode = (current: EsTreeNode): void => {
-    if (visitor(current) === false) return;
-    forEachChildNode(current, visitNode);
-  };
-  visitNode(node);
+  const stack: EsTreeNode[] = [node];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    if (visitor(current) === false) continue;
+    const children: EsTreeNode[] = [];
+    forEachChildNode(current, (child) => children.push(child));
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push(children[i]);
+    }
+  }
 };

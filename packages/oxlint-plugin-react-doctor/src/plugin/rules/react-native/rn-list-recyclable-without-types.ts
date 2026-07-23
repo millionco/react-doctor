@@ -57,6 +57,7 @@ interface ForwardedInput {
 
 interface InputSelectionAnalysis {
   readonly hasInputDependentSelection: boolean;
+  readonly hasProvenInputDependentRootSelection: boolean;
   readonly hasUnrelatedSelection: boolean;
 }
 
@@ -165,44 +166,135 @@ const getJsxElementIdentity = (node: EsTreeNode, scopes: ScopeAnalysis): string 
   return appendComponentMemberIdentity(objectIdentity, node.property.name);
 };
 
-const getStaticRenderedRootNames = (
-  node: EsTreeNode,
-  scopes: ScopeAnalysis,
-): ReadonlyArray<string> | null => {
-  if (isNodeOfType(node, "JSXElement") && !isJsxFragmentElement(node.openingElement, scopes)) {
-    const elementIdentity = getJsxElementIdentity(node.openingElement.name, scopes);
-    return elementIdentity === null ? null : [elementIdentity];
-  }
-  if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
-    const rootNames: string[] = [];
-    for (const child of node.children) {
-      const childRootNames = getStaticRenderedRootNames(child, scopes);
-      if (childRootNames === null) return null;
-      rootNames.push(...childRootNames);
+const mergeRenderedRootShapes = (
+  existingShapes: ReadonlyArray<ReadonlyArray<string>>,
+  appendedShapes: ReadonlyArray<ReadonlyArray<string>>,
+): ReadonlyArray<ReadonlyArray<string>> => {
+  const mergedShapes: string[][] = [];
+  const shapeKeys = new Set<string>();
+  for (const existingShape of existingShapes) {
+    for (const appendedShape of appendedShapes) {
+      const mergedShape = [...existingShape, ...appendedShape];
+      const shapeKey = JSON.stringify(mergedShape);
+      if (shapeKeys.has(shapeKey)) continue;
+      shapeKeys.add(shapeKey);
+      mergedShapes.push(mergedShape);
+      if (mergedShapes.length > 1) return mergedShapes;
     }
-    return rootNames;
   }
-  if (isNodeOfType(node, "JSXText")) return node.value?.trim() ? null : [];
-  if (!isNodeOfType(node, "JSXExpressionContainer")) return null;
-  const expression = stripParenExpression(node.expression);
-  if (isNodeOfType(expression, "JSXEmptyExpression")) return [];
+  return mergedShapes;
+};
+
+const combineRenderedRootShapeAlternatives = (
+  alternatives: ReadonlyArray<ReadonlyArray<ReadonlyArray<string>>>,
+): ReadonlyArray<ReadonlyArray<string>> => {
+  const combinedShapes: string[][] = [];
+  const shapeKeys = new Set<string>();
+  for (const alternativeShapes of alternatives) {
+    for (const alternativeShape of alternativeShapes) {
+      const shapeKey = JSON.stringify(alternativeShape);
+      if (shapeKeys.has(shapeKey)) continue;
+      shapeKeys.add(shapeKey);
+      combinedShapes.push([...alternativeShape]);
+      if (combinedShapes.length > 1) return combinedShapes;
+    }
+  }
+  return combinedShapes;
+};
+
+const isStaticallyEmptyJsxChild = (node: EsTreeNode): boolean => {
+  const expression = getFinalSequenceExpressionValue(node);
+  if (isNodeOfType(expression, "JSXEmptyExpression")) return true;
   if (
     isNodeOfType(expression, "Literal") &&
     (expression.value === null || typeof expression.value === "boolean")
   ) {
-    return [];
+    return true;
   }
-  return getStaticRenderedRootNames(expression, scopes);
+  if (isNodeOfType(expression, "UnaryExpression")) {
+    return expression.operator === "!" || expression.operator === "void";
+  }
+  if (!isNodeOfType(expression, "BinaryExpression")) return false;
+  switch (expression.operator) {
+    case "==":
+    case "!=":
+    case "===":
+    case "!==":
+    case "<":
+    case "<=":
+    case ">":
+    case ">=":
+    case "in":
+    case "instanceof":
+      return true;
+    default:
+      return false;
+  }
 };
 
-const getRenderedRootName = (
+const getStaticRenderedRootShapes = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<ReadonlyArray<string>> | null => {
+  const renderedNode = getFinalSequenceExpressionValue(node);
+  if (
+    isNodeOfType(renderedNode, "JSXElement") &&
+    !isJsxFragmentElement(renderedNode.openingElement, scopes)
+  ) {
+    const elementIdentity = getJsxElementIdentity(renderedNode.openingElement.name, scopes);
+    return elementIdentity === null ? null : [[elementIdentity]];
+  }
+  if (isNodeOfType(renderedNode, "JSXElement") || isNodeOfType(renderedNode, "JSXFragment")) {
+    let rootShapes: ReadonlyArray<ReadonlyArray<string>> = [[]];
+    for (const child of renderedNode.children) {
+      const childRootShapes = getStaticRenderedRootShapes(child, scopes);
+      if (childRootShapes === null) return null;
+      rootShapes = mergeRenderedRootShapes(rootShapes, childRootShapes);
+    }
+    return rootShapes;
+  }
+  if (isNodeOfType(renderedNode, "JSXText")) return renderedNode.value?.trim() ? null : [[]];
+  if (isNodeOfType(renderedNode, "JSXExpressionContainer")) {
+    return getStaticRenderedRootShapes(renderedNode.expression, scopes);
+  }
+  if (isStaticallyEmptyJsxChild(renderedNode)) return [[]];
+  if (isNodeOfType(renderedNode, "ConditionalExpression")) {
+    const staticTestValue = readStaticSelectorTruthiness(renderedNode.test);
+    if (staticTestValue !== null) {
+      return getStaticRenderedRootShapes(
+        staticTestValue ? renderedNode.consequent : renderedNode.alternate,
+        scopes,
+      );
+    }
+    const consequentShapes = getStaticRenderedRootShapes(renderedNode.consequent, scopes);
+    const alternateShapes = getStaticRenderedRootShapes(renderedNode.alternate, scopes);
+    if (consequentShapes === null || alternateShapes === null) return null;
+    return combineRenderedRootShapeAlternatives([consequentShapes, alternateShapes]);
+  }
+  if (isNodeOfType(renderedNode, "LogicalExpression")) {
+    const resultShapeAlternatives: Array<ReadonlyArray<ReadonlyArray<string>>> = [];
+    for (const resultBranch of getStaticLogicalExpressionResultBranches(renderedNode)) {
+      const resultShapes = getStaticRenderedRootShapes(resultBranch, scopes);
+      if (resultShapes === null) return null;
+      resultShapeAlternatives.push(resultShapes);
+    }
+    return combineRenderedRootShapeAlternatives(resultShapeAlternatives);
+  }
+  return null;
+};
+
+const getRenderedRootNames = (
   root: EsTreeNodeOfType<"JSXElement"> | EsTreeNodeOfType<"JSXFragment">,
   scopes: ScopeAnalysis,
-): string | null => {
-  const childRootNames = getStaticRenderedRootNames(root, scopes);
-  if (childRootNames === null) return null;
-  if (childRootNames.length === 1) return childRootNames[0];
-  return `fragment:${JSON.stringify(childRootNames)}`;
+): ReadonlyArray<string> | null => {
+  const renderedRootShapes = getStaticRenderedRootShapes(root, scopes);
+  if (renderedRootShapes === null) return null;
+  return renderedRootShapes.map((rootShape) => {
+    const onlyRootName = rootShape[0];
+    return rootShape.length === 1 && onlyRootName
+      ? onlyRootName
+      : `fragment:${JSON.stringify(rootShape)}`;
+  });
 };
 
 const getPatternBindingIdentifier = (pattern: EsTreeNode): EsTreeNode | null => {
@@ -318,6 +410,7 @@ const expressionReadsInput = (
   expression: EsTreeNode,
   inputReferences: ReadonlyArray<RendererInputReference>,
   scopes: ScopeAnalysis,
+  visitedSymbolIds = new Set<number>(),
 ): boolean => {
   const inputExpression = getFinalSequenceExpressionValue(expression);
   let didReadInput = false;
@@ -346,6 +439,19 @@ const expressionReadsInput = (
         didReadInput = true;
         return false;
       }
+      const symbol = reference?.resolvedSymbol;
+      if (
+        symbol?.kind === "const" &&
+        symbol.initializer &&
+        isSymbolStable(symbol) &&
+        !visitedSymbolIds.has(symbol.id)
+      ) {
+        visitedSymbolIds.add(symbol.id);
+        if (expressionReadsInput(symbol.initializer, inputReferences, scopes, visitedSymbolIds)) {
+          didReadInput = true;
+          return false;
+        }
+      }
     }
     if (!isNodeOfType(node, "MemberExpression")) return;
     const propertyName = getStaticPropertyName(node);
@@ -367,6 +473,41 @@ const expressionReadsInput = (
     }
   });
   return didReadInput;
+};
+
+const getKnownReturnedRootNames = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlySet<string> | null => {
+  const returnedExpression = getFinalSequenceExpressionValue(expression);
+  if (
+    isNodeOfType(returnedExpression, "JSXElement") ||
+    isNodeOfType(returnedExpression, "JSXFragment")
+  ) {
+    const rootNames = getRenderedRootNames(returnedExpression, scopes);
+    return rootNames === null ? null : new Set(rootNames);
+  }
+  if (
+    isNodeOfType(returnedExpression, "Literal") &&
+    (returnedExpression.value === null || typeof returnedExpression.value === "boolean")
+  ) {
+    return new Set();
+  }
+  let branches: ReadonlyArray<EsTreeNode>;
+  if (isNodeOfType(returnedExpression, "ConditionalExpression")) {
+    branches = [returnedExpression.consequent, returnedExpression.alternate];
+  } else if (isNodeOfType(returnedExpression, "LogicalExpression")) {
+    branches = getStaticLogicalExpressionResultBranches(returnedExpression);
+  } else {
+    return null;
+  }
+  const rootNames = new Set<string>();
+  for (const branch of branches) {
+    const branchRootNames = getKnownReturnedRootNames(branch, scopes);
+    if (branchRootNames === null) return null;
+    for (const rootName of branchRootNames) rootNames.add(rootName);
+  }
+  return rootNames;
 };
 
 const readStaticSelectorTruthiness = (expression: EsTreeNode): boolean | null => {
@@ -397,6 +538,33 @@ const analyzeReturnedExpressionSelections = (
   scopes: ScopeAnalysis,
 ): InputSelectionAnalysis => {
   const returnedExpression = getFinalSequenceExpressionValue(expression);
+  if (isNodeOfType(returnedExpression, "JSXExpressionContainer")) {
+    return analyzeReturnedExpressionSelections(
+      returnedExpression.expression,
+      inputReferences,
+      scopes,
+    );
+  }
+  if (
+    isNodeOfType(returnedExpression, "JSXFragment") ||
+    (isNodeOfType(returnedExpression, "JSXElement") &&
+      isJsxFragmentElement(returnedExpression.openingElement, scopes))
+  ) {
+    let hasInputDependentSelection = false;
+    let hasProvenInputDependentRootSelection = false;
+    let hasUnrelatedSelection = false;
+    for (const child of returnedExpression.children) {
+      const childAnalysis = analyzeReturnedExpressionSelections(child, inputReferences, scopes);
+      hasInputDependentSelection ||= childAnalysis.hasInputDependentSelection;
+      hasProvenInputDependentRootSelection ||= childAnalysis.hasProvenInputDependentRootSelection;
+      hasUnrelatedSelection ||= childAnalysis.hasUnrelatedSelection;
+    }
+    return {
+      hasInputDependentSelection,
+      hasProvenInputDependentRootSelection,
+      hasUnrelatedSelection,
+    };
+  }
   if (isNodeOfType(returnedExpression, "ConditionalExpression")) {
     const staticTestValue = readStaticSelectorTruthiness(returnedExpression.test);
     if (staticTestValue !== null) {
@@ -421,13 +589,18 @@ const analyzeReturnedExpressionSelections = (
       inputReferences,
       scopes,
     );
+    const selectedRootNames = getKnownReturnedRootNames(returnedExpression, scopes);
     return {
       hasInputDependentSelection:
         selectorReadsInput ||
         consequentAnalysis.hasInputDependentSelection ||
         alternateAnalysis.hasInputDependentSelection,
+      hasProvenInputDependentRootSelection:
+        (selectorReadsInput && selectedRootNames !== null && selectedRootNames.size > 1) ||
+        consequentAnalysis.hasProvenInputDependentRootSelection ||
+        alternateAnalysis.hasProvenInputDependentRootSelection,
       hasUnrelatedSelection:
-        !selectorReadsInput ||
+        (!selectorReadsInput && (selectedRootNames === null || selectedRootNames.size > 1)) ||
         consequentAnalysis.hasUnrelatedSelection ||
         alternateAnalysis.hasUnrelatedSelection,
     };
@@ -438,7 +611,11 @@ const analyzeReturnedExpressionSelections = (
       const onlyResult = resultBranches[0];
       return onlyResult
         ? analyzeReturnedExpressionSelections(onlyResult, inputReferences, scopes)
-        : { hasInputDependentSelection: false, hasUnrelatedSelection: false };
+        : {
+            hasInputDependentSelection: false,
+            hasProvenInputDependentRootSelection: false,
+            hasUnrelatedSelection: false,
+          };
     }
     const leftAnalysis = analyzeReturnedExpressionSelections(
       returnedExpression.left,
@@ -455,13 +632,18 @@ const analyzeReturnedExpressionSelections = (
       inputReferences,
       scopes,
     );
+    const selectedRootNames = getKnownReturnedRootNames(returnedExpression, scopes);
     return {
       hasInputDependentSelection:
         selectorReadsInput ||
         leftAnalysis.hasInputDependentSelection ||
         rightAnalysis.hasInputDependentSelection,
+      hasProvenInputDependentRootSelection:
+        (selectorReadsInput && selectedRootNames !== null && selectedRootNames.size > 1) ||
+        leftAnalysis.hasProvenInputDependentRootSelection ||
+        rightAnalysis.hasProvenInputDependentRootSelection,
       hasUnrelatedSelection:
-        !selectorReadsInput ||
+        (!selectorReadsInput && (selectedRootNames === null || selectedRootNames.size > 1)) ||
         leftAnalysis.hasUnrelatedSelection ||
         rightAnalysis.hasUnrelatedSelection,
     };
@@ -478,7 +660,11 @@ const analyzeReturnedExpressionSelections = (
       return analyzeReturnedExpressionSelections(componentArgument, inputReferences, scopes);
     }
   }
-  return { hasInputDependentSelection: false, hasUnrelatedSelection: false };
+  return {
+    hasInputDependentSelection: false,
+    hasProvenInputDependentRootSelection: false,
+    hasUnrelatedSelection: false,
+  };
 };
 
 const analyzeFunctionInputSelections = (
@@ -487,15 +673,23 @@ const analyzeFunctionInputSelections = (
   scopes: ScopeAnalysis,
 ): InputSelectionAnalysis => {
   if (!isFunctionLike(functionNode)) {
-    return { hasInputDependentSelection: false, hasUnrelatedSelection: false };
+    return {
+      hasInputDependentSelection: false,
+      hasProvenInputDependentRootSelection: false,
+      hasUnrelatedSelection: false,
+    };
   }
   if (!isNodeOfType(functionNode.body, "BlockStatement")) {
     return analyzeReturnedExpressionSelections(functionNode.body, inputReferences, scopes);
   }
   let hasInputDependentSelection = false;
+  let hasProvenInputDependentRootSelection = false;
   let hasUnrelatedSelection = false;
   const analyzedAncestors = new Set<EsTreeNode>();
   for (const returnStatement of getReachableFunctionReturnStatements(functionNode)) {
+    const returnedRootNames = returnStatement.argument
+      ? getKnownReturnedRootNames(returnStatement.argument, scopes)
+      : new Set<string>();
     if (returnStatement.argument) {
       const returnAnalysis = analyzeReturnedExpressionSelections(
         returnStatement.argument,
@@ -503,8 +697,10 @@ const analyzeFunctionInputSelections = (
         scopes,
       );
       hasInputDependentSelection ||= returnAnalysis.hasInputDependentSelection;
+      hasProvenInputDependentRootSelection ||= returnAnalysis.hasProvenInputDependentRootSelection;
       hasUnrelatedSelection ||= returnAnalysis.hasUnrelatedSelection;
     }
+    if (returnedRootNames?.size === 0) continue;
     let ancestor = returnStatement.parent;
     while (ancestor && ancestor !== functionNode) {
       if (analyzedAncestors.has(ancestor)) break;
@@ -525,6 +721,8 @@ const analyzeFunctionInputSelections = (
       if (selector) {
         if (expressionReadsInput(selector, inputReferences, scopes)) {
           hasInputDependentSelection = true;
+          hasProvenInputDependentRootSelection ||=
+            returnedRootNames !== null && returnedRootNames.size > 0;
         } else {
           hasUnrelatedSelection = true;
         }
@@ -532,7 +730,11 @@ const analyzeFunctionInputSelections = (
       ancestor = ancestor.parent;
     }
   }
-  return { hasInputDependentSelection, hasUnrelatedSelection };
+  return {
+    hasInputDependentSelection,
+    hasProvenInputDependentRootSelection,
+    hasUnrelatedSelection,
+  };
 };
 
 const expressionHasOnlyInputDependentSelections = (
@@ -982,13 +1184,17 @@ const collectReturnedJsxRootNames = (
     ) {
       return;
     }
-    const rootName = getRenderedRootName(unwrappedExpression, scopes);
-    if (rootName) names.add(rootName);
+    const rootNames = getRenderedRootNames(unwrappedExpression, scopes);
+    if (rootNames) {
+      for (const rootName of rootNames) names.add(rootName);
+    }
     return;
   }
   if (isNodeOfType(unwrappedExpression, "JSXFragment")) {
-    const rootName = getRenderedRootName(unwrappedExpression, scopes);
-    if (rootName) names.add(rootName);
+    const rootNames = getRenderedRootNames(unwrappedExpression, scopes);
+    if (rootNames) {
+      for (const rootName of rootNames) names.add(rootName);
+    }
     return;
   }
   if (isNodeOfType(unwrappedExpression, "CallExpression")) {
@@ -1112,7 +1318,8 @@ const renderItemHasHeterogeneousRootTypes = (
     ? getReachableFunctionReturnStatements(renderItemFunction)
     : [];
   if (
-    selectionAnalysis.hasUnrelatedSelection ||
+    (selectionAnalysis.hasUnrelatedSelection &&
+      !selectionAnalysis.hasProvenInputDependentRootSelection) ||
     (returnStatements.length > 1 && !selectionAnalysis.hasInputDependentSelection)
   ) {
     resultCache.set(renderItemFunction, false);

@@ -583,6 +583,64 @@ const C = () => (
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("flags item-selected roots when an ambient selector only adds an empty result", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const renderItem = ({ item: album }) => {
+  if (typeof album === "string") {
+    return sortBy === "artist" ? null : <HeaderItem />;
+  }
+  if (typeof album === "object") return <AlbumItem />;
+  return null;
+};
+const C = () => <FlashList data={items} renderItem={renderItem} />;`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags switch-selected roots when an ambient guard only returns null", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const renderItem = ({ item: track }) => {
+  switch (typeof track) {
+    case "string":
+      if (sortBy === "artist") return null;
+      return <HeaderItem />;
+    case "object":
+      return track.audio ? <TrackItem /> : <AlbumItem />;
+    default:
+      return null;
+  }
+};
+const C = () => <FlashList data={items} renderItem={renderItem} />;`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("follows a stable selector alias derived from the item", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const renderItem = ({ item }) => {
+  if (typeof item === "string") return <HeaderItem />;
+  const href = getItemHref(item);
+  const notification = <NotificationItem />;
+  if (!href) return notification;
+  return <LinkedNotification>{notification}</LinkedNotification>;
+};
+const C = () => <FlashList data={items} renderItem={renderItem} />;`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps an ambient direct renderer selection opaque", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,
@@ -597,6 +655,49 @@ const C = ({ compact }) => (
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("retains an item-driven split through a later opaque selector", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const getNotificationHref = (notification) => notification.href;
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      if (typeof item === "string") return <Text>{item}</Text>;
+      const href = getNotificationHref(item);
+      if (!href) return <Notification notification={item} />;
+      return <Link href={href}><Notification notification={item} /></Link>;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("retains item-driven heterogeneity inside ambient rendering modes", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ sortBy }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => {
+      if (sortBy === "albums") {
+        return typeof item === "string" ? <AlbumHeader /> : <Album album={item} />;
+      }
+      return typeof item === "string" ? <TrackHeader /> : <Track track={item} />;
+    }}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it.each([
@@ -1369,6 +1470,82 @@ const C = () => (
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `{item.kind === "header" ? <Header /> : <Row />}`,
+    `{item.kind === "header" && <Header />}`,
+  ])("flags item-selected row shapes inside a fragment: %s", (fragmentChild) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => <><Badge />${fragmentChild}</>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([`{true ? <Header /> : <Row />}`, `{false && <Header />}`])(
+    "stays silent for a statically fixed fragment child: %s",
+    (fragmentChild) => {
+      const result = runRule(
+        rnListRecyclableWithoutTypes,
+        `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => <><Badge />${fragmentChild}</>}
+  />
+);`,
+        { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
+  it("keeps ambient fragment child selection opaque", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = ({ compact }) => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => (
+      <><Badge />{compact ? <CompactRow item={item} /> : <DetailedRow item={item} />}</>
+    )}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps fragment shape alternatives bounded", () => {
+    const fragmentChildren = Array.from(
+      { length: LOGICAL_CHAIN_LENGTH },
+      (_, childIndex) => `{item.kind === "header-${childIndex}" ? <Header /> : <Row />}`,
+    ).join("");
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList
+    data={items}
+    renderItem={({ item }) => <>${fragmentChildren}</>}
+  />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags differently shaped named React Fragment roots", () => {

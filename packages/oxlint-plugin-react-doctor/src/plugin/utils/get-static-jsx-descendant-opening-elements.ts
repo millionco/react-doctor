@@ -1,6 +1,7 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getFinalSequenceExpressionValue } from "./get-final-sequence-expression-value.js";
+import { getStaticLogicalExpressionResultBranches } from "./get-static-logical-expression-result-branches.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
@@ -38,8 +39,9 @@ const appendDescendant = (
     return;
   }
   if (isNodeOfType(expression, "LogicalExpression")) {
-    appendDescendant(expression.left, descendants, true);
-    appendDescendant(expression.right, descendants, true);
+    for (const resultBranch of getStaticLogicalExpressionResultBranches(expression)) {
+      appendDescendant(resultBranch, descendants, true);
+    }
     return;
   }
   if (isNodeOfType(expression, "ArrayExpression")) {

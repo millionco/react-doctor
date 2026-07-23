@@ -83,6 +83,44 @@ describe("rn-bottom-sheet-use-integrated-scrollable", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("ignores scrollables discarded by static JSX short-circuit operands", () => {
+    const code = `
+      import BottomSheet from "@gorhom/bottom-sheet";
+      import { ScrollView, View } from "react-native";
+      const sideEffect = () => undefined;
+      const Screen = () => (
+        <BottomSheet>
+          {<ScrollView /> && <View />}
+          {<View /> || <ScrollView />}
+          {<View /> ?? <ScrollView />}
+          {(sideEffect(), <View />) || <ScrollView />}
+        </BottomSheet>
+      );
+    `;
+    const result = runRule(rnBottomSheetUseIntegratedScrollable, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("collects scrollables selected by static JSX short-circuit operands", () => {
+    const code = `
+      import BottomSheet from "@gorhom/bottom-sheet";
+      import { ScrollView, View } from "react-native";
+      const sideEffect = () => undefined;
+      const Screen = () => (
+        <BottomSheet>
+          {<View /> && <ScrollView />}
+          {<ScrollView /> || <View />}
+          {<ScrollView /> ?? <View />}
+          {(sideEffect(), <View />) && <ScrollView />}
+        </BottomSheet>
+      );
+    `;
+    const result = runRule(rnBottomSheetUseIntegratedScrollable, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
   it("reports a scrollable only once when Bottom Sheets are nested", () => {
     const code = `
       import BottomSheet from "@gorhom/bottom-sheet";

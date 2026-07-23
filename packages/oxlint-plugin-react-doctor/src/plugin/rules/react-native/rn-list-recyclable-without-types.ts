@@ -2,6 +2,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 import { RECYCLABLE_LIST_PACKAGE_SOURCES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
+import { getStaticLogicalExpressionResultBranches } from "../../utils/get-static-logical-expression-result-branches.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -83,17 +84,10 @@ const collectReturnedJsxRootNames = (
     return;
   }
   if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
-    const leftExpression = stripParenExpression(unwrappedExpression.left);
-    if (isNodeOfType(leftExpression, "JSXElement") || isNodeOfType(leftExpression, "JSXFragment")) {
-      collectReturnedJsxRootNames(
-        unwrappedExpression.operator === "&&" ? unwrappedExpression.right : leftExpression,
-        names,
-        scopes,
-      );
-      return;
+    for (const resultBranch of getStaticLogicalExpressionResultBranches(unwrappedExpression)) {
+      collectReturnedJsxRootNames(resultBranch, names, scopes);
     }
-    collectReturnedJsxRootNames(unwrappedExpression.left, names, scopes);
-    collectReturnedJsxRootNames(unwrappedExpression.right, names, scopes);
+    return;
   }
 };
 

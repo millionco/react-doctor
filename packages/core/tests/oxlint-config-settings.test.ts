@@ -306,7 +306,7 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules).not.toHaveProperty("react-doctor/react-compiler-no-manual-memoization");
   });
 
-  it("keeps opt-out (defaultEnabled: false) rules off by default", () => {
+  it("keeps opt-in (defaultEnabled: false) rules off by default", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: viteWebProject,
@@ -344,7 +344,7 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules).not.toHaveProperty("react-doctor/no-uppercase-mono-label");
   });
 
-  it("does not let a category-level severity flip an opt-out rule on", () => {
+  it("does not let a category-level severity flip an opt-in rule on", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: viteWebProject,
@@ -364,7 +364,7 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
   });
 
-  it("a per-rule severity opts an opt-out rule in", () => {
+  it("a per-rule severity opts a default-disabled rule in", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: viteWebProject,
@@ -374,7 +374,17 @@ describe("createOxlintConfig settings", () => {
     expect(config.rules["react-doctor/forbid-component-props"]).toBe("warn");
   });
 
-  it("a legacy alias severity opts an opt-out rule in", () => {
+  it("a per-rule severity opts a design rule in", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react-doctor/no-all-caps-body-text": "warn" } },
+    });
+
+    expect(config.rules["react-doctor/no-all-caps-body-text"]).toBe("warn");
+  });
+
+  it("a legacy alias severity opts a default-disabled rule in", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: viteWebProject,

@@ -83,6 +83,15 @@ const collectReturnedJsxRootNames = (
     return;
   }
   if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+    const leftExpression = stripParenExpression(unwrappedExpression.left);
+    if (isNodeOfType(leftExpression, "JSXElement") || isNodeOfType(leftExpression, "JSXFragment")) {
+      collectReturnedJsxRootNames(
+        unwrappedExpression.operator === "&&" ? unwrappedExpression.right : leftExpression,
+        names,
+        scopes,
+      );
+      return;
+    }
     collectReturnedJsxRootNames(unwrappedExpression.left, names, scopes);
     collectReturnedJsxRootNames(unwrappedExpression.right, names, scopes);
   }

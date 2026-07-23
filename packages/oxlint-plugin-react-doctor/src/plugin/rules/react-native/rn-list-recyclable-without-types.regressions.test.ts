@@ -213,6 +213,20 @@ const C = () => (<FlashList data={items} renderItem={({ item }) => ${renderItemE
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([`<Header /> && <Row />`, `<Header /> || <Row />`, `<Header /> ?? <Row />`])(
+    "stays silent when a logical expression returns one static JSX root: %s",
+    (expression) => {
+      const result = runRule(
+        rnListRecyclableWithoutTypes,
+        `import { FlashList } from "@shopify/flash-list";
+const C = () => (<FlashList data={items} renderItem={() => (${expression})} />);`,
+        { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+
   it("flags a fragment root mixed with an element root", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,

@@ -4196,6 +4196,7 @@ export const reactDoctorRules = [
       ...noFocusInAnimationCompletionHandler,
       framework: "global",
       category: "Accessibility",
+      defaultEnabled: false,
       tags: [...new Set(["design", ...(noFocusInAnimationCompletionHandler.tags ?? [])])],
     },
   },

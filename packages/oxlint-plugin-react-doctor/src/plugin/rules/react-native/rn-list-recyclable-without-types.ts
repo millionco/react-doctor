@@ -169,7 +169,7 @@ export const rnListRecyclableWithoutTypes = defineRule({
   requires: ["react-native"],
   severity: "warn",
   recommendation:
-    "When rows have different shapes, reused cells can show the wrong layout. Add `getItemType={item => item.kind}` so FlashList keeps a separate pool per row type.",
+    "When rows have different shapes, reused cells can show the wrong layout. Add `getItemType` that returns a stable type for each row shape so FlashList keeps separate recycling pools.",
   create: (context: RuleContext) => {
     let fileImportsRecycler = false;
     return {

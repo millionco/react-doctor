@@ -693,6 +693,8 @@ describe("checkReactNativeProject — Android release shrinking", () => {
       buildRnProject(projectDirectory),
     ).find((candidate) => candidate.rule === "rn-android-release-shrinking-disabled");
     expect(diagnostic?.message).toContain("code minification and resource shrinking");
+    expect(diagnostic?.help).toContain("release code minification and resource shrinking");
+    expect(diagnostic?.help).not.toContain("R8");
   });
 
   it("flags literal false values in a Kotlin release block", () => {

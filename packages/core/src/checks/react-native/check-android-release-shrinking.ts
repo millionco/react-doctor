@@ -16,7 +16,7 @@ export const checkReactNativeAndroidReleaseShrinking = (rootDirectory: string): 
       rule: "rn-android-release-shrinking-disabled",
       category: "Performance",
       message: `The Android release build explicitly disables ${disabledFeatures.join(" and ")}, leaving unreachable code or resources in the shipped app.`,
-      help: "Enable R8 minification and resource shrinking for release builds, then test the optimized build and add keep rules for libraries that require them.",
+      help: "Enable release code minification and resource shrinking, then test the optimized build and add keep rules for libraries that require them.",
     }),
   ];
 };

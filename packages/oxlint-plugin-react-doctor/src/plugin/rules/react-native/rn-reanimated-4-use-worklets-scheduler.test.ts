@@ -2,17 +2,27 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { rnReanimated4UseWorkletsScheduler } from "./rn-reanimated-4-use-worklets-scheduler.js";
 
-const SCHEDULER_REPLACEMENT_PAIRS = [
-  ["runOnUI", "scheduleOnUI"],
-  ["runOnJS", "scheduleOnRN"],
-  ["executeOnUIRuntimeSync", "runOnUISync"],
-  ["runOnRuntime", "scheduleOnRuntime"],
+const SCHEDULER_MIGRATION_CASES = [
+  ["runOnUI", "scheduleOnUI", "runOnUI(fn)(...args)", "scheduleOnUI(fn, ...args)"],
+  ["runOnJS", "scheduleOnRN", "runOnJS(fn)(...args)", "scheduleOnRN(fn, ...args)"],
+  [
+    "executeOnUIRuntimeSync",
+    "runOnUISync",
+    "executeOnUIRuntimeSync(fn)(...args)",
+    "runOnUISync(fn, ...args)",
+  ],
+  [
+    "runOnRuntime",
+    "scheduleOnRuntime",
+    "runOnRuntime(runtime, fn)(...args)",
+    "scheduleOnRuntime(runtime, fn, ...args)",
+  ],
 ];
 
 describe("react-native/rn-reanimated-4-use-worklets-scheduler", () => {
-  it.each(SCHEDULER_REPLACEMENT_PAIRS)(
-    "recommends %s as the replacement for %s",
-    (apiName, replacementName) => {
+  it.each(SCHEDULER_MIGRATION_CASES)(
+    "recommends %s → %s with the correct call shape",
+    (apiName, replacementName, legacyCallShape, replacementCallShape) => {
       const result = runRule(
         rnReanimated4UseWorkletsScheduler,
         `import { ${apiName} } from "react-native-reanimated"; ${apiName}(() => {});`,
@@ -21,6 +31,8 @@ describe("react-native/rn-reanimated-4-use-worklets-scheduler", () => {
       expect(result.diagnostics).toHaveLength(1);
       expect(result.diagnostics[0].message).toContain(apiName);
       expect(result.diagnostics[0].message).toContain(replacementName);
+      expect(result.diagnostics[0].message).toContain(legacyCallShape);
+      expect(result.diagnostics[0].message).toContain(replacementCallShape);
       expect(result.diagnostics[0].message).toContain("react-native-worklets");
     },
   );

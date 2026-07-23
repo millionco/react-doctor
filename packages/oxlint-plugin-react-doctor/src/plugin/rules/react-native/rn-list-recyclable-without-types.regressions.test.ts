@@ -3,6 +3,13 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { rnListRecyclableWithoutTypes } from "./rn-list-recyclable-without-types.js";
 
 describe("react-native/rn-list-recyclable-without-types — regressions", () => {
+  it("recommends a data-shape-agnostic getItemType", () => {
+    expect(rnListRecyclableWithoutTypes.recommendation).toContain(
+      "returns a stable type for each row shape",
+    );
+    expect(rnListRecyclableWithoutTypes.recommendation).not.toContain("item.kind");
+  });
+
   it("stays silent on a name-only match against a local component", () => {
     const result = runRule(
       rnListRecyclableWithoutTypes,

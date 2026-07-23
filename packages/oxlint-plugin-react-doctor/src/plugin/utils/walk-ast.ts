@@ -36,23 +36,23 @@ export const forEachChildNode = (node: EsTreeNode, visit: (child: EsTreeNode) =>
   }
 };
 
-// HACK: AST is acyclic except for `parent` back-references, which we skip.
+// HACK: The explicit stack avoids overflowing the JavaScript call stack on
+// deeply nested ASTs. AST is acyclic except for `parent` back-references,
+// which we skip.
 // Visitors may return `false` to prune the subtree below `node` (e.g. to
 // stop walking into nested functions when collecting `await` expressions
 // for the enclosing function only). Returning anything else (including
 // `undefined`, the natural value of statements) continues the walk.
-// Uses an explicit stack to avoid stack overflow on deeply nested ASTs.
 export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolean | void): void => {
   if (!node || typeof node !== "object") return;
-  const stack: EsTreeNode[] = [node];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current) continue;
-    if (visitor(current) === false) continue;
-    const children: EsTreeNode[] = [];
-    forEachChildNode(current, (child) => children.push(child));
-    for (let i = children.length - 1; i >= 0; i--) {
-      stack.push(children[i]);
+  const pendingNodes: EsTreeNode[] = [node];
+  while (pendingNodes.length > 0) {
+    const currentNode = pendingNodes.pop();
+    if (currentNode === undefined || visitor(currentNode) === false) continue;
+    const childNodes: EsTreeNode[] = [];
+    forEachChildNode(currentNode, (childNode) => childNodes.push(childNode));
+    for (let childIndex = childNodes.length - 1; childIndex >= 0; childIndex -= 1) {
+      pendingNodes.push(childNodes[childIndex]);
     }
   }
 };

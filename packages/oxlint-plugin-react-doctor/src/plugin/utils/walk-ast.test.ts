@@ -3,6 +3,8 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { parseSourceText } from "./parse-source-file.js";
 import { walkAst } from "./walk-ast.js";
 
+const DEEPLY_NESTED_AST_NODE_COUNT = 20_000;
+
 const parseProgram = () => {
   const program = parseSourceText({
     filename: "/tmp/walk-ast.ts",
@@ -64,6 +66,20 @@ describe("walkAst", () => {
       "Identifier",
       "CallExpression",
     ]);
+  });
+
+  it("walks ASTs deeper than the JavaScript call stack", () => {
+    let rootNode: Record<string, unknown> = { type: "Identifier", name: "leaf" };
+    for (let nodeIndex = 1; nodeIndex < DEEPLY_NESTED_AST_NODE_COUNT; nodeIndex += 1) {
+      rootNode = { type: "FutureNode", child: rootNode };
+    }
+
+    let visitedNodeCount = 0;
+    walkAst(rootNode as unknown as EsTreeNode, () => {
+      visitedNodeCount += 1;
+    });
+
+    expect(visitedNodeCount).toBe(DEEPLY_NESTED_AST_NODE_COUNT);
   });
 
   it("visits runtime decorator expressions", () => {

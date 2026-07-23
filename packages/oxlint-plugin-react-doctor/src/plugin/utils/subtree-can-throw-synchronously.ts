@@ -7,56 +7,21 @@ import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
-const catchHandlerRethrows = (catchHandler: EsTreeNode): boolean => {
-  let foundThrow = false;
-  walkAst(catchHandler, (handlerChild: EsTreeNode) => {
-    if (foundThrow) return false;
-    if (handlerChild !== catchHandler && isFunctionLike(handlerChild)) return false;
-    if (isNodeOfType(handlerChild, "ThrowStatement")) {
-      foundThrow = true;
-      return false;
-    }
-  });
-  return foundThrow;
-};
-
-const isInsideAbsorbingTry = (
-  node: EsTreeNode,
-  functionBoundary: EsTreeNode,
-  memo: Map<string, boolean>,
-  rethrowMemo: Map<EsTreeNode, boolean>,
-): boolean => {
-  const nodeStart = (node as { start?: unknown }).start;
-  const boundaryStart = (functionBoundary as { start?: unknown }).start;
-  const memoKey =
-    typeof nodeStart === "number" && typeof boundaryStart === "number"
-      ? `${nodeStart}:${boundaryStart}`
-      : null;
-  if (memoKey !== null) {
-    const cached = memo.get(memoKey);
-    if (cached !== undefined) return cached;
-  }
-  const result = isInsideAbsorbingTryUncached(node, functionBoundary, rethrowMemo);
-  if (memoKey !== null) {
-    memo.set(memoKey, result);
-  }
-  return result;
-};
-
-const isInsideAbsorbingTryUncached = (
-  node: EsTreeNode,
-  functionBoundary: EsTreeNode,
-  rethrowMemo: Map<EsTreeNode, boolean>,
-): boolean => {
+const isInsideAbsorbingTry = (node: EsTreeNode, functionBoundary: EsTreeNode): boolean => {
   let child = node;
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor && ancestor !== functionBoundary) {
     if (isNodeOfType(ancestor, "TryStatement") && ancestor.block === child && ancestor.handler) {
-      let handlerRethrows = rethrowMemo.get(ancestor.handler);
-      if (handlerRethrows === undefined) {
-        handlerRethrows = catchHandlerRethrows(ancestor.handler);
-        rethrowMemo.set(ancestor.handler, handlerRethrows);
-      }
+      const catchHandler = ancestor.handler;
+      let handlerRethrows = false;
+      walkAst(catchHandler, (handlerChild: EsTreeNode) => {
+        if (handlerRethrows) return false;
+        if (handlerChild !== catchHandler && isFunctionLike(handlerChild)) return false;
+        if (isNodeOfType(handlerChild, "ThrowStatement")) {
+          handlerRethrows = true;
+          return false;
+        }
+      });
       if (!handlerRethrows) return true;
     }
     child = ancestor;
@@ -71,28 +36,18 @@ export const subtreeCanThrowSynchronously = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const visitedFunctions = new Set<EsTreeNode>();
-  const tryAbsorptionMemo = new Map<string, boolean>();
-  const rethrowMemo = new Map<EsTreeNode, boolean>();
-  const analyzeMemo = new Map<string, boolean>();
   const analyze = (
     candidateRoot: EsTreeNode,
     candidateBoundary: EsTreeNode,
     remainingDepth: number,
   ): boolean => {
-    const rootStart = (candidateRoot as { start?: unknown }).start;
-    const boundaryStart = (candidateBoundary as { start?: unknown }).start;
-    if (typeof rootStart === "number" && typeof boundaryStart === "number") {
-      const memoKey = `${rootStart}:${boundaryStart}:${remainingDepth}`;
-      const cached = analyzeMemo.get(memoKey);
-      if (cached !== undefined) return cached;
-    }
     let canThrow = false;
     walkAst(candidateRoot, (child: EsTreeNode) => {
       if (canThrow) return false;
       if (child !== candidateRoot && isFunctionLike(child)) return false;
       if (
         isNodeOfType(child, "ThrowStatement") &&
-        !isInsideAbsorbingTry(child, candidateBoundary, tryAbsorptionMemo, rethrowMemo)
+        !isInsideAbsorbingTry(child, candidateBoundary)
       ) {
         canThrow = true;
         return false;
@@ -100,7 +55,7 @@ export const subtreeCanThrowSynchronously = (
       if (
         remainingDepth <= 0 ||
         !isNodeOfType(child, "CallExpression") ||
-        isInsideAbsorbingTry(child, candidateBoundary, tryAbsorptionMemo, rethrowMemo)
+        isInsideAbsorbingTry(child, candidateBoundary)
       ) {
         return;
       }
@@ -124,10 +79,6 @@ export const subtreeCanThrowSynchronously = (
         return false;
       }
     });
-    if (typeof rootStart === "number" && typeof boundaryStart === "number") {
-      const memoKey = `${rootStart}:${boundaryStart}:${remainingDepth}`;
-      analyzeMemo.set(memoKey, canThrow);
-    }
     return canThrow;
   };
   return analyze(root, functionBoundary, SYNCHRONOUS_THROW_RESOLUTION_DEPTH);

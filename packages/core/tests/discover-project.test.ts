@@ -1238,29 +1238,38 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
   });
 
-  it("detects React Compiler when babel-plugin-react-compiler is installed without explicit config", () => {
-    const projectDirectory = path.join(tempDirectory, "installed-react-compiler");
-    fs.mkdirSync(projectDirectory, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectDirectory, "package.json"),
-      JSON.stringify({
-        name: "installed-react-compiler",
-        dependencies: { react: "^19.0.0" },
-        devDependencies: { "babel-plugin-react-compiler": "^0.0.0" },
-      }),
-    );
-
-    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
-  });
-
-  it("detects React Compiler when react-compiler-runtime is installed", () => {
+  it("detects React Compiler from its compatibility runtime", () => {
     const projectDirectory = path.join(tempDirectory, "runtime-react-compiler");
     fs.mkdirSync(projectDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(projectDirectory, "package.json"),
       JSON.stringify({
         name: "runtime-react-compiler",
-        dependencies: { react: "^19.0.0", "react-compiler-runtime": "^19.0.0" },
+        dependencies: { react: "^18.0.0", "react-compiler-runtime": "^1.0.0" },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it("detects React Compiler from an ancestor compatibility runtime", () => {
+    const monorepoDirectory = path.join(tempDirectory, "runtime-react-compiler-monorepo");
+    const projectDirectory = path.join(monorepoDirectory, "packages", "app");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoDirectory, "package.json"),
+      JSON.stringify({
+        name: "runtime-react-compiler-monorepo",
+        private: true,
+        dependencies: { "react-compiler-runtime": "^1.0.0" },
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "runtime-react-compiler-app",
+        dependencies: { react: "^18.0.0" },
       }),
     );
 

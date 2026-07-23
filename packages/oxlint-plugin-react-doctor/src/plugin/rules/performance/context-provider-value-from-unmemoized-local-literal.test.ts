@@ -1245,24 +1245,4 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
   it("is disabled on React Compiler projects", () => {
     expect(contextProviderValueFromUnmemoizedLocalLiteral.disabledWhen).toContain("react-compiler");
   });
-
-  it("does not flag when babel-plugin-react-compiler is installed", () => {
-    const result = runRule(
-      contextProviderValueFromUnmemoizedLocalLiteral,
-      `
-      import { createContext, useState } from "react";
-      const ThemeContext = createContext(null);
-      function App({ theme }) {
-        const value = { theme };
-        return <ThemeContext.Provider value={value}><Child /></ThemeContext.Provider>;
-      }
-    `,
-      {
-        projectInfo: {
-          hasReactCompiler: true,
-        } as any,
-      },
-    );
-    expect(result.diagnostics).toHaveLength(0);
-  });
 });

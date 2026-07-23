@@ -43,10 +43,13 @@ describe("getTailwindVisibilityAtBreakpoints", () => {
   it("returns unknown for arbitrary breakpoint visibility", () => {
     expect(getTailwindVisibilityAtBreakpoints("block max-[700px]:hidden")).toBeNull();
     expect(getTailwindVisibilityAtBreakpoints("hidden min-[700px]:block")).toBeNull();
+    expect(getTailwindVisibilityAtBreakpoints("[display:var(--layout)]")).toBeNull();
+    expect(getTailwindVisibilityAtBreakpoints("md:[visibility:var(--visibility)]")).toBeNull();
+    expect(getTailwindVisibilityAtBreakpoints("md:[dIsPlAy:var(--layout)]")).toBeNull();
   });
 
-  it("ignores non-responsive variants", () => {
-    expect(getTailwindVisibilityAtBreakpoints("block hover:hidden")).toEqual([
+  it("ignores visibility effects in empty responsive intervals", () => {
+    expect(getTailwindVisibilityAtBreakpoints("md:max-sm:hidden")).toEqual([
       true,
       true,
       true,
@@ -54,6 +57,20 @@ describe("getTailwindVisibilityAtBreakpoints", () => {
       true,
       true,
     ]);
+    expect(getTailwindVisibilityAtBreakpoints("max-md:lg:[display:var(--layout)]")).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  it("returns unknown for unsupported variant scopes", () => {
+    expect(getTailwindVisibilityAtBreakpoints("block hover:hidden")).toBeNull();
+    expect(getTailwindVisibilityAtBreakpoints("block tablet:hidden")).toBeNull();
+    expect(getTailwindVisibilityAtBreakpoints("block data-[state=open]:hidden")).toBeNull();
   });
 
   it("returns null for conflicting visibility utilities", () => {

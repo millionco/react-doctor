@@ -2429,4 +2429,26 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "zustand-no-whole-store-destructure": {
     code: '\n      import { create } from "zustand";\n      const useBearStore = create(() => ({ bears: 0 }));\n      export const BearCounter = () => {\n        const { bears } = useBearStore();\n        return <span>{bears}</span>;\n      };\n    ',
   },
+  "loading-action-preserves-trigger": {
+    code: 'import { useState } from "react";\nexport const Save = () => { const [pending, setPending] = useState(false); const save = async () => { setPending(true); await fetch("/api/save"); setPending(false); }; return pending ? <span role="status">Saving</span> : <button type="button" onClick={save}>Save</button>; };',
+  },
+  "no-collapse-request-error-to-empty-state": {
+    code: 'import { useState } from "react";\nexport const Search = () => { const [items, setItems] = useState([]); const load = async () => { try { setItems(await (await fetch("/api/items")).json()); } catch { setItems([]); } }; if (!items.length) return <p>No results found</p>; return <ResultList items={items} />; };',
+  },
+  "no-focus-in-animation-completion-handler": {
+    code: 'import { useRef } from "react";\nexport const Dialog = () => { const inputRef = useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };',
+  },
+  "no-mixed-animation-owners": {
+    code: 'import { motion } from "motion/react";\nexport const Demo = () => <motion.div animate={{ opacity: 1 }} className="transition-opacity duration-200" />;',
+  },
+  "no-reduced-motion-content-removal": {
+    code: 'export const Status = () => <p className="motion-reduce:hidden">Payment failed</p>;',
+  },
+  "no-responsive-hidden-accessible-name": {
+    code: 'export const Menu = () => <button><span className="md:hidden">Menu</span></button>;',
+  },
+  "no-transitioned-composite-widget-state": {
+    code: 'export const Option = ({ selected }) => <div role="option" aria-selected={selected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]">Value</div>;',
+    settings: { "react-doctor": { capabilities: ["tailwind"] } },
+  },
 };

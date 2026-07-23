@@ -1,13 +1,9 @@
-import { getTailwindArbitraryUtilityValue } from "./get-tailwind-arbitrary-utility-value.js";
-import { normalizeTailwindArbitraryUtilityValue } from "./normalize-tailwind-arbitrary-utility-value.js";
+import { TAILWIND_BREAKPOINT_NAMES } from "../constants/tailwind.js";
+import { getTailwindVisibilityEffect } from "./get-tailwind-visibility-effect.js";
+import type { TailwindVisibilityEffect } from "./get-tailwind-visibility-effect.js";
 import { parseTailwindClassNameToken } from "./parse-tailwind-class-name-token.js";
 import type { TailwindClassNameToken } from "./parse-tailwind-class-name-token.js";
 import { splitTailwindClassName } from "./split-tailwind-class-name.js";
-
-interface TailwindVisibilityEffect {
-  isVisible: boolean;
-  propertyName: "display" | "visibility";
-}
 
 interface TailwindResponsiveVariantScope {
   maximumBreakpointIndex: number;
@@ -20,86 +16,6 @@ interface TailwindScopedVisibilityEffect {
   scope: TailwindResponsiveVariantScope;
   token: TailwindClassNameToken;
 }
-
-const TAILWIND_BREAKPOINT_NAMES = ["", "sm", "md", "lg", "xl", "2xl"];
-const DISPLAY_VISIBILITY_EFFECTS = new Map<string, TailwindVisibilityEffect>([
-  ["hidden", { isVisible: false, propertyName: "display" }],
-  ["block", { isVisible: true, propertyName: "display" }],
-  ["contents", { isVisible: true, propertyName: "display" }],
-  ["flex", { isVisible: true, propertyName: "display" }],
-  ["flow-root", { isVisible: true, propertyName: "display" }],
-  ["grid", { isVisible: true, propertyName: "display" }],
-  ["inline", { isVisible: true, propertyName: "display" }],
-  ["inline-block", { isVisible: true, propertyName: "display" }],
-  ["inline-flex", { isVisible: true, propertyName: "display" }],
-  ["inline-grid", { isVisible: true, propertyName: "display" }],
-  ["inline-table", { isVisible: true, propertyName: "display" }],
-  ["list-item", { isVisible: true, propertyName: "display" }],
-  ["table", { isVisible: true, propertyName: "display" }],
-  ["table-caption", { isVisible: true, propertyName: "display" }],
-  ["table-cell", { isVisible: true, propertyName: "display" }],
-  ["table-column", { isVisible: true, propertyName: "display" }],
-  ["table-column-group", { isVisible: true, propertyName: "display" }],
-  ["table-footer-group", { isVisible: true, propertyName: "display" }],
-  ["table-header-group", { isVisible: true, propertyName: "display" }],
-  ["table-row", { isVisible: true, propertyName: "display" }],
-  ["table-row-group", { isVisible: true, propertyName: "display" }],
-]);
-const VISIBILITY_VISIBILITY_EFFECTS = new Map<string, TailwindVisibilityEffect>([
-  ["collapse", { isVisible: false, propertyName: "visibility" }],
-  ["invisible", { isVisible: false, propertyName: "visibility" }],
-  ["visible", { isVisible: true, propertyName: "visibility" }],
-]);
-const VISIBLE_ARBITRARY_DISPLAY_VALUES = new Set([
-  "block",
-  "contents",
-  "flex",
-  "flow-root",
-  "grid",
-  "inline",
-  "inline block",
-  "inline flex",
-  "inline flow-root",
-  "inline grid",
-  "inline table",
-  "list-item",
-  "table",
-  "table-caption",
-  "table-cell",
-  "table-column",
-  "table-column-group",
-  "table-footer-group",
-  "table-header-group",
-  "table-row",
-  "table-row-group",
-]);
-
-const getVisibilityEffect = (utility: string): TailwindVisibilityEffect | null => {
-  const knownEffect =
-    DISPLAY_VISIBILITY_EFFECTS.get(utility) ?? VISIBILITY_VISIBILITY_EFFECTS.get(utility);
-  if (knownEffect) return knownEffect;
-
-  const arbitraryDisplayValue = getTailwindArbitraryUtilityValue(utility, "[display:");
-  if (arbitraryDisplayValue !== null) {
-    const displayValue = normalizeTailwindArbitraryUtilityValue(arbitraryDisplayValue)
-      .trim()
-      .toLowerCase();
-    if (displayValue === "none") return { isVisible: false, propertyName: "display" };
-    return VISIBLE_ARBITRARY_DISPLAY_VALUES.has(displayValue)
-      ? { isVisible: true, propertyName: "display" }
-      : null;
-  }
-
-  const arbitraryVisibilityValue = getTailwindArbitraryUtilityValue(utility, "[visibility:");
-  if (arbitraryVisibilityValue === null) return null;
-  const visibilityValue = normalizeTailwindArbitraryUtilityValue(arbitraryVisibilityValue)
-    .trim()
-    .toLowerCase();
-  if (visibilityValue === "visible") return { isVisible: true, propertyName: "visibility" };
-  return visibilityValue === "hidden" || visibilityValue === "collapse"
-    ? { isVisible: false, propertyName: "visibility" }
-    : null;
-};
 
 const getResponsiveVariantScope = (
   variants: ReadonlyArray<string>,
@@ -119,8 +35,7 @@ const getResponsiveVariantScope = (
         continue;
       }
     }
-    if (variant.startsWith("min-[") || variant.startsWith("max-[")) return null;
-    return undefined;
+    return null;
   }
   return {
     maximumBreakpointIndex,
@@ -175,11 +90,23 @@ export const getTailwindVisibilityAtBreakpoints = (
 ): ReadonlyArray<boolean> | null => {
   const scopedEffects: TailwindScopedVisibilityEffect[] = [];
   for (const token of splitTailwindClassName(className).map(parseTailwindClassNameToken)) {
-    const effect = getVisibilityEffect(token.utility);
-    if (!effect) continue;
+    const resolution = getTailwindVisibilityEffect(token.utility);
+    if (resolution.status === "not-relevant") continue;
     const scope = getResponsiveVariantScope(token.variants);
     if (scope === null) return null;
-    if (scope) scopedEffects.push({ effect, scope, token });
+    if (!scope || scope.minimumBreakpointIndex >= scope.maximumBreakpointIndex) continue;
+    if (
+      resolution.status === "unknown" ||
+      resolution.propertyName === null ||
+      resolution.isVisible === null
+    ) {
+      return null;
+    }
+    const effect: TailwindVisibilityEffect = {
+      isVisible: resolution.isVisible,
+      propertyName: resolution.propertyName,
+    };
+    scopedEffects.push({ effect, scope, token });
   }
 
   const visibilityAtBreakpoints: boolean[] = [];

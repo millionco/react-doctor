@@ -144,6 +144,8 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-multiple-main-landmarks",
   "no-nonresizable-textarea",
   "no-placeholder-only-field",
+  "no-reduced-motion-content-removal",
+  "no-responsive-hidden-accessible-name",
   "no-skipped-heading-level",
   "no-static-motion-config-never",
   "no-ungated-tailwind-animation",

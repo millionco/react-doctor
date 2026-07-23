@@ -158,6 +158,7 @@ import { jwtInsecureVerification } from "./rules/security-scan/jwt-insecure-veri
 import { keyLifecycleRisk } from "./rules/security-scan/key-lifecycle-risk.js";
 import { labelHasAssociatedControl } from "./rules/a11y/label-has-associated-control.js";
 import { lang } from "./rules/a11y/lang.js";
+import { loadingActionPreservesTrigger } from "./rules/state-and-effects/loading-action-preserves-trigger.js";
 import { localRpcNativeBridgeRisk } from "./rules/security-scan/local-rpc-native-bridge-risk.js";
 import { mcpToolCapabilityRisk } from "./rules/security-scan/mcp-tool-capability-risk.js";
 import { mdxSsrExecutionRisk } from "./rules/security-scan/mdx-ssr-execution-risk.js";
@@ -230,6 +231,7 @@ import { noChainStateUpdates } from "./rules/state-and-effects/no-chain-state-up
 import { noChildrenProp } from "./rules/react-builtins/no-children-prop.js";
 import { noClippedOverlay } from "./rules/design/no-clipped-overlay.js";
 import { noCloneElement } from "./rules/react-builtins/no-clone-element.js";
+import { noCollapseRequestErrorToEmptyState } from "./rules/state-and-effects/no-collapse-request-error-to-empty-state.js";
 import { noCollapsedLiteralOrChainAsValue } from "./rules/correctness/no-collapsed-literal-or-chain-as-value.js";
 import { noCommonRootFont } from "./rules/design/no-common-root-font.js";
 import { noConflictingSpringOptions } from "./rules/performance/no-conflicting-spring-options.js";
@@ -293,6 +295,7 @@ import { noFixedInsideTransformedAncestor } from "./rules/design/no-fixed-inside
 import { noFlatPageTypeScale } from "./rules/design/no-flat-page-type-scale.js";
 import { noFloatingThenInJsxHandler } from "./rules/correctness/no-floating-then-in-jsx-handler.js";
 import { noFlushSync } from "./rules/view-transitions/no-flush-sync.js";
+import { noFocusInAnimationCompletionHandler } from "./rules/design/no-focus-in-animation-completion-handler.js";
 import { noFocusableContentInAriaHidden } from "./rules/a11y/no-focusable-content-in-aria-hidden.js";
 import { noFocusableContentInRoleText } from "./rules/a11y/no-focusable-content-in-role-text.js";
 import { noFullLodashImport } from "./rules/bundle-size/no-full-lodash-import.js";
@@ -345,6 +348,7 @@ import { noManufacturedContrastCopy } from "./rules/design/no-manufactured-contr
 import { noManyBooleanProps } from "./rules/architecture/no-many-boolean-props.js";
 import { noMatchMediaInStateInitializer } from "./rules/performance/no-match-media-in-state-initializer.js";
 import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-effect.js";
+import { noMixedAnimationOwners } from "./rules/design/no-mixed-animation-owners.js";
 import { noMixedIconLibraries } from "./rules/design/no-mixed-icon-libraries.js";
 import { noMixedSrcsetDescriptors } from "./rules/correctness/no-mixed-srcset-descriptors.js";
 import { noMoment } from "./rules/bundle-size/no-moment.js";
@@ -396,6 +400,7 @@ import { noRandomKey } from "./rules/correctness/no-random-key.js";
 import { noReactChildren } from "./rules/react-builtins/no-react-children.js";
 import { noReactDomDeprecatedApis } from "./rules/architecture/no-react-dom-deprecated-apis.js";
 import { noReact19DeprecatedApis } from "./rules/architecture/no-react19-deprecated-apis.js";
+import { noReducedMotionContentRemoval } from "./rules/a11y/no-reduced-motion-content-removal.js";
 import { noRedundantDisplayClass } from "./rules/design/no-redundant-display-class.js";
 import { noRedundantRoles } from "./rules/a11y/no-redundant-roles.js";
 import { noRedundantShouldComponentUpdate } from "./rules/react-builtins/no-redundant-should-component-update.js";
@@ -413,6 +418,7 @@ import { noRepeatedPlaceholderNavigation } from "./rules/design/no-repeated-plac
 import { noRepeatedSectionShells } from "./rules/design/no-repeated-section-shells.js";
 import { noRepeatingGradientDecoration } from "./rules/design/no-repeating-gradient-decoration.js";
 import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-all-state-on-prop-change.js";
+import { noResponsiveHiddenAccessibleName } from "./rules/a11y/no-responsive-hidden-accessible-name.js";
 import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
 import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating-effect.js";
@@ -444,6 +450,7 @@ import { noTightDisplayTracking } from "./rules/design/no-tight-display-tracking
 import { noTinyText } from "./rules/design/no-tiny-text.js";
 import { noTinyUppercaseTrackedLabel } from "./rules/design/no-tiny-uppercase-tracked-label.js";
 import { noTransitionAll } from "./rules/performance/no-transition-all.js";
+import { noTransitionedCompositeWidgetState } from "./rules/design/no-transitioned-composite-widget-state.js";
 import { noTransitionedFocusRing } from "./rules/design/no-transitioned-focus-ring.js";
 import { noUnboundedAnimationFrameLoop } from "./rules/performance/no-unbounded-animation-frame-loop.js";
 import { noUncontrolledInput } from "./rules/correctness/no-uncontrolled-input.js";
@@ -2556,6 +2563,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/loading-action-preserves-trigger",
+    id: "loading-action-preserves-trigger",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...loadingActionPreservesTrigger,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(loadingActionPreservesTrigger.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/local-rpc-native-bridge-risk",
     id: "local-rpc-native-bridge-risk",
     source: "react-doctor",
@@ -3390,6 +3411,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-collapse-request-error-to-empty-state",
+    id: "no-collapse-request-error-to-empty-state",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCollapseRequestErrorToEmptyState,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noCollapseRequestErrorToEmptyState.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-collapsed-literal-or-chain-as-value",
     id: "no-collapsed-literal-or-chain-as-value",
     source: "react-doctor",
@@ -4147,6 +4182,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-focus-in-animation-completion-handler",
+    id: "no-focus-in-animation-completion-handler",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noFocusInAnimationCompletionHandler,
+      framework: "global",
+      category: "Accessibility",
+      tags: [...new Set(["design", ...(noFocusInAnimationCompletionHandler.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-focusable-content-in-aria-hidden",
     id: "no-focusable-content-in-aria-hidden",
     source: "react-doctor",
@@ -4781,6 +4828,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-mixed-animation-owners",
+    id: "no-mixed-animation-owners",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMixedAnimationOwners,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noMixedAnimationOwners.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-mixed-icon-libraries",
     id: "no-mixed-icon-libraries",
     source: "react-doctor",
@@ -5394,6 +5453,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-reduced-motion-content-removal",
+    id: "no-reduced-motion-content-removal",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noReducedMotionContentRemoval,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(noReducedMotionContentRemoval.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-redundant-display-class",
     id: "no-redundant-display-class",
     source: "react-doctor",
@@ -5595,6 +5668,20 @@ export const reactDoctorRules = [
       category: "Bugs",
       requires: [
         ...new Set<Capability>(["react", ...(noResetAllStateOnPropChange.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/no-responsive-hidden-accessible-name",
+    id: "no-responsive-hidden-accessible-name",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noResponsiveHiddenAccessibleName,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(noResponsiveHiddenAccessibleName.requires ?? [])]),
       ],
     },
   },
@@ -5978,6 +6065,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set<Capability>(["react", ...(noTransitionAll.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-transitioned-composite-widget-state",
+    id: "no-transitioned-composite-widget-state",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noTransitionedCompositeWidgetState,
+      framework: "global",
+      category: "Accessibility",
+      tags: [...new Set(["design", ...(noTransitionedCompositeWidgetState.tags ?? [])])],
     },
   },
   {

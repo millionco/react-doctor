@@ -188,6 +188,20 @@ describe("no-reduced-motion-content-removal", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("skips unsupported Tailwind variant scopes", () => {
+    const result = runRule(
+      noReducedMotionContentRemoval,
+      `const Example = () => <>
+        <p className="motion-reduce:hover:hidden">Interaction state</p>
+        <p className="motion-reduce:data-[state=open]:hidden">Data state</p>
+        <p className="motion-reduce:group-hover:hidden">Group state</p>
+        <p className="motion-reduce:max-[700px]:hidden">Arbitrary breakpoint</p>
+        <p className="motion-reduce:tablet:hidden">Custom breakpoint</p>
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("allows equivalent persistent text and actions", () => {
     const result = runRule(
       noReducedMotionContentRemoval,

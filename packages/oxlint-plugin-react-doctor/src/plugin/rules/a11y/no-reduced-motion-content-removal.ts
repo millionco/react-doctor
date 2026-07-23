@@ -263,7 +263,21 @@ const getEffectiveTailwindVisibility = (
 ): boolean | null =>
   getEffectiveTailwindVisibilityOverride(parsedTokens, targetVariantScope, propertyName) ?? true;
 
-const hasSatisfiableReducedMotionScope = (variants: ReadonlyArray<string>): boolean => {
+const isSupportedSatisfiableReducedMotionScope = (variants: ReadonlyArray<string>): boolean => {
+  if (
+    variants.some((variant) => {
+      if (isTailwindReducedMotionVariant(variant) || isTailwindMotionSafeVariant(variant)) {
+        return false;
+      }
+      if (TAILWIND_BREAKPOINT_NAMES.indexOf(variant) > 0) return false;
+      return (
+        !variant.startsWith("max-") ||
+        TAILWIND_BREAKPOINT_NAMES.indexOf(variant.slice("max-".length)) <= 0
+      );
+    })
+  ) {
+    return false;
+  }
   if (variants.some(isTailwindReducedMotionVariant) && variants.some(isTailwindMotionSafeVariant)) {
     return false;
   }
@@ -301,7 +315,7 @@ const getEffectiveReducedMotionScopes = (className: string): string[][] => {
     if (
       (token.utility !== "hidden" && token.utility !== "invisible") ||
       !token.variants.some(isTailwindReducedMotionVariant) ||
-      !hasSatisfiableReducedMotionScope(token.variants)
+      !isSupportedSatisfiableReducedMotionScope(token.variants)
     ) {
       continue;
     }

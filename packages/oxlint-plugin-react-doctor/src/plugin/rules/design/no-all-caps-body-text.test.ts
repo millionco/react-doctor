@@ -35,6 +35,14 @@ describe("no-all-caps-body-text", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag long body copy in caseless scripts", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <><p>一部のフォルダにアクセスできないため、移動対象を検出できていない可能性があります。フォルダのアクセス権を確認してから更新してください。</p><p className="uppercase">일부 폴더에 접근할 수 없어서 이동할 항목을 찾지 못했을 수 있습니다. 폴더 접근 권한을 확인한 다음 다시 시도해 주세요.</p></>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("uses the last duplicate inline text transform", () => {
     const result = runRule(
       noAllCapsBodyText,

@@ -150,6 +150,21 @@ describe("no-reduced-motion-content-removal", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("preserves ambiguous Tailwind visibility on ancestors", () => {
+    const result = runRule(
+      noReducedMotionContentRemoval,
+      `const Example = () => <>
+        <div className="motion-reduce:block motion-reduce:hidden">
+          <p className="motion-reduce:hidden">Ambiguous display ancestor</p>
+        </div>
+        <div className="motion-reduce:visible motion-reduce:invisible">
+          <p className="motion-reduce:hidden">Ambiguous visibility ancestor</p>
+        </div>
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("resolves arbitrary Tailwind display and visibility utilities conservatively", () => {
     const result = runRule(
       noReducedMotionContentRemoval,

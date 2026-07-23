@@ -260,8 +260,14 @@ const getEffectiveTailwindVisibility = (
   parsedTokens: ReadonlyArray<TailwindClassNameToken>,
   targetVariantScope: ReadonlyArray<string>,
   propertyName: TailwindVisibilityEffect["propertyName"],
-): boolean | null =>
-  getEffectiveTailwindVisibilityOverride(parsedTokens, targetVariantScope, propertyName) ?? true;
+): boolean | null => {
+  const visibility = getEffectiveTailwindVisibilityOverride(
+    parsedTokens,
+    targetVariantScope,
+    propertyName,
+  );
+  return visibility === undefined ? true : visibility;
+};
 
 const isSupportedSatisfiableReducedMotionScope = (variants: ReadonlyArray<string>): boolean => {
   if (

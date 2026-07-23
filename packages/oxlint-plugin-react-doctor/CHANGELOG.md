@@ -1,5 +1,17 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.1
+
+### Patch Changes
+
+- [#1428](https://github.com/millionco/react-doctor/pull/1428) [`1e67af0`](https://github.com/millionco/react-doctor/commit/1e67af03fec0991aaa9607fdf1b7e8719a63614c) Thanks [@aidenybai](https://github.com/aidenybai)! - Add seven conservative diagnostics for responsive accessible names, reduced-motion content, animation ownership and focus timing, loading-control identity, request error states, and composite-widget feedback. Keep project-wide reduced-motion policy on the existing `require-reduced-motion` diagnostic instead of introducing a duplicate rule.
+
+- [#1439](https://github.com/millionco/react-doctor/pull/1439) [`707378a`](https://github.com/millionco/react-doctor/commit/707378adbff159480c1182a578f109bc97014624) Thanks [@skoshx](https://github.com/skoshx)! - Prevent AST traversal from overflowing the JavaScript call stack on deeply nested code.
+
+- [#1431](https://github.com/millionco/react-doctor/pull/1431) [`8765ca3`](https://github.com/millionco/react-doctor/commit/8765ca32742e03957957dcc5f12d3c913c46a4bc) Thanks [@aidenybai](https://github.com/aidenybai)! - Skip caseless scripts in no-all-caps-body-text so CJK body copy is not mistaken for uppercase.
+
+- [#1434](https://github.com/millionco/react-doctor/pull/1434) [`db9d300`](https://github.com/millionco/react-doctor/commit/db9d30034303d1e1b959441e036df14afc81957d) Thanks [@aidenybai](https://github.com/aidenybai)! - Make every design-tagged rule opt-in during general scans while keeping the focused design command and explicit rule configuration able to enable them.
+
 ## 0.9.0
 
 ### Patch Changes

@@ -165,7 +165,7 @@ export const readAndroidReleaseShrinking = (
     try {
       contents = stripGradleComments(fs.readFileSync(absoluteFilePath, "utf-8"));
     } catch {
-      return null;
+      continue;
     }
 
     const blockDetectionContents = maskGradleStrings(
@@ -173,7 +173,7 @@ export const readAndroidReleaseShrinking = (
     );
     const releaseBlocks = getReleaseBlocks(blockDetectionContents);
     const [releaseBlock] = releaseBlocks;
-    if (releaseBlock === undefined || releaseBlocks.length !== 1) return null;
+    if (releaseBlock === undefined || releaseBlocks.length !== 1) continue;
     const hasDisabledMinification =
       getFinalStaticBoolean(releaseBlock, MINIFY_ASSIGNMENT_PATTERN) === false;
     const hasDisabledResourceShrinking =

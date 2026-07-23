@@ -687,6 +687,52 @@ describe("checkReactNativeProject — Babel plugin order", () => {
     ).toContain("rn-react-compiler-plugin-first");
   });
 
+  it("falls back to a lower-priority static Babel config", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(projectDirectory, "babel.config.js", `module.exports = { plugins: [`);
+    writeFile(
+      projectDirectory,
+      "babel.config.cjs",
+      `module.exports = { plugins: ['other-plugin', 'babel-plugin-react-compiler'] };`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-react-compiler-plugin-first");
+  });
+
+  it("falls back to a static package.json Babel config", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+      babel: { plugins: ["other-plugin", "babel-plugin-react-compiler"] },
+    });
+    writeFile(projectDirectory, "babel.config.js", `module.exports = getConfig();`);
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-react-compiler-plugin-first");
+  });
+
+  it("keeps the first statically readable Babel config authoritative", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+      babel: { plugins: ["other-plugin", "babel-plugin-react-compiler"] },
+    });
+    writeFile(projectDirectory, "babel.config.js", `module.exports = { plugins: [] };`);
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-react-compiler-plugin-first");
+  });
+
   it("does NOT infer plugin order from a dynamic plugin array", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {
@@ -901,4 +947,49 @@ describe("checkReactNativeProject — Android release shrinking", () => {
     ).not.toContain("rn-android-release-shrinking-disabled");
   });
 
+  it.each([
+    ["missing", `android { buildTypes { debug { minifyEnabled false } } }`],
+    [
+      "ambiguous",
+      `android { buildTypes { release { minifyEnabled true } release { minifyEnabled false } } }`,
+    ],
+  ])("falls back after a %s release block", (_caseName, groovyBuildContents) => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(projectDirectory, "android/app/build.gradle", groovyBuildContents);
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle.kts",
+      `android { buildTypes { getByName("release") { isMinifyEnabled = false } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-android-release-shrinking-disabled");
+  });
+
+  it("keeps the first statically readable Gradle file authoritative", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle",
+      `android { buildTypes { release { minifyEnabled true } } }`,
+    );
+    writeFile(
+      projectDirectory,
+      "android/app/build.gradle.kts",
+      `android { buildTypes { getByName("release") { isMinifyEnabled = false } } }`,
+    );
+
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-android-release-shrinking-disabled");
+  });
 });

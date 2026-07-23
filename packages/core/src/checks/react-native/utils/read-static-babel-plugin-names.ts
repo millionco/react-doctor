@@ -156,12 +156,17 @@ export const readStaticBabelPluginNames = (
     const absoluteFilePath = path.join(rootDirectory, fileName);
     if (!isFile(absoluteFilePath)) continue;
     try {
+      const pluginNames = parseConfigPluginNames(
+        fileName,
+        fs.readFileSync(absoluteFilePath, "utf-8"),
+      );
+      if (pluginNames === null) continue;
       return {
         filePath: fileName,
-        pluginNames: parseConfigPluginNames(fileName, fs.readFileSync(absoluteFilePath, "utf-8")),
+        pluginNames,
       };
     } catch {
-      return { filePath: fileName, pluginNames: null };
+      continue;
     }
   }
 

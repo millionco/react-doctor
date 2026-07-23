@@ -2,6 +2,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 import { RECYCLABLE_LIST_PACKAGE_SOURCES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
+import { getFinalSequenceExpressionValue } from "../../utils/get-final-sequence-expression-value.js";
 import { getStaticLogicalExpressionResultBranches } from "../../utils/get-static-logical-expression-result-branches.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
@@ -69,7 +70,7 @@ const collectReturnedJsxRootNames = (
   names: Set<string>,
   scopes: ScopeAnalysis,
 ): void => {
-  const unwrappedExpression = stripParenExpression(expression);
+  const unwrappedExpression = getFinalSequenceExpressionValue(expression);
   if (
     isNodeOfType(unwrappedExpression, "JSXElement") ||
     isNodeOfType(unwrappedExpression, "JSXFragment")

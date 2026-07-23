@@ -8,11 +8,15 @@ import { ScrollView, View } from "react-native";
 
 const sideEffect = () => undefined;
 
-export const ShortCircuitSheetChildren = () => (
+export const ShortCircuitSheetChildren = ({ condition }) => (
   <BottomSheet>
     {<ScrollView /> && <View />}
     {<View /> || <ScrollView />}
     {<View /> ?? <ScrollView />}
     {(sideEffect(), (<View />)) || <ScrollView />}
+    {condition && <ScrollView /> && <View />}
+    {condition || <View /> || <ScrollView />}
+    {condition ?? <View /> ?? <ScrollView />}
+    {condition || (<ScrollView /> && <View />)}
   </BottomSheet>
 );

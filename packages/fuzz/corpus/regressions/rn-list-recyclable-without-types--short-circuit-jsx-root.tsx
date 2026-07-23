@@ -8,10 +8,13 @@ import { FlashList } from "@shopify/flash-list";
 const Header = () => null;
 const Row = () => null;
 
-export const ShortCircuitRows = ({ items }) => (
+export const ShortCircuitRows = ({ condition, items }) => (
   <>
     <FlashList data={items} recycleItems renderItem={() => <Header /> && <Row />} />
     <FlashList data={items} recycleItems renderItem={() => <Header /> || <Row />} />
     <FlashList data={items} recycleItems renderItem={() => <Header /> ?? <Row />} />
+    <FlashList data={items} recycleItems renderItem={() => condition && <Header /> && <Row />} />
+    <FlashList data={items} recycleItems renderItem={() => condition || <Header /> || <Row />} />
+    <FlashList data={items} recycleItems renderItem={() => condition ?? <Header /> ?? <Row />} />
   </>
 );

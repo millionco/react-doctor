@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { rnListRecyclableWithoutTypes } from "./rn-list-recyclable-without-types.js";
 
+const LOGICAL_CHAIN_LENGTH = 24;
+
 describe("react-native/rn-list-recyclable-without-types — regressions", () => {
   it("recommends a data-shape-agnostic getItemType", () => {
     expect(rnListRecyclableWithoutTypes.recommendation).toContain(
@@ -202,6 +204,8 @@ const C = () => (<FlashList data={items} renderItem={renderItem} />);`,
   it.each([
     `(item.kind === "header" && <Header />) || <Row />`,
     `(item.kind === "header" ? <Header /> : null) ?? <Row />`,
+    `(null, item.kind === "header" ? <Header /> : <Row />)`,
+    `item.kind === "header" ? (null, <Header />) : <Row />`,
   ])("flags heterogeneous logical render roots: %s", (renderItemExpression) => {
     const result = runRule(
       rnListRecyclableWithoutTypes,
@@ -213,19 +217,42 @@ const C = () => (<FlashList data={items} renderItem={({ item }) => ${renderItemE
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it.each([`<Header /> && <Row />`, `<Header /> || <Row />`, `<Header /> ?? <Row />`])(
-    "stays silent when a logical expression returns one static JSX root: %s",
-    (expression) => {
-      const result = runRule(
-        rnListRecyclableWithoutTypes,
-        `import { FlashList } from "@shopify/flash-list";
+  it.each([
+    `<Header /> && <Row />`,
+    `<Header /> || <Row />`,
+    `<Header /> ?? <Row />`,
+    `condition && <Header /> && <Row />`,
+    `condition || <Header /> || <Row />`,
+    `condition ?? <Header /> ?? <Row />`,
+    `condition || (<Header /> && <Row />)`,
+    `(condition ? <Header /> : <Row />, <Row />)`,
+  ])("stays silent when a logical expression returns one static JSX root: %s", (expression) => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
 const C = () => (<FlashList data={items} renderItem={() => (${expression})} />);`,
-        { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
-      );
-      expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toEqual([]);
-    },
-  );
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps chained conditional logical analysis bounded", () => {
+    const chainedExpression = Array.from(
+      { length: LOGICAL_CHAIN_LENGTH },
+      (_, operandIndex) => `(conditions[${operandIndex}] ? <Row /> : <Row />)`,
+    ).join(" && ");
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList } from "@shopify/flash-list";
+const C = () => (
+  <FlashList data={items} renderItem={() => (${chainedExpression})} />
+);`,
+      { settings: { "react-doctor": { shopifyFlashListMajorVersion: 2 } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 
   it("flags a fragment root mixed with an element root", () => {
     const result = runRule(

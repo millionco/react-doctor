@@ -88,12 +88,19 @@ describe("rn-bottom-sheet-use-integrated-scrollable", () => {
       import BottomSheet from "@gorhom/bottom-sheet";
       import { ScrollView, View } from "react-native";
       const sideEffect = () => undefined;
-      const Screen = () => (
+      const Screen = ({ condition }) => (
         <BottomSheet>
           {<ScrollView /> && <View />}
           {<View /> || <ScrollView />}
           {<View /> ?? <ScrollView />}
           {(sideEffect(), <View />) || <ScrollView />}
+          {condition && <ScrollView /> && <View />}
+          {condition || <View /> || <ScrollView />}
+          {condition ?? <View /> ?? <ScrollView />}
+          {condition || (<ScrollView /> && <View />)}
+          {false && <ScrollView />}
+          {true || <ScrollView />}
+          {false ?? <ScrollView />}
         </BottomSheet>
       );
     `;
@@ -107,18 +114,25 @@ describe("rn-bottom-sheet-use-integrated-scrollable", () => {
       import BottomSheet from "@gorhom/bottom-sheet";
       import { ScrollView, View } from "react-native";
       const sideEffect = () => undefined;
-      const Screen = () => (
+      const Screen = ({ condition }) => (
         <BottomSheet>
           {<View /> && <ScrollView />}
           {<ScrollView /> || <View />}
           {<ScrollView /> ?? <View />}
           {(sideEffect(), <View />) && <ScrollView />}
+          {condition && <View /> && <ScrollView />}
+          {condition || <ScrollView /> || <View />}
+          {condition ?? <ScrollView /> ?? <View />}
+          {condition || (<View /> && <ScrollView />)}
+          {true && <ScrollView />}
+          {false || <ScrollView />}
+          {null ?? <ScrollView />}
         </BottomSheet>
       );
     `;
     const result = runRule(rnBottomSheetUseIntegratedScrollable, code);
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(4);
+    expect(result.diagnostics).toHaveLength(11);
   });
 
   it("reports a scrollable only once when Bottom Sheets are nested", () => {

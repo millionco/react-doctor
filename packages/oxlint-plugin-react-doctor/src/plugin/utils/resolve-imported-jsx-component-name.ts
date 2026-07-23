@@ -1,9 +1,9 @@
-import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
-import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
-import { getImportDeclarationForSymbol } from "../../../utils/get-import-declaration-for-symbol.js";
-import { getImportedName } from "../../../utils/get-imported-name.js";
-import { isNodeOfType } from "../../../utils/is-node-of-type.js";
-import { isTypeOnlyImport } from "../../../utils/is-type-only-import.js";
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { getImportDeclarationForSymbol } from "./get-import-declaration-for-symbol.js";
+import { getImportedName } from "./get-imported-name.js";
+import { isNodeOfType } from "./is-node-of-type.js";
+import { isTypeOnlyImport } from "./is-type-only-import.js";
 
 export const resolveImportedJsxComponentName = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,

@@ -4,9 +4,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveImportedJsxComponentName } from "../../utils/resolve-imported-jsx-component-name.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
-import { resolveImportedJsxComponentName } from "./utils/resolve-imported-jsx-component-name.js";
 
 const GORHOM_BOTTOM_SHEET_MODULE = "@gorhom/bottom-sheet";
 const BOTTOM_SHEET_CONTAINER_NAMES: ReadonlySet<string> = new Set([

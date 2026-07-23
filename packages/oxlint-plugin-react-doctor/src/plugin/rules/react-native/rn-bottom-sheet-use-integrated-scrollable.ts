@@ -2,7 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticJsxDescendantOpeningElements } from "../../utils/get-static-jsx-descendant-opening-elements.js";
-import { resolveImportedJsxComponentName } from "./utils/resolve-imported-jsx-component-name.js";
+import { resolveImportedJsxComponentName } from "../../utils/resolve-imported-jsx-component-name.js";
 
 const GORHOM_BOTTOM_SHEET_MODULE = "@gorhom/bottom-sheet";
 const REACT_NATIVE_MODULE = "react-native";

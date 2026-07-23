@@ -2,7 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { resolveImportedJsxComponentName } from "./utils/resolve-imported-jsx-component-name.js";
+import { resolveImportedJsxComponentName } from "../../utils/resolve-imported-jsx-component-name.js";
 
 const GORHOM_BOTTOM_SHEET_MODULE = "@gorhom/bottom-sheet";
 const IGNORED_SCROLL_PROPERTY_NAMES: ReadonlySet<string> = new Set([

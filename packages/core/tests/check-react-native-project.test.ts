@@ -900,5 +900,4 @@ describe("checkReactNativeProject — Android release shrinking", () => {
       rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
     ).not.toContain("rn-android-release-shrinking-disabled");
   });
-
 });

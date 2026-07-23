@@ -17,6 +17,7 @@ import { isProvenReactClassComponent as isProvenReactClassNode } from "../../uti
 import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
+import { unwrapProvenReactHocFunction } from "../../utils/unwrap-proven-react-hoc-function.js";
 import {
   resolveCrossFileValueExportWithFilePath,
   type ResolvedCrossFileValueExport,
@@ -159,39 +160,6 @@ const getEnvironment = (
   const environment = { filename, program, scopes: analyzeScopes(program) };
   state.environmentsByProgram.set(program, environment);
   return environment;
-};
-
-const unwrapProvenReactHocFunction = (
-  node: EsTreeNode | null,
-  scopes: ScopeAnalysis,
-  visitedSymbolIds: Set<number> = new Set(),
-): EsTreeNode | null => {
-  if (!node) return null;
-  const current = findTransparentExpressionRoot(node);
-  if (isFunctionLike(current)) return current;
-  if (isNodeOfType(current, "Identifier")) {
-    const symbol = scopes.symbolFor(current);
-    if (
-      !symbol ||
-      visitedSymbolIds.has(symbol.id) ||
-      !symbol.initializer ||
-      hasSymbolWriteBefore(symbol, current, scopes)
-    ) {
-      return null;
-    }
-    visitedSymbolIds.add(symbol.id);
-    return unwrapProvenReactHocFunction(symbol.initializer, scopes, visitedSymbolIds);
-  }
-  if (!isNodeOfType(current, "CallExpression")) return null;
-  if (
-    !isProvenReactCall(current, "memo", scopes) &&
-    !isProvenReactCall(current, "forwardRef", scopes)
-  ) {
-    return null;
-  }
-  const firstArgument = current.arguments[0];
-  if (!firstArgument || isNodeOfType(firstArgument, "SpreadElement")) return null;
-  return unwrapProvenReactHocFunction(firstArgument, scopes, visitedSymbolIds);
 };
 
 const isForwardRefValue = (

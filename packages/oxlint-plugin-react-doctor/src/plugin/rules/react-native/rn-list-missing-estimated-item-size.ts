@@ -1,8 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { RECYCLABLE_LIST_PACKAGE_SOURCES } from "../../constants/react-native.js";
+import {
+  LEGEND_LIST_V3_PACKAGE_SOURCES,
+  RECYCLABLE_LIST_PACKAGE_SOURCES,
+  SHOPIFY_FLASH_LIST_COMPONENTS,
+} from "../../constants/react-native.js";
 import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
+import { resolveImportedJsxComponentName } from "../../utils/resolve-imported-jsx-component-name.js";
 import { isFlashListV2OrNewer } from "./utils/is-flash-list-v2-or-newer.js";
 import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -50,9 +55,19 @@ export const rnListMissingEstimatedItemSize = defineRule({
         // both plain (`import { FlashList }`) and aliased
         // (`import { FlashList as List }; <List />`) imports — we never
         // key off the local JSX name directly.
-        const canonicalRecyclerName = resolveImportedRecyclerName(node, localElementName);
+        const canonicalRecyclerName = resolveImportedRecyclerName(node, context.scopes);
         if (canonicalRecyclerName === null) return;
-        if (canonicalRecyclerName === "FlashList" && isFlashListV2OrNewer(context)) return;
+        const isLegendListV3EntryPoint = [...LEGEND_LIST_V3_PACKAGE_SOURCES].some(
+          (packageSource) =>
+            resolveImportedJsxComponentName(node, packageSource, context.scopes) !== null,
+        );
+        if (isLegendListV3EntryPoint) return;
+        if (
+          SHOPIFY_FLASH_LIST_COMPONENTS.has(canonicalRecyclerName) &&
+          isFlashListV2OrNewer(context)
+        ) {
+          return;
+        }
 
         let hasSizingHint = false;
         let dataIsEmptyLiteral = false;

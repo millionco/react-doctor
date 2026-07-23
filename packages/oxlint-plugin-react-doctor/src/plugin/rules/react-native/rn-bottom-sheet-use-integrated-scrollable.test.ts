@@ -53,6 +53,57 @@ describe("rn-bottom-sheet-use-integrated-scrollable", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("collects scrollables selected by static conditional tests", () => {
+    const code = `
+      import BottomSheet from "@gorhom/bottom-sheet";
+      import { ScrollView, View } from "react-native";
+      const sideEffect = () => undefined;
+      const Screen = () => (
+        <BottomSheet>
+          {true ? <ScrollView /> : <View />}
+          {false ? <View /> : <ScrollView />}
+          {(sideEffect(), true) ? <ScrollView /> : <View />}
+        </BottomSheet>
+      );
+    `;
+    const result = runRule(rnBottomSheetUseIntegratedScrollable, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("ignores scrollables excluded by static conditional tests", () => {
+    const code = `
+      import BottomSheet from "@gorhom/bottom-sheet";
+      import { ScrollView, View } from "react-native";
+      const sideEffect = () => undefined;
+      const Screen = () => (
+        <BottomSheet>
+          {false ? <ScrollView /> : <View />}
+          {true ? <View /> : <ScrollView />}
+          {(sideEffect(), false) ? <ScrollView /> : <View />}
+        </BottomSheet>
+      );
+    `;
+    const result = runRule(rnBottomSheetUseIntegratedScrollable, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("collects both branches of dynamic conditional tests", () => {
+    const code = `
+      import BottomSheet from "@gorhom/bottom-sheet";
+      import { FlatList, ScrollView } from "react-native";
+      const Screen = ({ useList }) => (
+        <BottomSheet>
+          {useList ? <FlatList data={items} /> : <ScrollView />}
+        </BottomSheet>
+      );
+    `;
+    const result = runRule(rnBottomSheetUseIntegratedScrollable, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("ignores JSX discarded before the final sequence value", () => {
     const code = `
       import BottomSheet from "@gorhom/bottom-sheet";

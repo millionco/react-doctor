@@ -44,8 +44,9 @@ const checkReanimatedPluginOrder = (
     return [];
   }
 
+  const diagnostics: Diagnostic[] = [];
   if (pluginNames.includes(REANIMATED_PLUGIN_NAME)) {
-    return [
+    diagnostics.push(
       buildReactNativeDiagnostic({
         filePath,
         rule: "rn-reanimated-worklets-plugin-last",
@@ -54,21 +55,23 @@ const checkReanimatedPluginOrder = (
           "This Reanimated 4 project still uses `react-native-reanimated/plugin`, which was renamed to the Worklets Babel plugin.",
         help: "Replace it with `react-native-worklets/plugin` and keep that plugin last in the Babel `plugins` array.",
       }),
-    ];
+    );
   }
 
   const workletsPluginIndex = pluginNames.lastIndexOf(WORKLETS_PLUGIN_NAME);
-  if (workletsPluginIndex === -1 || workletsPluginIndex === pluginNames.length - 1) return [];
-  return [
-    buildReactNativeDiagnostic({
-      filePath,
-      rule: "rn-reanimated-worklets-plugin-last",
-      category: "Performance",
-      message:
-        "`react-native-worklets/plugin` is not last in the Babel `plugins` array, so later transforms can prevent worklets from being compiled correctly.",
-      help: "Move `react-native-worklets/plugin` to the final entry in the Babel `plugins` array.",
-    }),
-  ];
+  if (workletsPluginIndex !== -1 && workletsPluginIndex !== pluginNames.length - 1) {
+    diagnostics.push(
+      buildReactNativeDiagnostic({
+        filePath,
+        rule: "rn-reanimated-worklets-plugin-last",
+        category: "Performance",
+        message:
+          "`react-native-worklets/plugin` is not last in the Babel `plugins` array, so later transforms can prevent worklets from being compiled correctly.",
+        help: "Move `react-native-worklets/plugin` to the final entry in the Babel `plugins` array.",
+      }),
+    );
+  }
+  return diagnostics;
 };
 
 export const checkReactNativeBabelPluginOrder = (

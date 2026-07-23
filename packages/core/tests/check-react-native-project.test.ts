@@ -467,6 +467,57 @@ describe("checkReactNativeProject — Babel plugin order", () => {
     );
   });
 
+  it("flags both migration and ordering when legacy Reanimated and misplaced Worklets plugins coexist", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "^4.0.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['react-native-reanimated/plugin', 'react-native-worklets/plugin', 'other-plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "^4.0.0",
+    });
+
+    const diagnostics = checkReactNativeProject(projectDirectory, project).filter(
+      (diagnostic) => diagnostic.rule === "rn-reanimated-worklets-plugin-last",
+    );
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("still uses `react-native-reanimated/plugin`"),
+        expect.stringContaining("`react-native-worklets/plugin` is not last"),
+      ]),
+    );
+  });
+
+  it("only flags migration when legacy Reanimated and final Worklets plugins coexist", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.82.0", "react-native-reanimated": "^4.0.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { plugins: ['react-native-reanimated/plugin', 'react-native-worklets/plugin'] };`,
+    );
+    const project = buildRnProject(projectDirectory, "react-native", {
+      hasReanimated: true,
+      reanimatedVersion: "^4.0.0",
+    });
+
+    const diagnostics = checkReactNativeProject(projectDirectory, project).filter(
+      (diagnostic) => diagnostic.rule === "rn-reanimated-worklets-plugin-last",
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("still uses `react-native-reanimated/plugin`");
+  });
+
   it("does NOT flag the Reanimated plugin in a Reanimated 3 project", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {
@@ -849,4 +900,5 @@ describe("checkReactNativeProject — Android release shrinking", () => {
       rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
     ).not.toContain("rn-android-release-shrinking-disabled");
   });
+
 });

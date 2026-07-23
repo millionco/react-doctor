@@ -3,6 +3,7 @@ import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { getFinalSequenceExpressionValue } from "./get-final-sequence-expression-value.js";
 import { getStaticLogicalExpressionResultBranches } from "./get-static-logical-expression-result-branches.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { readStaticBoolean } from "./read-static-boolean.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 export interface StaticJsxDescendantOptions {
@@ -34,6 +35,15 @@ const appendDescendant = (
     return;
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
+    const staticTestValue = readStaticBoolean(getFinalSequenceExpressionValue(expression.test));
+    if (staticTestValue !== null) {
+      appendDescendant(
+        staticTestValue ? expression.consequent : expression.alternate,
+        descendants,
+        true,
+      );
+      return;
+    }
     appendDescendant(expression.consequent, descendants, true);
     appendDescendant(expression.alternate, descendants, true);
     return;

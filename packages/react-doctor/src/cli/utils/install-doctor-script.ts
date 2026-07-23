@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 
 const DOCTOR_SCRIPT_NAME = "doctor";
 const FALLBACK_DOCTOR_SCRIPT_NAME = "react-doctor";
-const DOCTOR_SCRIPT_COMMAND = "npx react-doctor@latest";
+const DOCTOR_SCRIPT_COMMAND = "npx react-doctor@0.x";
 export const DOCTOR_PACKAGE_NAME = "react-doctor";
 
 const DEPENDENCY_FIELD_NAMES: readonly string[] = [
@@ -172,7 +172,7 @@ const formatDoctorScriptInstallMessage = (scriptResult: InstallDoctorScriptResul
 };
 
 // Adds the `doctor` (or `react-doctor`) script to package.json so users can
-// run `pnpm doctor` / `npm run doctor`. The script invokes `npx react-doctor@latest`,
+// run `pnpm doctor` / `npm run doctor`. The script invokes `npx react-doctor@0.x`,
 // so no local dev-dep is required for it to work — that's why the "Add to CI"
 // path calls this step directly instead of the full package-setup function.
 export const installReactDoctorScriptStep = (projectRoot: string): void => {

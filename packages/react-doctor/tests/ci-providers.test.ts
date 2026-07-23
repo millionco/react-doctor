@@ -324,7 +324,7 @@ describe("gitlabCiProvider", () => {
     const onlyBlocking = [
       "react-doctor:",
       "  script:",
-      "    - npx react-doctor@latest --blocking none",
+      "    - npx react-doctor@0.x --blocking none",
       "",
     ].join("\n");
     const edited = gitlabCiProvider.applyGate(onlyBlocking, { ...ADVISORY_GATE, scope: "full" });
@@ -335,15 +335,15 @@ describe("gitlabCiProvider", () => {
     const withInstall = [
       "react-doctor:",
       "  script:",
-      "    - npm install react-doctor@latest",
-      "    - npx react-doctor@latest --blocking none --scope changed",
+      "    - npm install react-doctor@0.x",
+      "    - npx react-doctor@0.x --blocking none --scope changed",
       "",
     ].join("\n");
     expect(gitlabCiProvider.parseGate(withInstall)).toEqual(ADVISORY_GATE);
     const edited = gitlabCiProvider.applyGate(withInstall, { ...ADVISORY_GATE, blocking: "error" });
-    expect(edited?.content).toContain("- npm install react-doctor@latest");
+    expect(edited?.content).toContain("- npm install react-doctor@0.x");
     expect(edited?.content).toContain("--blocking error");
-    expect(edited?.content).not.toContain("install react-doctor@latest --blocking");
+    expect(edited?.content).not.toContain("install react-doctor@0.x --blocking");
   });
 
   it("handles a multiline block-scalar script", () => {
@@ -351,7 +351,7 @@ describe("gitlabCiProvider", () => {
       "react-doctor:",
       "  script:",
       "    - |",
-      "      npx react-doctor@latest --blocking error --scope changed",
+      "      npx react-doctor@0.x --blocking error --scope changed",
       "",
     ].join("\n");
     expect(gitlabCiProvider.containsReactDoctor(block)).toBe(true);
@@ -384,7 +384,7 @@ describe("gitlabCiProvider", () => {
       "    - some-tool --blocking warning --scope full",
       "react-doctor:",
       "  script:",
-      '    - npx react-doctor@latest --blocking error --scope changed --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"',
+      '    - npx react-doctor@0.x --blocking error --scope changed --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"',
       "",
     ].join("\n");
     const gate = gitlabCiProvider.parseGate(merged);
@@ -397,7 +397,7 @@ describe("gitlabCiProvider", () => {
       "# legacy: react-doctor --blocking warning --scope full",
       "react-doctor:",
       "  script:",
-      "    - npx react-doctor@latest --blocking error --scope changed",
+      "    - npx react-doctor@0.x --blocking error --scope changed",
       "",
     ].join("\n");
     const gate = gitlabCiProvider.parseGate(config);

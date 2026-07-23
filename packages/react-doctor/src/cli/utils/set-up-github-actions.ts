@@ -16,7 +16,7 @@ export interface SetUpGitHubActionsOptions {
 
 // Sets React Doctor up to scan every pull request: writes the GitHub Actions
 // workflow + adds a `doctor` package script (which runs
-// `npx react-doctor@latest`, no local dep required). The local dev-dep install
+// `npx react-doctor@0.x`, no local dep required). The local dev-dep install
 // isn't called from this path: nothing here needs it, and on pnpm with a beta
 // channel it noisily trips the supply-chain trust guard for zero user benefit.
 // Users who want a pinned local copy go through the `react-doctor install`

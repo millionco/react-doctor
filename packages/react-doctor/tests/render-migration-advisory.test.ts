@@ -65,7 +65,7 @@ describe("migration-scale advisory", () => {
     expect(text).toContain("Manual memoization");
     expect(text).toContain(`×${fileCount} across ${fileCount} files`);
     expect(text).toContain("get the code owner's sign-off");
-    expect(text).toContain("npx react-doctor@latest <path>");
+    expect(text).toContain("npx react-doctor@0.x <path>");
   });
 
   it("counts files, not raw sites, so a rule hammering few files stays silent", () => {

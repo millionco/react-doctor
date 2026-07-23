@@ -39,7 +39,7 @@ const isScanLine = (line: string): boolean => {
 const stripTrailingComment = (line: string): string => line.replace(/\s+#.*$/, "");
 
 const buildScanCommand = (gate: CiGate): string =>
-  `npx react-doctor@latest --blocking ${gate.blocking} --scope ${gate.scope}${gate.scope === "full" ? "" : BASE_FLAG}`;
+  `npx react-doctor@0.x --blocking ${gate.blocking} --scope ${gate.scope}${gate.scope === "full" ? "" : BASE_FLAG}`;
 
 // A single GitLab CI job that scans every merge request. GitLab has no React
 // Doctor comment or commit-status reporter yet, so the scaffold is gate-only:

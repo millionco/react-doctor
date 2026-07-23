@@ -8,8 +8,8 @@ describe("classifyVersionSpec", () => {
   it("treats `latest` as a cacheable registry range", () => {
     expect(classifyVersionSpec("latest")).toEqual({
       cacheable: true,
-      spec: "react-doctor@latest",
-      registryRange: "latest",
+      spec: "react-doctor@0.x",
+      registryRange: "0.x",
     });
   });
 
@@ -50,8 +50,8 @@ describe("classifyVersionSpec", () => {
     });
   });
 
-  it("defaults an empty / undefined version to `latest`", () => {
-    const expected = { cacheable: true, spec: "react-doctor@latest", registryRange: "latest" };
+  it("defaults an empty / undefined version to `0.x`", () => {
+    const expected = { cacheable: true, spec: "react-doctor@0.x", registryRange: "0.x" };
     expect(classifyVersionSpec("")).toEqual(expected);
     expect(classifyVersionSpec(undefined)).toEqual(expected);
   });
@@ -59,8 +59,8 @@ describe("classifyVersionSpec", () => {
   it("trims surrounding whitespace", () => {
     expect(classifyVersionSpec("  latest  ")).toEqual({
       cacheable: true,
-      spec: "react-doctor@latest",
-      registryRange: "latest",
+      spec: "react-doctor@0.x",
+      registryRange: "0.x",
     });
   });
 });

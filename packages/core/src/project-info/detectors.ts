@@ -278,6 +278,10 @@ export const frameworkMergeRank = (framework: Framework): number => {
 };
 
 const REACT_COMPILER_LINT_PACKAGES = new Set(["eslint-plugin-react-compiler"]);
+const REACT_COMPILER_PACKAGES = new Set([
+  "babel-plugin-react-compiler",
+  "react-compiler-runtime",
+]);
 
 const NEXT_CONFIG_FILENAMES = [
   "next.config.js",
@@ -2045,6 +2049,8 @@ const hasCompilerConfigurationInAncestors = (directory: string): boolean => {
 };
 
 export const detectReactCompiler = (directory: string, packageJson: PackageJson): boolean =>
+  hasCompilerPackage(packageJson, REACT_COMPILER_PACKAGES) ||
+  hasCompilerPackageInAncestors(directory, REACT_COMPILER_PACKAGES) ||
   hasCompilerConfiguration(directory, packageJson) ||
   hasCompilerConfigurationInAncestors(directory);
 

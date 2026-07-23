@@ -12,6 +12,7 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 
 const BODY_TEXT_ELEMENT_NAMES = new Set(["blockquote", "dd", "figcaption", "li", "p", "td"]);
 const LETTER_PATTERN = /\p{L}/u;
+const UPPERCASE_LETTER_PATTERN = /\p{Lu}/u;
 const LOWERCASE_LETTER_PATTERN = /\p{Ll}/u;
 
 const hasUppercaseStyle = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
@@ -47,7 +48,9 @@ export const noAllCapsBodyText = defineRule({
       if (staticText.length < LONG_BODY_TEXT_MIN_CHARACTERS || !LETTER_PATTERN.test(staticText)) {
         return;
       }
-      const isLiteralUppercase = !LOWERCASE_LETTER_PATTERN.test(staticText);
+      const hasUppercase = UPPERCASE_LETTER_PATTERN.test(staticText);
+      const hasLowercase = LOWERCASE_LETTER_PATTERN.test(staticText);
+      const isLiteralUppercase = hasUppercase && !hasLowercase;
       if (!isLiteralUppercase && !hasUppercaseStyle(openingElement)) return;
       context.report({
         node: openingElement,

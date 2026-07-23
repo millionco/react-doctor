@@ -50,4 +50,52 @@ describe("no-all-caps-body-text", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag long Japanese text (caseless script)", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <p className="text-sm">一部のフォルダにアクセスできないため、移動対象を検出できていない可能性があります。フォルダのアクセス権を確認してから更新してください。</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag long Chinese text (caseless script)", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <p>由于无法访问某些文件夹，可能无法检测到移动目标。请检查文件夹的访问权限，然后更新。</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag long Korean text (caseless script)", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <p>일부 폴더에 액세스할 수 없으므로 이동 대상을 감지할 수 없습니다. 폴더 액세스 권한을 확인한 후 업데이트하십시오.</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag long Arabic text (caseless script)", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <p>لا يمكن الوصول إلى بعض المجلدات، لذا قد لا يتم اكتشاف أهداف النقل. يرجى التحقق من أذونات الوصول إلى المجلد، ثم التحديث.</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag mixed script text (English + Japanese) without uppercase", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <p>Please check フォルダのアクセス権を確認してから更新してください your folder permissions before continuing.</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags mixed script text when English portion is all caps", () => {
+    const result = runRule(
+      noAllCapsBodyText,
+      `const Example = () => <p>PLEASE CHECK フォルダのアクセス権を確認してから更新してください YOUR FOLDER PERMISSIONS.</p>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -529,6 +529,122 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
     ).toEqual([{ directory: "", names: ["EsbuildRoute"] }]);
   });
 
+  it.each([
+    [
+      "destructured build binding",
+      `
+        const { build: buildProject } = require("esbuild");
+        buildProject({
+          plugins: [
+            require("unplugin-auto-import/esbuild")({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        });
+      `,
+    ],
+    [
+      "namespace build binding",
+      `
+        const esbuild = require("esbuild");
+        esbuild.build({
+          plugins: [
+            require("unplugin-auto-import/esbuild")({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        });
+      `,
+    ],
+    [
+      "required build binding",
+      `
+        const buildProject = require("esbuild").build;
+        buildProject({
+          plugins: [
+            require("unplugin-auto-import/esbuild")({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        });
+      `,
+    ],
+    [
+      "direct require",
+      `
+        require("esbuild").build({
+          plugins: [
+            require("unplugin-auto-import/esbuild")({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        });
+      `,
+    ],
+  ])("collects CommonJS esbuild globals from %s", (caseName, configSource) => {
+    const rootDirectory = createCaseDirectory(`esbuild-commonjs-${caseName.replaceAll(" ", "-")}`);
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(rootDirectory, "esbuild.config.cjs", configSource);
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { EsbuildRoute: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <EsbuildRoute />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([{ directory: "", names: ["EsbuildRoute"] }]);
+  });
+
+  it("ignores auto-import plugins behind runtime conditions", () => {
+    const rootDirectory = createCaseDirectory("conditional-plugins");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        const isEnabled = false;
+        export default {
+          plugins: [
+            isEnabled && AutoImport({
+              eslintrc: { enabled: true },
+            }),
+            isEnabled
+              ? AutoImport({
+                  eslintrc: { enabled: true },
+                })
+              : null,
+            ...(isEnabled
+              ? [
+                  AutoImport({
+                    eslintrc: { enabled: true },
+                  }),
+                ]
+              : []),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+  });
+
   it("stays conservative when spreads can override config or plugin options", () => {
     const optionSpreadRoot = createCaseDirectory("option-spread");
     writeFile(optionSpreadRoot, "package.json", "{}");

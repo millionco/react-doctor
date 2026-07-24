@@ -81,6 +81,17 @@ const getRequireModuleSpecifier = (expression: ts.Expression): string | null => 
   return moduleSpecifier && ts.isStringLiteralLike(moduleSpecifier) ? moduleSpecifier.text : null;
 };
 
+const getRequiredPropertyModuleSpecifier = (
+  expression: ts.Expression,
+  propertyName: string,
+): string | null => {
+  const unwrappedExpression = unwrapTypescriptExpression(expression);
+  return ts.isPropertyAccessExpression(unwrappedExpression) &&
+    unwrappedExpression.name.text === propertyName
+    ? getRequireModuleSpecifier(unwrappedExpression.expression)
+    : null;
+};
+
 const isCommonJsExportAssignment = (node: ts.Node, sourceFile: ts.SourceFile): boolean =>
   ts.isBinaryExpression(node) &&
   node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
@@ -92,10 +103,23 @@ const isInsideActiveConfigProperty = (
   propertyName: string,
   sourceFile: ts.SourceFile,
   esbuildBindings: ReadonlySet<string>,
+  esbuildNamespaceBindings: ReadonlySet<string>,
 ): boolean => {
   let ancestor: ts.Node | undefined = node.parent;
   let didFindConfigProperty = false;
   while (ancestor && !ts.isSourceFile(ancestor)) {
+    if (
+      !didFindConfigProperty &&
+      !ts.isArrayLiteralExpression(ancestor) &&
+      !ts.isParenthesizedExpression(ancestor) &&
+      !ts.isAsExpression(ancestor) &&
+      !ts.isSatisfiesExpression(ancestor) &&
+      !ts.isNonNullExpression(ancestor) &&
+      !ts.isTypeAssertionExpression(ancestor) &&
+      !ts.isPropertyAssignment(ancestor)
+    ) {
+      return false;
+    }
     if (ts.isPropertyAssignment(ancestor)) {
       const isConfigProperty =
         (ts.isIdentifier(ancestor.name) || ts.isStringLiteralLike(ancestor.name)) &&
@@ -115,8 +139,13 @@ const isInsideActiveConfigProperty = (
       if (
         propertyName === "plugins" &&
         ts.isCallExpression(ancestor) &&
-        ts.isIdentifier(ancestor.expression) &&
-        esbuildBindings.has(ancestor.expression.text)
+        (ts.isIdentifier(ancestor.expression)
+          ? esbuildBindings.has(ancestor.expression.text)
+          : ts.isPropertyAccessExpression(ancestor.expression) &&
+            ancestor.expression.name.text === "build" &&
+            ((ts.isIdentifier(ancestor.expression.expression) &&
+              esbuildNamespaceBindings.has(ancestor.expression.expression.text)) ||
+              getRequireModuleSpecifier(ancestor.expression.expression) === "esbuild"))
       ) {
         return true;
       }
@@ -132,9 +161,18 @@ const getGlobalsPathFromAutoImportCall = (
   packageDirectory: string,
   sourceFile: ts.SourceFile,
   esbuildBindings: ReadonlySet<string>,
+  esbuildNamespaceBindings: ReadonlySet<string>,
 ): string | null => {
   const propertyName = moduleSpecifier.endsWith("/astro") ? "integrations" : "plugins";
-  if (!isInsideActiveConfigProperty(callExpression, propertyName, sourceFile, esbuildBindings)) {
+  if (
+    !isInsideActiveConfigProperty(
+      callExpression,
+      propertyName,
+      sourceFile,
+      esbuildBindings,
+      esbuildNamespaceBindings,
+    )
+  ) {
     return null;
   }
   const optionsExpression = callExpression.arguments[0];
@@ -186,6 +224,7 @@ const collectGlobalsPathsFromConfig = (
   const sourceFile = ts.createSourceFile(configPath, sourceText, ts.ScriptTarget.Latest, true);
   const autoImportBindings = new Map<string, string>();
   const esbuildBindings = new Set<string>();
+  const esbuildNamespaceBindings = new Set<string>();
   for (const statement of sourceFile.statements) {
     if (ts.isImportDeclaration(statement) && ts.isStringLiteralLike(statement.moduleSpecifier)) {
       const moduleSpecifier = statement.moduleSpecifier.text;
@@ -194,6 +233,8 @@ const collectGlobalsPathsFromConfig = (
         if (defaultBinding) autoImportBindings.set(defaultBinding.text, moduleSpecifier);
       }
       if (moduleSpecifier === "esbuild") {
+        const defaultBinding = statement.importClause?.name;
+        if (defaultBinding) esbuildNamespaceBindings.add(defaultBinding.text);
         const namedBindings = statement.importClause?.namedBindings;
         if (namedBindings && ts.isNamedImports(namedBindings)) {
           for (const importSpecifier of namedBindings.elements) {
@@ -202,14 +243,41 @@ const collectGlobalsPathsFromConfig = (
             }
           }
         }
+        if (namedBindings && ts.isNamespaceImport(namedBindings)) {
+          esbuildNamespaceBindings.add(namedBindings.name.text);
+        }
       }
     }
     if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      if (!declaration.initializer) continue;
+      const declarationName = ts.isIdentifier(declaration.name) ? declaration.name.text : null;
       const moduleSpecifier = getRequireModuleSpecifier(declaration.initializer);
-      if (moduleSpecifier && AUTO_IMPORT_ADAPTER_PATTERN.test(moduleSpecifier)) {
-        autoImportBindings.set(declaration.name.text, moduleSpecifier);
+      if (declarationName && moduleSpecifier && AUTO_IMPORT_ADAPTER_PATTERN.test(moduleSpecifier)) {
+        autoImportBindings.set(declarationName, moduleSpecifier);
+      }
+      if (moduleSpecifier === "esbuild") {
+        if (declarationName) {
+          esbuildNamespaceBindings.add(declarationName);
+        }
+        if (ts.isObjectBindingPattern(declaration.name)) {
+          for (const bindingElement of declaration.name.elements) {
+            const importedName = bindingElement.propertyName ?? bindingElement.name;
+            if (
+              ts.isIdentifier(importedName) &&
+              importedName.text === "build" &&
+              ts.isIdentifier(bindingElement.name)
+            ) {
+              esbuildBindings.add(bindingElement.name.text);
+            }
+          }
+        }
+      }
+      if (
+        declarationName &&
+        getRequiredPropertyModuleSpecifier(declaration.initializer, "build") === "esbuild"
+      ) {
+        esbuildBindings.add(declarationName);
       }
     }
   }
@@ -227,6 +295,7 @@ const collectGlobalsPathsFromConfig = (
           packageDirectory,
           sourceFile,
           esbuildBindings,
+          esbuildNamespaceBindings,
         );
         if (globalsPath) globalsPaths.add(globalsPath);
       }

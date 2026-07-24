@@ -395,7 +395,7 @@ export const parseOxlintOutput = (
   const resolveAbsolutePath = (filename: string): string =>
     path.isAbsolute(filename) ? filename : path.resolve(rootDirectory || ".", filename);
   const resolveMappedSourceFilename = (filename: string): string | undefined =>
-    sourcePathByLintPath?.get(resolveAbsolutePath(filename));
+    sourcePathByLintPath?.get(path.normalize(resolveAbsolutePath(filename)));
   const resolveSourceFilename = (filename: string): string =>
     resolveMappedSourceFilename(filename) ?? filename;
   const readSourceBuffer = (filename: string): Buffer | null => {

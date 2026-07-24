@@ -157,7 +157,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     const absoluteFilePath = path.isAbsolute(filePath)
       ? filePath
       : path.resolve(rootDirectory, filePath);
-    return sourcePathByLintPath?.get(absoluteFilePath) ?? filePath;
+    return sourcePathByLintPath?.get(path.normalize(absoluteFilePath)) ?? filePath;
   };
   // Clamp at the spawn boundary so any caller — including programmatic
   // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by

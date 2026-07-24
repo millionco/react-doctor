@@ -101,6 +101,12 @@ const isInsideActiveConfigProperty = (
         (ts.isIdentifier(ancestor.name) || ts.isStringLiteralLike(ancestor.name)) &&
         ancestor.name.text === propertyName;
       if (didFindConfigProperty || !isConfigProperty) return false;
+      if (
+        !ts.isObjectLiteralExpression(ancestor.parent) ||
+        ancestor.parent.properties.some(ts.isSpreadAssignment)
+      ) {
+        return false;
+      }
       didFindConfigProperty = true;
     }
     if (didFindConfigProperty) {
@@ -135,6 +141,7 @@ const getGlobalsPathFromAutoImportCall = (
   if (!optionsExpression) return null;
   const unwrappedOptions = unwrapTypescriptExpression(optionsExpression);
   if (!ts.isObjectLiteralExpression(unwrappedOptions)) return null;
+  if (unwrappedOptions.properties.some(ts.isSpreadAssignment)) return null;
   if (
     getStaticProperty(unwrappedOptions, "include") ||
     getStaticProperty(unwrappedOptions, "exclude")
@@ -146,6 +153,7 @@ const getGlobalsPathFromAutoImportCall = (
   if (!eslintrcProperty) return null;
   const eslintrcExpression = unwrapTypescriptExpression(eslintrcProperty.initializer);
   if (!ts.isObjectLiteralExpression(eslintrcExpression)) return null;
+  if (eslintrcExpression.properties.some(ts.isSpreadAssignment)) return null;
 
   const enabledProperty = getStaticPropertyAssignment(eslintrcExpression, "enabled");
   if (

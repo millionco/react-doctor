@@ -528,4 +528,104 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
       }),
     ).toEqual([{ directory: "", names: ["EsbuildRoute"] }]);
   });
+
+  it("stays conservative when spreads can override config or plugin options", () => {
+    const optionSpreadRoot = createCaseDirectory("option-spread");
+    writeFile(optionSpreadRoot, "package.json", "{}");
+    writeFile(
+      optionSpreadRoot,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        const options = { include: [/src\\\\/routes/] };
+        export default {
+          plugins: [
+            AutoImport({
+              ...options,
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      optionSpreadRoot,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(optionSpreadRoot, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory: optionSpreadRoot,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+
+    const eslintrcSpreadRoot = createCaseDirectory("eslintrc-spread");
+    writeFile(eslintrcSpreadRoot, "package.json", "{}");
+    writeFile(
+      eslintrcSpreadRoot,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        const eslintrc = { filepath: "./src/auto-imports.json" };
+        export default {
+          plugins: [
+            AutoImport({
+              eslintrc: {
+                ...eslintrc,
+                enabled: true,
+              },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      eslintrcSpreadRoot,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(eslintrcSpreadRoot, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory: eslintrcSpreadRoot,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+
+    const configSpreadRoot = createCaseDirectory("config-spread");
+    writeFile(configSpreadRoot, "package.json", "{}");
+    writeFile(
+      configSpreadRoot,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        const config = { plugins: [] };
+        export default {
+          plugins: [
+            AutoImport({
+              eslintrc: { enabled: true },
+            }),
+          ],
+          ...config,
+        };
+      `,
+    );
+    writeFile(
+      configSpreadRoot,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(configSpreadRoot, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory: configSpreadRoot,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+  });
 });

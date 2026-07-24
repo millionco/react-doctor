@@ -1602,6 +1602,71 @@ describe("discoverProject", () => {
       expected: true,
     },
     {
+      name: "compiler-global-require-resolve",
+      config: "export default { plugins: [require.resolve('babel-plugin-react-compiler')] };",
+      expected: true,
+    },
+    {
+      name: "compiler-node-create-require-resolve",
+      config:
+        "import { createRequire } from 'node:module'; const packageRequire = createRequire(import.meta.url); export default { plugins: [packageRequire.resolve('babel-plugin-react-compiler')] };",
+      expected: true,
+    },
+    {
+      name: "compiler-aliased-create-require-resolve",
+      config:
+        "import { createRequire as makeRequire } from 'module'; const packageRequire = makeRequire(import.meta.url); const compiler = packageRequire.resolve('babel-plugin-react-compiler'); export default { plugins: [[compiler, {}]] };",
+      expected: true,
+    },
+    {
+      name: "compiler-namespace-create-require-resolve",
+      config:
+        "import * as nodeModule from 'node:module'; const packageRequire = nodeModule.createRequire(import.meta.url); export default { plugins: [packageRequire.resolve('babel-plugin-react-compiler')] };",
+      expected: true,
+    },
+    {
+      name: "compiler-non-node-create-require-resolve",
+      config:
+        "import { createRequire } from 'other-module'; const packageRequire = createRequire(import.meta.url); export default { plugins: [packageRequire.resolve('babel-plugin-react-compiler')] };",
+      expected: false,
+    },
+    {
+      name: "compiler-mutable-create-require-resolve",
+      config:
+        "import { createRequire } from 'node:module'; let packageRequire = createRequire(import.meta.url); export default { plugins: [packageRequire.resolve('babel-plugin-react-compiler')] };",
+      expected: false,
+    },
+    {
+      name: "compiler-shadowed-require-resolve",
+      config:
+        "const require = { resolve: () => 'other-plugin' }; export default { plugins: [require.resolve('babel-plugin-react-compiler')] };",
+      expected: false,
+    },
+    {
+      name: "compiler-parameter-shadowed-require-resolve",
+      config:
+        "const makeConfig = (require) => ({ plugins: [require.resolve('babel-plugin-react-compiler')] }); export default makeConfig(otherResolver);",
+      expected: false,
+    },
+    {
+      name: "compiler-import-shadowed-require-resolve",
+      config:
+        "import require from 'other-module'; export default { plugins: [require.resolve('babel-plugin-react-compiler')] };",
+      expected: false,
+    },
+    {
+      name: "compiler-parameter-shadowed-create-require",
+      config:
+        "import { createRequire } from 'node:module'; const makeConfig = (createRequire) => { const packageRequire = createRequire(import.meta.url); return { plugins: [packageRequire.resolve('babel-plugin-react-compiler')] }; }; export default makeConfig(otherFactory);",
+      expected: false,
+    },
+    {
+      name: "compiler-unused-create-require-resolve",
+      config:
+        "import { createRequire } from 'node:module'; const packageRequire = createRequire(import.meta.url); const compiler = packageRequire.resolve('babel-plugin-react-compiler'); export default { plugins: ['other-plugin'] };",
+      expected: false,
+    },
+    {
       name: "destructured-vite-preset-require",
       config:
         "const { reactCompilerPreset } = require('@vitejs/plugin-react'); module.exports = { plugins: [reactCompilerPreset()] };",

@@ -15,6 +15,11 @@ export interface CollectUnpluginAutoImportGlobalScopesOptions {
   readonly candidateFiles: ReadonlyArray<string>;
 }
 
+interface AutoImportConfigGlobalsPaths {
+  readonly didFindActiveAutoImport: boolean;
+  readonly globalsPaths: ReadonlyArray<string>;
+}
+
 const AUTO_IMPORT_ADAPTER_PATTERN =
   /^unplugin-auto-import\/(?:astro|esbuild|rollup|rolldown|rspack|vite|webpack)$/;
 const CONFIG_BASENAMES = [
@@ -164,26 +169,10 @@ const isInsideActiveConfigProperty = (
   return false;
 };
 
-const getGlobalsPathFromAutoImportCall = (
+const getGlobalsPathFromActiveAutoImportCall = (
   callExpression: ts.CallExpression,
-  moduleSpecifier: string,
   packageDirectory: string,
-  sourceFile: ts.SourceFile,
-  esbuildBindings: ReadonlySet<string>,
-  esbuildNamespaceBindings: ReadonlySet<string>,
 ): string | null => {
-  const propertyName = moduleSpecifier.endsWith("/astro") ? "integrations" : "plugins";
-  if (
-    !isInsideActiveConfigProperty(
-      callExpression,
-      propertyName,
-      sourceFile,
-      esbuildBindings,
-      esbuildNamespaceBindings,
-    )
-  ) {
-    return null;
-  }
   const optionsExpression = callExpression.arguments[0];
   if (!optionsExpression) return null;
   const unwrappedOptions = unwrapTypescriptExpression(optionsExpression);
@@ -232,12 +221,12 @@ const getGlobalsPathFromAutoImportCall = (
 const collectGlobalsPathsFromConfig = (
   configPath: string,
   packageDirectory: string,
-): ReadonlyArray<string> => {
+): AutoImportConfigGlobalsPaths => {
   let sourceText: string;
   try {
     sourceText = fs.readFileSync(configPath, "utf8");
   } catch {
-    return [];
+    return { didFindActiveAutoImport: false, globalsPaths: [] };
   }
 
   const sourceFile = ts.createSourceFile(configPath, sourceText, ts.ScriptTarget.Latest, true);
@@ -302,27 +291,32 @@ const collectGlobalsPathsFromConfig = (
   }
 
   const globalsPaths = new Set<string>();
+  let didFindActiveAutoImport = false;
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const moduleSpecifier = ts.isIdentifier(node.expression)
         ? autoImportBindings.get(node.expression.text)
         : getRequireModuleSpecifier(node.expression);
       if (moduleSpecifier && AUTO_IMPORT_ADAPTER_PATTERN.test(moduleSpecifier)) {
-        const globalsPath = getGlobalsPathFromAutoImportCall(
+        const propertyName = moduleSpecifier.endsWith("/astro") ? "integrations" : "plugins";
+        const isActive = isInsideActiveConfigProperty(
           node,
-          moduleSpecifier,
-          packageDirectory,
+          propertyName,
           sourceFile,
           esbuildBindings,
           esbuildNamespaceBindings,
         );
-        if (globalsPath) globalsPaths.add(globalsPath);
+        if (isActive) {
+          didFindActiveAutoImport = true;
+          const globalsPath = getGlobalsPathFromActiveAutoImportCall(node, packageDirectory);
+          if (globalsPath) globalsPaths.add(globalsPath);
+        }
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-  return [...globalsPaths];
+  return { didFindActiveAutoImport, globalsPaths: [...globalsPaths] };
 };
 
 const collectGeneratedGlobalNames = (
@@ -398,8 +392,10 @@ const collectPackageGlobalNames = (
       continue;
     }
     const configPath = path.join(packageDirectory, entry.name);
-    const globalsPaths = collectGlobalsPathsFromConfig(configPath, packageDirectory).toSorted();
-    if (globalsPaths.length > 0) configuredGlobalsPaths.push(globalsPaths);
+    const configGlobalsPaths = collectGlobalsPathsFromConfig(configPath, packageDirectory);
+    if (configGlobalsPaths.didFindActiveAutoImport) {
+      configuredGlobalsPaths.push(configGlobalsPaths.globalsPaths.toSorted());
+    }
   }
   if (configuredGlobalsPaths.length === 0) return [];
   const globalsPaths = configuredGlobalsPaths[0];

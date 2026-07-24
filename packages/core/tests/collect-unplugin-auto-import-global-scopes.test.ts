@@ -381,6 +381,52 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
     ).toEqual([]);
   });
 
+  it("fails closed when an active sibling config has uncertain filters", () => {
+    const rootDirectory = createCaseDirectory("uncertain-sibling-config");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        export default {
+          plugins: [
+            AutoImport({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      "webpack.config.js",
+      `
+        module.exports = {
+          plugins: [
+            require("unplugin-auto-import/webpack")({
+              include: [/src\\/routes/],
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+  });
+
   it("collects CommonJS webpack and rspack globals", () => {
     const rootDirectory = createCaseDirectory("commonjs-configs");
     writeFile(rootDirectory, "package.json", "{}");

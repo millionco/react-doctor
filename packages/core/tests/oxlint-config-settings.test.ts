@@ -238,6 +238,7 @@ describe("createOxlintConfig settings", () => {
 
     expect(config.settings["react-doctor"]).toMatchObject({
       runtimeGlobals: ["DatePicker"],
+      unpluginAutoImportRootDirectories: ["/tmp/project"],
       unpluginAutoImportGlobalScopes: [
         { directory: "apps/storefront", names: ["Route", "Routes"] },
       ],

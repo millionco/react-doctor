@@ -5,7 +5,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { getProjectRelativeFilename } from "../../utils/get-project-relative-filename.js";
+import { getProjectRelativeFilenameFromRoots } from "../../utils/get-project-relative-filename-from-roots.js";
 import {
   getReactDoctorStringArraySetting,
   getReactDoctorStringSetting,
@@ -129,11 +129,12 @@ const resolveUnpluginAutoImportGlobalScopes = (
 
 const isInjectedRuntimeGlobal = (
   name: string,
-  relativeFilename: string,
+  relativeFilename: string | null,
   configuredRuntimeGlobals: ReadonlySet<string>,
   scopes: ReadonlyArray<UnpluginAutoImportGlobalScope>,
 ): boolean => {
   if (configuredRuntimeGlobals.has(name)) return true;
+  if (relativeFilename === null) return false;
   let nearestScope: UnpluginAutoImportGlobalScope | null = null;
   for (const scope of scopes) {
     const isInsideScope =
@@ -175,8 +176,20 @@ export const jsxNoUndef = defineRule({
     const configuredRuntimeGlobals = new Set(
       getReactDoctorStringArraySetting(context.settings, "runtimeGlobals"),
     );
+    const configuredAutoImportRootDirectories = getReactDoctorStringArraySetting(
+      context.settings,
+      "unpluginAutoImportRootDirectories",
+    );
     const rootDirectory = getReactDoctorStringSetting(context.settings, "rootDirectory");
-    const relativeFilename = getProjectRelativeFilename(context.filename ?? "", rootDirectory);
+    const fallbackAutoImportRootDirectories = rootDirectory ? [rootDirectory] : [];
+    const autoImportRootDirectories =
+      configuredAutoImportRootDirectories.length > 0
+        ? configuredAutoImportRootDirectories
+        : fallbackAutoImportRootDirectories;
+    const relativeFilename = getProjectRelativeFilenameFromRoots(
+      context.filename ?? "",
+      autoImportRootDirectories,
+    );
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const rootIdentifier = getRootIdentifier(node.name as EsTreeNode);

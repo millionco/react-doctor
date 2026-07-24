@@ -192,6 +192,54 @@ describe("react-builtins/jsx-no-undef regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("allows generated globals through a logical project root alias", () => {
+    const result = runRule(jsxNoUndef, `export const App = () => <Route />;`, {
+      filename: "/project-link/src/app.tsx",
+      settings: {
+        "react-doctor": {
+          rootDirectory: "/canonical/project",
+          unpluginAutoImportRootDirectories: ["/canonical/project", "/project-link"],
+          unpluginAutoImportGlobalScopes: [{ directory: "", names: ["Route"] }],
+        },
+      },
+    });
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps nested package boundaries through a logical project root alias", () => {
+    const result = runRule(jsxNoUndef, `export const App = () => <Route />;`, {
+      filename: "/project-link/packages/admin/src/app.tsx",
+      settings: {
+        "react-doctor": {
+          rootDirectory: "/canonical/project",
+          unpluginAutoImportRootDirectories: ["/canonical/project", "/project-link"],
+          unpluginAutoImportGlobalScopes: [
+            { directory: "", names: ["Route"] },
+            { directory: "packages/admin", names: [] },
+          ],
+        },
+      },
+    });
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not apply generated globals to files outside every project root", () => {
+    const result = runRule(jsxNoUndef, `export const App = () => <Route />;`, {
+      filename: "/other-project/src/app.tsx",
+      settings: {
+        "react-doctor": {
+          rootDirectory: "/project",
+          unpluginAutoImportRootDirectories: ["/project", "/project-link"],
+          unpluginAutoImportGlobalScopes: [{ directory: "", names: ["Route"] }],
+        },
+      },
+    });
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows explicitly configured runtime globals before post-processing", () => {
     const result = runRule(jsxNoUndef, `export const App = () => <DatePicker />;`, {
       settings: { "react-doctor": { runtimeGlobals: ["DatePicker"] } },

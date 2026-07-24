@@ -74,6 +74,23 @@ describe("computeRulesetHash", () => {
     expect(hashAtPathA).toBe(hashAtPathB);
   });
 
+  it("ignores absolute auto-import root aliases across checkouts", () => {
+    const configAtPathA = createOxlintConfig({
+      pluginPath: PLUGIN_PATH,
+      project: makeProject("/runner/work/repo/repo"),
+      ruleSelection: "cacheable",
+      unpluginAutoImportGlobalScopes: [{ directory: "", names: ["Route"] }],
+    });
+    const configAtPathB = createOxlintConfig({
+      pluginPath: PLUGIN_PATH,
+      project: makeProject("/Users/dev/projects/repo"),
+      ruleSelection: "cacheable",
+      unpluginAutoImportGlobalScopes: [{ directory: "", names: ["Route"] }],
+    });
+
+    expect(hash({ config: configAtPathA })).toBe(hash({ config: configAtPathB }));
+  });
+
   it("changes when a rule's severity changes", () => {
     const project = makeProject("/repo/a");
     const baseline = hash({ config: cacheableConfig(project) });

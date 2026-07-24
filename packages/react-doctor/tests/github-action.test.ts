@@ -301,7 +301,10 @@ describe("GitHub Action contract", () => {
 
         runGit(originDirectory, "init");
         fs.mkdirSync(path.join(originDirectory, "src"), { recursive: true });
-        fs.writeFileSync(path.join(originDirectory, "src", "app.tsx"), "export const App = () => null;\n");
+        fs.writeFileSync(
+          path.join(originDirectory, "src", "app.tsx"),
+          "export const App = () => null;\n",
+        );
         runGit(originDirectory, "add", ".");
         runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "initial");
         const baseSha = runGit(originDirectory, "rev-parse", "HEAD");
@@ -326,20 +329,50 @@ describe("GitHub Action contract", () => {
         }
 
         runGit(originDirectory, "-c", "advice.detachedHead=false", "checkout", "--detach");
-        runGit(originDirectory, "-c", "commit.gpgsign=false", "merge", "--no-ff", "pr", "-m", "merge");
+        runGit(
+          originDirectory,
+          "-c",
+          "commit.gpgsign=false",
+          "merge",
+          "--no-ff",
+          "pr",
+          "-m",
+          "merge",
+        );
         runGit(originDirectory, "update-ref", "refs/pull/1/merge", "HEAD");
 
         runGit(checkoutDirectory, "init");
         runGit(checkoutDirectory, "remote", "add", "origin", pathToFileURL(originDirectory).href);
-        runGit(checkoutDirectory, "fetch", "--no-tags", "origin", "+refs/pull/1/merge:refs/remotes/pull/1/merge");
-        runGit(checkoutDirectory, "-c", "advice.detachedHead=false", "checkout", "--force", "refs/remotes/pull/1/merge");
+        runGit(
+          checkoutDirectory,
+          "fetch",
+          "--no-tags",
+          "origin",
+          "+refs/pull/1/merge:refs/remotes/pull/1/merge",
+        );
+        runGit(
+          checkoutDirectory,
+          "-c",
+          "advice.detachedHead=false",
+          "checkout",
+          "--force",
+          "refs/remotes/pull/1/merge",
+        );
 
         const changedFilesFile = path.join(runnerTemp, "react-doctor-changed-files.txt");
         const githubOutputFile = path.join(runnerTemp, "github-output.txt");
         fs.writeFileSync(githubOutputFile, "");
         const scriptOutput = execFileSync(
           "bash",
-          ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", extractBaseStepScript(readActionYaml())],
+          [
+            "--noprofile",
+            "--norc",
+            "-e",
+            "-o",
+            "pipefail",
+            "-c",
+            extractBaseStepScript(readActionYaml()),
+          ],
           {
             cwd: checkoutDirectory,
             encoding: "utf8",

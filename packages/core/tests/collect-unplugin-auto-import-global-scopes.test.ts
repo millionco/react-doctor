@@ -704,6 +704,61 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
     ).toEqual([]);
   });
 
+  it.each([
+    [
+      "a conditionally exported Vite config",
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        const isEnabled = false;
+        export default isEnabled
+          ? {
+              plugins: [
+                AutoImport({
+                  eslintrc: { enabled: true },
+                }),
+              ],
+            }
+          : { plugins: [] };
+      `,
+    ],
+    [
+      "an esbuild call behind a runtime gate",
+      "esbuild.config.ts",
+      `
+        import { build } from "esbuild";
+        import AutoImport from "unplugin-auto-import/esbuild";
+        const isEnabled = false;
+        if (isEnabled) {
+          build({
+            plugins: [
+              AutoImport({
+                eslintrc: { enabled: true },
+              }),
+            ],
+          });
+        }
+      `,
+    ],
+  ])("ignores %s", (caseName, configFilename, configSource) => {
+    const rootDirectory = createCaseDirectory(caseName.replaceAll(" ", "-"));
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(rootDirectory, configFilename, configSource);
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+  });
+
   it("stays conservative when spreads can override config or plugin options", () => {
     const optionSpreadRoot = createCaseDirectory("option-spread");
     writeFile(optionSpreadRoot, "package.json", "{}");

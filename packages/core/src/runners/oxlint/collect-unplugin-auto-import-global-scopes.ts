@@ -112,6 +112,25 @@ const isCommonJsExportAssignment = (node: ts.Node, sourceFile: ts.SourceFile): b
   (node.left.getText(sourceFile) === "module.exports" ||
     node.left.getText(sourceFile) === "exports.default");
 
+const isTopLevelExpression = (node: ts.Node): boolean => {
+  let ancestor: ts.Node | undefined = node.parent;
+  while (ancestor && !ts.isSourceFile(ancestor)) {
+    if (ts.isExpressionStatement(ancestor)) return ts.isSourceFile(ancestor.parent);
+    if (
+      !ts.isParenthesizedExpression(ancestor) &&
+      !ts.isAsExpression(ancestor) &&
+      !ts.isSatisfiesExpression(ancestor) &&
+      !ts.isNonNullExpression(ancestor) &&
+      !ts.isTypeAssertionExpression(ancestor) &&
+      !ts.isAwaitExpression(ancestor)
+    ) {
+      return false;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 const isInsideActiveConfigProperty = (
   node: ts.Node,
   propertyName: string,
@@ -146,10 +165,14 @@ const isInsideActiveConfigProperty = (
         return false;
       }
       didFindConfigProperty = true;
+      ancestor = ancestor.parent;
+      continue;
     }
     if (didFindConfigProperty) {
       if (ts.isExportAssignment(ancestor)) return true;
-      if (isCommonJsExportAssignment(ancestor, sourceFile)) return true;
+      if (isCommonJsExportAssignment(ancestor, sourceFile)) {
+        return isTopLevelExpression(ancestor);
+      }
       if (
         propertyName === "plugins" &&
         ts.isCallExpression(ancestor) &&
@@ -161,7 +184,20 @@ const isInsideActiveConfigProperty = (
               esbuildNamespaceBindings.has(ancestor.expression.expression.text)) ||
               getRequireModuleSpecifier(ancestor.expression.expression) === "esbuild"))
       ) {
-        return true;
+        return isTopLevelExpression(ancestor);
+      }
+      const isStaticConfigWrapper =
+        ts.isObjectLiteralExpression(ancestor) ||
+        ts.isParenthesizedExpression(ancestor) ||
+        ts.isAsExpression(ancestor) ||
+        ts.isSatisfiesExpression(ancestor) ||
+        ts.isNonNullExpression(ancestor) ||
+        ts.isTypeAssertionExpression(ancestor) ||
+        (ts.isCallExpression(ancestor) &&
+          ts.isIdentifier(ancestor.expression) &&
+          ancestor.expression.text === "defineConfig");
+      if (!isStaticConfigWrapper) {
+        return false;
       }
     }
     ancestor = ancestor.parent;

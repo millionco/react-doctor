@@ -99,4 +99,55 @@ describe("runOxlint unplugin-auto-import globals", () => {
         .map((diagnostic) => diagnostic.message),
     ).toEqual(["`Route` crashes at runtime because it isn't defined here."]);
   });
+
+  it("keeps nested package boundaries when the scan root is a symlink", async () => {
+    const projectDirectory = setupReactProject(temporaryRoot, "symlink-source", {
+      files: {
+        "vite.config.ts": `
+          import AutoImport from "unplugin-auto-import/vite";
+          export default {
+            plugins: [
+              AutoImport({
+                eslintrc: { enabled: true },
+              }),
+            ],
+          };
+        `,
+        ".eslintrc-auto-import.json": JSON.stringify({
+          globals: { Route: "readonly" },
+        }),
+        "src/app.tsx": `export const App = () => <Route />;`,
+        "packages/admin/package.json": "{}",
+        "packages/admin/src/app.tsx": `export const AdminApp = () => <Route />;`,
+      },
+    });
+    const symlinkDirectory = path.join(temporaryRoot, "symlink-root");
+    fs.symlinkSync(
+      projectDirectory,
+      symlinkDirectory,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    const diagnostics = await runOxlint({
+      rootDirectory: symlinkDirectory,
+      project: buildTestProject({
+        rootDirectory: symlinkDirectory,
+        framework: "vite",
+      }),
+    });
+
+    expect(
+      diagnostics
+        .filter((diagnostic) => diagnostic.rule === "jsx-no-undef")
+        .map((diagnostic) => ({
+          filename: diagnostic.filePath.replaceAll("\\", "/"),
+          message: diagnostic.message,
+        })),
+    ).toEqual([
+      {
+        filename: "packages/admin/src/app.tsx",
+        message: "`Route` crashes at runtime because it isn't defined here.",
+      },
+    ]);
+  });
 });

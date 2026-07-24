@@ -48,7 +48,9 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
     writeFile(
       rootDirectory,
       "src/auto-imports.json",
-      JSON.stringify({ globals: { Route: "readonly", Routes: "readonly" } }),
+      JSON.stringify({
+        globals: { LegacyReadonlyComponent: false, Route: "readonly", Routes: "readonly" },
+      }),
     );
     writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
     writeFile(rootDirectory, "packages/admin/package.json", "{}");
@@ -84,7 +86,7 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
         candidateFiles: ["src/app.tsx", "packages/admin/src/app.tsx"],
       }),
     ).toEqual([
-      { directory: "", names: ["Route", "Routes"] },
+      { directory: "", names: ["LegacyReadonlyComponent", "Route", "Routes"] },
       { directory: "packages/admin", names: ["Navigate"] },
     ]);
   });
@@ -171,6 +173,10 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
           plugins: [
             AutoImport({
               include: [/src\\/routes/],
+              eslintrc: { enabled: true },
+            }),
+            AutoImport({
+              exclude: [/src\\/admin/],
               eslintrc: { enabled: true },
             }),
           ],

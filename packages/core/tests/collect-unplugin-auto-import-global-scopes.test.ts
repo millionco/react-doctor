@@ -206,6 +206,9 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
         export default {
           plugins: [
             AutoImport({
+              eslintrc: { enabled: true },
+            }),
+            AutoImport({
               include: [/src\\/routes/],
               eslintrc: { enabled: true },
             }),

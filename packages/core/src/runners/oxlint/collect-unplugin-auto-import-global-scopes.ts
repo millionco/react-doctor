@@ -328,6 +328,7 @@ const collectGlobalsPathsFromConfig = (
 
   const globalsPaths = new Set<string>();
   let didFindActiveAutoImport = false;
+  let didFindUnsafeActiveAutoImport = false;
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const moduleSpecifier = ts.isIdentifier(node.expression)
@@ -345,14 +346,21 @@ const collectGlobalsPathsFromConfig = (
         if (isActive) {
           didFindActiveAutoImport = true;
           const globalsPath = getGlobalsPathFromActiveAutoImportCall(node, packageDirectory);
-          if (globalsPath) globalsPaths.add(globalsPath);
+          if (globalsPath) {
+            globalsPaths.add(globalsPath);
+          } else {
+            didFindUnsafeActiveAutoImport = true;
+          }
         }
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-  return { didFindActiveAutoImport, globalsPaths: [...globalsPaths] };
+  return {
+    didFindActiveAutoImport,
+    globalsPaths: didFindUnsafeActiveAutoImport ? [] : [...globalsPaths],
+  };
 };
 
 const collectGeneratedGlobalNames = (

@@ -287,6 +287,93 @@ describe("GitHub Action contract", () => {
     30_000,
   );
 
+  itOnPosix(
+    "compares base to PR head (not synthetic merge-ref HEAD) to exclude base-branch drift",
+    () => {
+      const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-action-"));
+      try {
+        const originDirectory = path.join(fixtureRoot, "origin");
+        const checkoutDirectory = path.join(fixtureRoot, "checkout");
+        const runnerTemp = path.join(fixtureRoot, "runner-temp");
+        fs.mkdirSync(originDirectory);
+        fs.mkdirSync(checkoutDirectory);
+        fs.mkdirSync(runnerTemp);
+
+        runGit(originDirectory, "init");
+        fs.mkdirSync(path.join(originDirectory, "src"), { recursive: true });
+        fs.writeFileSync(path.join(originDirectory, "src", "app.tsx"), "export const App = () => null;\n");
+        runGit(originDirectory, "add", ".");
+        runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "initial");
+        const baseSha = runGit(originDirectory, "rev-parse", "HEAD");
+
+        runGit(originDirectory, "checkout", "-b", "pr");
+        fs.writeFileSync(
+          path.join(originDirectory, "src", "feature.tsx"),
+          "export const Feature = () => null;\n",
+        );
+        runGit(originDirectory, "add", ".");
+        runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "feature");
+        const prHeadSha = runGit(originDirectory, "rev-parse", "HEAD");
+
+        runGit(originDirectory, "checkout", "-");
+        for (let index = 0; index < 15; index += 1) {
+          fs.writeFileSync(
+            path.join(originDirectory, "src", `drift-${index}.tsx`),
+            `export const Drift${index} = () => null;\n`,
+          );
+          runGit(originDirectory, "add", ".");
+          runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", `drift ${index}`);
+        }
+
+        runGit(originDirectory, "-c", "advice.detachedHead=false", "checkout", "--detach");
+        runGit(originDirectory, "-c", "commit.gpgsign=false", "merge", "--no-ff", "pr", "-m", "merge");
+        runGit(originDirectory, "update-ref", "refs/pull/1/merge", "HEAD");
+
+        runGit(checkoutDirectory, "init");
+        runGit(checkoutDirectory, "remote", "add", "origin", pathToFileURL(originDirectory).href);
+        runGit(checkoutDirectory, "fetch", "--no-tags", "origin", "+refs/pull/1/merge:refs/remotes/pull/1/merge");
+        runGit(checkoutDirectory, "-c", "advice.detachedHead=false", "checkout", "--force", "refs/remotes/pull/1/merge");
+
+        const changedFilesFile = path.join(runnerTemp, "react-doctor-changed-files.txt");
+        const githubOutputFile = path.join(runnerTemp, "github-output.txt");
+        fs.writeFileSync(githubOutputFile, "");
+        const scriptOutput = execFileSync(
+          "bash",
+          ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", extractBaseStepScript(readActionYaml())],
+          {
+            cwd: checkoutDirectory,
+            encoding: "utf8",
+            env: {
+              ...GIT_TEST_ENV,
+              INPUT_DIRECTORY: ".",
+              BASE_SHA: baseSha,
+              HEAD_SHA: prHeadSha,
+              CHANGED_FILES_FILE: changedFilesFile,
+              RUNNER_TEMP: runnerTemp,
+              GITHUB_OUTPUT: githubOutputFile,
+              GITHUB_ACTION_PATH: REPOSITORY_ROOT,
+            },
+          },
+        );
+
+        expect(scriptOutput).not.toContain("could not derive");
+        expect(fs.existsSync(changedFilesFile)).toBe(true);
+        const changedFiles = fs
+          .readFileSync(changedFilesFile, "utf8")
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .sort();
+
+        expect(changedFiles).toEqual(["src/feature.tsx"]);
+        expect(changedFiles).not.toContain("src/drift-0.tsx");
+        expect(changedFiles).not.toContain("src/drift-14.tsx");
+      } finally {
+        fs.rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
   it("falls back to a full-project scan when listing PR files is not permitted", () => {
     const prFilesStep = normalizeWhitespace(extractStep(readActionYaml(), "- id: pr-files"));
 

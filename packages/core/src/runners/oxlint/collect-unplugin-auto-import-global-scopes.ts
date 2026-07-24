@@ -46,12 +46,21 @@ const getStaticProperty = (
   objectExpression: ts.ObjectLiteralExpression,
   propertyName: string,
 ): ts.ObjectLiteralElementLike | null =>
-  objectExpression.properties.find(
+  objectExpression.properties.find((property) => {
+    if (ts.isSpreadAssignment(property)) return false;
+    const name = ts.isComputedPropertyName(property.name)
+      ? unwrapTypescriptExpression(property.name.expression)
+      : property.name;
+    return (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) && name.text === propertyName;
+  }) ?? null;
+
+const hasNonLiteralComputedProperty = (objectExpression: ts.ObjectLiteralExpression): boolean =>
+  objectExpression.properties.some(
     (property) =>
       !ts.isSpreadAssignment(property) &&
-      (ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)) &&
-      property.name.text === propertyName,
-  ) ?? null;
+      ts.isComputedPropertyName(property.name) &&
+      !ts.isStringLiteralLike(unwrapTypescriptExpression(property.name.expression)),
+  );
 
 const getStaticPropertyAssignment = (
   objectExpression: ts.ObjectLiteralExpression,
@@ -179,7 +188,12 @@ const getGlobalsPathFromAutoImportCall = (
   if (!optionsExpression) return null;
   const unwrappedOptions = unwrapTypescriptExpression(optionsExpression);
   if (!ts.isObjectLiteralExpression(unwrappedOptions)) return null;
-  if (unwrappedOptions.properties.some(ts.isSpreadAssignment)) return null;
+  if (
+    unwrappedOptions.properties.some(ts.isSpreadAssignment) ||
+    hasNonLiteralComputedProperty(unwrappedOptions)
+  ) {
+    return null;
+  }
   if (
     getStaticProperty(unwrappedOptions, "include") ||
     getStaticProperty(unwrappedOptions, "exclude")
@@ -191,7 +205,12 @@ const getGlobalsPathFromAutoImportCall = (
   if (!eslintrcProperty) return null;
   const eslintrcExpression = unwrapTypescriptExpression(eslintrcProperty.initializer);
   if (!ts.isObjectLiteralExpression(eslintrcExpression)) return null;
-  if (eslintrcExpression.properties.some(ts.isSpreadAssignment)) return null;
+  if (
+    eslintrcExpression.properties.some(ts.isSpreadAssignment) ||
+    hasNonLiteralComputedProperty(eslintrcExpression)
+  ) {
+    return null;
+  }
 
   const enabledProperty = getStaticPropertyAssignment(eslintrcExpression, "enabled");
   if (

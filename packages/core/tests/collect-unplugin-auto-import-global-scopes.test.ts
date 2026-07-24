@@ -202,6 +202,7 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
             }),
           ],
         };
+        const filterName = "include";
         export default {
           plugins: [
             AutoImport({
@@ -210,6 +211,18 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
             }),
             AutoImport({
               exclude: [/src\\/admin/],
+              eslintrc: { enabled: true },
+            }),
+            AutoImport({
+              ["include"]: [/src\\/routes/],
+              eslintrc: { enabled: true },
+            }),
+            AutoImport({
+              ["exclude"]: [/src\\/admin/],
+              eslintrc: { enabled: true },
+            }),
+            AutoImport({
+              [filterName]: [/src\\/routes/],
               eslintrc: { enabled: true },
             }),
           ],

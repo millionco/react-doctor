@@ -2003,7 +2003,7 @@ const analyzeConfigNode = (
 };
 
 const hasCompilerInConfigFile = (filePath: string): boolean =>
-  analyzeConfigModuleExport(filePath, "default", false, 0, new Set<string>());
+  analyzeConfigModuleExport(filePath, "default", true, 0, new Set<string>());
 
 const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean =>
   filenames.some((filename) => hasCompilerInConfigFile(path.join(directory, filename)));
@@ -2014,7 +2014,7 @@ const hasCompilerInPackageJsonConfig = (packageJson: PackageJson): boolean =>
     ts.parseJsonText("package.json", JSON.stringify(packageJson.babel)),
     "package.json#babel",
     "default",
-    false,
+    true,
     0,
     new Set<string>(),
   );

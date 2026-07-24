@@ -499,8 +499,8 @@ const hasTopLevelValueBinding = (sourceFile: ts.SourceFile, bindingName: string)
         : false;
     }
     if (ts.isVariableStatement(statement)) {
-      return statement.declarationList.declarations.some(
-        (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === bindingName,
+      return statement.declarationList.declarations.some((declaration) =>
+        bindingNameContainsIdentifier(declaration.name, bindingName),
       );
     }
     return (
@@ -687,10 +687,17 @@ const isConstantVariableInitializer = (node: ts.Node): node is ts.Expression =>
   ts.isVariableDeclarationList(node.parent.parent) &&
   Boolean(node.parent.parent.flags & ts.NodeFlags.Const);
 
-const isNodeCreateRequireCall = (
-  node: ts.Node,
-  analysis: ConfigExpressionAnalysis,
-): node is ts.CallExpression => {
+const isNodeCreateRequireCall = (node: ts.Node, analysis: ConfigExpressionAnalysis): boolean => {
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isAwaitExpression(node)
+  ) {
+    return isNodeCreateRequireCall(node.expression, analysis);
+  }
   if (!ts.isCallExpression(node)) return false;
   const target = node.expression;
   if (ts.isIdentifier(target)) {
@@ -751,6 +758,7 @@ const getNodeRequireResolveModuleSpecifier = (
     resolverInitializer === null &&
     !scopedBinding.wasFound &&
     resolverIdentifier.text === "require" &&
+    !hasTopLevelValueBinding(analysis.sourceFile, resolverIdentifier.text) &&
     getImportBinding(analysis.sourceFile, resolverIdentifier.text) === null
   ) {
     return moduleSpecifierNode.text;

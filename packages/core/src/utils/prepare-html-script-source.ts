@@ -5,6 +5,24 @@ const COMMENT_CLOSE = "-->";
 const SCRIPT_TAG_NAME = "script";
 const SCRIPT_OPEN = `<${SCRIPT_TAG_NAME}`;
 const SCRIPT_CLOSE = `</${SCRIPT_TAG_NAME}`;
+const JAVASCRIPT_MIME_TYPES = new Set([
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
 const RAW_TEXT_TAG_NAMES = new Set([
   "iframe",
   "noembed",
@@ -24,6 +42,17 @@ const ATTRIBUTE_ASSIGNMENT_UTF8_BYTE = "=".charCodeAt(0);
 const TAG_SELF_CLOSE_UTF8_BYTE = "/".charCodeAt(0);
 const TAB_UTF8_BYTE = "\t".charCodeAt(0);
 const FORM_FEED_UTF8_BYTE = "\f".charCodeAt(0);
+
+export interface PreparedHtmlScriptSource {
+  readonly executableScriptBodies: ReadonlyArray<Buffer>;
+  readonly lintBuffer: Buffer;
+}
+
+interface ScriptAttributes {
+  readonly hasSource: boolean;
+  readonly language: string | null;
+  readonly type: string | null;
+}
 
 const isHtmlWhitespace = (byte: number | undefined): boolean =>
   byte === TAB_UTF8_BYTE ||
@@ -93,12 +122,15 @@ const findTagEnd = (sourceBuffer: Buffer, startByte: number): number => {
   return sourceBuffer.length;
 };
 
-const hasSourceAttribute = (
+const parseScriptAttributes = (
   sourceBuffer: Buffer,
   attributesStartByte: number,
   tagEndByte: number,
-): boolean => {
+): ScriptAttributes => {
   let byteIndex = attributesStartByte;
+  let hasSource = false;
+  let language: string | null = null;
+  let scriptType: string | null = null;
   while (byteIndex < tagEndByte) {
     while (
       byteIndex < tagEndByte &&
@@ -116,32 +148,50 @@ const hasSourceAttribute = (
     ) {
       byteIndex++;
     }
-    if (
-      sourceBuffer.subarray(attributeNameStartByte, byteIndex).toString("ascii").toLowerCase() ===
-      "src"
-    ) {
-      return true;
-    }
+    const attributeName = sourceBuffer
+      .subarray(attributeNameStartByte, byteIndex)
+      .toString("ascii")
+      .toLowerCase();
     while (byteIndex < tagEndByte && isHtmlWhitespace(sourceBuffer[byteIndex])) byteIndex++;
-    if (sourceBuffer[byteIndex] !== ATTRIBUTE_ASSIGNMENT_UTF8_BYTE) continue;
-    byteIndex++;
-    while (byteIndex < tagEndByte && isHtmlWhitespace(sourceBuffer[byteIndex])) byteIndex++;
-    const quoteByte = sourceBuffer[byteIndex];
-    if (quoteByte === SINGLE_QUOTE_UTF8_BYTE || quoteByte === DOUBLE_QUOTE_UTF8_BYTE) {
+    let attributeValue = "";
+    if (sourceBuffer[byteIndex] === ATTRIBUTE_ASSIGNMENT_UTF8_BYTE) {
       byteIndex++;
-      while (byteIndex < tagEndByte && sourceBuffer[byteIndex] !== quoteByte) byteIndex++;
-      byteIndex++;
-      continue;
+      while (byteIndex < tagEndByte && isHtmlWhitespace(sourceBuffer[byteIndex])) byteIndex++;
+      const quoteByte = sourceBuffer[byteIndex];
+      if (quoteByte === SINGLE_QUOTE_UTF8_BYTE || quoteByte === DOUBLE_QUOTE_UTF8_BYTE) {
+        const valueStartByte = byteIndex + 1;
+        byteIndex = valueStartByte;
+        while (byteIndex < tagEndByte && sourceBuffer[byteIndex] !== quoteByte) byteIndex++;
+        attributeValue = sourceBuffer.subarray(valueStartByte, byteIndex).toString("utf8");
+        if (byteIndex < tagEndByte) byteIndex++;
+      } else {
+        const valueStartByte = byteIndex;
+        while (
+          byteIndex < tagEndByte &&
+          !isHtmlWhitespace(sourceBuffer[byteIndex]) &&
+          sourceBuffer[byteIndex] !== TAG_CLOSE_UTF8_BYTE
+        ) {
+          byteIndex++;
+        }
+        attributeValue = sourceBuffer.subarray(valueStartByte, byteIndex).toString("utf8");
+      }
     }
-    while (
-      byteIndex < tagEndByte &&
-      !isHtmlWhitespace(sourceBuffer[byteIndex]) &&
-      sourceBuffer[byteIndex] !== TAG_CLOSE_UTF8_BYTE
-    ) {
-      byteIndex++;
-    }
+    if (attributeName === "src") hasSource = true;
+    else if (attributeName === "type" && scriptType === null) scriptType = attributeValue;
+    else if (attributeName === "language" && language === null) language = attributeValue;
   }
-  return false;
+  return { hasSource, language, type: scriptType };
+};
+
+const isExecutableScript = (attributes: ScriptAttributes): boolean => {
+  if (attributes.hasSource) return false;
+  const type = attributes.type?.trim().toLowerCase() ?? "";
+  if (type !== "") {
+    const mimeType = type.split(";")[0]?.trim() ?? "";
+    return mimeType === "module" || JAVASCRIPT_MIME_TYPES.has(mimeType);
+  }
+  const language = attributes.language?.trim().toLowerCase() ?? "";
+  return language === "" || JAVASCRIPT_MIME_TYPES.has(`text/${language}`);
 };
 
 const findElementClose = (sourceBuffer: Buffer, startByte: number, tagName: string): number => {
@@ -158,8 +208,9 @@ const findElementClose = (sourceBuffer: Buffer, startByte: number, tagName: stri
   return sourceBuffer.length;
 };
 
-export const maskExternalHtmlScriptBodies = (sourceBuffer: Buffer): Buffer => {
+export const prepareHtmlScriptSource = (sourceBuffer: Buffer): PreparedHtmlScriptSource => {
   let maskedBuffer: Buffer | null = null;
+  const executableScriptBodies: Buffer[] = [];
   let byteIndex = 0;
   while (byteIndex < sourceBuffer.length) {
     if (sourceBuffer[byteIndex] !== TAG_OPEN_UTF8_BYTE) {
@@ -198,7 +249,12 @@ export const maskExternalHtmlScriptBodies = (sourceBuffer: Buffer): Buffer => {
     if (tagEndByte === sourceBuffer.length) break;
     const bodyStartByte = tagEndByte + 1;
     const bodyEndByte = findElementClose(sourceBuffer, bodyStartByte, SCRIPT_TAG_NAME);
-    if (hasSourceAttribute(sourceBuffer, byteIndex + SCRIPT_OPEN.length, tagEndByte)) {
+    const attributes = parseScriptAttributes(
+      sourceBuffer,
+      byteIndex + SCRIPT_OPEN.length,
+      tagEndByte,
+    );
+    if (attributes.hasSource) {
       maskedBuffer ??= Buffer.from(sourceBuffer);
       for (let bodyByteIndex = bodyStartByte; bodyByteIndex < bodyEndByte; bodyByteIndex++) {
         const byte = maskedBuffer[bodyByteIndex];
@@ -206,10 +262,12 @@ export const maskExternalHtmlScriptBodies = (sourceBuffer: Buffer): Buffer => {
           maskedBuffer[bodyByteIndex] = SPACE_UTF8_BYTE;
         }
       }
+    } else if (isExecutableScript(attributes)) {
+      executableScriptBodies.push(sourceBuffer.subarray(bodyStartByte, bodyEndByte));
     }
     if (bodyEndByte === sourceBuffer.length) break;
     const closeTagEndByte = findTagEnd(sourceBuffer, bodyEndByte + SCRIPT_CLOSE.length);
     byteIndex = Math.min(closeTagEndByte + 1, sourceBuffer.length);
   }
-  return maskedBuffer ?? sourceBuffer;
+  return { executableScriptBodies, lintBuffer: maskedBuffer ?? sourceBuffer };
 };

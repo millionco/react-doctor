@@ -70,4 +70,38 @@ describe("HTML diagnostic mapping", () => {
     expect(lintBuffer.equals(Buffer.from(html))).toBe(true);
     expect(preparedSources.sizeByLintPath.get(lintPath)).toBe(Buffer.byteLength(html));
   });
+
+  it("detects Three imports only in executable inline scripts", () => {
+    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-html-three-"));
+    temporaryDirectories.push(rootDirectory);
+    fs.writeFileSync(
+      path.join(rootDirectory, "inert.html"),
+      [
+        '<p>import "three";</p>',
+        '<!-- <script>import "three";</script> -->',
+        '<script src="./main.js">import "three";</script>',
+        '<script type="application/json">{"module":"three"}</script>',
+        '<script type="x-shader/x-fragment">import "three";</script>',
+        '<script type="module">import "other";</script>',
+      ].join("\n"),
+    );
+    fs.writeFileSync(
+      path.join(rootDirectory, "active.html"),
+      '<script type="module">import "three";</script>',
+    );
+
+    const inertSources = prepareHtmlLintSources(
+      rootDirectory,
+      path.join(rootDirectory, "tmp-inert"),
+      ["inert.html"],
+    );
+    const activeSources = prepareHtmlLintSources(
+      rootDirectory,
+      path.join(rootDirectory, "tmp-active"),
+      ["active.html"],
+    );
+
+    expect(inertSources.hasThreeModuleImport).toBe(false);
+    expect(activeSources.hasThreeModuleImport).toBe(true);
+  });
 });

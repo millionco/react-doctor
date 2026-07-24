@@ -374,7 +374,7 @@ export const parseOxlintOutput = (
 
   // HACK: oxlint reports diagnostics for every JS/TS extension it
   // scanned (`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.mjs`) plus React Doctor's
-  // virtual JS sources extracted from HTML. The previous filter only
+  // virtual Astro sources for HTML. The previous filter only
   // kept `.tsx` / `.jsx` — fine when react-doctor's curated rules were
   // the only sources (they're React-specific anyway), but adopted
   // user rules like `eslint/no-debugger` or `unicorn/*` typically

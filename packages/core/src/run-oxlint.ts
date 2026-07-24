@@ -521,9 +521,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       candidateFiles,
     );
     const lintFiles = preparedHtmlSources.lintFiles;
-    const hasHtmlFiles =
-      preparedHtmlSources.sourcePathByLintPath.size > 0 ||
-      preparedHtmlSources.analyzedHtmlFilesWithoutScripts.length > 0;
+    const hasHtmlFiles = preparedHtmlSources.sourcePathByLintPath.size > 0;
     const lintProject =
       !project.hasThree && preparedHtmlSources.hasThreeModuleImport
         ? { ...project, hasThree: true }
@@ -555,9 +553,14 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // `"arrival"` (the `REACT_DOCTOR_LINT_BATCH_ORDERING` rollback hatch) and
     // every explicit-`includePaths` scan keep the plain greedy chunking.
     const sizeByFile =
-      sizedScanFiles !== null && lintBatchOrdering === "cost" && !hasHtmlFiles
+      sizedScanFiles !== null && lintBatchOrdering === "cost"
         ? new Map(sizedScanFiles.map((entry) => [entry.path, entry.sizeBytes]))
         : null;
+    if (sizeByFile !== null) {
+      for (const [lintPath, sizeBytes] of preparedHtmlSources.sizeByLintPath) {
+        sizeByFile.set(lintPath, sizeBytes);
+      }
+    }
     const buildFileBatches = (passBaseArgs: string[], passFiles: string[]): string[][] =>
       sizeByFile !== null
         ? planLintBatches({ baseArgs: passBaseArgs, files: passFiles, sizeByFile })
@@ -993,9 +996,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         sourcePathByLintPath: preparedHtmlSources.sourcePathByLintPath,
         onPartialFailure,
         onAnalyzedFiles: (filePaths) => {
-          analyzedFiles = [
-            ...new Set([...preparedHtmlSources.analyzedHtmlFilesWithoutScripts, ...filePaths]),
-          ].sort();
+          analyzedFiles = filePaths;
         },
         onFileProgress: options.onFileProgress,
         spawnTimeoutMs,

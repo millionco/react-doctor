@@ -18,18 +18,23 @@ describe("runOxlint HTML support", () => {
   });
 
   it("reports Three.js diagnostics from inline module scripts at HTML locations", async () => {
-    fs.writeFileSync(
-      path.join(rootDirectory, "index.html"),
-      [
-        "<!doctype html>",
-        '<script type="module">',
-        '  import { WebGLRenderer } from "three";',
-        "  const renderer = new WebGLRenderer();",
-        "  renderer.setPixelRatio(window.devicePixelRatio);",
-        "</script>",
-      ].join("\n"),
-    );
+    const html = [
+      "<!doctype html>",
+      "<main>🙂</main>",
+      '<script data-label="a > b" type="module">',
+      '  import { WebGLRenderer } from "three";',
+      "  const renderer = new WebGLRenderer();",
+      "  renderer.setPixelRatio(window.devicePixelRatio);",
+      "</script>",
+      '<script type="module">',
+      '  import * as THREE from "three";',
+      "  const secondaryRenderer = new THREE.WebGLRenderer();",
+      "  secondaryRenderer.setPixelRatio(window.devicePixelRatio);",
+      "</script>",
+    ].join("\n");
+    fs.writeFileSync(path.join(rootDirectory, "index.html"), html);
     let coverage: RunOxlintFileCoverage | null = null;
+    const progressUpdates: number[][] = [];
 
     const diagnostics = await runOxlint({
       rootDirectory,
@@ -39,27 +44,51 @@ describe("runOxlint HTML support", () => {
       onFileCoverage: (nextCoverage) => {
         coverage = nextCoverage;
       },
+      onFileProgress: (scannedFileCount, totalFileCount) => {
+        progressUpdates.push([scannedFileCount, totalFileCount]);
+      },
     });
 
-    expect(
-      diagnostics.find((diagnostic) => diagnostic.rule === "three-cap-device-pixel-ratio"),
-    ).toMatchObject({
+    const pixelRatioDiagnostics = diagnostics.filter(
+      (diagnostic) => diagnostic.rule === "three-cap-device-pixel-ratio",
+    );
+    expect(pixelRatioDiagnostics).toHaveLength(2);
+    expect(pixelRatioDiagnostics[0]).toMatchObject({
       filePath: "index.html",
-      line: 5,
+      line: 6,
+      offset: Buffer.from(html).indexOf("window.devicePixelRatio"),
     });
+    expect(progressUpdates.at(-1)).toEqual([1, 1]);
+    expect(progressUpdates.every(([, totalFileCount]) => totalFileCount === 1)).toBe(true);
     expect(coverage).toEqual({
       candidateFiles: ["index.html"],
       analyzedFiles: ["index.html"],
     });
   });
 
-  it("treats HTML without inline JavaScript as successfully analyzed", async () => {
+  it("skips non-executable script elements and still records complete coverage", async () => {
     fs.writeFileSync(
       path.join(rootDirectory, "index.html"),
       [
-        '<script src="./main.js"></script>',
-        '<script type="importmap">{"imports": {}}</script>',
-        '<script type="x-shader/x-fragment">void main() {}</script>',
+        '<script src="./main.js">',
+        '  import { WebGLRenderer } from "three";',
+        "  new WebGLRenderer().setPixelRatio(window.devicePixelRatio);",
+        "</script>",
+        '<script type="application/json">',
+        '  import { WebGLRenderer } from "three";',
+        "  new WebGLRenderer().setPixelRatio(window.devicePixelRatio);",
+        "</script>",
+        '<script type="importmap">{"imports": {"three": "./three.js"}}</script>',
+        '<script type="x-shader/x-fragment">',
+        '  import { WebGLRenderer } from "three";',
+        "  new WebGLRenderer().setPixelRatio(window.devicePixelRatio);",
+        "</script>",
+        "<!--",
+        '<script type="module">',
+        '  import { WebGLRenderer } from "three";',
+        "  new WebGLRenderer().setPixelRatio(window.devicePixelRatio);",
+        "</script>",
+        "-->",
       ].join("\n"),
     );
     let coverage: RunOxlintFileCoverage | null = null;

@@ -30,8 +30,9 @@ describe("HTML diagnostic mapping", () => {
     const preparedSources = prepareHtmlLintSources(rootDirectory, temporaryDirectory, [
       "index.html",
     ]);
+    expect(preparedSources.lintFiles).toHaveLength(1);
     const [lintPath] = preparedSources.lintFiles;
-    if (lintPath === undefined) throw new Error("Expected an extracted HTML script");
+    if (lintPath === undefined) throw new Error("Expected a virtual HTML lint source");
     const lintBuffer = fs.readFileSync(lintPath);
     const offset = lintBuffer.indexOf("debugger");
     const stdout = JSON.stringify({
@@ -66,5 +67,7 @@ describe("HTML diagnostic mapping", () => {
       offset,
       length: 8,
     });
+    expect(lintBuffer.equals(Buffer.from(html))).toBe(true);
+    expect(preparedSources.sizeByLintPath.get(lintPath)).toBe(Buffer.byteLength(html));
   });
 });

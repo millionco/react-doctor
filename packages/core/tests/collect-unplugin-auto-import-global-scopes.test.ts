@@ -314,4 +314,218 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
       }),
     ).toEqual([]);
   });
+
+  it("does not union globals from ambiguous sibling configs", () => {
+    const rootDirectory = createCaseDirectory("ambiguous-configs");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        export default {
+          plugins: [
+            AutoImport({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      "webpack.config.js",
+      `
+        module.exports = {
+          plugins: [
+            require("unplugin-auto-import/webpack")({
+              eslintrc: {
+                enabled: true,
+                filepath: "./stale-auto-imports.json",
+              },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(
+      rootDirectory,
+      "stale-auto-imports.json",
+      JSON.stringify({ globals: { StaleRoute: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("collects CommonJS webpack and rspack globals", () => {
+    const rootDirectory = createCaseDirectory("commonjs-configs");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "webpack.config.cjs",
+      `
+        const AutoImport = require("unplugin-auto-import/webpack");
+        module.exports = {
+          plugins: [
+            AutoImport({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+    writeFile(rootDirectory, "packages/admin/package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "packages/admin/rspack.config.js",
+      `
+        module.exports = {
+          plugins: [
+            require("unplugin-auto-import/rspack")({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      "packages/admin/.eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Navigate: "readonly" } }),
+    );
+    writeFile(
+      rootDirectory,
+      "packages/admin/src/app.tsx",
+      "export const App = () => <Navigate />;",
+    );
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx", "packages/admin/src/app.tsx"],
+      }),
+    ).toEqual([
+      { directory: "", names: ["Route"] },
+      { directory: "packages/admin", names: ["Navigate"] },
+    ]);
+  });
+
+  it("collects Astro globals from exported integrations", () => {
+    const rootDirectory = createCaseDirectory("astro-config");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "astro.config.mjs",
+      `
+        import AutoImport from "unplugin-auto-import/astro";
+        export default {
+          integrations: [
+            AutoImport({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { AstroRoute: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <AstroRoute />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([{ directory: "", names: ["AstroRoute"] }]);
+  });
+
+  it("collects globals from symlinked config files", () => {
+    const rootDirectory = createCaseDirectory("symlinked-config");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "config-source.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        export default {
+          plugins: [
+            AutoImport({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    fs.symlinkSync(
+      path.join(rootDirectory, "config-source.ts"),
+      path.join(rootDirectory, "vite.config.ts"),
+      "file",
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { LinkedRoute: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <LinkedRoute />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([{ directory: "", names: ["LinkedRoute"] }]);
+  });
+
+  it("collects globals from active esbuild build calls", () => {
+    const rootDirectory = createCaseDirectory("esbuild-config");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "esbuild.config.ts",
+      `
+        import { build as buildProject } from "esbuild";
+        import AutoImport from "unplugin-auto-import/esbuild";
+        buildProject({
+          plugins: [
+            AutoImport({
+              eslintrc: { enabled: true },
+            }),
+          ],
+        });
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { EsbuildRoute: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <EsbuildRoute />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([{ directory: "", names: ["EsbuildRoute"] }]);
+  });
 });

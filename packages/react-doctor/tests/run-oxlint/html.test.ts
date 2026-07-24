@@ -109,4 +109,42 @@ describe("runOxlint HTML support", () => {
       analyzedFiles: ["index.html"],
     });
   });
+
+  it("skips SSG frontmatter and inert template scripts", async () => {
+    const html = [
+      "---",
+      "title: Three demo",
+      'example: <script type="module">import "three";</script>',
+      "---",
+      "<template>",
+      '  <script type="module">',
+      '    import { WebGLRenderer } from "three";',
+      "    new WebGLRenderer().setPixelRatio(window.devicePixelRatio);",
+      "  </script>",
+      "</template>",
+      '<script type="module">',
+      '  import { WebGLRenderer } from "three";',
+      "  new WebGLRenderer().setPixelRatio(window.devicePixelRatio);",
+      "</script>",
+    ].join("\n");
+    fs.writeFileSync(path.join(rootDirectory, "index.html"), html);
+
+    const diagnostics = await runOxlint({
+      rootDirectory,
+      project: buildTestProject({ rootDirectory }),
+      includePaths: ["index.html"],
+      perFileLintCacheEnabled: false,
+    });
+
+    const pixelRatioDiagnostics = diagnostics.filter(
+      (diagnostic) => diagnostic.rule === "three-cap-device-pixel-ratio",
+    );
+    expect(pixelRatioDiagnostics).toHaveLength(1);
+    expect(pixelRatioDiagnostics[0]).toMatchObject({
+      filePath: "index.html",
+      line: 13,
+      offset: Buffer.from(html).lastIndexOf("window.devicePixelRatio"),
+    });
+    expect(diagnostics.some((diagnostic) => diagnostic.rule === "parse-error")).toBe(false);
+  });
 });

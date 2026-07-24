@@ -2,9 +2,12 @@ import { CARRIAGE_RETURN_UTF8_BYTE, LINE_FEED_UTF8_BYTE, SPACE_UTF8_BYTE } from 
 
 const COMMENT_OPEN = "<!--";
 const COMMENT_CLOSE = "-->";
+const FRONTMATTER_FENCE = "---";
 const SCRIPT_TAG_NAME = "script";
 const SCRIPT_OPEN = `<${SCRIPT_TAG_NAME}`;
 const SCRIPT_CLOSE = `</${SCRIPT_TAG_NAME}`;
+const TEMPLATE_TAG_NAME = "template";
+const TEMPLATE_CLOSE = `</${TEMPLATE_TAG_NAME}`;
 const JAVASCRIPT_MIME_TYPES = new Set([
   "application/ecmascript",
   "application/javascript",
@@ -85,6 +88,64 @@ const isTagBoundary = (byte: number | undefined): boolean =>
 const isPotentialTagStart = (byte: number | undefined): boolean => {
   if (byte === undefined) return false;
   return /[A-Za-z!/?]/.test(String.fromCharCode(byte));
+};
+
+const findLineEnd = (sourceBuffer: Buffer, lineStartByte: number): number => {
+  let byteIndex = lineStartByte;
+  while (
+    byteIndex < sourceBuffer.length &&
+    sourceBuffer[byteIndex] !== LINE_FEED_UTF8_BYTE &&
+    sourceBuffer[byteIndex] !== CARRIAGE_RETURN_UTF8_BYTE
+  ) {
+    byteIndex++;
+  }
+  return byteIndex;
+};
+
+const findNextLineStart = (sourceBuffer: Buffer, lineStartByte: number): number => {
+  const lineEndByte = findLineEnd(sourceBuffer, lineStartByte);
+  if (
+    sourceBuffer[lineEndByte] === CARRIAGE_RETURN_UTF8_BYTE &&
+    sourceBuffer[lineEndByte + 1] === LINE_FEED_UTF8_BYTE
+  ) {
+    return lineEndByte + 2;
+  }
+  return Math.min(lineEndByte + 1, sourceBuffer.length);
+};
+
+const isFrontmatterFenceLine = (sourceBuffer: Buffer, lineStartByte: number): boolean => {
+  if (!matchesAsciiCaseInsensitive(sourceBuffer, lineStartByte, FRONTMATTER_FENCE)) return false;
+  const lineEndByte = findLineEnd(sourceBuffer, lineStartByte);
+  for (
+    let byteIndex = lineStartByte + FRONTMATTER_FENCE.length;
+    byteIndex < lineEndByte;
+    byteIndex++
+  ) {
+    if (!isHtmlWhitespace(sourceBuffer[byteIndex])) return false;
+  }
+  return true;
+};
+
+const findFrontmatterEnd = (sourceBuffer: Buffer): number => {
+  if (!isFrontmatterFenceLine(sourceBuffer, 0)) return 0;
+  const openingFenceEndByte = findLineEnd(sourceBuffer, 0);
+  let lineStartByte = findNextLineStart(sourceBuffer, 0);
+  while (lineStartByte < sourceBuffer.length) {
+    if (isFrontmatterFenceLine(sourceBuffer, lineStartByte)) {
+      return findLineEnd(sourceBuffer, lineStartByte);
+    }
+    lineStartByte = findNextLineStart(sourceBuffer, lineStartByte);
+  }
+  return openingFenceEndByte;
+};
+
+const maskByteRange = (maskedBuffer: Buffer, startByte: number, endByte: number): void => {
+  for (let byteIndex = startByte; byteIndex < endByte; byteIndex++) {
+    const byte = maskedBuffer[byteIndex];
+    if (byte !== LINE_FEED_UTF8_BYTE && byte !== CARRIAGE_RETURN_UTF8_BYTE) {
+      maskedBuffer[byteIndex] = SPACE_UTF8_BYTE;
+    }
+  }
 };
 
 const readStartTagName = (sourceBuffer: Buffer, tagStartByte: number): string | null => {
@@ -209,9 +270,12 @@ const findElementClose = (sourceBuffer: Buffer, startByte: number, tagName: stri
 };
 
 export const prepareHtmlScriptSource = (sourceBuffer: Buffer): PreparedHtmlScriptSource => {
-  let maskedBuffer: Buffer | null = null;
+  const frontmatterEndByte = findFrontmatterEnd(sourceBuffer);
+  let maskedBuffer: Buffer | null = frontmatterEndByte > 0 ? Buffer.from(sourceBuffer) : null;
+  if (maskedBuffer !== null) maskByteRange(maskedBuffer, 0, frontmatterEndByte);
   const executableScriptBodies: Buffer[] = [];
-  let byteIndex = 0;
+  let byteIndex = frontmatterEndByte;
+  let templateDepth = 0;
   while (byteIndex < sourceBuffer.length) {
     if (sourceBuffer[byteIndex] !== TAG_OPEN_UTF8_BYTE) {
       byteIndex++;
@@ -221,6 +285,15 @@ export const prepareHtmlScriptSource = (sourceBuffer: Buffer): PreparedHtmlScrip
       const commentEndByte = sourceBuffer.indexOf(COMMENT_CLOSE, byteIndex + COMMENT_OPEN.length);
       byteIndex =
         commentEndByte === -1 ? sourceBuffer.length : commentEndByte + COMMENT_CLOSE.length;
+      continue;
+    }
+    if (
+      matchesAsciiCaseInsensitive(sourceBuffer, byteIndex, TEMPLATE_CLOSE) &&
+      isTagBoundary(sourceBuffer[byteIndex + TEMPLATE_CLOSE.length])
+    ) {
+      const tagEndByte = findTagEnd(sourceBuffer, byteIndex + TEMPLATE_CLOSE.length);
+      if (templateDepth > 0) templateDepth--;
+      byteIndex = Math.min(tagEndByte + 1, sourceBuffer.length);
       continue;
     }
     if (
@@ -234,6 +307,7 @@ export const prepareHtmlScriptSource = (sourceBuffer: Buffer): PreparedHtmlScrip
       const tagEndByte = findTagEnd(sourceBuffer, byteIndex + 1);
       const tagName = readStartTagName(sourceBuffer, byteIndex);
       if (tagName === PLAINTEXT_TAG_NAME) break;
+      if (tagName === TEMPLATE_TAG_NAME) templateDepth++;
       if (tagName !== null && RAW_TEXT_TAG_NAMES.has(tagName)) {
         const closeTagStartByte = findElementClose(sourceBuffer, tagEndByte + 1, tagName);
         if (closeTagStartByte === sourceBuffer.length) break;
@@ -254,14 +328,9 @@ export const prepareHtmlScriptSource = (sourceBuffer: Buffer): PreparedHtmlScrip
       byteIndex + SCRIPT_OPEN.length,
       tagEndByte,
     );
-    if (attributes.hasSource) {
+    if (attributes.hasSource || templateDepth > 0) {
       maskedBuffer ??= Buffer.from(sourceBuffer);
-      for (let bodyByteIndex = bodyStartByte; bodyByteIndex < bodyEndByte; bodyByteIndex++) {
-        const byte = maskedBuffer[bodyByteIndex];
-        if (byte !== LINE_FEED_UTF8_BYTE && byte !== CARRIAGE_RETURN_UTF8_BYTE) {
-          maskedBuffer[bodyByteIndex] = SPACE_UTF8_BYTE;
-        }
-      }
+      maskByteRange(maskedBuffer, bodyStartByte, bodyEndByte);
     } else if (isExecutableScript(attributes)) {
       executableScriptBodies.push(sourceBuffer.subarray(bodyStartByte, bodyEndByte));
     }

@@ -58,4 +58,31 @@ describe("prepareHtmlScriptSource", () => {
       'import "module";',
     ]);
   });
+
+  it("masks leading frontmatter and scripts nested in templates", () => {
+    const source = [
+      "---",
+      'title: <script type="module">import "frontmatter";</script>',
+      "---",
+      "<template>",
+      '  <script type="module">import "template";</script>',
+      "  <template>",
+      '    <script type="module">import "nested-template";</script>',
+      "  </template>",
+      "</template>",
+      '<script type="module">import "active";</script>',
+    ].join("\r\n");
+    const sourceBuffer = Buffer.from(source);
+
+    const { executableScriptBodies, lintBuffer } = prepareHtmlScriptSource(sourceBuffer);
+
+    expect(lintBuffer.length).toBe(sourceBuffer.length);
+    expect(lintBuffer.toString("utf8").split("\r\n")).toHaveLength(source.split("\r\n").length);
+    expect(lintBuffer.toString("utf8")).not.toContain('import "frontmatter"');
+    expect(lintBuffer.toString("utf8")).not.toContain('import "template"');
+    expect(lintBuffer.toString("utf8")).not.toContain('import "nested-template"');
+    expect(executableScriptBodies.map((scriptBody) => scriptBody.toString("utf8"))).toEqual([
+      'import "active";',
+    ]);
+  });
 });

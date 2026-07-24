@@ -39,6 +39,7 @@ import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
+import { prepareHtmlLintSources } from "./utils/prepare-html-lint-sources.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
@@ -430,28 +431,6 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   const userPlugins =
     includedTags.size > 0 ? [] : resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
 
-  const buildConfig = (overrides: {
-    extendsPaths: string[];
-    disableReactHooksJsPlugin?: boolean;
-    ruleSelection?: "cacheable" | "sidecar";
-    sidecarRuleIdFilter?: ReadonlySet<string>;
-  }) =>
-    createOxlintConfig({
-      pluginPath,
-      project,
-      customRulesOnly,
-      extendsPaths: overrides.extendsPaths,
-      ignoredTags,
-      includedTags,
-      includeTagDefaults,
-      serverAuthFunctionNames,
-      severityControls,
-      userPlugins,
-      disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
-      ruleSelection: overrides.ruleSelection,
-      sidecarRuleIdFilter: overrides.sidecarRuleIdFilter,
-    });
-
   // HACK: only neutralize disable comments in audit mode. Default
   // behavior respects the user's existing `// eslint-disable*` /
   // `// oxlint-disable*` directives — we let oxlint apply them.
@@ -536,13 +515,47 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
     const candidateFiles =
       includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
+    const preparedHtmlSources = prepareHtmlLintSources(
+      rootDirectory,
+      configDirectory,
+      candidateFiles,
+    );
+    const lintFiles = preparedHtmlSources.lintFiles;
+    const hasHtmlFiles =
+      preparedHtmlSources.sourcePathByLintPath.size > 0 ||
+      preparedHtmlSources.analyzedHtmlFilesWithoutScripts.length > 0;
+    const lintProject =
+      !project.hasThree && preparedHtmlSources.hasThreeModuleImport
+        ? { ...project, hasThree: true }
+        : project;
+    const buildConfig = (overrides: {
+      extendsPaths: string[];
+      disableReactHooksJsPlugin?: boolean;
+      ruleSelection?: "cacheable" | "sidecar";
+      sidecarRuleIdFilter?: ReadonlySet<string>;
+    }) =>
+      createOxlintConfig({
+        pluginPath,
+        project: lintProject,
+        customRulesOnly,
+        extendsPaths: overrides.extendsPaths,
+        ignoredTags,
+        includedTags,
+        includeTagDefaults,
+        serverAuthFunctionNames,
+        severityControls,
+        userPlugins,
+        disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
+        ruleSelection: overrides.ruleSelection,
+        sidecarRuleIdFilter: overrides.sidecarRuleIdFilter,
+      });
 
     // `"cost"` (the default) plans size-balanced LPT batches — the size is
     // the discovery walk's existing stat, captured rather than re-paid.
     // `"arrival"` (the `REACT_DOCTOR_LINT_BATCH_ORDERING` rollback hatch) and
     // every explicit-`includePaths` scan keep the plain greedy chunking.
     const sizeByFile =
-      sizedScanFiles !== null && lintBatchOrdering === "cost"
+      sizedScanFiles !== null && lintBatchOrdering === "cost" && !hasHtmlFiles
         ? new Map(sizedScanFiles.map((entry) => [entry.path, entry.sizeBytes]))
         : null;
     const buildFileBatches = (passBaseArgs: string[], passFiles: string[]): string[][] =>
@@ -594,7 +607,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           fileBatches: passFileBatches,
           rootDirectory,
           nodeBinaryPath,
-          project,
+          project: lintProject,
+          sourcePathByLintPath: preparedHtmlSources.sourcePathByLintPath,
           onPartialFailure: reportPartialFailure,
           onAnalyzedFiles: (filePaths) => {
             analyzedFiles = filePaths;
@@ -652,7 +666,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       !project.hasReactCompiler &&
       project.hasReactCompilerLintPlugin !== true &&
       extendsPaths.length === 0 &&
-      userPlugins.length === 0;
+      userPlugins.length === 0 &&
+      !hasHtmlFiles;
 
     if (useFileLintCache) {
       const rulesetHash = computeRulesetHash({
@@ -965,7 +980,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     }
 
     const baseArgs = makeBaseArgs(configPath);
-    const fileBatches = buildFileBatches(baseArgs, candidateFiles);
+    const fileBatches = buildFileBatches(baseArgs, lintFiles);
     let analyzedFiles: ReadonlyArray<string> = [];
 
     const runBatches = () =>
@@ -974,10 +989,13 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         fileBatches,
         rootDirectory,
         nodeBinaryPath,
-        project,
+        project: lintProject,
+        sourcePathByLintPath: preparedHtmlSources.sourcePathByLintPath,
         onPartialFailure,
         onAnalyzedFiles: (filePaths) => {
-          analyzedFiles = filePaths;
+          analyzedFiles = [
+            ...new Set([...preparedHtmlSources.analyzedHtmlFilesWithoutScripts, ...filePaths]),
+          ].sort();
         },
         onFileProgress: options.onFileProgress,
         spawnTimeoutMs,

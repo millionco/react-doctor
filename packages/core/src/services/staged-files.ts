@@ -30,7 +30,7 @@ export class StagedFiles extends Context.Service<
   {
     /**
      * Discovers source files staged for commit (lintable staged paths
-     * from `git diff --cached` — JS/TS minus generated bundles).
+     * from `git diff --cached` — JS/TS/HTML minus generated bundles).
      */
     readonly discoverSourceFiles: (
       directory: string,

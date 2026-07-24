@@ -13,6 +13,8 @@ React Doctor deterministically scans your codebase and finds issues across state
 
 Works for all React frameworks and libraries - Next.js, Vite, TanStack, React Native, Expo, you name it.
 
+Scans JavaScript and TypeScript source files plus JavaScript in standard inline `<script>` blocks in `.html` files.
+
 [Website →](https://react.doctor/docs)
 
 ## Install

@@ -51,6 +51,7 @@ describe("listSourceFilesWithSize", () => {
     writeFile("button.tsx", "export const Button = () => null;\n");
     writeFile("helper.js", "module.exports = () => {};\n");
     writeFile("widget.jsx", "export const Widget = () => null;\n");
+    writeFile("index.html", "<script>console.log('hello');</script>\n");
     writeFile("notes.md", "# ignored\n");
 
     expect(listSourceFiles(temporaryDirectory)).toEqual(

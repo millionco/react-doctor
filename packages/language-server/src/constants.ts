@@ -109,6 +109,14 @@ export const CANONICAL_GITHUB_URL = "https://github.com/millionco/react-doctor";
  * and the CLI lint — so reactive (open/change) and proactive (workspace)
  * scanning cover exactly the same files.
  */
-export const SCANNABLE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"] as const;
+export const SCANNABLE_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mts",
+  ".mjs",
+  ".html",
+] as const;
 
 export { CONFIG_FINGERPRINT_FILENAMES as CONFIG_WATCH_FILENAMES } from "@react-doctor/core";

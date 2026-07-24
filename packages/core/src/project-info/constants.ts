@@ -1,4 +1,5 @@
-export const SOURCE_FILE_PATTERN = /\.(tsx?|jsx?|mts|mjs)$/;
+export const HTML_FILE_PATTERN = /\.html$/i;
+export const SOURCE_FILE_PATTERN = /\.(tsx?|jsx?|mts|mjs|html)$/i;
 
 // Bundler output — IIFE / UMD / global builds and explicitly-minified
 // drops (e.g. tsup/rollup emitting `widget.iife.js`, `sdk.umd.js`,

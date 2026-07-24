@@ -712,6 +712,18 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["scan.nonJsxFileCount"]).toBe(2);
   });
 
+  it("counts analyzed HTML files for inline-script scan adoption telemetry", () => {
+    const attributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({
+          analyzedFiles: ["src/App.tsx", "public/index.html", "examples/demo.HTML"],
+        }),
+      }),
+    );
+
+    expect(attributes["scan.htmlFileCount"]).toBe(2);
+  });
+
   it("records each scan phase's enabled state, including supply-chain", () => {
     const enabled = buildRunEventAttributes(baseInput());
     expect(enabled["scan.lint"]).toBe(true);

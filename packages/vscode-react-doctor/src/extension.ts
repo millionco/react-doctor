@@ -60,6 +60,7 @@ const DOCUMENT_LANGUAGE_IDS = [
   "typescriptreact",
   "javascript",
   "javascriptreact",
+  "html",
 ] as const;
 const ACTIVE_FILE_COMMANDS = new Set([COMMAND_SCAN_FILE, COMMAND_FIX_ALL]);
 const IS_WINDOWS = process.platform === "win32";

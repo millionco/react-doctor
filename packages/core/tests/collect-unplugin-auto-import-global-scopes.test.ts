@@ -230,4 +230,88 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
       }),
     ).toEqual([]);
   });
+
+  it("stays conservative for shorthand file filters and globals paths", () => {
+    const rootDirectory = createCaseDirectory("shorthand-options");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        const include = [/src\\/routes/];
+        const exclude = [/src\\/admin/];
+        const filepath = "./src/auto-imports.json";
+        export default {
+          plugins: [
+            AutoImport({
+              include,
+              eslintrc: { enabled: true },
+            }),
+            AutoImport({
+              exclude,
+              eslintrc: { enabled: true },
+            }),
+            AutoImport({
+              eslintrc: { enabled: true, filepath },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(
+      rootDirectory,
+      "src/auto-imports.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("ignores auto-import calls nested inside plugin option bags", () => {
+    const rootDirectory = createCaseDirectory("nested-plugin-options");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        export default {
+          plugins: [
+            WrapperPlugin({
+              plugins: [
+                AutoImport({
+                  eslintrc: { enabled: true },
+                }),
+              ],
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([]);
+  });
 });

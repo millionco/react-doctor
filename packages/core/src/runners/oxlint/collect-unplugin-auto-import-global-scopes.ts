@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import ts from "typescript";
-import { isPlainObject } from "../../project-info/index.js";
+import { isPlainObject } from "../../project-info/fs-utils.js";
 import { failOpenReadJson } from "../../utils/fail-open-read-json.js";
 import { unwrapTypescriptExpression } from "../../utils/unwrap-typescript-expression.js";
 
@@ -42,26 +42,34 @@ const SUPPORTED_GLOBAL_VALUES = new Set([
   "writeable",
 ]);
 
-const getStaticPropertyAssignment = (
+const getStaticProperty = (
   objectExpression: ts.ObjectLiteralExpression,
   propertyName: string,
-): ts.PropertyAssignment | null =>
+): ts.ObjectLiteralElementLike | null =>
   objectExpression.properties.find(
-    (property): property is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(property) &&
+    (property) =>
+      !ts.isSpreadAssignment(property) &&
       (ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)) &&
       property.name.text === propertyName,
   ) ?? null;
+
+const getStaticPropertyAssignment = (
+  objectExpression: ts.ObjectLiteralExpression,
+  propertyName: string,
+): ts.PropertyAssignment | null => {
+  const property = getStaticProperty(objectExpression, propertyName);
+  return property && ts.isPropertyAssignment(property) ? property : null;
+};
 
 const isInsideExportedPluginsProperty = (node: ts.Node): boolean => {
   let ancestor: ts.Node | undefined = node.parent;
   let didFindPluginsProperty = false;
   while (ancestor && !ts.isSourceFile(ancestor)) {
-    if (
-      ts.isPropertyAssignment(ancestor) &&
-      (ts.isIdentifier(ancestor.name) || ts.isStringLiteralLike(ancestor.name)) &&
-      ancestor.name.text === "plugins"
-    ) {
+    if (ts.isPropertyAssignment(ancestor)) {
+      const isPluginsProperty =
+        (ts.isIdentifier(ancestor.name) || ts.isStringLiteralLike(ancestor.name)) &&
+        ancestor.name.text === "plugins";
+      if (didFindPluginsProperty || !isPluginsProperty) return false;
       didFindPluginsProperty = true;
     }
     if (didFindPluginsProperty && ts.isExportAssignment(ancestor)) return true;
@@ -80,8 +88,8 @@ const getGlobalsPathFromAutoImportCall = (
   const unwrappedOptions = unwrapTypescriptExpression(optionsExpression);
   if (!ts.isObjectLiteralExpression(unwrappedOptions)) return null;
   if (
-    getStaticPropertyAssignment(unwrappedOptions, "include") ||
-    getStaticPropertyAssignment(unwrappedOptions, "exclude")
+    getStaticProperty(unwrappedOptions, "include") ||
+    getStaticProperty(unwrappedOptions, "exclude")
   ) {
     return null;
   }
@@ -99,8 +107,9 @@ const getGlobalsPathFromAutoImportCall = (
     return null;
   }
 
-  const filepathProperty = getStaticPropertyAssignment(eslintrcExpression, "filepath");
+  const filepathProperty = getStaticProperty(eslintrcExpression, "filepath");
   if (!filepathProperty) return path.join(packageDirectory, DEFAULT_ESLINT_GLOBALS_PATH);
+  if (!ts.isPropertyAssignment(filepathProperty)) return null;
   const filepathExpression = unwrapTypescriptExpression(filepathProperty.initializer);
   return ts.isStringLiteralLike(filepathExpression)
     ? path.resolve(packageDirectory, filepathExpression.text)

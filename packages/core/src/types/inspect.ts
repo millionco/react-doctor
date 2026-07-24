@@ -127,7 +127,7 @@ export interface InspectOptions {
    * precedence over per-project config on every scan, like `lint`/`deadCode`.
    */
   supplyChain?: boolean;
-  /** Restrict linting to these supported JS/TS source files. */
+  /** Restrict linting to supported JS/TS files and inline scripts in HTML files. */
   includePaths?: string[];
   configOverride?: ReactDoctorConfig | null;
   /**
@@ -321,7 +321,7 @@ export interface JsonReportProjectEntry {
   skippedCheckReasons?: Record<string, string>;
   /**
    * Number of source files this scan's linter examined. In diff / changed
-   * mode it's the count of changed supported JS/TS source files; in a full
+   * mode it's the count of changed supported JS/TS and HTML source files; in a full
    * scan it's the whole source tree. `0` in a diff scan means the changed
    * files held nothing React Doctor lints —
    * the GitHub Action reads that as "nothing to report" (skips the PR comment;

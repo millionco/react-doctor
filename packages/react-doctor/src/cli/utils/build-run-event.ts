@@ -1,5 +1,6 @@
 import {
   filterDiagnosticsForSurface,
+  HTML_FILE_PATTERN,
   isReactDoctorError,
   JSX_FILE_PATTERN,
   resolveGithubActionsScoreMetadata,
@@ -496,6 +497,9 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     fileCount: input.result?.scannedFileCount ?? null,
     nonJsxFileCount:
       input.result?.analyzedFiles?.filter((filePath) => !JSX_FILE_PATTERN.test(filePath)).length ??
+      null,
+    htmlFileCount:
+      input.result?.analyzedFiles?.filter((filePath) => HTML_FILE_PATTERN.test(filePath)).length ??
       null,
     multilineDiagnosticCount:
       input.result?.diagnostics.filter(

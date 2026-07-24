@@ -20,13 +20,19 @@ describe("resolveProjectDiffIncludePaths", () => {
     ]);
   });
 
-  it("keeps supported module source extensions from changed-file lists", () => {
+  it("keeps supported module and HTML source extensions from changed-file lists", () => {
     const rootDirectory = path.join("/repo");
-    const diffInfo = buildDiffInfo(["proxy.mjs", "src/middleware.mts", "README.md"]);
+    const diffInfo = buildDiffInfo([
+      "proxy.mjs",
+      "src/middleware.mts",
+      "public/index.html",
+      "README.md",
+    ]);
 
     expect(resolveProjectDiffIncludePaths(rootDirectory, rootDirectory, diffInfo)).toEqual([
       "proxy.mjs",
       "src/middleware.mts",
+      "public/index.html",
     ]);
   });
 

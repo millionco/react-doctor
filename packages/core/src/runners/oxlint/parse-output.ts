@@ -22,6 +22,7 @@ import { lineOfUtf8Offset } from "../../utils/line-of-utf8-offset.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { getCapabilities } from "../../project-info/capabilities.js";
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
+import { columnOfUtf8Offset } from "../../utils/column-of-utf8-offset.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 import { shouldSuppressCompilerFindingInWorklet } from "./should-suppress-compiler-finding-in-worklet.js";
@@ -266,6 +267,7 @@ const resolveMatchByOccurrence = (rule: string, category: string): boolean =>
 const buildRelatedLocations = (
   labels: OxlintOutput["diagnostics"][number]["labels"],
   filePath: string,
+  sourceBuffer: Buffer | null,
 ): DiagnosticRelatedLocation[] => {
   if (labels.length <= 1) return [];
   const related: DiagnosticRelatedLocation[] = [];
@@ -274,8 +276,14 @@ const buildRelatedLocations = (
     if (!label?.span) continue;
     related.push({
       filePath,
-      line: label.span.line ?? 0,
-      column: label.span.column ?? 0,
+      line:
+        sourceBuffer === null
+          ? (label.span.line ?? 0)
+          : lineOfUtf8Offset(sourceBuffer, label.span.offset),
+      column:
+        sourceBuffer === null
+          ? (label.span.column ?? 0)
+          : columnOfUtf8Offset(sourceBuffer, label.span.offset),
       offset: label.span.offset,
       length: label.span.length,
       message: label.label ?? "",
@@ -325,6 +333,7 @@ export const parseOxlintOutput = (
   stdout: string,
   project: ProjectInfo,
   rootDirectory: string,
+  sourcePathByLintPath?: ReadonlyMap<string, string>,
 ): Diagnostic[] => {
   if (!stdout) return [];
 
@@ -364,7 +373,8 @@ export const parseOxlintOutput = (
   }
 
   // HACK: oxlint reports diagnostics for every JS/TS extension it
-  // scanned (`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.mjs`). The previous filter only
+  // scanned (`.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.mjs`) plus React Doctor's
+  // virtual Astro sources for HTML. The previous filter only
   // kept `.tsx` / `.jsx` — fine when react-doctor's curated rules were
   // the only sources (they're React-specific anyway), but adopted
   // user rules like `eslint/no-debugger` or `unicorn/*` typically
@@ -384,8 +394,12 @@ export const parseOxlintOutput = (
   const sourceLinesCache = new Map<string, string[] | null>();
   const resolveAbsolutePath = (filename: string): string =>
     path.isAbsolute(filename) ? filename : path.resolve(rootDirectory || ".", filename);
+  const resolveMappedSourceFilename = (filename: string): string | undefined =>
+    sourcePathByLintPath?.get(path.normalize(resolveAbsolutePath(filename)));
+  const resolveSourceFilename = (filename: string): string =>
+    resolveMappedSourceFilename(filename) ?? filename;
   const readSourceBuffer = (filename: string): Buffer | null => {
-    const absolutePath = resolveAbsolutePath(filename);
+    const absolutePath = resolveAbsolutePath(resolveSourceFilename(filename));
     const cached = sourceBufferCache.get(absolutePath);
     if (cached !== undefined) return cached;
     let sourceBuffer: Buffer | null;
@@ -398,7 +412,7 @@ export const parseOxlintOutput = (
     return sourceBuffer;
   };
   const readSourceLines = (filename: string): string[] | null => {
-    const absolutePath = resolveAbsolutePath(filename);
+    const absolutePath = resolveAbsolutePath(resolveSourceFilename(filename));
     const cached = sourceLinesCache.get(absolutePath);
     if (cached !== undefined) return cached;
     const sourceBuffer = readSourceBuffer(filename);
@@ -407,7 +421,7 @@ export const parseOxlintOutput = (
     return sourceLines;
   };
   const isMinifiedDiagnosticFile = (filename: string): boolean => {
-    const absolutePath = resolveAbsolutePath(filename);
+    const absolutePath = resolveAbsolutePath(resolveSourceFilename(filename));
     const cached = minifiedFileCache.get(absolutePath);
     if (cached !== undefined) return cached;
     const minified = isMinifiedSource(absolutePath);
@@ -419,7 +433,7 @@ export const parseOxlintOutput = (
     .filter(
       (diagnostic) =>
         isMappableOxlintDiagnostic(diagnostic) &&
-        isLintableSourceFile(diagnostic.filename) &&
+        isLintableSourceFile(resolveSourceFilename(diagnostic.filename)) &&
         !(
           TYPESCRIPT_DECLARATION_FILE_PATTERN.test(diagnostic.filename) &&
           OXLINT_IGNORED_DECLARATION_DIAGNOSTIC_CODES.has(diagnostic.code)
@@ -438,20 +452,36 @@ export const parseOxlintOutput = (
         rule,
         project,
       );
-      const normalizedFilePath = diagnostic.filename.replaceAll("\\", "/");
+      const mappedSourceFilename = resolveMappedSourceFilename(diagnostic.filename);
+      const normalizedFilePath = (mappedSourceFilename ?? diagnostic.filename).replaceAll(
+        "\\",
+        "/",
+      );
       // Carry oxlint's UTF-8 byte span through to the Diagnostic so
       // editor integrations (LSP) can resolve a precise range from the
       // in-memory document. `line` / `column` stay the source of truth
       // for everything else; offset / length are additive.
       const primarySpan = primaryLabel?.span;
       const sourceBuffer = primarySpan ? readSourceBuffer(diagnostic.filename) : null;
-      const relatedLocations = buildRelatedLocations(diagnostic.labels, normalizedFilePath);
+      const relatedLocations = buildRelatedLocations(
+        diagnostic.labels,
+        normalizedFilePath,
+        mappedSourceFilename === undefined ? null : sourceBuffer,
+      );
       const category = resolveDiagnosticCategory(plugin, rule);
       const matchByOccurrence = resolveMatchByOccurrence(rule, category);
       const sourceLines = primarySpan ? readSourceLines(diagnostic.filename) : null;
-      const primaryLineIndex = primarySpan ? primarySpan.line - 1 : -1;
+      const primaryLineNumber =
+        primarySpan && mappedSourceFilename !== undefined && sourceBuffer !== null
+          ? lineOfUtf8Offset(sourceBuffer, primarySpan.offset)
+          : (primarySpan?.line ?? 0);
+      const primaryColumnNumber =
+        primarySpan && mappedSourceFilename !== undefined && sourceBuffer !== null
+          ? columnOfUtf8Offset(sourceBuffer, primarySpan.offset)
+          : (primarySpan?.column ?? 0);
+      const primaryLineIndex = primarySpan ? primaryLineNumber - 1 : -1;
       const primaryLine = sourceLines?.[primaryLineIndex];
-      const primaryColumnIndex = primarySpan ? primarySpan.column - 1 : -1;
+      const primaryColumnIndex = primarySpan ? primaryColumnNumber - 1 : -1;
       const isJsxTagLabel =
         primaryLine !== undefined &&
         primaryColumnIndex >= 0 &&
@@ -476,8 +506,8 @@ export const parseOxlintOutput = (
         message: cleaned.message,
         help: cleaned.help,
         url: diagnostic.url,
-        line: primarySpan?.line ?? 0,
-        column: primarySpan?.column ?? 0,
+        line: primaryLineNumber,
+        column: primaryColumnNumber,
         ...(primarySpan
           ? {
               offset: primarySpan.offset,

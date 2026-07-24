@@ -30,6 +30,7 @@ export {
 export { isDirectory, isFile, isPlainObject, readDirectoryEntries } from "./fs-utils.js";
 export {
   GIT_LS_FILES_MAX_BUFFER_BYTES,
+  HTML_FILE_PATTERN,
   IGNORED_DIRECTORIES,
   SOURCE_FILE_PATTERN,
 } from "./constants.js";

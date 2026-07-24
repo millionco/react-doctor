@@ -51,11 +51,17 @@ describe("listSourceFilesWithSize", () => {
     writeFile("button.tsx", "export const Button = () => null;\n");
     writeFile("helper.js", "module.exports = () => {};\n");
     writeFile("widget.jsx", "export const Widget = () => null;\n");
+    writeFile("index.html", "<script>console.log('hello');</script>\n");
+    writeFile("legacy.HTML", "<script>console.log('hello');</script>\n");
+    writeFile("ignored.TS", "export const ignored = true;\n");
     writeFile("notes.md", "# ignored\n");
 
-    expect(listSourceFiles(temporaryDirectory)).toEqual(
+    const sourceFiles = listSourceFiles(temporaryDirectory);
+    expect(sourceFiles).toEqual(
       listSourceFilesWithSize(temporaryDirectory).map((entry) => entry.path),
     );
+    expect(sourceFiles).toContain("legacy.HTML");
+    expect(sourceFiles).not.toContain("ignored.TS");
   });
 
   const writeNestedFile = (relativePath: string, contents: string): void => {

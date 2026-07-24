@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import {
   MILLISECONDS_PER_SECOND,
   MIN_SCAN_CONCURRENCY,
@@ -45,6 +46,7 @@ export interface SpawnLintBatchesInput {
   readonly rootDirectory: string;
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
+  readonly sourcePathByLintPath?: ReadonlyMap<string, string>;
   readonly onPartialFailure?: (reason: string) => void;
   readonly onAnalyzedFiles?: (filePaths: ReadonlyArray<string>) => void;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
@@ -141,6 +143,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     rootDirectory,
     nodeBinaryPath,
     project,
+    sourcePathByLintPath,
     onPartialFailure,
     onFileProgress,
     spawnTimeoutMs,
@@ -150,6 +153,12 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     signal,
     deadlineEpochMs,
   } = input;
+  const resolveSourcePath = (filePath: string): string => {
+    const absoluteFilePath = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(rootDirectory, filePath);
+    return sourcePathByLintPath?.get(path.normalize(absoluteFilePath)) ?? filePath;
+  };
   // Clamp at the spawn boundary so any caller — including programmatic
   // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by
   // the [MIN, HARD_MAX] worker ceiling and can't oversubscribe oxlint processes.
@@ -227,7 +236,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           outputMaxBytes,
           signal,
         );
-        return parseOxlintOutput(stdout, project, rootDirectory);
+        return parseOxlintOutput(stdout, project, rootDirectory, sourcePathByLintPath);
       } catch (error) {
         if (!isSplittableReactDoctorError(error)) throw error;
         // A splittable failure that surfaced only after the deadline passed is
@@ -412,19 +421,30 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     onPartialFailure(buildMessage(`${previewFiles}${remainderHint}`));
   };
   const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
+  const droppedSourceFiles = [...new Set(droppedFiles.map(resolveSourcePath))];
+  const deadlineSkippedSourceFiles = [
+    ...new Set(outcome.deadlineSkippedFiles.map(resolveSourcePath)),
+  ];
   reportSkippedFiles(
-    droppedFiles,
+    droppedSourceFiles,
     (fileListPreview) =>
-      `${droppedFiles.length} file(s) failed to lint and were skipped (${fileListPreview})${reasonHint}`,
+      `${droppedSourceFiles.length} file(s) failed to lint and were skipped (${fileListPreview})${reasonHint}`,
   );
   reportSkippedFiles(
-    outcome.deadlineSkippedFiles,
+    deadlineSkippedSourceFiles,
     (fileListPreview) =>
-      `${outcome.deadlineSkippedFiles.length} file(s) skipped — max scan duration reached before they were linted (${fileListPreview})`,
+      `${deadlineSkippedSourceFiles.length} file(s) skipped — max scan duration reached before they were linted (${fileListPreview})`,
   );
   const unavailableFiles = new Set([...droppedFiles, ...outcome.deadlineSkippedFiles]);
   input.onAnalyzedFiles?.(
-    [...new Set(fileBatches.flat().filter((filePath) => !unavailableFiles.has(filePath)))].sort(),
+    [
+      ...new Set(
+        fileBatches
+          .flat()
+          .filter((filePath) => !unavailableFiles.has(filePath))
+          .map(resolveSourcePath),
+      ),
+    ].sort(),
   );
   return dedupeDiagnostics(diagnostics);
 };

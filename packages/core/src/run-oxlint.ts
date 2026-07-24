@@ -18,6 +18,8 @@ import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
+import { collectUnpluginAutoImportGlobalScopes } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
+import type { UnpluginAutoImportGlobalScope } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
 import { createFileLintCache } from "./runners/oxlint/file-lint-cache.js";
 import { createSidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
 import type { SidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
@@ -392,6 +394,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         (entry): entry is string => typeof entry === "string" && entry.length > 0,
       )
     : undefined;
+  const runtimeGlobals = Array.isArray(userConfig?.runtimeGlobals)
+    ? userConfig.runtimeGlobals.filter(
+        (entry): entry is string => typeof entry === "string" && entry.length > 0,
+      )
+    : undefined;
+  let unpluginAutoImportGlobalScopes: ReadonlyArray<UnpluginAutoImportGlobalScope> = [];
   const severityControls = buildRuleSeverityControls(userConfig);
 
   validateRuleRegistration();
@@ -444,6 +452,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       ignoredTags,
       includedTags,
       includeTagDefaults,
+      runtimeGlobals,
+      unpluginAutoImportGlobalScopes,
       serverAuthFunctionNames,
       severityControls,
       userPlugins,
@@ -536,6 +546,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
     const candidateFiles =
       includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
+    unpluginAutoImportGlobalScopes = collectUnpluginAutoImportGlobalScopes({
+      rootDirectory,
+      candidateFiles,
+    });
 
     // `"cost"` (the default) plans size-balanced LPT batches — the size is
     // the discovery walk's existing stat, captured rather than re-paid.

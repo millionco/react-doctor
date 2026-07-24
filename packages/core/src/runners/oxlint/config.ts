@@ -12,6 +12,7 @@ import { getCapabilities, shouldEnableRule } from "../../project-info/capabiliti
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
 import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
 import { shouldEnableRuleByDefaultStatus } from "../../utils/should-enable-rule-by-default-status.js";
+import type { UnpluginAutoImportGlobalScope } from "./collect-unplugin-auto-import-global-scopes.js";
 
 export interface OxlintConfigOptions {
   pluginPath: string;
@@ -21,6 +22,8 @@ export interface OxlintConfigOptions {
   ignoredTags?: ReadonlySet<string>;
   includedTags?: ReadonlySet<string>;
   includeTagDefaults?: boolean;
+  runtimeGlobals?: ReadonlyArray<string>;
+  unpluginAutoImportGlobalScopes?: ReadonlyArray<UnpluginAutoImportGlobalScope>;
   serverAuthFunctionNames?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
   /**
@@ -124,6 +127,8 @@ export const createOxlintConfig = ({
   ignoredTags = new Set<string>(),
   includedTags = new Set<string>(),
   includeTagDefaults = false,
+  runtimeGlobals,
+  unpluginAutoImportGlobalScopes,
   serverAuthFunctionNames,
   severityControls,
   userPlugins = [],
@@ -267,6 +272,17 @@ export const createOxlintConfig = ({
         // `hasCapability`. Sorted so equivalent projects hash identically
         // (this bag feeds the ruleset cache key).
         capabilities: [...capabilities].sort(),
+        ...(runtimeGlobals && runtimeGlobals.length > 0
+          ? { runtimeGlobals: [...runtimeGlobals] }
+          : {}),
+        ...(unpluginAutoImportGlobalScopes && unpluginAutoImportGlobalScopes.length > 0
+          ? {
+              unpluginAutoImportGlobalScopes: unpluginAutoImportGlobalScopes.map((scope) => ({
+                directory: scope.directory,
+                names: [...scope.names],
+              })),
+            }
+          : {}),
         ...(project.shopifyFlashListMajorVersion !== null
           ? { shopifyFlashListMajorVersion: project.shopifyFlashListMajorVersion }
           : {}),

@@ -81,8 +81,7 @@ const getGlobalsPathFromAutoImportCall = (
   if (!ts.isObjectLiteralExpression(unwrappedOptions)) return null;
   if (
     getStaticPropertyAssignment(unwrappedOptions, "include") ||
-    getStaticPropertyAssignment(unwrappedOptions, "exclude") ||
-    getStaticPropertyAssignment(unwrappedOptions, "ignore")
+    getStaticPropertyAssignment(unwrappedOptions, "exclude")
   ) {
     return null;
   }

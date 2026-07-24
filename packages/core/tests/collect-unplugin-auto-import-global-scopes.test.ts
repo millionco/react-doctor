@@ -128,6 +128,39 @@ describe("collectUnpluginAutoImportGlobalScopes", () => {
     ]);
   });
 
+  it("collects generated globals when specific import names are ignored", () => {
+    const rootDirectory = createCaseDirectory("ignored-import-names");
+    writeFile(rootDirectory, "package.json", "{}");
+    writeFile(
+      rootDirectory,
+      "vite.config.ts",
+      `
+        import AutoImport from "unplugin-auto-import/vite";
+        export default {
+          plugins: [
+            AutoImport({
+              ignore: ["useMouse"],
+              eslintrc: { enabled: true },
+            }),
+          ],
+        };
+      `,
+    );
+    writeFile(
+      rootDirectory,
+      ".eslintrc-auto-import.json",
+      JSON.stringify({ globals: { Route: "readonly" } }),
+    );
+    writeFile(rootDirectory, "src/app.tsx", "export const App = () => <Route />;");
+
+    expect(
+      collectUnpluginAutoImportGlobalScopes({
+        rootDirectory,
+        candidateFiles: ["src/app.tsx"],
+      }),
+    ).toEqual([{ directory: "", names: ["Route"] }]);
+  });
+
   it("ignores append-only declarations without an active globals config", () => {
     const rootDirectory = createCaseDirectory("stale-declaration");
     writeFile(rootDirectory, "package.json", "{}");

@@ -26,6 +26,25 @@ describe("tanstack-start/missing-scripts", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags named root components passed to contextual route factories", () => {
+    const result = runMissingScriptsRule(`
+      const RootComponent = () => (
+        <html>
+          <body>
+            <main>Home</main>
+          </body>
+        </html>
+      );
+
+      export const Route = createRootRouteWithContext<AppContext>()({
+        component: RootComponent,
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows direct Scripts usage inside the document body", () => {
     const result = runMissingScriptsRule(`
       import { Scripts } from "@tanstack/react-router";
@@ -39,6 +58,29 @@ describe("tanstack-start/missing-scripts", () => {
             </body>
           </html>
         ),
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("allows Scripts values rendered inside the document body", () => {
+    const result = runMissingScriptsRule(`
+      import { Scripts } from "@tanstack/react-router";
+
+      export const Route = createRootRoute({
+        component: () => {
+          const scripts = <Scripts />;
+          return (
+            <html>
+              <body>
+                <main>Home</main>
+                {scripts}
+              </body>
+            </html>
+          );
+        },
       });
     `);
 
@@ -217,6 +259,25 @@ describe("tanstack-start/missing-scripts", () => {
 
   it("stays quiet when the root route does not own the document body", () => {
     const result = runMissingScriptsRule(`
+      export const Route = createRootRoute({
+        component: () => <Outlet />,
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores document bodies outside the configured root component", () => {
+    const result = runMissingScriptsRule(`
+      const DemoDocument = () => (
+        <html>
+          <body>
+            <main>Demo</main>
+          </body>
+        </html>
+      );
+
       export const Route = createRootRoute({
         component: () => <Outlet />,
       });

@@ -31,6 +31,18 @@ describe("no-numbered-section-markers", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("resolves const-bound inline label styles", () => {
+    const result = runRule(
+      noNumberedSectionMarkers,
+      `const labelStyle = { fontFamily: "monospace" };
+      const Page = () => <main>
+        <section><span className="text-xs" style={labelStyle}>01</span><h2>Principles</h2></section>
+        <section><span className="text-xs" style={labelStyle}>02</span><h2>Process</h2></section>
+      </main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not require consecutive indices", () => {
     const result = runRule(
       noNumberedSectionMarkers,

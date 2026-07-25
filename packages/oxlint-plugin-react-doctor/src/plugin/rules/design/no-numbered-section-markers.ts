@@ -5,6 +5,7 @@ import {
   NUMBERED_SECTION_LABEL_MIN_FONT_WEIGHT,
   NUMBERED_SECTION_LABEL_MIN_COUNT,
 } from "../../constants/design.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { getNextStaticJsxElementSibling } from "../../utils/get-next-static-jsx-element-sibling.js";
@@ -158,10 +159,11 @@ const hasUnresolvedJsxAttribute = (
 
 const hasUnresolvedInlineRenderingStyle = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const styleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "style");
   if (!styleAttribute) return false;
-  const styleExpression = getInlineStyleExpression(styleAttribute);
+  const styleExpression = getInlineStyleExpression(styleAttribute, scopes);
   if (!styleExpression) return true;
   if (styleExpression.properties.some((property) => getStylePropertyKey(property) === null)) {
     return true;
@@ -176,13 +178,14 @@ const hasUnresolvedInlineRenderingStyle = (
 const isHiddenOrRenderingUnknown = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   hasTailwind: boolean,
+  scopes: ScopeAnalysis,
   settings: Readonly<Record<string, unknown>> | undefined,
 ): boolean => {
   if (
     hasJsxSpreadAttribute(openingElement.attributes) ||
     hasUnresolvedJsxAttribute(openingElement, "hidden") ||
     hasUnresolvedJsxAttribute(openingElement, "aria-hidden") ||
-    hasUnresolvedInlineRenderingStyle(openingElement)
+    hasUnresolvedInlineRenderingStyle(openingElement, scopes)
   ) {
     return true;
   }
@@ -191,7 +194,7 @@ const isHiddenOrRenderingUnknown = (
   if (classNameAttribute && classNameValue === null) return true;
   if (isHiddenFromScreenReader(openingElement, settings)) return true;
   const styleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "style");
-  const styleExpression = styleAttribute ? getInlineStyleExpression(styleAttribute) : null;
+  const styleExpression = styleAttribute ? getInlineStyleExpression(styleAttribute, scopes) : null;
   if (styleExpression) {
     const displayProperty = getEffectiveStyleProperty(styleExpression.properties, "display");
     if (displayProperty && getStylePropertyStringValue(displayProperty)?.toLowerCase() === "none") {
@@ -213,10 +216,11 @@ const isHiddenOrRenderingUnknown = (
 const hasHiddenOrUnknownAncestor = (
   node: EsTreeNodeOfType<"JSXElement">,
   hasTailwind: boolean,
+  scopes: ScopeAnalysis,
   settings: Readonly<Record<string, unknown>> | undefined,
 ): boolean =>
   getAncestorOpeningElements(node).some((openingElement) =>
-    isHiddenOrRenderingUnknown(openingElement, hasTailwind, settings),
+    isHiddenOrRenderingUnknown(openingElement, hasTailwind, scopes, settings),
   );
 
 const parseNumberedSectionLabel = (text: string): number | null => {
@@ -322,10 +326,11 @@ const hasOrderedOrUnresolvedContext = (node: EsTreeNodeOfType<"JSXElement">): bo
 
 const hasInlineMicroLabelTreatment = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const styleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "style");
   if (!styleAttribute) return false;
-  const styleExpression = getInlineStyleExpression(styleAttribute);
+  const styleExpression = getInlineStyleExpression(styleAttribute, scopes);
   if (!styleExpression) return false;
   const fontFamily = getEffectiveStyleProperty(styleExpression.properties, "fontFamily");
   if (fontFamily && /mono/i.test(getStylePropertyStringValue(fontFamily) ?? "")) return true;
@@ -370,6 +375,7 @@ const hasTailwindMicroLabelTreatment = (
 const getSectionMarker = (
   node: EsTreeNodeOfType<"JSXElement">,
   hasTailwind: boolean,
+  scopes: ScopeAnalysis,
   settings: Readonly<Record<string, unknown>> | undefined,
 ): NumberedSectionLabel | null => {
   const heading = getFollowingStaticHeading(node);
@@ -380,8 +386,8 @@ const getSectionMarker = (
     hasConditionalOrLogicalAncestor(node) ||
     hasOrderedOrUnresolvedContext(node) ||
     hasOrderedOrUnresolvedContext(heading) ||
-    hasHiddenOrUnknownAncestor(node, hasTailwind, settings) ||
-    hasHiddenOrUnknownAncestor(heading, hasTailwind, settings)
+    hasHiddenOrUnknownAncestor(node, hasTailwind, scopes, settings) ||
+    hasHiddenOrUnknownAncestor(heading, hasTailwind, scopes, settings)
   ) {
     return null;
   }
@@ -389,12 +395,12 @@ const getSectionMarker = (
   if (text === null) return null;
   const index = parseNumberedSectionLabel(text);
   if (index === null) return null;
-  const fontSize = getStaticEffectiveFontSize(node.openingElement, hasTailwind);
+  const fontSize = getStaticEffectiveFontSize(node.openingElement, hasTailwind, scopes);
   if (fontSize === null || fontSize <= 0 || fontSize > NUMBERED_SECTION_LABEL_MAX_FONT_SIZE_PX) {
     return null;
   }
   if (
-    !hasInlineMicroLabelTreatment(node.openingElement) &&
+    !hasInlineMicroLabelTreatment(node.openingElement, scopes) &&
     !(hasTailwind && hasTailwindMicroLabelTreatment(node.openingElement))
   ) {
     return null;
@@ -418,7 +424,7 @@ export const noNumberedSectionMarkers = defineRule({
     >();
     return {
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
-        const marker = getSectionMarker(node, hasTailwind, context.settings);
+        const marker = getSectionMarker(node, hasTailwind, context.scopes, context.settings);
         if (!marker) return;
         const outermostJsxRoot = getOutermostJsxRoot(node);
         const existingBucket = markerBuckets.get(outermostJsxRoot);

@@ -719,14 +719,32 @@ const isNodeCreateRequireCall = (node: ts.Node, analysis: ConfigExpressionAnalys
     : target.argumentExpression && ts.isStringLiteralLike(target.argumentExpression)
       ? target.argumentExpression.text
       : null;
-  if (propertyName !== "createRequire" || !ts.isIdentifier(target.expression)) return false;
+  if (propertyName !== "createRequire") return false;
+  const createRequireReceiver = target.expression;
+  if (ts.isCallExpression(createRequireReceiver)) {
+    const requiredModuleSpecifier = getRequireModuleSpecifier(createRequireReceiver);
+    if (
+      requiredModuleSpecifier === null ||
+      !NODE_MODULE_SPECIFIERS.has(requiredModuleSpecifier) ||
+      !ts.isIdentifier(createRequireReceiver.expression)
+    ) {
+      return false;
+    }
+    const requireIdentifier = createRequireReceiver.expression;
+    return (
+      !analysis.localBindings.has(requireIdentifier.text) &&
+      !getScopedConfigBinding(requireIdentifier).wasFound &&
+      !hasTopLevelValueBinding(analysis.sourceFile, requireIdentifier.text)
+    );
+  }
+  if (!ts.isIdentifier(createRequireReceiver)) return false;
   if (
-    analysis.localBindings.has(target.expression.text) ||
-    getScopedConfigBinding(target.expression).wasFound
+    analysis.localBindings.has(createRequireReceiver.text) ||
+    getScopedConfigBinding(createRequireReceiver).wasFound
   ) {
     return false;
   }
-  const importBinding = getImportBinding(analysis.sourceFile, target.expression.text);
+  const importBinding = getImportBinding(analysis.sourceFile, createRequireReceiver.text);
   return Boolean(
     importBinding?.isNamespace && NODE_MODULE_SPECIFIERS.has(importBinding.moduleSpecifier),
   );
@@ -745,7 +763,9 @@ const getNodeRequireResolveModuleSpecifier = (
     : target.argumentExpression && ts.isStringLiteralLike(target.argumentExpression)
       ? target.argumentExpression.text
       : null;
-  if (propertyName !== "resolve" || !ts.isIdentifier(target.expression)) return null;
+  if (propertyName !== "resolve") return null;
+  if (isNodeCreateRequireCall(target.expression, analysis)) return moduleSpecifierNode.text;
+  if (!ts.isIdentifier(target.expression)) return null;
 
   const resolverIdentifier = target.expression;
   if (analysis.localBindings.has(resolverIdentifier.text)) return null;

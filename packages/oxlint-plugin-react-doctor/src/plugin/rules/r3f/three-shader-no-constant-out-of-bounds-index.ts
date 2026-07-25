@@ -14,7 +14,9 @@ import {
 } from "./utils/resolve-static-three-shader-material.js";
 
 const getDeclarationElementCount = (declaration: GlslGlobalDeclaration): number | null => {
-  if (typeof declaration.arraySize === "number") return declaration.arraySize;
+  if (declaration.arraySize !== null) {
+    return typeof declaration.arraySize === "number" ? declaration.arraySize : null;
+  }
   const vectorMatch = /^[biud]?vec([234])$/.exec(declaration.typeName);
   if (vectorMatch) return Number(vectorMatch[1]);
   const matrixMatch = /^mat([234])(?:x[234])?$/.exec(declaration.typeName);

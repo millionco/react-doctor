@@ -23,4 +23,13 @@ describe("three-shader-no-constant-out-of-bounds-index", () => {
   ])("keeps in-bounds, dynamic, shadowed, dynamic-source, and unrelated indexing quiet", (code) => {
     expect(runRule(threeShaderNoConstantOutOfBoundsIndex, code).diagnostics).toHaveLength(0);
   });
+
+  it("does not infer vector bounds for arrays with non-constant lengths", () => {
+    const code = `import { ShaderMaterial } from "three";
+      new ShaderMaterial({
+        fragmentShader: "const int COUNT = 4; uniform vec3 values[COUNT]; void main() { gl_FragColor = vec4(values[3], 1.0); }",
+      });`;
+
+    expect(runRule(threeShaderNoConstantOutOfBoundsIndex, code).diagnostics).toHaveLength(0);
+  });
 });

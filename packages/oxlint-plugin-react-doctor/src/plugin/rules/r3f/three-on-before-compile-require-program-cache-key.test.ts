@@ -20,6 +20,34 @@ describe("three-on-before-compile-require-program-cache-key", () => {
     expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(1);
   });
 
+  it("reports a variant-dependent constructor callback without a cache key", () => {
+    const code = `import { MeshStandardMaterial } from "three";
+      let mode = "warm";
+      new MeshStandardMaterial({
+        onBeforeCompile: shader => {
+          if (mode === "warm") shader.fragmentShader += " ";
+        },
+      });`;
+
+    expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(1);
+  });
+
+  it("recognizes constructor cache keys for constructor and assigned callbacks", () => {
+    const code = `import { MeshStandardMaterial } from "three";
+      let mode = "warm";
+      const material = new MeshStandardMaterial({
+        customProgramCacheKey: () => mode,
+        onBeforeCompile: shader => {
+          if (mode === "warm") shader.fragmentShader += " ";
+        },
+      });
+      material.onBeforeCompile = shader => {
+        if (mode === "warm") shader.vertexShader += " ";
+      };`;
+
+    expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(0);
+  });
+
   it.each([
     `import { MeshStandardMaterial } from "three"; let mode = "warm"; const material = new MeshStandardMaterial(); material.onBeforeCompile = shader => { if (mode === "warm") shader.fragmentShader += " "; }; material.customProgramCacheKey = () => mode;`,
     `import { MeshStandardMaterial } from "three"; const mode = "warm"; const material = new MeshStandardMaterial(); material.onBeforeCompile = shader => { if (mode === "warm") shader.fragmentShader += " "; };`,

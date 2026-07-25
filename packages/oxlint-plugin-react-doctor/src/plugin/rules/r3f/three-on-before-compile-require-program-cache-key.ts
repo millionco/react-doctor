@@ -2,17 +2,21 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getEffectiveObjectPropertiesInInsertionOrder } from "../../utils/get-effective-object-properties-in-insertion-order.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
+import { resolveStableOptionsObject } from "../../utils/resolve-stable-options-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getThreeConstructorName } from "./utils/get-three-constructor-name.js";
 
 interface ProgramVariantCandidate {
-  readonly materialSymbolId: number;
-  readonly node: EsTreeNodeOfType<"AssignmentExpression">;
+  readonly hasConstructorCacheKey: boolean;
+  readonly materialSymbolId: number | null;
+  readonly node: EsTreeNode;
 }
 
 const SHADER_PROGRAM_PROPERTY_NAMES: ReadonlySet<string> = new Set([
@@ -20,6 +24,7 @@ const SHADER_PROGRAM_PROPERTY_NAMES: ReadonlySet<string> = new Set([
   "fragmentShader",
   "vertexShader",
 ]);
+const MATERIAL_PROGRAM_OPTION_NAMES = ["customProgramCacheKey", "onBeforeCompile"];
 
 const isScopeWithin = (
   candidateScope: ScopeDescriptor,
@@ -174,6 +179,22 @@ const getStableMaterialSymbol = (
   return symbol;
 };
 
+const getConstructorMaterialSymbol = (
+  node: EsTreeNodeOfType<"NewExpression">,
+  context: RuleContext,
+): SymbolDescriptor | null => {
+  const parent = node.parent;
+  if (
+    !isNodeOfType(parent, "VariableDeclarator") ||
+    parent.init !== node ||
+    !isNodeOfType(parent.id, "Identifier")
+  ) {
+    return null;
+  }
+  const symbol = context.scopes.symbolFor(parent.id);
+  return symbol?.kind === "const" ? symbol : null;
+};
+
 export const threeOnBeforeCompileRequireProgramCacheKey = defineRule({
   id: "three-on-before-compile-require-program-cache-key",
   title: "onBeforeCompile variant lacks a program cache key",
@@ -185,6 +206,42 @@ export const threeOnBeforeCompileRequireProgramCacheKey = defineRule({
     const candidates: ProgramVariantCandidate[] = [];
     const materialSymbolsWithCacheKeys = new Set<number>();
     return {
+      NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
+        const constructorName = getThreeConstructorName(node, context.scopes);
+        if (!constructorName?.endsWith("Material")) return;
+        const options = node.arguments[0];
+        if (!options || isNodeOfType(options, "SpreadElement")) return;
+        const optionsObject = resolveStableOptionsObject(
+          options,
+          MATERIAL_PROGRAM_OPTION_NAMES,
+          context.scopes,
+          node,
+        );
+        if (!optionsObject) return;
+        const properties = getEffectiveObjectPropertiesInInsertionOrder(optionsObject.properties);
+        if (!properties) return;
+        const cacheKeyProperty = properties.find(
+          (property) =>
+            getStaticPropertyKeyName(property, { allowComputedString: true }) ===
+            "customProgramCacheKey",
+        );
+        const onBeforeCompileProperty = properties.find(
+          (property) =>
+            getStaticPropertyKeyName(property, { allowComputedString: true }) === "onBeforeCompile",
+        );
+        const materialSymbol = getConstructorMaterialSymbol(node, context);
+        if (cacheKeyProperty && materialSymbol) {
+          materialSymbolsWithCacheKeys.add(materialSymbol.id);
+        }
+        if (!onBeforeCompileProperty) return;
+        const callback = resolveExactLocalFunction(onBeforeCompileProperty.value, context.scopes);
+        if (!callback || !callbackHasVariantDependentPatch(callback, context)) return;
+        candidates.push({
+          hasConstructorCacheKey: Boolean(cacheKeyProperty),
+          materialSymbolId: materialSymbol?.id ?? null,
+          node: onBeforeCompileProperty,
+        });
+      },
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
         if (!isNodeOfType(node.left, "MemberExpression")) return;
         const propertyName = getStaticPropertyName(node.left);
@@ -199,11 +256,21 @@ export const threeOnBeforeCompileRequireProgramCacheKey = defineRule({
         }
         const callback = resolveExactLocalFunction(node.right, context.scopes);
         if (!callback || !callbackHasVariantDependentPatch(callback, context)) return;
-        candidates.push({ materialSymbolId: materialSymbol.id, node });
+        candidates.push({
+          hasConstructorCacheKey: false,
+          materialSymbolId: materialSymbol.id,
+          node,
+        });
       },
       "Program:exit"() {
         for (const candidate of candidates) {
-          if (materialSymbolsWithCacheKeys.has(candidate.materialSymbolId)) continue;
+          if (
+            candidate.hasConstructorCacheKey ||
+            (candidate.materialSymbolId !== null &&
+              materialSymbolsWithCacheKeys.has(candidate.materialSymbolId))
+          ) {
+            continue;
+          }
           context.report({
             node: candidate.node,
             message:

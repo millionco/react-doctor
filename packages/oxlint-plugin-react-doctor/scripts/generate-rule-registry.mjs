@@ -19,6 +19,7 @@ const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const PLUGIN_RULES_ROOT = path.join(PACKAGE_ROOT, "src/plugin/rules");
 const REGISTRY_OUTPUT = path.join(PACKAGE_ROOT, "src/plugin/rule-registry.ts");
+const GENERATED_LINE_WIDTH = 100;
 
 // Bucket directory → framework (each rule's `framework` field is derived,
 // never authored). Buckets not listed here default to "global".
@@ -355,12 +356,13 @@ const formatAutoTagsLine = (entry) => {
   // Merge bucket-derived auto-tags with rule-authored tags at runtime,
   // deduped so a rule that explicitly repeats the bucket tag doesn't
   // end up with `["react-native", "react-native"]`. The `[...new Set(...)]`
-  // form keeps every emitted line under prettier's 100-char limit (the
-  // longest rule identifier in the project still fits comfortably) so
-  // we don't have to mirror prettier's wrap decision at codegen time
-  // — `gen:check` stays idempotent.
   const autoTagLiteral = entry.autoTags.map((tag) => `"${tag}"`).join(", ");
-  return `      tags: [...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])])],\n`;
+  const tagsLine = `      tags: [...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])])],`;
+  if (tagsLine.length <= GENERATED_LINE_WIDTH) return `${tagsLine}\n`;
+  return `      tags: [
+        ...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])]),
+      ],
+`;
 };
 
 // Merge bucket-synthesized capabilities with any rule-authored `requires`

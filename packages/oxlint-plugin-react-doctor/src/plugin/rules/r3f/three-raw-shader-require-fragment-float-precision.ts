@@ -44,6 +44,7 @@ export const threeRawShaderRequireFragmentFloatPrecision = defineRule({
             const typeName = getGlslTypeSpecifierName(specifiedType.specifier);
             if (
               unqualifiedFloatNodes.length === 0 &&
+              !hasDefaultFloatPrecision &&
               typeName &&
               FLOAT_TYPE_NAME_PATTERN.test(typeName) &&
               !hasPrecisionQualifier(specifiedType.qualifiers)
@@ -57,6 +58,7 @@ export const threeRawShaderRequireFragmentFloatPrecision = defineRule({
             const typeName = getGlslTypeSpecifierName(parameter.specifier);
             if (
               unqualifiedFloatNodes.length === 0 &&
+              !hasDefaultFloatPrecision &&
               typeName &&
               FLOAT_TYPE_NAME_PATTERN.test(typeName) &&
               !hasPrecisionQualifier(parameter.qualifier)
@@ -67,7 +69,7 @@ export const threeRawShaderRequireFragmentFloatPrecision = defineRule({
         },
       });
       const firstUnqualifiedFloatNode = unqualifiedFloatNodes[0];
-      if (hasDefaultFloatPrecision || !firstUnqualifiedFloatNode) return;
+      if (!firstUnqualifiedFloatNode) return;
       context.report({
         node: material.fragmentShader.source.getOriginNodeAtOffset(
           firstUnqualifiedFloatNode.location?.start.offset ?? 0,

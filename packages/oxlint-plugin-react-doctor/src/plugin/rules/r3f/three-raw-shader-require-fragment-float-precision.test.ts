@@ -10,6 +10,15 @@ describe("three-raw-shader-require-fragment-float-precision", () => {
     expect(runRule(threeRawShaderRequireFragmentFloatPrecision, code).diagnostics).toHaveLength(1);
   });
 
+  it("reports unqualified declarations before a default precision statement", () => {
+    const code = `import { RawShaderMaterial } from "three";
+      new RawShaderMaterial({
+        fragmentShader: "varying vec2 vUv; precision mediump float; void main() { gl_FragColor = vec4(vUv, 0.0, 1.0); }",
+      });`;
+
+    expect(runRule(threeRawShaderRequireFragmentFloatPrecision, code).diagnostics).toHaveLength(1);
+  });
+
   it.each([
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "precision mediump float; varying vec2 vUv; void main() { gl_FragColor = vec4(vUv, 0.0, 1.0); }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "highp vec2 value; void main() { gl_FragColor = vec4(value, 0.0, 1.0); }" });`,

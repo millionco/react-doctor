@@ -90,6 +90,15 @@ describe("three-on-before-compile-require-program-cache-key", () => {
        },
      });
      material.customProgramCacheKey = null;`,
+    `import { MeshStandardMaterial } from "three";
+     const createMaterial = (mode) => {
+       const material = new MeshStandardMaterial();
+       material.onBeforeCompile = shader => {
+         if (mode === "warm") shader.fragmentShader += " ";
+       };
+       return material;
+     };
+     createMaterial("warm");`,
   ])("reports mutable program variants without a cache key", (code) => {
     expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(1);
   });

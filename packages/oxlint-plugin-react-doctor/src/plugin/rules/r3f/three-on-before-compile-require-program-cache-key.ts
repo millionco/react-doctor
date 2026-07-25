@@ -103,7 +103,7 @@ const expressionDependsOnMutableCapture = (
     if (
       symbol &&
       !isScopeWithin(symbol.scope, callbackScope) &&
-      (symbol.kind === "let" || symbol.kind === "var")
+      (symbol.kind === "let" || symbol.kind === "var" || symbol.kind === "parameter")
     ) {
       dependsOnMutableCapture = true;
       return false;

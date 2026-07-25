@@ -51,30 +51,32 @@ const isBusyStatus = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): bo
   return roleValue === "status" || roleValue === "progressbar";
 };
 
-const getStaticCursorGlyph = (element: EsTreeNodeOfType<"JSXElement">): string | null => {
-  let text = "";
-  for (const child of element.children) {
-    if (isNodeOfType(child, "JSXText")) {
-      text += child.value;
-      continue;
-    }
-    if (!isNodeOfType(child, "JSXExpressionContainer")) return null;
-    const expression = child.expression;
-    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
-      text += expression.value;
-      continue;
-    }
-    if (
-      isNodeOfType(expression, "TemplateLiteral") &&
-      expression.expressions.length === 0 &&
-      expression.quasis.length === 1
-    ) {
-      text += expression.quasis[0].value.cooked ?? expression.quasis[0].value.raw;
-      continue;
-    }
-    return null;
+const getStaticCursorText = (node: EsTreeNode): string | null => {
+  if (isNodeOfType(node, "JSXText")) return node.value;
+  if (isNodeOfType(node, "Literal")) {
+    return typeof node.value === "string" ? node.value : null;
   }
-  const glyph = text.trim();
+  if (isNodeOfType(node, "TemplateLiteral")) {
+    if (node.expressions.length > 0) return null;
+    return node.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join("");
+  }
+  if (isNodeOfType(node, "JSXExpressionContainer")) {
+    return getStaticCursorText(node.expression);
+  }
+  if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
+    let text = "";
+    for (const child of node.children) {
+      const childText = getStaticCursorText(child);
+      if (childText === null) return null;
+      text += childText;
+    }
+    return text;
+  }
+  return null;
+};
+
+const getStaticCursorGlyph = (element: EsTreeNodeOfType<"JSXElement">): string | null => {
+  const glyph = getStaticCursorText(element)?.trim() ?? "";
   return CURSOR_GLYPH_PATTERN.test(glyph) ? glyph : null;
 };
 

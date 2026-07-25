@@ -62,11 +62,12 @@ describe("no-decorative-pulse", () => {
             <span style={{ animationName: "cursor-blink", animationIterationCount: "infinite" }}>❚</span>
             <span className="animate-pulse" style={dynamicStyle}>_</span>
             <span className="animate-pulse" style={{ animationName: "cursor" }}>|</span>
+            <span className="animate-pulse"><em>_</em></span>
           </section>
         );
       `,
     );
-    expect(result.diagnostics).toHaveLength(8);
+    expect(result.diagnostics).toHaveLength(9);
     expect(
       result.diagnostics.every((diagnostic) => diagnostic.message.includes("fake cursor")),
     ).toBe(true);

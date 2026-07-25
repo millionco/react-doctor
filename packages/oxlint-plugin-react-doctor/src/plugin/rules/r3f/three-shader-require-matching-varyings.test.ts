@@ -38,6 +38,11 @@ describe("three-shader-require-matching-varyings", () => {
       vertex:
         "#version 300 es\nprecision highp float; smooth out vec3 vData; void main() { vData = vec3(1.0); gl_Position = vec4(0.0); }",
     },
+    {
+      fragment: "varying float value; void main() { gl_FragColor = vec4(value); }",
+      vertex:
+        "const int COUNT = 3; varying float value[COUNT]; void main() { value[0] = 1.0; gl_Position = vec4(0.0); }",
+    },
   ])("reports incompatible stage interfaces %#", ({ fragment, vertex }) => {
     const code = `
       import { ShaderMaterial } from "three";

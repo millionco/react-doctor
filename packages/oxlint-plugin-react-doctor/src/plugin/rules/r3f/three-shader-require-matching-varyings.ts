@@ -5,6 +5,7 @@ import {
   collectGlslGlobalDeclarations,
   type GlslGlobalDeclaration,
 } from "./utils/collect-glsl-global-declarations.js";
+import { hasGlslArrayDimensionMismatch } from "./utils/has-glsl-array-dimension-mismatch.js";
 import { resolveStaticThreeShaderMaterial } from "./utils/resolve-static-three-shader-material.js";
 
 const isVertexOutput = (declaration: GlslGlobalDeclaration): boolean =>
@@ -20,11 +21,7 @@ const getInterfaceMismatch = (
   if (vertexOutput.typeName !== fragmentInput.typeName) {
     return `type ${vertexOutput.typeName} in the vertex shader but ${fragmentInput.typeName} in the fragment shader`;
   }
-  if (
-    vertexOutput.arraySize !== undefined &&
-    fragmentInput.arraySize !== undefined &&
-    vertexOutput.arraySize !== fragmentInput.arraySize
-  ) {
+  if (hasGlslArrayDimensionMismatch(vertexOutput.arraySize, fragmentInput.arraySize)) {
     return "different array dimensions";
   }
   return vertexOutput.interpolation === fragmentInput.interpolation

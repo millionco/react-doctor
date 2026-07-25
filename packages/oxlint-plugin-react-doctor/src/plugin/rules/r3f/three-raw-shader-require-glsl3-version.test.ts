@@ -20,6 +20,9 @@ describe("three-raw-shader-require-glsl3-version", () => {
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ glslVersion, fragmentShader: "precision highp float; out vec4 color; void main() { color = vec4(1.0); }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "attribute vec3 position; varying vec2 vUv; void main() { gl_Position = vec4(position, 1.0); }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "float uintColor(float value) { return value; } void main() { gl_FragColor = vec4(uintColor(1.0)); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "struct uintColor { float value; }; uniform uintColor color; void main() { gl_FragColor = vec4(color.value); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "struct mat2x3f { float value; }; uniform mat2x3f transform; void main() { gl_FragColor = vec4(transform.value); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "struct isamplerConfig { float value; }; uniform isamplerConfig config; void main() { gl_FragColor = vec4(config.value); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "out vec4 color; void main() { color = vec4(1.0); }" });`,
     `class RawShaderMaterial {}; new RawShaderMaterial({ fragmentShader: "out vec4 color; void main() {}" });`,
   ])("keeps GLSL3-configured, dynamic, GLSL1, managed, and unrelated shaders quiet", (code) => {

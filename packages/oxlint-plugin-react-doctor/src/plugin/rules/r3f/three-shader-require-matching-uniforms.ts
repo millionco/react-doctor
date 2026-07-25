@@ -5,6 +5,7 @@ import {
   collectGlslGlobalDeclarations,
   type GlslGlobalDeclaration,
 } from "./utils/collect-glsl-global-declarations.js";
+import { hasGlslArrayDimensionMismatch } from "./utils/has-glsl-array-dimension-mismatch.js";
 import { resolveStaticThreeShaderMaterial } from "./utils/resolve-static-three-shader-material.js";
 
 const PRECISION_QUALIFIER_NAMES: ReadonlyArray<string> = ["highp", "mediump", "lowp"];
@@ -19,11 +20,7 @@ const getMismatch = (
   if (vertexUniform.typeName !== fragmentUniform.typeName) {
     return `type ${vertexUniform.typeName} in the vertex shader and ${fragmentUniform.typeName} in the fragment shader`;
   }
-  if (
-    vertexUniform.arraySize !== undefined &&
-    fragmentUniform.arraySize !== undefined &&
-    vertexUniform.arraySize !== fragmentUniform.arraySize
-  ) {
+  if (hasGlslArrayDimensionMismatch(vertexUniform.arraySize, fragmentUniform.arraySize)) {
     return "different array dimensions";
   }
   const vertexPrecision = getPrecision(vertexUniform);

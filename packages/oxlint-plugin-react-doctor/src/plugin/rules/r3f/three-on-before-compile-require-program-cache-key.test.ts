@@ -29,8 +29,13 @@ describe("three-on-before-compile-require-program-cache-key", () => {
        switch (mode) {
          case "warm":
            shader.fragmentShader += " ";
-           break;
+         break;
        }
+     };`,
+    `import { MeshStandardMaterial } from "three";
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = function (shader) {
+       if (this.mode === "warm") shader.fragmentShader += " ";
      };`,
     `import { MeshStandardMaterial } from "three";
      let mode = "warm";

@@ -80,6 +80,10 @@ const expressionDependsOnMutableCapture = (
     if (dependsOnMutableCapture || (candidate !== expression && isFunctionLike(candidate))) {
       return false;
     }
+    if (isNodeOfType(candidate, "ThisExpression")) {
+      dependsOnMutableCapture = true;
+      return false;
+    }
     if (isNodeOfType(candidate, "MemberExpression")) {
       const rootIdentifier = getMemberRootIdentifier(candidate);
       const symbol = rootIdentifier ? context.scopes.symbolFor(rootIdentifier) : null;

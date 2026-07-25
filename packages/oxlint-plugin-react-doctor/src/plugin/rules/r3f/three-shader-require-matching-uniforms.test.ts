@@ -20,6 +20,11 @@ describe("three-shader-require-matching-uniforms", () => {
       fragment: "uniform float[3] values; void main() { gl_FragColor = vec4(values[0]); }",
       vertex: "uniform float[2] values; void main() { gl_Position = vec4(values[0]); }",
     },
+    {
+      fragment: "uniform float value; void main() { gl_FragColor = vec4(value); }",
+      vertex:
+        "const int COUNT = 3; uniform float value[COUNT]; void main() { gl_Position = vec4(value[0]); }",
+    },
   ])(
     "reports statically used uniforms with incompatible stage declarations",
     ({ fragment, vertex }) => {

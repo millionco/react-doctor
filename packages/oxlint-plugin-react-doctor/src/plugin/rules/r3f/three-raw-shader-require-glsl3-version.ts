@@ -42,7 +42,7 @@ const GLSL3_ONLY_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "uintBitsToFloat",
 ]);
 const GLSL3_ONLY_TYPE_NAME_PATTERN =
-  /^(?:uint|uvec[234]|mat[234]x[234]|sampler3D|sampler2DArray|[iu]sampler)/;
+  /^(?:uint|uvec[234]|mat[234]x[234]|sampler3D|sampler2DArray|[iu]sampler)$/;
 const GLSL3_ONLY_CONSTRUCTOR_NAME_PATTERN = /^(?:uint|uvec[234]|mat[234]x[234])$/;
 
 const shaderUsesGlsl3Syntax = (shader: StaticThreeShaderStage): boolean => {

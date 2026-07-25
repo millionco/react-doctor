@@ -15,6 +15,17 @@ describe("three-shader-no-version-directive", () => {
     expect(runRule(threeShaderNoVersionDirective, code).diagnostics).toHaveLength(2);
   });
 
+  it("reports inline directives in raw shaders", () => {
+    const code = `
+      import { RawShaderMaterial } from "three";
+      new RawShaderMaterial({
+        vertexShader: "#version 300 es\\nvoid main() { gl_Position = vec4(0.0); }",
+      });
+    `;
+
+    expect(runRule(threeShaderNoVersionDirective, code).diagnostics).toHaveLength(1);
+  });
+
   it.each([
     `import { ShaderMaterial, GLSL3 } from "three"; new ShaderMaterial({ glslVersion: GLSL3, vertexShader: "void main() { gl_Position = vec4(0.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: shader });`,

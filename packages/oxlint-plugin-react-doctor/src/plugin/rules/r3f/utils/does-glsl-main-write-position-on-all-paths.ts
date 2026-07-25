@@ -70,6 +70,20 @@ const getExpressionPositionWriteMask = (expression: AstNode): number => {
   return GLSL_NO_POSITION_COMPONENTS_BIT_MASK;
 };
 
+const expressionContainsPositionWrite = (expression: AstNode): boolean => {
+  let containsPositionWrite = false;
+  visit(expression, {
+    assignment: {
+      enter: ({ node }) => {
+        if (getExpressionPositionWriteMask(node) !== GLSL_NO_POSITION_COMPONENTS_BIT_MASK) {
+          containsPositionWrite = true;
+        }
+      },
+    },
+  });
+  return containsPositionWrite;
+};
+
 const getBooleanConstant = (expression: AstNode): boolean | null => {
   if (expression.type !== "bool_constant") return null;
   return expression.token === "true";
@@ -119,6 +133,13 @@ const analyzeStatement = (
     };
   }
   if (statement.type === "if_statement") {
+    if (expressionContainsPositionWrite(statement.condition)) {
+      return {
+        activeStates: inputStates,
+        hasUnwrittenReturn: false,
+        isSupported: false,
+      };
+    }
     const constantCondition = getBooleanConstant(statement.condition);
     const consequent = analyzeStatement(statement.body, inputStates);
     if (!consequent.isSupported) return consequent;
@@ -142,11 +163,32 @@ const analyzeStatement = (
     };
   }
   if (statement.type === "for_statement" || statement.type === "while_statement") {
+    const controlExpressions =
+      statement.type === "for_statement"
+        ? [statement.init, statement.condition, statement.operation]
+        : [statement.condition];
+    if (controlExpressions.some(expressionContainsPositionWrite)) {
+      return {
+        activeStates: inputStates,
+        hasUnwrittenReturn: false,
+        isSupported: false,
+      };
+    }
     const bodyResult = analyzeStatement(statement.body, inputStates);
     return {
       activeStates: inputStates,
       hasUnwrittenReturn: bodyResult.hasUnwrittenReturn,
       isSupported: bodyResult.isSupported,
+    };
+  }
+  if (
+    statement.type === "declaration_statement" &&
+    expressionContainsPositionWrite(statement.declaration)
+  ) {
+    return {
+      activeStates: inputStates,
+      hasUnwrittenReturn: false,
+      isSupported: false,
     };
   }
   if (

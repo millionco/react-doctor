@@ -166,7 +166,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent when a nested subscription helper is invoked by the effect", () => {
+  it("reports a reset keyed by a prop unrelated to a nested subscription helper", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function Selection({ itemId, source }) {
@@ -180,10 +180,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent on a literal reset beside a timer callback", () => {
+  it("reports a literal reset beside a timer callback for other state", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function List({ items }) {
@@ -196,7 +196,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("reports the published prop-keyed constant reset", () => {
@@ -626,7 +626,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
-    it("stays silent on a sync constant reset when an external handler sets other state", () => {
+    it("reports a sync constant reset when an external handler sets other state", () => {
       const result = runRule(
         noAdjustStateOnPropChange,
         `function Cover({ url }) {
@@ -642,7 +642,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
         }`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
     });
   });
 });

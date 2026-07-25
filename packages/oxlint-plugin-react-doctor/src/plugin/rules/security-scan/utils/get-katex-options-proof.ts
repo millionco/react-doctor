@@ -12,7 +12,6 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { getSymbolMutationInspector } from "./get-symbol-mutation-inspector.js";
 
 export interface KatexOptionsProof {
-  readonly isConclusive: boolean;
   readonly isSafe: boolean;
 }
 
@@ -263,11 +262,24 @@ const getKatexOptionsTrustState = (
   return trustState;
 };
 
-export const setKatexParameterOptionsProofs = (
+export const withKatexParameterOptionsProofs = <Result>(
   scopes: ScopeAnalysis,
   proofs: ReadonlyMap<number, KatexOptionsProof>,
-): void => {
-  parameterOptionsProofsByScopes.set(scopes, proofs);
+  getResult: () => Result,
+): Result => {
+  const previousProofs = parameterOptionsProofsByScopes.get(scopes);
+  const activeProofs = new Map(previousProofs);
+  for (const [symbolId, proof] of proofs) activeProofs.set(symbolId, proof);
+  parameterOptionsProofsByScopes.set(scopes, activeProofs);
+  try {
+    return getResult();
+  } finally {
+    if (previousProofs) {
+      parameterOptionsProofsByScopes.set(scopes, previousProofs);
+    } else {
+      parameterOptionsProofsByScopes.delete(scopes);
+    }
+  }
 };
 
 export const getKatexOptionsProof = (
@@ -286,7 +298,6 @@ export const getKatexOptionsProof = (
   }
   const trustState = getKatexOptionsTrustState(rawNode, usageNode, scopes, visitedSymbolIds);
   return {
-    isConclusive: trustState !== "unsupported",
     isSafe: trustState === "absent" || trustState === "untrusted",
   };
 };

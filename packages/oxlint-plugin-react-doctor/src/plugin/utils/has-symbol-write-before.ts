@@ -2,10 +2,8 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { getExecutionReferenceOffset } from "./get-execution-reference-offset.js";
-import {
-  getFunctionSynchronousInvocationPathsBefore,
-  isNodeOnUnconditionalPath,
-} from "./has-static-property-write-before.js";
+import { getFunctionSynchronousInvocationPathsBefore } from "./has-static-property-write-before.js";
+import { isNodeOnUnconditionalPath } from "./is-node-on-unconditional-path.js";
 
 export interface HasSymbolWriteBeforeOptions {
   requireSynchronousWrite?: boolean;

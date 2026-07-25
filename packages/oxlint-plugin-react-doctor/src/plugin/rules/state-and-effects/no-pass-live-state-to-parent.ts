@@ -36,7 +36,10 @@ import {
   isState,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
-import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
+import {
+  getParentCallbackPropNames,
+  isRefCurrentSnapshotExpression,
+} from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 
 const SETTER_NAMED_CALLBACK_PATTERN = /^set[A-Z]/;
@@ -387,6 +390,12 @@ export const noPassLiveStateToParent = defineRule({
           expression: callExpr.callee as EsTreeNode,
           scopes: context.scopes,
         });
+        if (
+          !resolvedCallbackPropNames &&
+          isRefCurrentSnapshotExpression(analysis, callExpr.callee as EsTreeNode)
+        ) {
+          continue;
+        }
         const callExpressionRoot = findTransparentExpressionRoot(callExpr);
         const resolvedCallbackIsNotification = Boolean(
           resolvedCallbackPropNames &&

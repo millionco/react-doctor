@@ -243,7 +243,7 @@ export const noPropCallbackInEffect = defineRule({
             (isNodeOfType(directCallee, "Identifier") &&
               propStackTracker.isPropName(directCallee.name) &&
               directCallee.name) ||
-            getRefHeldPropCallbackName(child, propStackTracker.isPropName) ||
+            (!analysis && getRefHeldPropCallbackName(child, propStackTracker.isPropName)) ||
             getTransparentWrappedPropCallbackName(child, context, propStackTracker.isPropName);
           if (!calleeName) return;
           // Only the "lift state up" hand-back fires: a discarded

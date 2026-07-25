@@ -193,6 +193,37 @@ describe("functionReturnsMatchingExpression", () => {
     ).toBe(false);
   });
 
+  it("requires every reachable assignment to a returned binding in every mode", () => {
+    const mixedAssignments = `function Main(condition) {
+  let output = <main />;
+  if (condition) output = "label";
+  return output;
+}`;
+    expect(mainFunctionReturnsJsx(mixedAssignments)).toBe(true);
+    expect(mainFunctionReturnsJsx(mixedAssignments, "every")).toBe(false);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) {
+  let output = <main />;
+  if (condition) output = <aside />;
+  return output;
+}`,
+        "every",
+      ),
+    ).toBe(true);
+    expect(
+      mainFunctionReturnsJsx(
+        `function Main(condition) {
+  const view = <main />;
+  let output = view;
+  if (condition) output = view;
+  return output;
+}`,
+        "every",
+      ),
+    ).toBe(true);
+  });
+
   it("requires matching returns only on paths reachable after a marker", () => {
     expect(
       mainFunctionReturnsJsxAfterMarker(

@@ -1,5 +1,5 @@
 import { visit } from "@shaderfrog/glsl-parser/ast/index.js";
-import type { FunctionCallNode } from "@shaderfrog/glsl-parser/ast/ast-types.js";
+import type { AstNode, FunctionCallNode } from "@shaderfrog/glsl-parser/ast/ast-types.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -83,16 +83,44 @@ const getInvalidFunctionCallMessage = (
   return divisor === 0 ? "GLSL mod is undefined with a zero divisor" : null;
 };
 
+const reportConstantZeroDivisor = (
+  operator: string,
+  right: AstNode,
+  locationOffset: number | undefined,
+  shader: StaticThreeShaderStage,
+  context: RuleContext,
+): void => {
+  if (getGlslNumericConstant(right) !== 0) return;
+  context.report({
+    node: shader.source.getOriginNodeAtOffset(locationOffset ?? 0),
+    message: `GLSL ${operator.startsWith("/") ? "division" : "remainder"} by a constant zero has undefined results`,
+  });
+};
+
 const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void => {
   visit(shader.program, {
     binary: {
       enter: ({ node }) => {
         if (node.operator.literal !== "/" && node.operator.literal !== "%") return;
-        if (getGlslNumericConstant(node.right) !== 0) return;
-        context.report({
-          node: shader.source.getOriginNodeAtOffset(node.location?.start.offset ?? 0),
-          message: `GLSL ${node.operator.literal === "/" ? "division" : "remainder"} by a constant zero has undefined results`,
-        });
+        reportConstantZeroDivisor(
+          node.operator.literal,
+          node.right,
+          node.location?.start.offset,
+          shader,
+          context,
+        );
+      },
+    },
+    assignment: {
+      enter: ({ node }) => {
+        if (node.operator.literal !== "/=" && node.operator.literal !== "%=") return;
+        reportConstantZeroDivisor(
+          node.operator.literal,
+          node.right,
+          node.location?.start.offset,
+          shader,
+          context,
+        );
       },
     },
     function_call: {

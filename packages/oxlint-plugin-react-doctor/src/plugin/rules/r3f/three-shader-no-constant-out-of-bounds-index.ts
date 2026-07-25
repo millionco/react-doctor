@@ -16,8 +16,13 @@ import {
 const getTypeIndexElementCounts = (typeName: string): number[] => {
   const vectorMatch = /^[biud]?vec([234])$/.exec(typeName);
   if (vectorMatch) return [Number(vectorMatch[1])];
-  const matrixMatch = /^mat([234])(?:x([234]))?$/.exec(typeName);
-  return matrixMatch ? [Number(matrixMatch[1]), Number(matrixMatch[2] ?? matrixMatch[1])] : [];
+  const floatingPointMatrixMatch = /^mat([234])(?:x([234]))?$/.exec(typeName);
+  return floatingPointMatrixMatch
+    ? [
+        Number(floatingPointMatrixMatch[1]),
+        Number(floatingPointMatrixMatch[2] ?? floatingPointMatrixMatch[1]),
+      ]
+    : [];
 };
 
 const getDeclarationIndexElementCounts = (

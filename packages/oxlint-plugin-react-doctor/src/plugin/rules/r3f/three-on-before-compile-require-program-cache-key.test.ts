@@ -42,6 +42,18 @@ describe("three-on-before-compile-require-program-cache-key", () => {
        }
      };`,
     `import { MeshStandardMaterial } from "three";
+     let chunks = ["A"];
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       for (const chunk of chunks) shader.fragmentShader += chunk;
+     };`,
+    `import { MeshStandardMaterial } from "three";
+     let defines = { MODE: "A" };
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       for (const name in defines) shader.defines[name] = defines[name];
+     };`,
+    `import { MeshStandardMaterial } from "three";
      const material = new MeshStandardMaterial();
      material.onBeforeCompile = function (shader) {
        if (this.mode === "warm") shader.fragmentShader += " ";

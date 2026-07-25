@@ -39,6 +39,7 @@ describe("three-shader-no-constant-out-of-bounds-index", () => {
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform vec3 vectors[2]; uniform mat2x3 matrix; void main() { float value = vectors[0][2] + matrix[0][2]; gl_FragColor = vec4(value); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float values[3]; uniform int index; void main() { gl_FragColor = vec4(values[index]); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float values[3]; void main() { float values[4]; gl_FragColor = vec4(values[3]); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform imat3 invalidMatrix; uniform umat2 anotherInvalidMatrix; void main() { float value = invalidMatrix[3][0] + anotherInvalidMatrix[2][0]; gl_FragColor = vec4(value); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: shader });`,
     `class ShaderMaterial {}; new ShaderMaterial({ fragmentShader: "uniform float values[3]; void main() { gl_FragColor = vec4(values[3]); }" });`,
   ])("keeps in-bounds, dynamic, shadowed, dynamic-source, and unrelated indexing quiet", (code) => {

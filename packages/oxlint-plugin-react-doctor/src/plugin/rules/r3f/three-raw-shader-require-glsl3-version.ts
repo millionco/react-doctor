@@ -72,6 +72,20 @@ const shaderUsesGlsl3Syntax = (shader: StaticThreeShaderStage): boolean => {
         }
       },
     },
+    assignment: {
+      enter: ({ node }) => {
+        const operatorLiteral = String(node.operator.literal);
+        if (
+          operatorLiteral === "<<=" ||
+          operatorLiteral === ">>=" ||
+          operatorLiteral === "&=" ||
+          operatorLiteral === "|=" ||
+          operatorLiteral === "^="
+        ) {
+          usesGlsl3Syntax = true;
+        }
+      },
+    },
     function_call: {
       enter: ({ node }) => {
         const functionName = getGlslFunctionCallName(node);

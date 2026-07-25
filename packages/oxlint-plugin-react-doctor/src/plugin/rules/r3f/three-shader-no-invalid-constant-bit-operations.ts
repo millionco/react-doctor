@@ -1,5 +1,5 @@
 import { visit } from "@shaderfrog/glsl-parser/ast/index.js";
-import type { FunctionCallNode } from "@shaderfrog/glsl-parser/ast/ast-types.js";
+import type { AstNode, FunctionCallNode } from "@shaderfrog/glsl-parser/ast/ast-types.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -45,19 +45,33 @@ const getInvalidBitfieldMessage = (
   return `GLSL ${functionName} uses offset ${offset} and width ${bits}, outside a ${GLSL_INTEGER_BIT_WIDTH}-bit integer`;
 };
 
+const reportInvalidShift = (
+  right: AstNode,
+  locationOffset: number | undefined,
+  shader: StaticThreeShaderStage,
+  context: RuleContext,
+): void => {
+  const shiftCount = getGlslNumericConstant(right);
+  if (shiftCount === null || (shiftCount >= 0 && shiftCount < GLSL_INTEGER_BIT_WIDTH)) return;
+  context.report({
+    node: shader.source.getOriginNodeAtOffset(locationOffset ?? 0),
+    message: `GLSL shift count ${shiftCount} is outside the valid range 0–${GLSL_INTEGER_BIT_WIDTH - 1}`,
+  });
+};
+
 const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void => {
   visit(shader.program, {
     binary: {
       enter: ({ node }) => {
         if (node.operator.literal !== "<<" && node.operator.literal !== ">>") return;
-        const shiftCount = getGlslNumericConstant(node.right);
-        if (shiftCount === null || (shiftCount >= 0 && shiftCount < GLSL_INTEGER_BIT_WIDTH)) {
-          return;
-        }
-        context.report({
-          node: shader.source.getOriginNodeAtOffset(node.location?.start.offset ?? 0),
-          message: `GLSL shift count ${shiftCount} is outside the valid range 0–${GLSL_INTEGER_BIT_WIDTH - 1}`,
-        });
+        reportInvalidShift(node.right, node.location?.start.offset, shader, context);
+      },
+    },
+    assignment: {
+      enter: ({ node }) => {
+        const operatorLiteral = String(node.operator.literal);
+        if (operatorLiteral !== "<<=" && operatorLiteral !== ">>=") return;
+        reportInvalidShift(node.right, node.location?.start.offset, shader, context);
       },
     },
     function_call: {

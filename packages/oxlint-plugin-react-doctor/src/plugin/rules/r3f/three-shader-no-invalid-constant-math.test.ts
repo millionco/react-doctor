@@ -25,12 +25,14 @@ describe("three-shader-no-invalid-constant-math", () => {
             float n = atanh(1.0);
             float o = ldexp(value, 129);
             float p = atanh(-1.0);
+            g /= 0.0;
+            h %= 0.0;
           }
         \`,
       });
     `;
 
-    expect(runRule(threeShaderNoInvalidConstantMath, code).diagnostics).toHaveLength(16);
+    expect(runRule(threeShaderNoInvalidConstantMath, code).diagnostics).toHaveLength(18);
   });
 
   it.each([

@@ -7,11 +7,11 @@ describe("three-shader-no-invalid-constant-bit-operations", () => {
     const code = `
       import { RawShaderMaterial } from "three";
       new RawShaderMaterial({
-        fragmentShader: "void main() { int a = value << -1; int b = value >> 32; int c = bitfieldExtract(value, -1, 4); int d = bitfieldInsert(value, insert, 30, 4); }",
+        fragmentShader: "void main() { int a = value << -1; int b = value >> 32; value <<= 32; value >>= -1; int c = bitfieldExtract(value, -1, 4); int d = bitfieldInsert(value, insert, 30, 4); }",
       });
     `;
 
-    expect(runRule(threeShaderNoInvalidConstantBitOperations, code).diagnostics).toHaveLength(4);
+    expect(runRule(threeShaderNoInvalidConstantBitOperations, code).diagnostics).toHaveLength(6);
   });
 
   it.each([

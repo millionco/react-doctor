@@ -48,6 +48,25 @@ describe("security/no-path-prefix-containment", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags unchanged mutable root bindings", () => {
+    const result = runPathPrefixRule(`
+      import path from "node:path";
+
+      let firstRootDirectory;
+      firstRootDirectory = process.cwd();
+      const firstCandidatePath = path.resolve(firstRootDirectory, requestedPath);
+      const firstIsInside = firstCandidatePath.startsWith(firstRootDirectory);
+
+      var secondRootDirectory;
+      secondRootDirectory = process.cwd();
+      const secondCandidatePath = path.resolve(secondRootDirectory, requestedPath);
+      const secondIsInside = secondCandidatePath.startsWith(secondRootDirectory);
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("allows path.relative containment checks", () => {
     const result = runPathPrefixRule(`
       import path from "node:path";
@@ -172,6 +191,20 @@ describe("security/no-path-prefix-containment", () => {
 
       let candidatePath = path.resolve(rootDirectory, requestedPath);
       candidatePath = normalize(candidatePath);
+      const isInside = candidatePath.startsWith(rootDirectory);
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores roots reassigned after candidate resolution", () => {
+    const result = runPathPrefixRule(`
+      import path from "node:path";
+
+      let rootDirectory = process.cwd();
+      const candidatePath = path.resolve(rootDirectory, requestedPath);
+      rootDirectory = otherRootDirectory;
       const isInside = candidatePath.startsWith(rootDirectory);
     `);
 

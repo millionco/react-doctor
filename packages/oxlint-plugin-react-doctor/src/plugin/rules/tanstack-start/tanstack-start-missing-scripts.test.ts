@@ -45,6 +45,63 @@ describe("tanstack-start/missing-scripts", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags root routes created through aliased imports", () => {
+    const result = runMissingScriptsRule(`
+      import { createRootRoute as makeRootRoute } from "@tanstack/react-router";
+
+      export const Route = makeRootRoute({
+        component: () => (
+          <html>
+            <body>
+              <main>Home</main>
+            </body>
+          </html>
+        ),
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags root routes created through namespace imports", () => {
+    const result = runMissingScriptsRule(`
+      import * as TanStackRouter from "@tanstack/react-router";
+
+      export const Route = TanStackRouter.createRootRoute({
+        component: () => (
+          <html>
+            <body>
+              <main>Home</main>
+            </body>
+          </html>
+        ),
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags root routes configured through stable options bindings", () => {
+    const result = runMissingScriptsRule(`
+      const routeOptions = {
+        component: () => (
+          <html>
+            <body>
+              <main>Home</main>
+            </body>
+          </html>
+        ),
+      };
+
+      export const Route = createRootRoute(routeOptions);
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags shell components with document bodies missing Scripts", () => {
     const result = runMissingScriptsRule(`
       const RootDocument = ({ children }) => (

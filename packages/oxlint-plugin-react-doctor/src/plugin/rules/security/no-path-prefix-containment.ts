@@ -5,6 +5,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
+import { hasBindingWriteBetween } from "../../utils/has-binding-write-between.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -39,17 +40,30 @@ const areSameStableExpressions = (
     resolveStableExpression(secondExpression, context),
     {
       areIdentifiersEqual: (firstIdentifier, secondIdentifier) => {
+        if (
+          !isNodeOfType(firstIdentifier, "Identifier") ||
+          !isNodeOfType(secondIdentifier, "Identifier")
+        ) {
+          return false;
+        }
         const firstSymbol = context.scopes.symbolFor(firstIdentifier);
         const secondSymbol = context.scopes.symbolFor(secondIdentifier);
         if (firstSymbol || secondSymbol) {
-          return (
-            firstSymbol === secondSymbol &&
-            Boolean(firstSymbol?.references.every((reference) => reference.flag === "read"))
+          if (!firstSymbol || firstSymbol !== secondSymbol) return false;
+          const earlierIdentifier =
+            firstIdentifier.range[0] <= secondIdentifier.range[0]
+              ? firstIdentifier
+              : secondIdentifier;
+          const laterIdentifier =
+            earlierIdentifier === firstIdentifier ? secondIdentifier : firstIdentifier;
+          return !hasBindingWriteBetween(
+            earlierIdentifier,
+            earlierIdentifier,
+            laterIdentifier,
+            context.scopes,
           );
         }
         return (
-          isNodeOfType(firstIdentifier, "Identifier") &&
-          isNodeOfType(secondIdentifier, "Identifier") &&
           firstIdentifier.name === secondIdentifier.name &&
           context.scopes.isGlobalReference(firstIdentifier) &&
           context.scopes.isGlobalReference(secondIdentifier)

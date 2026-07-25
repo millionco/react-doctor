@@ -53,7 +53,7 @@ import {
   getVariableForDeclarator,
   isKnownReactHookDependencyReference,
   isProvenReactRefCurrentExpression,
-  isRefCurrentSnapshotExpression,
+  isProvenReactRefCurrentSnapshotExpression,
 } from "./utils/resolve-parent-callback-provenance.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
@@ -1465,7 +1465,15 @@ export const noPassDataToParent = defineRule({
               continue;
             }
           } else if (calleeNode === identifier) {
-            if (isRefCurrentSnapshotExpression(analysis, calleeNode)) continue;
+            if (
+              isProvenReactRefCurrentSnapshotExpression({
+                analysis,
+                expression: calleeNode,
+                scopes: context.scopes,
+              })
+            ) {
+              continue;
+            }
             // Bare form: `onChange(data)` — callee must BE a prop (or a
             // plain alias of one), not a local function that eventually
             // mentions a prop.

@@ -542,6 +542,32 @@ describe("no-pass-live-state-to-parent — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("flags a block-return setter callback in a discarded effect helper", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const Parent = ({ value }) => {
+        const Nested = ({ source, setTimeout }) => {
+          const [intermediate, setIntermediate] = useState(source);
+          const [target, setTarget] = useState(source);
+          const derive = useCallback(() => {
+            return setTimeout(intermediate);
+          }, [intermediate, setTimeout]);
+          useEffect(() => {
+            setIntermediate(source);
+          }, [source]);
+          useEffect(() => {
+            derive();
+            setTarget(intermediate);
+          }, [derive, intermediate]);
+          return target;
+        };
+        return <Nested source={value} setTimeout={handle} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("flags a useEventCallback-wrapped prop callback (react-colorful shape)", () => {
     const result = runRule(
       noPassLiveStateToParent,

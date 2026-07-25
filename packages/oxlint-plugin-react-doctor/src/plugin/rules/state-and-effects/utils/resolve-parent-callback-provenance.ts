@@ -450,9 +450,10 @@ const resolveParentCallbackPropNames = (
   );
 };
 
-const resolvesThroughRefCurrentSnapshot = (
+const resolvesThroughProvenReactRefCurrentSnapshot = (
   analysis: ProgramAnalysis,
   expression: EsTreeNode,
+  scopes: ScopeAnalysis,
   visitedReferences: Set<NonNullable<Reference["resolved"]>>,
 ): boolean => {
   const unwrappedExpression = stripParenExpression(expression);
@@ -460,7 +461,11 @@ const resolvesThroughRefCurrentSnapshot = (
     isNodeOfType(unwrappedExpression, "MemberExpression") &&
     getStaticMemberPropertyName(unwrappedExpression) === "current"
   ) {
-    return true;
+    return isProvenReactRefCurrentExpression({
+      analysis,
+      expression: unwrappedExpression,
+      scopes,
+    });
   }
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return false;
   const reference = getRef(analysis, unwrappedExpression);
@@ -475,9 +480,10 @@ const resolvesThroughRefCurrentSnapshot = (
     return false;
   }
   visitedReferences.add(reference.resolved);
-  return resolvesThroughRefCurrentSnapshot(
+  return resolvesThroughProvenReactRefCurrentSnapshot(
     analysis,
     declarator.init as EsTreeNode,
+    scopes,
     visitedReferences,
   );
 };
@@ -489,10 +495,12 @@ export const getParentCallbackPropNames = ({
 }: ResolveParentCallbackOptions): ReadonlySet<string> | null =>
   resolveParentCallbackPropNames(analysis, expression, scopes, new Set(), false);
 
-export const isRefCurrentSnapshotExpression = (
-  analysis: ProgramAnalysis,
-  expression: EsTreeNode,
-): boolean => resolvesThroughRefCurrentSnapshot(analysis, expression, new Set());
+export const isProvenReactRefCurrentSnapshotExpression = ({
+  analysis,
+  expression,
+  scopes,
+}: ResolveParentCallbackOptions): boolean =>
+  resolvesThroughProvenReactRefCurrentSnapshot(analysis, expression, scopes, new Set());
 
 export const isProvenReactRefCurrentExpression = ({
   analysis,

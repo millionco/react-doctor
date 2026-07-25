@@ -301,6 +301,22 @@ describe("parent-sync provenance matrix", () => {
     });
   }
 
+  it("reports live state through unresolved non-ref current callbacks", () => {
+    const code = `import { useEffect, useState } from "react";
+      const Child = ({ onChange, onFallback, preferFallback }) => {
+        const [value] = useState(0);
+        const callbacks = preferFallback
+          ? { current: onFallback }
+          : { current: onChange };
+        const notify = callbacks.current;
+        useEffect(() => notify(buildPayload(value)), [notify, value]);
+        return null;
+      };`;
+    const result = runRule(noPassLiveStateToParent, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   const mustNotReportCases: ParentSyncProvenanceCase[] = [
     {
       name: "userland useEffectEvent wrappers",

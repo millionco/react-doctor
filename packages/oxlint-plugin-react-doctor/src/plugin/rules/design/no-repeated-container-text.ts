@@ -271,6 +271,7 @@ const collectStaticChild = (
     return;
   }
   if (isNodeOfType(node, "JSXElement")) {
+    if (shouldSkipElement(node.openingElement, false, context)) return;
     collection.descendantCount += 1;
     if (collection.descendantCount > REPEATED_CONTAINER_TEXT_MAX_DESCENDANT_COUNT) {
       collection.isStatic = false;
@@ -280,7 +281,6 @@ const collectStaticChild = (
       collection.isStatic = false;
       return;
     }
-    if (shouldSkipElement(node.openingElement, false, context)) return;
     const pathSegment = getStructuralPathSegment(node.openingElement);
     if (!pathSegment) return;
     const nextStructuralPath = [...structuralPath, pathSegment];

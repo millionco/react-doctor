@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import { REPEATED_CONTAINER_TEXT_MAX_DESCENDANT_COUNT } from "../../constants/design.js";
 import { noRepeatedContainerText } from "./no-repeated-container-text.js";
 
 describe("no-repeated-container-text", () => {
@@ -62,6 +63,25 @@ describe("no-repeated-container-text", () => {
       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not count skipped subtrees toward the descendant limit", () => {
+    const skippedControls = Array.from(
+      { length: REPEATED_CONTAINER_TEXT_MAX_DESCENDANT_COUNT + 1 },
+      (_, controlIndex) => `<button>Action ${controlIndex}</button>`,
+    ).join("");
+    const result = runRule(
+      noRepeatedContainerText,
+      `const StatusCard = () => (
+        <article className="rounded-xl border bg-white p-6">
+          ${skippedControls}
+          <div className="headline"><strong>Suspended</strong></div>
+          <div className="metadata"><span>Suspended</span></div>
+          <p className="notice">Service is <em>Suspended</em> until further notice.</p>
+        </article>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("allows intentional repeated controls and hidden copies", () => {

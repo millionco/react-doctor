@@ -1,4 +1,9 @@
-import type { AstNode, DeclarationNode, Program } from "@shaderfrog/glsl-parser/ast/ast-types.js";
+import type {
+  ArraySpecifierNode,
+  AstNode,
+  DeclarationNode,
+  Program,
+} from "@shaderfrog/glsl-parser/ast/ast-types.js";
 import { getGlslNumericConstant } from "./get-glsl-numeric-constant.js";
 import { getGlslTypeSpecifierName } from "./get-glsl-type-specifier-name.js";
 
@@ -13,10 +18,17 @@ export interface GlslGlobalDeclaration {
   readonly typeName: string;
 }
 
-const getArraySize = (declaration: DeclarationNode): number | null | undefined => {
-  if (!Array.isArray(declaration.quantifier) || declaration.quantifier.length === 0) return null;
-  if (declaration.quantifier.length !== 1) return undefined;
-  return getGlslNumericConstant(declaration.quantifier[0].expression) ?? undefined;
+const getArraySize = (
+  declaration: DeclarationNode,
+  typeQuantifiers: ReadonlyArray<ArraySpecifierNode> | null,
+): number | null | undefined => {
+  const quantifiers = [
+    ...(Array.isArray(typeQuantifiers) ? typeQuantifiers : []),
+    ...(Array.isArray(declaration.quantifier) ? declaration.quantifier : []),
+  ];
+  if (quantifiers.length === 0) return null;
+  if (quantifiers.length !== 1) return undefined;
+  return getGlslNumericConstant(quantifiers[0].expression) ?? undefined;
 };
 
 const getQualifierName = (qualifier: AstNode): string | null =>
@@ -50,7 +62,7 @@ export const collectGlslGlobalDeclarations = (program: Program): GlslGlobalDecla
       const name = declaration.identifier.identifier;
       const binding = globalBindings?.[name];
       declarations.push({
-        arraySize: getArraySize(declaration),
+        arraySize: getArraySize(declaration, declaratorList.specified_type.specifier.quantifier),
         hasLayoutQualifier,
         interpolation: qualifiers.has("flat") ? "flat" : "smooth",
         isStaticallyUsed: Boolean(

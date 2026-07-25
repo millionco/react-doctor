@@ -17,6 +17,7 @@ describe("three-shader-no-derivatives-in-nonuniform-flow", () => {
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform bool enabled; varying vec2 vUv; void main() { if (enabled) { float edge = fwidth(vUv.x); gl_FragColor = vec4(edge); } }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "varying vec2 vUv; void main() { float edge = fwidth(vUv.x); if (vUv.x > 0.5) gl_FragColor = vec4(edge); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "varying vec2 vUv; void main() { vec2 dx = dFdx(vUv); vec4 color = textureGrad(map, vUv, dx, dFdy(vUv)); gl_FragColor = color; }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "varying vec2 vUv; void main() { for (;;) { float edge = fwidth(vUv.x); gl_FragColor = vec4(edge); break; } }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "float fwidth(float value) { return value; } varying float value; void main() { if (value > 0.0) gl_FragColor = vec4(fwidth(value)); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "attribute float value; void main() { if (value > 0.0) gl_Position = vec4(fwidth(value)); }" });`,
     `class ShaderMaterial {}; new ShaderMaterial({ fragmentShader: "varying float value; void main() { if (value > 0.0) gl_FragColor = vec4(fwidth(value)); }" });`,

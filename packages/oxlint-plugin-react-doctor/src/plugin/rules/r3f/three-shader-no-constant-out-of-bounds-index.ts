@@ -1,5 +1,5 @@
 import { visit } from "@shaderfrog/glsl-parser/ast/index.js";
-import type { QuantifierNode } from "@shaderfrog/glsl-parser/ast/ast-types.js";
+import type { AstNode, QuantifierNode } from "@shaderfrog/glsl-parser/ast/ast-types.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -13,14 +13,35 @@ import {
   type StaticThreeShaderStage,
 } from "./utils/resolve-static-three-shader-material.js";
 
-const getDeclarationElementCount = (declaration: GlslGlobalDeclaration): number | null => {
-  if (declaration.arraySize !== null) {
-    return typeof declaration.arraySize === "number" ? declaration.arraySize : null;
+const getTypeIndexElementCounts = (typeName: string): number[] => {
+  const vectorMatch = /^[biud]?vec([234])$/.exec(typeName);
+  if (vectorMatch) return [Number(vectorMatch[1])];
+  const matrixMatch = /^mat([234])(?:x([234]))?$/.exec(typeName);
+  return matrixMatch ? [Number(matrixMatch[1]), Number(matrixMatch[2] ?? matrixMatch[1])] : [];
+};
+
+const getDeclarationIndexElementCounts = (
+  declaration: GlslGlobalDeclaration,
+): ReadonlyArray<number | null> => {
+  const typeElementCounts = getTypeIndexElementCounts(declaration.typeName);
+  if (declaration.arraySize === null) return typeElementCounts;
+  return [
+    typeof declaration.arraySize === "number" ? declaration.arraySize : null,
+    ...typeElementCounts,
+  ];
+};
+
+const getIndexQuantifiers = (postfix: AstNode): QuantifierNode[] | null => {
+  const quantifiers: QuantifierNode[] = [];
+  let currentPostfix = postfix;
+  while (currentPostfix.type === "postfix") {
+    if (currentPostfix.expression.type !== "quantifier") return null;
+    quantifiers.push(currentPostfix.expression);
+    currentPostfix = currentPostfix.postfix;
   }
-  const vectorMatch = /^[biud]?vec([234])$/.exec(declaration.typeName);
-  if (vectorMatch) return Number(vectorMatch[1]);
-  const matrixMatch = /^mat([234])(?:x[234])?$/.exec(declaration.typeName);
-  return matrixMatch ? Number(matrixMatch[1]) : null;
+  if (currentPostfix.type !== "quantifier") return null;
+  quantifiers.push(currentPostfix);
+  return quantifiers;
 };
 
 const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void => {
@@ -35,33 +56,29 @@ const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void
     postfix: {
       enter: ({ node }) => {
         if (node.expression.type !== "identifier") return;
-        let quantifier: QuantifierNode | null = null;
-        if (node.postfix.type === "quantifier") {
-          quantifier = node.postfix;
-        } else if (
-          node.postfix.type === "postfix" &&
-          node.postfix.expression.type === "quantifier"
-        ) {
-          quantifier = node.postfix.expression;
-        }
-        if (!quantifier) return;
+        const quantifiers = getIndexQuantifiers(node.postfix);
+        if (!quantifiers) return;
         const declaration = declarationsByName.get(node.expression.identifier);
-        const elementCount = declaration ? getDeclarationElementCount(declaration) : null;
-        const index = getGlslNumericConstant(quantifier.expression);
         const binding = globalBindings?.[node.expression.identifier];
-        if (
-          elementCount === null ||
-          index === null ||
-          !Number.isInteger(index) ||
-          !binding?.references.includes(node.expression) ||
-          (index >= 0 && index < elementCount)
-        ) {
-          return;
+        if (!declaration || !binding?.references.includes(node.expression)) return;
+        const elementCounts = getDeclarationIndexElementCounts(declaration);
+        for (const [quantifierIndex, quantifier] of quantifiers.entries()) {
+          const elementCount = elementCounts[quantifierIndex];
+          const index = getGlslNumericConstant(quantifier.expression);
+          if (
+            elementCount === null ||
+            elementCount === undefined ||
+            index === null ||
+            !Number.isInteger(index) ||
+            (index >= 0 && index < elementCount)
+          ) {
+            continue;
+          }
+          context.report({
+            node: shader.source.getOriginNodeAtOffset(quantifier.location?.start.offset ?? 0),
+            message: `The constant index ${index} is outside ${declaration.name}'s valid range 0–${elementCount - 1}, which is a GLSL compile error or undefined access`,
+          });
         }
-        context.report({
-          node: shader.source.getOriginNodeAtOffset(node.location?.start.offset ?? 0),
-          message: `The constant index ${index} is outside ${declaration?.name}'s valid range 0–${elementCount - 1}, which is a GLSL compile error or undefined access`,
-        });
       },
     },
   });

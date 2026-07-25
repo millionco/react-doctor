@@ -9,8 +9,8 @@ import { resolveStaticThreeShaderMaterial } from "./utils/resolve-static-three-s
 
 const PRECISION_QUALIFIER_NAMES: ReadonlyArray<string> = ["highp", "mediump", "lowp"];
 
-const getPrecision = (declaration: GlslGlobalDeclaration): string =>
-  PRECISION_QUALIFIER_NAMES.find((precision) => declaration.qualifiers.has(precision)) ?? "default";
+const getPrecision = (declaration: GlslGlobalDeclaration): string | null =>
+  PRECISION_QUALIFIER_NAMES.find((precision) => declaration.qualifiers.has(precision)) ?? null;
 
 const getMismatch = (
   vertexUniform: GlslGlobalDeclaration,
@@ -19,12 +19,18 @@ const getMismatch = (
   if (vertexUniform.typeName !== fragmentUniform.typeName) {
     return `type ${vertexUniform.typeName} in the vertex shader and ${fragmentUniform.typeName} in the fragment shader`;
   }
-  if (vertexUniform.arraySize !== fragmentUniform.arraySize) {
+  if (
+    vertexUniform.arraySize !== undefined &&
+    fragmentUniform.arraySize !== undefined &&
+    vertexUniform.arraySize !== fragmentUniform.arraySize
+  ) {
     return "different array dimensions";
   }
   const vertexPrecision = getPrecision(vertexUniform);
   const fragmentPrecision = getPrecision(fragmentUniform);
-  return vertexPrecision === fragmentPrecision
+  return vertexPrecision === null ||
+    fragmentPrecision === null ||
+    vertexPrecision === fragmentPrecision
     ? null
     : `precision ${vertexPrecision} in the vertex shader and ${fragmentPrecision} in the fragment shader`;
 };

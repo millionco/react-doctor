@@ -20,7 +20,13 @@ const getInterfaceMismatch = (
   if (vertexOutput.typeName !== fragmentInput.typeName) {
     return `type ${vertexOutput.typeName} in the vertex shader but ${fragmentInput.typeName} in the fragment shader`;
   }
-  if (vertexOutput.arraySize !== fragmentInput.arraySize) return "different array dimensions";
+  if (
+    vertexOutput.arraySize !== undefined &&
+    fragmentInput.arraySize !== undefined &&
+    vertexOutput.arraySize !== fragmentInput.arraySize
+  ) {
+    return "different array dimensions";
+  }
   return vertexOutput.interpolation === fragmentInput.interpolation
     ? null
     : `interpolation ${vertexOutput.interpolation} in the vertex shader but ${fragmentInput.interpolation} in the fragment shader`;

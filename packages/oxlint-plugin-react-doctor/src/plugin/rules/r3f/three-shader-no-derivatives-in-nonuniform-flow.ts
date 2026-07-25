@@ -42,7 +42,7 @@ const getControllingExpressions = (path: Path<FunctionCallNode>): AstNode[] => {
     if (parent.type === "do_statement" && currentPath.key === "body") {
       controllingExpressions.push(parent.expression);
     }
-    if (parent.type === "for_statement" && currentPath.key === "body") {
+    if (parent.type === "for_statement" && currentPath.key === "body" && parent.condition) {
       controllingExpressions.push(parent.condition);
     }
     if (parent.type === "ternary" && (currentPath.key === "left" || currentPath.key === "right")) {

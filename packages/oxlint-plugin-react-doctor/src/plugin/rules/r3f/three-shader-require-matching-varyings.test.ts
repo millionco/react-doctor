@@ -38,6 +38,7 @@ describe("three-shader-require-matching-varyings", () => {
   it.each([
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "varying vec3 vColor; void main() { vColor = vec3(1.0); gl_Position = vec4(0.0); }", fragmentShader: "varying vec3 vColor; void main() { gl_FragColor = vec4(vColor, 1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "void main() { gl_Position = vec4(0.0); }", fragmentShader: "varying vec3 unusedValue; void main() { gl_FragColor = vec4(1.0); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "const int COUNT = 3; varying float values[COUNT]; void main() { values[0] = 1.0; gl_Position = vec4(0.0); }", fragmentShader: "varying float values[3]; void main() { gl_FragColor = vec4(values[0]); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: \`#version 300 es
 layout(location = 0) out vec3 first; void main() { first = vec3(1.0); gl_Position = vec4(0.0); }\`, fragmentShader: \`#version 300 es
 precision highp float; layout(location = 0) in vec3 second; out vec4 color; void main() { color = vec4(second, 1.0); }\` });`,

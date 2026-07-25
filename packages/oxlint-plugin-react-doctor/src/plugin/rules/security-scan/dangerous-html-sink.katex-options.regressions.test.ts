@@ -127,6 +127,7 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
   it.each([
     "renderMath(value, { trust: false })",
     "renderMath(value, { trust: false }, undefined)",
+    "renderMath(value, { trust: false }, void 0)",
   ])("accepts a safe earlier parameter used by a later options default: %s", (expression) => {
     const findings = scan(`
       import katex from "katex";
@@ -187,6 +188,7 @@ describe("security-scan/dangerous-html-sink — KaTeX options", () => {
   it.each([
     "renderMath(value, {})",
     "renderMath(value, { options: undefined })",
+    "renderMath(value, { options: void 0 })",
     "renderMath(value, { options: { trust: false } })",
     "renderMath(value)",
   ])("accepts safe destructured options defaults and overrides: %s", (expression) => {

@@ -415,6 +415,12 @@ const getFunctionParameterOptionsProofs = (
 ): ReadonlyMap<number, KatexOptionsProof> => {
   const optionsProofs = new Map<number, KatexOptionsProof>();
   if (!isFunctionLike(functionNode)) return optionsProofs;
+  const isUndefinedValue = (node: EsTreeNode | undefined, scopes: ScopeAnalysis): boolean =>
+    node === undefined ||
+    (isNodeOfType(node, "Identifier") &&
+      node.name === "undefined" &&
+      scopes.isGlobalReference(node)) ||
+    (isNodeOfType(node, "UnaryExpression") && node.operator === "void");
   const getParameterOptionsProof = (
     optionsNode: EsTreeNode | undefined,
     usageNode: EsTreeNode,
@@ -431,11 +437,7 @@ const getFunctionParameterOptionsProofs = (
   for (const [parameterIndex, parameter] of functionNode.params.entries()) {
     const argument = call.arguments[parameterIndex];
     const shouldUseDefault =
-      isNodeOfType(parameter, "AssignmentPattern") &&
-      (argument === undefined ||
-        (isNodeOfType(argument, "Identifier") &&
-          argument.name === "undefined" &&
-          callerScopes.isGlobalReference(argument)));
+      isNodeOfType(parameter, "AssignmentPattern") && isUndefinedValue(argument, callerScopes);
     const optionsNode =
       shouldUseDefault && isNodeOfType(parameter, "AssignmentPattern") ? parameter.right : argument;
     const optionsScopes = shouldUseDefault ? functionScopes : callerScopes;
@@ -478,9 +480,7 @@ const getFunctionParameterOptionsProofs = (
       const shouldUsePropertyDefault =
         isNodeOfType(property.value, "AssignmentPattern") &&
         (argumentProperty.value === null ||
-          (isNodeOfType(argumentProperty.value, "Identifier") &&
-            argumentProperty.value.name === "undefined" &&
-            optionsScopes.isGlobalReference(argumentProperty.value)));
+          isUndefinedValue(argumentProperty.value ?? undefined, optionsScopes));
       const propertyOptionsNode =
         shouldUsePropertyDefault && isNodeOfType(property.value, "AssignmentPattern")
           ? property.value.right

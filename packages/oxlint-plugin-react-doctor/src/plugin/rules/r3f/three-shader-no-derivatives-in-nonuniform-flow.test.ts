@@ -9,6 +9,7 @@ describe("three-shader-no-derivatives-in-nonuniform-flow", () => {
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { while (gl_FragCoord.x > 0.0) { float edge = dFdx(gl_FragCoord.y); break; } gl_FragColor = vec4(1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "varying float enabled; void main() { bool result = enabled > 0.0 && fwidth(enabled) > 0.1; gl_FragColor = vec4(result); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform bool enabled; varying vec2 vUv; void main() { if (vUv.x > 0.5) { if (enabled) { float edge = fwidth(vUv.y); gl_FragColor = vec4(edge); } } }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "varying vec2 vUv; void main() { if (vUv.x > 0.5) { gl_FragColor = vec4(1.0); } else { float edge = fwidth(vUv.y); gl_FragColor = vec4(edge); } }" });`,
   ])("reports derivatives in proven fragment-dependent control flow", (code) => {
     expect(runRule(threeShaderNoDerivativesInNonuniformFlow, code).diagnostics).toHaveLength(1);
   });

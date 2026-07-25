@@ -7,9 +7,11 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { resolveStableOptionsObject } from "../../utils/resolve-stable-options-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getThreeConstructorName } from "./utils/get-three-constructor-name.js";
 
@@ -216,6 +218,25 @@ const getConstructorMaterialSymbol = (
   return symbol?.kind === "const" ? symbol : null;
 };
 
+const isUsableProgramCacheKey = (expression: EsTreeNode, context: RuleContext): boolean => {
+  if (resolveExactLocalFunction(expression, context.scopes)) return true;
+  let candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    if (candidate.name === "undefined" && context.scopes.isGlobalReference(candidate)) return false;
+    const symbol = resolveConstIdentifierAlias(candidate, context.scopes);
+    if (symbol?.kind !== "const" || !symbol.initializer) return true;
+    candidate = stripParenExpression(symbol.initializer);
+  }
+  return !(
+    isNodeOfType(candidate, "ArrayExpression") ||
+    isNodeOfType(candidate, "ClassExpression") ||
+    isNodeOfType(candidate, "Literal") ||
+    isNodeOfType(candidate, "ObjectExpression") ||
+    isNodeOfType(candidate, "TemplateLiteral") ||
+    isNodeOfType(candidate, "UnaryExpression")
+  );
+};
+
 export const threeOnBeforeCompileRequireProgramCacheKey = defineRule({
   id: "three-on-before-compile-require-program-cache-key",
   title: "onBeforeCompile variant lacks a program cache key",
@@ -251,14 +272,17 @@ export const threeOnBeforeCompileRequireProgramCacheKey = defineRule({
             getStaticPropertyKeyName(property, { allowComputedString: true }) === "onBeforeCompile",
         );
         const materialSymbol = getConstructorMaterialSymbol(node, context);
-        if (cacheKeyProperty && materialSymbol) {
+        const hasConstructorCacheKey = Boolean(
+          cacheKeyProperty && isUsableProgramCacheKey(cacheKeyProperty.value, context),
+        );
+        if (hasConstructorCacheKey && materialSymbol) {
           materialSymbolsWithCacheKeys.add(materialSymbol.id);
         }
         if (!onBeforeCompileProperty) return;
         const callback = resolveExactLocalFunction(onBeforeCompileProperty.value, context.scopes);
         if (!callback || !callbackHasVariantDependentPatch(callback, context)) return;
         candidates.push({
-          hasConstructorCacheKey: Boolean(cacheKeyProperty),
+          hasConstructorCacheKey,
           materialSymbolId: materialSymbol?.id ?? null,
           node: onBeforeCompileProperty,
         });
@@ -272,7 +296,9 @@ export const threeOnBeforeCompileRequireProgramCacheKey = defineRule({
         const materialSymbol = getStableMaterialSymbol(node.left.object, context);
         if (!materialSymbol) return;
         if (propertyName === "customProgramCacheKey") {
-          materialSymbolsWithCacheKeys.add(materialSymbol.id);
+          if (isUsableProgramCacheKey(node.right, context)) {
+            materialSymbolsWithCacheKeys.add(materialSymbol.id);
+          }
           return;
         }
         const callback = resolveExactLocalFunction(node.right, context.scopes);

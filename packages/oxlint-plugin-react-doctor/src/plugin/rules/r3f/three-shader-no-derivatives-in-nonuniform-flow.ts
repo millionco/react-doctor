@@ -30,10 +30,11 @@ const getControllingExpressions = (path: Path<FunctionCallNode>): AstNode[] => {
     const parentPath: Path<AstNode> = currentPath.parentPath;
     const parent = parentPath.node;
     if (parent.type === "function") break;
-    if (
-      parent.type === "if_statement" &&
-      (currentPath.key === "body" || currentPath.key === "else")
-    ) {
+    const alternateNodes = parent.type === "if_statement" ? Reflect.get(parent, "else") : null;
+    const isInsideAlternate =
+      currentPath.key === "else" ||
+      (Array.isArray(alternateNodes) && alternateNodes.includes(currentPath.node));
+    if (parent.type === "if_statement" && (currentPath.key === "body" || isInsideAlternate)) {
       controllingExpressions.push(parent.condition);
     }
     if (parent.type === "while_statement" && currentPath.key === "body") {

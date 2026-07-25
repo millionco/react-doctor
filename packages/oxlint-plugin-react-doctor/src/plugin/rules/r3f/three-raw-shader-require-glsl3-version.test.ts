@@ -8,6 +8,8 @@ describe("three-raw-shader-require-glsl3-version", () => {
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "precision highp float; uniform sampler2D map; out vec4 color; void main() { color = texture(map, vec2(0.0)); }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "precision highp float; void main() { int value = 1 << 2; }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "uniform mat2x3 transform; void main() { gl_Position = vec4(transform[0], 1.0); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "void main() { mat2x3 transform = mat2x3(1.0); gl_Position = vec4(transform[0], 1.0); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "void main() { uvec3 color = uvec3(uint(1)); gl_FragColor = vec4(color, 1.0); }" });`,
   ])("reports GLSL 3-only raw shader syntax without a GLSL3 option", (code) => {
     expect(runRule(threeRawShaderRequireGlsl3Version, code).diagnostics).toHaveLength(1);
   });
@@ -17,6 +19,7 @@ describe("three-raw-shader-require-glsl3-version", () => {
     `import * as THREE from "three"; new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, fragmentShader: "precision highp float; out vec4 color; void main() { color = vec4(1.0); }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ glslVersion, fragmentShader: "precision highp float; out vec4 color; void main() { color = vec4(1.0); }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "attribute vec3 position; varying vec2 vUv; void main() { gl_Position = vec4(position, 1.0); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "float uintColor(float value) { return value; } void main() { gl_FragColor = vec4(uintColor(1.0)); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "out vec4 color; void main() { color = vec4(1.0); }" });`,
     `class RawShaderMaterial {}; new RawShaderMaterial({ fragmentShader: "out vec4 color; void main() {}" });`,
   ])("keeps GLSL3-configured, dynamic, GLSL1, managed, and unrelated shaders quiet", (code) => {

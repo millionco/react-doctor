@@ -1,5 +1,4 @@
 import { visit } from "@shaderfrog/glsl-parser/ast/index.js";
-import type { FunctionCallNode } from "@shaderfrog/glsl-parser/ast/ast-types.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -13,9 +12,6 @@ import {
   type StaticThreeShaderStage,
 } from "./utils/resolve-static-three-shader-material.js";
 
-const isSmoothstepCall = (node: FunctionCallNode): boolean =>
-  getGlslFunctionCallName(node) === "smoothstep";
-
 const checkShaderSource = (shader: StaticThreeShaderStage, context: RuleContext): void => {
   if (
     hasGlslFunctionLikeMacro(shader.source.text, "smoothstep") ||
@@ -26,7 +22,7 @@ const checkShaderSource = (shader: StaticThreeShaderStage, context: RuleContext)
   visit(shader.program, {
     function_call: {
       enter: ({ node }) => {
-        if (!isSmoothstepCall(node)) return;
+        if (getGlslFunctionCallName(node) !== "smoothstep") return;
         const argumentsWithoutSeparators = getGlslFunctionCallArguments(node);
         if (argumentsWithoutSeparators.length !== 3) return;
         const firstEdge = getGlslNumericConstant(argumentsWithoutSeparators[0]);

@@ -23,43 +23,44 @@ const IMPLICIT_DERIVATIVE_TEXTURE_FUNCTION_NAMES: ReadonlySet<string> = new Set(
   "textureCube",
 ]);
 
-const getControllingExpression = (path: Path<FunctionCallNode>): AstNode | null => {
+const getControllingExpressions = (path: Path<FunctionCallNode>): AstNode[] => {
+  const controllingExpressions: AstNode[] = [];
   let currentPath: Path<AstNode> | undefined = path;
   while (currentPath?.parentPath) {
     const parentPath: Path<AstNode> = currentPath.parentPath;
     const parent = parentPath.node;
-    if (parent.type === "function") return null;
+    if (parent.type === "function") break;
     if (
       parent.type === "if_statement" &&
       (currentPath.key === "body" || currentPath.key === "else")
     ) {
-      return parent.condition;
+      controllingExpressions.push(parent.condition);
     }
     if (parent.type === "while_statement" && currentPath.key === "body") {
-      return parent.condition;
+      controllingExpressions.push(parent.condition);
     }
     if (parent.type === "do_statement" && currentPath.key === "body") {
-      return parent.expression;
+      controllingExpressions.push(parent.expression);
     }
     if (parent.type === "for_statement" && currentPath.key === "body") {
-      return parent.condition;
+      controllingExpressions.push(parent.condition);
     }
     if (parent.type === "ternary" && (currentPath.key === "left" || currentPath.key === "right")) {
-      return parent.expression;
+      controllingExpressions.push(parent.expression);
     }
     if (
       parent.type === "binary" &&
       currentPath.key === "right" &&
       (parent.operator.literal === "&&" || parent.operator.literal === "||")
     ) {
-      return parent.left;
+      controllingExpressions.push(parent.left);
     }
     if (parent.type === "switch_statement" && currentPath.key === "cases") {
-      return parent.expression;
+      controllingExpressions.push(parent.expression);
     }
     currentPath = parentPath;
   }
-  return null;
+  return controllingExpressions;
 };
 
 const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void => {
@@ -83,11 +84,11 @@ const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void
         ) {
           return;
         }
-        const controllingExpression = getControllingExpression(path);
-        if (
-          !controllingExpression ||
-          !doesGlslExpressionDependOnFragmentInput(controllingExpression, fragmentInputNames)
-        ) {
+        const hasFragmentDependentControl = getControllingExpressions(path).some(
+          (controllingExpression) =>
+            doesGlslExpressionDependOnFragmentInput(controllingExpression, fragmentInputNames),
+        );
+        if (!hasFragmentDependentControl) {
           return;
         }
         context.report({

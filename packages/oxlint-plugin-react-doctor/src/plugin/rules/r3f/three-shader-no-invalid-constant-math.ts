@@ -49,8 +49,8 @@ const getInvalidFunctionCallMessage = (
       : null;
   }
   if (functionName === "atanh") {
-    return firstValue !== null && firstValue >= 1
-      ? `GLSL atanh is undefined at or above 1, but received ${firstValue}`
+    return firstValue !== null && Math.abs(firstValue) >= 1
+      ? `GLSL atanh is undefined outside the range -1 to 1, but received ${firstValue}`
       : null;
   }
   if (functionName === "ldexp" && callArguments.length === 2) {

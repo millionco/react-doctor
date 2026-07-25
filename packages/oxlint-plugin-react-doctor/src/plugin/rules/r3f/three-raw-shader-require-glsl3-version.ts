@@ -41,7 +41,8 @@ const GLSL3_ONLY_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "trunc",
   "uintBitsToFloat",
 ]);
-const GLSL3_ONLY_TYPE_NAME_PATTERN = /^(?:uint|uvec[234]|sampler3D|sampler2DArray|[iu]sampler)/;
+const GLSL3_ONLY_TYPE_NAME_PATTERN =
+  /^(?:uint|uvec[234]|mat[234]x[234]|sampler3D|sampler2DArray|[iu]sampler)/;
 
 const shaderUsesGlsl3Syntax = (shader: StaticThreeShaderStage): boolean => {
   if (

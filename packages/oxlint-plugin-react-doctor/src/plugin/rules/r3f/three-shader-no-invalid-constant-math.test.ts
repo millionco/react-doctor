@@ -24,18 +24,19 @@ describe("three-shader-no-invalid-constant-math", () => {
             float m = acosh(0.5);
             float n = atanh(1.0);
             float o = ldexp(value, 129);
+            float p = atanh(-1.0);
           }
         \`,
       });
     `;
 
-    expect(runRule(threeShaderNoInvalidConstantMath, code).diagnostics).toHaveLength(15);
+    expect(runRule(threeShaderNoInvalidConstantMath, code).diagnostics).toHaveLength(16);
   });
 
   it.each([
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float x = pow(value, 0.0) + sqrt(value) + log(value); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float x = pow(0.0, exponent) + mod(value, divisor); }" });`,
-    `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float x = asin(1.0) + acos(-1.0) + atan(0.0, 1.0) + acosh(1.0) + atanh(-2.0) + ldexp(value, 128); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float x = asin(1.0) + acos(-1.0) + atan(0.0, 1.0) + acosh(1.0) + atanh(-0.5) + ldexp(value, 128); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "float sqrt(float x) { return x; } void main() { float x = sqrt(-1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "#define log(x) x\\nvoid main() { float x = log(0.0); }" });`,
     `import { ShaderMaterial } from "other"; new ShaderMaterial({ fragmentShader: "void main() { float x = sqrt(-1.0); }" });`,

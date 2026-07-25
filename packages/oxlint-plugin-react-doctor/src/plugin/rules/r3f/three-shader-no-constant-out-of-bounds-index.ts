@@ -1,4 +1,5 @@
 import { visit } from "@shaderfrog/glsl-parser/ast/index.js";
+import type { QuantifierNode } from "@shaderfrog/glsl-parser/ast/ast-types.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -32,12 +33,15 @@ const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void
     postfix: {
       enter: ({ node }) => {
         if (node.expression.type !== "identifier") return;
-        const quantifier =
-          node.postfix.type === "quantifier"
-            ? node.postfix
-            : node.postfix.type === "postfix" && node.postfix.expression.type === "quantifier"
-              ? node.postfix.expression
-              : null;
+        let quantifier: QuantifierNode | null = null;
+        if (node.postfix.type === "quantifier") {
+          quantifier = node.postfix;
+        } else if (
+          node.postfix.type === "postfix" &&
+          node.postfix.expression.type === "quantifier"
+        ) {
+          quantifier = node.postfix.expression;
+        }
         if (!quantifier) return;
         const declaration = declarationsByName.get(node.expression.identifier);
         const elementCount = declaration ? getDeclarationElementCount(declaration) : null;

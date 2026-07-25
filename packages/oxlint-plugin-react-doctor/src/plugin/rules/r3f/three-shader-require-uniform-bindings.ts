@@ -19,6 +19,7 @@ const isCustomUniform = (
   includesManagedUniforms: boolean,
 ): boolean =>
   declaration.qualifiers.has("uniform") &&
+  declaration.isStaticallyUsed &&
   !declaration.name.startsWith("gl_") &&
   (!includesManagedUniforms || !THREE_RENDERER_MANAGED_SHADER_UNIFORM_NAMES.has(declaration.name));
 

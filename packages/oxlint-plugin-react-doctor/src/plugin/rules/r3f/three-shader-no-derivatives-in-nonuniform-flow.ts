@@ -42,6 +42,9 @@ const getControllingExpressions = (path: Path<FunctionCallNode>): AstNode[] => {
     if (parent.type === "while_statement" && currentPath.key === "body") {
       controllingExpressions.push(parent.condition);
     }
+    if (parent.type === "do_statement" && currentPath.key === "body") {
+      controllingExpressions.push(parent.expression);
+    }
     if (parent.type === "for_statement" && currentPath.key === "body" && parent.condition) {
       controllingExpressions.push(parent.condition);
     }
@@ -64,13 +67,16 @@ const getControllingExpressions = (path: Path<FunctionCallNode>): AstNode[] => {
 };
 
 const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void => {
-  const fragmentInputNames = new Set(
-    collectGlslGlobalDeclarations(shader.program)
-      .filter(
-        (declaration) => declaration.qualifiers.has("in") || declaration.qualifiers.has("varying"),
-      )
-      .map((declaration) => declaration.name),
-  );
+  const globalBindings = shader.program.scopes[0]?.bindings;
+  const fragmentInputReferences = new Set<AstNode>();
+  for (const declaration of collectGlslGlobalDeclarations(shader.program)) {
+    if (!declaration.qualifiers.has("in") && !declaration.qualifiers.has("varying")) continue;
+    const binding = globalBindings?.[declaration.name];
+    if (!binding) continue;
+    for (const reference of binding.references) {
+      if (reference !== binding.declaration) fragmentInputReferences.add(reference);
+    }
+  }
   visit(shader.program, {
     function_call: {
       enter: (path) => {
@@ -86,7 +92,7 @@ const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void
         }
         const hasFragmentDependentControl = getControllingExpressions(path).some(
           (controllingExpression) =>
-            doesGlslExpressionDependOnFragmentInput(controllingExpression, fragmentInputNames),
+            doesGlslExpressionDependOnFragmentInput(controllingExpression, fragmentInputReferences),
         );
         if (!hasFragmentDependentControl) {
           return;

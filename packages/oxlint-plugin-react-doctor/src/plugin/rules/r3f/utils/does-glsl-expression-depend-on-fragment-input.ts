@@ -16,7 +16,7 @@ const FRAGMENT_INPUT_BUILTIN_NAMES: ReadonlySet<string> = new Set([
 
 export const doesGlslExpressionDependOnFragmentInput = (
   expression: AstNode,
-  fragmentInputNames: ReadonlySet<string>,
+  fragmentInputReferences: ReadonlySet<AstNode>,
 ): boolean => {
   let dependsOnFragmentInput = false;
   visit(expression, {
@@ -31,7 +31,7 @@ export const doesGlslExpressionDependOnFragmentInput = (
           return;
         }
         dependsOnFragmentInput =
-          fragmentInputNames.has(path.node.identifier) ||
+          fragmentInputReferences.has(path.node) ||
           FRAGMENT_INPUT_BUILTIN_NAMES.has(path.node.identifier);
       },
     },

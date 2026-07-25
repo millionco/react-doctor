@@ -10,6 +10,8 @@ describe("three-raw-shader-require-glsl3-version", () => {
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "uniform mat2x3 transform; void main() { gl_Position = vec4(transform[0], 1.0); }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "void main() { mat2x3 transform = mat2x3(1.0); gl_Position = vec4(transform[0], 1.0); }" });`,
     `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "void main() { uvec3 color = uvec3(uint(1)); gl_FragColor = vec4(color, 1.0); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "uniform isampler2D map; void main() { gl_FragColor = vec4(1.0); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "uniform usamplerCube map; void main() { gl_FragColor = vec4(1.0); }" });`,
   ])("reports GLSL 3-only raw shader syntax without a GLSL3 option", (code) => {
     expect(runRule(threeRawShaderRequireGlsl3Version, code).diagnostics).toHaveLength(1);
   });

@@ -46,7 +46,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("stays silent on constant transition flags with a setTimeout sibling", () => {
+  it("reports constant transition flags unrelated to a setTimeout sibling", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function FloatingSheet({ isOpen }) {
@@ -65,7 +65,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
   });
 
   it("stays silent on a literal reset with cleanup", () => {

@@ -7,6 +7,7 @@ import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "../../../constants/lib
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
+import { getFinalSequenceExpressionValue } from "../../../utils/get-final-sequence-expression-value.js";
 import { getDestructuredBindingPropertyName } from "../../../utils/get-destructured-binding-property-name.js";
 import { getImportedName } from "../../../utils/get-imported-name.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
@@ -15,6 +16,8 @@ import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
+import { readStaticBoolean } from "../../../utils/read-static-boolean.js";
+import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state-pair.js";
 import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
@@ -193,6 +196,50 @@ const getControlRegion = (node: EsTreeNode, containingFunction: EsTreeNode): EsT
   return null;
 };
 
+const doesControlRegionReadState = (
+  controlRegion: EsTreeNode,
+  stateSymbolId: number | null,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (stateSymbolId === null) return false;
+  const parent = controlRegion.parent;
+  const condition =
+    isNodeOfType(parent, "IfStatement") || isNodeOfType(parent, "ConditionalExpression")
+      ? parent.test
+      : isNodeOfType(parent, "LogicalExpression")
+        ? parent.left
+        : null;
+  if (!condition) return false;
+  let doesReadState = false;
+  walkAst(condition as EsTreeNode, (child) => {
+    if (child !== condition && isFunctionLike(child)) return false;
+    const parent = child.parent;
+    if (isNodeOfType(parent, "LogicalExpression") && parent.right === child) {
+      const leftBoolean = readStaticBoolean(getFinalSequenceExpressionValue(parent.left));
+      if (
+        (parent.operator === "&&" && leftBoolean === false) ||
+        (parent.operator === "||" && leftBoolean === true)
+      ) {
+        return false;
+      }
+    }
+    if (isNodeOfType(parent, "ConditionalExpression") && parent.test !== child) {
+      const testBoolean = readStaticBoolean(getFinalSequenceExpressionValue(parent.test));
+      if (
+        (parent.consequent === child && testBoolean === false) ||
+        (parent.alternate === child && testBoolean === true)
+      ) {
+        return false;
+      }
+    }
+    if (isNodeOfType(child, "Identifier") && scopes.symbolFor(child)?.id === stateSymbolId) {
+      doesReadState = true;
+      return false;
+    }
+  });
+  return doesReadState;
+};
+
 const isWorkRelatedToWrite = (
   analysis: ProgramAnalysis,
   workNode: EsTreeNode,
@@ -201,6 +248,8 @@ const isWorkRelatedToWrite = (
   propDependencyBindings: ReadonlySet<unknown>,
   writeNode: EsTreeNode,
   writeFunction: EsTreeNode,
+  writeStateSymbolId: number | null,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (isNodeOfType(writeNode, "CallExpression") && isNodeOfType(writeNode.callee, "Identifier")) {
     const setterBinding = getRef(analysis, writeNode.callee)?.resolved;
@@ -253,14 +302,24 @@ const isWorkRelatedToWrite = (
   }
   const workRegion = getControlRegion(workAnchor, writeFunction);
   const writeRegion = getControlRegion(writeNode, writeFunction);
-  if (workRegion !== null && workRegion === writeRegion) return true;
+  if (
+    workRegion !== null &&
+    workRegion === writeRegion &&
+    doesControlRegionReadState(workRegion, writeStateSymbolId, scopes)
+  ) {
+    return true;
+  }
   const writeInvocationEdge = invocationPath.find(
     (candidateEdge) => candidateEdge.invokedFunction === writeFunction,
   );
   if (!writeInvocationEdge) return false;
-  return (
-    getControlRegion(writeInvocationEdge.callExpression, writeInvocationEdge.parentFunction) !==
-    null
+  const writeInvocationRegion = getControlRegion(
+    writeInvocationEdge.callExpression,
+    writeInvocationEdge.parentFunction,
+  );
+  return Boolean(
+    writeInvocationRegion &&
+    doesControlRegionReadState(writeInvocationRegion, writeStateSymbolId, scopes),
   );
 };
 
@@ -273,6 +332,10 @@ export const hasDeferredOrExternalEffectWork = (
   const effectFunction = getEffectFn(analysis, effectNode);
   const writeFunction = findEnclosingFunction(writeNode);
   if (!effectFunction || !writeFunction) return false;
+  const writeStateSymbolId =
+    isNodeOfType(writeNode, "CallExpression") && isNodeOfType(writeNode.callee, "Identifier")
+      ? (resolveReactUseStatePair(writeNode.callee, scopes)?.stateSymbol?.id ?? null)
+      : null;
   const propDependencyBindings = new Set<unknown>();
   for (const dependencyReference of getEffectDepsRefs(analysis, effectNode) ?? []) {
     const upstreamReferences = isState(analysis, dependencyReference)
@@ -316,6 +379,8 @@ export const hasDeferredOrExternalEffectWork = (
             propDependencyBindings,
             writeNode,
             writeFunction,
+            writeStateSymbolId,
+            scopes,
           )
         ) {
           didFindRelatedWork = true;
@@ -336,6 +401,8 @@ export const hasDeferredOrExternalEffectWork = (
             propDependencyBindings,
             writeNode,
             writeFunction,
+            writeStateSymbolId,
+            scopes,
           )
         ) {
           didFindRelatedWork = true;
@@ -364,6 +431,8 @@ export const hasDeferredOrExternalEffectWork = (
           propDependencyBindings,
           writeNode,
           writeFunction,
+          writeStateSymbolId,
+          scopes,
         )
       ) {
         didFindRelatedWork = true;

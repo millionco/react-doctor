@@ -3,6 +3,7 @@ import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-inv
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
+import { functionReturnsMatchingExpression } from "../../../utils/function-returns-matching-expression.js";
 import { resolveImportedExportName } from "../../../utils/find-exported-function-body.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isEarlyExitIfStatement } from "../../../utils/is-early-exit-if-statement.js";
@@ -1727,6 +1728,49 @@ const getWrittenIndexedMemberRootReference = (
   );
 };
 
+const getFunctionalUpdaterIndexedMemberRootReference = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  updater: EsTreeNode,
+  frame: EffectExecutionFrame,
+): Reference | null => {
+  const currentStateParameter = getFunctionParameters(updater)[0];
+  if (!currentStateParameter || !isNodeOfType(currentStateParameter, "Identifier")) return null;
+  const currentStateParameterSymbol = context.scopes.symbolFor(currentStateParameter);
+  if (!currentStateParameterSymbol) return null;
+  let indexedMemberRootReference: Reference | null = null;
+  const areAllReturnsCompatible = functionReturnsMatchingExpression(
+    updater,
+    context.scopes,
+    (returnedExpression) => {
+      const candidate = stripParenExpression(returnedExpression);
+      if (
+        isNodeOfType(candidate, "Identifier") &&
+        context.scopes.symbolFor(candidate) === currentStateParameterSymbol
+      ) {
+        return true;
+      }
+      const returnedRootReference = getWrittenIndexedMemberRootReference(
+        analysis,
+        candidate,
+        frame,
+      );
+      if (!returnedRootReference?.resolved) return false;
+      if (
+        indexedMemberRootReference &&
+        indexedMemberRootReference.resolved !== returnedRootReference.resolved
+      ) {
+        return false;
+      }
+      indexedMemberRootReference = returnedRootReference;
+      return true;
+    },
+    context.cfg,
+    "every",
+  );
+  return areAllReturnsCompatible ? indexedMemberRootReference : null;
+};
+
 const collectFrameSetterCalls = (
   analysis: ProgramAnalysis,
   frame: EffectExecutionFrame,
@@ -2021,11 +2065,9 @@ export const collectEffectStateWriteFacts = (
           stateDeclarator,
         ),
         resetsSourceState: false,
-        writtenIndexedMemberRootReference: getWrittenIndexedMemberRootReference(
-          analysis,
-          writtenValue,
-          frame,
-        ),
+        writtenIndexedMemberRootReference: isFunctionLike(writtenValue)
+          ? getFunctionalUpdaterIndexedMemberRootReference(analysis, context, writtenValue, frame)
+          : getWrittenIndexedMemberRootReference(analysis, writtenValue, frame),
         writesPropDerivedMemberValue: writesPropDerivedMemberValue(analysis, writtenValue, frame),
       });
     }

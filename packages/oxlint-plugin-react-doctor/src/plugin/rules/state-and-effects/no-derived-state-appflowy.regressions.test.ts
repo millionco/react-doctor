@@ -53,6 +53,111 @@ describe("derived-state AppFlowy selection repair", () => {
     );
   });
 
+  it("reports a state-backed selection repair expressed as a functional updater", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          setSelectedId((currentSelectedId) =>
+            entries.some((entry) => entry.id === currentSelectedId)
+              ? currentSelectedId
+              : entries[0].id,
+          );
+        }, [entries]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      1,
+    );
+  });
+
+  it("does not report a functional selection updater with an opaque conditional return", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries, resolveSelection }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          setSelectedId((currentSelectedId) =>
+            currentSelectedId ? resolveSelection() : entries[0].id,
+          );
+        }, [entries, resolveSelection]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not report a functional selection updater that reads different collections", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries, initialFallbacks }) {
+        const [entries] = useState(initialEntries);
+        const [fallbacks] = useState(initialFallbacks);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          setSelectedId((currentSelectedId) =>
+            currentSelectedId ? fallbacks[0].id : entries[0].id,
+          );
+        }, [entries, fallbacks]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not report a block updater with an opaque reachable return", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries, resolveSelection }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          setSelectedId((currentSelectedId) => {
+            if (!currentSelectedId) return entries[0].id;
+            return resolveSelection();
+          });
+        }, [entries, resolveSelection]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not report an indexed collection value appended by a functional updater", () => {
+    expectDiagnosticCount(
+      `function EntryHistory({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [visitedIds, setVisitedIds] = useState([]);
+        useEffect(() => {
+          setVisitedIds((currentVisitedIds) => [...currentVisitedIds, entries[0].id]);
+        }, [entries]);
+        return (
+          <EntryHistoryList
+            entries={entries}
+            visitedIds={visitedIds}
+            onClear={() => setVisitedIds([])}
+          />
+        );
+      }`,
+      0,
+    );
+  });
+
+  it("leaves a prop-backed functional selection repair to the prop-adjustment rule", () => {
+    expectDiagnosticCount(
+      `function EntryList({ entries }) {
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          setSelectedId((currentSelectedId) =>
+            entries.some((entry) => entry.id === currentSelectedId)
+              ? currentSelectedId
+              : entries[0].id,
+          );
+        }, [entries]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
   it("does not report an event-owned scalar mirror", () => {
     expectDiagnosticCount(
       `function Editor({ settings }) {

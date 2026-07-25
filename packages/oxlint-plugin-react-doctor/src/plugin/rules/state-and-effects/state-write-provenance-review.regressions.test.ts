@@ -63,6 +63,103 @@ describe("state write provenance review regressions", () => {
     );
   });
 
+  it.each([
+    [
+      "same conditional branch",
+      `useEffect(() => {
+        if (documentId) {
+          analytics.subscribe(recordView);
+          setDraft(null);
+        }
+      }, [documentId]);`,
+    ],
+    [
+      "helper invoked from a conditional",
+      `const resetDraft = useCallback(() => {
+        analytics.subscribe(recordView);
+        setDraft(null);
+      }, []);
+      useEffect(() => {
+        if (documentId) resetDraft();
+      }, [documentId, resetDraft]);`,
+    ],
+  ])("reports unrelated external work in the %s", (_, effectSource) => {
+    expectDiagnosticCount(
+      noAdjustStateOnPropChange,
+      `import { useCallback, useEffect, useState } from "react";
+      function Editor({ documentId }) {
+        const [draft, setDraft] = useState(null);
+        ${effectSource}
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      }`,
+      1,
+    );
+  });
+
+  it.each([
+    [
+      "a nested callback read",
+      `if (disabled && check(() => playing)) {
+        clearTimeout(timer.current);
+        setPlaying(false);
+      }`,
+    ],
+    [
+      "a statically unreachable read",
+      `if (disabled || (false && playing)) {
+        clearTimeout(timer.current);
+        setPlaying(false);
+      }`,
+    ],
+  ])("does not use %s as state control provenance", (_, guardedWork) => {
+    expectDiagnosticCount(
+      noAdjustStateOnPropChange,
+      `function Slideshow({ disabled }) {
+        const [playing, setPlaying] = useState(true);
+        const timer = useRef();
+        useEffect(() => {
+          ${guardedWork}
+        }, [playing, disabled]);
+        return playing;
+      }`,
+      1,
+    );
+  });
+
+  it.each([
+    [
+      "timer cleanup guarded by its state",
+      `useEffect(() => {
+        if (playing && disabled) {
+          clearTimeout(timer.current);
+          setPlaying(false);
+        }
+      }, [playing, disabled]);`,
+    ],
+    [
+      "external helper invocation guarded by its state",
+      `const stopSession = useCallback(() => {
+        fetch("/session/stop");
+        setPlaying(false);
+      }, []);
+      useEffect(() => {
+        if (playing && disabled) stopSession();
+      }, [playing, disabled, stopSession]);`,
+    ],
+  ])("keeps genuinely related %s quiet", (_, effectSource) => {
+    expectDiagnosticCount(
+      noAdjustStateOnPropChange,
+      `import { useCallback, useEffect, useState } from "react";
+      function Session({ disabled }) {
+        const [playing, setPlaying] = useState(true);
+        const timer = useRef();
+        ${effectSource}
+        return playing;
+      }`,
+      0,
+    );
+  });
+
   it("does not treat a shadowed timer cleanup name as external work", () => {
     expectDiagnosticCount(
       noAdjustStateOnPropChange,

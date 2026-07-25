@@ -95,6 +95,21 @@ describe("no-repeated-container-text", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("collects visible repeated text through a static style binding", () => {
+    const result = runRule(
+      noRepeatedContainerText,
+      `const visibleStyles = { color: "red" };
+      const StatusCard = () => (
+        <article className="rounded-xl border bg-white p-6">
+          <div style={visibleStyles} className="headline"><strong>Suspended</strong></div>
+          <div className="metadata"><span>Suspended</span></div>
+          <p className="notice">Service is <em>Suspended</em> until further notice.</p>
+        </article>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("rejects cards containing responsive visibility copies", () => {
     const result = runRule(
       noRepeatedContainerText,

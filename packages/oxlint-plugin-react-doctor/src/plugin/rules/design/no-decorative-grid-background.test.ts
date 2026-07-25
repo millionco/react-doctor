@@ -142,4 +142,26 @@ describe("no-decorative-grid-background", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("checks className when inline style only sets background size", () => {
+    const result = runRule(
+      noDecorativeGridBackground,
+      `const Hero = () => <section
+        className="[background:linear-gradient(90deg,#aaa_1px,transparent_1px)_0_0/40px_40px]"
+        style={{ backgroundSize: "40px 40px" }}
+      />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("respects inline background-size overrides for class grids", () => {
+    const result = runRule(
+      noDecorativeGridBackground,
+      `const Hero = () => <section
+        className="[background:linear-gradient(90deg,#aaa_1px,transparent_1px)_0_0/40px_40px]"
+        style={{ backgroundSize: "cover" }}
+      />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

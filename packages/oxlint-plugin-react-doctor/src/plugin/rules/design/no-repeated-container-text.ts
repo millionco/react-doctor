@@ -121,6 +121,7 @@ const hasContentAttribute = (openingElement: EsTreeNodeOfType<"JSXOpeningElement
 const isStaticallyHidden = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   classNameValue: string | null,
+  context: RuleContext,
 ): boolean => {
   const hiddenAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "hidden");
   if (hiddenAttribute) {
@@ -138,8 +139,8 @@ const isStaticallyHidden = (
   }
   const styleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "style");
   if (styleAttribute) {
-    const styleExpression = getInlineStyleExpression(styleAttribute);
-    if (!styleExpression) return true;
+    const styleExpression = getInlineStyleExpression(styleAttribute, context.scopes);
+    if (!styleExpression) return false;
     const displayProperty = getEffectiveStyleProperty(styleExpression.properties, "display");
     const visibilityProperty = getEffectiveStyleProperty(styleExpression.properties, "visibility");
     if (
@@ -200,6 +201,7 @@ const hasResponsiveVisibility = (
 const shouldSkipElement = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   isRoot: boolean,
+  context: RuleContext,
 ): boolean => {
   const elementName = getNativeElementName(openingElement);
   if (!elementName || REPEATED_TEXT_SKIPPED_NAMES.has(elementName)) return true;
@@ -211,7 +213,7 @@ const shouldSkipElement = (
   if (classNameAttribute && classNameValue === null) return true;
   if (
     (classNameValue && DATA_VISUALIZATION_CLASS_PATTERN.test(classNameValue)) ||
-    isStaticallyHidden(openingElement, classNameValue)
+    isStaticallyHidden(openingElement, classNameValue, context)
   ) {
     return true;
   }
@@ -263,6 +265,7 @@ const collectStaticChild = (
   node: EsTreeNode,
   structuralPath: string[],
   collection: RepeatedTextCollection,
+  context: RuleContext,
 ): void => {
   if (!collection.isStatic) return;
   if (isNodeOfType(node, "JSXText")) {
@@ -279,17 +282,19 @@ const collectStaticChild = (
       collection.isStatic = false;
       return;
     }
-    if (shouldSkipElement(node.openingElement, false)) return;
+    if (shouldSkipElement(node.openingElement, false, context)) return;
     const pathSegment = getStructuralPathSegment(node.openingElement);
     if (!pathSegment) return;
     const nextStructuralPath = [...structuralPath, pathSegment];
     for (const child of node.children) {
-      collectStaticChild(child, nextStructuralPath, collection);
+      collectStaticChild(child, nextStructuralPath, collection, context);
     }
     return;
   }
   if (isNodeOfType(node, "JSXFragment")) {
-    for (const child of node.children) collectStaticChild(child, structuralPath, collection);
+    for (const child of node.children) {
+      collectStaticChild(child, structuralPath, collection, context);
+    }
     return;
   }
   if (!isNodeOfType(node, "JSXExpressionContainer")) {
@@ -321,10 +326,11 @@ const collectStaticChild = (
 
 const collectRepeatedText = (
   container: EsTreeNodeOfType<"JSXElement">,
+  context: RuleContext,
 ): RepeatedTextCollection | null => {
   if (
     hasResponsiveVisibility(container.openingElement) ||
-    shouldSkipElement(container.openingElement, true)
+    shouldSkipElement(container.openingElement, true, context)
   ) {
     return null;
   }
@@ -333,7 +339,7 @@ const collectRepeatedText = (
     isStatic: true,
     occurrencesByText: new Map(),
   };
-  for (const child of container.children) collectStaticChild(child, [], collection);
+  for (const child of container.children) collectStaticChild(child, [], collection, context);
   return collection.isStatic ? collection : null;
 };
 
@@ -356,7 +362,7 @@ export const noRepeatedContainerText = defineRule({
       ) {
         return;
       }
-      const collection = collectRepeatedText(node);
+      const collection = collectRepeatedText(node, context);
       if (!collection) return;
       for (const [text, occurrences] of collection.occurrencesByText) {
         const distinctSignatures = new Set(occurrences.map((occurrence) => occurrence.signature));

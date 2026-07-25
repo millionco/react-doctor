@@ -44,6 +44,26 @@ describe("no-auto-scrolling-content", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("tries translateX when x does not contain percentage travel", () => {
+    const result = runRule(
+      noAutoScrollingContent,
+      `
+        import { motion } from "framer-motion";
+
+        const Partners = () => (
+          <motion.div
+            animate={{ x: ["0px", "20px"], translateX: ["0%", "-50%"] }}
+            transition={{ repeat: Infinity }}
+          >
+            Acme and Globex
+          </motion.div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts finite entrances, small loops, and pixel travel", () => {
     const result = runRule(
       noAutoScrollingContent,

@@ -135,7 +135,10 @@ const getTailwindBackgroundSizeValue = (utility: string): string | null => {
   return /^(?:bg-auto|bg-contain|bg-cover)$/i.test(utility) ? utility.slice(3) : null;
 };
 
-const isDecorativeTailwindGrid = (classNameValue: string): boolean => {
+const isDecorativeTailwindGrid = (
+  classNameValue: string,
+  backgroundSizeOverride?: string,
+): boolean => {
   const tokens = splitTailwindClassName(classNameValue);
   const backgroundResolution = resolveEffectiveTailwindClassNameToken(tokens, (utility) =>
     Boolean(
@@ -156,13 +159,16 @@ const isDecorativeTailwindGrid = (classNameValue: string): boolean => {
   const backgroundValue = getTailwindBackgroundValue(backgroundUtility);
   if (!backgroundValue) return false;
   const backgroundSizeUtility = backgroundSizeResolution.utility;
-  const hasExplicitBackgroundSize = Boolean(
-    backgroundSizeUtility &&
-    !TAILWIND_BACKGROUND_SHORTHAND_PROPERTY_PATTERN.test(backgroundSizeUtility),
-  );
+  const hasExplicitBackgroundSize =
+    backgroundSizeOverride !== undefined ||
+    Boolean(
+      backgroundSizeUtility &&
+      !TAILWIND_BACKGROUND_SHORTHAND_PROPERTY_PATTERN.test(backgroundSizeUtility),
+    );
   return isDecorativeGridValue(
     backgroundValue,
-    backgroundSizeUtility ? getTailwindBackgroundSizeValue(backgroundSizeUtility) : null,
+    backgroundSizeOverride ??
+      (backgroundSizeUtility ? getTailwindBackgroundSizeValue(backgroundSizeUtility) : null),
     !hasExplicitBackgroundSize,
     false,
   );
@@ -179,6 +185,7 @@ export const noDecorativeGridBackground = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (isDataVisualizationContext(node, context.filename)) return;
+      let inlineBackgroundSizeValue: string | undefined;
       const styleAttribute = getAuthoritativeJsxAttribute(node.attributes ?? [], "style");
       if (!styleAttribute && hasJsxSpreadThatMayProvideAttribute(node.attributes ?? [], "style")) {
         return;
@@ -209,6 +216,16 @@ export const noDecorativeGridBackground = defineRule({
             ? getStylePropertyStringValue(backgroundSizeProperty)
             : null;
           if (
+            backgroundSizeProperty &&
+            backgroundSizeProperty !== backgroundProperty &&
+            backgroundSizeValue === null
+          ) {
+            return;
+          }
+          if (backgroundSizeProperty !== backgroundProperty && backgroundSizeValue) {
+            inlineBackgroundSizeValue = backgroundSizeValue;
+          }
+          if (
             backgroundValue &&
             isDecorativeGridValue(
               backgroundValue,
@@ -225,12 +242,13 @@ export const noDecorativeGridBackground = defineRule({
               message:
                 "This fixed-pixel background draws a decorative coordinate grid. Use it only when the grid conveys spatial information.",
             });
+            return;
           }
-          return;
+          if (backgroundProperty) return;
         }
       }
       const classNameValue = getStringFromClassNameAttr(node);
-      if (classNameValue && isDecorativeTailwindGrid(classNameValue)) {
+      if (classNameValue && isDecorativeTailwindGrid(classNameValue, inlineBackgroundSizeValue)) {
         context.report({
           node,
           message:

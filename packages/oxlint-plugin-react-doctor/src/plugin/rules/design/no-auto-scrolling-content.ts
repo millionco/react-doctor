@@ -80,16 +80,16 @@ const getHorizontalTravel = (
     const animateProperty = getEffectiveStyleProperty(animateObject.properties, propertyName);
     if (!animateProperty) continue;
     const animateValues = getPercentageValues(animateProperty.value);
-    if (!animateValues) return null;
+    if (!animateValues) continue;
     const percentageValues = [...animateValues];
     if (percentageValues.length === 1 && initialObject) {
       const initialProperty = getEffectiveStyleProperty(initialObject.properties, propertyName);
-      if (!initialProperty) return null;
+      if (!initialProperty) continue;
       const initialValues = getPercentageValues(initialProperty.value);
-      if (!initialValues || initialValues.length !== 1) return null;
+      if (!initialValues || initialValues.length !== 1) continue;
       percentageValues.push(initialValues[0]);
     }
-    if (percentageValues.length < 2) return null;
+    if (percentageValues.length < 2) continue;
     return Math.max(...percentageValues) - Math.min(...percentageValues);
   }
   return null;

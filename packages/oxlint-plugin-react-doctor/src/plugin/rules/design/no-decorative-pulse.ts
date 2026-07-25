@@ -5,7 +5,6 @@ import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-settin
 import { getStaticJsxDescendantOpeningElements } from "../../utils/get-static-jsx-descendant-opening-elements.js";
 import { getStaticJsxText } from "../../utils/get-static-jsx-text.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
-import { getUnvariantClassNameTokens } from "../../utils/get-unvariant-class-name-tokens.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -290,10 +289,12 @@ export const noDecorativePulse = defineRule({
         return;
       }
       const classNameValue = getStringFromClassNameAttr(openingElement);
-      if (
-        !classNameValue ||
-        !getUnvariantClassNameTokens(classNameValue).includes("animate-pulse")
-      ) {
+      if (!classNameValue) return;
+      const animationResolution = resolveEffectiveTailwindClassNameToken(
+        splitTailwindClassName(classNameValue),
+        (utility) => TAILWIND_ANIMATION_UTILITY_PATTERN.test(utility),
+      );
+      if (animationResolution.isAmbiguous || animationResolution.utility !== "animate-pulse") {
         return;
       }
       const text = getStaticJsxText(node).replace(/\s+/g, " ").trim();

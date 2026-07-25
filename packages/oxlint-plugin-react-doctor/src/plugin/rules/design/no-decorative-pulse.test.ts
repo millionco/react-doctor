@@ -35,6 +35,18 @@ describe("no-decorative-pulse", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("respects effective Tailwind animation overrides for stable copy", () => {
+    const result = runRule(
+      noDecorativePulse,
+      `const Hero = () => <>
+        <span className="animate-pulse animate-none">New feature</span>
+        <span className="animate-pulse !animate-none">New feature</span>
+        <span className="animate-none !animate-pulse">New feature</span>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags static cursor glyphs with proven infinite blink animations in hero copy", () => {
     const result = runRule(
       noDecorativePulse,

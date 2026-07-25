@@ -22,6 +22,12 @@ describe("three-shader-require-uniform-bindings", () => {
     expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(2);
   });
 
+  it("reports feature-managed uniforms when their ShaderMaterial feature is disabled", () => {
+    const code = `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });`;
+
+    expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(1);
+  });
+
   it.each([
     `import { ShaderMaterial } from "three"; const uniforms = { uTime: { value: 0 } }; new ShaderMaterial({ uniforms, fragmentShader: "uniform float uTime; void main() { gl_FragColor = vec4(uTime); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float uUnused; void main() { gl_FragColor = vec4(1.0); }" });`,

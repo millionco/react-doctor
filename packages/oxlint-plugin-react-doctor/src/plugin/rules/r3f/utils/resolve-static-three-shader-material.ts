@@ -18,8 +18,15 @@ const SHADER_MATERIAL_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "ShaderMaterial",
 ]);
 const STATIC_SHADER_MATERIAL_PROPERTY_NAMES: ReadonlyArray<string> = [
+  "clipping",
+  "fog",
   "fragmentShader",
   "glslVersion",
+  "lights",
+  "morphNormals",
+  "morphTargets",
+  "skinning",
+  "transmission",
   "uniforms",
   "vertexShader",
 ];

@@ -33,6 +33,15 @@ describe("three-on-before-compile-require-program-cache-key", () => {
        }
      };`,
     `import { MeshStandardMaterial } from "three";
+     let remaining = 1;
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       while (remaining > 0) {
+         shader.fragmentShader += " ";
+         remaining -= 1;
+       }
+     };`,
+    `import { MeshStandardMaterial } from "three";
      const material = new MeshStandardMaterial();
      material.onBeforeCompile = function (shader) {
        if (this.mode === "warm") shader.fragmentShader += " ";

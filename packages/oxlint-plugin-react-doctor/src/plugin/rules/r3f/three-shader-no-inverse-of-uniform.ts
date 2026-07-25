@@ -19,10 +19,11 @@ const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void
   ) {
     return;
   }
-  const uniformNames = new Set(
+  const globalBindings = shader.program.scopes[0]?.bindings;
+  const uniformReferences = new Set(
     collectGlslGlobalDeclarations(shader.program)
       .filter((declaration) => declaration.qualifiers.has("uniform"))
-      .map((declaration) => declaration.name),
+      .flatMap((declaration) => globalBindings?.[declaration.name]?.references ?? []),
   );
   visit(shader.program, {
     function_call: {
@@ -33,7 +34,7 @@ const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void
         if (
           callArguments.length !== 1 ||
           matrix?.type !== "identifier" ||
-          !uniformNames.has(matrix.identifier)
+          !uniformReferences.has(matrix)
         ) {
           return;
         }

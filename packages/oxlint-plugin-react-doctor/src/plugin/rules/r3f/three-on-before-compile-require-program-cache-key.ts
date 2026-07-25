@@ -187,6 +187,23 @@ const callbackHasVariantDependentPatch = (callback: EsTreeNode, context: RuleCon
       hasVariantDependentPatch = true;
       return false;
     }
+    if (
+      (isNodeOfType(candidate, "WhileStatement") || isNodeOfType(candidate, "DoWhileStatement")) &&
+      expressionDependsOnMutableCapture(candidate.test, callbackScope, context) &&
+      subtreeHasShaderProgramWrite(candidate.body)
+    ) {
+      hasVariantDependentPatch = true;
+      return false;
+    }
+    if (
+      isNodeOfType(candidate, "ForStatement") &&
+      candidate.test &&
+      expressionDependsOnMutableCapture(candidate.test, callbackScope, context) &&
+      subtreeHasShaderProgramWrite(candidate.body)
+    ) {
+      hasVariantDependentPatch = true;
+      return false;
+    }
   });
   return hasVariantDependentPatch;
 };

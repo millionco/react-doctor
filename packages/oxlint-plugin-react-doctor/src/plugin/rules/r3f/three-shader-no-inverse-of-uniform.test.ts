@@ -14,6 +14,7 @@ describe("three-shader-no-inverse-of-uniform", () => {
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform mat4 uTransform; void main() { mat4 localTransform = uTransform; gl_Position = inverse(localTransform) * vec4(0.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "mat4 inverse(mat4 value) { return value; } uniform mat4 uTransform; void main() { gl_Position = inverse(uTransform) * vec4(0.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "#define inverse(value) value\\nuniform mat4 uTransform; void main() { gl_Position = inverse(uTransform) * vec4(0.0); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform mat4 uTransform; void main() { { mat4 uTransform = mat4(1.0); gl_Position = inverse(uTransform) * vec4(0.0); } }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: shader });`,
     `class ShaderMaterial {}; new ShaderMaterial({ vertexShader: "uniform mat4 uTransform; void main() { gl_Position = inverse(uTransform) * vec4(0.0); }" });`,
   ])("keeps derived, shadowed, dynamic, and unrelated calls quiet", (code) => {

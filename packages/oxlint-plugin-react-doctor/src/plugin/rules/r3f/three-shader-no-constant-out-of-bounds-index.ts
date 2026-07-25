@@ -35,13 +35,14 @@ const getIndexQuantifiers = (postfix: AstNode): QuantifierNode[] | null => {
   const quantifiers: QuantifierNode[] = [];
   let currentPostfix = postfix;
   while (currentPostfix.type === "postfix") {
-    if (currentPostfix.expression.type !== "quantifier") return null;
+    if (currentPostfix.expression.type !== "quantifier") {
+      return quantifiers.length > 0 ? quantifiers : null;
+    }
     quantifiers.push(currentPostfix.expression);
     currentPostfix = currentPostfix.postfix;
   }
-  if (currentPostfix.type !== "quantifier") return null;
-  quantifiers.push(currentPostfix);
-  return quantifiers;
+  if (currentPostfix.type === "quantifier") quantifiers.push(currentPostfix);
+  return quantifiers.length > 0 ? quantifiers : null;
 };
 
 const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void => {

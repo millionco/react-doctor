@@ -25,6 +25,15 @@ describe("three-shader-no-constant-out-of-bounds-index", () => {
     expect(runRule(threeShaderNoConstantOutOfBoundsIndex, code).diagnostics).toHaveLength(3);
   });
 
+  it("reports out-of-bounds indices followed by swizzles", () => {
+    const code = `import { RawShaderMaterial } from "three";
+      new RawShaderMaterial({
+        fragmentShader: "uniform mat3 matrix; uniform vec3 vectors[2]; void main() { float value = matrix[3].x + vectors[2].x; gl_FragColor = vec4(value); }",
+      });`;
+
+    expect(runRule(threeShaderNoConstantOutOfBoundsIndex, code).diagnostics).toHaveLength(2);
+  });
+
   it.each([
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float values[3]; uniform vec3 direction; uniform mat3 matrix; void main() { float value = values[2] + direction[0] + matrix[2][0]; gl_FragColor = vec4(value); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform vec3 vectors[2]; uniform mat2x3 matrix; void main() { float value = vectors[0][2] + matrix[0][2]; gl_FragColor = vec4(value); }" });`,

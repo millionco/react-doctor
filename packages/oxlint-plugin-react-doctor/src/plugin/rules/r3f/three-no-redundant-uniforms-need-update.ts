@@ -4,7 +4,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { visitThreeAnimationLoopEnabledPropertyWrites } from "./utils/visit-three-animation-loop-enabled-property-writes.js";
 
-const SHADER_MATERIAL_NAMES: ReadonlySet<string> = new Set(["RawShaderMaterial", "ShaderMaterial"]);
 const UNIFORM_UPDATE_PROPERTY_NAMES: ReadonlySet<string> = new Set(["uniformsNeedUpdate"]);
 
 export const threeNoRedundantUniformsNeedUpdate = defineRule({
@@ -24,7 +23,7 @@ export const threeNoRedundantUniformsNeedUpdate = defineRule({
           UNIFORM_UPDATE_PROPERTY_NAMES,
           analyzedCallbacks,
           ({ constructorName, node: assignment }) => {
-            if (!SHADER_MATERIAL_NAMES.has(constructorName)) return;
+            if (constructorName !== "ShaderMaterial") return;
             context.report({
               node: assignment,
               message:

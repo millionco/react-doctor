@@ -53,6 +53,7 @@
     "test": "pnpm gen && vp test run"
   },
   "dependencies": {
+    "@shaderfrog/glsl-parser": "^7.0.1",
     "@typescript-eslint/types": "^8.59.3",
     "eslint-scope": "^9.1.2",
     "eslint-visitor-keys": "^5.0.1",

@@ -1954,6 +1954,69 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { useMemo } from "react"; import "three"; import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js"; const Scene = ({ renderer }) => { const composer = useMemo(() => new EffectComposer(renderer), [renderer]); composer.render(); return null; };',
     settings: { "react-doctor": { capabilities: ["three", "three:145", "three:146"] } },
   },
+  "three-no-material-recompile-in-animation-loop": {
+    code: 'import { MeshStandardMaterial, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const material = new MeshStandardMaterial(); renderer.setAnimationLoop(() => { material.needsUpdate = true; });',
+  },
+  "three-no-redundant-uniforms-need-update": {
+    code: 'import { ShaderMaterial, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const material = new ShaderMaterial(); renderer.setAnimationLoop(() => { material.uniformsNeedUpdate = true; });',
+  },
+  "three-on-before-compile-require-program-cache-key": {
+    code: 'import { MeshStandardMaterial } from "three"; let mode = "warm"; const material = new MeshStandardMaterial(); material.onBeforeCompile = (shader) => { if (mode === "warm") shader.fragmentShader += " "; };',
+  },
+  "three-raw-shader-require-fragment-float-precision": {
+    code: 'import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "varying vec2 vUv; void main() { gl_FragColor = vec4(vUv, 0.0, 1.0); }" });',
+  },
+  "three-raw-shader-require-glsl3-version": {
+    code: 'import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "in vec3 position; void main() { gl_Position = vec4(position, 1.0); }" });',
+  },
+  "three-shader-no-constant-out-of-bounds-index": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float values[2]; void main() { gl_FragColor = vec4(values[2]); }" });',
+  },
+  "three-shader-no-derivatives-in-nonuniform-flow": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "varying float value; void main() { if (value > 0.0) gl_FragColor = vec4(fwidth(value)); }" });',
+  },
+  "three-shader-no-invalid-clamp-bounds": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float x = clamp(value, 1.0, 0.0); }" });',
+  },
+  "three-shader-no-invalid-constant-bit-operations": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { int value = 1 << 32; }" });',
+  },
+  "three-shader-no-invalid-constant-math": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float value = sqrt(-1.0); }" });',
+  },
+  "three-shader-no-invalid-smoothstep-edges": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float x = smoothstep(1.0, 0.0, value); }" });',
+  },
+  "three-shader-no-inverse-of-uniform": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform mat4 transform; void main() { gl_Position = inverse(transform) * vec4(0.0); }" });',
+  },
+  "three-shader-no-redeclared-builtins": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform mat4 projectionMatrix; void main() { gl_Position = projectionMatrix * vec4(0.0); }" });',
+  },
+  "three-shader-no-redundant-frag-depth": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { gl_FragDepth = gl_FragCoord.z; gl_FragColor = vec4(1.0); }" });',
+  },
+  "three-shader-no-version-directive": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "#version 300 es\\nvoid main() { gl_Position = vec4(0.0); }" });',
+  },
+  "three-shader-prefer-small-integer-pow": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { float value = pow(inputValue, 2.0); }" });',
+  },
+  "three-shader-prefer-squared-distance-comparison": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { if (distance(first, second) < 2.0) gl_FragColor = vec4(1.0); }" });',
+  },
+  "three-shader-require-matching-uniforms": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform vec3 value; void main() { gl_Position = vec4(value, 1.0); }", fragmentShader: "uniform vec4 value; void main() { gl_FragColor = value; }" });',
+  },
+  "three-shader-require-matching-varyings": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "void main() { gl_Position = vec4(0.0); }", fragmentShader: "varying vec3 missing; void main() { gl_FragColor = vec4(missing, 1.0); }" });',
+  },
+  "three-shader-require-position-on-all-paths": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "void main() { float value = 1.0; }" });',
+  },
+  "three-shader-require-uniform-bindings": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });',
+  },
   "three-tsl-no-js-uniform-branch": {
     code: 'import { Fn, uniform } from "three/tsl"; const mode = uniform(0); const shader = Fn(() => { if (mode.value) return red; return blue; });',
   },

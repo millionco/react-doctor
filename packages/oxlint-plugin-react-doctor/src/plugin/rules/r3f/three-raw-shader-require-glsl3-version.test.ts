@@ -1,0 +1,24 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { threeRawShaderRequireGlsl3Version } from "./three-raw-shader-require-glsl3-version.js";
+
+describe("three-raw-shader-require-glsl3-version", () => {
+  it.each([
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "in vec3 position; void main() { gl_Position = vec4(position, 1.0); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "precision highp float; uniform sampler2D map; out vec4 color; void main() { color = texture(map, vec2(0.0)); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ fragmentShader: "precision highp float; void main() { int value = 1 << 2; }" });`,
+  ])("reports GLSL 3-only raw shader syntax without a GLSL3 option", (code) => {
+    expect(runRule(threeRawShaderRequireGlsl3Version, code).diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `import { RawShaderMaterial, GLSL3 } from "three"; new RawShaderMaterial({ glslVersion: GLSL3, vertexShader: "in vec3 position; void main() { gl_Position = vec4(position, 1.0); }" });`,
+    `import * as THREE from "three"; new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, fragmentShader: "precision highp float; out vec4 color; void main() { color = vec4(1.0); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ glslVersion, fragmentShader: "precision highp float; out vec4 color; void main() { color = vec4(1.0); }" });`,
+    `import { RawShaderMaterial } from "three"; new RawShaderMaterial({ vertexShader: "attribute vec3 position; varying vec2 vUv; void main() { gl_Position = vec4(position, 1.0); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "out vec4 color; void main() { color = vec4(1.0); }" });`,
+    `class RawShaderMaterial {}; new RawShaderMaterial({ fragmentShader: "out vec4 color; void main() {}" });`,
+  ])("keeps GLSL3-configured, dynamic, GLSL1, managed, and unrelated shaders quiet", (code) => {
+    expect(runRule(threeRawShaderRequireGlsl3Version, code).diagnostics).toHaveLength(0);
+  });
+});

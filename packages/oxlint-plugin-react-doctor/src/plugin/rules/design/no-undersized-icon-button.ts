@@ -1,4 +1,4 @@
-import { MINIMUM_TARGET_SIZE_PX, TAILWIND_SPACING_UNIT_PX } from "../../constants/design.js";
+import { MINIMUM_TARGET_SIZE_PX } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
@@ -16,6 +16,7 @@ import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
+import { parseStaticTailwindLengthPx } from "./utils/parse-static-tailwind-length-px.js";
 
 interface InlineTargetSizeResult {
   hasTargetStyle: boolean;
@@ -33,13 +34,6 @@ const isIconOnlyButton = (node: EsTreeNodeOfType<"JSXElement">): boolean => {
     return false;
   }
   return iconCount === 1;
-};
-
-const parseTailwindLength = (token: string, prefix: string): number | null => {
-  const arbitraryMatch = token.match(new RegExp(`^${prefix}-\\[([\\d.]+)px\\]$`));
-  if (arbitraryMatch) return Number.parseFloat(arbitraryMatch[1]);
-  const scaleMatch = token.match(new RegExp(`^${prefix}-([\\d.]+)$`));
-  return scaleMatch ? Number.parseFloat(scaleMatch[1]) * TAILWIND_SPACING_UNIT_PX : null;
 };
 
 const WIDTH_UTILITY_PATTERN = /^(?:size|w)-/;
@@ -108,10 +102,12 @@ const getTailwindTargetSize = (
     HEIGHT_UTILITY_PATTERN.test(utility),
   );
   const width = effectiveWidth
-    ? (parseTailwindLength(effectiveWidth, "size") ?? parseTailwindLength(effectiveWidth, "w"))
+    ? (parseStaticTailwindLengthPx(effectiveWidth, "size") ??
+      parseStaticTailwindLengthPx(effectiveWidth, "w"))
     : null;
   const height = effectiveHeight
-    ? (parseTailwindLength(effectiveHeight, "size") ?? parseTailwindLength(effectiveHeight, "h"))
+    ? (parseStaticTailwindLengthPx(effectiveHeight, "size") ??
+      parseStaticTailwindLengthPx(effectiveHeight, "h"))
     : null;
   return width !== null && height !== null ? [width, height] : null;
 };

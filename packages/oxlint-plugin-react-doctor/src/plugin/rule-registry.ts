@@ -219,6 +219,7 @@ import { noArrayIndexKey } from "./rules/react-builtins/no-array-index-key.js";
 import { noAssertiveStatus } from "./rules/a11y/no-assertive-status.js";
 import { noAsyncEffectCallback } from "./rules/state-and-effects/no-async-effect-callback.js";
 import { noAsyncEventHandlerWithoutReentryGuard } from "./rules/state-and-effects/no-async-event-handler-without-reentry-guard.js";
+import { noAutoScrollingContent } from "./rules/design/no-auto-scrolling-content.js";
 import { noAutofocus } from "./rules/a11y/no-autofocus.js";
 import { noAutoplayWithoutMuted } from "./rules/a11y/no-autoplay-without-muted.js";
 import { noBarrelImport } from "./rules/bundle-size/no-barrel-import.js";
@@ -249,6 +250,7 @@ import { noDarkModeGlow } from "./rules/design/no-dark-mode-glow.js";
 import { noDecorativeBlurOrb } from "./rules/design/no-decorative-blur-orb.js";
 import { noDecorativeGridBackground } from "./rules/design/no-decorative-grid-background.js";
 import { noDecorativePulse } from "./rules/design/no-decorative-pulse.js";
+import { noDecorativeRadialSpotlight } from "./rules/design/no-decorative-radial-spotlight.js";
 import { noDefaultProps } from "./rules/architecture/no-default-props.js";
 import { noDefaultPurplePageGradient } from "./rules/design/no-default-purple-page-gradient.js";
 import { noDefaultWarmPageSurface } from "./rules/design/no-default-warm-page-surface.js";
@@ -395,8 +397,10 @@ import { noPromiseThenSideEffectInEffectWithoutCatch } from "./rules/state-and-e
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
 import { noPropCallbackInRender } from "./rules/state-and-effects/no-prop-callback-in-render.js";
 import { noPropTypes } from "./rules/architecture/no-prop-types.js";
+import { noPulsingStatusDot } from "./rules/design/no-pulsing-status-dot.js";
 import { noPureBlackBackground } from "./rules/design/no-pure-black-background.js";
 import { noPureBlackShadow } from "./rules/design/no-pure-black-shadow.js";
+import { noRadialHalo } from "./rules/design/no-radial-halo.js";
 import { noRandomKey } from "./rules/correctness/no-random-key.js";
 import { noReactChildren } from "./rules/react-builtins/no-react-children.js";
 import { noReactDomDeprecatedApis } from "./rules/architecture/no-react-dom-deprecated-apis.js";
@@ -411,6 +415,7 @@ import { noRefCurrentInRender } from "./rules/state-and-effects/no-ref-current-i
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
 import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-value.js";
+import { noRepeatedContainerText } from "./rules/design/no-repeated-container-text.js";
 import { noRepeatedEmojiTiles } from "./rules/design/no-repeated-emoji-tiles.js";
 import { noRepeatedGlassSurfaces } from "./rules/design/no-repeated-glass-surfaces.js";
 import { noRepeatedHoverScale } from "./rules/design/no-repeated-hover-scale.js";
@@ -427,6 +432,7 @@ import { noServerSideImageMap } from "./rules/a11y/no-server-side-image-map.js";
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateAfterAwaitInEffect } from "./rules/state-and-effects/no-set-state-after-await-in-effect.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
+import { noShapeAssembledIllustration } from "./rules/design/no-shape-assembled-illustration.js";
 import { noSideEffectInStateUpdaterFunction } from "./rules/state-and-effects/no-side-effect-in-state-updater-function.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
 import { noSkippedHeadingLevel } from "./rules/a11y/no-skipped-heading-level.js";
@@ -3273,6 +3279,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-auto-scrolling-content",
+    id: "no-auto-scrolling-content",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noAutoScrollingContent,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noAutoScrollingContent.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-autofocus",
     id: "no-autofocus",
     source: "react-doctor",
@@ -3637,6 +3655,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       tags: [...new Set(["design", ...(noDecorativePulse.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-decorative-radial-spotlight",
+    id: "no-decorative-radial-spotlight",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDecorativeRadialSpotlight,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noDecorativeRadialSpotlight.tags ?? [])])],
     },
   },
   {
@@ -5419,6 +5449,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-pulsing-status-dot",
+    id: "no-pulsing-status-dot",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPulsingStatusDot,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noPulsingStatusDot.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-pure-black-background",
     id: "no-pure-black-background",
     source: "react-doctor",
@@ -5440,6 +5482,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       tags: [...new Set(["design", ...(noPureBlackShadow.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-radial-halo",
+    id: "no-radial-halo",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRadialHalo,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noRadialHalo.tags ?? [])])],
     },
   },
   {
@@ -5607,6 +5661,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noRenderReturnValue.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-repeated-container-text",
+    id: "no-repeated-container-text",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRepeatedContainerText,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatedContainerText.tags ?? [])])],
     },
   },
   {
@@ -5804,6 +5870,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noSetStateInRender.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-shape-assembled-illustration",
+    id: "no-shape-assembled-illustration",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noShapeAssembledIllustration,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noShapeAssembledIllustration.tags ?? [])])],
     },
   },
   {

@@ -662,6 +662,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-async-event-handler-without-reentry-guard": {
     code: 'import { useState } from "react"; const Form = () => { const [, setDone] = useState(false); return <form onSubmit={async () => { await fetch("/api/reset", { method: "PATCH" }); setDone(true); }} />; };',
   },
+  "no-auto-scrolling-content": {
+    code: 'import { motion } from "framer-motion";\nconst Logos = () => <motion.div animate={{ x: ["0%", "-50%"] }} transition={{ repeat: Infinity }}>Acme Globex</motion.div>;',
+  },
   "no-boolean-toggle-without-functional-update": {
     code: "const Poller=()=>{const[on,setOn]=useState(false);setTimeout(()=>setOn(!on),500)};",
   },
@@ -735,7 +738,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'const Page = () => <main className="min-h-screen bg-stone-50">Content</main>;',
   },
   "no-decorative-grid-background": {
-    code: 'const Hero = () => <section style={{ backgroundImage: "linear-gradient(to right, #aaa 1px, transparent 1px), linear-gradient(to bottom, #aaa 1px, transparent 1px)" }} />;',
+    code: 'const Hero = () => <section style={{ backgroundImage: "linear-gradient(to right, #aaa 1px, transparent 1px), linear-gradient(to bottom, #aaa 1px, transparent 1px)", backgroundSize: "24px 24px" }} />;',
+  },
+  "no-decorative-radial-spotlight": {
+    code: 'const Hero = () => <div style={{ width: 320, height: 180, backgroundImage: "radial-gradient(circle, rgb(37 99 235 / 25%), transparent 70%)" }} />;',
   },
   "no-danger-with-children": {
     code: "const a = <div dangerouslySetInnerHTML={{ __html: html }}>text</div>;",
@@ -1047,7 +1053,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "const list = Object.keys(response?.data);",
   },
   "no-numbered-section-markers": {
-    code: "const Page = () => <main><span>01</span><h2>Principles</h2><span>02</span><h2>Process</h2><span>03</span><h2>Outcome</h2></main>;",
+    code: 'const Page = () => <main><span className="text-xs font-mono">01</span><h2>Principles</h2><span className="text-xs font-mono">02</span><h2>Process</h2></main>;',
   },
   "no-outline-none": {
     code: 'const T = () => <button style={{ outline: "none" }}>Save</button>;',
@@ -1111,6 +1117,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-pure-black-background": {
     code: 'const El = () => <div className="bg-black" />;',
   },
+  "no-pulsing-status-dot": {
+    code: 'const Header = () => <header><span className="size-2 rounded-full animate-pulse" /></header>;',
+  },
+  "no-radial-halo": {
+    code: 'const Hero = () => <div style={{ backgroundColor: "#050816", backgroundImage: "radial-gradient(circle, rgb(56 189 248 / 80%) 0%, transparent 70%)" }} />;',
+  },
   "no-random-key": {
     code: "\n      function List({ items }) {\n        return (\n          <ul>\n            {items.map((item) => (\n              <li key={Math.random()}>{item}</li>\n            ))}\n          </ul>\n        );\n      }\n    ",
   },
@@ -1133,6 +1145,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-repeating-gradient-decoration": {
     code: 'const Panel = () => <div style={{ backgroundImage: "repeating-linear-gradient(45deg, #fff 0 4px, #eee 4px 8px)" }} />;',
+  },
+  "no-repeated-container-text": {
+    code: 'const Card = () => <article className="rounded-xl border bg-white p-6"><div className="title"><strong>Suspended</strong></div><div className="meta"><span>Suspended</span></div><p className="notice"><em>Suspended</em></p></article>;',
   },
   "no-redundant-roles": {
     code: 'const Nav = () => <nav role="navigation" />;',
@@ -1184,6 +1199,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-side-tab-border": {
     code: 'const C = () => <div className="border-l-4 border-[#ff0000]" />;',
+  },
+  "no-shape-assembled-illustration": {
+    code: 'const Art = () => <svg width="200" height="200"><rect fill="#111" /><rect fill="#222" /><circle fill="#333" /><circle fill="#111" /><ellipse fill="#222" /><polygon fill="#333" /><rect fill="#111" /><circle fill="#222" /></svg>;',
   },
   "no-spread-accumulator-in-reduce": {
     code: "const out = items.reduce((acc, item) => [...acc, item], []);",

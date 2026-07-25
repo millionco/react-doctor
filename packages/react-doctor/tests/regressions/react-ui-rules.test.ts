@@ -264,7 +264,7 @@ describe("design-no-em-dash-in-jsx-text", () => {
   it("flags em dashes in JSX text", async () => {
     const projectDir = setupReactProject(tempRoot, "no-em-dash-pos", {
       files: {
-        "src/Message.tsx": `export const Message = () => <p>Ready — deploy now</p>;\n`,
+        "src/Message.tsx": `export const Message = () => <p>The build is ready — deploy it now</p>;\n`,
       },
     });
 

@@ -335,7 +335,7 @@ export const threeOnBeforeCompileRequireProgramCacheKey = defineRule({
       "Program:exit"() {
         for (const candidate of candidates) {
           if (
-            candidate.hasConstructorCacheKey ||
+            (candidate.materialSymbolId === null && candidate.hasConstructorCacheKey) ||
             (candidate.materialSymbolId !== null &&
               materialSymbolsWithCacheKeys.has(candidate.materialSymbolId))
           ) {

@@ -67,7 +67,9 @@ const isRendererManagedUniform = (
     return false;
   }
   const requiredFeature = MANAGED_UNIFORM_FEATURE_BY_NAME.get(uniformName);
-  return !requiredFeature || readStaticBoolean(material.properties.get(requiredFeature)) === true;
+  if (!requiredFeature) return true;
+  const featureExpression = material.properties.get(requiredFeature);
+  return featureExpression !== undefined && readStaticBoolean(featureExpression) !== false;
 };
 
 const isCustomUniform = (

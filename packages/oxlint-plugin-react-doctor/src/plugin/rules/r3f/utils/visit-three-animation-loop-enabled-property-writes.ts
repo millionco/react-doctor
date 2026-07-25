@@ -23,8 +23,9 @@ export const visitThreeAnimationLoopEnabledPropertyWrites = (
   const callback = resolveThreeAnimationLoopCallback(call, scopes);
   if (!callback || analyzedCallbacks.has(callback)) return;
   analyzedCallbacks.add(callback);
-  walkFunctionExecution(callback, scopes, (candidate) => {
+  walkFunctionExecution(callback, scopes, (candidate, isConditionallyExecuted) => {
     if (
+      isConditionallyExecuted ||
       !isNodeOfType(candidate, "AssignmentExpression") ||
       candidate.operator !== "=" ||
       !isNodeOfType(candidate.left, "MemberExpression") ||

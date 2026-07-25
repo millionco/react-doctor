@@ -24,6 +24,7 @@ describe("three-no-material-recompile-in-animation-loop", () => {
     `import { WebGLRenderer, MeshStandardMaterial } from "three"; const renderer = new WebGLRenderer(); let material = new MeshStandardMaterial(); renderer.setAnimationLoop(() => { material.needsUpdate = true; });`,
     `const renderer = createRenderer(); const material = createMaterial(); renderer.setAnimationLoop(() => { material.needsUpdate = true; });`,
     `import { WebGLRenderer, MeshStandardMaterial } from "three"; const renderer = new WebGLRenderer(); const material = new MeshStandardMaterial(); renderer.setAnimationLoop(() => { material.needsUpdate = false; });`,
+    `import { WebGLRenderer, MeshStandardMaterial } from "three"; const renderer = new WebGLRenderer(); const material = new MeshStandardMaterial(); renderer.setAnimationLoop(() => { if (changed) material.needsUpdate = true; });`,
   ])("keeps non-material, one-time, mutable, unproven, and disabled writes quiet", (code) => {
     expect(runRule(threeNoMaterialRecompileInAnimationLoop, code).diagnostics).toHaveLength(0);
   });

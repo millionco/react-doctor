@@ -319,6 +319,8 @@ export const threeOnBeforeCompileRequireProgramCacheKey = defineRule({
         if (propertyName === "customProgramCacheKey") {
           if (isUsableProgramCacheKey(node.right, context)) {
             materialSymbolsWithCacheKeys.add(materialSymbol.id);
+          } else {
+            materialSymbolsWithCacheKeys.delete(materialSymbol.id);
           }
           return;
         }

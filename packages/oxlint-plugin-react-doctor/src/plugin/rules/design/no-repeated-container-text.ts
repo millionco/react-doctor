@@ -171,9 +171,7 @@ const isStaticallyHidden = (
   );
   if (effectiveScreenReaderUtility === "sr-only") return true;
   const visibilityAtBreakpoints = getTailwindVisibilityAtBreakpoints(classNameValue);
-  return (
-    visibilityAtBreakpoints === null || visibilityAtBreakpoints.every((isVisible) => !isVisible)
-  );
+  return visibilityAtBreakpoints?.every((isVisible) => !isVisible) ?? false;
 };
 
 const hasResponsiveVisibility = (

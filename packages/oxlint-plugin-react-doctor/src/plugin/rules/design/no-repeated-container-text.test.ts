@@ -110,6 +110,20 @@ describe("no-repeated-container-text", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("collects repeated text when visibility cannot be resolved", () => {
+    const result = runRule(
+      noRepeatedContainerText,
+      `const StatusCard = () => (
+        <article className="rounded-xl border bg-white p-6">
+          <div className="hover:hidden"><strong>Suspended</strong></div>
+          <div className="metadata"><span>Suspended</span></div>
+          <p className="notice">Service is <em>Suspended</em> until further notice.</p>
+        </article>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("rejects cards containing responsive visibility copies", () => {
     const result = runRule(
       noRepeatedContainerText,

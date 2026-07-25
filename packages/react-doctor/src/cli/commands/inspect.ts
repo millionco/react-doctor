@@ -73,6 +73,7 @@ import { runExplain } from "../utils/run-explain.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
+import { toForwardSlashes } from "../utils/path-format.js";
 import { isSpinnerSilent, setSpinnerSilent, spinner } from "../utils/spinner.js";
 import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
@@ -476,9 +477,24 @@ export const inspectAction = async (
       userConfig?.projects,
     );
 
-    const changedFilesDiffInfo = flags.changedFilesFrom
+    let changedFilesDiffInfo = flags.changedFilesFrom
       ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
       : null;
+    if (changedFilesDiffInfo !== null && scanTarget.didRedirectViaRootDir) {
+      const relativeProjectDirectory = path.relative(requestedDirectory, resolvedDirectory);
+      if (relativeProjectDirectory && !relativeProjectDirectory.startsWith("..")) {
+        const projectPrefix = `${toForwardSlashes(relativeProjectDirectory)}/`;
+        changedFilesDiffInfo = {
+          ...changedFilesDiffInfo,
+          changedFiles: changedFilesDiffInfo.changedFiles.flatMap((filePath) => {
+            const normalizedPath = toForwardSlashes(filePath);
+            return normalizedPath.startsWith(projectPrefix)
+              ? [normalizedPath.slice(projectPrefix.length)]
+              : [];
+          }),
+        };
+      }
+    }
     const requestedScope = resolveScope(flags, userConfig);
     // Untracked files only exist in a local working tree, so this is a
     // CLI-only modifier (like `--staged`) — off unless the user opts in.

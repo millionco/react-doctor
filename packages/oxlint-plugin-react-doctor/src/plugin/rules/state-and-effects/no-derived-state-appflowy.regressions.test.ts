@@ -187,6 +187,251 @@ describe("derived-state AppFlowy selection repair", () => {
     );
   });
 
+  it("does not treat a state read captured by an opaque guard callback as selection repair", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries, shouldRepair }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          if (shouldRepair(() => selectedId)) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries, shouldRepair]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not trust a custom deferred .some callback as an immediate selection guard", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        const customCollection = {
+          some: (callback) => {
+            queueMicrotask(callback);
+            return true;
+          },
+        };
+        useEffect(() => {
+          if (customCollection.some(() => selectedId)) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("still reports an indexed selection repair guarded by an immediate IIFE read", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          if ((() => selectedId)()) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      1,
+    );
+  });
+
+  it("does not treat a state read after await in an async IIFE as an immediate guard", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          if ((async () => {
+            await Promise.resolve();
+            return selectedId;
+          })()) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not execute a generator IIFE body while classifying a selection guard", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          if ((function* () {
+            return selectedId;
+          })()) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not treat a state read after await in an async array callback as immediate", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          if ([1].some(async () => {
+            await Promise.resolve();
+            return selectedId;
+          })) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not treat an unreachable empty-array callback read as a selection guard", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          if ([].some(() => selectedId)) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not trust a custom memoized .map result as an array selection guard", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialSource }) {
+        const [customSource] = useState(initialSource);
+        const [selectedId, setSelectedId] = useState("");
+        const visibleEntries = useMemo(
+          () => customSource.map((entry) => entry),
+          [customSource],
+        );
+        useEffect(() => {
+          if (visibleEntries.some(() => selectedId)) {
+            setSelectedId(visibleEntries[0].id);
+          }
+        }, [visibleEntries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not trust an overridden array .map result as an immediate selection guard", () => {
+    expectDiagnosticCount(
+      `function EntryList() {
+        const source = [1];
+        const sourceAlias = source;
+        sourceAlias.map = () => ({
+          some: (callback) => {
+            queueMicrotask(callback);
+            return true;
+          },
+        });
+        const [selectedId, setSelectedId] = useState("");
+        const values = useMemo(() => source.map((value) => value), []);
+        useEffect(() => {
+          if (values.some(() => selectedId)) {
+            setSelectedId(values[0].id);
+          }
+        }, [values, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("does not trust a state object's custom .filter result as a selection guard", () => {
+    expectDiagnosticCount(
+      `function EntryList() {
+        const [source] = useState({
+          filter: () => ({
+            0: { id: "fallback" },
+            some: (callback) => {
+              queueMicrotask(callback);
+              return true;
+            },
+          }),
+        });
+        const [selectedId, setSelectedId] = useState("");
+        const values = useMemo(() => source.filter((value) => value), [source]);
+        useEffect(() => {
+          if (values.some(() => selectedId)) {
+            setSelectedId(values[0].id);
+          }
+        }, [values, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      0,
+    );
+  });
+
+  it("still reports a selection repair through a state-backed memoized array alias", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        const memoizedEntries = useMemo(() => [...entries], [entries]);
+        const visibleEntries = memoizedEntries;
+        useEffect(() => {
+          if (visibleEntries.some(() => selectedId)) {
+            setSelectedId(visibleEntries[0].id);
+          }
+        }, [visibleEntries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      1,
+    );
+  });
+
+  it("still reports an indexed selection repair guarded by inline array .some", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          if ([...entries].some(() => selectedId)) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      1,
+    );
+  });
+
+  it("still reports an indexed selection repair controlled by an immediate state read", () => {
+    expectDiagnosticCount(
+      `function EntryList({ initialEntries }) {
+        const [entries] = useState(initialEntries);
+        const [selectedId, setSelectedId] = useState("");
+        useEffect(() => {
+          if (!selectedId && entries.length > 0) {
+            setSelectedId(entries[0].id);
+          }
+        }, [entries, selectedId]);
+        return <EntryPicker value={selectedId} onChange={setSelectedId} />;
+      }`,
+      1,
+    );
+  });
+
   it("leaves prop-derived selection repair to the prop-adjustment rule", () => {
     expectDiagnosticCount(
       `function VersionList({ versions }) {

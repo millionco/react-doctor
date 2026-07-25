@@ -1,20 +1,25 @@
 import type { Reference } from "eslint-scope";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
+import { collectPossibleAssignedExpressions } from "../../../utils/collect-possible-assigned-expressions.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { functionReturnsMatchingExpression } from "../../../utils/function-returns-matching-expression.js";
 import { resolveImportedExportName } from "../../../utils/find-exported-function-body.js";
+import { hasPossibleStaticPropertyWriteBefore } from "../../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isEarlyExitIfStatement } from "../../../utils/is-early-exit-if-statement.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
+import { isSynchronousIteratorCall } from "../../../utils/is-synchronous-iterator-callback.js";
 import { readsPostMountValue } from "../../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { resolveCrossFileFunctionExport } from "../../../utils/resolve-cross-file-function-export.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
+import { walkSynchronousCallbackFlow } from "../../../utils/walk-synchronous-callback-flow.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
 import { isExternallyDrivenState } from "./effect/external-state.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
@@ -1791,21 +1796,171 @@ const expressionReadsStateDeclarator = (
   expression: EsTreeNode,
   stateDeclarator: EsTreeNode,
 ): boolean => {
-  let readsState = false;
-  walkAst(expression, (child: EsTreeNode): boolean | void => {
-    if (readsState) return false;
-    if (!isNodeOfType(child, "Identifier")) return;
-    const reference = getRef(analysis, child);
+  const isUnmodifiedMemberCall = (
+    callExpression: EsTreeNode,
+    executionReferenceNode: EsTreeNode = callExpression,
+  ): boolean => {
+    if (!isNodeOfType(callExpression, "CallExpression")) return false;
+    const callee = stripParenExpression(callExpression.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return false;
+    const methodName = getStaticMemberName(callee);
+    if (!methodName) return false;
+    const receiver = stripParenExpression(callee.object);
+    const hasPropertyWriteBefore = (referenceNode: EsTreeNode): boolean =>
+      isNodeOfType(receiver, "Identifier") &&
+      hasPossibleStaticPropertyWriteBefore(receiver, methodName, referenceNode, context.scopes);
+    return Boolean(
+      !isNodeOfType(receiver, "Identifier") ||
+      (!hasPropertyWriteBefore(callExpression) && !hasPropertyWriteBefore(executionReferenceNode)),
+    );
+  };
+  const isRenderPropCollectionReference = (candidateExpression: EsTreeNode): boolean => {
+    const candidate = stripParenExpression(candidateExpression);
+    if (!isNodeOfType(candidate, "Identifier")) return false;
+    const reference = getRef(analysis, candidate);
+    return Boolean(reference && isProp(analysis, reference));
+  };
+  const isProvenRenderKnownArrayValue = (
+    candidateExpression: EsTreeNode,
+    visitedSymbolIds: ReadonlySet<number> = new Set(),
+    executionReferenceNode: EsTreeNode = candidateExpression,
+  ): boolean => {
+    const candidate = stripParenExpression(candidateExpression);
+    if (isNodeOfType(candidate, "ArrayExpression")) return candidate.elements.length > 0;
+    if (isNodeOfType(candidate, "Identifier")) {
+      const symbol = context.scopes.symbolFor(candidate);
+      if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+      const assignedExpressions = collectPossibleAssignedExpressions(
+        symbol,
+        candidate,
+        context.cfg,
+      );
+      if (assignedExpressions.length === 0) return false;
+      const nextVisitedSymbolIds = new Set(visitedSymbolIds).add(symbol.id);
+      let hasArraySource = false;
+      for (const assignedExpression of assignedExpressions) {
+        const assignedCandidate = stripParenExpression(assignedExpression);
+        const assignedCallee = isNodeOfType(assignedCandidate, "CallExpression")
+          ? stripParenExpression(assignedCandidate.callee)
+          : null;
+        if (
+          assignedCallee &&
+          isNodeOfType(assignedCallee, "MemberExpression") &&
+          FRESH_ARRAY_COPY_METHOD_NAMES.has(getStaticMemberName(assignedCallee) ?? "") &&
+          isNodeOfType(assignedCallee.object, "Identifier") &&
+          context.scopes.symbolFor(assignedCallee.object) === symbol
+        ) {
+          if (!isUnmodifiedMemberCall(assignedCandidate, executionReferenceNode)) return false;
+          continue;
+        }
+        if (
+          !isProvenRenderKnownArrayValue(
+            assignedCandidate,
+            nextVisitedSymbolIds,
+            executionReferenceNode,
+          )
+        ) {
+          return false;
+        }
+        hasArraySource = true;
+      }
+      return (
+        hasArraySource ||
+        Boolean(
+          symbol.initializer &&
+          isProvenRenderKnownArrayValue(
+            symbol.initializer,
+            nextVisitedSymbolIds,
+            executionReferenceNode,
+          ),
+        )
+      );
+    }
+    if (!isNodeOfType(candidate, "CallExpression")) return false;
+    if (isReactHookCall(candidate, "useMemo", context.scopes)) {
+      const factoryArgument = candidate.arguments?.[0];
+      const factory =
+        factoryArgument && !isNodeOfType(factoryArgument, "SpreadElement")
+          ? resolveWrappedCallable(analysis, factoryArgument)
+          : null;
+      return Boolean(
+        factory &&
+        !isAsyncOrGeneratorFunction(factory) &&
+        functionReturnsMatchingExpression(
+          factory,
+          context.scopes,
+          (returnedExpression) =>
+            isProvenRenderKnownArrayValue(returnedExpression, visitedSymbolIds, candidate),
+          context.cfg,
+          "every",
+        ),
+      );
+    }
+    const callee = stripParenExpression(candidate.callee);
     if (
-      reference?.isRead() &&
-      isState(analysis, reference) &&
-      getUseStateDecl(analysis, reference) === stateDeclarator &&
-      isNodeReachableWithinFunction(child, context)
+      !isNodeOfType(callee, "MemberExpression") ||
+      !isUnmodifiedMemberCall(candidate, executionReferenceNode)
     ) {
-      readsState = true;
       return false;
     }
-  });
+    const methodName = getStaticMemberName(callee);
+    return Boolean(
+      methodName &&
+      FRESH_ARRAY_COPY_METHOD_NAMES.has(methodName) &&
+      (isProvenRenderKnownArrayValue(callee.object, visitedSymbolIds, executionReferenceNode) ||
+        (methodName === "filter" && isRenderPropCollectionReference(callee.object))),
+    );
+  };
+  const isProvenMemoizedArrayReceiver = (
+    receiverExpression: EsTreeNode,
+    visitedSymbolIds: ReadonlySet<number> = new Set(),
+  ): boolean => {
+    const receiver = stripParenExpression(receiverExpression);
+    if (isNodeOfType(receiver, "CallExpression")) {
+      return (
+        isReactHookCall(receiver, "useMemo", context.scopes) &&
+        isProvenRenderKnownArrayValue(receiver, visitedSymbolIds)
+      );
+    }
+    if (!isNodeOfType(receiver, "Identifier")) return false;
+    const symbol = context.scopes.symbolFor(receiver);
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+    const assignedExpressions = collectPossibleAssignedExpressions(symbol, receiver, context.cfg);
+    if (assignedExpressions.length === 0) return false;
+    const nextVisitedSymbolIds = new Set(visitedSymbolIds).add(symbol.id);
+    return assignedExpressions.every((assignedExpression) =>
+      isProvenMemoizedArrayReceiver(assignedExpression, nextVisitedSymbolIds),
+    );
+  };
+  let readsState = false;
+  walkSynchronousCallbackFlow(
+    expression,
+    (child: EsTreeNode): void => {
+      if (readsState) return;
+      if (!isNodeOfType(child, "Identifier")) return;
+      const reference = getRef(analysis, child);
+      if (
+        reference?.isRead() &&
+        isState(analysis, reference) &&
+        getUseStateDecl(analysis, reference) === stateDeclarator &&
+        isNodeReachableWithinFunction(child, context)
+      ) {
+        readsState = true;
+      }
+    },
+    (callExpression, callbackArgument) => {
+      if (!isUnmodifiedMemberCall(callExpression)) return false;
+      if (isSynchronousIteratorCall(callExpression, callbackArgument, context.scopes)) return true;
+      const callee = stripParenExpression(callExpression.callee);
+      return Boolean(
+        callExpression.arguments[0] === callbackArgument &&
+        isNodeOfType(callee, "MemberExpression") &&
+        SYNCHRONOUS_ITERATOR_METHOD_NAMES.has(getStaticMemberName(callee) ?? "") &&
+        isProvenMemoizedArrayReceiver(callee.object),
+      );
+    },
+    (functionNode) => !isAsyncOrGeneratorFunction(functionNode),
+  );
   return readsState;
 };
 

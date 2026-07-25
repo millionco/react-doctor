@@ -120,7 +120,7 @@ describe("no-adjust-state-on-prop-change — Slideshow terminal transitions", ()
       noAdjustStateOnPropChange,
       `function VersionList({ versions }) {
         const visibleVersions = useMemo(
-          () => versions.filter((version) => version.visible),
+          () => [...versions].filter((version) => version.visible),
           [versions],
         );
         const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -129,6 +129,278 @@ describe("no-adjust-state-on-prop-change — Slideshow terminal transitions", ()
             setSelectedVersionId(visibleVersions[0].versionId);
           }
         }, [visibleVersions]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a state read captured by an opaque guard callback as prop adjustment", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions, shouldRepair }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        useEffect(() => {
+          if (shouldRepair(() => selectedVersionId)) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, shouldRepair]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not trust a custom deferred .some callback as immediate prop adjustment", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        const customCollection = {
+          some: (callback) => {
+            queueMicrotask(callback);
+            return true;
+          },
+        };
+        useEffect(() => {
+          if (customCollection.some(() => selectedVersionId)) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports prop adjustment guarded by an immediate IIFE state read", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        useEffect(() => {
+          if ((() => selectedVersionId)()) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a state read after await in an async IIFE as immediate prop adjustment", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        useEffect(() => {
+          if ((async () => {
+            await Promise.resolve();
+            return selectedVersionId;
+          })()) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not execute a generator IIFE body while classifying prop adjustment", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        useEffect(() => {
+          if ((function* () {
+            return selectedVersionId;
+          })()) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat a state read after await in an async array callback as immediate", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        useEffect(() => {
+          if ([1].some(async () => {
+            await Promise.resolve();
+            return selectedVersionId;
+          })) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat an unreachable empty-array callback read as immediate prop adjustment", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        useEffect(() => {
+          if ([].some(() => selectedVersionId)) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not trust a custom memoized .map result as immediate prop adjustment", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ customSource }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        const visibleVersions = useMemo(
+          () => customSource.map((version) => version),
+          [customSource],
+        );
+        useEffect(() => {
+          if (visibleVersions.some(() => selectedVersionId)) {
+            setSelectedVersionId(visibleVersions[0].versionId);
+          }
+        }, [visibleVersions, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not trust an overridden array .map result as immediate prop adjustment", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const source = [1];
+        source.map = () => ({
+          some: (callback) => {
+            queueMicrotask(callback);
+            return true;
+          },
+        });
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        const values = useMemo(() => source.map((value) => value), []);
+        useEffect(() => {
+          if (values.some(() => selectedVersionId)) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, values, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not trust a state object's custom .filter result as immediate prop adjustment", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [source] = useState({
+          filter: () => ({
+            0: { versionId: "fallback" },
+            some: (callback) => {
+              queueMicrotask(callback);
+              return true;
+            },
+          }),
+        });
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        const values = useMemo(() => source.filter((value) => value), [source]);
+        useEffect(() => {
+          if (values.some(() => selectedVersionId)) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, values, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports prop adjustment through a memoized prop-array alias", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        const memoizedVersions = useMemo(() => [...versions], [versions]);
+        const visibleVersions = memoizedVersions;
+        useEffect(() => {
+          if (visibleVersions.some(() => selectedVersionId)) {
+            setSelectedVersionId(visibleVersions[0].versionId);
+          }
+        }, [visibleVersions, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports prop adjustment guarded by inline array .some", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        useEffect(() => {
+          if ([...versions].some(() => selectedVersionId)) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, selectedVersionId]);
+        return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports prop adjustment controlled by an immediate state read", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function VersionList({ versions }) {
+        const [selectedVersionId, setSelectedVersionId] = useState("");
+        useEffect(() => {
+          if (!selectedVersionId && versions.length > 0) {
+            setSelectedVersionId(versions[0].versionId);
+          }
+        }, [versions, selectedVersionId]);
         return <List selected={selectedVersionId} onSelect={setSelectedVersionId} />;
       }`,
     );

@@ -114,6 +114,16 @@ const analyzeStatement = (
   }
   if (statement.type === "expression_statement") {
     const expressionWriteMask = getExpressionPositionWriteMask(statement.expression);
+    if (
+      expressionWriteMask === GLSL_NO_POSITION_COMPONENTS_BIT_MASK &&
+      expressionContainsPositionWrite(statement.expression)
+    ) {
+      return {
+        activeStates: inputStates,
+        hasUnwrittenReturn: false,
+        isSupported: false,
+      };
+    }
     return {
       activeStates:
         expressionWriteMask === GLSL_NO_POSITION_COMPONENTS_BIT_MASK
@@ -165,9 +175,16 @@ const analyzeStatement = (
   if (statement.type === "for_statement" || statement.type === "while_statement") {
     const controlExpressions =
       statement.type === "for_statement"
-        ? [statement.init, statement.condition, statement.operation]
+        ? [
+            Reflect.get(statement, "init"),
+            Reflect.get(statement, "condition"),
+            Reflect.get(statement, "operation"),
+          ]
         : [statement.condition];
-    if (controlExpressions.some(expressionContainsPositionWrite)) {
+    if (
+      controlExpressions.some((expression) => !expression) ||
+      controlExpressions.some(expressionContainsPositionWrite)
+    ) {
       return {
         activeStates: inputStates,
         hasUnwrittenReturn: false,

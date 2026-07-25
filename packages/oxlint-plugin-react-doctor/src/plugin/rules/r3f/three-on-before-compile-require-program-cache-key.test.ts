@@ -99,6 +99,18 @@ describe("three-on-before-compile-require-program-cache-key", () => {
        return material;
      };
      createMaterial("warm");`,
+    `import { MeshStandardMaterial } from "three";
+     const chunks = ["A"];
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       for (const chunk of chunks) shader.fragmentShader += chunk;
+     };`,
+    `import { MeshStandardMaterial } from "three";
+     const defines = { MODE: "A" };
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       for (const name in defines) shader.defines[name] = defines[name];
+     };`,
   ])("reports mutable program variants without a cache key", (code) => {
     expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(1);
   });

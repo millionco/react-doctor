@@ -100,10 +100,21 @@ const expressionDependsOnMutableCapture = (
     }
     if (!isNodeOfType(candidate, "Identifier")) return;
     const symbol = context.scopes.symbolFor(candidate);
+    const hasMutableConstInitializer =
+      symbol?.kind === "const" &&
+      Boolean(
+        symbol.initializer &&
+        (isNodeOfType(symbol.initializer, "ArrayExpression") ||
+          isNodeOfType(symbol.initializer, "ObjectExpression") ||
+          isNodeOfType(symbol.initializer, "NewExpression")),
+      );
     if (
       symbol &&
       !isScopeWithin(symbol.scope, callbackScope) &&
-      (symbol.kind === "let" || symbol.kind === "var" || symbol.kind === "parameter")
+      (symbol.kind === "let" ||
+        symbol.kind === "var" ||
+        symbol.kind === "parameter" ||
+        hasMutableConstInitializer)
     ) {
       dependsOnMutableCapture = true;
       return false;

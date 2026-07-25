@@ -15,6 +15,7 @@ export const EVALUATION_RETRY_CONCURRENCIES: ReadonlyArray<number> = [50, 10];
 export const EVALUATION_RETRY_ATTEMPT_RESERVE_MINUTES = 5;
 export const EVALUATION_RETRY_REPOSITORIES_PER_SANDBOX = 1;
 
+export const DAYTONA_RUN_NAME = "react-doctor";
 export const SANDBOX_IMAGE = "node:22-bookworm";
 export const SANDBOX_CPU_CORES = 2;
 export const SANDBOX_MEMORY_GIB = 4;

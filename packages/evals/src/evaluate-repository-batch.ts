@@ -4,6 +4,7 @@ import { DaytonaNotFoundError } from "@daytona/sdk";
 import type { Daytona, Sandbox } from "@daytona/sdk";
 
 import {
+  DAYTONA_RUN_NAME,
   EVALUATION_SCHEMA_VERSION,
   RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
   SANDBOX_DELETE_TIMEOUT_SECONDS,
@@ -135,7 +136,7 @@ export const evaluateRepositoryBatch = async ({
   evaluationDeadlineMilliseconds,
   onRecord,
 }: EvaluateRepositoryBatchInput): Promise<ReadonlyArray<CorpusEvaluationRecord>> => {
-  const sandboxName = `react-doctor-eval-${randomUUID()}`;
+  const sandboxName = `${DAYTONA_RUN_NAME}-${randomUUID()}`;
   let sandbox: Sandbox | undefined;
   let shouldRecoverSandbox = true;
   try {

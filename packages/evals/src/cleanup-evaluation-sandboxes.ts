@@ -21,17 +21,26 @@ export const cleanupEvaluationSandboxes = async ({
       remainingSandboxes.push(sandbox);
     }
   }
-  await Promise.all(
+  const cleanupResults = await Promise.all(
     remainingSandboxes.map((sandbox) =>
       cleanupLimit(async () => {
         try {
           await daytona.delete(sandbox, SANDBOX_DELETE_TIMEOUT_SECONDS);
+          return undefined;
         } catch (error) {
           process.stderr.write(
             `Failed to clean up Daytona sandbox ${sandbox.id}: ${toErrorMessage(error)}\n`,
           );
+          return error;
         }
       }),
     ),
   );
+  const cleanupErrors = cleanupResults.filter((error) => error !== undefined);
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(
+      cleanupErrors,
+      `Failed to clean up ${cleanupErrors.length} Daytona sandboxes`,
+    );
+  }
 };

@@ -758,6 +758,24 @@ export const getKatexHtmlProof = (
     ]);
   }
   if (isNodeOfType(node, "LogicalExpression")) {
+    const staticLeftValue =
+      node.operator === "??" ? null : getStaticConditionalTestValue(node.left, scopes);
+    if (staticLeftValue !== null) {
+      const resultExpression =
+        node.operator === "&&"
+          ? staticLeftValue
+            ? node.right
+            : node.left
+          : staticLeftValue
+            ? node.left
+            : node.right;
+      return getKatexHtmlProof(
+        resultExpression,
+        scopes,
+        new Set(visitedSymbolIds),
+        parameterProofs,
+      );
+    }
     const resultBranches = getStaticLogicalExpressionResultBranches(node);
     if (resultBranches.length === 1) {
       return getKatexHtmlProof(

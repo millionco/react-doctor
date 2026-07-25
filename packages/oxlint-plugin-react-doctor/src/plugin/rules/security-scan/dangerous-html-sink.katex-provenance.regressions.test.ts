@@ -137,6 +137,10 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
   it.each([
     "(false && katex.renderToString(value)) + suffix",
     "(true || katex.renderToString(value)) + suffix",
+    "(`ready` || katex.renderToString(value)) + suffix",
+    "(typeof suffix || katex.renderToString(value)) + suffix",
+    "(undefined && katex.renderToString(value)) + suffix",
+    "(!0 || katex.renderToString(value)) + suffix",
     '(false ? katex.renderToString(value) : "") + suffix',
     '(true ? "" : katex.renderToString(value)) + suffix',
     '({} ? "" : katex.renderToString(value)) + suffix',
@@ -163,6 +167,9 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
   it.each([
     "(true && katex.renderToString(value)) + suffix",
     "(false || katex.renderToString(value)) + suffix",
+    "(`` || katex.renderToString(value)) + suffix",
+    "(void 0 || katex.renderToString(value)) + suffix",
+    "(!1 || katex.renderToString(value)) + suffix",
     '(true ? katex.renderToString(value) : "") + suffix',
     '(false ? "" : katex.renderToString(value)) + suffix',
     '({} ? katex.renderToString(value) : "") + suffix',

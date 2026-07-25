@@ -156,9 +156,17 @@ export const tanstackStartMissingScripts = defineRule({
       if (!isNodeOfType(node, "ImportDeclaration")) return;
       const isTanstackRouterImport = node.source.value === TANSTACK_ROUTER_PACKAGE;
       for (const specifier of node.specifiers ?? []) {
+        const bindingDeclaration = getBindingDeclaration(specifier.local, context);
+        if (!bindingDeclaration) continue;
+        if (
+          isNodeOfType(specifier, "ImportDefaultSpecifier") &&
+          specifier.local.name === SCRIPTS_COMPONENT_NAME
+        ) {
+          scriptsComponentDeclarations.add(bindingDeclaration);
+          continue;
+        }
         if (isTanstackRouterImport && isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
-          const namespaceDeclaration = getBindingDeclaration(specifier.local, context);
-          if (namespaceDeclaration) tanstackRouterNamespaceDeclarations.add(namespaceDeclaration);
+          tanstackRouterNamespaceDeclarations.add(bindingDeclaration);
           continue;
         }
         if (
@@ -167,8 +175,6 @@ export const tanstackStartMissingScripts = defineRule({
         ) {
           continue;
         }
-        const bindingDeclaration = getBindingDeclaration(specifier.local, context);
-        if (!bindingDeclaration) continue;
         if (specifier.imported.name === SCRIPTS_COMPONENT_NAME) {
           scriptsComponentDeclarations.add(bindingDeclaration);
         }

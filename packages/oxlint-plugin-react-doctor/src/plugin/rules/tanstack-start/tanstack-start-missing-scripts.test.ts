@@ -269,6 +269,25 @@ describe("tanstack-start/missing-scripts", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("allows default Scripts imports from project barrels", () => {
+    const result = runMissingScriptsRule(`
+      import Scripts from "@/router-components";
+
+      export const Route = createRootRoute({
+        component: () => (
+          <html>
+            <body>
+              <Scripts />
+            </body>
+          </html>
+        ),
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("allows TanStack Router namespace usage", () => {
     const result = runMissingScriptsRule(`
       import * as TanStackRouter from "@tanstack/react-router";

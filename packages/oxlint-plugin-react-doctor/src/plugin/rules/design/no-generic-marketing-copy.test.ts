@@ -154,6 +154,17 @@ describe("no-generic-marketing-copy", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("honors hidden styles that override earlier computed properties", () => {
+    const result = runRule(
+      noGenericMarketingCopy,
+      `const Page = ({ styleProperty }) => <main>
+        <p style={{ [styleProperty]: "block", display: "none" }}>Enterprise-grade software</p>
+        <p style={{ [styleProperty]: "visible", visibility: "hidden" }}>Best-in-class analytics</p>
+      </main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("keeps dynamic page copy quiet", () => {
     const result = runRule(
       noGenericMarketingCopy,

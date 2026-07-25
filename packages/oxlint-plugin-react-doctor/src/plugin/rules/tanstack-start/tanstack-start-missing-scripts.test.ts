@@ -148,6 +148,54 @@ describe("tanstack-start/missing-scripts", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("allows nested local wrappers that render Scripts", () => {
+    const result = runMissingScriptsRule(`
+      import { Scripts } from "@tanstack/react-router";
+
+      const AppScripts = () => <Scripts />;
+      const AppShell = () => <AppScripts />;
+
+      export const Route = createRootRoute({
+        component: () => (
+          <html>
+            <body>
+              <AppShell />
+            </body>
+          </html>
+        ),
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps Scripts aliases scoped to their bindings", () => {
+    const result = runMissingScriptsRule(`
+      import { Scripts } from "@tanstack/react-router";
+
+      const AppScripts = () => <main>Home</main>;
+
+      const NestedScope = () => {
+        const AppScripts = Scripts;
+        return <AppScripts />;
+      };
+
+      export const Route = createRootRoute({
+        component: () => (
+          <html>
+            <body>
+              <AppScripts />
+            </body>
+          </html>
+        ),
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not accept unrelated custom body children as proof", () => {
     const result = runMissingScriptsRule(`
       const AppShell = () => <main>Home</main>;

@@ -10,18 +10,24 @@ const TANSTACK_ROUTER_PACKAGE = "@tanstack/react-router";
 const SCRIPTS_COMPONENT_NAME = "Scripts";
 const DOCUMENT_BODY_ELEMENT_NAME = "body";
 
-const getJsxMemberRootName = (node: EsTreeNodeOfType<"JSXMemberExpression">): string | null => {
-  if (isNodeOfType(node.object, "JSXIdentifier")) return node.object.name;
-  if (isNodeOfType(node.object, "JSXMemberExpression")) return getJsxMemberRootName(node.object);
+const getJsxMemberRootIdentifier = (
+  node: EsTreeNodeOfType<"JSXMemberExpression">,
+): EsTreeNodeOfType<"JSXIdentifier"> | null => {
+  if (isNodeOfType(node.object, "JSXIdentifier")) return node.object;
+  if (isNodeOfType(node.object, "JSXMemberExpression")) {
+    return getJsxMemberRootIdentifier(node.object);
+  }
   return null;
 };
 
 const getJsxMemberPropertyName = (node: EsTreeNodeOfType<"JSXMemberExpression">): string | null =>
   isNodeOfType(node.property, "JSXIdentifier") ? node.property.name : null;
 
-const getMemberRootName = (node: EsTreeNodeOfType<"MemberExpression">): string | null => {
-  if (isNodeOfType(node.object, "Identifier")) return node.object.name;
-  if (isNodeOfType(node.object, "MemberExpression")) return getMemberRootName(node.object);
+const getMemberRootIdentifier = (
+  node: EsTreeNodeOfType<"MemberExpression">,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  if (isNodeOfType(node.object, "Identifier")) return node.object;
+  if (isNodeOfType(node.object, "MemberExpression")) return getMemberRootIdentifier(node.object);
   return null;
 };
 
@@ -42,11 +48,13 @@ const isInsideDocumentBodyElement = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const getEnclosingComponentName = (node: EsTreeNode): string | null => {
+const getEnclosingComponentIdentifier = (
+  node: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
   let currentNode = node.parent;
   while (currentNode) {
     if (isNodeOfType(currentNode, "FunctionDeclaration")) {
-      return isNodeOfType(currentNode.id, "Identifier") ? currentNode.id.name : null;
+      return isNodeOfType(currentNode.id, "Identifier") ? currentNode.id : null;
     }
     if (
       isNodeOfType(currentNode, "ArrowFunctionExpression") ||
@@ -58,7 +66,7 @@ const getEnclosingComponentName = (node: EsTreeNode): string | null => {
         isNodeOfType(parentNode, "VariableDeclarator") &&
         isNodeOfType(parentNode.id, "Identifier")
       ) {
-        return parentNode.id.name;
+        return parentNode.id;
       }
       return null;
     }
@@ -66,6 +74,9 @@ const getEnclosingComponentName = (node: EsTreeNode): string | null => {
   }
   return null;
 };
+
+const getBindingDeclaration = (node: EsTreeNode, context: RuleContext): EsTreeNode | null =>
+  context.scopes.symbolFor(node)?.declarationNode ?? null;
 
 export const tanstackStartMissingScripts = defineRule({
   id: "tanstack-start-missing-scripts",
@@ -80,17 +91,19 @@ export const tanstackStartMissingScripts = defineRule({
 
     let hasDocumentBodyElement = false;
     let hasScriptsInsideBody = false;
-    const scriptsComponentNames = new Set([SCRIPTS_COMPONENT_NAME]);
-    const tanstackRouterNamespaceNames = new Set<string>();
-    const bodyChildComponentNames = new Set<string>();
-    const scriptsWrapperComponentNames = new Set<string>();
+    const scriptsComponentDeclarations = new Set<EsTreeNode>();
+    const tanstackRouterNamespaceDeclarations = new Set<EsTreeNode>();
+    const bodyChildComponentDeclarations = new Set<EsTreeNode>();
+    const scriptsWrapperComponentDeclarations = new Set<EsTreeNode>();
+    const componentDependencyDeclarations = new Map<EsTreeNode, Set<EsTreeNode>>();
 
     const collectImportBindings = (node: EsTreeNode): void => {
       if (!isNodeOfType(node, "ImportDeclaration")) return;
       const isTanstackRouterImport = node.source.value === TANSTACK_ROUTER_PACKAGE;
       for (const specifier of node.specifiers ?? []) {
         if (isTanstackRouterImport && isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
-          tanstackRouterNamespaceNames.add(specifier.local.name);
+          const namespaceDeclaration = getBindingDeclaration(specifier.local, context);
+          if (namespaceDeclaration) tanstackRouterNamespaceDeclarations.add(namespaceDeclaration);
           continue;
         }
         if (
@@ -98,7 +111,10 @@ export const tanstackStartMissingScripts = defineRule({
           isNodeOfType(specifier.imported, "Identifier") &&
           specifier.imported.name === SCRIPTS_COMPONENT_NAME
         ) {
-          scriptsComponentNames.add(specifier.local.name);
+          const scriptsComponentDeclaration = getBindingDeclaration(specifier.local, context);
+          if (scriptsComponentDeclaration) {
+            scriptsComponentDeclarations.add(scriptsComponentDeclaration);
+          }
         }
       }
     };
@@ -111,41 +127,58 @@ export const tanstackStartMissingScripts = defineRule({
       ) {
         return false;
       }
+      const aliasDeclaration = getBindingDeclaration(node.id, context);
+      if (!aliasDeclaration) return false;
       if (isNodeOfType(node.init, "Identifier")) {
-        if (scriptsComponentNames.has(node.init.name)) {
-          const previousSize = scriptsComponentNames.size;
-          scriptsComponentNames.add(node.id.name);
-          return scriptsComponentNames.size !== previousSize;
+        const initializerDeclaration = getBindingDeclaration(node.init, context);
+        if (initializerDeclaration && scriptsComponentDeclarations.has(initializerDeclaration)) {
+          const previousSize = scriptsComponentDeclarations.size;
+          scriptsComponentDeclarations.add(aliasDeclaration);
+          return scriptsComponentDeclarations.size !== previousSize;
         }
-        if (tanstackRouterNamespaceNames.has(node.init.name)) {
-          const previousSize = tanstackRouterNamespaceNames.size;
-          tanstackRouterNamespaceNames.add(node.id.name);
-          return tanstackRouterNamespaceNames.size !== previousSize;
+        if (
+          initializerDeclaration &&
+          tanstackRouterNamespaceDeclarations.has(initializerDeclaration)
+        ) {
+          const previousSize = tanstackRouterNamespaceDeclarations.size;
+          tanstackRouterNamespaceDeclarations.add(aliasDeclaration);
+          return tanstackRouterNamespaceDeclarations.size !== previousSize;
         }
         return false;
       }
       if (!isNodeOfType(node.init, "MemberExpression")) return false;
-      const rootName = getMemberRootName(node.init);
+      const rootIdentifier = getMemberRootIdentifier(node.init);
+      const rootDeclaration = rootIdentifier
+        ? getBindingDeclaration(rootIdentifier, context)
+        : null;
       const propertyName = getMemberPropertyName(node.init);
       if (
-        !rootName ||
-        !tanstackRouterNamespaceNames.has(rootName) ||
+        !rootDeclaration ||
+        !tanstackRouterNamespaceDeclarations.has(rootDeclaration) ||
         propertyName !== SCRIPTS_COMPONENT_NAME
       ) {
         return false;
       }
-      const previousSize = scriptsComponentNames.size;
-      scriptsComponentNames.add(node.id.name);
-      return scriptsComponentNames.size !== previousSize;
+      const previousSize = scriptsComponentDeclarations.size;
+      scriptsComponentDeclarations.add(aliasDeclaration);
+      return scriptsComponentDeclarations.size !== previousSize;
     };
 
     const isScriptsElementName = (name: EsTreeNodeOfType<"JSXOpeningElement">["name"]): boolean => {
-      if (isNodeOfType(name, "JSXIdentifier")) return scriptsComponentNames.has(name.name);
+      if (isNodeOfType(name, "JSXIdentifier")) {
+        const componentDeclaration = getBindingDeclaration(name, context);
+        return componentDeclaration
+          ? scriptsComponentDeclarations.has(componentDeclaration)
+          : name.name === SCRIPTS_COMPONENT_NAME;
+      }
       if (!isNodeOfType(name, "JSXMemberExpression")) return false;
-      const rootName = getJsxMemberRootName(name);
+      const rootIdentifier = getJsxMemberRootIdentifier(name);
+      const rootDeclaration = rootIdentifier
+        ? getBindingDeclaration(rootIdentifier, context)
+        : null;
       return Boolean(
-        rootName &&
-        tanstackRouterNamespaceNames.has(rootName) &&
+        rootDeclaration &&
+        tanstackRouterNamespaceDeclarations.has(rootDeclaration) &&
         getJsxMemberPropertyName(name) === SCRIPTS_COMPONENT_NAME,
       );
     };
@@ -185,23 +218,46 @@ export const tanstackStartMissingScripts = defineRule({
             hasScriptsInsideBody = true;
             return;
           }
-          const wrapperComponentName = getEnclosingComponentName(node);
-          if (wrapperComponentName) scriptsWrapperComponentNames.add(wrapperComponentName);
+          const wrapperComponentIdentifier = getEnclosingComponentIdentifier(node);
+          const wrapperComponentDeclaration = wrapperComponentIdentifier
+            ? getBindingDeclaration(wrapperComponentIdentifier, context)
+            : null;
+          if (wrapperComponentDeclaration) {
+            scriptsWrapperComponentDeclarations.add(wrapperComponentDeclaration);
+          }
           return;
         }
 
-        if (
-          isInsideBody &&
-          isNodeOfType(node.name, "JSXIdentifier") &&
-          node.name.name.charAt(0) === node.name.name.charAt(0).toUpperCase()
-        ) {
-          bodyChildComponentNames.add(node.name.name);
-        }
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+        const childComponentDeclaration = getBindingDeclaration(node.name, context);
+        if (!childComponentDeclaration) return;
+        if (isInsideBody) bodyChildComponentDeclarations.add(childComponentDeclaration);
+
+        const enclosingComponentIdentifier = getEnclosingComponentIdentifier(node);
+        const enclosingComponentDeclaration = enclosingComponentIdentifier
+          ? getBindingDeclaration(enclosingComponentIdentifier, context)
+          : null;
+        if (!enclosingComponentDeclaration) return;
+        const dependencyDeclarations =
+          componentDependencyDeclarations.get(enclosingComponentDeclaration) ??
+          new Set<EsTreeNode>();
+        dependencyDeclarations.add(childComponentDeclaration);
+        componentDependencyDeclarations.set(enclosingComponentDeclaration, dependencyDeclarations);
       },
       "Program:exit"(programNode: EsTreeNode) {
-        const hasScriptsWrapperInsideBody = [...bodyChildComponentNames].some((componentName) =>
-          scriptsWrapperComponentNames.has(componentName),
-        );
+        const reachableComponentDeclarations = new Set(bodyChildComponentDeclarations);
+        let hasScriptsWrapperInsideBody = false;
+        for (const componentDeclaration of reachableComponentDeclarations) {
+          if (scriptsWrapperComponentDeclarations.has(componentDeclaration)) {
+            hasScriptsWrapperInsideBody = true;
+            break;
+          }
+          for (const dependencyDeclaration of componentDependencyDeclarations.get(
+            componentDeclaration,
+          ) ?? []) {
+            reachableComponentDeclarations.add(dependencyDeclaration);
+          }
+        }
         if (hasDocumentBodyElement && !hasScriptsInsideBody && !hasScriptsWrapperInsideBody) {
           context.report({
             node: programNode,

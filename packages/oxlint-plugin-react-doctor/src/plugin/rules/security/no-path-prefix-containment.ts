@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -105,6 +106,61 @@ const hasPathSeparatorSuffix = (expression: EsTreeNode, context: RuleContext): b
   return Boolean(trailingExpression && isPathSeparatorExpression(trailingExpression, context));
 };
 
+const isPathSeparatorSuffixedVersionOf = (
+  suffixedExpression: EsTreeNode,
+  bareExpression: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const resolvedSuffixedExpression = resolveStableExpression(suffixedExpression, context);
+  const resolvedBareExpression = resolveStableExpression(bareExpression, context);
+  const suffixedStaticValue = getStaticStringExpression(resolvedSuffixedExpression);
+  const bareStaticValue = getStaticStringExpression(resolvedBareExpression);
+  if (suffixedStaticValue !== null && bareStaticValue !== null) {
+    return [...PATH_SEPARATORS].some(
+      (separator) => suffixedStaticValue === `${bareStaticValue}${separator}`,
+    );
+  }
+  if (
+    isNodeOfType(resolvedSuffixedExpression, "BinaryExpression") &&
+    resolvedSuffixedExpression.operator === "+" &&
+    isPathSeparatorExpression(resolvedSuffixedExpression.right, context)
+  ) {
+    return areSameStableExpressions(resolvedSuffixedExpression.left, bareExpression, context);
+  }
+  if (!isNodeOfType(resolvedSuffixedExpression, "TemplateLiteral")) return false;
+  const trailingQuasi = resolvedSuffixedExpression.quasis.at(-1);
+  const trailingText = trailingQuasi?.value.cooked ?? trailingQuasi?.value.raw ?? "";
+  if (
+    resolvedSuffixedExpression.expressions.length === 1 &&
+    resolvedSuffixedExpression.quasis.length === 2 &&
+    (resolvedSuffixedExpression.quasis[0]?.value.cooked ??
+      resolvedSuffixedExpression.quasis[0]?.value.raw ??
+      "") === "" &&
+    PATH_SEPARATORS.has(trailingText)
+  ) {
+    const baseExpression = resolvedSuffixedExpression.expressions[0];
+    return Boolean(
+      baseExpression && areSameStableExpressions(baseExpression, bareExpression, context),
+    );
+  }
+  if (
+    resolvedSuffixedExpression.expressions.length !== 2 ||
+    resolvedSuffixedExpression.quasis.some(
+      (quasi) => (quasi.value.cooked ?? quasi.value.raw ?? "") !== "",
+    )
+  ) {
+    return false;
+  }
+  const baseExpression = resolvedSuffixedExpression.expressions[0];
+  const separatorExpression = resolvedSuffixedExpression.expressions[1];
+  return Boolean(
+    baseExpression &&
+    separatorExpression &&
+    isPathSeparatorExpression(separatorExpression, context) &&
+    areSameStableExpressions(baseExpression, bareExpression, context),
+  );
+};
+
 export const noPathPrefixContainment = defineRule({
   id: "no-path-prefix-containment",
   title: "Path containment check uses a string prefix",
@@ -128,7 +184,12 @@ export const noPathPrefixContainment = defineRule({
       if (!resolvedPathCall || resolvedPathCall.arguments.length < 2) return;
       const rootExpression = resolvedPathCall.arguments[0];
       if (!rootExpression || isNodeOfType(rootExpression, "SpreadElement")) return;
-      if (!areSameStableExpressions(rootExpression, prefixExpression, context)) return;
+      if (
+        !areSameStableExpressions(rootExpression, prefixExpression, context) &&
+        !isPathSeparatorSuffixedVersionOf(rootExpression, prefixExpression, context)
+      ) {
+        return;
+      }
 
       context.report({
         node,

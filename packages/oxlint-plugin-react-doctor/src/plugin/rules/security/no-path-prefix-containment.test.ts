@@ -91,6 +91,34 @@ describe("security/no-path-prefix-containment", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("flags bare prefixes when resolve receives a separator-suffixed root", () => {
+    const result = runPathPrefixRule(`
+      import path from "node:path";
+
+      const candidatePath = path.resolve(rootDirectory + path.sep, requestedPath);
+      const isInside = candidatePath.startsWith(rootDirectory);
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags template and literal separator-suffixed resolve roots", () => {
+    const result = runPathPrefixRule(`
+      import path from "node:path";
+
+      const templateCandidate = path.resolve(\`\${rootDirectory}/\`, requestedPath);
+      const templateIsInside = templateCandidate.startsWith(rootDirectory);
+      const separatorCandidate = path.resolve(\`\${rootDirectory}\${path.sep}\`, requestedPath);
+      const separatorIsInside = separatorCandidate.startsWith(rootDirectory);
+      const literalCandidate = path.resolve("/srv/uploads/", requestedPath);
+      const literalIsInside = literalCandidate.startsWith("/srv/uploads");
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("allows static root paths that end at a separator boundary", () => {
     const result = runPathPrefixRule(`
       import path from "node:path";

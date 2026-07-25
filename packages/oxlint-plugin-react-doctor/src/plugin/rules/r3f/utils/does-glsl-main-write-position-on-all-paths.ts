@@ -5,6 +5,11 @@ import type {
   FunctionNode,
   Program,
 } from "@shaderfrog/glsl-parser/ast/ast-types.js";
+import {
+  GLSL_ALL_POSITION_COMPONENTS_BIT_MASK,
+  GLSL_NO_POSITION_COMPONENTS_BIT_MASK,
+  GLSL_POSITION_COMPONENT_BIT_BY_ALIAS,
+} from "../constants.js";
 import { getGlslFunctionCallName } from "./get-glsl-function-call-name.js";
 import { hasGlslFunctionDeclaration } from "./has-glsl-function-declaration.js";
 import { maskGlslComments } from "./mask-glsl-comments.js";
@@ -15,30 +20,54 @@ export interface GlslPositionPathAnalysis {
 }
 
 interface PositionExecutionResult {
-  readonly activeStates: ReadonlySet<boolean>;
+  readonly activeStates: ReadonlySet<number>;
   readonly hasUnwrittenReturn: boolean;
   readonly isSupported: boolean;
 }
 
-const doesExpressionDefinitelyWritePosition = (expression: AstNode): boolean => {
-  if (
-    expression.type === "assignment" &&
-    expression.operator.literal === "=" &&
-    expression.left.type === "identifier" &&
-    expression.left.identifier === "gl_Position"
-  ) {
-    return true;
+const getPositionSwizzleWriteMask = (selection: string): number => {
+  let writeMask = GLSL_NO_POSITION_COMPONENTS_BIT_MASK;
+  for (const componentAlias of selection) {
+    const componentBit = GLSL_POSITION_COMPONENT_BIT_BY_ALIAS.get(componentAlias);
+    if (!componentBit) return GLSL_NO_POSITION_COMPONENTS_BIT_MASK;
+    writeMask |= componentBit;
+  }
+  return writeMask;
+};
+
+const getExpressionPositionWriteMask = (expression: AstNode): number => {
+  if (expression.type === "assignment" && expression.operator.literal === "=") {
+    if (expression.left.type === "identifier" && expression.left.identifier === "gl_Position") {
+      return GLSL_ALL_POSITION_COMPONENTS_BIT_MASK;
+    }
+    if (
+      expression.left.type === "postfix" &&
+      expression.left.expression.type === "identifier" &&
+      expression.left.expression.identifier === "gl_Position" &&
+      expression.left.postfix.type === "field_selection"
+    ) {
+      const selection = Reflect.get(expression.left.postfix.selection, "identifier");
+      return typeof selection === "string"
+        ? getPositionSwizzleWriteMask(selection)
+        : GLSL_NO_POSITION_COMPONENTS_BIT_MASK;
+    }
+  }
+  if (expression.type === "binary" && expression.operator.literal === ",") {
+    return (
+      getExpressionPositionWriteMask(expression.left) |
+      getExpressionPositionWriteMask(expression.right)
+    );
   }
   if (expression.type === "group") {
-    return doesExpressionDefinitelyWritePosition(expression.expression);
+    return getExpressionPositionWriteMask(expression.expression);
   }
   if (expression.type === "ternary") {
     return (
-      doesExpressionDefinitelyWritePosition(expression.left) &&
-      doesExpressionDefinitelyWritePosition(expression.right)
+      getExpressionPositionWriteMask(expression.left) &
+      getExpressionPositionWriteMask(expression.right)
     );
   }
-  return false;
+  return GLSL_NO_POSITION_COMPONENTS_BIT_MASK;
 };
 
 const getBooleanConstant = (expression: AstNode): boolean | null => {
@@ -48,7 +77,7 @@ const getBooleanConstant = (expression: AstNode): boolean | null => {
 
 const analyzeCompoundStatement = (
   statement: CompoundStatementNode,
-  inputStates: ReadonlySet<boolean>,
+  inputStates: ReadonlySet<number>,
 ): PositionExecutionResult => {
   let activeStates = inputStates;
   let hasUnwrittenReturn = false;
@@ -64,16 +93,18 @@ const analyzeCompoundStatement = (
 
 const analyzeStatement = (
   statement: AstNode,
-  inputStates: ReadonlySet<boolean>,
+  inputStates: ReadonlySet<number>,
 ): PositionExecutionResult => {
   if (statement.type === "compound_statement") {
     return analyzeCompoundStatement(statement, inputStates);
   }
   if (statement.type === "expression_statement") {
+    const expressionWriteMask = getExpressionPositionWriteMask(statement.expression);
     return {
-      activeStates: doesExpressionDefinitelyWritePosition(statement.expression)
-        ? new Set([true])
-        : inputStates,
+      activeStates:
+        expressionWriteMask === GLSL_NO_POSITION_COMPONENTS_BIT_MASK
+          ? inputStates
+          : new Set([...inputStates].map((state) => state | expressionWriteMask)),
       hasUnwrittenReturn: false,
       isSupported: true,
     };
@@ -81,7 +112,9 @@ const analyzeStatement = (
   if (statement.type === "return_statement") {
     return {
       activeStates: new Set(),
-      hasUnwrittenReturn: inputStates.has(false),
+      hasUnwrittenReturn: [...inputStates].some(
+        (state) => state !== GLSL_ALL_POSITION_COMPONENTS_BIT_MASK,
+      ),
       isSupported: true,
     };
   }
@@ -166,12 +199,17 @@ export const doesGlslMainWritePositionOnAllPaths = (
   ) {
     return { mainFunction, writesPositionOnAllPaths: null };
   }
-  const result = analyzeCompoundStatement(mainFunction.body, new Set([false]));
+  const result = analyzeCompoundStatement(
+    mainFunction.body,
+    new Set([GLSL_NO_POSITION_COMPONENTS_BIT_MASK]),
+  );
   if (!result.isSupported) {
     return { mainFunction, writesPositionOnAllPaths: null };
   }
   return {
     mainFunction,
-    writesPositionOnAllPaths: !result.hasUnwrittenReturn && !result.activeStates.has(false),
+    writesPositionOnAllPaths:
+      !result.hasUnwrittenReturn &&
+      [...result.activeStates].every((state) => state === GLSL_ALL_POSITION_COMPONENTS_BIT_MASK),
   };
 };

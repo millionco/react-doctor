@@ -23,11 +23,13 @@ export const threeNoRedundantUniformsNeedUpdate = defineRule({
           UNIFORM_UPDATE_PROPERTY_NAMES,
           analyzedCallbacks,
           ({ constructorName, node: assignment }) => {
-            if (constructorName !== "ShaderMaterial") return;
+            if (constructorName !== "ShaderMaterial" && constructorName !== "RawShaderMaterial") {
+              return;
+            }
             context.report({
               node: assignment,
               message:
-                "ShaderMaterial custom uniforms are refreshed during rendering, so setting uniformsNeedUpdate on every animation frame is redundant",
+                "Shader material custom uniforms are refreshed during rendering, so setting uniformsNeedUpdate on every animation frame is redundant",
             });
           },
         );

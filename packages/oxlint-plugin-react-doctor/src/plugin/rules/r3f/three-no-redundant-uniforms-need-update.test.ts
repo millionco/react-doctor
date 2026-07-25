@@ -8,6 +8,10 @@ describe("three-no-redundant-uniforms-need-update", () => {
      const renderer = new WebGLRenderer();
      const material = new ShaderMaterial();
      renderer.setAnimationLoop(() => { material.uniformsNeedUpdate = true; });`,
+    `import * as THREE from "three";
+     const renderer = new THREE.WebGLRenderer();
+     const material = new THREE.RawShaderMaterial();
+     renderer.setAnimationLoop(() => { material.uniformsNeedUpdate = true; });`,
   ])("reports redundant ShaderMaterial uniform update flags", (code) => {
     expect(runRule(threeNoRedundantUniformsNeedUpdate, code).diagnostics).toHaveLength(1);
   });

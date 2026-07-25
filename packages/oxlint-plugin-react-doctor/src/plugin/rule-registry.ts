@@ -381,6 +381,7 @@ import { noOversizedLongHeading } from "./rules/design/no-oversized-long-heading
 import { noOverwideTextMeasure } from "./rules/design/no-overwide-text-measure.js";
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
+import { noPathPrefixContainment } from "./rules/security/no-path-prefix-containment.js";
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
 import { noPillNavigationCount } from "./rules/design/no-pill-navigation-count.js";
 import { noPlaceholderOnlyField } from "./rules/a11y/no-placeholder-only-field.js";
@@ -706,6 +707,7 @@ import { tabindexNoPositive } from "./rules/a11y/tabindex-no-positive.js";
 import { tanstackStartGetMutation } from "./rules/tanstack-start/tanstack-start-get-mutation.js";
 import { tanstackStartLoaderParallelFetch } from "./rules/tanstack-start/tanstack-start-loader-parallel-fetch.js";
 import { tanstackStartMissingHeadContent } from "./rules/tanstack-start/tanstack-start-missing-head-content.js";
+import { tanstackStartMissingScripts } from "./rules/tanstack-start/tanstack-start-missing-scripts.js";
 import { tanstackStartNoAnchorElement } from "./rules/tanstack-start/tanstack-start-no-anchor-element.js";
 import { tanstackStartNoDirectFetchInLoader } from "./rules/tanstack-start/tanstack-start-no-direct-fetch-in-loader.js";
 import { tanstackStartNoDynamicServerFnImport } from "./rules/tanstack-start/tanstack-start-no-dynamic-server-fn-import.js";
@@ -5249,6 +5251,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-path-prefix-containment",
+    id: "no-path-prefix-containment",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPathPrefixContainment,
+      framework: "global",
+      category: "Security",
+    },
+  },
+  {
     key: "react-doctor/no-permanent-will-change",
     id: "no-permanent-will-change",
     source: "react-doctor",
@@ -9270,6 +9283,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...tanstackStartMissingHeadContent,
+      framework: "tanstack-start",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/tanstack-start-missing-scripts",
+    id: "tanstack-start-missing-scripts",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...tanstackStartMissingScripts,
       framework: "tanstack-start",
       category: "Bugs",
     },

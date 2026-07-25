@@ -820,6 +820,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'const fn = new Function("return 1");',
     filePath: "src/run.ts",
   },
+  "no-path-prefix-containment": {
+    code: 'import path from "node:path";\nconst candidatePath = path.resolve(rootDirectory, requestedPath);\nconst isInside = candidatePath.startsWith(rootDirectory);',
+    filePath: "src/files.ts",
+  },
   "no-event-handler": {
     code: "function Form() {\n        const [submitted, setSubmitted] = useState(false);\n        const [data, setData] = useState(null);\n        useEffect(() => {\n          if (submitted) {\n            submitData(data);\n            window.scrollTo(0, 0);\n          }\n        }, [submitted]);\n        return <button onClick={() => setSubmitted(true)}>go</button>;\n      }",
   },
@@ -1761,6 +1765,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "createFileRoute('/x')({ loader: async () => { const a = await fetchA(); const b = await fetchB(); return { a, b }; } });",
   },
   "tanstack-start-missing-head-content": {
+    code: "export const Route = createRootRoute({\n  component: () => (\n    <html>\n      <head />\n      <body />\n    </html>\n  ),\n});",
+    filePath: "src/routes/__root.tsx",
+  },
+  "tanstack-start-missing-scripts": {
     code: "export const Route = createRootRoute({\n  component: () => (\n    <html>\n      <head />\n      <body />\n    </html>\n  ),\n});",
     filePath: "src/routes/__root.tsx",
   },

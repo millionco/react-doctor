@@ -499,8 +499,8 @@ const hasTopLevelValueBinding = (sourceFile: ts.SourceFile, bindingName: string)
         : false;
     }
     if (ts.isVariableStatement(statement)) {
-      return statement.declarationList.declarations.some(
-        (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === bindingName,
+      return statement.declarationList.declarations.some((declaration) =>
+        bindingNameContainsIdentifier(declaration.name, bindingName),
       );
     }
     return (
@@ -678,6 +678,120 @@ const getScopedConfigBinding = (identifier: ts.Identifier): ScopedConfigBinding 
 const isCompilerTransformModule = (moduleSpecifier: string, exportName: string): boolean =>
   (moduleSpecifier === "babel-plugin-react-compiler" && exportName === "default") ||
   (moduleSpecifier === "@vitejs/plugin-react" && exportName === "reactCompilerPreset");
+
+const NODE_MODULE_SPECIFIERS = new Set(["module", "node:module"]);
+
+const isConstantVariableInitializer = (node: ts.Node): node is ts.Expression =>
+  ts.isExpression(node) &&
+  ts.isVariableDeclaration(node.parent) &&
+  ts.isVariableDeclarationList(node.parent.parent) &&
+  Boolean(node.parent.parent.flags & ts.NodeFlags.Const);
+
+const isNodeCreateRequireCall = (node: ts.Node, analysis: ConfigExpressionAnalysis): boolean => {
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isAwaitExpression(node)
+  ) {
+    return isNodeCreateRequireCall(node.expression, analysis);
+  }
+  if (!ts.isCallExpression(node)) return false;
+  const target = node.expression;
+  if (ts.isIdentifier(target)) {
+    if (analysis.localBindings.has(target.text) || getScopedConfigBinding(target).wasFound) {
+      return false;
+    }
+    const importBinding = getImportBinding(analysis.sourceFile, target.text);
+    return Boolean(
+      importBinding &&
+      NODE_MODULE_SPECIFIERS.has(importBinding.moduleSpecifier) &&
+      importBinding.exportName === "createRequire",
+    );
+  }
+  if (!ts.isPropertyAccessExpression(target) && !ts.isElementAccessExpression(target)) {
+    return false;
+  }
+  const propertyName = ts.isPropertyAccessExpression(target)
+    ? target.name.text
+    : target.argumentExpression && ts.isStringLiteralLike(target.argumentExpression)
+      ? target.argumentExpression.text
+      : null;
+  if (propertyName !== "createRequire") return false;
+  const createRequireReceiver = target.expression;
+  if (ts.isCallExpression(createRequireReceiver)) {
+    const requiredModuleSpecifier = getRequireModuleSpecifier(createRequireReceiver);
+    if (
+      requiredModuleSpecifier === null ||
+      !NODE_MODULE_SPECIFIERS.has(requiredModuleSpecifier) ||
+      !ts.isIdentifier(createRequireReceiver.expression)
+    ) {
+      return false;
+    }
+    const requireIdentifier = createRequireReceiver.expression;
+    return (
+      !analysis.localBindings.has(requireIdentifier.text) &&
+      !getScopedConfigBinding(requireIdentifier).wasFound &&
+      !hasTopLevelValueBinding(analysis.sourceFile, requireIdentifier.text)
+    );
+  }
+  if (!ts.isIdentifier(createRequireReceiver)) return false;
+  if (
+    analysis.localBindings.has(createRequireReceiver.text) ||
+    getScopedConfigBinding(createRequireReceiver).wasFound
+  ) {
+    return false;
+  }
+  const importBinding = getImportBinding(analysis.sourceFile, createRequireReceiver.text);
+  return Boolean(
+    importBinding?.isNamespace && NODE_MODULE_SPECIFIERS.has(importBinding.moduleSpecifier),
+  );
+};
+
+const getNodeRequireResolveModuleSpecifier = (
+  callExpression: ts.CallExpression,
+  analysis: ConfigExpressionAnalysis,
+): string | null => {
+  const [moduleSpecifierNode] = callExpression.arguments;
+  if (!moduleSpecifierNode || !ts.isStringLiteralLike(moduleSpecifierNode)) return null;
+  const target = callExpression.expression;
+  if (!ts.isPropertyAccessExpression(target) && !ts.isElementAccessExpression(target)) return null;
+  const propertyName = ts.isPropertyAccessExpression(target)
+    ? target.name.text
+    : target.argumentExpression && ts.isStringLiteralLike(target.argumentExpression)
+      ? target.argumentExpression.text
+      : null;
+  if (propertyName !== "resolve") return null;
+  if (isNodeCreateRequireCall(target.expression, analysis)) return moduleSpecifierNode.text;
+  if (!ts.isIdentifier(target.expression)) return null;
+
+  const resolverIdentifier = target.expression;
+  if (analysis.localBindings.has(resolverIdentifier.text)) return null;
+  const scopedBinding = getScopedConfigBinding(resolverIdentifier);
+  const topLevelBinding = scopedBinding.wasFound
+    ? null
+    : getTopLevelBinding(analysis.sourceFile, resolverIdentifier.text);
+  const resolverInitializer = scopedBinding.wasFound ? scopedBinding.initializer : topLevelBinding;
+  if (
+    resolverInitializer === null &&
+    !scopedBinding.wasFound &&
+    resolverIdentifier.text === "require" &&
+    !hasTopLevelValueBinding(analysis.sourceFile, resolverIdentifier.text) &&
+    getImportBinding(analysis.sourceFile, resolverIdentifier.text) === null
+  ) {
+    return moduleSpecifierNode.text;
+  }
+  if (
+    !resolverInitializer ||
+    !isConstantVariableInitializer(resolverInitializer) ||
+    !isNodeCreateRequireCall(resolverInitializer, analysis)
+  ) {
+    return null;
+  }
+  return moduleSpecifierNode.text;
+};
 
 interface ReactCompilerFlagState {
   readonly isEnabled: boolean;
@@ -1685,6 +1799,12 @@ const analyzeConfigNode = (
     });
   }
   if (ts.isCallExpression(node)) {
+    const resolvedModuleSpecifier = getNodeRequireResolveModuleSpecifier(node, analysis);
+    if (resolvedModuleSpecifier !== null) {
+      return (
+        allowCompilerTransform && isCompilerTransformModule(resolvedModuleSpecifier, "default")
+      );
+    }
     const callTargetResult = analyzeConfigCallTarget(node, analysis, allowCompilerTransform);
     if (callTargetResult !== null) return callTargetResult;
     const directModuleSpecifier = getRequireModuleSpecifier(node);

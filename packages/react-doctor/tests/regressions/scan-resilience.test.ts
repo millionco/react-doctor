@@ -598,6 +598,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       ["react-doctor/jsx-no-new-function-as-prop", "warn"],
       ["react-doctor/jsx-no-jsx-as-prop", "warn"],
       ["react-doctor/jsx-no-constructed-context-values", "warn"],
+      ["react-doctor/context-provider-value-from-unmemoized-local-literal", "warn"],
       ["react-doctor/no-inline-prop-on-memo-component", "warn"],
       ["react-doctor/no-effect-with-fresh-deps", "error"],
       ["react-doctor/prefer-module-scope-pure-function", "warn"],

@@ -226,6 +226,25 @@ describe("createOxlintConfig settings", () => {
     expect(config.settings["react-doctor"]).not.toHaveProperty("shopifyFlashListMajorVersion");
   });
 
+  it("forwards configured and generated runtime globals to plugin rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      runtimeGlobals: ["DatePicker"],
+      unpluginAutoImportGlobalScopes: [
+        { directory: "apps/storefront", names: ["Route", "Routes"] },
+      ],
+    });
+
+    expect(config.settings["react-doctor"]).toMatchObject({
+      runtimeGlobals: ["DatePicker"],
+      unpluginAutoImportRootDirectories: ["/tmp/project"],
+      unpluginAutoImportGlobalScopes: [
+        { directory: "apps/storefront", names: ["Route", "Routes"] },
+      ],
+    });
+  });
+
   it("never registers security scan rules (they run as a core environment check)", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

@@ -490,7 +490,7 @@ const isProvenMediaQueryListExpression = (
   ) {
     return false;
   }
-  const factory = getEffectCallback(unwrappedExpression);
+  const factory = getEffectCallback(unwrappedExpression, context.scopes);
   return Boolean(
     factory &&
     functionReturnsMatchingExpression(

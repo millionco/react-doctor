@@ -69,6 +69,24 @@ export const useMediaQuery = (breakpoint?: string): boolean => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts cleanup for a MediaQueryList created by a named useMemo factory", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const useMediaQuery = (breakpoint: string): boolean => {
+  const createMediaQueryList = () => window.matchMedia(breakpoint);
+  const mediaQueryList = React.useMemo(createMediaQueryList, [breakpoint]);
+  const subscribe = React.useCallback((onStoreChange: () => void) => {
+    mediaQueryList.addListener(onStoreChange);
+    return () => mediaQueryList.removeListener(onStoreChange);
+  }, [mediaQueryList]);
+  return React.useSyncExternalStore(subscribe, () => mediaQueryList.matches, () => false);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts cleanup through named and destructured useMemo aliases", () => {
     const sources = [
       `import { useCallback, useMemo, useSyncExternalStore } from "react";

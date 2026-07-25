@@ -45,6 +45,91 @@ describe("tanstack-start/missing-scripts", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags shell components with document bodies missing Scripts", () => {
+    const result = runMissingScriptsRule(`
+      const RootDocument = ({ children }) => (
+        <html>
+          <body>{children}</body>
+        </html>
+      );
+
+      export const Route = createRootRoute({
+        component: () => <Outlet />,
+        shellComponent: RootDocument,
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows shell components that render Scripts", () => {
+    const result = runMissingScriptsRule(`
+      import { Scripts } from "@tanstack/react-router";
+
+      const RootDocument = ({ children }) => (
+        <html>
+          <body>
+            {children}
+            <Scripts />
+          </body>
+        </html>
+      );
+
+      export const Route = createRootRoute({
+        component: () => <Outlet />,
+        shellComponent: RootDocument,
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags class root components with document bodies missing Scripts", () => {
+    const result = runMissingScriptsRule(`
+      class RootComponent extends React.Component {
+        render() {
+          return (
+            <html>
+              <body>
+                <main>Home</main>
+              </body>
+            </html>
+          );
+        }
+      }
+
+      export const Route = createRootRoute({
+        component: RootComponent,
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags inline class root components with document bodies missing Scripts", () => {
+    const result = runMissingScriptsRule(`
+      export const Route = createRootRoute({
+        component: class extends React.Component {
+          render() {
+            return (
+              <html>
+                <body>
+                  <main>Home</main>
+                </body>
+              </html>
+            );
+          }
+        },
+      });
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows direct Scripts usage inside the document body", () => {
     const result = runMissingScriptsRule(`
       import { Scripts } from "@tanstack/react-router";

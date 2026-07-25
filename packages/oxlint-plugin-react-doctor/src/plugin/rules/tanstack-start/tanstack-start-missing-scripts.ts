@@ -2,7 +2,9 @@ import { TANSTACK_ROOT_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getClassBindingSymbol } from "../../utils/get-class-binding-symbol.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -17,7 +19,8 @@ const TANSTACK_ROOT_ROUTE_FACTORY_NAMES = new Set([
 ]);
 const SCRIPTS_COMPONENT_NAME = "Scripts";
 const DOCUMENT_BODY_ELEMENT_NAME = "body";
-const ROOT_COMPONENT_PROPERTY_NAME = "component";
+const CLASS_RENDER_METHOD_NAME = "render";
+const ROOT_DOCUMENT_COMPONENT_PROPERTY_NAMES = new Set(["component", "shellComponent"]);
 
 const getJsxMemberRootIdentifier = (
   node: EsTreeNodeOfType<"JSXMemberExpression">,
@@ -59,6 +62,11 @@ const getEnclosingDocumentBodyElement = (
   return null;
 };
 
+const getClassComponentDeclaration = (
+  node: EsTreeNodeOfType<"ClassDeclaration" | "ClassExpression">,
+  context: RuleContext,
+): EsTreeNode => getClassBindingSymbol(node, context.scopes)?.declarationNode ?? node;
+
 const getEnclosingComponentDeclaration = (
   node: EsTreeNode,
   context: RuleContext,
@@ -73,6 +81,16 @@ const getEnclosingComponentDeclaration = (
       isNodeOfType(currentNode, "FunctionExpression")
     ) {
       const parentNode = findTransparentExpressionRoot(currentNode).parent;
+      if (
+        parentNode &&
+        (isNodeOfType(parentNode, "MethodDefinition") ||
+          isNodeOfType(parentNode, "PropertyDefinition")) &&
+        getStaticPropertyKeyName(parentNode, { allowComputedString: true }) ===
+          CLASS_RENDER_METHOD_NAME
+      ) {
+        const classNode = findEnclosingClass(parentNode);
+        if (classNode) return getClassComponentDeclaration(classNode, context);
+      }
       if (
         parentNode &&
         isNodeOfType(parentNode, "VariableDeclarator") &&
@@ -258,9 +276,10 @@ export const tanstackStartMissingScripts = defineRule({
         collectVariableAlias(node);
       },
       Property(node: EsTreeNodeOfType<"Property">) {
+        const propertyName = getStaticPropertyKeyName(node, { allowComputedString: true });
         if (
-          getStaticPropertyKeyName(node, { allowComputedString: true }) !==
-            ROOT_COMPONENT_PROPERTY_NAME ||
+          !propertyName ||
+          !ROOT_DOCUMENT_COMPONENT_PROPERTY_NAMES.has(propertyName) ||
           !isNodeOfType(node.parent, "ObjectExpression") ||
           !isRootRouteOptionsObject(node.parent)
         ) {
@@ -269,6 +288,12 @@ export const tanstackStartMissingScripts = defineRule({
         const componentValue = stripParenExpression(node.value);
         if (isFunctionLike(componentValue)) {
           configuredRootComponentDeclarations.add(componentValue);
+          return;
+        }
+        if (isNodeOfType(componentValue, "ClassExpression")) {
+          configuredRootComponentDeclarations.add(
+            getClassComponentDeclaration(componentValue, context),
+          );
           return;
         }
         if (!isNodeOfType(componentValue, "Identifier")) return;

@@ -101,13 +101,13 @@ const getInlineCursorAnimationState = (
     !styleExpression ||
     styleExpression.properties.some((property) => getStylePropertyKey(property) === null)
   ) {
-    return false;
+    return null;
   }
 
   const animationProperty = getEffectiveStyleProperty(styleExpression.properties, "animation");
   if (animationProperty) {
     const animationValue = getStylePropertyStringValue(animationProperty);
-    return Boolean(animationValue && isInfiniteCursorAnimation(animationValue));
+    return animationValue === null ? null : isInfiniteCursorAnimation(animationValue);
   }
 
   const animationNameProperty = getEffectiveStyleProperty(
@@ -119,13 +119,12 @@ const getInlineCursorAnimationState = (
     "animationIterationCount",
   );
   if (!animationNameProperty && !animationIterationCountProperty) return null;
-  if (!animationNameProperty || !animationIterationCountProperty) return false;
+  if (!animationNameProperty || !animationIterationCountProperty) return null;
   const animationName = getStylePropertyStringValue(animationNameProperty);
   const animationIterationCount = getStylePropertyStringValue(animationIterationCountProperty);
-  return Boolean(
-    animationName &&
-    animationIterationCount?.toLowerCase() === "infinite" &&
-    hasCursorAnimationName(animationName),
+  if (animationName === null || animationIterationCount === null) return null;
+  return (
+    animationIterationCount.toLowerCase() === "infinite" && hasCursorAnimationName(animationName)
   );
 };
 

@@ -72,6 +72,7 @@ const getStrictStaticStringAttributeValue = (
 
 const getStaticSvgDimensions = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
 ): readonly [number, number] | null => {
   if (
     openingElement.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"))
@@ -83,7 +84,7 @@ const getStaticSvgDimensions = (
   if (!widthAttribute || !heightAttribute) return null;
   const styleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "style");
   if (styleAttribute) {
-    const styleExpression = getInlineStyleExpression(styleAttribute);
+    const styleExpression = getInlineStyleExpression(styleAttribute, context.scopes);
     if (
       !styleExpression ||
       getEffectiveStyleProperty(styleExpression.properties, "width") ||
@@ -131,7 +132,10 @@ const getCanonicalStaticPaintKey = (paint: string | null): string | null => {
   return `${parsedColor.red},${parsedColor.green},${parsedColor.blue}`;
 };
 
-const getStaticOwnFill = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): string | null => {
+const getStaticOwnFill = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+): string | null => {
   if (
     openingElement.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"))
   ) {
@@ -139,7 +143,7 @@ const getStaticOwnFill = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">)
   }
   const styleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "style");
   if (styleAttribute) {
-    const styleExpression = getInlineStyleExpression(styleAttribute);
+    const styleExpression = getInlineStyleExpression(styleAttribute, context.scopes);
     if (!styleExpression) return null;
     const fillProperty = getEffectiveStyleProperty(styleExpression.properties, "fill");
     if (fillProperty) {
@@ -198,6 +202,7 @@ const getStaticStyleNumberValue = (property: EsTreeNodeOfType<"Property">): numb
 
 const getStaticRenderingState = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
 ): "hidden" | "unknown" | "visible" => {
   if (
     openingElement.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"))
@@ -229,7 +234,7 @@ const getStaticRenderingState = (
 
   const styleAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "style");
   if (styleAttribute) {
-    const styleExpression = getInlineStyleExpression(styleAttribute);
+    const styleExpression = getInlineStyleExpression(styleAttribute, context.scopes);
     if (
       !styleExpression ||
       styleExpression.properties.some(
@@ -297,6 +302,7 @@ const isStaticallyEmptySvgExpression = (expression: EsTreeNode): boolean => {
 const collectSvgIllustrationEvidence = (
   element: EsTreeNodeOfType<"JSXElement">,
   evidence: SvgIllustrationEvidence,
+  context: RuleContext,
   isExcludedByAncestor = false,
 ): boolean => {
   const openingElement = element.openingElement;
@@ -304,7 +310,7 @@ const collectSvgIllustrationEvidence = (
   if (!elementName || !SVG_TAGS.has(elementName)) return false;
   if (elementName === "pattern") evidence.hasPattern = true;
 
-  const renderingState = getStaticRenderingState(openingElement);
+  const renderingState = getStaticRenderingState(openingElement, context);
   if (renderingState === "unknown") return false;
   const isExcluded =
     isExcludedByAncestor ||
@@ -316,14 +322,14 @@ const collectSvgIllustrationEvidence = (
     evidence.visibleTextElementCount += 1;
   }
   if (!isExcluded && PRIMITIVE_ELEMENT_NAMES.has(elementName)) {
-    const fillKey = getStaticOwnFill(openingElement);
+    const fillKey = getStaticOwnFill(openingElement, context);
     if (fillKey) evidence.primitiveFillKeys.push(fillKey);
   }
 
   for (const child of element.children) {
     if (isNodeOfType(child, "JSXText")) continue;
     if (isNodeOfType(child, "JSXElement")) {
-      if (!collectSvgIllustrationEvidence(child, evidence, isExcluded)) return false;
+      if (!collectSvgIllustrationEvidence(child, evidence, context, isExcluded)) return false;
       continue;
     }
     if (isNodeOfType(child, "JSXExpressionContainer")) {
@@ -347,7 +353,7 @@ export const noShapeAssembledIllustration = defineRule({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
       const openingElement = node.openingElement;
       if (getIntrinsicElementName(openingElement) !== "svg") return;
-      const dimensions = getStaticSvgDimensions(openingElement);
+      const dimensions = getStaticSvgDimensions(openingElement, context);
       if (
         !dimensions ||
         dimensions[0] < SHAPE_ASSEMBLED_ILLUSTRATION_MINIMUM_SIZE_PX ||
@@ -361,7 +367,7 @@ export const noShapeAssembledIllustration = defineRule({
         primitiveFillKeys: [],
         visibleTextElementCount: 0,
       };
-      if (!collectSvgIllustrationEvidence(node, evidence) || evidence.hasPattern) return;
+      if (!collectSvgIllustrationEvidence(node, evidence, context) || evidence.hasPattern) return;
       if (
         evidence.visibleTextElementCount > SHAPE_ASSEMBLED_ILLUSTRATION_MAXIMUM_TEXT_ELEMENT_COUNT
       ) {

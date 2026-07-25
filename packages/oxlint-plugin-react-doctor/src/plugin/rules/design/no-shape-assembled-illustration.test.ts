@@ -37,6 +37,26 @@ describe("no-shape-assembled-illustration", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("resolves static style bindings for SVG state and primitive fills", () => {
+    const result = runRule(
+      noShapeAssembledIllustration,
+      `const svgStyle = { display: "block" };
+      const visibleStyle = { opacity: 1 };
+      const darkFill = { fill: "#111" };
+      const middleFill = { fill: "#777" };
+      const lightFill = { fill: "#fff" };
+      const HeroArt = () => <svg width={320} height={240} style={svgStyle}>
+        <g style={visibleStyle}>
+          <rect style={darkFill} /><circle style={darkFill} />
+          <ellipse style={darkFill} /><rect style={middleFill} />
+          <circle style={middleFill} /><ellipse style={middleFill} />
+          <rect style={lightFill} /><polygon style={lightFill} />
+        </g>
+      </svg>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("counts neutral static paints without requiring chroma", () => {
     const result = runRule(
       noShapeAssembledIllustration,

@@ -51,7 +51,7 @@ describe("no-decorative-pulse", () => {
     const result = runRule(
       noDecorativePulse,
       `
-        const Hero = () => (
+        const Hero = ({ dynamicStyle }) => (
           <section>
             <h1>Ship faster</h1>
             <span className="animate-pulse">▌</span>
@@ -60,11 +60,13 @@ describe("no-decorative-pulse", () => {
             <span className="!animate-pulse animate-none">|</span>
             <span style={{ animation: "blink 1s steps(1) infinite" }}>{\`■\`}</span>
             <span style={{ animationName: "cursor-blink", animationIterationCount: "infinite" }}>❚</span>
+            <span className="animate-pulse" style={dynamicStyle}>_</span>
+            <span className="animate-pulse" style={{ animationName: "cursor" }}>|</span>
           </section>
         );
       `,
     );
-    expect(result.diagnostics).toHaveLength(6);
+    expect(result.diagnostics).toHaveLength(8);
     expect(
       result.diagnostics.every((diagnostic) => diagnostic.message.includes("fake cursor")),
     ).toBe(true);

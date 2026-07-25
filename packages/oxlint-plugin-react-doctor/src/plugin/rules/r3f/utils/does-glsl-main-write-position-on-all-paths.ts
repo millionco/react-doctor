@@ -7,6 +7,7 @@ import type {
 } from "@shaderfrog/glsl-parser/ast/ast-types.js";
 import { getGlslFunctionCallName } from "./get-glsl-function-call-name.js";
 import { hasGlslFunctionDeclaration } from "./has-glsl-function-declaration.js";
+import { maskGlslComments } from "./mask-glsl-comments.js";
 
 export interface GlslPositionPathAnalysis {
   readonly mainFunction: FunctionNode | null;
@@ -160,7 +161,7 @@ export const doesGlslMainWritePositionOnAllPaths = (
     ) ?? null;
   if (
     !mainFunction ||
-    /^[ \t]*#[ \t]*define\b/m.test(source) ||
+    /^[ \t]*#[ \t]*define\b/m.test(maskGlslComments(source)) ||
     callsUserDefinedFunction(mainFunction, program)
   ) {
     return { mainFunction, writesPositionOnAllPaths: null };

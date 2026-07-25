@@ -8,6 +8,7 @@ describe("three-shader-require-position-on-all-paths", () => {
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform bool enabled; void main() { if (enabled) gl_Position = vec4(0.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform bool enabled; void main() { if (enabled) return; gl_Position = vec4(0.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "void main() { for (int index = 0; index < 1; index++) gl_Position = vec4(0.0); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "/* #define SET_POSITION() gl_Position = vec4(0.0) */ void main() { float value = 1.0; }" });`,
   ])("reports a proven path without a position write", (code) => {
     expect(runRule(threeShaderRequirePositionOnAllPaths, code).diagnostics).toHaveLength(1);
   });

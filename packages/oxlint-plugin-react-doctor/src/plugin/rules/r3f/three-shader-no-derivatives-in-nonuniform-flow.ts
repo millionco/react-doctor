@@ -21,6 +21,8 @@ const IMPLICIT_DERIVATIVE_TEXTURE_FUNCTION_NAMES: ReadonlySet<string> = new Set(
   "texture3D",
   "texture3DProj",
   "textureCube",
+  "textureOffset",
+  "textureProj",
 ]);
 
 const getControllingExpressions = (path: Path<FunctionCallNode>): AstNode[] => {
@@ -39,9 +41,6 @@ const getControllingExpressions = (path: Path<FunctionCallNode>): AstNode[] => {
     }
     if (parent.type === "while_statement" && currentPath.key === "body") {
       controllingExpressions.push(parent.condition);
-    }
-    if (parent.type === "do_statement" && currentPath.key === "body") {
-      controllingExpressions.push(parent.expression);
     }
     if (parent.type === "for_statement" && currentPath.key === "body" && parent.condition) {
       controllingExpressions.push(parent.condition);

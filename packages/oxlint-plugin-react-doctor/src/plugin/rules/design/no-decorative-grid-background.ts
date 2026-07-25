@@ -24,7 +24,7 @@ const TAILWIND_BACKGROUND_SIZE_PATTERN = /^(?:bg-(?:auto|contain|cover)|bg-\[len
 
 const getLinearGradientBodies = (value: string): string[] => {
   const gradientBodies: string[] = [];
-  const gradientPattern = /linear-gradient\(/gi;
+  const gradientPattern = /(?:-(?:moz|ms|o|webkit)-)?linear-gradient\(/gi;
   for (const match of value.matchAll(gradientPattern)) {
     if (match.index === undefined) continue;
     const prefix = value.slice(0, match.index).toLowerCase();

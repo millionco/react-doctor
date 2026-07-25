@@ -30,6 +30,17 @@ describe("no-decorative-grid-background", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags vendor-prefixed hairline gradients", () => {
+    const result = runRule(
+      noDecorativeGridBackground,
+      `const Hero = () => <section style={{
+        backgroundImage: "-webkit-linear-gradient(90deg, #aaa 1px, transparent 1px), -moz-linear-gradient(#aaa 1px, transparent 1px)",
+        backgroundSize: "24px",
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags supported arbitrary utility grid spellings", () => {
     const result = runRule(
       noDecorativeGridBackground,

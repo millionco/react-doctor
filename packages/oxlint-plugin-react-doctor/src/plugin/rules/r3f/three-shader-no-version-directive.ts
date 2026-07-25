@@ -5,11 +5,14 @@ import {
   resolveStaticThreeShaderMaterial,
   type StaticThreeShaderStage,
 } from "./utils/resolve-static-three-shader-material.js";
+import { maskGlslComments } from "./utils/mask-glsl-comments.js";
 
 const VERSION_DIRECTIVE_PATTERN = /^[ \t]*#[ \t]*version\b/m;
 
 const checkShader = (shader: StaticThreeShaderStage, context: RuleContext): void => {
-  const versionDirectiveOffset = shader.source.text.search(VERSION_DIRECTIVE_PATTERN);
+  const versionDirectiveOffset = maskGlslComments(shader.source.text).search(
+    VERSION_DIRECTIVE_PATTERN,
+  );
   if (versionDirectiveOffset < 0) return;
   context.report({
     node: shader.source.getOriginNodeAtOffset(versionDirectiveOffset),

@@ -16,6 +16,22 @@ describe("three-on-before-compile-require-program-cache-key", () => {
      material.onBeforeCompile = shader => {
        shader.vertexShader = options.useFog ? "#define FOG\\n" + shader.vertexShader : shader.vertexShader;
      };`,
+    `import { MeshStandardMaterial } from "three";
+     let enabled = true;
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       enabled && (shader.fragmentShader += " ");
+     };`,
+    `import { MeshStandardMaterial } from "three";
+     let mode = "warm";
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       switch (mode) {
+         case "warm":
+           shader.fragmentShader += " ";
+           break;
+       }
+     };`,
   ])("reports mutable program variants without a cache key", (code) => {
     expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(1);
   });

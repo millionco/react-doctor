@@ -10,13 +10,22 @@ import { getGlslTypeSpecifierName } from "./get-glsl-type-specifier-name.js";
 export interface GlslGlobalDeclaration {
   readonly arraySize: number | null | undefined;
   readonly hasLayoutQualifier: boolean;
-  readonly interpolation: "flat" | "smooth";
+  readonly interpolation: string;
   readonly isStaticallyUsed: boolean;
   readonly name: string;
   readonly node: DeclarationNode;
   readonly qualifiers: ReadonlySet<string>;
   readonly typeName: string;
 }
+
+const GLSL_INTERPOLATION_QUALIFIER_NAMES = new Set([
+  "centroid",
+  "flat",
+  "noperspective",
+  "sample",
+  "smooth",
+]);
+const GLSL_PRIMARY_INTERPOLATION_QUALIFIER_NAMES = new Set(["flat", "noperspective", "smooth"]);
 
 const getArraySize = (
   declaration: DeclarationNode,
@@ -33,6 +42,20 @@ const getArraySize = (
 
 const getQualifierName = (qualifier: AstNode): string | null =>
   qualifier.type === "keyword" ? qualifier.token : null;
+
+const getInterpolation = (qualifiers: ReadonlySet<string>): string => {
+  const interpolationQualifiers = [...qualifiers].filter((qualifier) =>
+    GLSL_INTERPOLATION_QUALIFIER_NAMES.has(qualifier),
+  );
+  if (
+    !interpolationQualifiers.some((qualifier) =>
+      GLSL_PRIMARY_INTERPOLATION_QUALIFIER_NAMES.has(qualifier),
+    )
+  ) {
+    interpolationQualifiers.push("smooth");
+  }
+  return interpolationQualifiers.sort().join(" ");
+};
 
 export const collectGlslGlobalDeclarations = (program: Program): GlslGlobalDeclaration[] => {
   const declarations: GlslGlobalDeclaration[] = [];
@@ -64,7 +87,7 @@ export const collectGlslGlobalDeclarations = (program: Program): GlslGlobalDecla
       declarations.push({
         arraySize: getArraySize(declaration, declaratorList.specified_type.specifier.quantifier),
         hasLayoutQualifier,
-        interpolation: qualifiers.has("flat") ? "flat" : "smooth",
+        interpolation: getInterpolation(qualifiers),
         isStaticallyUsed: Boolean(
           binding?.references.some((reference) => reference !== binding.declaration),
         ),

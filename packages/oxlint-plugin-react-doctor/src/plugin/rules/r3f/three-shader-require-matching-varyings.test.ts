@@ -26,6 +26,18 @@ describe("three-shader-require-matching-varyings", () => {
       vertex:
         "#version 300 es\nprecision highp float; out vec3 vData; void main() { vData = vec3(1.0); gl_Position = vec4(0.0); }",
     },
+    {
+      fragment:
+        "#version 300 es\nprecision highp float; centroid in vec3 vData; out vec4 color; void main() { color = vec4(vData, 1.0); }",
+      vertex:
+        "#version 300 es\nprecision highp float; out vec3 vData; void main() { vData = vec3(1.0); gl_Position = vec4(0.0); }",
+    },
+    {
+      fragment:
+        "#version 300 es\nprecision highp float; noperspective in vec3 vData; out vec4 color; void main() { color = vec4(vData, 1.0); }",
+      vertex:
+        "#version 300 es\nprecision highp float; smooth out vec3 vData; void main() { vData = vec3(1.0); gl_Position = vec4(0.0); }",
+    },
   ])("reports incompatible stage interfaces %#", ({ fragment, vertex }) => {
     const code = `
       import { ShaderMaterial } from "three";

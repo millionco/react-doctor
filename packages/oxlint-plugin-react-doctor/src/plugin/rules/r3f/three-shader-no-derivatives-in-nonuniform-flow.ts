@@ -23,6 +23,7 @@ const IMPLICIT_DERIVATIVE_TEXTURE_FUNCTION_NAMES: ReadonlySet<string> = new Set(
   "textureCube",
   "textureOffset",
   "textureProj",
+  "textureProjOffset",
 ]);
 
 const getControllingExpressions = (path: Path<FunctionCallNode>): AstNode[] => {

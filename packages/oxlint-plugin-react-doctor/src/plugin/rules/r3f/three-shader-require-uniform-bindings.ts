@@ -18,6 +18,8 @@ import {
 
 const MANAGED_UNIFORM_FEATURE_BY_NAME: ReadonlyMap<string, string> = new Map([
   ["ambientLightColor", "lights"],
+  ["bindMatrix", "skinning"],
+  ["bindMatrixInverse", "skinning"],
   ["boneTexture", "skinning"],
   ["boneTextureSize", "skinning"],
   ["clippingPlanes", "clipping"],

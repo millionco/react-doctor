@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getEffectiveObjectPropertiesInInsertionOrder } from "../../utils/get-effective-object-properties-in-insertion-order.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -233,9 +234,11 @@ const getStableMaterialSymbol = (
 ): SymbolDescriptor | null => {
   if (!isNodeOfType(expression, "Identifier")) return null;
   const symbol = context.scopes.symbolFor(expression);
+  const initializer = symbol ? getDirectUnreassignedInitializer(symbol) : null;
   if (
-    symbol?.kind !== "const" ||
-    !getThreeConstructorName(expression, context.scopes)?.endsWith("Material")
+    !symbol ||
+    !initializer ||
+    !getThreeConstructorName(initializer, context.scopes)?.endsWith("Material")
   ) {
     return null;
   }
@@ -255,7 +258,7 @@ const getConstructorMaterialSymbol = (
     return null;
   }
   const symbol = context.scopes.symbolFor(parent.id);
-  return symbol?.kind === "const" ? symbol : null;
+  return symbol && getDirectUnreassignedInitializer(symbol) === node ? symbol : null;
 };
 
 const isUsableProgramCacheKey = (expression: EsTreeNode, context: RuleContext): boolean => {

@@ -28,12 +28,19 @@ describe("three-shader-require-uniform-bindings", () => {
     expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(1);
   });
 
+  it("reports skinning uniforms when ShaderMaterial skinning is disabled", () => {
+    const code = `import { ShaderMaterial } from "three"; new ShaderMaterial({ vertexShader: "uniform mat4 bindMatrix; uniform mat4 bindMatrixInverse; void main() { gl_Position = bindMatrixInverse * bindMatrix * vec4(1.0); }" });`;
+
+    expect(runRule(threeShaderRequireUniformBindings, code).diagnostics).toHaveLength(2);
+  });
+
   it.each([
     `import { ShaderMaterial } from "three"; const uniforms = { uTime: { value: 0 } }; new ShaderMaterial({ uniforms, fragmentShader: "uniform float uTime; void main() { gl_FragColor = vec4(uTime); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float uUnused; void main() { gl_FragColor = vec4(1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform mat4 projectionMatrix; uniform mat4 modelViewMatrix; void main() { gl_FragColor = vec4(projectionMatrix[0][0] + modelViewMatrix[0][0]); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ lights: true, fragmentShader: "uniform vec3 ambientLightColor; void main() { gl_FragColor = vec4(ambientLightColor, 1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ fog: true, fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });`,
+    `import { ShaderMaterial } from "three"; new ShaderMaterial({ skinning: true, vertexShader: "uniform mat4 bindMatrix; uniform mat4 bindMatrixInverse; void main() { gl_Position = bindMatrixInverse * bindMatrix * vec4(1.0); }" });`,
     `import { ShaderMaterial } from "three"; const fog = getFog(); new ShaderMaterial({ fog, fragmentShader: "uniform vec3 fogColor; void main() { gl_FragColor = vec4(fogColor, 1.0); }" });`,
     `import { ShaderMaterial } from "three"; new ShaderMaterial({ uniforms: getUniforms(), fragmentShader: "uniform float uTime; void main() { gl_FragColor = vec4(uTime); }" });`,
     `import { ShaderMaterial } from "three"; const shared = {}; new ShaderMaterial({ uniforms: { ...shared }, fragmentShader: "uniform float uTime; void main() { gl_FragColor = vec4(uTime); }" });`,

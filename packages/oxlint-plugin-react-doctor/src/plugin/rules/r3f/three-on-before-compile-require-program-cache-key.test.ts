@@ -111,6 +111,15 @@ describe("three-on-before-compile-require-program-cache-key", () => {
      material.onBeforeCompile = shader => {
        for (const name in defines) shader.defines[name] = defines[name];
      };`,
+    `import { MeshStandardMaterial } from "three";
+     let mode = "warm";
+     let material = new MeshStandardMaterial({
+       onBeforeCompile: shader => {
+         if (mode === "warm") shader.fragmentShader += " ";
+       },
+     });
+     material = new MeshStandardMaterial();
+     material.customProgramCacheKey = () => mode;`,
   ])("reports mutable program variants without a cache key", (code) => {
     expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(1);
   });
@@ -139,6 +148,18 @@ describe("three-on-before-compile-require-program-cache-key", () => {
       material.onBeforeCompile = shader => {
         if (mode === "warm") shader.vertexShader += " ";
       };`;
+
+    expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(0);
+  });
+
+  it.each(["let", "var"])("recognizes a cache key on an unreassigned %s material", (kind) => {
+    const code = `import { MeshStandardMaterial } from "three";
+      let mode = "warm";
+      ${kind} material = new MeshStandardMaterial();
+      material.onBeforeCompile = shader => {
+        if (mode === "warm") shader.fragmentShader += " ";
+      };
+      material.customProgramCacheKey = () => mode;`;
 
     expect(runRule(threeOnBeforeCompileRequireProgramCacheKey, code).diagnostics).toHaveLength(0);
   });

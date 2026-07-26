@@ -924,7 +924,11 @@ const getAssignedPropertyInitializer = (
 const getStaticConfigValueState = (
   expression: ts.Expression,
   analysis: ConfigExpressionAnalysis,
+  visitedExpressions: Set<ts.Expression> = new Set(),
 ): StaticConfigValueState | null => {
+  if (visitedExpressions.has(expression)) return null;
+  visitedExpressions.add(expression);
+
   let unwrappedExpression = expression;
   while (
     ts.isParenthesizedExpression(unwrappedExpression) ||
@@ -933,7 +937,9 @@ const getStaticConfigValueState = (
     ts.isSatisfiesExpression(unwrappedExpression) ||
     ts.isNonNullExpression(unwrappedExpression)
   ) {
+    if (visitedExpressions.has(unwrappedExpression.expression)) return null;
     unwrappedExpression = unwrappedExpression.expression;
+    visitedExpressions.add(unwrappedExpression);
   }
   if (
     unwrappedExpression.kind === ts.SyntaxKind.NullKeyword ||
@@ -962,23 +968,38 @@ const getStaticConfigValueState = (
   if (ts.isIdentifier(unwrappedExpression)) {
     if (analysis.localBindings.has(unwrappedExpression.text)) {
       const localInitializer = analysis.localBindings.get(unwrappedExpression.text);
-      return localInitializer ? getStaticConfigValueState(localInitializer, analysis) : null;
+      return localInitializer
+        ? getStaticConfigValueState(localInitializer, analysis, visitedExpressions)
+        : null;
     }
     const topLevelBinding = getTopLevelBinding(analysis.sourceFile, unwrappedExpression.text);
     return topLevelBinding && ts.isExpression(topLevelBinding)
-      ? getStaticConfigValueState(topLevelBinding, analysis)
+      ? getStaticConfigValueState(topLevelBinding, analysis, visitedExpressions)
       : null;
   }
   if (ts.isConditionalExpression(unwrappedExpression)) {
-    const conditionState = getStaticConfigValueState(unwrappedExpression.condition, analysis);
+    const conditionState = getStaticConfigValueState(
+      unwrappedExpression.condition,
+      analysis,
+      visitedExpressions,
+    );
     if (conditionState !== null) {
       return getStaticConfigValueState(
         conditionState.isTruthy ? unwrappedExpression.whenTrue : unwrappedExpression.whenFalse,
         analysis,
+        visitedExpressions,
       );
     }
-    const whenTrueState = getStaticConfigValueState(unwrappedExpression.whenTrue, analysis);
-    const whenFalseState = getStaticConfigValueState(unwrappedExpression.whenFalse, analysis);
+    const whenTrueState = getStaticConfigValueState(
+      unwrappedExpression.whenTrue,
+      analysis,
+      visitedExpressions,
+    );
+    const whenFalseState = getStaticConfigValueState(
+      unwrappedExpression.whenFalse,
+      analysis,
+      visitedExpressions,
+    );
     return whenTrueState !== null &&
       whenFalseState !== null &&
       whenTrueState.isNullish === whenFalseState.isNullish &&
@@ -987,23 +1008,27 @@ const getStaticConfigValueState = (
       : null;
   }
   if (ts.isBinaryExpression(unwrappedExpression)) {
-    const leftState = getStaticConfigValueState(unwrappedExpression.left, analysis);
+    const leftState = getStaticConfigValueState(
+      unwrappedExpression.left,
+      analysis,
+      visitedExpressions,
+    );
     if (unwrappedExpression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
       if (leftState === null) return null;
       return leftState.isTruthy
-        ? getStaticConfigValueState(unwrappedExpression.right, analysis)
+        ? getStaticConfigValueState(unwrappedExpression.right, analysis, visitedExpressions)
         : leftState;
     }
     if (unwrappedExpression.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
       if (leftState === null) return null;
       return leftState.isTruthy
         ? leftState
-        : getStaticConfigValueState(unwrappedExpression.right, analysis);
+        : getStaticConfigValueState(unwrappedExpression.right, analysis, visitedExpressions);
     }
     if (unwrappedExpression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
       if (leftState === null) return null;
       return leftState.isNullish
-        ? getStaticConfigValueState(unwrappedExpression.right, analysis)
+        ? getStaticConfigValueState(unwrappedExpression.right, analysis, visitedExpressions)
         : leftState;
     }
   }
@@ -1033,7 +1058,11 @@ const isStaticallyNonNullishConfigExpression = (
 const getReactCompilerFlagState = (
   expression: ts.Expression,
   analysis: ConfigExpressionAnalysis,
+  visitedExpressions: Set<ts.Expression> = new Set(),
 ): ReactCompilerFlagState | null => {
+  if (visitedExpressions.has(expression)) return null;
+  visitedExpressions.add(expression);
+
   let unwrappedExpression = expression;
   while (
     ts.isParenthesizedExpression(unwrappedExpression) ||
@@ -1042,7 +1071,9 @@ const getReactCompilerFlagState = (
     ts.isSatisfiesExpression(unwrappedExpression) ||
     ts.isNonNullExpression(unwrappedExpression)
   ) {
+    if (visitedExpressions.has(unwrappedExpression.expression)) return null;
     unwrappedExpression = unwrappedExpression.expression;
+    visitedExpressions.add(unwrappedExpression);
   }
   if (ts.isIdentifier(unwrappedExpression)) {
     const assignedBinding = getAssignedPropertyInitializer(unwrappedExpression, "reactCompiler");
@@ -1053,11 +1084,13 @@ const getReactCompilerFlagState = (
     }
     if (analysis.localBindings.has(unwrappedExpression.text)) {
       const localInitializer = analysis.localBindings.get(unwrappedExpression.text);
-      return localInitializer ? getReactCompilerFlagState(localInitializer, analysis) : null;
+      return localInitializer
+        ? getReactCompilerFlagState(localInitializer, analysis, visitedExpressions)
+        : null;
     }
     const topLevelBinding = getTopLevelBinding(analysis.sourceFile, unwrappedExpression.text);
     return topLevelBinding && ts.isExpression(topLevelBinding)
-      ? getReactCompilerFlagState(topLevelBinding, analysis)
+      ? getReactCompilerFlagState(topLevelBinding, analysis, visitedExpressions)
       : null;
   }
   if (!ts.isObjectLiteralExpression(unwrappedExpression)) return null;
@@ -1072,7 +1105,11 @@ const getReactCompilerFlagState = (
       return { isEnabled: !isStaticallyDisabledConfigExpression(property.name, analysis) };
     }
     if (ts.isSpreadAssignment(property)) {
-      const spreadState = getReactCompilerFlagState(property.expression, analysis);
+      const spreadState = getReactCompilerFlagState(
+        property.expression,
+        analysis,
+        visitedExpressions,
+      );
       if (spreadState) return spreadState;
     }
   }

@@ -9,9 +9,9 @@ cd packages/evals
 nr --silent eval --react-doctor-ref <pushed_commit> > results.ndjson
 ```
 
-The default [repository corpus](./repositories.json) contains 2,000 repositories and 5,824 available project roots selected from the canonical React Doctor Evals corpus. Every repository is pinned to a commit so repeated runs inspect the same source. Runs inspect the first root from each repository by default for breadth within the time budget; use `--project-roots-per-repository` for deeper monorepo coverage.
+The default [repository corpus](./repositories.json) contains 2,000 repositories and 5,770 available project roots selected from the canonical React Doctor Evals corpus. Every repository is pinned to a commit so repeated runs inspect the same source. Runs inspect the first root from each repository by default for breadth within the time budget; use `--project-roots-per-repository` for deeper monorepo coverage.
 
-The corpus excludes 200 [measured slow repositories](./excluded-slow-repositories.json) whose representative root took at least 60 seconds, returned incomplete lint coverage, or could no longer be fetched at its pinned revision in the 2026-07-19 Daytona runs. Later pinned repositories from the canonical corpus replace them so the default remains at 2,000 repositories.
+The corpus excludes 219 [measured slow repositories](./excluded-slow-repositories.json) whose representative root took at least 60 seconds, returned incomplete lint coverage, or could no longer be fetched at its pinned revision in the 2026-07-25 Daytona runs. Later pinned repositories from the canonical corpus replace them so the default remains at 2,000 repositories.
 
 The evaluator accepts corpus JSON, `owner/name` text files, prior result NDJSON, URLs, and directories. Repeat `--repositories` to combine sources:
 

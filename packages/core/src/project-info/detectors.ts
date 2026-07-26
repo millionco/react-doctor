@@ -1476,18 +1476,16 @@ const analyzeImportedConfig = ({
   exportName,
   allowCompilerTransform,
   argumentsList,
-}: AnalyzeImportedConfigOptions): boolean => {
+}: AnalyzeImportedConfigOptions): boolean | null => {
   const importedFilePath = resolveImportedConfigFile(analysis.filePath, moduleSpecifier);
-  return Boolean(
-    importedFilePath &&
-    analyzeConfigModuleExport(
-      importedFilePath,
-      exportName,
-      allowCompilerTransform,
-      analysis.importDepth + 1,
-      analysis.visitedModules,
-      argumentsList,
-    ),
+  if (!importedFilePath) return null;
+  return analyzeConfigModuleExport(
+    importedFilePath,
+    exportName,
+    allowCompilerTransform,
+    analysis.importDepth + 1,
+    analysis.visitedModules,
+    argumentsList,
   );
 };
 
@@ -1557,12 +1555,14 @@ const analyzeConfigIdentifier = (
     ) {
       return true;
     }
-    return analyzeImportedConfig({
-      analysis,
-      moduleSpecifier: importBinding.moduleSpecifier,
-      exportName: importBinding.exportName,
-      allowCompilerTransform,
-    });
+    return Boolean(
+      analyzeImportedConfig({
+        analysis,
+        moduleSpecifier: importBinding.moduleSpecifier,
+        exportName: importBinding.exportName,
+        allowCompilerTransform,
+      }),
+    );
   }
   const topLevelBinding = getTopLevelBinding(analysis.sourceFile, identifier.text);
   return Boolean(
@@ -1583,6 +1583,33 @@ const analyzeConfigCallTarget = (
   allowCompilerTransform: boolean,
 ): boolean | null => {
   const target = callExpression.expression;
+  const callableRequiredModuleSpecifier = getRequireModuleSpecifier(target);
+  if (callableRequiredModuleSpecifier !== null) {
+    const isRequireShadowed =
+      ts.isCallExpression(target) &&
+      ts.isIdentifier(target.expression) &&
+      (analysis.localBindings.has(target.expression.text) ||
+        getScopedConfigBinding(target.expression).wasFound ||
+        hasTopLevelValueBinding(analysis.sourceFile, "require"));
+    if (isRequireShadowed) return false;
+    if (
+      allowCompilerTransform &&
+      isCompilerTransformModule(callableRequiredModuleSpecifier, "default")
+    ) {
+      return true;
+    }
+    const hasCompilerTransform = analyzeImportedConfig({
+      analysis,
+      moduleSpecifier: callableRequiredModuleSpecifier,
+      exportName: "default",
+      allowCompilerTransform,
+      argumentsList: callExpression.arguments,
+    });
+    if (isLocalModuleSpecifier(callableRequiredModuleSpecifier) || hasCompilerTransform !== null) {
+      return Boolean(hasCompilerTransform);
+    }
+    return null;
+  }
   if (!ts.isPropertyAccessExpression(target) && !ts.isElementAccessExpression(target)) return null;
   const propertyName = ts.isPropertyAccessExpression(target)
     ? target.name.text
@@ -1607,8 +1634,8 @@ const analyzeConfigCallTarget = (
       allowCompilerTransform,
       argumentsList: callExpression.arguments,
     });
-    if (isLocalModuleSpecifier(requiredModuleSpecifier) || hasCompilerTransform) {
-      return hasCompilerTransform;
+    if (isLocalModuleSpecifier(requiredModuleSpecifier) || hasCompilerTransform !== null) {
+      return Boolean(hasCompilerTransform);
     }
     return null;
   }
@@ -1634,8 +1661,8 @@ const analyzeConfigCallTarget = (
       allowCompilerTransform,
       argumentsList: callExpression.arguments,
     });
-    if (isLocalModuleSpecifier(importBinding.moduleSpecifier) || hasCompilerTransform) {
-      return hasCompilerTransform;
+    if (isLocalModuleSpecifier(importBinding.moduleSpecifier) || hasCompilerTransform !== null) {
+      return Boolean(hasCompilerTransform);
     }
     return null;
   }
@@ -1894,8 +1921,11 @@ const analyzeConfigNode = (
             allowCompilerTransform,
             argumentsList: node.arguments,
           });
-          if (isLocalModuleSpecifier(importBinding.moduleSpecifier) || hasCompilerTransform) {
-            return hasCompilerTransform;
+          if (
+            isLocalModuleSpecifier(importBinding.moduleSpecifier) ||
+            hasCompilerTransform !== null
+          ) {
+            return Boolean(hasCompilerTransform);
           }
         }
       }
@@ -2006,12 +2036,14 @@ const analyzeConfigNode = (
         ) {
           return true;
         }
-        return analyzeImportedConfig({
-          analysis,
-          moduleSpecifier: importBinding.moduleSpecifier,
-          exportName: node.argumentExpression.text,
-          allowCompilerTransform,
-        });
+        return Boolean(
+          analyzeImportedConfig({
+            analysis,
+            moduleSpecifier: importBinding.moduleSpecifier,
+            exportName: node.argumentExpression.text,
+            allowCompilerTransform,
+          }),
+        );
       }
       const selectedProperty = getSelectedObjectProperty(
         node.expression,

@@ -1527,6 +1527,56 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
   });
 
+  it.each([
+    {
+      name: "default-import",
+      config: "import make from '@fixture/config'; export default make(false);",
+      entryFilename: "index.js",
+      entrySource: "export default (reactCompiler) => ({ reactCompiler });",
+    },
+    {
+      name: "namespace-import",
+      config: "import * as helper from '@fixture/config'; export default helper.make(false);",
+      entryFilename: "index.js",
+      entrySource: "export const make = (reactCompiler) => ({ reactCompiler });",
+    },
+    {
+      name: "commonjs-member",
+      config: "module.exports = require('@fixture/config').make(false);",
+      entryFilename: "index.cjs",
+      entrySource: "exports.make = (reactCompiler) => ({ reactCompiler });",
+    },
+    {
+      name: "commonjs-callable",
+      config: "module.exports = require('@fixture/config')(false);",
+      entryFilename: "index.cjs",
+      entrySource: "module.exports = (reactCompiler) => ({ reactCompiler });",
+    },
+  ])("preserves disabled arguments for $name package helpers", (testCase) => {
+    const projectDirectory = path.join(tempDirectory, `disabled-package-helper-${testCase.name}`);
+    const configDirectory = path.join(projectDirectory, "node_modules", "@fixture", "config");
+    fs.mkdirSync(configDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: `disabled-package-helper-${testCase.name}`,
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "@fixture/config": "workspace:*" },
+      }),
+    );
+    fs.writeFileSync(path.join(projectDirectory, "vite.config.ts"), testCase.config);
+    fs.writeFileSync(
+      path.join(configDirectory, "package.json"),
+      JSON.stringify({
+        name: "@fixture/config",
+        exports: `./${testCase.entryFilename}`,
+      }),
+    );
+    fs.writeFileSync(path.join(configDirectory, testCase.entryFilename), testCase.entrySource);
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
+  });
+
   it("detects React Compiler through an import-only package export", () => {
     const projectDirectory = path.join(tempDirectory, "import-only-package-react-compiler");
     const configDirectory = path.join(

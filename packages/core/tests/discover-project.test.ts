@@ -1820,6 +1820,23 @@ describe("discoverProject", () => {
       expected: false,
     },
     {
+      name: "same-name-forwarded-conditional-value",
+      config:
+        "const inner = (value) => ({ ordinary: value ? {} : undefined }); const outer = (value) => inner(value); export default outer(undefined);",
+      expected: false,
+    },
+    {
+      name: "self-referential-conditional-config",
+      config: "const config = config ? config : { plugins: [] }; export default config;",
+      expected: false,
+    },
+    {
+      name: "circular-config-spreads",
+      config:
+        "const first = { ...second }; const second = { ...first }; export default { ...first };",
+      expected: false,
+    },
+    {
       name: "shadowed-function-declaration",
       config:
         "import compiler from 'babel-plugin-react-compiler'; const makeConfig = () => { function compiler() {} return { plugins: [compiler] }; }; export default makeConfig();",
@@ -2218,6 +2235,12 @@ describe("discoverProject", () => {
       name: "nullish-react-compiler-flag-fallback",
       config: "export default { reactCompiler: null ?? true };",
       expected: true,
+    },
+    {
+      name: "shared-disabled-react-compiler-branch",
+      config:
+        "const disabled = false; const condition = process.env.NODE_ENV; export default { reactCompiler: condition ? disabled : disabled };",
+      expected: false,
     },
     {
       name: "false-or-plugin",

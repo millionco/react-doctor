@@ -3,4 +3,4 @@
 "react-doctor": patch
 ---
 
-Fix stack overflow in project discovery when analyzing circular config references. The issue manifested when config files contained deeply nested parenthesized expressions, circular object spreads, or self-referential bindings during React Compiler detection.
+Fix a stack overflow in React Compiler project discovery when nested configuration helpers forward same-named parameters or config bindings resolve cyclically.

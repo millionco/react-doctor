@@ -76,52 +76,81 @@ const expressionDependsOnMutableCapture = (
   callbackScope: ScopeDescriptor,
   context: RuleContext,
 ): boolean => {
-  let dependsOnMutableCapture = false;
-  walkAst(expression, (candidate) => {
-    if (dependsOnMutableCapture || (candidate !== expression && isFunctionLike(candidate))) {
-      return false;
-    }
-    if (isNodeOfType(candidate, "ThisExpression")) {
-      dependsOnMutableCapture = true;
-      return false;
-    }
-    if (isNodeOfType(candidate, "MemberExpression")) {
-      const rootIdentifier = getMemberRootIdentifier(candidate);
-      const symbol = rootIdentifier ? context.scopes.symbolFor(rootIdentifier) : null;
+  const visitedLocalSymbolIds = new Set<number>();
+  const inspectExpression = (expressionToInspect: EsTreeNode): boolean => {
+    let dependsOnMutableCapture = false;
+    walkAst(expressionToInspect, (candidate) => {
+      if (
+        dependsOnMutableCapture ||
+        (candidate !== expressionToInspect && isFunctionLike(candidate))
+      ) {
+        return false;
+      }
+      if (isNodeOfType(candidate, "ThisExpression")) {
+        dependsOnMutableCapture = true;
+        return false;
+      }
+      if (isNodeOfType(candidate, "MemberExpression")) {
+        const rootIdentifier = getMemberRootIdentifier(candidate);
+        const symbol = rootIdentifier ? context.scopes.symbolFor(rootIdentifier) : null;
+        if (
+          symbol &&
+          !isScopeWithin(symbol.scope, callbackScope) &&
+          symbol.kind !== "import" &&
+          symbol.kind !== "function" &&
+          symbol.kind !== "class"
+        ) {
+          dependsOnMutableCapture = true;
+          return false;
+        }
+      }
+      if (!isNodeOfType(candidate, "Identifier")) return;
+      const symbol = context.scopes.symbolFor(candidate);
+      const hasMutableConstInitializer =
+        symbol?.kind === "const" &&
+        Boolean(
+          symbol.initializer &&
+          (isNodeOfType(symbol.initializer, "ArrayExpression") ||
+            isNodeOfType(symbol.initializer, "ObjectExpression") ||
+            isNodeOfType(symbol.initializer, "NewExpression")),
+        );
       if (
         symbol &&
         !isScopeWithin(symbol.scope, callbackScope) &&
-        symbol.kind !== "import" &&
-        symbol.kind !== "function" &&
-        symbol.kind !== "class"
+        (symbol.kind === "let" ||
+          symbol.kind === "var" ||
+          symbol.kind === "parameter" ||
+          hasMutableConstInitializer)
       ) {
         dependsOnMutableCapture = true;
         return false;
       }
-    }
-    if (!isNodeOfType(candidate, "Identifier")) return;
-    const symbol = context.scopes.symbolFor(candidate);
-    const hasMutableConstInitializer =
-      symbol?.kind === "const" &&
-      Boolean(
-        symbol.initializer &&
-        (isNodeOfType(symbol.initializer, "ArrayExpression") ||
-          isNodeOfType(symbol.initializer, "ObjectExpression") ||
-          isNodeOfType(symbol.initializer, "NewExpression")),
-      );
-    if (
-      symbol &&
-      !isScopeWithin(symbol.scope, callbackScope) &&
-      (symbol.kind === "let" ||
-        symbol.kind === "var" ||
-        symbol.kind === "parameter" ||
-        hasMutableConstInitializer)
-    ) {
-      dependsOnMutableCapture = true;
-      return false;
-    }
-  });
-  return dependsOnMutableCapture;
+      if (
+        !symbol ||
+        !isScopeWithin(symbol.scope, callbackScope) ||
+        visitedLocalSymbolIds.has(symbol.id)
+      ) {
+        return;
+      }
+      const initializer = getDirectUnreassignedInitializer(symbol);
+      if (
+        !initializer ||
+        isFunctionLike(initializer) ||
+        isNodeOfType(initializer, "ArrayExpression") ||
+        isNodeOfType(initializer, "ObjectExpression") ||
+        isNodeOfType(initializer, "NewExpression")
+      ) {
+        return;
+      }
+      visitedLocalSymbolIds.add(symbol.id);
+      if (inspectExpression(initializer)) {
+        dependsOnMutableCapture = true;
+        return false;
+      }
+    });
+    return dependsOnMutableCapture;
+  };
+  return inspectExpression(expression);
 };
 
 const callbackHasVariantDependentPatch = (callback: EsTreeNode, context: RuleContext): boolean => {

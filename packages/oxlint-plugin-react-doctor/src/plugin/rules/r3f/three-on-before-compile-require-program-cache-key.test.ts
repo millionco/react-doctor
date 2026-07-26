@@ -10,6 +10,28 @@ describe("three-on-before-compile-require-program-cache-key", () => {
      material.onBeforeCompile = (shader) => {
        if (mode === "warm") shader.fragmentShader = shader.fragmentShader.replace("A", "B");
      };`,
+    `import { MeshStandardMaterial } from "three";
+     let mode = "warm";
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       const patch = mode === "warm" ? "B" : "C";
+       shader.fragmentShader = shader.fragmentShader.replace("A", patch);
+     };`,
+    `import { MeshStandardMaterial } from "three";
+     const options = { mode: "warm" };
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       const selectedMode = options.mode;
+       const patch = \`#define MODE_\${selectedMode}\\n\`;
+       shader.vertexShader = patch + shader.vertexShader;
+     };`,
+    `import { MeshStandardMaterial } from "three";
+     let enabled = true;
+     const material = new MeshStandardMaterial();
+     material.onBeforeCompile = shader => {
+       let shouldPatch = enabled;
+       if (shouldPatch) shader.fragmentShader += " ";
+     };`,
     `import * as THREE from "three";
      const options = { useFog: true };
      const material = new THREE.MeshPhongMaterial();
@@ -172,6 +194,9 @@ describe("three-on-before-compile-require-program-cache-key", () => {
     `class MeshStandardMaterial {}; let mode = "warm"; const material = new MeshStandardMaterial(); material.onBeforeCompile = shader => { if (mode === "warm") shader.fragmentShader += " "; };`,
     `import { MeshStandardMaterial } from "three"; const material = new MeshStandardMaterial(); material.onBeforeCompile = patchShader;`,
     `import { MeshStandardMaterial } from "three"; import { cacheKey } from "./cache-key"; let mode = "warm"; const material = new MeshStandardMaterial({ customProgramCacheKey: cacheKey }); material.onBeforeCompile = shader => { if (mode === "warm") shader.fragmentShader += " "; };`,
+    `import { MeshStandardMaterial } from "three"; let mode = "warm"; const material = new MeshStandardMaterial(); material.onBeforeCompile = shader => { const patch = "static"; shader.fragmentShader += patch; };`,
+    `import { MeshStandardMaterial } from "three"; let mode = "warm"; const material = new MeshStandardMaterial(); material.onBeforeCompile = shader => { const patch = { source: "static", unused: mode }; shader.fragmentShader += patch.source; };`,
+    `import { MeshStandardMaterial } from "three"; let mode = "warm"; const material = new MeshStandardMaterial(); material.onBeforeCompile = shader => { let patch = mode; patch = "static"; shader.fragmentShader += patch; };`,
   ])(
     "keeps keyed, stable, uniform-only, differently keyed, unrelated, and unresolved patches quiet",
     (code) => {

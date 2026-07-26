@@ -2168,19 +2168,21 @@ const hasCompilerInConfigFile = (filePath: string): boolean =>
 const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean =>
   filenames.some((filename) => hasCompilerInConfigFile(path.join(directory, filename)));
 
-const hasCompilerInPackageJsonConfig = (packageJson: PackageJson): boolean =>
-  isPlainObject(packageJson.babel) &&
-  analyzeConfigSourceFileExport(
-    ts.parseJsonText("package.json", JSON.stringify(packageJson.babel)),
-    "package.json#babel",
+const hasCompilerInPackageJsonConfig = (directory: string, packageJson: PackageJson): boolean => {
+  if (!isPlainObject(packageJson.babel)) return false;
+  const packageJsonPath = path.join(directory, "package.json");
+  return analyzeConfigSourceFileExport(
+    ts.parseJsonText(packageJsonPath, JSON.stringify(packageJson.babel)),
+    packageJsonPath,
     "default",
     false,
     0,
     new Set<string>(),
   );
+};
 
 const hasCompilerConfiguration = (directory: string, packageJson: PackageJson): boolean =>
-  hasCompilerInPackageJsonConfig(packageJson) ||
+  hasCompilerInPackageJsonConfig(directory, packageJson) ||
   hasCompilerInConfigFiles(directory, REACT_COMPILER_CONFIG_FILENAMES);
 
 const hasCompilerConfigurationInAncestors = (directory: string): boolean => {
@@ -2193,7 +2195,7 @@ const hasCompilerConfigurationInAncestors = (directory: string): boolean => {
       ? readPackageJson(ancestorPackagePath)
       : {};
     if (
-      hasCompilerInPackageJsonConfig(ancestorPackageJson) ||
+      hasCompilerInPackageJsonConfig(ancestorDirectory, ancestorPackageJson) ||
       hasCompilerInConfigFiles(ancestorDirectory, BABEL_CONFIG_FILENAMES)
     ) {
       return true;

@@ -1499,6 +1499,34 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
   });
 
+  it("detects React Compiler extended from a package.json Babel config", () => {
+    const projectDirectory = path.join(tempDirectory, "package-json-babel-package-config");
+    const configDirectory = path.join(projectDirectory, "node_modules", "@fixture", "babel-config");
+    fs.mkdirSync(configDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "package-json-babel-package-config",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "@fixture/babel-config": "workspace:*" },
+        babel: { extends: "@fixture/babel-config" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(configDirectory, "package.json"),
+      JSON.stringify({
+        name: "@fixture/babel-config",
+        exports: "./index.json",
+      }),
+    );
+    fs.writeFileSync(
+      path.join(configDirectory, "index.json"),
+      JSON.stringify({ plugins: ["babel-plugin-react-compiler"] }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
   it("detects React Compiler through an import-only package export", () => {
     const projectDirectory = path.join(tempDirectory, "import-only-package-react-compiler");
     const configDirectory = path.join(

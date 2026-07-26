@@ -1499,6 +1499,80 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
   });
 
+  it("detects React Compiler through an import-only package export", () => {
+    const projectDirectory = path.join(tempDirectory, "import-only-package-react-compiler");
+    const configDirectory = path.join(
+      projectDirectory,
+      "node_modules",
+      "@fixture",
+      "import-only-config",
+    );
+    fs.mkdirSync(configDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "import-only-package-react-compiler",
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { "@fixture/import-only-config": "workspace:*" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "import config from '@fixture/import-only-config';\nexport default config;\n",
+    );
+    fs.writeFileSync(
+      path.join(configDirectory, "package.json"),
+      JSON.stringify({
+        name: "@fixture/import-only-config",
+        type: "module",
+        exports: { import: "./index.js" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(configDirectory, "index.js"),
+      "export default { plugins: ['babel-plugin-react-compiler'] };\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
+  it.each([
+    { name: "dot", moduleSpecifier: ".", entryPath: "entry.js" },
+    { name: "dot-dot", moduleSpecifier: "..", entryPath: "nested/entry.js" },
+  ])("detects React Compiler through an exact $name config import", (testCase) => {
+    const projectDirectory = path.join(tempDirectory, `${testCase.name}-specifier-react-compiler`);
+    const configDirectory = path.join(
+      projectDirectory,
+      "node_modules",
+      "@fixture",
+      `${testCase.name}-config`,
+    );
+    fs.mkdirSync(path.dirname(path.join(configDirectory, testCase.entryPath)), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: `${testCase.name}-specifier-react-compiler`,
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      `import config from './node_modules/@fixture/${testCase.name}-config/${testCase.entryPath}';\nexport default config;\n`,
+    );
+    fs.writeFileSync(
+      path.join(configDirectory, testCase.entryPath),
+      `import config from '${testCase.moduleSpecifier}';\nexport default config;\n`,
+    );
+    fs.writeFileSync(
+      path.join(configDirectory, "index.js"),
+      "export default { plugins: ['babel-plugin-react-compiler'] };\n",
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
   it("does not infer React Compiler from an unused transitive dependency", () => {
     const projectDirectory = path.join(tempDirectory, "unused-dependency-package-react-compiler");
     const buildConfigDirectory = path.join(
@@ -1602,6 +1676,24 @@ describe("discoverProject", () => {
       name: "shadowed-vite-namespace",
       config:
         "import * as viteReact from '@vitejs/plugin-react'; const make = (viteReact) => ({ plugins: [viteReact.reactCompilerPreset()] }); export default make(other);",
+      expected: false,
+    },
+    {
+      name: "shadowed-direct-compiler-call",
+      config:
+        "import { reactCompilerPreset } from '@vitejs/plugin-react'; const make = (reactCompilerPreset) => ({ plugins: [reactCompilerPreset()] }); export default make(other);",
+      expected: false,
+    },
+    {
+      name: "shadowed-compiler-property",
+      config:
+        "import * as viteReact from '@vitejs/plugin-react'; const make = () => { const viteReact = other; return { plugins: [viteReact.reactCompilerPreset] }; }; export default make();",
+      expected: false,
+    },
+    {
+      name: "shadowed-compiler-element",
+      config:
+        "import * as viteReact from '@vitejs/plugin-react'; const make = () => { const viteReact = other; return { plugins: [viteReact['reactCompilerPreset']] }; }; export default make();",
       expected: false,
     },
     {

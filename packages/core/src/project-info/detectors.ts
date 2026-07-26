@@ -62,7 +62,10 @@ const resolvePackageExtendsPath = (
 
 const resolveExtendsPath = (extendsValue: string, fromConfigDirectory: string): string | null => {
   if (isLocalModuleSpecifier(extendsValue)) {
-    return ensureJsonExtension(path.resolve(fromConfigDirectory, extendsValue));
+    const resolvedPath = path.resolve(fromConfigDirectory, extendsValue);
+    if (isFile(resolvedPath)) return resolvedPath;
+    const directoryConfigPath = path.join(resolvedPath, TSCONFIG_FILENAME);
+    return isFile(directoryConfigPath) ? directoryConfigPath : ensureJsonExtension(resolvedPath);
   }
 
   return resolvePackageExtendsPath(extendsValue, fromConfigDirectory);
@@ -1593,7 +1596,8 @@ const analyzeConfigCallTarget = (
     const isRequireShadowed =
       ts.isCallExpression(target.expression) &&
       ts.isIdentifier(target.expression.expression) &&
-      (getScopedConfigBinding(target.expression.expression).wasFound ||
+      (analysis.localBindings.has(target.expression.expression.text) ||
+        getScopedConfigBinding(target.expression.expression).wasFound ||
         hasTopLevelValueBinding(analysis.sourceFile, "require"));
     if (isRequireShadowed) return false;
     const hasCompilerTransform = analyzeImportedConfig({
@@ -1610,13 +1614,12 @@ const analyzeConfigCallTarget = (
   }
 
   if (!ts.isIdentifier(target.expression)) return null;
-  if (
+  const isTargetShadowed =
     analysis.localBindings.has(target.expression.text) ||
-    getScopedConfigBinding(target.expression).wasFound
-  ) {
-    return null;
-  }
-  const importBinding = getImportBinding(analysis.sourceFile, target.expression.text);
+    getScopedConfigBinding(target.expression).wasFound;
+  const importBinding = isTargetShadowed
+    ? null
+    : getImportBinding(analysis.sourceFile, target.expression.text);
   if (importBinding?.isNamespace) {
     if (
       allowCompilerTransform &&
@@ -1916,7 +1919,8 @@ const analyzeConfigNode = (
       const isRequireShadowed =
         ts.isCallExpression(node.expression) &&
         ts.isIdentifier(node.expression.expression) &&
-        (getScopedConfigBinding(node.expression.expression).wasFound ||
+        (analysis.localBindings.has(node.expression.expression.text) ||
+          getScopedConfigBinding(node.expression.expression).wasFound ||
           hasTopLevelValueBinding(analysis.sourceFile, "require"));
       if (isRequireShadowed) return false;
       if (

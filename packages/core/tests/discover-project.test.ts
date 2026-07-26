@@ -1673,6 +1673,12 @@ describe("discoverProject", () => {
       expected: false,
     },
     {
+      name: "parameter-shadowed-require-member-call",
+      config:
+        "const make = (require) => ({ plugins: [require('babel-plugin-react-compiler').default()] }); export default make(other);",
+      expected: false,
+    },
+    {
       name: "shadowed-vite-namespace",
       config:
         "import * as viteReact from '@vitejs/plugin-react'; const make = (viteReact) => ({ plugins: [viteReact.reactCompilerPreset()] }); export default make(other);",
@@ -2187,6 +2193,12 @@ describe("discoverProject", () => {
       name: "local-method-helper-enabled-argument",
       config:
         "const helper = { make(reactCompiler) { return { reactCompiler }; } }; export default helper.make(true);",
+      expected: true,
+    },
+    {
+      name: "scoped-method-helper-enabled-argument",
+      config:
+        "const make = () => { const helper = { make(reactCompiler) { return { reactCompiler }; } }; return helper.make(true); }; export default make();",
       expected: true,
     },
     {

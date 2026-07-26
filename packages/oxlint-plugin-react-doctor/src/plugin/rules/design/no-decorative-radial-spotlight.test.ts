@@ -126,6 +126,7 @@ describe("no-decorative-radial-spotlight", () => {
           <div className="fixed inset-x-0 inset-y-0 top-1 bg-[radial-gradient(circle,rgba(14,165,233,0.2),transparent)]" />
           <div className="fixed inset-x-0 inset-y-0 !top-1 bg-[radial-gradient(circle,rgba(14,165,233,0.2),transparent)]" />
           <div className="fixed inset-0 -top-1 bg-[radial-gradient(circle,rgba(14,165,233,0.2),transparent)]" />
+          <div className="absolute top-[-10%] h-[40vw] w-[40vw] bg-[radial-gradient(circle,rgba(14,165,233,0.2),transparent)]" />
           <div className="fixed inset-x-0 inset-y-0 bg-[radial-gradient(circle,rgba(14,165,233,0.2),transparent)]" style={{ top: 1 }} />
           <div className="fixed inset-x-0 bg-[radial-gradient(circle,rgba(14,165,233,0.2),transparent)]" />
           <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, left: 1, backgroundImage: "radial-gradient(circle, rgb(37 99 235 / 20%), transparent)" }} />

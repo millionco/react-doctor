@@ -16,6 +16,7 @@ describe("parseStaticTailwindLengthPx", () => {
   it("rejects unrelated, dynamic, negative, and unitless arbitrary values", () => {
     expect(parseStaticTailwindLengthPx("h-7", "w")).toBeNull();
     expect(parseStaticTailwindLengthPx("w-[var(--width)]", "w")).toBeNull();
+    expect(parseStaticTailwindLengthPx("top-[-10%]", "top-[")).toBeNull();
     expect(parseStaticTailwindLengthPx("-w-2", "w")).toBeNull();
     expect(parseStaticTailwindLengthPx("w-[8]", "w")).toBeNull();
   });

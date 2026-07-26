@@ -27,8 +27,10 @@ interface TsConfigShape {
   readonly compilerOptions: TsConfigCompilerOptions;
 }
 
-const isRelativeExtendsValue = (extendsValue: string): boolean =>
-  extendsValue.startsWith("./") || extendsValue.startsWith("../") || path.isAbsolute(extendsValue);
+const isLocalModuleSpecifier = (moduleSpecifier: string): boolean =>
+  moduleSpecifier.startsWith("./") ||
+  moduleSpecifier.startsWith("../") ||
+  path.isAbsolute(moduleSpecifier);
 
 const ensureJsonExtension = (filePath: string): string =>
   path.extname(filePath) === "" ? `${filePath}.json` : filePath;
@@ -56,7 +58,7 @@ const resolvePackageExtendsPath = (
 };
 
 const resolveExtendsPath = (extendsValue: string, fromConfigDirectory: string): string | null => {
-  if (isRelativeExtendsValue(extendsValue)) {
+  if (isLocalModuleSpecifier(extendsValue)) {
     return ensureJsonExtension(path.resolve(fromConfigDirectory, extendsValue));
   }
 
@@ -395,6 +397,15 @@ const resolveImportedConfigFile = (
   fromFilePath: string,
   moduleSpecifier: string,
 ): string | null => {
+  if (!isLocalModuleSpecifier(moduleSpecifier)) {
+    try {
+      const resolvedPath = createRequire(fromFilePath).resolve(moduleSpecifier);
+      return isFile(resolvedPath) ? resolvedPath : null;
+    } catch {
+      return null;
+    }
+  }
+
   const unresolvedPath = path.resolve(path.dirname(fromFilePath), moduleSpecifier);
   const extension = path.extname(unresolvedPath);
   const candidatePaths = extension
@@ -467,6 +478,14 @@ interface ConfigExpressionAnalysis {
   readonly visitedNodes: Set<string>;
   readonly localBindings: ReadonlyMap<string, ts.Expression | null>;
   readonly activeFunctions: ReadonlySet<number>;
+}
+
+interface AnalyzeImportedConfigOptions {
+  readonly analysis: ConfigExpressionAnalysis;
+  readonly moduleSpecifier: string;
+  readonly exportName: string;
+  readonly allowCompilerTransform: boolean;
+  readonly argumentsList?: readonly ts.Expression[];
 }
 
 interface ScopedConfigBinding {
@@ -1433,6 +1452,27 @@ const analyzeConfigFunction = (
   return hasCompiler;
 };
 
+const analyzeImportedConfig = ({
+  analysis,
+  moduleSpecifier,
+  exportName,
+  allowCompilerTransform,
+  argumentsList,
+}: AnalyzeImportedConfigOptions): boolean => {
+  const importedFilePath = resolveImportedConfigFile(analysis.filePath, moduleSpecifier);
+  return Boolean(
+    importedFilePath &&
+    analyzeConfigModuleExport(
+      importedFilePath,
+      exportName,
+      allowCompilerTransform,
+      analysis.importDepth + 1,
+      analysis.visitedModules,
+      argumentsList,
+    ),
+  );
+};
+
 const analyzeConfigIdentifier = (
   identifier: ts.Identifier,
   analysis: ConfigExpressionAnalysis,
@@ -1499,21 +1539,12 @@ const analyzeConfigIdentifier = (
     ) {
       return true;
     }
-    if (!importBinding.moduleSpecifier.startsWith(".")) return false;
-    const importedFilePath = resolveImportedConfigFile(
-      analysis.filePath,
-      importBinding.moduleSpecifier,
-    );
-    return Boolean(
-      importedFilePath &&
-      analyzeConfigModuleExport(
-        importedFilePath,
-        importBinding.exportName,
-        allowCompilerTransform,
-        analysis.importDepth + 1,
-        analysis.visitedModules,
-      ),
-    );
+    return analyzeImportedConfig({
+      analysis,
+      moduleSpecifier: importBinding.moduleSpecifier,
+      exportName: importBinding.exportName,
+      allowCompilerTransform,
+    });
   }
   const topLevelBinding = getTopLevelBinding(analysis.sourceFile, identifier.text);
   return Boolean(
@@ -1550,39 +1581,45 @@ const analyzeConfigCallTarget = (
       (getScopedConfigBinding(target.expression.expression).wasFound ||
         hasTopLevelValueBinding(analysis.sourceFile, "require"));
     if (isRequireShadowed) return false;
-    if (!requiredModuleSpecifier.startsWith(".")) return null;
-    const importedFilePath = resolveImportedConfigFile(analysis.filePath, requiredModuleSpecifier);
-    return Boolean(
-      importedFilePath &&
-      analyzeConfigModuleExport(
-        importedFilePath,
-        propertyName,
-        allowCompilerTransform,
-        analysis.importDepth + 1,
-        analysis.visitedModules,
-        callExpression.arguments,
-      ),
-    );
+    const hasCompilerTransform = analyzeImportedConfig({
+      analysis,
+      moduleSpecifier: requiredModuleSpecifier,
+      exportName: propertyName,
+      allowCompilerTransform,
+      argumentsList: callExpression.arguments,
+    });
+    if (isLocalModuleSpecifier(requiredModuleSpecifier) || hasCompilerTransform) {
+      return hasCompilerTransform;
+    }
+    return null;
   }
 
   if (!ts.isIdentifier(target.expression)) return null;
+  if (
+    analysis.localBindings.has(target.expression.text) ||
+    getScopedConfigBinding(target.expression).wasFound
+  ) {
+    return null;
+  }
   const importBinding = getImportBinding(analysis.sourceFile, target.expression.text);
-  if (importBinding?.isNamespace && importBinding.moduleSpecifier.startsWith(".")) {
-    const importedFilePath = resolveImportedConfigFile(
-      analysis.filePath,
-      importBinding.moduleSpecifier,
-    );
-    return Boolean(
-      importedFilePath &&
-      analyzeConfigModuleExport(
-        importedFilePath,
-        propertyName,
-        allowCompilerTransform,
-        analysis.importDepth + 1,
-        analysis.visitedModules,
-        callExpression.arguments,
-      ),
-    );
+  if (importBinding?.isNamespace) {
+    if (
+      allowCompilerTransform &&
+      isCompilerTransformModule(importBinding.moduleSpecifier, propertyName)
+    ) {
+      return true;
+    }
+    const hasCompilerTransform = analyzeImportedConfig({
+      analysis,
+      moduleSpecifier: importBinding.moduleSpecifier,
+      exportName: propertyName,
+      allowCompilerTransform,
+      argumentsList: callExpression.arguments,
+    });
+    if (isLocalModuleSpecifier(importBinding.moduleSpecifier) || hasCompilerTransform) {
+      return hasCompilerTransform;
+    }
+    return null;
   }
 
   const selectedProperty = getSelectedObjectProperty(target.expression, propertyName, analysis);
@@ -1673,24 +1710,14 @@ const analyzeConfigNode = (
         }
         const propertyAllowsCompilerTransform =
           propertyName === "plugins" || propertyName === "presets";
-        if (
-          propertyName === "extends" &&
-          ts.isStringLiteralLike(property.initializer) &&
-          property.initializer.text.startsWith(".")
-        ) {
-          const extendedFilePath = resolveImportedConfigFile(
-            analysis.filePath,
-            property.initializer.text,
-          );
+        if (propertyName === "extends" && ts.isStringLiteralLike(property.initializer)) {
           if (
-            extendedFilePath &&
-            analyzeConfigModuleExport(
-              extendedFilePath,
-              "default",
-              false,
-              analysis.importDepth + 1,
-              analysis.visitedModules,
-            )
+            analyzeImportedConfig({
+              analysis,
+              moduleSpecifier: property.initializer.text,
+              exportName: "default",
+              allowCompilerTransform: false,
+            })
           ) {
             return true;
           }
@@ -1818,43 +1845,36 @@ const analyzeConfigNode = (
     if (directModuleSpecifier && !isRequireShadowed) {
       if (allowCompilerTransform && isCompilerTransformModule(directModuleSpecifier, "default"))
         return true;
-      if (directModuleSpecifier.startsWith(".")) {
-        const importedFilePath = resolveImportedConfigFile(
-          analysis.filePath,
-          directModuleSpecifier,
-        );
-        if (
-          importedFilePath &&
-          analyzeConfigModuleExport(
-            importedFilePath,
-            "default",
-            allowCompilerTransform,
-            analysis.importDepth + 1,
-            analysis.visitedModules,
-          )
-        ) {
-          return true;
-        }
+      if (
+        analyzeImportedConfig({
+          analysis,
+          moduleSpecifier: directModuleSpecifier,
+          exportName: "default",
+          allowCompilerTransform,
+        })
+      ) {
+        return true;
       }
     }
     if (ts.isIdentifier(node.expression)) {
       const importBinding = getImportBinding(analysis.sourceFile, node.expression.text);
-      if (importBinding?.moduleSpecifier.startsWith(".")) {
-        const importedFilePath = resolveImportedConfigFile(
-          analysis.filePath,
-          importBinding.moduleSpecifier,
-        );
-        return Boolean(
-          importedFilePath &&
-          analyzeConfigModuleExport(
-            importedFilePath,
-            importBinding.exportName,
-            allowCompilerTransform,
-            analysis.importDepth + 1,
-            analysis.visitedModules,
-            node.arguments,
-          ),
-        );
+      if (importBinding) {
+        if (
+          allowCompilerTransform &&
+          isCompilerTransformModule(importBinding.moduleSpecifier, importBinding.exportName)
+        ) {
+          return true;
+        }
+        const hasCompilerTransform = analyzeImportedConfig({
+          analysis,
+          moduleSpecifier: importBinding.moduleSpecifier,
+          exportName: importBinding.exportName,
+          allowCompilerTransform,
+          argumentsList: node.arguments,
+        });
+        if (isLocalModuleSpecifier(importBinding.moduleSpecifier) || hasCompilerTransform) {
+          return hasCompilerTransform;
+        }
       }
       const topLevelBinding = getTopLevelBinding(analysis.sourceFile, node.expression.text);
       if (
@@ -1879,21 +1899,15 @@ const analyzeConfigNode = (
         (getScopedConfigBinding(node.expression.expression).wasFound ||
           hasTopLevelValueBinding(analysis.sourceFile, "require"));
       if (isRequireShadowed) return false;
-      if (requiredModuleSpecifier.startsWith(".")) {
-        const importedFilePath = resolveImportedConfigFile(
-          analysis.filePath,
-          requiredModuleSpecifier,
-        );
-        return Boolean(
-          importedFilePath &&
-          analyzeConfigModuleExport(
-            importedFilePath,
-            node.name.text,
-            allowCompilerTransform,
-            analysis.importDepth + 1,
-            analysis.visitedModules,
-          ),
-        );
+      if (
+        analyzeImportedConfig({
+          analysis,
+          moduleSpecifier: requiredModuleSpecifier,
+          exportName: node.name.text,
+          allowCompilerTransform,
+        })
+      ) {
+        return true;
       }
       return (
         allowCompilerTransform && isCompilerTransformModule(requiredModuleSpecifier, node.name.text)
@@ -1914,23 +1928,15 @@ const analyzeConfigNode = (
         ) {
           return true;
         }
-        if (importBinding.moduleSpecifier.startsWith(".")) {
-          const importedFilePath = resolveImportedConfigFile(
-            analysis.filePath,
-            importBinding.moduleSpecifier,
-          );
-          if (
-            importedFilePath &&
-            analyzeConfigModuleExport(
-              importedFilePath,
-              node.name.text,
-              allowCompilerTransform,
-              analysis.importDepth + 1,
-              analysis.visitedModules,
-            )
-          ) {
-            return true;
-          }
+        if (
+          analyzeImportedConfig({
+            analysis,
+            moduleSpecifier: importBinding.moduleSpecifier,
+            exportName: node.name.text,
+            allowCompilerTransform,
+          })
+        ) {
+          return true;
         }
         return false;
       }
@@ -1956,22 +1962,12 @@ const analyzeConfigNode = (
         ) {
           return true;
         }
-        if (importBinding.moduleSpecifier.startsWith(".")) {
-          const importedFilePath = resolveImportedConfigFile(
-            analysis.filePath,
-            importBinding.moduleSpecifier,
-          );
-          return Boolean(
-            importedFilePath &&
-            analyzeConfigModuleExport(
-              importedFilePath,
-              node.argumentExpression.text,
-              allowCompilerTransform,
-              analysis.importDepth + 1,
-              analysis.visitedModules,
-            ),
-          );
-        }
+        return analyzeImportedConfig({
+          analysis,
+          moduleSpecifier: importBinding.moduleSpecifier,
+          exportName: node.argumentExpression.text,
+          allowCompilerTransform,
+        });
       }
       const selectedProperty = getSelectedObjectProperty(
         node.expression,

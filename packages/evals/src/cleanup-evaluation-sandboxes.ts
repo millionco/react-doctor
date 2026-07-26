@@ -1,4 +1,4 @@
-import { SandboxState } from "@daytona/sdk";
+import { DaytonaNotFoundError, SandboxState } from "@daytona/sdk";
 import type { Daytona, Sandbox } from "@daytona/sdk";
 import pLimit from "p-limit";
 
@@ -28,6 +28,23 @@ export const cleanupEvaluationSandboxes = async ({
           await daytona.delete(sandbox, SANDBOX_DELETE_TIMEOUT_SECONDS);
           return undefined;
         } catch (error) {
+          try {
+            const currentSandbox = await daytona.get(sandbox.id);
+            if (
+              currentSandbox.state === SandboxState.DESTROYING ||
+              currentSandbox.state === SandboxState.DESTROYED
+            ) {
+              return undefined;
+            }
+          } catch (recoveryError) {
+            if (recoveryError instanceof DaytonaNotFoundError) return undefined;
+            const cleanupError = new AggregateError(
+              [error, recoveryError],
+              `Failed to delete or recover Daytona sandbox ${sandbox.id}`,
+            );
+            process.stderr.write(`${toErrorMessage(cleanupError)}\n`);
+            return cleanupError;
+          }
           process.stderr.write(
             `Failed to clean up Daytona sandbox ${sandbox.id}: ${toErrorMessage(error)}\n`,
           );

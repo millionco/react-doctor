@@ -1577,6 +1577,39 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory).hasReactCompiler).toBe(false);
   });
 
+  it.each([
+    {
+      name: "babel-plugin-default",
+      packageName: "babel-plugin-react-compiler",
+      config: "module.exports = { plugins: [require('babel-plugin-react-compiler').default()] };",
+    },
+    {
+      name: "vite-react-preset",
+      packageName: "@vitejs/plugin-react",
+      config:
+        "module.exports = { plugins: [require('@vitejs/plugin-react').reactCompilerPreset()] };",
+    },
+  ])("detects $name when the compiler package resolves", (testCase) => {
+    const projectDirectory = path.join(tempDirectory, `resolved-${testCase.name}`);
+    const packageDirectory = path.join(projectDirectory, "node_modules", testCase.packageName);
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: `resolved-${testCase.name}`,
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(path.join(projectDirectory, "vite.config.ts"), testCase.config);
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: testCase.packageName, main: "./index.js" }),
+    );
+    fs.writeFileSync(path.join(packageDirectory, "index.js"), "module.exports = {};\n");
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
   it("detects React Compiler through an import-only package export", () => {
     const projectDirectory = path.join(tempDirectory, "import-only-package-react-compiler");
     const configDirectory = path.join(

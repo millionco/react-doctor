@@ -1627,6 +1627,12 @@ const analyzeConfigCallTarget = (
         getScopedConfigBinding(target.expression.expression).wasFound ||
         hasTopLevelValueBinding(analysis.sourceFile, "require"));
     if (isRequireShadowed) return false;
+    if (
+      allowCompilerTransform &&
+      isCompilerTransformModule(requiredModuleSpecifier, propertyName)
+    ) {
+      return true;
+    }
     const hasCompilerTransform = analyzeImportedConfig({
       analysis,
       moduleSpecifier: requiredModuleSpecifier,

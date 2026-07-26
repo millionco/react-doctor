@@ -24,9 +24,11 @@ export const SANDBOX_AUTO_STOP_INTERVAL_MINUTES = 60;
 export const SANDBOX_CREATE_TIMEOUT_SECONDS = 600;
 export const SANDBOX_SETUP_TIMEOUT_SECONDS = 1_800;
 export const SANDBOX_SCAN_TIMEOUT_SECONDS = 1_800;
+export const SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS = 1_800;
 export const SANDBOX_DELETE_TIMEOUT_SECONDS = 120;
 export const SANDBOX_CLEANUP_CONCURRENCY = 50;
 export const SANDBOX_CREATE_CONCURRENCY = 20;
+export const SANDBOX_REPORT_PATH = "/tmp/react-doctor-report.json";
 
 export const EVALUATION_SCHEMA_VERSION = 1;
 export const REACT_DOCTOR_REPORT_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([1, 2, 3]);
@@ -178,4 +180,5 @@ node /workspace/react-doctor/packages/react-doctor/bin/react-doctor.js \
   --no-supply-chain \
   --no-telemetry \
   --no-score \
-  "/workspace/target/$TARGET_ROOT_DIRECTORY"`;
+  "/workspace/target/$TARGET_ROOT_DIRECTORY" \
+  > ${SANDBOX_REPORT_PATH}`;

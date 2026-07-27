@@ -47,12 +47,15 @@ describe("createProjectGraph ownership", () => {
 
     const projectGraph = createProjectGraph({ roots: [rootDirectory] });
     const featureFilePath = path.join(featureDirectory, "src", "page.tsx");
+    const normalizedRootDirectory = rootDirectory.replaceAll(path.sep, "/");
+    const normalizedAppDirectory = appDirectory.replaceAll(path.sep, "/");
+    const normalizedFeatureDirectory = featureDirectory.replaceAll(path.sep, "/");
 
     expect(projectGraph.listProjects()).toEqual([
-      { name: "admin", directory: featureDirectory },
-      { name: "app", directory: appDirectory },
-      { name: "root", directory: rootDirectory },
+      { name: "admin", directory: normalizedFeatureDirectory },
+      { name: "app", directory: normalizedAppDirectory },
+      { name: "root", directory: normalizedRootDirectory },
     ]);
-    expect(projectGraph.resolveOwningProject(featureFilePath)).toBe(featureDirectory);
+    expect(projectGraph.resolveOwningProject(featureFilePath)).toBe(normalizedFeatureDirectory);
   });
 });

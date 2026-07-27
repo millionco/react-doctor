@@ -90,10 +90,9 @@ describe("#1456: rootDir redirect with repo-relative changed-file paths", () => 
       const headTotal = findings(headOnly);
       expect(headTotal).toBeGreaterThan(0);
 
-      const baselineResult = await scanRepoRoot(
-        [path.join("apps", "website", widgetRelative)],
-        { ref: baseRef },
-      );
+      const baselineResult = await scanRepoRoot([path.join("apps", "website", widgetRelative)], {
+        ref: baseRef,
+      });
       expect(baselineResult.baselineDegraded).toBeUndefined();
       expect(baselineResult.baselineDelta).toBeDefined();
       expect(baselineResult.baselineDelta?.baseTotalCount).toBeGreaterThan(0);

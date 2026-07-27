@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vite-plus/test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterAll, describe, expect, it } from "vite-plus/test";
 import type { Rule } from "./rule.js";
 import type { RulePackageContext } from "./rule-package-context.js";
 import { wrapWithSemanticContext } from "./wrap-with-semantic-context.js";
@@ -6,7 +9,13 @@ import { wrapWithSemanticContext } from "./wrap-with-semantic-context.js";
 const packageContexts = [
   {
     relativeDirectory: "packages/legacy",
-    capabilities: ["vite", "react", "react:17", "react:18"],
+    capabilities: [
+      "vite",
+      "react",
+      "react:17",
+      "react:18",
+      "target-blank-needs-explicit-protection",
+    ],
     dependencies: [
       {
         name: "react",
@@ -44,6 +53,12 @@ const buildSettings = (packageCapabilityGates: boolean) => ({
     packageContextEnabled: true,
     ...(packageCapabilityGates ? { packageCapabilityGates: true } : {}),
   },
+});
+
+const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "package-rule-context-"));
+
+afterAll(() => {
+  fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 });
 
 const didCreateRule = (
@@ -137,7 +152,7 @@ describe("package-aware rule context", () => {
     );
   });
 
-  it("preserves project-level capabilities that package contexts do not derive", () => {
+  it("keeps target-blank capabilities scoped to the owning package", () => {
     const rule: Rule = {
       id: "target-blank-disabled",
       severity: "warn",
@@ -147,7 +162,8 @@ describe("package-aware rule context", () => {
     const settings = buildSettings(true);
     settings["react-doctor"].capabilities.push("target-blank-needs-explicit-protection");
 
-    expect(didCreateRule(rule, "/workspace/packages/modern/src/app.tsx", settings)).toBe(false);
+    expect(didCreateRule(rule, "/workspace/packages/legacy/src/app.tsx", settings)).toBe(false);
+    expect(didCreateRule(rule, "/workspace/packages/modern/src/app.tsx", settings)).toBe(true);
   });
 
   it("does not leak package-derived project capabilities into an owning package", () => {
@@ -181,4 +197,34 @@ describe("package-aware rule context", () => {
 
     expect(didCreateRule(rule, "/outside/file.tsx", buildSettings(true))).toBe(true);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "resolves package ownership through a symlinked scan root",
+    () => {
+      const realProjectDirectory = path.join(temporaryDirectory, "real-project");
+      const linkedProjectDirectory = path.join(temporaryDirectory, "linked-project");
+      const sourceFile = path.join(realProjectDirectory, "packages", "modern", "src", "app.tsx");
+      fs.mkdirSync(path.dirname(sourceFile), { recursive: true });
+      fs.writeFileSync(sourceFile, "");
+      fs.symlinkSync(realProjectDirectory, linkedProjectDirectory);
+      const settings = buildSettings(true);
+      settings["react-doctor"].rootDirectory = realProjectDirectory;
+      let packageContext: RulePackageContext | null | undefined;
+
+      wrapWithSemanticContext({
+        id: "symlink-package-context",
+        severity: "warn",
+        create: (context) => {
+          packageContext = context.packageContext;
+          return {};
+        },
+      }).create({
+        report: () => {},
+        filename: path.join(linkedProjectDirectory, "packages", "modern", "src", "app.tsx"),
+        settings,
+      });
+
+      expect(packageContext?.relativeDirectory).toBe("packages/modern");
+    },
+  );
 });

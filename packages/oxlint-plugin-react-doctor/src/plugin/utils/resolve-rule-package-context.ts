@@ -4,6 +4,7 @@ import type { RulePackageContext, RulePackageDependency } from "./rule-package-c
 import { getReactDoctorSetting, getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { readOwnPropertyValue } from "./read-own-property-value.js";
+import { resolveRealPath } from "./resolve-real-path.js";
 
 interface RulePackageContextIndex {
   readonly packagesByDescendingDirectoryLength: ReadonlyArray<RulePackageContext>;
@@ -108,10 +109,17 @@ export const resolveRulePackageContext = (
   const normalizedFilename = normalizeFilename(path.resolve(filename));
   const cachedPackageContext = packageContextIndex.packageByFilename.get(normalizedFilename);
   if (cachedPackageContext !== undefined) return cachedPackageContext;
+  const realFilename = normalizeFilename(resolveRealPath(normalizedFilename));
+  const cachedRealPackageContext = packageContextIndex.packageByFilename.get(realFilename);
+  if (cachedRealPackageContext !== undefined) {
+    packageContextIndex.packageByFilename.set(normalizedFilename, cachedRealPackageContext);
+    return cachedRealPackageContext;
+  }
   const packageContext =
     packageContextIndex.packagesByDescendingDirectoryLength.find((packageContext) =>
-      isNormalizedPathInsideDirectory(normalizedFilename, packageContext.directory),
+      isNormalizedPathInsideDirectory(realFilename, packageContext.directory),
     ) ?? null;
   packageContextIndex.packageByFilename.set(normalizedFilename, packageContext);
+  packageContextIndex.packageByFilename.set(realFilename, packageContext);
   return packageContext;
 };

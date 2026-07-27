@@ -2,7 +2,7 @@ import * as path from "node:path";
 import type { Capability } from "oxlint-plugin-react-doctor/contracts";
 import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
 import type { ProjectInfo } from "../types/index.js";
-import { buildCapabilities } from "./capabilities.js";
+import { getCapabilities } from "./capabilities.js";
 import {
   MOBX_REACT_LITE_PACKAGE_NAME,
   MOBX_REACT_OBSERVER_PACKAGE_NAME,
@@ -189,5 +189,5 @@ export const buildPackageCapabilities = (
       detectNextjsStaticExport(packageNode.directory),
     sourceFileCount: 0,
   };
-  return buildCapabilities(projectInfo);
+  return getCapabilities(projectInfo);
 };

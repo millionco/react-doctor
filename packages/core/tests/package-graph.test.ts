@@ -61,7 +61,16 @@ describe("package graph", () => {
     const modernDirectory = path.join(graph.rootDirectory, "packages", "modern");
 
     expect(graph.getCapabilities(legacyDirectory)).toEqual(
-      new Set(["vite", "react", "react:17", "react:18", "client-only", "typescript", "pre-es2023"]),
+      new Set([
+        "vite",
+        "react",
+        "react:17",
+        "react:18",
+        "client-only",
+        "typescript",
+        "pre-es2023",
+        "target-blank-needs-explicit-protection",
+      ]),
     );
     expect(graph.getCapabilities(mobileDirectory)).toEqual(
       new Set([

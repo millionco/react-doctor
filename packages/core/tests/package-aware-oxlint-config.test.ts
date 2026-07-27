@@ -128,6 +128,7 @@ describe("package-aware oxlint config", () => {
           "react",
           "react:17",
           "react:18",
+          "target-blank-needs-explicit-protection",
           "typescript",
           "vite",
         ],

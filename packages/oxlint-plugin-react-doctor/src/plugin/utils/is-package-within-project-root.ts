@@ -1,18 +1,13 @@
-import * as fs from "node:fs";
 import { getCurrentResourceHost } from "../../internal/resource-host/resource-host-context.js";
 import { normalizeFilename } from "./normalize-filename.js";
+import { resolveRealPath } from "./resolve-real-path.js";
 
 const cachedRealDirectoryByDirectory = new Map<string, string>();
 
 const resolveRealDirectory = (directory: string): string => {
   const cached = cachedRealDirectoryByDirectory.get(directory);
   if (cached !== undefined) return cached;
-  let realDirectory: string;
-  try {
-    realDirectory = fs.realpathSync(directory);
-  } catch {
-    realDirectory = directory;
-  }
+  const realDirectory = resolveRealPath(directory);
   cachedRealDirectoryByDirectory.set(directory, realDirectory);
   return realDirectory;
 };

@@ -763,8 +763,17 @@ const runOxlintProject = (input: OxlintProjectParityInput): OxlintRunResult => {
   );
 
   const oxlintResult = spawnSync(
-    oxlintBinaryPath,
-    ["--config", configPath, "--format", "json", "--threads", "1", ...input.files.keys()],
+    process.execPath,
+    [
+      oxlintBinaryPath,
+      "--config",
+      configPath,
+      "--format",
+      "json",
+      "--threads",
+      "1",
+      ...input.files.keys(),
+    ],
     {
       cwd: temporaryDirectory,
       encoding: "utf8",

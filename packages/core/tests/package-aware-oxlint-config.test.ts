@@ -56,8 +56,9 @@ const runOxlint = (
   const configPath = path.join(temporaryDirectory, "oxlintrc.json");
   fs.writeFileSync(configPath, JSON.stringify(config), "utf8");
   const result = spawnSync(
-    oxlintBinaryPath,
+    process.execPath,
     [
+      oxlintBinaryPath,
       "--config",
       configPath,
       "--format",

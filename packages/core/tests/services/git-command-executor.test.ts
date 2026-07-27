@@ -13,7 +13,9 @@ import {
   makeGitCommandExecutor,
 } from "../../src/services/git-command-executor.js";
 
-const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-git-command-"));
+const temporaryDirectory = fs.realpathSync(
+  fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-git-command-")),
+);
 const fileAsDirectory = path.join(temporaryDirectory, "not-a-directory");
 fs.writeFileSync(fileAsDirectory, "file");
 

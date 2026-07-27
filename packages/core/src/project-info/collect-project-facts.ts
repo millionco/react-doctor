@@ -146,8 +146,7 @@ const resolveWorkspaceDependencyVersion = ({
   if (
     dependencyDeclaration === null ||
     !isCatalogReference(dependencyDeclaration.rawSpecifier) ||
-    (dependencyDeclaration.resolutionSource !== "declaring-package-catalog" &&
-      dependencyDeclaration.resolutionSource !== "workspace-root-catalog")
+    dependencyDeclaration.resolutionSource === "unresolved-catalog"
   ) {
     return null;
   }

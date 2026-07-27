@@ -474,6 +474,51 @@ describe("package graph", () => {
     });
   });
 
+  it("feeds enclosing monorepo catalog values into nested workspace aggregation", () => {
+    const monorepoDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "react-doctor-nested-package-graph-"),
+    );
+    temporaryDirectories.push(monorepoDirectory);
+    const leafDirectory = path.join(monorepoDirectory, "packages", "app");
+    const nestedWorkspaceDirectory = path.join(leafDirectory, "modules", "ui");
+    fs.mkdirSync(nestedWorkspaceDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoDirectory, "package.json"),
+      JSON.stringify({
+        name: "monorepo",
+        private: true,
+        workspaces: ["packages/*"],
+        catalog: { react: "^19.0.0" },
+      }),
+    );
+    const leafPackageJson: PackageJson = {
+      name: "app",
+      private: true,
+      workspaces: ["modules/*"],
+    };
+    fs.writeFileSync(path.join(leafDirectory, "package.json"), JSON.stringify(leafPackageJson));
+    fs.writeFileSync(
+      path.join(nestedWorkspaceDirectory, "package.json"),
+      JSON.stringify({
+        name: "ui",
+        dependencies: { react: "catalog:" },
+      }),
+    );
+
+    const graph = buildPackageGraph(leafDirectory, leafPackageJson);
+
+    expect(graph.getDependency(nestedWorkspaceDirectory, "react")).toMatchObject({
+      resolvedSpecifier: "^19.0.0",
+      resolutionSource: "monorepo-root-catalog",
+      resolutionSourceDirectory: monorepoDirectory,
+    });
+    expect(
+      collectWorkspaceFacts(graph, {
+        collectReactGroup: true,
+      }).reactVersion,
+    ).toBe("^19.0.0");
+  });
+
   it("feeds legacy workspace aggregation without changing catalog facts", () => {
     const graph = buildFixtureGraph("pnpm-named-catalog");
 

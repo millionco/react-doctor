@@ -11,7 +11,7 @@ export const normalizeCliHelp = (
     .replaceAll(workingDirectory, "<cwd>")
     .replaceAll(normalizedWorkingDirectory, "<cwd>")
     .replace(
-      /working\s+directory\s+\(default:\s+"<cwd>"\)/g,
+      /working\s+directory\s+\(default:\s+"[^"]*"\)/g,
       'working directory (default: "<cwd>")',
     );
   return version === undefined

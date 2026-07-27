@@ -21,7 +21,7 @@ describe("CLI help contracts", () => {
       '  -c, --cwd <cwd>  working directory (default:\r\n                     "C:\\Users\\runner\\AppData\\Local\\Temp")\r\n';
 
     assert.equal(
-      normalizeCliHelp(output, "C:\\Users\\runner\\AppData\\Local\\Temp"),
+      normalizeCliHelp(output, "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp"),
       '  -c, --cwd <cwd>  working directory (default: "<cwd>")\n',
     );
   });

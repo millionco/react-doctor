@@ -4,11 +4,14 @@ import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import {
   TUI_REPORT_COMPACT_MAX_ROWS,
   TUI_REPORT_STACKED_MAX_LIST_ROWS,
+  TUI_REPORT_STATUS_ROWS,
   TUI_REPORT_WIDE_MIN_COLUMNS,
   TUI_REPORT_WIDE_MIN_ROWS,
 } from "../../src/cli/utils/constants.js";
+import * as launchAgent from "../../src/cli/utils/launch-agent.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
 import { createScanStore } from "../../src/cli/ink/scan-store.js";
+import { severityVariant } from "../../src/cli/ink/lib/severity-variants.js";
 
 const makeDiagnostic = (overrides: Partial<Diagnostic>): Diagnostic => ({
   filePath: "src/Profile.tsx",
@@ -127,7 +130,7 @@ describe("ScanApp", () => {
     expect(frame).toContain("demo-app");
     expect(frame).toContain("React Doctor");
     expect(frame).toContain("┌─────┐");
-    expect(frame).toContain("› ✖ react-doctor/rules-of-hooks");
+    expect(frame).toContain(`› ${severityVariant("error").icon} react-doctor/rules-of-hooks`);
     // No `title` on the test diagnostics → the row falls back to `plugin/rule`.
     // The detail headline is the title alone; category + severity ride a dim tag.
     expect(frame).toContain("react-doctor/rules-of-hooks");
@@ -366,6 +369,36 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("confirms a copied prompt in the compact report", async () => {
+    vi.spyOn(launchAgent, "copyToClipboard").mockResolvedValue(true);
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [
+        makeDiagnostic({ rule: "rules-of-hooks", severity: "error", category: "Correctness" }),
+      ],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { rows: TUI_REPORT_COMPACT_MAX_ROWS });
+    await flush();
+
+    stdin.write("\r");
+    await flush();
+    stdin.write("\r");
+    await flush();
+
+    expect(lastFrame()).toContain("✓ Copied fix prompt");
+    unmount();
+  });
+
   it("uses the side-by-side layout on a wide terminal", async () => {
     const store = createScanStore();
     store.setReport({
@@ -384,14 +417,16 @@ describe("ScanApp", () => {
     });
 
     const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    const terminalRows = TUI_REPORT_WIDE_MIN_ROWS * 2;
     await flush();
     resizeTerminal(stdout, {
       columns: TUI_REPORT_WIDE_MIN_COLUMNS,
-      rows: TUI_REPORT_WIDE_MIN_ROWS,
+      rows: terminalRows,
     });
     await flush();
 
     const frame = lastFrame() ?? "";
+    expect(frame.split("\n").length).toBeLessThanOrEqual(terminalRows + TUI_REPORT_STATUS_ROWS - 1);
     // The split layout draws a vertical divider between the list and the detail,
     // so a row's title and its detail headline share a line.
     expect(frame).toContain("│");

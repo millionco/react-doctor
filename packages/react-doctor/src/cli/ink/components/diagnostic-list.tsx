@@ -262,7 +262,13 @@ export const DiagnosticList = ({
         groupCount={rows.length}
         unreadCount={unreadCount}
         projectCount={projectCount}
-        keyHints={keyHints}
+        keyHints={
+          isCompact && copiedRuleKey === selectedRuleKey ? (
+            <Text color="green">✓ Copied fix prompt</Text>
+          ) : (
+            keyHints
+          )
+        }
         exitHint={exitHint}
         compact={isCompact}
       />

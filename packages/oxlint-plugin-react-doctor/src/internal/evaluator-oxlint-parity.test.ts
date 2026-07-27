@@ -1560,7 +1560,7 @@ export const Poison = ({ enabled }: { enabled: boolean }) => {
       ruleIds: NEXT_RULES.map(({ ruleId }) => ruleId),
       settings: realSettings,
     });
-    const virtualRootDirectory = "/virtual-next-project";
+    const virtualRootDirectory = "virtual-next-project";
     const virtualResult = evaluateVirtualProject({
       rootDirectory: virtualRootDirectory,
       files: NEXT_PROJECT_FILES,

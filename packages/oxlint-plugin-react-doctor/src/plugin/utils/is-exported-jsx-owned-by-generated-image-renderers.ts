@@ -1,3 +1,5 @@
+import * as path from "node:path";
+import { getCurrentResourceHost } from "../../internal/resource-host/resource-host-context.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
 import {
   buildSourceProjectIndex,
@@ -367,10 +369,16 @@ const hasOpaqueWorkspacePackageConsumer = (
 };
 
 export const createExportedJsxGeneratedImageOwnershipAnalyzer = (context: RuleContext) => {
-  const filename = context.filename ? normalizeFilename(context.filename) : "";
+  const resourceHost = getCurrentResourceHost();
+  const filename = context.filename
+    ? (resourceHost?.normalizePath(context.filename) ?? normalizeFilename(context.filename))
+    : "";
   const rootDirectorySetting = getReactDoctorStringSetting(context.settings, "rootDirectory");
   const rootDirectory = rootDirectorySetting
-    ? normalizeFilename(rootDirectorySetting).replace(/\/$/, "")
+    ? (
+        resourceHost?.normalizePath(path.resolve(rootDirectorySetting)) ??
+        normalizeFilename(rootDirectorySetting)
+      ).replace(/\/$/, "")
     : "";
   const isFileInsideRoot =
     Boolean(filename && rootDirectory) &&

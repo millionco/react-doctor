@@ -9,6 +9,7 @@ import {
 } from "./cross-file-dependencies.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
+import { normalizeFilename } from "./utils/normalize-filename.js";
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
 import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
 import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alias.js";
@@ -126,11 +127,17 @@ describe("no-barrel-import collector", () => {
     // The barrel's content is read; a NAMED re-export target is only
     // resolved (existence) — the rule never reads its content.
     expect(trace?.contentPaths.has(fixturePath("src/components/index.ts"))).toBe(true);
-    expect(trace?.existencePaths.has(fixturePath("src/components/Button.tsx"))).toBe(true);
+    expect(
+      trace?.existencePaths.has(normalizeFilename(fixturePath("src/components/Button.tsx"))),
+    ).toBe(true);
     // The extension candidates probed (and absent) BEFORE the directory
     // resolution — a file appearing at one of them shadows the barrel.
-    expect(trace?.existencePaths.has(fixturePath("src/components.ts"))).toBe(true);
-    expect(trace?.existencePaths.has(fixturePath("src/components.tsx"))).toBe(true);
+    expect(trace?.existencePaths.has(normalizeFilename(fixturePath("src/components.ts")))).toBe(
+      true,
+    );
+    expect(trace?.existencePaths.has(normalizeFilename(fixturePath("src/components.tsx")))).toBe(
+      true,
+    );
     // An unrelated sibling is NOT a dependency.
     expect(trace?.contentPaths.has(fixturePath("src/unrelated.tsx"))).toBe(false);
     expect(trace?.existencePaths.has(fixturePath("src/unrelated.tsx"))).toBe(false);
@@ -435,7 +442,9 @@ export const App = () => {
     expect(trace).not.toBeNull();
     expect(trace?.contentPaths.has(fixturePath("src/cycle-a.ts"))).toBe(true);
     expect(trace?.contentPaths.has(fixturePath("src/cycle-b.ts"))).toBe(true);
-    expect(trace?.existencePaths.has(fixturePath("src/missing-hydration.ts"))).toBe(true);
+    expect(
+      trace?.existencePaths.has(normalizeFilename(fixturePath("src/missing-hydration.ts"))),
+    ).toBe(true);
   });
 });
 

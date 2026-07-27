@@ -270,12 +270,22 @@ describe("ResourceHost", () => {
     );
     expect(
       normalizeFilename(resolveRelativeImportPath(sourceFilePath, "./components/card") ?? ""),
-    ).toBe(realFilesystemHost.resolveRelativeImport(sourceFilePath, "./components/card"));
-    expect(normalizeFilename(resolveModuleFileFromAbsolutePath(unresolvedTargetPath) ?? "")).toBe(
-      realFilesystemHost.resolveRelativeImport(sourceFilePath, "./components/card"),
+    ).toBe(
+      normalizeFilename(
+        realFilesystemHost.resolveRelativeImport(sourceFilePath, "./components/card") ?? "",
+      ),
     );
-    expect(resolveTsconfigAliasPath(sourceFilePath, "@/components/card")).toBe(
-      realFilesystemHost.resolveTsconfigAlias(sourceFilePath, "@/components/card"),
+    expect(normalizeFilename(resolveModuleFileFromAbsolutePath(unresolvedTargetPath) ?? "")).toBe(
+      normalizeFilename(
+        realFilesystemHost.resolveRelativeImport(sourceFilePath, "./components/card") ?? "",
+      ),
+    );
+    expect(
+      normalizeFilename(resolveTsconfigAliasPath(sourceFilePath, "@/components/card") ?? ""),
+    ).toBe(
+      normalizeFilename(
+        realFilesystemHost.resolveTsconfigAlias(sourceFilePath, "@/components/card") ?? "",
+      ),
     );
   });
 
@@ -304,13 +314,13 @@ describe("ResourceHost", () => {
 
     expect(resourceHost.fileExists("packages/app/package.json")).toBe(false);
     expect(resourceHost.findOwningPackage("packages/app/src/index.ts")).toMatchObject({
-      directoryPath: "/described-project/packages/app",
-      manifestPath: "/described-project/packages/app/package.json",
+      directoryPath: resourceHost.normalizePath("packages/app"),
+      manifestPath: resourceHost.normalizePath("packages/app/package.json"),
       manifest: { name: "@fixture/described-app" },
     });
     expect(resourceHost.getDependency("packages/app/src/index.ts", "react")).toEqual({
       name: "react",
-      packageDirectory: "/described-project/packages/app",
+      packageDirectory: resourceHost.normalizePath("packages/app"),
       section: "dependencies",
       rawSpecifier: "workspace:^",
       installedVersion: "19.1.1",

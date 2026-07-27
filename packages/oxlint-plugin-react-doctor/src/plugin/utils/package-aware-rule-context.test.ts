@@ -208,7 +208,7 @@ describe("package-aware rule context", () => {
       fs.writeFileSync(sourceFile, "");
       fs.symlinkSync(realProjectDirectory, linkedProjectDirectory);
       const settings = buildSettings(true);
-      settings["react-doctor"].rootDirectory = realProjectDirectory;
+      settings["react-doctor"].rootDirectory = fs.realpathSync(realProjectDirectory);
       let packageContext: RulePackageContext | null | undefined;
 
       wrapWithSemanticContext({

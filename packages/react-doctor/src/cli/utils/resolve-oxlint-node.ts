@@ -1,11 +1,11 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
-  highlighter,
   NodeResolver,
   OXLINT_NODE_REQUIREMENT,
   OXLINT_RECOMMENDED_NODE_MAJOR,
-} from "@react-doctor/core";
+} from "../../core/core-runtime.js";
+import { highlighter } from "../../core/core-presentation.js";
 import { prompts } from "./prompts.js";
 
 const consoleWarn = (message: string): Effect.Effect<void> =>

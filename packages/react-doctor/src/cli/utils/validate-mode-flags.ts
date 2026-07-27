@@ -1,4 +1,4 @@
-import type { ScopeValue } from "@react-doctor/core";
+import type { ScopeValue } from "../../core/core-types.js";
 import { CliInputError } from "./cli-input-error.js";
 import type { InspectFlags } from "./inspect-flags.js";
 

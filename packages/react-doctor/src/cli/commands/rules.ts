@@ -1,6 +1,8 @@
 import * as path from "node:path";
-import { buildRuleDocsUrl, highlighter, validateConfigTypes } from "@react-doctor/core";
-import type { ReactDoctorConfig, RuleSeverityOverride } from "@react-doctor/core";
+import { validateConfigTypes } from "../../core/core-configuration.js";
+import type { ReactDoctorConfig, RuleSeverityOverride } from "../../core/core-configuration.js";
+import { highlighter } from "../../core/core-presentation.js";
+import { buildRuleDocsUrl } from "../../core/core-product.js";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { METRIC } from "../utils/constants.js";
 import { recordCount } from "../utils/record-metric.js";

@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { createInMemoryResourceHost } from "../../../internal/resource-host/in-memory-resource-host.js";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { resetManifestCaches } from "../../utils/read-nearest-package-manifest.js";
 import { rnNoLegacyShadowStyles } from "./rn-no-legacy-shadow-styles.js";
@@ -97,6 +98,53 @@ describe("react-native/rn-no-legacy-shadow-styles — regressions", () => {
         dynamicAppConfig: true,
       }),
     });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("reads static Expo architecture settings from an in-memory project", () => {
+    const resourceHost = createInMemoryResourceHost({
+      rootDirectory: "/virtual-static-expo-config",
+      files: new Map([["app.json", JSON.stringify({ expo: { newArchEnabled: false } })]]),
+      packages: [
+        {
+          directoryPath: ".",
+          manifest: {
+            dependencies: { "react-native": "0.80.0" },
+          },
+        },
+      ],
+    });
+    const result = runRule(rnNoLegacyShadowStyles, shadowStyleCode, {
+      filename: resourceHost.normalizePath("src/App.tsx"),
+      resourceHost,
+    });
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("honors in-memory dynamic Expo config precedence", () => {
+    const resourceHost = createInMemoryResourceHost({
+      rootDirectory: "/virtual-dynamic-expo-config",
+      files: new Map([
+        ["app.config.ts", "export default {};"],
+        ["app.json", JSON.stringify({ expo: { newArchEnabled: false } })],
+      ]),
+      packages: [
+        {
+          directoryPath: ".",
+          manifest: {
+            dependencies: { "react-native": "0.80.0" },
+          },
+        },
+      ],
+    });
+    const result = runRule(rnNoLegacyShadowStyles, shadowStyleCode, {
+      filename: resourceHost.normalizePath("src/App.tsx"),
+      resourceHost,
+    });
+
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });

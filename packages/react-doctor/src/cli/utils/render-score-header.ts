@@ -1,7 +1,8 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { highlighter, PERFECT_SCORE, SCORE_BAR_WIDTH_CHARS } from "@react-doctor/core";
-import type { ScoreResult } from "@react-doctor/core";
+import { highlighter, SCORE_BAR_WIDTH_CHARS } from "../../core/core-presentation.js";
+import { PERFECT_SCORE } from "../../core/core-score.js";
+import type { ScoreResult } from "../../core/core-types.js";
 import { colorizeByScore } from "./colorize-by-score.js";
 import { doctorFace } from "./doctor-face.js";
 import {

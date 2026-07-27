@@ -1,15 +1,14 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
-  CANONICAL_DISCORD_URL,
-  CANONICAL_GITHUB_URL,
   formatErrorChain,
   formatReactDoctorError,
-  highlighter,
   isErrnoException,
   isReactDoctorError,
-} from "@react-doctor/core";
-import type { HandleErrorOptions } from "@react-doctor/core";
+} from "../../core/core-errors.js";
+import { highlighter } from "../../core/core-presentation.js";
+import { CANONICAL_DISCORD_URL, CANONICAL_GITHUB_URL } from "../../core/core-product.js";
+import type { HandleErrorOptions } from "../../core/core-types.js";
 import { VERSION } from "./version.js";
 import { METRIC } from "./constants.js";
 import { formatEnvironmentError, isEnvironmentError } from "./is-environment-error.js";

@@ -1,9 +1,9 @@
 import {
   COMPILER_CLEANUP_BUCKET,
   COMPILER_CLEANUP_RULE_KEYS,
-  getEquivalentRuleKeys,
-} from "@react-doctor/core";
-import type { ReactDoctorConfig, RuleSeverityOverride } from "@react-doctor/core";
+} from "../../core/core-configuration.js";
+import type { ReactDoctorConfig, RuleSeverityOverride } from "../../core/core-configuration.js";
+import { getEquivalentRuleKeys } from "../../core/core-diagnostic-semantics.js";
 import type { RuleCatalogEntry } from "./rule-catalog.js";
 
 export type EffectiveSeveritySource = "rule" | "category" | "bucket" | "tag" | "default";

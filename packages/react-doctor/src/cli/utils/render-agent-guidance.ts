@@ -1,6 +1,6 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
 
 const AGENT_GUIDANCE_LINES = [
   "Treat React Doctor diagnostics as starting hypotheses. Read the relevant code before confirming or suppressing each finding.",

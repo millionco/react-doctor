@@ -7,15 +7,15 @@ import {
   hashFileContents,
   resolveLintBatchOrdering,
   resolveReactDoctorCacheDir,
-} from "@react-doctor/core";
+} from "../../core/core-scan-cache.js";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
 import type {
   Diagnostic,
   InspectOutput,
   InspectResult,
-  ReactDoctorConfig,
   ScoreResult,
   SuppressedRuleCount,
-} from "@react-doctor/core";
+} from "../../core/core-types.js";
 import {
   SCAN_RESULT_CACHE_FILENAME,
   SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
@@ -24,7 +24,7 @@ import {
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
 import { getPackageJsonPath, isRecord, runGit } from "./git-hook-shared.js";
-import type { ResolvedInspectOptions } from "../../inspect.js";
+import type { ScanResultCachePolicy } from "./scan-result-cache-policy.js";
 
 export interface CachedScanPayload {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
@@ -94,7 +94,7 @@ interface ScanResultCacheKeyInput {
   readonly projectDirectory: string;
   readonly version: string;
   readonly nodeBinaryPath: string | null;
-  readonly options: ResolvedInspectOptions;
+  readonly policy: ScanResultCachePolicy;
   readonly userConfig: ReactDoctorConfig | null;
   readonly hasConfigOverride: boolean;
   readonly configSourceDirectory: string | null;
@@ -434,35 +434,35 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
     configSourceDirectory: input.configSourceDirectory,
     userConfig: input.userConfig,
     engineOptions: {
-      lint: input.options.lint,
-      deadCode: input.options.deadCode,
+      lint: input.policy.lint,
+      deadCode: input.policy.deadCode,
       // Resolved supply-chain enablement (the `--supply-chain` flag over
       // config). Keyed here — not just via `userConfig` — because the flag can
       // flip it without touching the config blob, so a `--no-supply-chain`
       // lookup must not serve a supply-chain-on payload at the same commit.
-      supplyChain: input.options.supplyChain,
-      includePaths: [...input.options.includePaths].sort(),
-      customRulesOnly: input.options.customRulesOnly,
-      respectInlineDisables: input.options.respectInlineDisables,
-      warnings: input.options.warnings,
-      adoptExistingLintConfig: input.options.adoptExistingLintConfig,
-      ignoredTags: [...input.options.ignoredTags].sort(),
-      includedTags: [...input.options.includedTags].sort(),
-      includeTagDefaults: input.options.includeTagDefaults,
-      concurrency: input.options.concurrency,
+      supplyChain: input.policy.supplyChain,
+      includePaths: [...input.policy.includePaths].sort(),
+      customRulesOnly: input.policy.customRulesOnly,
+      respectInlineDisables: input.policy.respectInlineDisables,
+      warnings: input.policy.warnings,
+      adoptExistingLintConfig: input.policy.adoptExistingLintConfig,
+      ignoredTags: [...input.policy.ignoredTags].sort(),
+      includedTags: [...input.policy.includedTags].sort(),
+      includeTagDefaults: input.policy.includeTagDefaults,
+      concurrency: input.policy.concurrency,
       // Full-scan batch ordering can change which files trip the spawn
       // timeout and get dropped, so — like `concurrency` above — it must key
       // the cache: a `cost` run must not serve its payload to an `arrival`
       // lookup at the same commit.
       lintBatchOrdering: resolveLintBatchOrdering(),
-      baselineRef: input.options.baseline?.ref,
+      baselineRef: input.policy.baselineRef,
       // `null` (not a `lines` scope) and an omitted field hash identically, so a
       // non-lines lookup matches a non-lines store; only real ranges shift the key.
-      changedLineRanges: input.options.changedLineRanges ?? undefined,
-      noScore: input.options.noScore,
-      isCi: input.options.isCi,
-      suppressRendering: input.options.suppressRendering,
-      supplyChainManifestChanged: input.options.supplyChainManifestChanged,
+      changedLineRanges: input.policy.changedLineRanges ?? undefined,
+      noScore: input.policy.noScore,
+      isCi: input.policy.isCi,
+      suppressRendering: input.policy.suppressRendering,
+      supplyChainManifestChanged: input.policy.supplyChainManifestChanged,
       // `maxDurationMs` is deliberately NOT keyed. It only changes the RESULT
       // when the budget is hit, and every such truncated run (lint partial or
       // dead-code skipped) is barred from the cache by `shouldStoreScanPayload`

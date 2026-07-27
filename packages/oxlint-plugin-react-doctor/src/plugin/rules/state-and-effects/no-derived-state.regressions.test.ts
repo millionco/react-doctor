@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noDerivedState } from "./no-derived-state.js";
 
-// split/state PR #990's isControlledPropMirror exempted a prop->state mirror
+// split/state PR #990 exempted a prop-to-state mirror
 // effect whenever the
 // setter had ANY second call site in a handler — which is exactly the rule's
 // canonical positive (the mined codecov SearchField bug). These regressions

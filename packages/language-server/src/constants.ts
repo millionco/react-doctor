@@ -119,4 +119,4 @@ export const SCANNABLE_EXTENSIONS = [
   ".html",
 ] as const;
 
-export { CONFIG_FINGERPRINT_FILENAMES as CONFIG_WATCH_FILENAMES } from "@react-doctor/core";
+export { CONFIG_FINGERPRINT_FILENAMES as CONFIG_WATCH_FILENAMES } from "./core/core-api.js";

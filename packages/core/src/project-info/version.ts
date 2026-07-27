@@ -161,6 +161,22 @@ export const normalizeDependencyVersion = (version: string): string | null => {
   return normalizedVersion;
 };
 
+export const doesDependencyVersionIntersectRange = (
+  dependencyVersion: string,
+  requiredVersionRange: string,
+): boolean => {
+  const normalizedDependencyVersion = normalizeDependencyVersion(dependencyVersion);
+  if (normalizedDependencyVersion === null) return false;
+
+  const trimmedRequiredVersionRange = requiredVersionRange.trim();
+  if (trimmedRequiredVersionRange.length === 0) return false;
+  const dependencyRange = semver.validRange(normalizedDependencyVersion);
+  const requiredRange = semver.validRange(trimmedRequiredVersionRange);
+  if (dependencyRange === null || requiredRange === null) return false;
+
+  return semver.intersects(dependencyRange, requiredRange);
+};
+
 export const splitDependencyVersionBranches = (version: string): string[] =>
   version
     .split("||")

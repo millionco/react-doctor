@@ -1,4 +1,4 @@
-import type { ReactDoctorConfig } from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
 
 // A scanned project as the aggregate share gate sees it: only its merged
 // (root + module) config matters.

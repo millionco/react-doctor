@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
 import { buildDiagnosticIdentity, runOxlint } from "@react-doctor/core";
+import { CROSS_FILE_RULE_IDS } from "oxlint-plugin-react-doctor";
 import { buildTestProject, setupReactProject, writeFile } from "../regressions/_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-sidecar-cache-e2e-"));
@@ -30,6 +31,34 @@ const INK_USER_CONFIG = {
   },
 } as const;
 
+const HYDRATION_RULE_ID = "no-unguarded-browser-global-in-render-or-hook-init";
+const HYDRATION_USER_CONFIG = {
+  rules: Object.fromEntries(
+    [...CROSS_FILE_RULE_IDS].map((ruleId): [string, "error" | "off"] => [
+      `react-doctor/${ruleId}`,
+      ruleId === HYDRATION_RULE_ID ? "error" : "off",
+    ]),
+  ),
+};
+const NEXT_DYNAMIC_API_RULE_ID = "nextjs-async-dynamic-api-not-awaited";
+const NEXT_DYNAMIC_API_USER_CONFIG = {
+  rules: Object.fromEntries(
+    [...CROSS_FILE_RULE_IDS].map((ruleId): [string, "error" | "off"] => [
+      `react-doctor/${ruleId}`,
+      ruleId === NEXT_DYNAMIC_API_RULE_ID ? "error" : "off",
+    ]),
+  ),
+};
+const NEXT_NO_IMG_RULE_ID = "nextjs-no-img-element";
+const NEXT_NO_IMG_USER_CONFIG = {
+  rules: Object.fromEntries(
+    [...CROSS_FILE_RULE_IDS].map((ruleId): [string, "error" | "off"] => [
+      `react-doctor/${ruleId}`,
+      ruleId === NEXT_NO_IMG_RULE_ID ? "error" : "off",
+    ]),
+  ),
+};
+
 const APP_SOURCE = `import { Button } from "./components";
 export const App = () => <div><Button /></div>;
 `;
@@ -44,6 +73,12 @@ const MUTATING_REDUCER = `export const listReducer = (state, action) => {
 `;
 const PURE_REDUCER = `export const listReducer = (state, action) => ({ count: state.count + 1 });
 `;
+const FALSE_SERVER_SNAPSHOT_HOOK = `import { useSyncExternalStore } from "react";
+const subscribe = () => () => {};
+export const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => false);
+`;
+// Preserve byte length so the dependency's content, not its size, must invalidate the replay.
+const TRUE_SERVER_SNAPSHOT_HOOK = FALSE_SERVER_SNAPSHOT_HOOK.replace("() => false", "() =>  true");
 
 interface ScanOptions {
   perFileLintCacheEnabled?: boolean;
@@ -110,6 +145,119 @@ const scanInk = (projectDir: string, sidecarLintCacheEnabled: boolean): Promise<
     userConfig: INK_USER_CONFIG,
     perFileLintCacheEnabled: false,
     sidecarLintCacheEnabled,
+  });
+
+const setupHydrationFixture = (caseId: string): string => {
+  const projectDir = setupReactProject(tempRoot, caseId, {
+    files: {
+      "src/App.tsx": `import { useClientReady as useHydrated } from "./hooks";
+export const App = () => {
+  const hydrated = useHydrated();
+  return hydrated && <span>{document.title}</span>;
+};
+`,
+      "src/hooks/index.ts": `export { useHydrated as useClientReady } from "../use-hydrated";\n`,
+      "src/use-hydrated.ts": FALSE_SERVER_SNAPSHOT_HOOK,
+      "src/clean.tsx": "export const Clean = () => <div>ok</div>;\n",
+    },
+    packageJsonExtras: {
+      dependencies: {
+        next: "^15.0.0",
+        react: "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+    },
+  });
+  fs.mkdirSync(path.join(projectDir, "node_modules"), { recursive: true });
+  return projectDir;
+};
+
+const scanHydration = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic[]> =>
+  runOxlint({
+    rootDirectory: projectDir,
+    project: buildTestProject({ rootDirectory: projectDir, framework: "nextjs" }),
+    userConfig: HYDRATION_USER_CONFIG,
+    perFileLintCacheEnabled: options.perFileLintCacheEnabled ?? true,
+    sidecarLintCacheEnabled: options.sidecarLintCacheEnabled ?? true,
+    onSidecarStats: options.onSidecarStats,
+  });
+
+const scanHydrationFull = (projectDir: string): Promise<Diagnostic[]> =>
+  scanHydration(projectDir, {
+    perFileLintCacheEnabled: false,
+    sidecarLintCacheEnabled: false,
+  });
+
+const setupNextDynamicApiFixture = (caseId: string): string => {
+  const projectDir = setupReactProject(tempRoot, caseId, {
+    files: {
+      "packages/app/app/page.tsx": `import { cookies } from "next/headers";
+export default function Page() {
+  return cookies().get("session");
+}
+`,
+      "src/clean.tsx": "export const Clean = () => <div>ok</div>;\n",
+    },
+  });
+  writeFile(
+    path.join(projectDir, "packages/app/package.json"),
+    `{ "name": "app", "dependencies": { "react": "19.0.0", "next": "15.0.0" } }\n`,
+  );
+  fs.mkdirSync(path.join(projectDir, "node_modules"), { recursive: true });
+  return projectDir;
+};
+
+const scanNextDynamicApi = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic[]> =>
+  runOxlint({
+    rootDirectory: projectDir,
+    project: buildTestProject({ rootDirectory: projectDir, framework: "nextjs" }),
+    userConfig: NEXT_DYNAMIC_API_USER_CONFIG,
+    perFileLintCacheEnabled: options.perFileLintCacheEnabled ?? true,
+    sidecarLintCacheEnabled: options.sidecarLintCacheEnabled ?? true,
+    onSidecarStats: options.onSidecarStats,
+  });
+
+const scanNextDynamicApiFull = (projectDir: string): Promise<Diagnostic[]> =>
+  scanNextDynamicApi(projectDir, {
+    perFileLintCacheEnabled: false,
+    sidecarLintCacheEnabled: false,
+  });
+
+const setupNextImageFixture = (caseId: string): string => {
+  const projectDir = setupReactProject(tempRoot, caseId, {
+    files: {
+      "lib/card.tsx": `export const Card = () => <img src="/social-card.png" alt="" />;\n`,
+      "app/api/card/route.tsx": `import { ImageResponse } from "next/og";
+import { Card } from "../../../lib/card";
+export const GET = () => new ImageResponse(<Card />);
+`,
+    },
+    packageJsonExtras: {
+      dependencies: {
+        next: "15.0.0",
+        react: "19.0.0",
+        "react-dom": "19.0.0",
+      },
+    },
+  });
+  fs.mkdirSync(path.join(projectDir, "node_modules"), { recursive: true });
+  return projectDir;
+};
+
+const scanNextImage = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic[]> =>
+  runOxlint({
+    rootDirectory: projectDir,
+    project: buildTestProject({ rootDirectory: projectDir, framework: "nextjs" }),
+    userConfig: NEXT_NO_IMG_USER_CONFIG,
+    perFileLintCacheEnabled: options.perFileLintCacheEnabled ?? true,
+    sidecarLintCacheEnabled: options.sidecarLintCacheEnabled ?? true,
+    onSidecarStats: options.onSidecarStats,
+  });
+
+const scanNextImageFull = (projectDir: string): Promise<Diagnostic[]> =>
+  scanNextImage(projectDir, {
+    perFileLintCacheEnabled: false,
+    sidecarLintCacheEnabled: false,
   });
 
 const serialize = (diagnostics: ReadonlyArray<Diagnostic>): string =>
@@ -263,6 +411,125 @@ export const Panel = ({ children }) => <Text>{children}</Text>;
 
     expect(serialize(incremental)).toBe(serialize(full));
     expect(ruleHitsOn(incremental, "no-mutating-reducer-state", "src/Store.tsx")).toHaveLength(0);
+  });
+
+  it("invalidates an unchanged browser read when an imported server snapshot changes", async () => {
+    const projectDir = setupHydrationFixture("imported-server-snapshot-flip");
+    const before = await scanHydration(projectDir);
+    let warmReplayed: number | null = null;
+    let warmConsidered: number | null = null;
+    await scanHydration(projectDir, {
+      onSidecarStats: (replayedFileCount, consideredFileCount) => {
+        warmReplayed = replayedFileCount;
+        warmConsidered = consideredFileCount;
+      },
+    });
+    expect(ruleHitsOn(before, HYDRATION_RULE_ID, "src/App.tsx")).toHaveLength(0);
+    expect(warmConsidered).toBeGreaterThan(0);
+    expect(warmReplayed).toBe(warmConsidered);
+
+    writeFile(path.join(projectDir, "src/use-hydrated.ts"), TRUE_SERVER_SNAPSHOT_HOOK);
+    let incrementalReplayed: number | null = null;
+    let incrementalConsidered: number | null = null;
+    const incremental = await scanHydration(projectDir, {
+      onSidecarStats: (replayedFileCount, consideredFileCount) => {
+        incrementalReplayed = replayedFileCount;
+        incrementalConsidered = consideredFileCount;
+      },
+    });
+    const full = await scanHydrationFull(projectDir);
+    const hits = ruleHitsOn(incremental, HYDRATION_RULE_ID, "src/App.tsx");
+
+    expect(serialize(incremental)).toBe(serialize(full));
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({
+      line: 4,
+      column: 29,
+      message:
+        "`document` is read while React is rendering on the server, where browser globals are unavailable. Move the read into an effect or event, or provide a stable server snapshot.",
+    });
+    expect(incrementalConsidered).toBeGreaterThan(0);
+    expect(incrementalReplayed).toBeLessThan(incrementalConsidered);
+  });
+
+  it("invalidates an unchanged Next.js file when its owning package drops Next", async () => {
+    const projectDir = setupNextDynamicApiFixture("next-owning-package-flip");
+    const targetFilePath = "packages/app/app/page.tsx";
+    const before = await scanNextDynamicApi(projectDir);
+    let warmReplayed: number | null = null;
+    let warmConsidered: number | null = null;
+    await scanNextDynamicApi(projectDir, {
+      onSidecarStats: (replayedFileCount, consideredFileCount) => {
+        warmReplayed = replayedFileCount;
+        warmConsidered = consideredFileCount;
+      },
+    });
+    expect(ruleHitsOn(before, NEXT_DYNAMIC_API_RULE_ID, targetFilePath)).toHaveLength(1);
+    expect(warmConsidered).toBeGreaterThan(0);
+    expect(warmReplayed).toBe(warmConsidered);
+
+    writeFile(
+      path.join(projectDir, "packages/app/package.json"),
+      `{ "name": "app", "dependencies": { "react": "19.0.0", "vite": "15.0.0" } }\n`,
+    );
+    let incrementalReplayed: number | null = null;
+    let incrementalConsidered: number | null = null;
+    const incremental = await scanNextDynamicApi(projectDir, {
+      onSidecarStats: (replayedFileCount, consideredFileCount) => {
+        incrementalReplayed = replayedFileCount;
+        incrementalConsidered = consideredFileCount;
+      },
+    });
+    const full = await scanNextDynamicApiFull(projectDir);
+
+    expect(serialize(incremental)).toBe(serialize(full));
+    expect(ruleHitsOn(incremental, NEXT_DYNAMIC_API_RULE_ID, targetFilePath)).toEqual([]);
+    expect(incrementalConsidered).toBeGreaterThan(0);
+    expect(incrementalReplayed).toBeLessThan(incrementalConsidered);
+  });
+
+  it("keeps project-wide image ownership fresh when a consumer changes", async () => {
+    const projectDir = setupNextImageFixture("next-image-consumer-flip");
+    const targetFilePath = "lib/card.tsx";
+    const before = await scanNextImage(projectDir);
+    let warmReplayed: number | null = null;
+    let warmConsidered: number | null = null;
+    await scanNextImage(projectDir, {
+      onSidecarStats: (replayedFileCount, consideredFileCount) => {
+        warmReplayed = replayedFileCount;
+        warmConsidered = consideredFileCount;
+      },
+    });
+    expect(ruleHitsOn(before, NEXT_NO_IMG_RULE_ID, targetFilePath)).toEqual([]);
+    expect(warmConsidered).toBeNull();
+    expect(warmReplayed).toBeNull();
+
+    writeFile(
+      path.join(projectDir, "app/api/card/route.tsx"),
+      `import { Card } from "../../../lib/card";
+export const Page = () => <Card />;
+`,
+    );
+    let incrementalReplayed: number | null = null;
+    let incrementalConsidered: number | null = null;
+    const incremental = await scanNextImage(projectDir, {
+      onSidecarStats: (replayedFileCount, consideredFileCount) => {
+        incrementalReplayed = replayedFileCount;
+        incrementalConsidered = consideredFileCount;
+      },
+    });
+    const full = await scanNextImageFull(projectDir);
+    const hits = ruleHitsOn(incremental, NEXT_NO_IMG_RULE_ID, targetFilePath);
+
+    expect(serialize(incremental)).toBe(serialize(full));
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({
+      line: 1,
+      column: 27,
+      message: "Plain <img> ships unoptimized, oversized images.",
+    });
+    expect(incrementalConsidered).toBeNull();
+    expect(incrementalReplayed).toBeNull();
   });
 
   it("keeps replaying unaffected files when an unrelated file changes", async () => {

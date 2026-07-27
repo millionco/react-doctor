@@ -8,7 +8,7 @@ import {
   UNBOUNDED_CROSS_FILE_RULE_IDS,
 } from "oxlint-plugin-react-doctor";
 
-// The staleness safety net. Reproduces the transitive import-graph analysis
+// The staleness safety net. Reproduces the transitive runtime import-graph analysis
 // that classifies a rule as cross-file (its verdict can depend on the content
 // of OTHER files at lint time) and asserts the detected set EQUALS
 // `CROSS_FILE_RULE_IDS`. If a new rule starts reading other files without being
@@ -58,6 +58,9 @@ const primitiveFileSet = new Set(CROSS_FILE_PRIMITIVE_FILES);
 const stripCommentsAndStrings = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 
+const stripTypeOnlyImportDeclarations = (source: string): string =>
+  source.replace(/^\s*(?:import|export)\s+type\b[\s\S]*?\bfrom\s*["'][^"']+["'];?/gm, "");
+
 const resolveLocalImport = (fromFile: string, specifier: string): string | null => {
   if (!specifier.startsWith(".")) return null;
   const base = path.resolve(path.dirname(fromFile), specifier).replace(/\.js$/, "");
@@ -68,7 +71,9 @@ const resolveLocalImport = (fromFile: string, specifier: string): string | null 
 };
 
 const localImportsOf = (filePath: string): string[] => {
-  const source = stripCommentsAndStrings(fs.readFileSync(filePath, "utf8"));
+  const source = stripTypeOnlyImportDeclarations(
+    stripCommentsAndStrings(fs.readFileSync(filePath, "utf8")),
+  );
   const matches = source.matchAll(/(?:import|export)[\s\S]*?from\s*["']([^"']+)["']/g);
   return [...matches]
     .map((match) => resolveLocalImport(filePath, match[1]))

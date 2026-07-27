@@ -7,6 +7,10 @@ import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { analyzeControlFlow } from "../semantic/control-flow-graph.js";
 import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
+import { resolveRulePackageContext } from "./resolve-rule-package-context.js";
+import { getReactDoctorBooleanSetting } from "./get-react-doctor-setting.js";
+import { hasRulePackageCapability } from "./has-rule-package-capability.js";
+import type { Capability } from "./capability.js";
 
 // Wraps a rule so `context.scopes` and `context.cfg` exist at runtime
 // even when oxlint's host context doesn't pre-build them. We build the
@@ -56,6 +60,7 @@ const FALLBACK_CFG: ControlFlowAnalysis = {
 
 const scopesByProgram = new WeakMap<EsTreeNode, ScopeAnalysis>();
 const cfgByProgram = new WeakMap<EsTreeNode, ControlFlowAnalysis>();
+const EMPTY_VISITORS: RuleVisitors = {};
 
 export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
   ...rule,
@@ -86,12 +91,24 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
     // its deprecated `getFilename()` invoked ON the host (so a `this`-bound
     // class method keeps its binding — forwarding a bare reference dropped
     // `this` and returned `undefined` under ESLint 9, crashing rules).
+    const shouldApplyPackageCapabilityGates =
+      getReactDoctorBooleanSetting(baseContext.settings, "packageCapabilityGates") === true;
+    const shouldResolvePackageContext =
+      shouldApplyPackageCapabilityGates ||
+      getReactDoctorBooleanSetting(baseContext.settings, "packageContextEnabled") === true;
+    const filename = shouldResolvePackageContext
+      ? (baseContext.filename ?? baseContext.getFilename?.())
+      : undefined;
+    const packageContext = shouldResolvePackageContext
+      ? resolveRulePackageContext(baseContext.settings, filename)
+      : null;
     const enrichedContext: RuleContext = {
       report: baseContext.report,
       get filename() {
         return baseContext.filename ?? baseContext.getFilename?.();
       },
       settings: baseContext.settings,
+      packageContext,
       get scopes() {
         return getScopes();
       },
@@ -100,7 +117,17 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
       },
     };
 
-    const visitors = rule.create(enrichedContext);
+    const hasContextCapability = (capability: Capability): boolean =>
+      hasRulePackageCapability(packageContext, baseContext.settings, capability);
+    const isMissingRequiredCapability =
+      shouldApplyPackageCapabilityGates &&
+      rule.requires?.some((capability) => !hasContextCapability(capability)) === true;
+    const hasDisabledCapability =
+      shouldApplyPackageCapabilityGates && rule.disabledWhen?.some(hasContextCapability) === true;
+    const visitors =
+      isMissingRequiredCapability || hasDisabledCapability
+        ? EMPTY_VISITORS
+        : rule.create(enrichedContext);
     // Program enter fires before every other visitor, so capturing the root
     // there is enough — wrapping every visitor of every rule in a
     // capture-then-forward closure added a call per (node × rule) for

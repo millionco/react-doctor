@@ -7,21 +7,32 @@ import {
 } from "../constants.js";
 import {
   EMPTY_DEPENDENCY_INFO,
-  extractDependencyInfo,
   getDependencyDeclaration,
   getDependencySpec,
+  isCatalogReference,
   REACT_SECTIONS,
   resolveCatalogBackedDependencyVersion,
   resolveCatalogVersion,
   TAILWIND_ZOD_SECTIONS,
 } from "./dependencies.js";
+import {
+  MOBX_REACT_LITE_PACKAGE_NAME,
+  MOBX_REACT_OBSERVER_PACKAGE_NAME,
+  MOBX_REACT_PACKAGE_NAME,
+  MOBX_STATE_TREE_PACKAGE_NAME,
+  REACT_ROUTER_DEPENDENCY_NAMES,
+  REACT_THREE_FIBER_DEPENDENCY_NAMES,
+  REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES,
+  REANIMATED_DEPENDENCY_NAME,
+  THREE_DEPENDENCY_NAMES,
+} from "./capability-dependency-names.js";
 import { isFile } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
 import { readPackageJson } from "./package-json.js";
-import { frameworkMergeRank } from "./detectors.js";
+import { frameworkMergeRank } from "./detect-framework.js";
 import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./rn-metadata.js";
 import { isPackageJsonSsrAware } from "./ssr-metadata.js";
-import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";
+import { buildPackageGraph, type PackageGraph } from "./package-graph.js";
 import {
   getDependencyMajorWithinSupportedRange,
   getLowestDependencyMajor,
@@ -34,12 +45,6 @@ import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 import { getStyledComponentsVersion } from "./get-styled-components-version.js";
 import { hasI18nDependency } from "./has-i18n-dependency.js";
 
-const REANIMATED_DEPENDENCY_NAME = "react-native-reanimated";
-const MOBX_REACT_PACKAGE_NAME = "mobx-react";
-const MOBX_REACT_LITE_PACKAGE_NAME = "mobx-react-lite";
-const MOBX_STATE_TREE_PACKAGE_NAME = "mobx-state-tree";
-const MOBX_REACT_OBSERVER_PACKAGE_NAME = "mobx-react-observer";
-const REACT_THREE_FIBER_DEPENDENCY_NAMES = ["@react-three/fiber", "react-three-fiber"] as const;
 const REACT_THREE_FIBER_SECTIONS = [
   "dependencies",
   "peerDependencies",
@@ -52,17 +57,6 @@ const THREE_DEPENDENCY_SECTIONS = [
   "optionalDependencies",
   "devDependencies",
 ] as const;
-const REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES = [
-  ...REACT_THREE_FIBER_DEPENDENCY_NAMES,
-  "@react-three/drei",
-] as const;
-const THREE_DEPENDENCY_NAMES = [...REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES, "three"] as const;
-const REACT_ROUTER_DEPENDENCY_NAMES: readonly string[] = [
-  "@react-router/dev",
-  "react-router-dom",
-  "react-router",
-];
-
 // A dependency's declared spec plus the directory whose manifest supplied
 // it — the scan root, or the workspace package that declares the package.
 // `sourceDirectory` lets config-file detectors (e.g. the Next.js static-
@@ -130,45 +124,34 @@ export const SHOPIFY_FLASH_LIST_PACKAGE_NAME = "@shopify/flash-list";
 
 interface ResolveWorkspaceDependencyVersionOptions {
   concreteVersion: string | null;
+  packageGraph: PackageGraph;
   packageName: string;
-  rootDirectory: string;
-  rootPackageJson: PackageJson;
   sections: ReadonlyArray<"dependencies" | "peerDependencies" | "devDependencies">;
   workspaceDirectory: string;
-  workspacePackageJson: PackageJson;
 }
 
 const resolveWorkspaceDependencyVersion = ({
   concreteVersion,
+  packageGraph,
   packageName,
-  rootDirectory,
-  rootPackageJson,
   sections,
   workspaceDirectory,
-  workspacePackageJson,
 }: ResolveWorkspaceDependencyVersionOptions): string | null => {
-  const dependencyDeclaration = getDependencyDeclaration({
-    packageJson: workspacePackageJson,
+  if (concreteVersion !== null) return concreteVersion;
+  const dependencyDeclaration = packageGraph.getDependency(
+    workspaceDirectory,
     packageName,
     sections,
-  });
-  if (!dependencyDeclaration.hasDeclaration) return null;
-
-  return (
-    concreteVersion ??
-    resolveCatalogVersion(
-      workspacePackageJson,
-      packageName,
-      workspaceDirectory,
-      dependencyDeclaration.catalogReference,
-    ) ??
-    resolveCatalogVersion(
-      rootPackageJson,
-      packageName,
-      rootDirectory,
-      dependencyDeclaration.catalogReference,
-    )
   );
+  if (
+    dependencyDeclaration === null ||
+    !isCatalogReference(dependencyDeclaration.rawSpecifier) ||
+    (dependencyDeclaration.resolutionSource !== "declaring-package-catalog" &&
+      dependencyDeclaration.resolutionSource !== "workspace-root-catalog")
+  ) {
+    return null;
+  }
+  return dependencyDeclaration.resolvedSpecifier;
 };
 
 // Lowest-major-wins: mixed-version monorepos must be linted against the
@@ -495,10 +478,11 @@ interface CollectWorkspaceFactsOptions {
 // next) that each re-resolved the same globs and re-visited the same
 // manifests.
 export const collectWorkspaceFacts = (
-  rootDirectory: string,
-  rootPackageJson: PackageJson,
+  packageGraph: PackageGraph,
   { collectReactGroup }: CollectWorkspaceFactsOptions,
 ): WorkspaceFacts => {
+  const rootPackage = packageGraph.rootPackage;
+  const rootPackageJson = rootPackage.manifest;
   const facts: WorkspaceFacts = {
     reactVersion: null,
     tailwindVersion: null,
@@ -534,7 +518,13 @@ export const collectWorkspaceFacts = (
     reanimatedVersion: null,
   };
 
-  evaluateManifestFacts(facts, rootPackageJson, rootDirectory, rootDirectory, rootPackageJson);
+  evaluateManifestFacts(
+    facts,
+    rootPackage.manifest,
+    rootPackage.directory,
+    packageGraph.rootDirectory,
+    rootPackageJson,
+  );
 
   // Once react (major ≤ 17), tailwind, and the framework are all pinned,
   // later workspaces can't change the outcome the legacy walk would have
@@ -542,83 +532,70 @@ export const collectWorkspaceFacts = (
   // accumulating to preserve those exact results.
   let isReactGroupSettled = !collectReactGroup;
 
-  const visitedDirectories = new Set<string>();
-  for (const pattern of getWorkspacePatterns(rootDirectory, rootPackageJson)) {
-    // Sorted so every fact resolves to the same workspace on repeated
-    // analysis of the same tree — raw readdir order isn't stable.
-    const directories = resolveWorkspaceDirectories(rootDirectory, pattern).toSorted();
-    for (const workspaceDirectory of directories) {
-      if (visitedDirectories.has(workspaceDirectory)) continue;
-      visitedDirectories.add(workspaceDirectory);
-      const workspacePackageJson = readPackageJson(path.join(workspaceDirectory, "package.json"));
+  for (const workspacePackage of packageGraph.packages.slice(1)) {
+    const workspaceDirectory = workspacePackage.directory;
+    const workspacePackageJson = workspacePackage.manifest;
 
-      evaluateManifestFacts(
-        facts,
-        workspacePackageJson,
-        workspaceDirectory,
-        rootDirectory,
-        rootPackageJson,
-      );
+    evaluateManifestFacts(
+      facts,
+      workspacePackageJson,
+      workspaceDirectory,
+      packageGraph.rootDirectory,
+      rootPackageJson,
+    );
 
-      const info = extractDependencyInfo(workspacePackageJson);
-      // Priority merge, not first-hit: a web framework outranks a mobile one
-      // across workspaces (see `frameworkMergeRank`), with walk order only
-      // breaking ties between equal ranks.
-      if (
-        info.framework !== "unknown" &&
-        frameworkMergeRank(info.framework) < frameworkMergeRank(facts.framework)
-      ) {
-        facts.framework = info.framework;
-      }
-
-      if (isReactGroupSettled) continue;
-      const reactVersion = resolveWorkspaceDependencyVersion({
-        concreteVersion: info.reactVersion,
-        packageName: "react",
-        rootDirectory,
-        rootPackageJson,
-        sections: REACT_SECTIONS,
-        workspaceDirectory,
-        workspacePackageJson,
-      });
-      const tailwindVersion = resolveWorkspaceDependencyVersion({
-        concreteVersion: info.tailwindVersion,
-        packageName: "tailwindcss",
-        rootDirectory,
-        rootPackageJson,
-        sections: TAILWIND_ZOD_SECTIONS,
-        workspaceDirectory,
-        workspacePackageJson,
-      });
-      const zodVersion = resolveWorkspaceDependencyVersion({
-        concreteVersion: info.zodVersion,
-        packageName: "zod",
-        rootDirectory,
-        rootPackageJson,
-        sections: TAILWIND_ZOD_SECTIONS,
-        workspaceDirectory,
-        workspacePackageJson,
-      });
-
-      if (reactVersion && shouldReplaceWithLowerMajor(facts.reactVersion, reactVersion)) {
-        facts.reactVersion = reactVersion;
-      }
-      if (tailwindVersion && !facts.tailwindVersion) {
-        facts.tailwindVersion = tailwindVersion;
-      }
-      if (zodVersion && !facts.zodVersion) {
-        facts.zodVersion = zodVersion;
-      }
-
-      const settledReactMajor = parseReactMajor(facts.reactVersion);
-      isReactGroupSettled = Boolean(
-        facts.reactVersion &&
-        facts.tailwindVersion &&
-        facts.framework !== "unknown" &&
-        settledReactMajor !== null &&
-        settledReactMajor <= 17,
-      );
+    const info = workspacePackage.dependencyInfo;
+    // Priority merge, not first-hit: a web framework outranks a mobile one
+    // across workspaces (see `frameworkMergeRank`), with walk order only
+    // breaking ties between equal ranks.
+    if (
+      info.framework !== "unknown" &&
+      frameworkMergeRank(info.framework) < frameworkMergeRank(facts.framework)
+    ) {
+      facts.framework = info.framework;
     }
+
+    if (isReactGroupSettled) continue;
+    const reactVersion = resolveWorkspaceDependencyVersion({
+      concreteVersion: info.reactVersion,
+      packageGraph,
+      packageName: "react",
+      sections: REACT_SECTIONS,
+      workspaceDirectory,
+    });
+    const tailwindVersion = resolveWorkspaceDependencyVersion({
+      concreteVersion: info.tailwindVersion,
+      packageGraph,
+      packageName: "tailwindcss",
+      sections: TAILWIND_ZOD_SECTIONS,
+      workspaceDirectory,
+    });
+    const zodVersion = resolveWorkspaceDependencyVersion({
+      concreteVersion: info.zodVersion,
+      packageGraph,
+      packageName: "zod",
+      sections: TAILWIND_ZOD_SECTIONS,
+      workspaceDirectory,
+    });
+
+    if (reactVersion && shouldReplaceWithLowerMajor(facts.reactVersion, reactVersion)) {
+      facts.reactVersion = reactVersion;
+    }
+    if (tailwindVersion && !facts.tailwindVersion) {
+      facts.tailwindVersion = tailwindVersion;
+    }
+    if (zodVersion && !facts.zodVersion) {
+      facts.zodVersion = zodVersion;
+    }
+
+    const settledReactMajor = parseReactMajor(facts.reactVersion);
+    isReactGroupSettled = Boolean(
+      facts.reactVersion &&
+      facts.tailwindVersion &&
+      facts.framework !== "unknown" &&
+      settledReactMajor !== null &&
+      settledReactMajor <= 17,
+    );
   }
 
   return facts;
@@ -632,7 +609,10 @@ export const collectWorkspaceFacts = (
 // root's version); tailwind/zod fall back only when the leaf DOES declare
 // them (or has no manifest at all) — otherwise a sibling workspace's
 // styling stack would leak into an unrelated leaf.
-export const findDependencyInfoFromMonorepoRoot = (directory: string): DependencyInfo => {
+export const findDependencyInfoFromMonorepoRoot = (
+  directory: string,
+  sourcePackageGraph: PackageGraph,
+): DependencyInfo => {
   const monorepoRoot = findMonorepoRoot(directory);
   if (!monorepoRoot) return EMPTY_DEPENDENCY_INFO;
 
@@ -640,47 +620,31 @@ export const findDependencyInfoFromMonorepoRoot = (directory: string): Dependenc
   if (!isFile(monorepoPackageJsonPath)) return EMPTY_DEPENDENCY_INFO;
 
   const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
-  const rootInfo = extractDependencyInfo(rootPackageJson);
-  const leafPackageJsonPath = path.join(directory, "package.json");
-  const leafPackageJson = isFile(leafPackageJsonPath) ? readPackageJson(leafPackageJsonPath) : null;
-  const leafReactDeclaration = leafPackageJson
-    ? getDependencyDeclaration({
-        packageJson: leafPackageJson,
-        packageName: "react",
-        sections: REACT_SECTIONS,
-      })
-    : null;
-  const leafTailwindDeclaration = leafPackageJson
-    ? getDependencyDeclaration({
-        packageJson: leafPackageJson,
-        packageName: "tailwindcss",
-        sections: TAILWIND_ZOD_SECTIONS,
-      })
-    : null;
-  const leafZodDeclaration = leafPackageJson
-    ? getDependencyDeclaration({
-        packageJson: leafPackageJson,
-        packageName: "zod",
-        sections: TAILWIND_ZOD_SECTIONS,
-      })
-    : null;
-  const shouldUseReactFallback = !leafReactDeclaration?.hasDeclaration;
-  const shouldUseTailwindFallback = leafTailwindDeclaration?.hasDeclaration ?? true;
-  const shouldUseZodFallback = leafZodDeclaration?.hasDeclaration ?? true;
+  const packageGraph = buildPackageGraph(monorepoRoot, rootPackageJson);
+  const rootInfo = packageGraph.rootPackage.dependencyInfo;
+  const leafReactDeclaration = sourcePackageGraph.getDependency(directory, "react", REACT_SECTIONS);
+  const leafTailwindDeclaration = sourcePackageGraph.getDependency(
+    directory,
+    "tailwindcss",
+    TAILWIND_ZOD_SECTIONS,
+  );
+  const leafZodDeclaration = sourcePackageGraph.getDependency(
+    directory,
+    "zod",
+    TAILWIND_ZOD_SECTIONS,
+  );
+  const shouldUseReactFallback = leafReactDeclaration === null;
+  const shouldUseTailwindFallback = leafTailwindDeclaration !== null;
+  const shouldUseZodFallback = leafZodDeclaration !== null;
   const reactCatalogVersion = shouldUseReactFallback
-    ? resolveCatalogVersion(
-        rootPackageJson,
-        "react",
-        monorepoRoot,
-        leafReactDeclaration?.catalogReference,
-      )
+    ? resolveCatalogVersion(rootPackageJson, "react", monorepoRoot, null)
     : null;
   const tailwindCatalogVersion = shouldUseTailwindFallback
     ? resolveCatalogVersion(
         rootPackageJson,
         "tailwindcss",
         monorepoRoot,
-        leafTailwindDeclaration?.catalogReference,
+        leafTailwindDeclaration.catalogReference,
       )
     : null;
   const zodCatalogVersion = shouldUseZodFallback
@@ -688,10 +652,10 @@ export const findDependencyInfoFromMonorepoRoot = (directory: string): Dependenc
         rootPackageJson,
         "zod",
         monorepoRoot,
-        leafZodDeclaration?.catalogReference,
+        leafZodDeclaration.catalogReference,
       )
     : null;
-  const workspaceFacts = collectWorkspaceFacts(monorepoRoot, rootPackageJson, {
+  const workspaceFacts = collectWorkspaceFacts(packageGraph, {
     collectReactGroup: true,
   });
 

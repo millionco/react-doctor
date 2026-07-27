@@ -1,4 +1,4 @@
-import { MIN_SCAN_CONCURRENCY } from "@react-doctor/core";
+import { MIN_SCAN_CONCURRENCY } from "../../core/core-runtime.js";
 
 /**
  * Maps the `--no-parallel` flag to an `InspectOptions.concurrency` value.

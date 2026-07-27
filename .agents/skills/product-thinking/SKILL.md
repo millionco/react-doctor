@@ -22,7 +22,7 @@ Run the pass whenever a diff touches a surface a user — a developer running Re
 | GitHub Action input/output | `action.yml`                                                      | Versioned independently (`vN`); workflows in other repos break when an input or output changes.              |
 | Terminal output / UX       | `cli/utils/` renderers                                            | The first impression and the daily experience; noise or confusion here is what makes people stop running it. |
 
-**Not here:** lint rules go through the `rule-research` → `rule-writing` → `rule-validate` pipeline, and rule configuration through `doctor-explain` — this pass is for the surface _around_ the rules, not the rules themselves. Internal-only changes (the engine, private `core` types, tests, tooling) skip the pass entirely; note in one line why the change is internal and move on.
+**Not here:** lint rules go through the `rule-research` → `rule-writing` → `rule-validate` pipeline, and rule configuration through the `react-doctor` skill's `references/explain.md` guide — this pass is for the surface _around_ the rules, not the rules themselves. Internal-only changes (the engine, private `core` types, tests, tooling) skip the pass entirely; note in one line why the change is internal and move on.
 
 ## Steps
 
@@ -87,7 +87,7 @@ A surface nobody can discover is wasted, and a stale doc is a trust bug. Documen
 
 - The `--help` / usage text next to the new flag or command, so it's discoverable from the CLI itself.
 - The website page and the canonical prompt under `react.doctor/prompts/...`, which is what agents fetch at runtime.
-- The distributed skills (`skills/react-doctor`, `skills/doctor-explain`) when the change alters the user-facing workflow.
+- The distributed `skills/react-doctor` skill and its `references/explain.md` guide when the change alters the user-facing workflow.
 
 ### 6. Record the kill metric
 

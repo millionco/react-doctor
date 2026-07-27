@@ -22,6 +22,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "@react-doctor/core";
 import { spawnLintBatches } from "../src/runners/oxlint/spawn-batches.js";
+import { createOxlintSpawnSlots } from "../src/utils/create-oxlint-spawn-slots.js";
 
 const project: ProjectInfo = {
   rootDirectory: "/tmp/app",
@@ -132,6 +133,7 @@ const runBatches = (
     nodeBinaryPath: process.execPath,
     project,
     concurrency,
+    spawnSlots: createOxlintSpawnSlots(concurrency),
     onPartialFailure,
   });
 
@@ -173,6 +175,7 @@ describe("spawnLintBatches — OOM rescue pass", () => {
       nodeBinaryPath: process.execPath,
       project,
       concurrency: 2,
+      spawnSlots: createOxlintSpawnSlots(2),
       onPartialFailure: (reason) => partialFailures.push(reason),
     });
 
@@ -199,6 +202,7 @@ describe("spawnLintBatches — OOM rescue pass", () => {
       nodeBinaryPath: process.execPath,
       project,
       concurrency: 2,
+      spawnSlots: createOxlintSpawnSlots(2),
       onPartialFailure: (reason) => partialFailures.push(reason),
     });
 

@@ -1,4 +1,4 @@
-import type { ProjectInfo } from "@react-doctor/core";
+import type { ProjectInfo } from "../../core/core-types.js";
 
 export interface SentryProjectContext {
   // Low-cardinality, searchable signals (framework, React major, capabilities)

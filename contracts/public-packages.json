@@ -1,0 +1,129 @@
+[
+  {
+    "name": "deslop-cli",
+    "directory": "packages/deslop-cli",
+    "type": "module",
+    "main": null,
+    "module": null,
+    "types": null,
+    "bin": {
+      "deslop": "./dist/cli.mjs"
+    },
+    "exports": null,
+    "files": ["dist", "package.json", "README.md", "LICENSE"],
+    "sideEffects": null,
+    "engines": {
+      "node": ">=22"
+    },
+    "peerDependencies": null
+  },
+  {
+    "name": "deslop-js",
+    "directory": "packages/deslop-js",
+    "type": "module",
+    "main": "dist/index.cjs",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.mts",
+    "bin": null,
+    "exports": {
+      "./package.json": "./package.json",
+      ".": {
+        "import": {
+          "types": "./dist/index.d.mts",
+          "default": "./dist/index.mjs"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "./analyzed-inputs": {
+        "import": {
+          "types": "./dist/analyzed-inputs.d.mts",
+          "default": "./dist/analyzed-inputs.mjs"
+        },
+        "require": {
+          "types": "./dist/analyzed-inputs.d.cts",
+          "default": "./dist/analyzed-inputs.cjs"
+        }
+      }
+    },
+    "files": ["dist", "package.json", "README.md", "LICENSE"],
+    "sideEffects": null,
+    "engines": null,
+    "peerDependencies": null
+  },
+  {
+    "name": "eslint-plugin-react-doctor",
+    "directory": "packages/eslint-plugin-react-doctor",
+    "type": "module",
+    "main": null,
+    "module": null,
+    "types": null,
+    "bin": null,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "files": ["dist/**/*.js", "dist/**/*.d.ts", "LICENSE"],
+    "sideEffects": false,
+    "engines": {
+      "node": "^20.19.0 || >=22.13.0"
+    },
+    "peerDependencies": null
+  },
+  {
+    "name": "oxlint-plugin-react-doctor",
+    "directory": "packages/oxlint-plugin-react-doctor",
+    "type": "module",
+    "main": null,
+    "module": null,
+    "types": null,
+    "bin": null,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./contracts": {
+        "types": "./dist/contracts.d.ts",
+        "default": "./dist/contracts.js"
+      }
+    },
+    "files": ["dist/**/*.js", "dist/**/*.d.ts", "LICENSE"],
+    "sideEffects": false,
+    "engines": {
+      "node": "^20.19.0 || >=22.13.0"
+    },
+    "peerDependencies": null
+  },
+  {
+    "name": "react-doctor",
+    "directory": "packages/react-doctor",
+    "type": "module",
+    "main": null,
+    "module": null,
+    "types": null,
+    "bin": {
+      "react-doctor": "./bin/react-doctor.js"
+    },
+    "exports": {
+      ".": {
+        "types": "./dist/cli.d.ts",
+        "default": "./dist/cli.js"
+      },
+      "./api": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "files": ["bin/**", "dist/**/*.js", "dist/**/*.d.ts", "dist/skills/**", "LICENSE"],
+    "sideEffects": false,
+    "engines": {
+      "node": "^20.19.0 || >=22.13.0"
+    },
+    "peerDependencies": null
+  }
+]

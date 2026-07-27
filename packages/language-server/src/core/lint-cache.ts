@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { messageFromUnknown, type Diagnostic as CoreDiagnostic } from "@react-doctor/core";
+import { messageFromUnknown, type CoreDiagnostic } from "./core-api.js";
 import {
   CACHE_FILENAME_HASH_LENGTH_CHARS,
   LINT_CACHE_PERSIST_DEBOUNCE_MS,

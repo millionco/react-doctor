@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { selectProjects } from "../src/cli/utils/select-projects.js";
+import { discoverWorkspacePackages, selectProjects } from "../src/cli/utils/select-projects.js";
 import { cliLogger } from "../src/cli/utils/cli-logger.js";
 import { prompts } from "../src/cli/utils/prompts.js";
 import { setupReactProject, writeJson } from "./regressions/_helpers.js";
@@ -66,6 +66,25 @@ describe("selectProjects", () => {
     expect(cliLogger.log).not.toHaveBeenCalledWith(
       expect.stringContaining("Select projects to scan"),
     );
+  });
+
+  it("preserves root-first workspace-pattern order", () => {
+    const rootDirectory = createTempDirectory();
+    writeJson(path.join(rootDirectory, "package.json"), {
+      name: "workspace-root",
+      dependencies: { react: "^19.0.0" },
+      workspaces: ["packages/zeta", "apps/beta", "packages/alpha"],
+    });
+    const zetaDirectory = setupReactProject(path.join(rootDirectory, "packages"), "zeta");
+    const betaDirectory = setupReactProject(path.join(rootDirectory, "apps"), "beta");
+    const alphaDirectory = setupReactProject(path.join(rootDirectory, "packages"), "alpha");
+
+    expect(discoverWorkspacePackages(rootDirectory)).toEqual([
+      { name: "workspace-root", directory: rootDirectory },
+      { name: "zeta", directory: zetaDirectory },
+      { name: "beta", directory: betaDirectory },
+      { name: "alpha", directory: alphaDirectory },
+    ]);
   });
 
   it("falls through to subproject discovery for a monorepo with no workspace React packages", async () => {

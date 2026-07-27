@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { readCurrentResourceSource } from "../../../internal/resource-host/resource-host-context.js";
 
 // Codebases that migrated from eslint-plugin-react-hooks carry
 // `eslint-disable-next-line react-hooks/exhaustive-deps` comments on
@@ -77,6 +78,10 @@ const lineForOffset = (offset: number, newlineOffsets: ReadonlyArray<number>): n
 
 const getSuppressionIndex = (filename: string | undefined): SuppressionIndex | null => {
   if (!filename) return null;
+  const currentResourceSource = readCurrentResourceSource(filename);
+  if (currentResourceSource !== undefined) {
+    return currentResourceSource === null ? null : buildSuppressionIndex(currentResourceSource);
+  }
   const cached = suppressionIndexCache.get(filename);
   if (cached !== undefined) return cached;
   let index: SuppressionIndex | null = null;

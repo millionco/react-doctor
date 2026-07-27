@@ -1,7 +1,7 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { highlighter } from "@react-doctor/core";
-import type { Diagnostic, InspectResult, ScoreResult } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
+import type { Diagnostic, InspectResult, ScoreResult } from "../../core/core-types.js";
 import { colorizeByScore } from "./colorize-by-score.js";
 import { countUniqueScannedFiles } from "./count-unique-scanned-files.js";
 import { scoreBandLabel } from "./score-band-label.js";

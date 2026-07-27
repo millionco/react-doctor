@@ -1,36 +1,29 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import {
+  DEFAULT_TEST_TIMEOUT_MS,
+  ENGINE_RUNTIME_EXTERNALS,
+  NODE_PACK_TARGET,
+} from "../../scripts/build/constants.js";
+import { readPackageVersion } from "../../scripts/utils/read-package-version.js";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
-
-const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8")) as {
-  version: string;
-};
+const packageVersion = readPackageVersion(import.meta.url);
 
 export default defineConfig({
   pack: [
     {
       entry: { index: "./src/index.ts", schemas: "./src/schemas.ts" },
       deps: {
-        neverBundle: [
-          "@effect/platform-node-shared",
-          "deslop-js",
-          "effect",
-          "oxc-parser",
-          "oxc-resolver",
-          "oxlint",
-          "oxlint-plugin-react-doctor",
-          "typescript",
-        ],
+        neverBundle: ["@effect/platform-node-shared", ...ENGINE_RUNTIME_EXTERNALS],
       },
       dts: true,
-      target: "node20",
+      target: NODE_PACK_TARGET,
       platform: "node",
       fixedExtension: false,
       env: {
-        REACT_DOCTOR_CORE_VERSION: packageJson.version,
+        REACT_DOCTOR_CORE_VERSION: packageVersion,
       },
     },
   ],
@@ -49,6 +42,6 @@ export default defineConfig({
         replacement: path.join(packageRoot, "../oxlint-plugin-react-doctor/src/index.ts"),
       },
     ],
-    testTimeout: 30_000,
+    testTimeout: DEFAULT_TEST_TIMEOUT_MS,
   },
 });

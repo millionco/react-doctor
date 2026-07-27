@@ -3,13 +3,14 @@ import { generateCode, loadFile, writeFile } from "magicast";
 import { getConfigFromVariableDeclaration, getDefaultExportOptions } from "magicast/helpers";
 import * as fs from "node:fs";
 import {
-  CONFIG_SCHEMA_URL,
-  LEGACY_CONFIG_FILENAME,
   clearConfigCache,
-  isPlainObject,
+  LEGACY_CONFIG_FILENAME,
   loadConfigWithSource,
-} from "@react-doctor/core";
-import type { ReactDoctorConfig, ReactDoctorConfigFormat } from "@react-doctor/core";
+} from "../../core/core-configuration.js";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import { isPlainObject } from "../../core/core-primitives.js";
+import { CONFIG_SCHEMA_URL } from "../../core/core-product.js";
+import type { ReactDoctorConfigFormat } from "../../core/core-types.js";
 import { readObjectFile } from "./read-object-file.js";
 
 const NEW_CONFIG_FILENAME = "doctor.config.json";

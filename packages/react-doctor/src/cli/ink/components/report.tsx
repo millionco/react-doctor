@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import { useEffect, useMemo, useRef } from "react";
-import type { ScoreResult } from "@react-doctor/core";
+import type { ScoreResult } from "../../../core/core-types.js";
 import type { CliAgentId } from "../../utils/launch-agent.js";
 import {
   METRIC,

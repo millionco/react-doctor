@@ -1,0 +1,31 @@
+import {
+  AmbiguousProjectError,
+  formatErrorChain,
+  formatReactDoctorError,
+  isErrnoException,
+  isProjectDiscoveryError,
+  isReactDoctorError,
+  messageFromUnknown,
+  NoReactDependencyError,
+  NotADirectoryError,
+  PackageJsonNotFoundError,
+  ProjectNotFoundError,
+  ReactDoctorError,
+  restoreLegacyThrow,
+} from "@react-doctor/core";
+
+export {
+  AmbiguousProjectError,
+  formatErrorChain,
+  formatReactDoctorError,
+  isErrnoException,
+  isProjectDiscoveryError,
+  isReactDoctorError,
+  messageFromUnknown,
+  NoReactDependencyError,
+  NotADirectoryError,
+  PackageJsonNotFoundError,
+  ProjectNotFoundError,
+  ReactDoctorError,
+  restoreLegacyThrow,
+};

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { getSkillAgentConfig } from "agent-install";
-import type { Diagnostic } from "@react-doctor/core";
-import { highlighter } from "@react-doctor/core";
+import type { Diagnostic } from "../../core/core-types.js";
+import { highlighter } from "../../core/core-presentation.js";
 import { buildHandoffPayload } from "./build-handoff-payload.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { detectLaunchableAgents } from "./detect-launchable-agents.js";

@@ -1,27 +1,23 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
-import type { PackageJson, ProjectInfo } from "../types/index.js";
+import type { ProjectInfo } from "../types/index.js";
 import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
 import { isFile } from "./fs-utils.js";
 import { countSourceFiles } from "./count-source-files.js";
 import {
   detectNextjsStaticExport,
-  detectPreES2023Target,
   detectReactCompiler,
   detectReactCompilerLintPlugin,
 } from "./detectors.js";
+import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
 import {
-  extractDependencyInfo,
-  getDependencyDeclaration,
   getPreactVersion,
-  isCatalogReference,
   REACT_SECTIONS,
   resolveCatalogBackedDependencyVersion,
-  resolveCatalogVersion,
   TAILWIND_ZOD_SECTIONS,
 } from "./dependencies.js";
-import { findMonorepoRoot, isMonorepoRoot } from "./monorepo-root.js";
+import { isMonorepoRoot } from "./monorepo-root.js";
 import { findNearestAncestorPackageJson } from "./find-nearest-ancestor-package-json.js";
 import {
   collectWorkspaceFacts,
@@ -32,6 +28,11 @@ import { resolveInstalledReactVersion } from "./resolve-installed-react-version.
 import { readPackageJson } from "./package-json.js";
 import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
 import {
+  buildPackageGraph,
+  type PackageGraph,
+  type PackageGraphDependencyDeclaration,
+} from "./package-graph.js";
+import {
   getDependencyMajorWithinSupportedRange,
   getLowestDependencyMajor,
   parseReactMajor,
@@ -41,18 +42,43 @@ import {
 import { clearTargetBlankOpenerProtectionCache } from "./detect-target-blank-opener-protection.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
-export { formatFrameworkName } from "./detectors.js";
+export { formatFrameworkName } from "./detect-framework.js";
 export { listWorkspacePackages } from "./workspaces.js";
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();
+const cachedPackageGraphs = new Map<string, PackageGraph>();
+
+const getCatalogResolvedVersion = (
+  dependencyDeclaration: PackageGraphDependencyDeclaration | null,
+): string | null => {
+  if (
+    dependencyDeclaration === null ||
+    dependencyDeclaration.resolutionSource === "manifest" ||
+    dependencyDeclaration.resolutionSource === "unresolved-catalog"
+  ) {
+    return null;
+  }
+  return dependencyDeclaration.resolvedSpecifier;
+};
+
+const getRawManifestVersion = (
+  dependencyDeclaration: PackageGraphDependencyDeclaration | null,
+): string | null =>
+  dependencyDeclaration?.resolutionSource === "manifest"
+    ? dependencyDeclaration.rawSpecifier
+    : null;
 
 // HACK: paired with clearConfigCache — exposed so programmatic API
 // consumers can re-detect after the project's package.json /
 // tsconfig.json / monorepo manifests change between diagnose() calls.
 export const clearProjectCache = (): void => {
   cachedProjectInfos.clear();
+  cachedPackageGraphs.clear();
   clearTargetBlankOpenerProtectionCache();
 };
+
+export const getDiscoveredPackageGraph = (directory: string): PackageGraph | null =>
+  cachedPackageGraphs.get(directory) ?? null;
 
 /**
  * Build a `ProjectInfo` for a directory that has no `package.json` of
@@ -77,6 +103,11 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
   // to this folder so React capabilities survive when a React monorepo
   // subdirectory is scanned.
   if (enclosingProject !== null) {
+    const enclosingPackageGraph =
+      enclosingProjectRoot === null ? undefined : cachedPackageGraphs.get(enclosingProjectRoot);
+    if (enclosingPackageGraph !== undefined) {
+      cachedPackageGraphs.set(directory, enclosingPackageGraph);
+    }
     return {
       ...enclosingProject,
       rootDirectory: directory,
@@ -159,58 +190,31 @@ export const discoverProject = (directory: string): ProjectInfo => {
     return synthesized;
   }
 
-  const packageJson = readPackageJson(packageJsonPath);
-  const rootInfo = extractDependencyInfo(packageJson);
+  const packageGraph = buildPackageGraph(directory, readPackageJson(packageJsonPath));
+  const rootPackage = packageGraph.rootPackage;
+  const packageJson = rootPackage.manifest;
+  const rootInfo = rootPackage.dependencyInfo;
   let framework = rootInfo.framework;
 
-  // One resolution ladder, written once for all three root-tracked
-  // dependencies: root concrete spec → root catalogs → monorepo-root
-  // catalogs → workspace walk (stage gate below) → enclosing-monorepo
-  // fallback → raw declared spec.
+  const declarations = {
+    react: packageGraph.getDependency(directory, "react", REACT_SECTIONS),
+    tailwindcss: packageGraph.getDependency(directory, "tailwindcss", TAILWIND_ZOD_SECTIONS),
+    zod: packageGraph.getDependency(directory, "zod", TAILWIND_ZOD_SECTIONS),
+  };
   const tracked = {
-    react: { version: rootInfo.reactVersion, sections: REACT_SECTIONS },
-    tailwindcss: { version: rootInfo.tailwindVersion, sections: TAILWIND_ZOD_SECTIONS },
-    zod: { version: rootInfo.zodVersion, sections: TAILWIND_ZOD_SECTIONS },
-  };
-  const declarations = Object.fromEntries(
-    Object.entries(tracked).map(([packageName, entry]) => [
-      packageName,
-      getDependencyDeclaration({ packageJson, packageName, sections: entry.sections }),
-    ]),
-  );
-  const fillFromCatalogs = (source: PackageJson, sourceDirectory: string): void => {
-    for (const [packageName, entry] of Object.entries(tracked)) {
-      if (!entry.version && declarations[packageName].hasDeclaration) {
-        entry.version = resolveCatalogVersion(
-          source,
-          packageName,
-          sourceDirectory,
-          declarations[packageName].catalogReference,
-        );
-      }
-    }
+    react: {
+      version: rootInfo.reactVersion ?? getCatalogResolvedVersion(declarations.react),
+    },
+    tailwindcss: {
+      version: rootInfo.tailwindVersion ?? getCatalogResolvedVersion(declarations.tailwindcss),
+    },
+    zod: {
+      version: rootInfo.zodVersion ?? getCatalogResolvedVersion(declarations.zod),
+    },
   };
 
-  fillFromCatalogs(packageJson, directory);
-
-  // HACK: keep the monorepo-root catalog read cheap (one package.json plus
-  // pnpm-workspace catalogs). The expensive workspace walks below still key
-  // off React/framework misses; if we walk anyway, they can fill Zod too.
-  if (!tracked.react.version || !tracked.tailwindcss.version || !tracked.zod.version) {
-    const monorepoRoot = findMonorepoRoot(directory);
-    if (monorepoRoot) {
-      const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
-      if (isFile(monorepoPackageJsonPath)) {
-        fillFromCatalogs(readPackageJson(monorepoPackageJsonPath), monorepoRoot);
-      }
-    }
-  }
-
-  // The one workspace traversal: every workspace-derived fact (the react
-  // group, RN/reanimated awareness, expo / flash-list / next specs) comes
-  // out of this single pass; the gates below decide which apply.
   const shouldCollectReactGroup = !tracked.react.version || framework === "unknown";
-  const workspaceFacts = collectWorkspaceFacts(directory, packageJson, {
+  const workspaceFacts = collectWorkspaceFacts(packageGraph, {
     collectReactGroup: shouldCollectReactGroup,
   });
 
@@ -224,7 +228,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
   }
 
   if ((!tracked.react.version || framework === "unknown") && !isMonorepoRoot(directory)) {
-    const monorepoInfo = findDependencyInfoFromMonorepoRoot(directory);
+    const monorepoInfo = findDependencyInfoFromMonorepoRoot(directory, packageGraph);
     tracked.react.version ||= monorepoInfo.reactVersion;
     tracked.tailwindcss.version ||= monorepoInfo.tailwindVersion;
     tracked.zod.version ||= monorepoInfo.zodVersion;
@@ -233,12 +237,9 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
 
-  for (const [packageName, entry] of Object.entries(tracked)) {
-    const declaredVersion = declarations[packageName].version;
-    if (!entry.version && declaredVersion && !isCatalogReference(declaredVersion)) {
-      entry.version = declaredVersion;
-    }
-  }
+  tracked.react.version ||= getRawManifestVersion(declarations.react);
+  tracked.tailwindcss.version ||= getRawManifestVersion(declarations.tailwindcss);
+  tracked.zod.version ||= getRawManifestVersion(declarations.zod);
   const { react, tailwindcss, zod } = tracked;
   let reactVersion = react.version;
   if (!reactVersion || parseReactMajor(reactVersion) === null) {
@@ -412,5 +413,6 @@ export const discoverProject = (directory: string): ProjectInfo => {
     sourceFileCount,
   };
   cachedProjectInfos.set(directory, projectInfo);
+  cachedPackageGraphs.set(directory, packageGraph);
   return projectInfo;
 };

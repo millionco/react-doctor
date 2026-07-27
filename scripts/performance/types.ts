@@ -154,6 +154,100 @@ export interface PerformanceResult {
   comparisons: BenchmarkComparison[];
 }
 
+export interface OxlintOverheadOptions {
+  readonly samples: number;
+  readonly warmups: number;
+  readonly outputPrefix: string;
+}
+
+export interface OxlintJsonSummary {
+  readonly diagnosticCount: number;
+  readonly fileCount: number;
+  readonly ruleCount: number;
+}
+
+export interface OxlintOverheadCommandOptions {
+  readonly samples: number;
+  readonly warmups: number;
+  readonly out: string;
+}
+
+export interface OxlintOverheadMeasurement {
+  readonly id: string;
+  readonly label: string;
+  readonly method: string;
+  readonly classification: "direct";
+  readonly milliseconds: DistributionSummary;
+}
+
+export interface OxlintOverheadResidual {
+  readonly id: string;
+  readonly label: string;
+  readonly calculation: string;
+  readonly classification: "inferred";
+  readonly medianMilliseconds: number;
+}
+
+export interface OxlintOverheadWorkloadDefinition {
+  readonly id: string;
+  readonly label: string;
+  readonly sourceFileCount: number;
+  readonly sourceDirectoryCount: number;
+  readonly callExpressionsPerFile: number;
+}
+
+export interface OxlintOverheadWorkloadMetadata extends OxlintOverheadWorkloadDefinition {
+  readonly sourceByteCount: number;
+  readonly totalCallExpressionCount: number;
+}
+
+export interface CreatedOxlintOverheadWorkload {
+  readonly metadata: OxlintOverheadWorkloadMetadata;
+  readonly sourceDirectory: string;
+}
+
+export interface OxlintOverheadShare {
+  readonly id: string;
+  readonly label: string;
+  readonly calculation: string;
+  readonly classification: "inferred";
+  readonly numeratorMilliseconds: number;
+  readonly denominatorMilliseconds: number;
+  readonly percentage: number;
+}
+
+export interface OxlintOverheadWorkloadResult extends OxlintOverheadWorkloadMetadata {
+  readonly measurements: ReadonlyArray<OxlintOverheadMeasurement>;
+  readonly residuals: ReadonlyArray<OxlintOverheadResidual>;
+  readonly shares: ReadonlyArray<OxlintOverheadShare>;
+}
+
+export interface OxlintOverheadResult {
+  readonly schemaVersion: 1;
+  readonly generatedAt: string;
+  readonly host: {
+    readonly platform: NodeJS.Platform;
+    readonly architecture: string;
+    readonly nodeVersion: string;
+    readonly v8Version: string;
+    readonly cpuModel: string;
+    readonly cpuCount: number;
+  };
+  readonly toolchain: {
+    readonly oxlintVersion: string;
+    readonly pluginPath: string;
+    readonly representativeRule: string;
+    readonly representativeSourceBytes: number;
+    readonly representativeCallExpressionCount: number;
+    readonly oxlintThreadCount: number;
+  };
+  readonly options: OxlintOverheadOptions;
+  readonly measurements: ReadonlyArray<OxlintOverheadMeasurement>;
+  readonly residuals: ReadonlyArray<OxlintOverheadResidual>;
+  readonly workloads: ReadonlyArray<OxlintOverheadWorkloadResult>;
+  readonly limitations: ReadonlyArray<string>;
+}
+
 export interface V8ProfileCallFrame {
   functionName: string;
   url: string;

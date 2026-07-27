@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { Capability } from "oxlint-plugin-react-doctor";
+import type { Capability } from "oxlint-plugin-react-doctor/contracts";
 import type { Framework, ProjectInfo } from "../types/index.js";
 import {
   EARLIEST_GATED_MOBX_MAJOR,

@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
 import {
   RIGHT_EDGE_SAFETY_COLUMNS,
   WELCOME_EXPLANATION_HOLD_MS,

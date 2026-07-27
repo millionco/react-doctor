@@ -1,5 +1,5 @@
-import { isScanComplete } from "@react-doctor/core";
-import type { InspectResult } from "@react-doctor/core";
+import { isScanComplete } from "../../core/core-reporting.js";
+import type { InspectResult } from "../../core/core-types.js";
 
 export const isInspectResultComplete = (result: InspectResult): boolean =>
   isScanComplete({

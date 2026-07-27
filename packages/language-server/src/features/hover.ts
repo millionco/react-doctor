@@ -1,5 +1,5 @@
-import { getRuleMetadata } from "@react-doctor/core";
 import { MarkupKind, type Diagnostic as LspDiagnostic, type Hover } from "vscode-languageserver";
+import { getRuleMetadata } from "../core/core-api.js";
 import type { ReactDoctorDiagnosticData } from "../types.js";
 import { readDiagnosticData } from "../utils/read-diagnostic-data.js";
 import { severityLabel } from "../utils/severity-label.js";

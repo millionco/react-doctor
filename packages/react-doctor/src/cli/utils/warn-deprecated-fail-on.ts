@@ -1,4 +1,4 @@
-import type { ReactDoctorConfig } from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 

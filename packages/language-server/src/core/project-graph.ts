@@ -1,15 +1,6 @@
 import path from "node:path";
-import {
-  clearAutoSuppressionCaches,
-  clearConfigCache,
-  clearIgnorePatternsCache,
-  clearMinifiedFileCache,
-  clearPackageJsonCache,
-  clearProjectCache,
-  discoverReactSubprojects,
-  messageFromUnknown,
-} from "@react-doctor/core";
 import { SILENT_LOGGER, type Logger, type ProjectGraph, type WorkspaceProject } from "../types.js";
+import { clearCoreCaches, discoverReactSubprojects, messageFromUnknown } from "./core-api.js";
 
 export interface ProjectGraphOptions {
   /** Absolute workspace root directories (LSP workspace folders). */
@@ -76,12 +67,7 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
       projects = discover();
     },
     invalidate: () => {
-      clearProjectCache();
-      clearConfigCache();
-      clearPackageJsonCache();
-      clearIgnorePatternsCache();
-      clearAutoSuppressionCaches();
-      clearMinifiedFileCache();
+      clearCoreCaches();
       projects = null;
     },
   };

@@ -1,4 +1,5 @@
-import { GITHUB_ACTIONS_SETUP_URL, highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
+import { GITHUB_ACTIONS_SETUP_URL } from "../../core/core-product.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { CI_TRUST_COMPANIES } from "./constants.js";
 import { openUrl } from "./open-url.js";

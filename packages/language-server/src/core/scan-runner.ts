@@ -3,8 +3,8 @@ import {
   computeConfigFingerprint,
   hashFileContents,
   runEditorScan,
-  type Diagnostic as CoreDiagnostic,
-} from "@react-doctor/core";
+  type CoreDiagnostic,
+} from "./core-api.js";
 import {
   SILENT_LOGGER,
   type CancellationToken,
@@ -19,7 +19,7 @@ import { toProjectRelative } from "../utils/to-project-relative.js";
 import { createLintCache, type FileIdentity, type LintCache } from "./lint-cache.js";
 import { materializeOverlay, type OverlaySnapshot } from "./overlay.js";
 
-export interface ScanRunnerOptions {
+interface ScanRunnerOptions {
   /** Node binary able to load the oxlint native binding, or `null`. */
   readonly nodeBinaryPath: string | null;
   /** Reads live file text (open buffer first, then disk) for overlays. */

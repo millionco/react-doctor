@@ -9,7 +9,7 @@ import type { Diagnostic, ProjectInfo } from "./types/index.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
 import { shouldEnableRuleByDefaultStatus } from "./utils/should-enable-rule-by-default-status.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
-import type { Capability } from "oxlint-plugin-react-doctor";
+import type { Capability } from "oxlint-plugin-react-doctor/contracts";
 
 export interface CheckSecurityScanOptions {
   readonly project?: ProjectInfo;

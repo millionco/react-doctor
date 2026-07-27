@@ -118,7 +118,7 @@ builds one lazily per `Program` with `eslint-scope` in
   `setUncontrolledOpen(nextOpen)` in an `onOpenChange` handler), the state
   holds the user's live edits and only re-syncs to the controlled prop. It
   is not a value derivable while rendering — a `useMemo` would erase the
-  edits — so it is skipped (`isControlledPropMirror`). The upstream
+  edits — so it is skipped (`hasUserInputSetterWriter`). The upstream
   "derived" corpus never mirrors a bare prop while also writing the same
   state elsewhere, so parity is retained (all 54 invalid cases still fire,
   including the dead-wrapper double-call-site fixture whose argument is an

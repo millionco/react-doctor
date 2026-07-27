@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@voidzero-dev/vite-plus-test";
 import { closureCaptures } from "./closure-captures.js";
 import { analyzeScopes } from "./scope-analysis.js";
-import { attachParentReferences } from "../../test-utils/attach-parent-references.js";
+import { attachParentReferences } from "../utils/attach-parent-references.js";
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";

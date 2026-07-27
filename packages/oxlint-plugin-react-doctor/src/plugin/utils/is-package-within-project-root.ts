@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { getCurrentResourceHost } from "../../internal/resource-host/resource-host-context.js";
 import { normalizeFilename } from "./normalize-filename.js";
 
 const cachedRealDirectoryByDirectory = new Map<string, string>();
@@ -22,6 +23,16 @@ export const isPackageWithinProjectRoot = (
   includeRootDirectory: boolean,
 ): boolean => {
   if (rootDirectory === undefined || rootDirectory.length === 0) return false;
+  const currentResourceHost = getCurrentResourceHost();
+  if (currentResourceHost) {
+    const normalizedPackageDirectory = currentResourceHost.normalizePath(packageDirectory);
+    const normalizedRootDirectory = currentResourceHost.normalizePath(rootDirectory);
+    if (includeRootDirectory && normalizedPackageDirectory === normalizedRootDirectory) return true;
+    const rootPrefix = normalizedRootDirectory.endsWith("/")
+      ? normalizedRootDirectory
+      : `${normalizedRootDirectory}/`;
+    return normalizedPackageDirectory.startsWith(rootPrefix);
+  }
   const realPackageDirectory = normalizeFilename(resolveRealDirectory(packageDirectory));
   const normalizedRootDirectory = normalizeFilename(rootDirectory);
   if (includeRootDirectory && realPackageDirectory === normalizedRootDirectory) return true;

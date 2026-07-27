@@ -1,0 +1,207 @@
+{
+  "entries": [
+    {
+      "packageName": "deslop-js",
+      "subpath": ".",
+      "exportKeys": {
+        "import": ["analyze", "defineConfig"],
+        "require": ["analyze", "defineConfig"]
+      }
+    },
+    {
+      "packageName": "deslop-js",
+      "subpath": "./analyzed-inputs",
+      "exportKeys": {
+        "import": ["ANALYZED_MANIFEST_FILENAMES", "DEFAULT_EXTENSIONS"],
+        "require": ["ANALYZED_MANIFEST_FILENAMES", "DEFAULT_EXTENSIONS"]
+      }
+    },
+    {
+      "packageName": "deslop-js",
+      "subpath": "./package.json",
+      "exportKeys": {
+        "import": ["default"]
+      }
+    },
+    {
+      "packageName": "eslint-plugin-react-doctor",
+      "subpath": ".",
+      "exportKeys": {
+        "import": ["default"]
+      }
+    },
+    {
+      "packageName": "oxlint-plugin-react-doctor",
+      "subpath": ".",
+      "exportKeys": {
+        "import": [
+          "ALL_REACT_DOCTOR_RULES",
+          "ALL_REACT_DOCTOR_RULE_KEYS",
+          "CROSS_FILE_DEPENDENCY_COLLECTORS",
+          "CROSS_FILE_RULE_IDS",
+          "EXTERNAL_RULES",
+          "FRAMEWORK_SPECIFIC_RULE_KEYS",
+          "FRAMEWORK_TOKENS",
+          "MOTION_LIBRARY_PACKAGES",
+          "NEXTJS_RULES",
+          "PREACT_RULES",
+          "REACT_COMPILER_RULES",
+          "REACT_DOCTOR_RULES",
+          "REACT_NATIVE_DEPENDENCY_NAMES",
+          "REACT_NATIVE_DEPENDENCY_PREFIXES",
+          "REACT_NATIVE_RULES",
+          "RECOMMENDED_RULES",
+          "RULES",
+          "TANSTACK_QUERY_RULES",
+          "TANSTACK_START_RULES",
+          "UNBOUNDED_CROSS_FILE_RULE_IDS",
+          "classifySecurityScanFile",
+          "collectCrossFileDependencyProbes",
+          "default",
+          "isReactNativeDependencyName",
+          "resetManifestCaches",
+          "shouldReadSecurityScanContent"
+        ]
+      }
+    },
+    {
+      "packageName": "oxlint-plugin-react-doctor",
+      "subpath": "./contracts",
+      "exportKeys": {
+        "import": ["FRAMEWORK_TOKENS", "MOTION_LIBRARY_PACKAGES"]
+      }
+    },
+    {
+      "packageName": "react-doctor",
+      "subpath": ".",
+      "executionOnly": true
+    },
+    {
+      "packageName": "react-doctor",
+      "subpath": "./api",
+      "exportKeys": {
+        "import": [
+          "AmbiguousProjectError",
+          "NoReactDependencyError",
+          "NotADirectoryError",
+          "PackageJsonNotFoundError",
+          "ProjectNotFoundError",
+          "ReactDoctorError",
+          "buildJsonReport",
+          "buildJsonReportError",
+          "clearCaches",
+          "defineConfig",
+          "diagnose",
+          "filterSourceFiles",
+          "getDiffInfo",
+          "hasReactRuntime",
+          "isProjectDiscoveryError",
+          "isReactDoctorError",
+          "summarizeDiagnostics",
+          "toJsonReport"
+        ]
+      }
+    }
+  ],
+  "filePolicies": [
+    {
+      "packageName": "deslop-cli",
+      "requiredFiles": ["LICENSE", "README.md", "dist/cli.mjs", "package.json"],
+      "allowedPatterns": ["LICENSE", "README.md", "dist/**", "package.json"],
+      "deniedPatterns": [
+        "scripts/**",
+        "src/**",
+        "tests/**",
+        "tsconfig.json",
+        "vite.config.ts",
+        "**/*.map"
+      ]
+    },
+    {
+      "packageName": "deslop-js",
+      "requiredFiles": [
+        "LICENSE",
+        "README.md",
+        "dist/analyzed-inputs.cjs",
+        "dist/analyzed-inputs.d.cts",
+        "dist/analyzed-inputs.d.mts",
+        "dist/analyzed-inputs.mjs",
+        "dist/index.cjs",
+        "dist/index.d.cts",
+        "dist/index.d.mts",
+        "dist/index.mjs",
+        "package.json"
+      ],
+      "allowedPatterns": ["LICENSE", "README.md", "dist/**", "package.json"],
+      "deniedPatterns": [
+        "scripts/**",
+        "src/**",
+        "tests/**",
+        "tsconfig.json",
+        "vite.config.ts",
+        "**/*.map"
+      ]
+    },
+    {
+      "packageName": "eslint-plugin-react-doctor",
+      "requiredFiles": ["LICENSE", "README.md", "dist/index.d.ts", "dist/index.js", "package.json"],
+      "allowedPatterns": ["LICENSE", "README.md", "dist/**", "package.json"],
+      "deniedPatterns": [
+        "scripts/**",
+        "src/**",
+        "tests/**",
+        "tsconfig.json",
+        "vite.config.ts",
+        "**/*.map"
+      ]
+    },
+    {
+      "packageName": "oxlint-plugin-react-doctor",
+      "requiredFiles": [
+        "LICENSE",
+        "README.md",
+        "dist/contracts.d.ts",
+        "dist/contracts.js",
+        "dist/index.d.ts",
+        "dist/index.js",
+        "package.json"
+      ],
+      "allowedPatterns": ["LICENSE", "README.md", "dist/**", "package.json"],
+      "deniedPatterns": [
+        "scripts/**",
+        "src/**",
+        "tests/**",
+        "tsconfig.json",
+        "vite.config.ts",
+        "**/*.map"
+      ]
+    },
+    {
+      "packageName": "react-doctor",
+      "requiredFiles": [
+        "LICENSE",
+        "README.md",
+        "bin/react-doctor.js",
+        "dist/cli.d.ts",
+        "dist/cli.js",
+        "dist/index.d.ts",
+        "dist/index.js",
+        "dist/lsp.js",
+        "dist/skills/improve-react/AUDIT.md",
+        "dist/skills/improve-react/PLAN-TEMPLATE.md",
+        "dist/skills/improve-react/SKILL.md",
+        "dist/skills/react-doctor/SKILL.md",
+        "package.json"
+      ],
+      "allowedPatterns": ["LICENSE", "README.md", "bin/**", "dist/**", "package.json"],
+      "deniedPatterns": [
+        "scripts/**",
+        "src/**",
+        "tests/**",
+        "tsconfig.json",
+        "vite.config.ts",
+        "**/*.map"
+      ]
+    }
+  ]
+}

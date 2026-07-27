@@ -1,5 +1,5 @@
-import { TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/core";
+import { TOP_ERRORS_DISPLAY_COUNT } from "../../core/core-score.js";
+import type { Diagnostic } from "../../core/core-types.js";
 import { HANDOFF_MAX_FILES_PER_RULE } from "./constants.js";
 import {
   buildSortedRuleGroups,

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { attachParentReferences } from "../../../test-utils/attach-parent-references.js";
+import { attachParentReferences } from "../../utils/attach-parent-references.js";
 import { parseFixture } from "../../../test-utils/parse-fixture.js";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";

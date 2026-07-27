@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { listSourceFiles } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/core";
+import type { Diagnostic } from "../../core/core-types.js";
+import { listSourceFiles } from "../../core/core-project-discovery.js";
 import ts from "typescript";
 
 interface CreateDiagnosticEvidenceReaderOptions {

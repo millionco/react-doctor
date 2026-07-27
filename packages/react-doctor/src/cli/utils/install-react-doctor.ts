@@ -9,7 +9,8 @@ import {
   SKILL_MANIFEST_FILE,
   type SkillAgentType,
 } from "agent-install";
-import { highlighter, SKILL_NAME } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
+import { SKILL_NAME } from "../../core/core-product.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { computeDefaultSelectedAgents, detectAvailableAgents } from "./detect-agents.js";
 import { readInstallAgents, rememberInstallAgents } from "./install-agents-preference.js";

@@ -1,0 +1,33 @@
+import {
+  CODE_FRAME_BATCH_MAX_SPAN_LINES,
+  CODE_FRAME_LINES_ABOVE,
+  CODE_FRAME_LINES_BELOW,
+  CODE_FRAME_MAX_LINE_LENGTH_CHARS,
+  createNodeReadFileLinesSync,
+  getCategoryImpact,
+  hasPublishedFixRecipe,
+  highlighter,
+  MIGRATION_SCALE_RULE_FILE_COUNT,
+  MIN_SHARED_FIX_SITE_COUNT,
+  OUTPUT_MEASURE_WIDTH_CHARS,
+  SCORE_BAR_WIDTH_CHARS,
+  setColorEnabled,
+  SPINNER_INDENT_CHARS,
+} from "@react-doctor/core";
+
+export {
+  CODE_FRAME_BATCH_MAX_SPAN_LINES,
+  CODE_FRAME_LINES_ABOVE,
+  CODE_FRAME_LINES_BELOW,
+  CODE_FRAME_MAX_LINE_LENGTH_CHARS,
+  createNodeReadFileLinesSync,
+  getCategoryImpact,
+  hasPublishedFixRecipe,
+  highlighter,
+  MIGRATION_SCALE_RULE_FILE_COUNT,
+  MIN_SHARED_FIX_SITE_COUNT,
+  OUTPUT_MEASURE_WIDTH_CHARS,
+  SCORE_BAR_WIDTH_CHARS,
+  setColorEnabled,
+  SPINNER_INDENT_CHARS,
+};

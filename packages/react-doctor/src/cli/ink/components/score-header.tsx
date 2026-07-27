@@ -1,7 +1,8 @@
 import { Box, Text, useStdout } from "ink";
 import { useMemo } from "react";
-import { PERFECT_SCORE, SCORE_BAR_WIDTH_CHARS, TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
-import type { ScoreResult } from "@react-doctor/core";
+import { SCORE_BAR_WIDTH_CHARS } from "../../../core/core-presentation.js";
+import { PERFECT_SCORE, TOP_ERRORS_DISPLAY_COUNT } from "../../../core/core-score.js";
+import type { ScoreResult } from "../../../core/core-types.js";
 import { doctorFace } from "../../utils/doctor-face.js";
 import {
   TUI_HORIZONTAL_PADDING_COLUMNS,

@@ -4,13 +4,14 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { clearConfigCache, type Diagnostic } from "@react-doctor/core";
-import { inspect, type ResolvedInspectOptions } from "../src/inspect.js";
+import { inspect } from "../src/inspect.js";
 import {
   buildScanResultCacheKey,
   createScanResultCache,
   shouldStoreScanPayload,
   type CachedScanPayload,
 } from "../src/cli/utils/scan-result-cache.js";
+import type { ScanResultCachePolicy } from "../src/cli/utils/scan-result-cache-policy.js";
 import {
   SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
@@ -21,38 +22,31 @@ import { commitAll, initGitRepo, setupReactProject } from "./regressions/_helper
 
 let tempDirectory: string;
 
-const baseOptions = (overrides: Partial<ResolvedInspectOptions> = {}): ResolvedInspectOptions => ({
+const baseOptions = (overrides: Partial<ScanResultCachePolicy> = {}): ScanResultCachePolicy => ({
   lint: false,
   deadCode: false,
   supplyChain: true,
-  verbose: false,
-  scoreOnly: false,
   noScore: true,
   isCi: false,
-  isCiOrCodingAgentEnvironment: false,
-  isNonInteractiveEnvironment: false,
-  silent: true,
   includePaths: [],
   customRulesOnly: false,
-  share: true,
   respectInlineDisables: true,
   warnings: true,
   adoptExistingLintConfig: true,
   ignoredTags: new Set<string>(),
   includedTags: new Set<string>(),
   includeTagDefaults: false,
-  scoreDisabledMessage: undefined,
-  outputSurface: "cli",
   suppressRendering: false,
   concurrency: undefined,
-  baseline: null,
+  baselineRef: undefined,
+  changedLineRanges: null,
   supplyChainManifestChanged: false,
   ...overrides,
 });
 
 const cacheKey = (
   projectDirectory: string,
-  options: ResolvedInspectOptions,
+  policy: ScanResultCachePolicy,
   version = VERSION,
   nodeBinaryPath: string | null = null,
 ): string | null =>
@@ -60,7 +54,7 @@ const cacheKey = (
     projectDirectory,
     version,
     nodeBinaryPath,
-    options,
+    policy,
     userConfig: null,
     hasConfigOverride: false,
     configSourceDirectory: null,
@@ -173,6 +167,38 @@ describe("scan result cache", () => {
       const persistedFiles = fs.readdirSync(overrideDirectory, { recursive: true });
       expect(persistedFiles.some((entry) => String(entry).endsWith("scan-cache.json"))).toBe(true);
       expect(createScanResultCache(projectDirectory).lookup(key)).not.toBeNull();
+    } finally {
+      if (previousValue === undefined) delete process.env.REACT_DOCTOR_CACHE_DIR;
+      else process.env.REACT_DOCTOR_CACHE_DIR = previousValue;
+    }
+  });
+
+  it("fails open on corrupt persisted state and replaces it on the next store", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "corrupt-cache", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const overrideDirectory = path.join(tempDirectory, "corrupt-cache-dir");
+    const previousValue = process.env.REACT_DOCTOR_CACHE_DIR;
+    try {
+      process.env.REACT_DOCTOR_CACHE_DIR = overrideDirectory;
+      const key = cacheKey(projectDirectory, baseOptions());
+      expect(key).not.toBeNull();
+      if (key === null) return;
+      createScanResultCache(projectDirectory).store(key, basePayload(projectDirectory));
+      const cacheFileEntry = fs
+        .readdirSync(overrideDirectory, { recursive: true })
+        .find((entry) => String(entry).endsWith("scan-cache.json"));
+      expect(cacheFileEntry).toBeDefined();
+      if (cacheFileEntry === undefined) return;
+      const cacheFilePath = path.join(overrideDirectory, String(cacheFileEntry));
+      fs.writeFileSync(cacheFilePath, "{");
+
+      expect(createScanResultCache(projectDirectory).lookup(key)).toBeNull();
+      const replacementCache = createScanResultCache(projectDirectory);
+      replacementCache.store(key, basePayload(projectDirectory));
+      expect(replacementCache.lookup(key)?.diagnostics).toEqual([diagnostic(projectDirectory)]);
+      expect(() => JSON.parse(fs.readFileSync(cacheFilePath, "utf8"))).not.toThrow();
     } finally {
       if (previousValue === undefined) delete process.env.REACT_DOCTOR_CACHE_DIR;
       else process.env.REACT_DOCTOR_CACHE_DIR = previousValue;

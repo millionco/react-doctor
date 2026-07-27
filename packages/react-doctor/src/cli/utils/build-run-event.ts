@@ -1,17 +1,12 @@
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import { isReactDoctorError } from "../../core/core-errors.js";
 import {
   filterDiagnosticsForSurface,
-  HTML_FILE_PATTERN,
-  isReactDoctorError,
-  JSX_FILE_PATTERN,
-  resolveGithubActionsScoreMetadata,
   summarizeDiagnostics,
-} from "@react-doctor/core";
-import type {
-  BlockingLevel,
-  InspectResult,
-  ReactDoctorConfig,
-  SuppressedRuleCount,
-} from "@react-doctor/core";
+} from "../../core/core-diagnostic-semantics.js";
+import { HTML_FILE_PATTERN, JSX_FILE_PATTERN } from "../../core/core-project-discovery.js";
+import { resolveGithubActionsScoreMetadata } from "../../core/core-score.js";
+import type { BlockingLevel, InspectResult, SuppressedRuleCount } from "../../core/core-types.js";
 import { buildRuleBlastRadii } from "./diagnostic-grouping.js";
 import { hasLintHardFailure } from "./has-lint-hard-failure.js";
 import { isInspectResultComplete } from "./is-inspect-result-complete.js";

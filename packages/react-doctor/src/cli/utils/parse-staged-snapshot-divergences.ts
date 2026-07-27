@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "@react-doctor/core";
+import { STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "../../core/core-version-control.js";
 import { STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES } from "./constants.js";
 
 const SNAPSHOT_CONFIG_FILENAMES = new Set<string>([

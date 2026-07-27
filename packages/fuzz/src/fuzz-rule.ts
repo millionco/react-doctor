@@ -1,8 +1,12 @@
-import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
-import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
-import type { ParseFixtureResult } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
-import { runRuleOnParsedFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
-import { runScanRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-scan-rule.js";
+import {
+  parseFixture,
+  runRuleOnParsedFixture,
+  runScanRule,
+} from "../../oxlint-plugin-react-doctor/src/internal/rule-engine-testkit.js";
+import type {
+  ParseFixtureResult,
+  Rule,
+} from "../../oxlint-plugin-react-doctor/src/internal/rule-engine-testkit.js";
 import {
   CORPUS_PROGRAM_PROBABILITY,
   DEFAULT_FUZZ_ITERATIONS,

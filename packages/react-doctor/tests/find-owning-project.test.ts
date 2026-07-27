@@ -19,6 +19,38 @@ describe("findOwningProjectDirectory", () => {
     expect(findOwningProjectDirectory(projectDir, "src/index.tsx")).toBe(projectDir);
   });
 
+  it("finds a nested React package under a standalone React root", () => {
+    const projectRoot = setupReactProject(tempRoot, "standalone-with-nested");
+    const nestedProjectDirectory = setupReactProject(
+      path.join(projectRoot, "examples"),
+      "playground",
+    );
+
+    expect(
+      findOwningProjectDirectory(projectRoot, path.join(nestedProjectDirectory, "src", "App.tsx")),
+    ).toBe(nestedProjectDirectory);
+  });
+
+  it("keeps package-less pnpm workspaces on fallback discovery", () => {
+    const workspaceRoot = path.join(tempRoot, "package-less-pnpm");
+    const projectDirectory = setupReactProject(path.join(workspaceRoot, "apps"), "web");
+    fs.writeFileSync(path.join(workspaceRoot, "pnpm-workspace.yaml"), "packages:\n  - apps/*\n");
+
+    expect(
+      findOwningProjectDirectory(workspaceRoot, path.join(projectDirectory, "src", "App.tsx")),
+    ).toBe(projectDirectory);
+  });
+
+  it("keeps package-less Nx workspaces on fallback discovery", () => {
+    const workspaceRoot = path.join(tempRoot, "package-less-nx");
+    const projectDirectory = setupReactProject(path.join(workspaceRoot, "apps"), "web");
+    writeJson(path.join(workspaceRoot, "nx.json"), {});
+
+    expect(
+      findOwningProjectDirectory(workspaceRoot, path.join(projectDirectory, "src", "App.tsx")),
+    ).toBe(projectDirectory);
+  });
+
   it("returns the workspace package whose directory contains the file", () => {
     const monorepoRoot = path.join(tempRoot, "monorepo");
     fs.mkdirSync(monorepoRoot, { recursive: true });
@@ -76,5 +108,43 @@ describe("findOwningProjectDirectory", () => {
     expect(findOwningProjectDirectory(monorepoRoot, "packages/web/src/App.tsx")).toBe(
       path.join(monorepoRoot, "packages/web"),
     );
+  });
+
+  it("returns the deepest nested React workspace that contains the file", () => {
+    const monorepoRoot = path.join(tempRoot, "nested-monorepo");
+    const shellDirectory = path.join(monorepoRoot, "packages", "shell");
+    const featureDirectory = path.join(shellDirectory, "features", "billing");
+    fs.mkdirSync(monorepoRoot, { recursive: true });
+    writeJson(path.join(monorepoRoot, "package.json"), {
+      name: "nested-monorepo",
+      private: true,
+      workspaces: ["packages/shell", "packages/shell/features/billing"],
+    });
+    setupReactProject(path.join(monorepoRoot, "packages"), "shell");
+    setupReactProject(path.join(shellDirectory, "features"), "billing");
+
+    expect(
+      findOwningProjectDirectory(monorepoRoot, path.join(featureDirectory, "src", "invoice.tsx")),
+    ).toBe(featureDirectory);
+  });
+
+  it("skips a nested non-React workspace when finding the owning React project", () => {
+    const monorepoRoot = path.join(tempRoot, "nested-tool-monorepo");
+    const webDirectory = path.join(monorepoRoot, "packages", "web");
+    const generatorDirectory = path.join(webDirectory, "tools", "generator");
+    fs.mkdirSync(monorepoRoot, { recursive: true });
+    writeJson(path.join(monorepoRoot, "package.json"), {
+      name: "nested-tool-monorepo",
+      private: true,
+      workspaces: ["packages/web", "packages/web/tools/generator"],
+    });
+    setupReactProject(path.join(monorepoRoot, "packages"), "web");
+    writeJson(path.join(generatorDirectory, "package.json"), {
+      name: "generator",
+    });
+
+    expect(
+      findOwningProjectDirectory(monorepoRoot, path.join(generatorDirectory, "src", "index.ts")),
+    ).toBe(webDirectory);
   });
 });

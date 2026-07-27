@@ -1,5 +1,5 @@
-import { getCategoryImpact } from "@react-doctor/core";
 import { Box, Text } from "ink";
+import { getCategoryImpact } from "../../../core/core-presentation.js";
 import { useMemo } from "react";
 import { buildCodeFrame } from "../../utils/build-code-frame.js";
 import { TUI_DETAIL_INDENT_COLUMNS } from "../../utils/constants.js";

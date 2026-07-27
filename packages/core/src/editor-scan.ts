@@ -18,6 +18,7 @@ import { Git } from "./services/git.js";
 import { Linter, LintPartialFailures } from "./services/linter.js";
 import { Progress } from "./services/progress.js";
 import { Project } from "./services/project.js";
+import { ProjectChecks } from "./services/project-checks.js";
 import { Reporter } from "./services/reporter.js";
 import { Score } from "./services/score.js";
 import { SupplyChain } from "./services/supply-chain.js";
@@ -125,6 +126,7 @@ export const runEditorScan = async (input: EditorScanInput): Promise<EditorScanR
 
   const layers = Layer.mergeAll(
     Project.layerNode,
+    ProjectChecks.layerNode,
     configLayer,
     Files.layerNode,
     // Editor scans never need git metadata; the null snapshot avoids a

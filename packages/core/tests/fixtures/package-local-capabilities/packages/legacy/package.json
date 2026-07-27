@@ -1,0 +1,7 @@
+{
+  "name": "legacy",
+  "dependencies": {
+    "react": "^18.2.0",
+    "vite": "^5.4.0"
+  }
+}

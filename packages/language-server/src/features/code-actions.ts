@@ -25,7 +25,7 @@ import {
  */
 export const SUPPRESS_ALL_CODE_ACTION_KIND = "source.suppressAll.reactDoctor";
 
-export interface BuildCodeActionsInput {
+interface BuildCodeActionsInput {
   readonly uri: string;
   readonly fsPath: string;
   readonly documentText: string | null;

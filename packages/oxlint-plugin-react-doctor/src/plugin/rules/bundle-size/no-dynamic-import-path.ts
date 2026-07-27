@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { readCurrentResourceSource } from "../../../internal/resource-host/resource-host-context.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -68,6 +69,13 @@ const annotatedFileTextCache = new Map<string, string | false>();
 
 const readAnnotatedFileText = (filename: string | undefined): string | null => {
   if (!filename) return null;
+  const currentResourceSource = readCurrentResourceSource(filename);
+  if (currentResourceSource !== undefined) {
+    return currentResourceSource !== null &&
+      BUNDLER_IGNORE_ANNOTATION_PATTERN.test(currentResourceSource)
+      ? currentResourceSource
+      : null;
+  }
   const cached = annotatedFileTextCache.get(filename);
   if (cached !== undefined) return cached === false ? null : cached;
   let annotatedText: string | false = false;
@@ -87,10 +95,6 @@ const hasBundlerIgnoreAnnotation = (node: EsTreeNode, filename: string | undefin
   const range = node.range;
   if (!range) return false;
   return BUNDLER_IGNORE_ANNOTATION_PATTERN.test(fileText.slice(range[0], range[1]));
-};
-
-export const clearBundlerIgnoreAnnotationCache = (): void => {
-  annotatedFileTextCache.clear();
 };
 
 const isUrlCreateObjectUrlCall = (expression: EsTreeNode): boolean =>

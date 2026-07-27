@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
+  classifyPackageRole,
   clearMinifiedFileCache,
   isLargeMinifiedFile,
   MINIFIED_MAX_LINE_LENGTH_CHARS,
@@ -40,5 +41,27 @@ describe("createProjectGraph invalidate", () => {
 
     graph.invalidate();
     expect(isLargeMinifiedFile(bundlePath)).toBe(false);
+  });
+
+  it("clears the package-role memo when the project graph is invalidated", () => {
+    const graph = createProjectGraph({ roots: [workspaceRoot] });
+    const packageDirectory = path.join(workspaceRoot, "package");
+    const sourcePath = path.join(packageDirectory, "src", "button.tsx");
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.writeFileSync(sourcePath, "export const button = null;\n");
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "@scope/ui", exports: { ".": "./index.js" } }),
+    );
+    expect(classifyPackageRole(sourcePath)).toBe("library");
+
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "@scope/ui", private: true }),
+    );
+    expect(classifyPackageRole(sourcePath)).toBe("library");
+
+    graph.invalidate();
+    expect(classifyPackageRole(sourcePath)).toBe("unknown");
   });
 });

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readCurrentResourceSource } from "../../internal/resource-host/resource-host-context.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import { parseExportSpecifiers } from "./parse-export-specifiers.js";
 import { stripJsComments } from "./strip-js-comments.js";
@@ -234,6 +235,12 @@ export const getBarrelIndexModuleInfo = (filePath: string): BarrelIndexModuleInf
   // of this one file's content, so the content probe alone captures the
   // dependency while the cache stays warm (see cross-file-probe-recorder.ts).
   recordContentProbe(filePath);
+
+  const currentResourceSource = readCurrentResourceSource(filePath);
+  if (currentResourceSource !== undefined) {
+    if (currentResourceSource === null) return createNonBarrelInfo();
+    return classifyBarrelModule(currentResourceSource);
+  }
 
   let fileStat: fs.Stats | null;
   try {

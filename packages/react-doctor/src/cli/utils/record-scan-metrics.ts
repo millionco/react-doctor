@@ -1,10 +1,9 @@
-import { canonicalizeUserRuleKey, getDiagnosticRuleIdentity } from "@react-doctor/core";
-import type {
-  Diagnostic,
-  InspectResult,
-  ReactDoctorConfig,
-  SuppressedRuleCount,
-} from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import type { Diagnostic, InspectResult, SuppressedRuleCount } from "../../core/core-types.js";
+import {
+  canonicalizeUserRuleKey,
+  getDiagnosticRuleIdentity,
+} from "../../core/core-diagnostic-semantics.js";
 import { METRIC } from "./constants.js";
 import { recordCount, recordDistribution } from "./record-metric.js";
 

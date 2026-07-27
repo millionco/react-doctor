@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/node";
-import { highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
 import { getLastRunTraceId } from "./active-run-trace.js";
 
 /**

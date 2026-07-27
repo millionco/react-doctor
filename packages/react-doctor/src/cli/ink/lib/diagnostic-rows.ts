@@ -1,4 +1,4 @@
-import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+import type { Diagnostic, ScoreResult } from "../../../core/core-types.js";
 import {
   buildRulePriorityMap,
   buildSortedRuleGroups,

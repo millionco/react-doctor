@@ -5,146 +5,33 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
-import * as Stream from "effect/Stream";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
-import {
-  DEFAULT_BRANCH_CANDIDATES,
-  GITHUB_VIEWER_PERMISSION_TIMEOUT_MS,
-  SPAWN_ARGS_MAX_LENGTH_CHARS,
-  SPAWN_ARGS_MAX_LENGTH_CHARS_DARWIN,
-  SPAWN_ARGS_MAX_LENGTH_CHARS_POSIX,
-} from "../constants.js";
-import {
-  GitBaseBranchInvalid,
-  GitBaseBranchMissing,
-  GitInvocationFailed,
-  ReactDoctorError,
-} from "../errors.js";
+import { DEFAULT_BRANCH_CANDIDATES, GITHUB_VIEWER_PERMISSION_TIMEOUT_MS } from "../constants.js";
+import { GitBaseBranchInvalid, GitBaseBranchMissing, ReactDoctorError } from "../errors.js";
 import { parseChangedLineRanges } from "../parse-changed-line-ranges.js";
-import { isDirectory } from "../project-info/fs-utils.js";
 import type { ChangedFileLineRanges } from "../types/index.js";
+import { makeGitCommandExecutor, type GitCommandResult } from "./git-command-executor.js";
+import {
+  GIT_REF_NAME_RULE,
+  isSafeGitRevision,
+  parseGitDiffRange,
+  type GitDiffRange,
+} from "./git-revision-policy.js";
+import {
+  parseGitBaselineDiffPlan,
+  parseGithubRemoteRepository,
+  parseGithubViewerPermission,
+  splitNullSeparatedGitOutput,
+  trimGitOutputOrNull,
+} from "./git-output.js";
+import type {
+  GitBaselineDiffPlan,
+  GitDiffSelection,
+  GitGrepResult,
+  GitService,
+} from "./git-contracts.js";
 
-interface GitInvocationResult {
-  readonly status: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-interface CommandInvocationInput {
-  readonly command: string;
-  readonly args: ReadonlyArray<string>;
-  readonly directory: string;
-  readonly env?: Record<string, string | undefined>;
-  /**
-   * Hard cap on stdout bytes. When set, the command fails with a
-   * `GitInvocationFailed` once the streamed output crosses the budget
-   * instead of buffering the whole payload into memory.
-   */
-  readonly maxStdoutBytes?: number;
-}
-
-const trimOrNull = (value: string): string | null => {
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? null : trimmed;
-};
-
-/**
- * Defense against `--diff <evil>` git-flag injection (CVE-2018-17456
- * shape). `git rev-parse --verify <ref>` and `git merge-base <ref>
- * HEAD` take the next positional as a refname — but a value starting
- * with `-` (e.g. `--upload-pack=evil`) is parsed as an option
- * instead. The composite-action `case "$DIFF_BASE" in -*)` guard
- * already blocks the most common CI shape; this hardens the library
- * boundary so local-CLI callers and other consumers don't have to
- * re-implement the check.
- *
- * Rejects: empty, leading `-`, leading/trailing `.`, embedded `..`,
- * `@{` reflog suffix, or any character outside `[A-Za-z0-9_./-]`.
- */
-const SAFE_GIT_REVISION_PATTERN = /^[A-Za-z0-9_./-]+$/;
-
-/** Human-readable summary of the `isSafeGitRevision` contract, reused across error details. */
-const GIT_REF_NAME_RULE = "must match [A-Za-z0-9_./-] without leading '-', '..', or '@{'";
-
-/** git's two range operators: two-dot (direct) and three-dot (merge-base). */
-const DIFF_RANGE_OPERATOR = "..";
-const SYMMETRIC_DIFF_RANGE_OPERATOR = "...";
-
-const isSafeGitRevision = (candidate: string): boolean => {
-  if (candidate.length === 0) return false;
-  if (candidate.startsWith("-")) return false;
-  if (candidate.startsWith(".") || candidate.endsWith(".")) return false;
-  if (candidate.includes("..") || candidate.includes("@{")) return false;
-  return SAFE_GIT_REVISION_PATTERN.test(candidate);
-};
-
-// The Windows cap would reject legitimately long `--scope lines` diffs
-// (`git diff -- <hundreds of files>`) that other platforms handle fine,
-// silently degrading the scope — so the guard is platform-sized. Darwin gets
-// its own cap because macOS ARG_MAX sits below the Linux one (rationale on
-// each constant).
-const resolveSpawnArgsLengthCap = (): number => {
-  if (process.platform === "win32") return SPAWN_ARGS_MAX_LENGTH_CHARS;
-  if (process.platform === "darwin") return SPAWN_ARGS_MAX_LENGTH_CHARS_DARWIN;
-  return SPAWN_ARGS_MAX_LENGTH_CHARS_POSIX;
-};
-
-interface GitDiffRange {
-  /** Left endpoint (before the operator); empty string defaults to `HEAD`. */
-  readonly base: string;
-  /** Right endpoint (after the operator); empty string defaults to `HEAD`. */
-  readonly head: string;
-  /**
-   * `true` for three-dot `A...B` (diff from the merge-base of A and B to
-   * B), `false` for two-dot `A..B` (diff A directly against B). Mirrors
-   * git's own `diff` range semantics.
-   */
-  readonly symmetric: boolean;
-}
-
-/**
- * Splits a git revision range into its endpoints: three-dot `A...B`
- * (symmetric, merge-base) or two-dot `A..B` (direct). Returns `null`
- * when `value` carries no range operator so the caller falls back to
- * single-base resolution.
- *
- * Only the first operator is split on; any leftover `..` stays inside an
- * endpoint so `isSafeGitRevision` rejects malformed input like
- * `A..B..C` instead of silently guessing which pair the user meant.
- */
-const parseGitDiffRange = (value: string): GitDiffRange | null => {
-  const symmetricIndex = value.indexOf(SYMMETRIC_DIFF_RANGE_OPERATOR);
-  if (symmetricIndex !== -1) {
-    return {
-      base: value.slice(0, symmetricIndex),
-      head: value.slice(symmetricIndex + SYMMETRIC_DIFF_RANGE_OPERATOR.length),
-      symmetric: true,
-    };
-  }
-  const rangeIndex = value.indexOf(DIFF_RANGE_OPERATOR);
-  if (rangeIndex !== -1) {
-    return {
-      base: value.slice(0, rangeIndex),
-      head: value.slice(rangeIndex + DIFF_RANGE_OPERATOR.length),
-      symmetric: false,
-    };
-  }
-  return null;
-};
-
-const parseGithubRepoFromRemoteUrl = (remoteUrl: string): string | null => {
-  const withoutGitSuffix = remoteUrl.trim().replace(/\.git$/, "");
-  const sshMatch = /^git@github\.com:([^/\s]+)\/([^/\s]+)$/.exec(withoutGitSuffix);
-  if (sshMatch) return `${sshMatch[1]}/${sshMatch[2]}`;
-
-  const urlMatch =
-    /^(?:https?:\/\/github\.com\/|ssh:\/\/git@github\.com\/)([^/\s]+)\/([^/\s]+)$/.exec(
-      withoutGitSuffix,
-    );
-  return urlMatch ? `${urlMatch[1]}/${urlMatch[2]}` : null;
-};
+export type { GitBaselineDiffPlan, GitDiffSelection } from "./git-contracts.js";
 
 const parseGithubRepo = (repo: string): { owner: string; name: string } | null => {
   const [owner, name, ...extraParts] = repo.split("/");
@@ -153,356 +40,33 @@ const parseGithubRepo = (repo: string): { owner: string; name: string } | null =
   return { owner, name };
 };
 
-const parseGithubViewerPermission = (stdout: string): string | null => {
-  const value = trimOrNull(stdout);
-  if (value === null || value === "null") return null;
-  return /^[A-Z_]+$/.test(value) ? value.toLowerCase() : null;
-};
-
-const splitNullSeparated = (value: string): ReadonlyArray<string> =>
-  value.split("\0").filter((entry) => entry.length > 0);
-
-export interface GitBaselineDiffPlan {
-  readonly baseFiles: ReadonlyArray<string>;
-  readonly headFiles: ReadonlyArray<string>;
-  readonly untrackedFiles: ReadonlyArray<string>;
-}
-
-const parseBaselineDiffPlan = (value: string): GitBaselineDiffPlan | null => {
-  const entries = splitNullSeparated(value);
-  const baseFiles = new Set<string>();
-  const headFiles = new Set<string>();
-  for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 2) {
-    const status = entries[entryIndex];
-    const filePath = entries[entryIndex + 1];
-    if (status === undefined || filePath === undefined || status.length !== 1) return null;
-    if (status === "A") {
-      headFiles.add(filePath);
-      continue;
-    }
-    if (status === "D") {
-      baseFiles.add(filePath);
-      continue;
-    }
-    if (status === "M" || status === "T") {
-      baseFiles.add(filePath);
-      headFiles.add(filePath);
-      continue;
-    }
-    return null;
-  }
-  return { baseFiles: [...baseFiles], headFiles: [...headFiles], untrackedFiles: [] };
-};
-
 // An untracked file has no base to diff against, so `--scope lines` treats
 // every line as changed by spanning the whole file (1 → last possible line).
 const UNTRACKED_FILE_LAST_LINE = Number.MAX_SAFE_INTEGER;
 
-export interface GitDiffSelection {
-  /**
-   * `null` when `HEAD` is detached (e.g. GitHub Actions
-   * `pull_request` runs that check out `refs/pull/N/merge`).
-   */
-  readonly currentBranch: string | null;
-  readonly baseBranch: string;
-  /**
-   * The commit the changed-file diff was actually computed against — for
-   * two-dot `A..B` it's `A`, for three-dot `A...B` and the single-base path
-   * it's the merge-base. Baseline reads base content from here so the file set
-   * and the base snapshot agree (two-dot must NOT be merge-based with HEAD).
-   * Absent for uncommitted (`isCurrentChanges`) selections.
-   */
-  readonly diffBaseRef?: string;
-  readonly changedFiles: ReadonlyArray<string>;
-  readonly isCurrentChanges: boolean;
-}
-
-interface GitDiffSelectionInput {
-  readonly directory: string;
-  readonly explicitBaseBranch?: string;
-  /**
-   * Fold ordinary untracked files (`git ls-files --others`, minus ignored
-   * ones) into the working-tree selection. Off by default — opt in via the
-   * CLI `--include-untracked` flag. Never applies to an explicit `A..B` range.
-   */
-  readonly includeUntracked?: boolean;
-}
-
-interface GitShowOptions {
-  /**
-   * Hard limit on the bytes `git show :<path>` may stream before the
-   * read fails (so the caller skips the file rather than buffering it
-   * whole). Enforced by `runCommand` via a streaming byte counter.
-   */
-  readonly maxBufferBytes?: number;
-}
-
-interface GitGrepInput {
-  readonly directory: string;
-  readonly pattern: string;
-  readonly extendedRegexp?: boolean;
-  readonly listMatchingFiles?: boolean;
-  readonly includeUntracked?: boolean;
-  readonly includePaths?: ReadonlyArray<string>;
-  readonly maxBufferBytes?: number;
-}
-
-interface GitGrepResult {
-  readonly status: number;
-  readonly stdout: string;
-}
-
-interface GitChangedLineRangesInput {
-  readonly directory: string;
-  /** Ref to diff against; omit for working-tree / index diffs. */
-  readonly baseRef?: string;
-  /** When `true`, diff the index (`--cached`) instead of the working tree. */
-  readonly cached?: boolean;
-  /** Files to limit the diff to (relative to `directory`). */
-  readonly files: ReadonlyArray<string>;
-  /**
-   * When `true`, treat any of `files` that is an ordinary untracked file as
-   * fully changed (every line new). Off by default; ignored when `cached`.
-   */
-  readonly includeUntracked?: boolean;
-}
-
 /**
  * `Git` wraps every `git`-via-subprocess call react-doctor makes
  * behind a `Context.Service`. The production layer (`layerNode`)
- * runs commands through Effect's `ChildProcessSpawner` + `ChildProcess.make`
- * (from `effect/unstable/process`), so spawning, stdio draining,
- * scope-bound cleanup, and error tagging all live inside the
- * Effect runtime — no `node:child_process` imports outside this
- * file. Tests swap in `layerOf({ ... })` for a deterministic snapshot.
+ * delegates to `git-command-executor.ts`, which runs commands through
+ * Effect's `ChildProcessSpawner` + `ChildProcess.make`. Spawning, stdio
+ * draining, scope-bound cleanup, and error tagging therefore stay inside
+ * the Effect runtime. Tests swap in `layerOf({ ... })` for a deterministic
+ * snapshot.
  *
  * All methods fail with `ReactDoctorError`; "git ran but produced
  * no matches" still resolves successfully (with `null` / `[]`).
  */
-export class Git extends Context.Service<
-  Git,
-  {
-    /** `null` when on detached HEAD or `rev-parse` fails. */
-    readonly currentBranch: (directory: string) => Effect.Effect<string | null, ReactDoctorError>;
-    /** Best-effort default branch: `origin/HEAD` symref, then `main`/`master`. */
-    readonly defaultBranch: (directory: string) => Effect.Effect<string | null, ReactDoctorError>;
-    /** Current commit SHA, or null when the directory is not a git worktree. */
-    readonly headSha: (directory: string) => Effect.Effect<string | null, ReactDoctorError>;
-    /** GitHub owner/repo parsed from remote.origin.url, or null for non-GitHub remotes. */
-    readonly githubRepo: (directory: string) => Effect.Effect<string | null, ReactDoctorError>;
-    readonly githubViewerPermission: (input: {
-      readonly directory: string;
-      readonly repo: string;
-    }) => Effect.Effect<string | null, ReactDoctorError>;
-    readonly branchExists: (
-      directory: string,
-      branch: string,
-    ) => Effect.Effect<boolean, ReactDoctorError>;
-    /**
-     * `git merge-base <ref> HEAD` — the commit a baseline scan should read
-     * file content from, so "issues introduced" is measured against the
-     * branch point rather than the (possibly advanced) base tip. `null` when
-     * `ref` is unsafe / missing or no merge-base exists.
-     */
-    readonly mergeBase: (input: {
-      readonly directory: string;
-      readonly ref: string;
-    }) => Effect.Effect<string | null, ReactDoctorError>;
-    /**
-     * High-level diff selection: resolves current branch + base
-     * branch + changed file list with the same semantics as the
-     * legacy `getDiffInfo` helper. `null` when no diff is detectable
-     * (detached HEAD without explicit base, no default branch, etc.).
-     */
-    readonly diffSelection: (
-      input: GitDiffSelectionInput,
-    ) => Effect.Effect<GitDiffSelection | null, ReactDoctorError>;
-    /**
-     * Side-aware paths between `ref` and the worktree. Rename and copy
-     * detection is disabled so path identity never depends on Git heuristics:
-     * a rename is represented as one base deletion plus one head addition.
-     * Returns `null` for unmerged or otherwise unsupported diff states.
-     */
-    readonly baselineDiffPlan: (input: {
-      readonly directory: string;
-      readonly ref: string;
-    }) => Effect.Effect<GitBaselineDiffPlan | null, ReactDoctorError>;
-    /** Files staged for commit (null-separated, `--diff-filter=ACMR`). */
-    readonly stagedFilePaths: (
-      directory: string,
-    ) => Effect.Effect<ReadonlyArray<string>, ReactDoctorError>;
-    /** `git show :<path>` contents; `null` when the file isn't in the index. */
-    readonly showStagedContent: (
-      directory: string,
-      relativePath: string,
-      options?: GitShowOptions,
-    ) => Effect.Effect<string | null, ReactDoctorError>;
-    /**
-     * `git show <ref>:<path>` contents — the file as it existed at `ref`.
-     * `null` when the ref is unsafe / missing or the path didn't exist there
-     * (e.g. a file added by the PR). Used to materialize a base-branch tree
-     * for baseline diffing.
-     */
-    readonly showRefContent: (input: {
-      readonly directory: string;
-      readonly ref: string;
-      readonly relativePath: string;
-      readonly options?: GitShowOptions;
-    }) => Effect.Effect<string | null, ReactDoctorError>;
-    /**
-     * `git grep -l` (default). Returns `null` when git itself isn't
-     * available or the directory isn't a repository so callers can
-     * fall back to a filesystem walk.
-     */
-    readonly grep: (input: GitGrepInput) => Effect.Effect<GitGrepResult | null, ReactDoctorError>;
-    /**
-     * Per-file changed line ranges for the `lines` scope. Runs
-     * `git diff --unified=0` (optionally `--cached`, optionally against
-     * `baseRef`) limited to `files`, and parses the new-side hunks. Returns
-     * `null` when the ranges can't be computed (unsafe `baseRef`, or git
-     * exited non-zero) so the caller degrades to file-level scope instead of
-     * hiding every finding behind empty ranges; an empty array means git
-     * succeeded but the files added no lines.
-     */
-    readonly changedLineRanges: (
-      input: GitChangedLineRangesInput,
-    ) => Effect.Effect<ReadonlyArray<ChangedFileLineRanges> | null, ReactDoctorError>;
-  }
->()("react-doctor/Git") {
+export class Git extends Context.Service<Git, GitService>()("react-doctor/Git") {
   static readonly layerNode: Layer.Layer<Git> = Layer.effect(
     Git,
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner;
-
-      /**
-       * Spawns `git <args>` via Effect's `ChildProcess` + the
-       * captured `ChildProcessSpawner`. Drains stdout / stderr /
-       * exitCode in parallel so the pipe never blocks on a full
-       * buffer, and folds any `PlatformError` (binary missing,
-       * ENOENT, EACCES, …) into the tagged `ReactDoctorError({
-       * reason: GitInvocationFailed })` so the rest of the codebase
-       * sees a single failure channel.
-       */
-      const runCommand = (
-        input: CommandInvocationInput,
-      ): Effect.Effect<GitInvocationResult, ReactDoctorError> => {
-        // Shared by the async `PlatformError` path and the synchronous-spawn
-        // defect path so both spawn-failure shapes resolve identically: a
-        // non-`git` command degrades to a non-zero result the caller already
-        // handles; `git` fails with the tagged `GitInvocationFailed` its
-        // degradation paths (currentBranch → null, branchExists → false,
-        // changedLineRanges → null) recover from.
-        const foldSpawnFailure = (
-          cause: unknown,
-        ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
-          input.command !== "git"
-            ? Effect.succeed({ status: 127, stdout: "", stderr: String(cause) })
-            : Effect.fail(
-                new ReactDoctorError({
-                  reason: new GitInvocationFailed({
-                    args: [...input.args],
-                    directory: input.directory,
-                    cause,
-                  }),
-                }),
-              );
-        return Effect.scoped(
-          Effect.gen(function* () {
-            // `child_process.spawn` THROWS synchronously — escaping Effect's
-            // failure channel as an uncatchable runtime exception, because
-            // Effect's `Async` register isn't guarded — when the cwd isn't a
-            // directory (`ENOTDIR`) or the argv exceeds the OS command-line
-            // limit (`ENAMETOOLONG`, e.g. `git diff -- <1k files>` under
-            // `--scope lines` on Windows). The 'error' event (which becomes a
-            // catchable `PlatformError`) never fires. Both conditions are
-            // predictable, so fail them on the typed channel up front; the
-            // degradation paths (currentBranch → null, branchExists → false,
-            // changedLineRanges → null) then recover instead of the whole scan
-            // crashing and reporting to Sentry (REACT-DOCTOR-1E / 1P / 20).
-            if (!isDirectory(input.directory)) {
-              return yield* foldSpawnFailure(
-                `spawn ENOTDIR (cwd is not a directory: ${input.directory})`,
-              );
-            }
-            const argvLengthChars =
-              input.command.length +
-              1 +
-              input.args.reduce((total, arg) => total + arg.length + 1, 0);
-            const spawnArgsLengthCap = resolveSpawnArgsLengthCap();
-            if (argvLengthChars > spawnArgsLengthCap) {
-              return yield* foldSpawnFailure(
-                `spawn ENAMETOOLONG (${argvLengthChars} argv chars exceed ${spawnArgsLengthCap})`,
-              );
-            }
-            const handle = yield* spawner.spawn(
-              // HACK: `extendEnv: true` is required for spawned commands
-              // to inherit `process.env.PATH` — without it Effect's
-              // `ChildProcess` defaults to an empty env and `spawn`
-              // immediately fails with `ENOENT` even when the binary is
-              // on the user's PATH. (`spawnSync` inherited PATH by
-              // default; ChildProcess's option flips the polarity.)
-              ChildProcess.make(input.command, [...input.args], {
-                cwd: input.directory,
-                env: input.env,
-                extendEnv: true,
-              }),
-            );
-            // Optional hard cap on stdout bytes (e.g. `git show` of a
-            // huge staged blob): count raw bytes as they stream and fail
-            // fast once the budget is crossed so the caller can skip the
-            // file instead of buffering it whole.
-            const maxStdoutBytes = input.maxStdoutBytes;
-            const stdoutByteCount = yield* Ref.make(0);
-            const stdoutStream =
-              maxStdoutBytes === undefined
-                ? handle.stdout
-                : handle.stdout.pipe(
-                    Stream.tap((chunk) =>
-                      Ref.updateAndGet(stdoutByteCount, (total) => total + chunk.length).pipe(
-                        Effect.flatMap((total) =>
-                          total > maxStdoutBytes
-                            ? Effect.fail(
-                                new ReactDoctorError({
-                                  reason: new GitInvocationFailed({
-                                    args: [...input.args],
-                                    directory: input.directory,
-                                    cause: new Error(`git stdout exceeded ${maxStdoutBytes} bytes`),
-                                  }),
-                                }),
-                              )
-                            : Effect.void,
-                        ),
-                      ),
-                    ),
-                  );
-            const [stdout, stderr, status] = yield* Effect.all(
-              [
-                Stream.mkString(Stream.decodeText(stdoutStream)),
-                Stream.mkString(Stream.decodeText(handle.stderr)),
-                handle.exitCode,
-              ],
-              { concurrency: 3 },
-            );
-            return { status, stdout, stderr } satisfies GitInvocationResult;
-          }),
-        ).pipe(
-          Effect.catchTag("PlatformError", foldSpawnFailure),
-          // One span per actual subprocess invocation. The subcommand
-          // (`args[0]`) is safe to attribute; full args/paths are omitted so
-          // no scanned path leaks into an exported trace.
-          Effect.withSpan("git.exec", {
-            attributes: {
-              "git.command": input.command,
-              "git.subcommand": input.args[0] ?? "",
-            },
-          }),
-        );
-      };
+      const runCommand = makeGitCommandExecutor(spawner);
 
       const runGit = (
         directory: string,
         args: ReadonlyArray<string>,
-      ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
+      ): Effect.Effect<GitCommandResult, ReactDoctorError> =>
         runCommand({ command: "git", args, directory });
 
       const listUntrackedFilePaths = (
@@ -516,7 +80,9 @@ export class Git extends Context.Service<
           "--exclude-standard",
           ...(includePaths.length > 0 ? ["--", ...includePaths] : []),
         ]).pipe(
-          Effect.map((result) => (result.status === 0 ? splitNullSeparated(result.stdout) : null)),
+          Effect.map((result) =>
+            result.status === 0 ? splitNullSeparatedGitOutput(result.stdout) : null,
+          ),
         );
 
       // Unions opted-in untracked files into a working-tree selection. Untracked
@@ -541,7 +107,7 @@ export class Git extends Context.Service<
         runGit(directory, ["rev-parse", "--abbrev-ref", "HEAD"]).pipe(
           Effect.map((result) => {
             if (result.status !== 0) return null;
-            const branch = trimOrNull(result.stdout);
+            const branch = trimGitOutputOrNull(result.stdout);
             return branch === "HEAD" ? null : branch;
           }),
           // Best-effort branch read: a non-zero exit already maps to null, but a
@@ -556,7 +122,7 @@ export class Git extends Context.Service<
         Effect.gen(function* () {
           const symref = yield* runGit(directory, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
           if (symref.status === 0) {
-            const trimmed = trimOrNull(symref.stdout);
+            const trimmed = trimGitOutputOrNull(symref.stdout);
             if (trimmed !== null) return trimmed.replace("refs/remotes/origin/", "");
           }
           const candidateRefs = DEFAULT_BRANCH_CANDIDATES.map(
@@ -568,7 +134,7 @@ export class Git extends Context.Service<
             ...candidateRefs,
           ]);
           if (candidates.status !== 0) return null;
-          return trimOrNull(candidates.stdout.split("\n")[0] ?? "");
+          return trimGitOutputOrNull(candidates.stdout.split("\n")[0] ?? "");
         }).pipe(Effect.withSpan("Git.defaultBranch"));
 
       const branchExists = (
@@ -586,7 +152,7 @@ export class Git extends Context.Service<
 
       const headSha = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "HEAD"]).pipe(
-          Effect.map((result) => (result.status === 0 ? trimOrNull(result.stdout) : null)),
+          Effect.map((result) => (result.status === 0 ? trimGitOutputOrNull(result.stdout) : null)),
         );
 
       const mergeBase = (input: {
@@ -595,14 +161,16 @@ export class Git extends Context.Service<
       }): Effect.Effect<string | null, ReactDoctorError> =>
         isSafeGitRevision(input.ref)
           ? runGit(input.directory, ["merge-base", input.ref, "HEAD"]).pipe(
-              Effect.map((result) => (result.status === 0 ? trimOrNull(result.stdout) : null)),
+              Effect.map((result) =>
+                result.status === 0 ? trimGitOutputOrNull(result.stdout) : null,
+              ),
             )
           : Effect.succeed(null);
 
       const githubRepo = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
         runGit(directory, ["config", "--get", "remote.origin.url"]).pipe(
           Effect.map((result) =>
-            result.status === 0 ? parseGithubRepoFromRemoteUrl(result.stdout) : null,
+            result.status === 0 ? parseGithubRemoteRepository(result.stdout) : null,
           ),
         );
 
@@ -704,7 +272,7 @@ export class Git extends Context.Service<
           if (input.range.symmetric) {
             const mergeBase = yield* runGit(input.directory, ["merge-base", baseRef, headRef]);
             if (mergeBase.status !== 0) return null;
-            const mergeBaseRef = trimOrNull(mergeBase.stdout);
+            const mergeBaseRef = trimGitOutputOrNull(mergeBase.stdout);
             if (mergeBaseRef === null) return null;
             diffBaseRef = mergeBaseRef;
           }
@@ -729,7 +297,7 @@ export class Git extends Context.Service<
             currentBranch: resolvedCurrentBranch,
             baseBranch: baseRef,
             diffBaseRef,
-            changedFiles: splitNullSeparated(diff.stdout),
+            changedFiles: splitNullSeparatedGitOutput(diff.stdout),
             isCurrentChanges: false,
           } satisfies GitDiffSelection;
         });
@@ -765,7 +333,7 @@ export class Git extends Context.Service<
               input.ref,
             ]);
             if (result.status !== 0) return null;
-            const plan = parseBaselineDiffPlan(result.stdout);
+            const plan = parseGitBaselineDiffPlan(result.stdout);
             if (plan === null) return null;
             const untracked = yield* runGit(input.directory, [
               "ls-files",
@@ -777,7 +345,7 @@ export class Git extends Context.Service<
             return {
               baseFiles: plan.baseFiles,
               headFiles: plan.headFiles,
-              untrackedFiles: splitNullSeparated(untracked.stdout),
+              untrackedFiles: splitNullSeparatedGitOutput(untracked.stdout),
             } satisfies GitBaselineDiffPlan;
           }).pipe(
             Effect.catch(() => Effect.succeed(null)),
@@ -855,7 +423,7 @@ export class Git extends Context.Service<
               if (uncommitted.status !== 0) return null;
               const files = yield* mergeUntracked(
                 directory,
-                splitNullSeparated(uncommitted.stdout),
+                splitNullSeparatedGitOutput(uncommitted.stdout),
                 includeUntracked,
               );
               if (files.length === 0) return null;
@@ -869,7 +437,7 @@ export class Git extends Context.Service<
 
             const mergeBase = yield* runGit(directory, ["merge-base", baseBranch, "HEAD"]);
             if (mergeBase.status !== 0) return null;
-            const mergeBaseRef = trimOrNull(mergeBase.stdout);
+            const mergeBaseRef = trimGitOutputOrNull(mergeBase.stdout);
             if (mergeBaseRef === null) return null;
 
             const diff = yield* runGit(directory, [
@@ -884,7 +452,7 @@ export class Git extends Context.Service<
             if (diff.status !== 0) return null;
             const changedFiles = yield* mergeUntracked(
               directory,
-              splitNullSeparated(diff.stdout),
+              splitNullSeparatedGitOutput(diff.stdout),
               includeUntracked,
             );
             return {
@@ -907,7 +475,7 @@ export class Git extends Context.Service<
           ]).pipe(
             Effect.map((result) => {
               if (result.status !== 0) return [] as ReadonlyArray<string>;
-              return splitNullSeparated(result.stdout);
+              return splitNullSeparatedGitOutput(result.stdout);
             }),
           ),
         showStagedContent: (directory, relativePath, options) =>

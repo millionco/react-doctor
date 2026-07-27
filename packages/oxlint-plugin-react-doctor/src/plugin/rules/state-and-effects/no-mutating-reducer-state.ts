@@ -48,9 +48,9 @@ const SAME_REFERENCE_ARRAY_RETURN_METHODS = new Set(["copyWithin", "fill", "reve
 // `resolveRelativeImportPath` (which handles `.ts` / `.tsx` /
 // extension probing / package `exports` maps), then follows barrel
 // re-exports via `resolveBarrelExportFilePath`. Imported reducer
-// bodies are parsed with the cached `parseSourceFile` and the
-// exported function is located by `findExportedFunctionBody`. The
-// same path analysis then runs on the resolved function.
+// bodies are parsed with the cached `parseSourceFile` and resolved by
+// `resolveReducerFunction`. The same path analysis then runs on the
+// resolved function.
 //
 // Out of scope for cross-file:
 //   - Non-relative imports (`from "@/store/reducer"`) until TS path

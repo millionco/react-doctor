@@ -1,6 +1,6 @@
 import type { TextEdit } from "vscode-languageserver";
 
-export interface SuppressionEditInput {
+interface SuppressionEditInput {
   /** Full document text (needed for indentation + JSX heuristics). */
   readonly documentText: string | null;
   /** Absolute fs path (drives the comment style for `.tsx` / `.jsx`). */

@@ -1,18 +1,16 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import { DEFAULT_TEST_TIMEOUT_MS, NODE_PACK_TARGET } from "../../scripts/build/constants.js";
+import { readPackageVersion } from "../../scripts/utils/read-package-version.js";
 
-const packageRoot = path.dirname(fileURLToPath(import.meta.url));
-
-const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8")) as {
-  version: string;
-};
+const packageVersion = readPackageVersion(import.meta.url);
 
 export default defineConfig({
   pack: [
     {
-      entry: { index: "./src/index.ts" },
+      entry: {
+        contracts: "./src/contracts.ts",
+        index: "./src/index.ts",
+      },
       deps: {
         // HACK: oxc-parser loads a platform-specific NAPI binding via
         // require("@oxc-parser/binding-<platform>"). Rollup inlines the
@@ -26,15 +24,15 @@ export default defineConfig({
         neverBundle: ["oxc-parser"],
       },
       dts: true,
-      target: "node20",
+      target: NODE_PACK_TARGET,
       platform: "node",
       fixedExtension: false,
       env: {
-        VERSION: process.env.VERSION ?? packageJson.version,
+        VERSION: process.env.VERSION ?? packageVersion,
       },
     },
   ],
   test: {
-    testTimeout: 30_000,
+    testTimeout: DEFAULT_TEST_TIMEOUT_MS,
   },
 });

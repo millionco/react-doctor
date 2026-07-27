@@ -1,4 +1,4 @@
-import type { InspectResult } from "@react-doctor/core";
+import type { InspectResult } from "../../core/core-types.js";
 
 // `skippedChecks` carries "lint" only when the whole lint pass failed
 // (`didLintFail` in core's `build-skipped-checks`): an engine, plugin, or

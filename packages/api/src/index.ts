@@ -1,5 +1,5 @@
 export { diagnose } from "./diagnose.js";
-export { defineConfig, hasReactRuntime } from "@react-doctor/core";
+export { defineConfig, hasReactRuntime } from "./core-api.js";
 
 export type {
   DiagnoseOptions,
@@ -14,7 +14,7 @@ export type {
   ProjectResultOk,
   ReactDoctorConfig,
   ScoreResult,
-} from "@react-doctor/core";
+} from "./core-api.js";
 export {
   ReactDoctorError,
   ProjectNotFoundError,
@@ -23,4 +23,4 @@ export {
   NotADirectoryError,
   AmbiguousProjectError,
   isReactDoctorError,
-} from "@react-doctor/core";
+} from "./core-api.js";

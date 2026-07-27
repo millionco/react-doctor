@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
-import type { Diagnostic as LiveDiagnostic } from "@react-doctor/core/schemas";
+import type { LiveDiagnostic } from "../../../core/core-reporting.js";
 import { formatDiagnosticSite } from "../../utils/format-diagnostic-site.js";
 import { severityVariant } from "../lib/severity-variants.js";
 

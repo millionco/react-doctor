@@ -1,4 +1,4 @@
-import { setColorEnabled } from "@react-doctor/core";
+import { setColorEnabled } from "../../core/core-presentation.js";
 
 /**
  * Resolve an explicit color preference from `--color` / `--no-color` or the

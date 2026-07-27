@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/node";
 import * as Effect from "effect/Effect";
 import * as Tracer from "effect/Tracer";
-import { layerOtlp } from "@react-doctor/core";
+import { layerOtlp } from "../../core/core-runtime.js";
 import { TRACE_FLAG_SAMPLED } from "./constants.js";
 import { makeSentryTracer } from "./sentry-tracer.js";
 

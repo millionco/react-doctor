@@ -1,4 +1,5 @@
-import { CI_URL, highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
+import { CI_URL } from "../../core/core-product.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { detectDefaultBranch } from "./detect-default-branch.js";
 import {

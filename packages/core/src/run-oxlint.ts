@@ -16,6 +16,7 @@ import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
 import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
+import { getDiscoveredPackageGraph } from "./project-info/discover-project.js";
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
 import { collectUnpluginAutoImportGlobalScopes } from "./runners/oxlint/collect-unplugin-auto-import-global-scopes.js";
@@ -28,6 +29,7 @@ import type {
   SidecarDependencyProbe,
   SidecarLintCache,
 } from "./runners/oxlint/sidecar-lint-cache.js";
+import type { WorkerSlots } from "./utils/create-worker-slots.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
@@ -56,6 +58,8 @@ interface RunOxlintOptions {
   ignoredTags?: ReadonlySet<string>;
   includedTags?: ReadonlySet<string>;
   includeTagDefaults?: boolean;
+  enablePackageContext?: boolean;
+  enablePackageCapabilityGates?: boolean;
   /**
    * Optional react-doctor user config (already-loaded
    * `react-doctor.config.json` or `package.json#reactDoctor`). When
@@ -133,6 +137,7 @@ interface RunOxlintOptions {
    * exhaustion (see `spawnLintBatches`).
    */
   concurrency?: number;
+  spawnSlots?: WorkerSlots;
   /**
    * Aborted when the orchestrator's lint-phase timeout fires; forwarded to
    * `spawnLintBatches` so in-flight oxlint subprocesses are torn down instead
@@ -377,6 +382,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     ignoredTags = new Set<string>(),
     includedTags = new Set<string>(),
     includeTagDefaults = false,
+    enablePackageContext = false,
+    enablePackageCapabilityGates = false,
     userConfig,
     configSourceDirectory = rootDirectory,
     onPartialFailure,
@@ -418,6 +425,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   }
 
   const pluginPath = resolvePluginPath();
+  const packageGraph =
+    enablePackageContext || enablePackageCapabilityGates
+      ? getDiscoveredPackageGraph(rootDirectory)
+      : null;
   // HACK: pass user lint configs to oxlint as absolute paths. oxlint's
   // docs say `extends` is "resolved relative to the configuration
   // file that declares extends," but a literal `path.relative(configDir, ...)`
@@ -560,6 +571,9 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
         ruleSelection: overrides.ruleSelection,
         sidecarRuleIdFilter: overrides.sidecarRuleIdFilter,
+        packageGraph: packageGraph ?? undefined,
+        enablePackageContext,
+        enablePackageCapabilityGates,
       });
 
     // `"cost"` (the default) plans size-balanced LPT batches — the size is
@@ -634,6 +648,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           spawnTimeoutMs,
           outputMaxBytes,
           concurrency: options.concurrency,
+          spawnSlots: options.spawnSlots,
           signal: options.signal,
           deadlineEpochMs: options.deadlineEpochMs,
         });
@@ -1016,6 +1031,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         spawnTimeoutMs,
         outputMaxBytes,
         concurrency: options.concurrency,
+        spawnSlots: options.spawnSlots,
         signal: options.signal,
         deadlineEpochMs: options.deadlineEpochMs,
       });

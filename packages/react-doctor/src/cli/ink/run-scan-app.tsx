@@ -2,25 +2,25 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { render } from "ink";
 import * as Effect from "effect/Effect";
+import { mergeReactDoctorConfigs } from "../../core/core-configuration.js";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import { highlighter } from "../../core/core-presentation.js";
+import { resolveScanTarget } from "../../core/core-project-discovery.js";
 import {
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
-  highlighter,
   mapWithConcurrency,
-  mergeReactDoctorConfigs,
   Reporter,
-  resolveScanTarget,
-} from "@react-doctor/core";
+} from "../../core/core-runtime.js";
 import type {
   BlockingLevel,
   Diagnostic,
   InspectResult,
-  ReactDoctorConfig,
   ResolvedScanTarget,
   ScoreResult,
   WorkspacePackage,
-} from "@react-doctor/core";
-import { inspect } from "../../inspect.js";
-import type { ReactDoctorInspectOptions } from "../../inspect.js";
+} from "../../core/core-types.js";
+import { createInvocationInspect } from "../../inspect.js";
+import type { ReactDoctorInspectOptions } from "../../contracts/inspect-options.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";
@@ -379,11 +379,12 @@ const runSingleProjectScan = async (
   projectDirectory: string,
   input: RunScanAppInput,
   blockingLevel: BlockingLevel,
+  inspectProject: ReturnType<typeof createInvocationInspect>,
 ): Promise<RunScanAppResult> => {
   const projectScan = await resolveProjectScan(rootScanTarget, projectDirectory);
   const presentation = resolveScanPresentation(input, [projectScan]);
   return runMountedScan(projectScan.directory, presentation, blockingLevel, async (context) => {
-    const result = await inspect(projectScan.directory, {
+    const result = await inspectProject(projectScan.directory, {
       ...resolveTuiInspectOptions(input, projectScan.config),
       isCi: isCiEnvironment(),
       configOverride: projectScan.config,
@@ -421,6 +422,7 @@ const runMultiProjectScan = async (
   directories: ReadonlyArray<string>,
   input: RunScanAppInput,
   blockingLevel: BlockingLevel,
+  inspectProject: ReturnType<typeof createInvocationInspect>,
 ): Promise<RunScanAppResult> => {
   const rootDirectory = rootScanTarget.resolvedDirectory;
   const projectScans = await mapWithConcurrency(
@@ -437,7 +439,7 @@ const runMultiProjectScan = async (
       projectScans,
       DEFAULT_PROJECT_SCAN_CONCURRENCY,
       async (projectScan) => {
-        const result = await inspect(projectScan.directory, {
+        const result = await inspectProject(projectScan.directory, {
           ...resolveTuiInspectOptions(input, projectScan.config),
           isCi: isCiEnvironment(),
           configOverride: projectScan.config,
@@ -514,6 +516,7 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
     share: input.share ?? scanTarget.userConfig?.share ?? true,
   };
   const selectedDirectories = await resolveSelectedDirectories(rootDirectory, resolvedInput);
+  const inspectProject = createInvocationInspect(input.options?.concurrency);
   const blockingLevel = resolveBlockingLevel(
     { blocking: resolvedInput.blocking },
     scanTarget.userConfig,
@@ -523,7 +526,19 @@ export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResu
     return { shouldFail: false };
   }
   if (selectedDirectories.length === 1) {
-    return runSingleProjectScan(scanTarget, selectedDirectories[0], resolvedInput, blockingLevel);
+    return runSingleProjectScan(
+      scanTarget,
+      selectedDirectories[0],
+      resolvedInput,
+      blockingLevel,
+      inspectProject,
+    );
   }
-  return runMultiProjectScan(scanTarget, selectedDirectories, resolvedInput, blockingLevel);
+  return runMultiProjectScan(
+    scanTarget,
+    selectedDirectories,
+    resolvedInput,
+    blockingLevel,
+    inspectProject,
+  );
 };

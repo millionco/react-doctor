@@ -19,6 +19,7 @@ import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
 import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
+import { isFunctionLike } from "./utils/is-function-like.js";
 import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
@@ -30,6 +31,7 @@ import {
   resolveCrossFileFunctionExport,
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
+import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
@@ -220,10 +222,12 @@ const flattenProgramImportEntries = (program: EsTreeNode): ImportEntryName[] => 
   return entries;
 };
 
-const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
-  absoluteFilePath,
-  staticImports,
-}) => {
+const collectFunctionExportDependencies = (
+  { absoluteFilePath, staticImports }: CrossFileDependencyCollectorInput,
+  maximumForwardDepth: number,
+  shouldTraverseResolvedExport: (resolved: ResolvedCrossFileValueExport) => boolean = () => true,
+  shouldTraverseFilePath: (filePath: string) => boolean = () => true,
+): void => {
   const greatestTraversedDepthByFilePath = new Map<string, number>();
 
   const collectProgramDependencies = (
@@ -241,7 +245,14 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
         entry.source,
         entry.exportedName,
       );
-      if (!resolved || remainingDepth === 0) continue;
+      if (
+        !resolved ||
+        remainingDepth === 0 ||
+        !shouldTraverseResolvedExport(resolved) ||
+        !shouldTraverseFilePath(resolved.filePath)
+      ) {
+        continue;
+      }
       collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
     }
   };
@@ -252,13 +263,19 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
       entry.source,
       entry.exportedName,
     );
-    if (!resolved) continue;
-    collectProgramDependencies(
-      resolved.filePath,
-      resolved.programNode,
-      CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
-    );
+    if (
+      !resolved ||
+      !shouldTraverseResolvedExport(resolved) ||
+      !shouldTraverseFilePath(resolved.filePath)
+    ) {
+      continue;
+    }
+    collectProgramDependencies(resolved.filePath, resolved.programNode, maximumForwardDepth);
   }
+};
+
+const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) => {
+  collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({
@@ -384,6 +401,7 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
 
 // no-dynamic-import-path / no-full-lodash-import (`is-inside-node-cli-package`),
 // prefer-dynamic-import (`is-published-library-package`),
+// nextjs-async-dynamic-api-not-awaited (`wrapNextjsRule`),
 // no-indeterminate-attribute / rendering-hydration-mismatch-time /
 // no-locale-format-in-render / no-match-media-in-state-initializer
 // (`classifyReactNativeFileTarget`), and
@@ -395,6 +413,24 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
 // conditions the collector deliberately skips (probing more is always safe).
 const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
   classifyPackagePlatform(absoluteFilePath);
+};
+
+// no-unguarded-browser-global-in-render-or-hook-init reads the nearest
+// manifest for its React Native gate, then can follow an imported zero-arg
+// Hook (including aliases and barrel re-exports) whose return value forwards
+// through more imported Hooks to useSyncExternalStore. The rule has no
+// forwarding-depth limit; traversing every resolvable function import in the
+// reached module graph is the finite, cycle-guarded superset. The rule parses
+// a tsconfig alias into node_modules to reject it, but never follows that
+// module's imports, so the collector stops there too.
+const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (input) => {
+  collectNearestManifestDependencies(input);
+  collectFunctionExportDependencies(
+    input,
+    Number.POSITIVE_INFINITY,
+    (resolved) => isFunctionLike(resolved.exportedNode),
+    (filePath) => !filePath.split(/[\\/]/).includes("node_modules"),
+  );
 };
 
 // rn-no-legacy-shadow-styles / rn-style-prefer-boxshadow gate on
@@ -427,6 +463,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
+    ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
@@ -444,7 +481,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
-    ["no-unguarded-browser-global-in-render-or-hook-init", collectNearestManifestDependencies],
+    ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
     ["rerender-memo-with-default-value", collectForwardedHookDependencies],
@@ -466,7 +503,6 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  * partition), forcing a conscious classification.
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
-  "nextjs-async-dynamic-api-not-awaited",
   "nextjs-no-img-element",
   "no-loading-flag-reset-outside-finally",
   "only-export-components",

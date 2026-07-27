@@ -1,4 +1,4 @@
-import { isProjectDiscoveryError, isReactDoctorError } from "@react-doctor/core";
+import { isProjectDiscoveryError, isReactDoctorError } from "../../core/core-errors.js";
 import { CliInputError } from "./cli-input-error.js";
 import { isEnvironmentError } from "./is-environment-error.js";
 

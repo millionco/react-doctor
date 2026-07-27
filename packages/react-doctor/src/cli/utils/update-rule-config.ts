@@ -1,5 +1,5 @@
-import { getEquivalentRuleKeys } from "@react-doctor/core";
-import type { ReactDoctorConfig, RuleSeverityOverride } from "@react-doctor/core";
+import type { ReactDoctorConfig, RuleSeverityOverride } from "../../core/core-configuration.js";
+import { getEquivalentRuleKeys } from "../../core/core-diagnostic-semantics.js";
 
 /**
  * Sets a per-rule severity, replacing any existing entry for the same

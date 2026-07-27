@@ -1,4 +1,4 @@
-import type { BlockingLevel } from "@react-doctor/core";
+import type { BlockingLevel } from "../../core/core-types.js";
 import { filterScansForSurface, type SurfaceFilterableScan } from "./filter-scans-for-surface.js";
 import { hasLintHardFailure } from "./has-lint-hard-failure.js";
 import { shouldBlockCi } from "./should-block-ci.js";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { attachParentReferences } from "../../test-utils/attach-parent-references.js";
+import { attachParentReferences } from "./attach-parent-references.js";
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";

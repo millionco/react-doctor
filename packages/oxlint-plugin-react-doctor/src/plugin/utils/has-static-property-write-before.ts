@@ -2,67 +2,23 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { getExecutionReferenceOffset } from "./get-execution-reference-offset.js";
+import { getEquivalentSymbols } from "./get-equivalent-symbols.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getResolvedStaticPropertyName } from "./get-resolved-static-property-name.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import { isFunctionLike } from "./is-function-like.js";
+import { isNodeOnUnconditionalPath } from "./is-node-on-unconditional-path.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
-import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
+import { resolvePossibleLocalFunctions } from "./resolve-exact-local-function.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
 
-const equivalentSymbolsByAnalysis = new WeakMap<ScopeAnalysis, Map<number, SymbolDescriptor[]>>();
 const potentiallyAliasedSymbolsByAnalysis = new WeakMap<
   ScopeAnalysis,
   Map<number, SymbolDescriptor[]>
 >();
-
-const CONDITIONAL_EXECUTION_NODE_TYPES: ReadonlySet<string> = new Set([
-  "CatchClause",
-  "ConditionalExpression",
-  "DoWhileStatement",
-  "ForInStatement",
-  "ForOfStatement",
-  "ForStatement",
-  "IfStatement",
-  "LogicalExpression",
-  "SwitchCase",
-  "SwitchStatement",
-  "TryStatement",
-  "WhileStatement",
-]);
-
-const collectScopeSymbols = (
-  scope: ScopeAnalysis["rootScope"],
-  symbols: SymbolDescriptor[],
-): void => {
-  symbols.push(...scope.symbols);
-  for (const childScope of scope.children) collectScopeSymbols(childScope, symbols);
-};
-
-const getEquivalentSymbols = (
-  identifier: EsTreeNode,
-  scopes: ScopeAnalysis,
-): SymbolDescriptor[] => {
-  const rootSymbol = resolveConstIdentifierAlias(identifier, scopes);
-  if (!rootSymbol) return [];
-  let symbolsByRootId = equivalentSymbolsByAnalysis.get(scopes);
-  if (!symbolsByRootId) {
-    symbolsByRootId = new Map();
-    equivalentSymbolsByAnalysis.set(scopes, symbolsByRootId);
-  }
-  const cachedSymbols = symbolsByRootId.get(rootSymbol.id);
-  if (cachedSymbols) return cachedSymbols;
-  const allSymbols: SymbolDescriptor[] = [];
-  collectScopeSymbols(scopes.rootScope, allSymbols);
-  const equivalentSymbols = allSymbols.filter(
-    (symbol) => resolveConstIdentifierAlias(symbol.bindingIdentifier, scopes)?.id === rootSymbol.id,
-  );
-  symbolsByRootId.set(rootSymbol.id, equivalentSymbols);
-  return equivalentSymbols;
-};
 
 const getDirectAliasSourceSymbol = (
   expression: EsTreeNode,
@@ -144,7 +100,13 @@ const getPotentiallyAliasedSymbols = (
   const cachedSymbols = symbolsByRootId.get(rootSymbol.id);
   if (cachedSymbols) return cachedSymbols;
   const allSymbols: SymbolDescriptor[] = [];
-  collectScopeSymbols(scopes.rootScope, allSymbols);
+  const pendingScopes = [scopes.rootScope];
+  while (pendingScopes.length > 0) {
+    const scope = pendingScopes.pop();
+    if (!scope) continue;
+    allSymbols.push(...scope.symbols);
+    pendingScopes.push(...scope.children);
+  }
   const aliasedSymbolIds = new Set([rootSymbol.id]);
   let didAddAlias = true;
   while (didAddAlias) {
@@ -170,49 +132,41 @@ const findExecutionBoundary = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-export const isNodeOnUnconditionalPath = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
-  let current = node.parent ?? null;
-  while (current && current !== boundary) {
-    if (CONDITIONAL_EXECUTION_NODE_TYPES.has(current.type)) return false;
-    current = current.parent ?? null;
-  }
-  return current === boundary;
-};
-
-const exactLocalFunctionCallsByAnalysis = new WeakMap<
+const possibleLocalFunctionCallsByAnalysis = new WeakMap<
   ScopeAnalysis,
   Map<EsTreeNode, EsTreeNode[]>
 >();
 
-const getExactLocalFunctionCalls = (
+const getPossibleLocalFunctionCalls = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): EsTreeNode[] => {
-  let callsByFunction = exactLocalFunctionCallsByAnalysis.get(scopes);
+  let callsByFunction = possibleLocalFunctionCallsByAnalysis.get(scopes);
   if (!callsByFunction) {
     const discoveredCallsByFunction = new Map<EsTreeNode, EsTreeNode[]>();
-    const resolvedFunctionsBySymbolId = new Map<number, EsTreeNode | null>();
+    const resolvedFunctionsBySymbolId = new Map<number, EsTreeNode[]>();
     const program = findProgramRoot(functionNode);
     if (program) {
       walkAst(program, (candidate) => {
         if (!isNodeOfType(candidate, "CallExpression")) return;
         const callee = stripParenExpression(candidate.callee);
         const calleeSymbol = isNodeOfType(callee, "Identifier") ? scopes.symbolFor(callee) : null;
-        let calledFunction = calleeSymbol
+        let calledFunctions = calleeSymbol
           ? resolvedFunctionsBySymbolId.get(calleeSymbol.id)
           : undefined;
-        if (calledFunction === undefined) {
-          calledFunction = resolveExactLocalFunction(candidate.callee, scopes);
-          if (calleeSymbol) resolvedFunctionsBySymbolId.set(calleeSymbol.id, calledFunction);
+        if (calledFunctions === undefined) {
+          calledFunctions = resolvePossibleLocalFunctions(candidate.callee, scopes);
+          if (calleeSymbol) resolvedFunctionsBySymbolId.set(calleeSymbol.id, calledFunctions);
         }
-        if (!calledFunction) return;
-        const calls = discoveredCallsByFunction.get(calledFunction) ?? [];
-        calls.push(candidate);
-        discoveredCallsByFunction.set(calledFunction, calls);
+        for (const calledFunction of calledFunctions) {
+          const calls = discoveredCallsByFunction.get(calledFunction) ?? [];
+          calls.push(candidate);
+          discoveredCallsByFunction.set(calledFunction, calls);
+        }
       });
     }
     callsByFunction = discoveredCallsByFunction;
-    exactLocalFunctionCallsByAnalysis.set(scopes, callsByFunction);
+    possibleLocalFunctionCallsByAnalysis.set(scopes, callsByFunction);
   }
   return callsByFunction.get(functionNode) ?? [];
 };
@@ -263,7 +217,7 @@ export const getFunctionSynchronousInvocationPathsBefore = (
   visitedFunctionNodes.add(functionNode);
   const referenceBoundary = findExecutionBoundary(referenceNode);
   if (!referenceBoundary) return [];
-  const invocationCalls = getExactLocalFunctionCalls(functionNode, scopes);
+  const invocationCalls = getPossibleLocalFunctionCalls(functionNode, scopes);
   return invocationCalls.flatMap((call) => {
     const callBoundary = findExecutionBoundary(call);
     if (!callBoundary) return [];
@@ -414,7 +368,7 @@ export const hasPossibleStaticPropertyWrite = (
   );
 };
 
-const canExecuteBefore = (
+export const canNodeExecuteBefore = (
   candidateNode: EsTreeNode,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -439,7 +393,7 @@ export const hasPossibleStaticPropertyWriteBefore = (
   return getPotentiallyAliasedSymbols(identifier, scopes).some((symbol) =>
     symbol.references.some((reference) => {
       const writeTarget = getMemberWriteTarget(reference.identifier);
-      if (!writeTarget || !canExecuteBefore(writeTarget, referenceNode, scopes)) return false;
+      if (!writeTarget || !canNodeExecuteBefore(writeTarget, referenceNode, scopes)) return false;
       const writtenPropertyName = getResolvedStaticPropertyName(writeTarget, scopes);
       return writtenPropertyName === null || writtenPropertyName === propertyName;
     }),
@@ -472,7 +426,7 @@ export const hasPossibleStaticPropertyMutationOrEscapeBefore = (
     symbol.references.some(
       (reference) =>
         !isNonMutatingStaticPropertyReference(reference.identifier) &&
-        canExecuteBefore(reference.identifier, referenceNode, scopes),
+        canNodeExecuteBefore(reference.identifier, referenceNode, scopes),
     ),
   );
 };

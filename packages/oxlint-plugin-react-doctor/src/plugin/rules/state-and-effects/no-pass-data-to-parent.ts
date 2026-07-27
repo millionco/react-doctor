@@ -47,7 +47,14 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
-import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
+import {
+  getParentCallbackPropNames,
+  getRefAliasDeclarator,
+  getVariableForDeclarator,
+  isKnownReactHookDependencyReference,
+  isProvenReactRefCurrentExpression,
+  isProvenReactRefCurrentSnapshotExpression,
+} from "./utils/resolve-parent-callback-provenance.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
 // DIRECT parent-callback call sites. The verification run showed the
@@ -352,21 +359,6 @@ const getDirectComponentBodyStatement = (
   return current?.parent === componentBody ? current : null;
 };
 
-const getVariableForDeclarator = (
-  analysis: ProgramAnalysis,
-  declarator: EsTreeNode,
-): NonNullable<Reference["resolved"]> | null => {
-  for (const scope of analysis.scopeManager.scopes) {
-    const variable = scope.variables.find((candidateVariable) =>
-      candidateVariable.defs.some(
-        (definition) => (definition.node as unknown as EsTreeNode) === declarator,
-      ),
-    );
-    if (variable) return variable;
-  }
-  return null;
-};
-
 const getRefMember = (identifier: EsTreeNode): EsTreeNodeOfType<"MemberExpression"> | null => {
   const receiver = findTransparentExpressionRoot(identifier);
   const member = receiver.parent;
@@ -395,23 +387,6 @@ const getRefMemberAssignment = (
     return null;
   }
   return assignment;
-};
-
-const getRefAliasDeclarator = (
-  identifier: EsTreeNode,
-): EsTreeNodeOfType<"VariableDeclarator"> | null => {
-  const initializer = findTransparentExpressionRoot(identifier);
-  const declarator = initializer.parent;
-  if (
-    !declarator ||
-    !isNodeOfType(declarator, "VariableDeclarator") ||
-    declarator.init !== (initializer as unknown as typeof declarator.init) ||
-    !isNodeOfType(declarator.id, "Identifier") ||
-    getDeclarationKind(declarator) !== "const"
-  ) {
-    return null;
-  }
-  return declarator;
 };
 
 const getRefBindingProvenance = (
@@ -490,6 +465,7 @@ const getCallbackRefProvenance = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   isReactUseRefCall: (node: EsTreeNode) => boolean,
   isReactUseEffectCall: (node: EsTreeNode) => boolean,
+  scopes: ScopeAnalysis,
 ): CallbackRefProvenance | null => {
   const callee = stripParenExpression(callExpression.callee as EsTreeNode);
   if (
@@ -543,6 +519,7 @@ const getCallbackRefProvenance = (
       if (candidateReference.isWrite()) return null;
       const identifier = candidateReference.identifier as unknown as EsTreeNode;
       if (getRefAliasDeclarator(identifier)) continue;
+      if (isKnownReactHookDependencyReference(identifier, scopes)) continue;
       const member = getRefMember(identifier);
       if (!member || getStaticMemberPropertyName(member) !== "current") return null;
       const memberRoot = findTransparentExpressionRoot(member);
@@ -1456,14 +1433,19 @@ export const noPassDataToParent = defineRule({
             callExpr,
             isReactUseRefCall,
             isReactUseEffectCall,
+            context.scopes,
           );
           if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
 
           const calleeNode = unwrapChainExpression(callExpr.callee as EsTreeNode);
           const identifier = ref.identifier as unknown as EsTreeNode;
+          const isReactRefCurrentCallee = isProvenReactRefCurrentExpression({
+            analysis,
+            expression: calleeNode,
+            scopes: context.scopes,
+          });
           const resolvedCallbackPropNames =
-            isNodeOfType(calleeNode, "MemberExpression") &&
-            getStaticMemberPropertyName(calleeNode) === "current"
+            callbackRefProvenance || isReactRefCurrentCallee
               ? null
               : getParentCallbackPropNames({
                   analysis,
@@ -1483,6 +1465,15 @@ export const noPassDataToParent = defineRule({
               continue;
             }
           } else if (calleeNode === identifier) {
+            if (
+              isProvenReactRefCurrentSnapshotExpression({
+                analysis,
+                expression: calleeNode,
+                scopes: context.scopes,
+              })
+            ) {
+              continue;
+            }
             // Bare form: `onChange(data)` — callee must BE a prop (or a
             // plain alias of one), not a local function that eventually
             // mentions a prop.

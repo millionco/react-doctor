@@ -3,10 +3,13 @@ import { analyzeScopes } from "../../../semantic/scope-analysis.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
+import { getFinalSequenceExpressionValue } from "../../../utils/get-final-sequence-expression-value.js";
 import { getImportDeclarationForSymbol } from "../../../utils/get-import-declaration-for-symbol.js";
 import { getImportedName } from "../../../utils/get-imported-name.js";
+import { getStaticLogicalExpressionResultBranches } from "../../../utils/get-static-logical-expression-result-branches.js";
 import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
+import { getStaticTemplateLiteralValue } from "../../../utils/get-static-template-literal-value.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../../utils/resolve-const-identifier-alias.js";
@@ -21,7 +24,10 @@ import {
   isKatexNamespace,
   isUnprovenKatexShapedRenderer,
 } from "./get-katex-renderer-provenance.js";
-import { getKatexOptionsProof, setKatexParameterOptionsProofs } from "./get-katex-options-proof.js";
+import {
+  getKatexOptionsProof,
+  withKatexParameterOptionsProofs,
+} from "./get-katex-options-proof.js";
 import type { KatexOptionsProof } from "./get-katex-options-proof.js";
 
 export interface KatexHtmlProof {
@@ -401,6 +407,100 @@ const getLocalFunctionNode = (
   return isFunctionLike(initializer) ? { functionNode: initializer, symbol } : null;
 };
 
+const getFunctionParameterOptionsProofs = (
+  functionNode: EsTreeNode,
+  call: EsTreeNodeOfType<"CallExpression">,
+  callerScopes: ScopeAnalysis,
+  functionScopes: ScopeAnalysis,
+): ReadonlyMap<number, KatexOptionsProof> => {
+  const optionsProofs = new Map<number, KatexOptionsProof>();
+  if (!isFunctionLike(functionNode)) return optionsProofs;
+  const isUndefinedValue = (node: EsTreeNode | undefined, scopes: ScopeAnalysis): boolean =>
+    node === undefined ||
+    (isNodeOfType(node, "Identifier") &&
+      node.name === "undefined" &&
+      scopes.isGlobalReference(node)) ||
+    (isNodeOfType(node, "UnaryExpression") && node.operator === "void");
+  const getParameterOptionsProof = (
+    optionsNode: EsTreeNode | undefined,
+    usageNode: EsTreeNode,
+    optionsScopes: ScopeAnalysis,
+    isFunctionDefault: boolean,
+  ): KatexOptionsProof => {
+    if (!isFunctionDefault) {
+      return getKatexOptionsProof(optionsNode, usageNode, optionsScopes, new Set());
+    }
+    return withKatexParameterOptionsProofs(functionScopes, optionsProofs, () =>
+      getKatexOptionsProof(optionsNode, usageNode, optionsScopes, new Set()),
+    );
+  };
+  for (const [parameterIndex, parameter] of functionNode.params.entries()) {
+    const argument = call.arguments[parameterIndex];
+    const shouldUseDefault =
+      isNodeOfType(parameter, "AssignmentPattern") && isUndefinedValue(argument, callerScopes);
+    const optionsNode =
+      shouldUseDefault && isNodeOfType(parameter, "AssignmentPattern") ? parameter.right : argument;
+    const optionsScopes = shouldUseDefault ? functionScopes : callerScopes;
+    const optionsUsageNode = shouldUseDefault ? parameter : call;
+    const parameterBinding = isNodeOfType(parameter, "AssignmentPattern")
+      ? parameter.left
+      : parameter;
+    if (isNodeOfType(parameterBinding, "Identifier")) {
+      const parameterSymbol = functionScopes.symbolFor(parameterBinding);
+      if (
+        !parameterSymbol ||
+        parameterSymbol.references.some((reference) => reference.flag !== "read")
+      ) {
+        continue;
+      }
+      optionsProofs.set(
+        parameterSymbol.id,
+        getParameterOptionsProof(optionsNode, optionsUsageNode, optionsScopes, shouldUseDefault),
+      );
+      continue;
+    }
+    if (!isNodeOfType(parameterBinding, "ObjectPattern") || !optionsNode) continue;
+    for (const property of parameterBinding.properties) {
+      if (!isNodeOfType(property, "Property")) continue;
+      const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+      if (propertyName === null) continue;
+      const argumentProperty = getOrderedObjectPropertyValue(optionsNode, propertyName);
+      const propertyBinding = isNodeOfType(property.value, "AssignmentPattern")
+        ? property.value.left
+        : property.value;
+      if (!isNodeOfType(propertyBinding, "Identifier")) continue;
+      const parameterSymbol = functionScopes.symbolFor(propertyBinding);
+      if (
+        !argumentProperty.isKnown ||
+        !parameterSymbol ||
+        parameterSymbol.references.some((reference) => reference.flag !== "read")
+      ) {
+        continue;
+      }
+      const shouldUsePropertyDefault =
+        isNodeOfType(property.value, "AssignmentPattern") &&
+        (argumentProperty.value === null ||
+          isUndefinedValue(argumentProperty.value ?? undefined, optionsScopes));
+      const propertyOptionsNode =
+        shouldUsePropertyDefault && isNodeOfType(property.value, "AssignmentPattern")
+          ? property.value.right
+          : (argumentProperty.value ?? undefined);
+      const propertyOptionsScopes = shouldUsePropertyDefault ? functionScopes : optionsScopes;
+      const propertyUsageNode = shouldUsePropertyDefault ? property : optionsUsageNode;
+      optionsProofs.set(
+        parameterSymbol.id,
+        getParameterOptionsProof(
+          propertyOptionsNode,
+          propertyUsageNode,
+          propertyOptionsScopes,
+          shouldUsePropertyDefault,
+        ),
+      );
+    }
+  }
+  return optionsProofs;
+};
+
 const getCrossFileFunctionProof = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
@@ -426,38 +526,15 @@ const getCrossFileFunctionProof = (
   if (!resolved || !isFunctionLike(resolved.functionNode)) return null;
   const resolvedScopes = analyzeScopes(resolved.programNode);
   registerKatexProofSource(resolvedScopes, resolved.filePath, currentDepth + 1);
-  const optionsProofs = new Map<number, KatexOptionsProof>();
-  for (const [parameterIndex, parameter] of resolved.functionNode.params.entries()) {
-    if (!isNodeOfType(parameter, "ObjectPattern")) continue;
-    const argument = call.arguments[parameterIndex];
-    if (!argument) continue;
-    for (const property of parameter.properties) {
-      if (!isNodeOfType(property, "Property") || !isNodeOfType(property.value, "Identifier")) {
-        continue;
-      }
-      const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-      if (propertyName === null) continue;
-      const argumentProperty = getOrderedObjectPropertyValue(argument, propertyName);
-      const parameterSymbol = resolvedScopes.symbolFor(property.value);
-      if (
-        !argumentProperty.isKnown ||
-        !parameterSymbol ||
-        parameterSymbol.references.some((reference) => reference.flag !== "read")
-      ) {
-        continue;
-      }
-      if (argumentProperty.value === null) {
-        optionsProofs.set(parameterSymbol.id, { isConclusive: true, isSafe: true });
-        continue;
-      }
-      optionsProofs.set(
-        parameterSymbol.id,
-        getKatexOptionsProof(argumentProperty.value, call, scopes, new Set()),
-      );
-    }
-  }
-  setKatexParameterOptionsProofs(resolvedScopes, optionsProofs);
-  return getFunctionHtmlProof(resolved.functionNode, resolvedScopes, new Set());
+  const optionsProofs = getFunctionParameterOptionsProofs(
+    resolved.functionNode,
+    call,
+    scopes,
+    resolvedScopes,
+  );
+  return withKatexParameterOptionsProofs(resolvedScopes, optionsProofs, () =>
+    getFunctionHtmlProof(resolved.functionNode, resolvedScopes, new Set()),
+  );
 };
 
 const getKatexCallProof = (
@@ -477,7 +554,7 @@ const getKatexCallProof = (
     const optionsProof = getKatexOptionsProof(node.arguments[1], node, scopes, new Set());
     return {
       containsKatex: true,
-      isConclusive: optionsProof.isConclusive,
+      isConclusive: true,
       isSafe: optionsProof.isSafe,
       isSafeInAttributeContext: false,
     };
@@ -512,11 +589,19 @@ const getKatexCallProof = (
         }
       }
     }
-    const localFunctionProof = getFunctionHtmlProof(
+    const localOptionsProofs = getFunctionParameterOptionsProofs(
       localFunction.functionNode,
+      node,
       scopes,
-      nextVisitedSymbolIds,
-      localParameterProofs,
+      scopes,
+    );
+    const localFunctionProof = withKatexParameterOptionsProofs(scopes, localOptionsProofs, () =>
+      getFunctionHtmlProof(
+        localFunction.functionNode,
+        scopes,
+        nextVisitedSymbolIds,
+        localParameterProofs,
+      ),
     );
     const containsKatexArgument = argumentProofs.some((proof) => proof.containsKatex);
     if (!containsKatexArgument || localFunctionProof.containsKatex) return localFunctionProof;
@@ -584,6 +669,43 @@ const getKatexCallProof = (
   return containsKatexArgument ? UNSUPPORTED_KATEX_PROOF : UNKNOWN_HTML_PROOF;
 };
 
+const getStaticConditionalTestValue = (node: EsTreeNode, scopes: ScopeAnalysis): boolean | null => {
+  const expression = getFinalSequenceExpressionValue(node);
+  if (isNodeOfType(expression, "Literal")) return Boolean(expression.value);
+  if (
+    isNodeOfType(expression, "Identifier") &&
+    (expression.name === "undefined" || expression.name === "NaN") &&
+    scopes.isGlobalReference(expression)
+  ) {
+    return false;
+  }
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    const staticValue = getStaticTemplateLiteralValue(expression);
+    return staticValue === null ? null : Boolean(staticValue);
+  }
+  if (
+    isNodeOfType(expression, "ArrayExpression") ||
+    isNodeOfType(expression, "ObjectExpression") ||
+    isNodeOfType(expression, "ArrowFunctionExpression") ||
+    isNodeOfType(expression, "FunctionExpression") ||
+    isNodeOfType(expression, "ClassExpression") ||
+    isNodeOfType(expression, "NewExpression") ||
+    isNodeOfType(expression, "JSXElement") ||
+    isNodeOfType(expression, "JSXFragment")
+  ) {
+    return true;
+  }
+  if (isNodeOfType(expression, "UnaryExpression")) {
+    if (expression.operator === "void") return false;
+    if (expression.operator === "typeof") return true;
+    if (expression.operator === "!") {
+      const argumentValue = getStaticConditionalTestValue(expression.argument, scopes);
+      return argumentValue === null ? null : !argumentValue;
+    }
+  }
+  return null;
+};
+
 export const getKatexHtmlProof = (
   rawNode: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -621,18 +743,65 @@ export const getKatexHtmlProof = (
     return getTemplateLiteralProof(node, scopes, visitedSymbolIds, parameterProofs);
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
+    const staticTestValue = getStaticConditionalTestValue(node.test, scopes);
+    if (staticTestValue !== null) {
+      return getKatexHtmlProof(
+        staticTestValue ? node.consequent : node.alternate,
+        scopes,
+        new Set(visitedSymbolIds),
+        parameterProofs,
+      );
+    }
     return combineHtmlProofs([
       getKatexHtmlProof(node.consequent, scopes, new Set(visitedSymbolIds), parameterProofs),
       getKatexHtmlProof(node.alternate, scopes, new Set(visitedSymbolIds), parameterProofs),
     ]);
   }
-  if (isNodeOfType(node, "LogicalExpression") && node.operator === "&&") {
-    return getKatexHtmlProof(node.right, scopes, visitedSymbolIds, parameterProofs);
+  if (isNodeOfType(node, "LogicalExpression")) {
+    const staticLeftValue =
+      node.operator === "??" ? null : getStaticConditionalTestValue(node.left, scopes);
+    if (staticLeftValue !== null) {
+      const resultExpression =
+        node.operator === "&&"
+          ? staticLeftValue
+            ? node.right
+            : node.left
+          : staticLeftValue
+            ? node.left
+            : node.right;
+      return getKatexHtmlProof(
+        resultExpression,
+        scopes,
+        new Set(visitedSymbolIds),
+        parameterProofs,
+      );
+    }
+    const resultBranches = getStaticLogicalExpressionResultBranches(node);
+    if (resultBranches.length === 1) {
+      return getKatexHtmlProof(
+        resultBranches[0] ?? node,
+        scopes,
+        new Set(visitedSymbolIds),
+        parameterProofs,
+      );
+    }
+    const operandProofs = [node.left, node.right].map((operand) =>
+      getKatexHtmlProof(operand, scopes, new Set(visitedSymbolIds), parameterProofs),
+    );
+    const reachableProof =
+      node.operator === "&&"
+        ? (operandProofs[1] ?? UNKNOWN_HTML_PROOF)
+        : combineHtmlProofs(
+            resultBranches.map((branch) =>
+              getKatexHtmlProof(branch, scopes, new Set(visitedSymbolIds), parameterProofs),
+            ),
+          );
+    return {
+      ...reachableProof,
+      containsKatex: operandProofs.some((proof) => proof.containsKatex),
+    };
   }
-  if (
-    (isNodeOfType(node, "BinaryExpression") && node.operator === "+") ||
-    isNodeOfType(node, "LogicalExpression")
-  ) {
+  if (isNodeOfType(node, "BinaryExpression") && node.operator === "+") {
     return combineHtmlProofs([
       getKatexHtmlProof(node.left, scopes, new Set(visitedSymbolIds), parameterProofs),
       getKatexHtmlProof(node.right, scopes, new Set(visitedSymbolIds), parameterProofs),

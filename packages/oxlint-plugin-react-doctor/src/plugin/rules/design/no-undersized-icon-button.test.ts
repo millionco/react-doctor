@@ -11,6 +11,15 @@ describe("no-undersized-icon-button", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports supported static arbitrary and pixel-unit Tailwind lengths", () => {
+    const result = runRule(
+      noUndersizedIconButton,
+      `const A = () => <button aria-label="Close" className="w-[1rem] h-[20px] p-0"><CloseIcon /></button>;
+       const B = () => <button aria-label="Close" className="size-px p-0"><CloseIcon /></button>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("reports an explicitly undersized inline icon button", () => {
     const result = runRule(
       noUndersizedIconButton,

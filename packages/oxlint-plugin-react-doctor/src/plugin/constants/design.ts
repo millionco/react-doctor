@@ -17,6 +17,14 @@ export const SIDE_TAB_BORDER_WIDTH_WITH_RADIUS_PX = 1;
 
 export const SIDE_TAB_TAILWIND_WIDTH_WITHOUT_RADIUS = 4;
 
+export const INSET_SIDE_TAB_MIN_WIDTH_PX = 3;
+
+export const INSET_SIDE_TAB_MAX_WIDTH_PX = 12;
+
+export const PSEUDO_SIDE_TAB_MAX_EDGE_INSET_PX = 20;
+
+export const SIDE_TAB_GLYPH_MAX_SIZE_PX = 40;
+
 export const DARK_GLOW_BLUR_THRESHOLD_PX = 4;
 
 export const DARK_BACKGROUND_CHANNEL_MAX = 35;
@@ -59,7 +67,27 @@ export const OVERSIZED_DISPLAY_HEADING_MIN_PX = 64;
 
 export const SHORT_DECORATIVE_LABEL_MAX_CHARACTERS = 32;
 
+export const HERO_EYEBROW_LABEL_MAX_FONT_SIZE_PX = 14;
+
+export const HERO_EYEBROW_DASH_MIN_WIDTH_PX = 8;
+
+export const HERO_EYEBROW_DASH_MAX_WIDTH_PX = 80;
+
+export const HERO_EYEBROW_DASH_MIN_HEIGHT_PX = 1;
+
+export const HERO_EYEBROW_DASH_MAX_HEIGHT_PX = 6;
+
 export const REPEATED_DECORATIVE_LABEL_MIN_COUNT = 3;
+
+export const NUMBERED_SECTION_LABEL_MIN_COUNT = 2;
+
+export const NUMBERED_SECTION_LABEL_MAX_INDEX = 40;
+
+export const NUMBERED_SECTION_LABEL_MAX_CHARACTERS = 40;
+
+export const NUMBERED_SECTION_LABEL_MAX_FONT_SIZE_PX = 13;
+
+export const NUMBERED_SECTION_LABEL_MIN_FONT_WEIGHT = 600;
 
 export const MIN_BOUNDED_CONTAINER_PADDING_PX = 8;
 
@@ -102,7 +130,43 @@ export const DECORATIVE_GRID_MIN_GRADIENT_LAYERS = 2;
 
 export const DECORATIVE_BLUR_ORB_MIN_BLUR_PX = 24;
 
+export const PULSING_STATUS_DOT_MIN_SIZE_PX = 2;
+
+export const PULSING_STATUS_DOT_MAX_SIZE_PX = 16;
+
+export const DECORATIVE_RADIAL_SPOTLIGHT_MIN_WIDTH_PX = 240;
+
+export const DECORATIVE_RADIAL_SPOTLIGHT_MIN_HEIGHT_PX = 160;
+
+export const DECORATIVE_RADIAL_SPOTLIGHT_TRANSPARENT_ALPHA_MAX = 0.05;
+
+export const DECORATIVE_RADIAL_SPOTLIGHT_VISIBLE_ALPHA_MAX = 0.45;
+
+export const DECORATIVE_RADIAL_SPOTLIGHT_MAX_VISIBLE_STOPS = 2;
+
+export const CSS_ALPHA_PERCENT_SCALE = 100;
+
+export const CSS_HEX_ALPHA_NIBBLE_MAX = 15;
+
+export const CSS_HEX_ALPHA_BYTE_MAX = 255;
+
+export const RADIAL_HALO_VISIBLE_ALPHA_MIN = 0.7;
+
+export const RADIAL_HALO_TRANSPARENT_ALPHA_MAX = 0.05;
+
+export const RADIAL_HALO_DARK_BACKGROUND_ALPHA_MIN = 0.95;
+
+export const RADIAL_HALO_SMALL_EXTENT_MAX_PX = 24;
+
 export const REPEATED_GLASS_SURFACE_MIN_COUNT = 3;
+
+export const REPEATED_CONTAINER_TEXT_MIN_COUNT = 3;
+
+export const REPEATED_CONTAINER_TEXT_MIN_LENGTH = 4;
+
+export const REPEATED_CONTAINER_TEXT_MAX_LENGTH = 48;
+
+export const REPEATED_CONTAINER_TEXT_MAX_DESCENDANT_COUNT = 250;
 
 export const EXCESSIVE_PILL_TREATMENT_MIN_COUNT = 5;
 
@@ -153,17 +217,44 @@ export const TAILWIND_TEXT_SIZE_PX = new Map([
 ]);
 
 export const GENERIC_MARKETING_PHRASES = new Set([
+  "best of breed",
+  "best-in-class",
+  "built for the modern",
   "cutting-edge",
+  "drive engagement",
+  "drive growth",
+  "drive results",
+  "empower your",
+  "enterprise-grade",
   "future-proof",
+  "game changing",
+  "game-changer",
+  "harness the power",
+  "industry-leading",
+  "leverage the power",
   "next-generation",
   "seamless experience",
-  "supercharge your workflow",
+  "seamlessly integrate",
+  "streamline your",
+  "supercharge your",
   "transform your business",
+  "trusted by leading",
+  "trusted by the world",
+  "unleash the power",
+  "unleash your",
   "unlock your potential",
   "world-class",
 ]);
 
+export const EM_DASH_PROSE_MIN_WORD_COUNT = 5;
+
 export const LONG_TRANSITION_DURATION_THRESHOLD_MS = 1000;
+
+export const MARQUEE_HORIZONTAL_TRAVEL_THRESHOLD_PERCENTAGE_POINTS = 20;
+
+export const MOTION_IMAGE_NEUTRAL_SCALE = 1;
+
+export const MOTION_IMAGE_NEUTRAL_ROTATION_DEGREES = 0;
 
 export const VAGUE_BUTTON_LABELS = new Set([
   "continue",

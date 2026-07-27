@@ -111,6 +111,28 @@ describe("detectPreES2023Target", () => {
     expect(detectPreES2023Target(path.join(projectDirectory, "apps", "web"))).toBe(true);
   });
 
+  it("inherits target from a parent directory through an exact dot-dot extends", () => {
+    const projectDirectory = setupProject("dot-dot-extends", {
+      "apps/tsconfig.json": writeTsConfig({ compilerOptions: { target: "es2022" } }),
+      "apps/web/tsconfig.json": writeTsConfig({ extends: ".." }),
+    });
+
+    expect(detectPreES2023Target(path.join(projectDirectory, "apps", "web"))).toBe(true);
+  });
+
+  it("inherits target from the current directory through an exact dot extends", () => {
+    const projectDirectory = setupProject("dot-extends", {
+      "tsconfig.json": writeTsConfig({
+        files: [],
+        references: [{ path: "./app/tsconfig.build.json" }],
+      }),
+      "app/tsconfig.json": writeTsConfig({ compilerOptions: { target: "es2022" } }),
+      "app/tsconfig.build.json": writeTsConfig({ extends: "." }),
+    });
+
+    expect(detectPreES2023Target(projectDirectory)).toBe(true);
+  });
+
   it("lets child compiler options override inherited target", () => {
     const projectDirectory = setupProject("child-target-override", {
       "tsconfig.base.json": writeTsConfig({ compilerOptions: { target: "es2022" } }),

@@ -105,4 +105,81 @@ describe("security-scan/dangerous-html-sink — cross-file KaTeX provenance", ()
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("propagates positional options through a cross-file KaTeX helper", () => {
+    const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-options-"));
+    try {
+      writeFileSync(
+        join(directory, "render-math.ts"),
+        `import katex from "katex";
+         export const renderMath = (value: string, options?: object) =>
+           katex.renderToString(value, options);`,
+      );
+      const runCrossFileScan = (options: string) =>
+        dangerousHtmlSink.scan?.({
+          absolutePath: join(directory, "math.tsx"),
+          relativePath: "src/math.tsx",
+          content: `import { renderMath } from "./render-math";
+            export const Math = ({ value, options }: Props) => (
+              <span dangerouslySetInnerHTML={{ __html: renderMath(value, ${options}) }} />
+            );`,
+          isGeneratedBundle: false,
+        }) ?? [];
+
+      expect(runCrossFileScan("{ trust: false }")).toHaveLength(0);
+      expect(runCrossFileScan("{ throwOnError: false }")).toHaveLength(0);
+      expect(runCrossFileScan("{ trust: true }")).toHaveLength(1);
+      expect(runCrossFileScan("options")).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves dependent and destructured defaults across a KaTeX helper boundary", () => {
+    const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-defaults-"));
+    try {
+      writeFileSync(
+        join(directory, "render-math.ts"),
+        `import katex from "katex";
+         export const renderWithDependentDefault = (
+           value: string,
+           baseOptions: object,
+           options: object = baseOptions,
+         ) => katex.renderToString(value, options);
+         export const renderWithDestructuredDefault = (
+           value: string,
+           { options = { trust: false } }: { options?: object } = {},
+         ) => katex.renderToString(value, options);`,
+      );
+      const runCrossFileScan = (importedName: string, argumentsSource: string) =>
+        dangerousHtmlSink.scan?.({
+          absolutePath: join(directory, "math.tsx"),
+          relativePath: "src/math.tsx",
+          content: `import { ${importedName} } from "./render-math";
+            export const Math = ({ value, options }: Props) => (
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: ${importedName}(value${argumentsSource}),
+                }}
+              />
+            );`,
+          isGeneratedBundle: false,
+        }) ?? [];
+
+      expect(runCrossFileScan("renderWithDependentDefault", ", { trust: false }")).toHaveLength(0);
+      expect(runCrossFileScan("renderWithDependentDefault", ", { trust: true }")).toHaveLength(1);
+      expect(runCrossFileScan("renderWithDependentDefault", ", options")).toHaveLength(1);
+      expect(runCrossFileScan("renderWithDestructuredDefault", "")).toHaveLength(0);
+      expect(runCrossFileScan("renderWithDestructuredDefault", ", {}")).toHaveLength(0);
+      expect(
+        runCrossFileScan("renderWithDestructuredDefault", ", { options: { trust: false } }"),
+      ).toHaveLength(0);
+      expect(
+        runCrossFileScan("renderWithDestructuredDefault", ", { options: { trust: true } }"),
+      ).toHaveLength(1);
+      expect(runCrossFileScan("renderWithDestructuredDefault", ", { options }")).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

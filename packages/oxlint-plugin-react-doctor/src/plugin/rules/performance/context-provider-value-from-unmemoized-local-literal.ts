@@ -15,7 +15,7 @@ import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
-import { isNodeOnUnconditionalPath } from "../../utils/has-static-property-write-before.js";
+import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { getSymbolWriteExecutionPathsBefore } from "../../utils/has-symbol-write-before.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";

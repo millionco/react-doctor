@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/language-server",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": true,
   "description": "Language server for React Doctor editor integrations.",
   "license": "SEE LICENSE IN LICENSE",

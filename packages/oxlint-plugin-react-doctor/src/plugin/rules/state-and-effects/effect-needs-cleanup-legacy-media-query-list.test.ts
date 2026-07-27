@@ -32,6 +32,139 @@ export const useMediaQuery = (breakpoint?: string): boolean => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts cleanup for a MediaQueryList created by useMemo", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+const getServerSnapshot = () => false;
+const noopUnsubscribe = () => undefined;
+export const useMediaQuery = (breakpoint?: string): boolean => {
+  const mediaQueryList = React.useMemo(
+    () =>
+      breakpoint && typeof window !== "undefined" && typeof window.matchMedia === "function"
+        ? window.matchMedia(breakpoint)
+        : null,
+    [breakpoint],
+  );
+  const subscribe = React.useCallback(
+    (onStoreChange: () => void) => {
+      if (!mediaQueryList) return noopUnsubscribe;
+      if (typeof mediaQueryList.addEventListener === "function") {
+        mediaQueryList.addEventListener("change", onStoreChange);
+        return () => mediaQueryList.removeEventListener("change", onStoreChange);
+      }
+      mediaQueryList.addListener(onStoreChange);
+      return () => mediaQueryList.removeListener(onStoreChange);
+    },
+    [mediaQueryList],
+  );
+  const getSnapshot = React.useCallback(
+    () => Boolean(mediaQueryList?.matches),
+    [mediaQueryList],
+  );
+  return React.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts cleanup for a MediaQueryList created by a named useMemo factory", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const useMediaQuery = (breakpoint: string): boolean => {
+  const createMediaQueryList = () => window.matchMedia(breakpoint);
+  const mediaQueryList = React.useMemo(createMediaQueryList, [breakpoint]);
+  const subscribe = React.useCallback((onStoreChange: () => void) => {
+    mediaQueryList.addListener(onStoreChange);
+    return () => mediaQueryList.removeListener(onStoreChange);
+  }, [mediaQueryList]);
+  return React.useSyncExternalStore(subscribe, () => mediaQueryList.matches, () => false);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts cleanup through named and destructured useMemo aliases", () => {
+    const sources = [
+      `import { useCallback, useMemo, useSyncExternalStore } from "react";
+const memo = useMemo;
+export const useMediaQuery = (breakpoint: string): boolean => {
+  const mediaQueryList = memo(() => window.matchMedia(breakpoint), [breakpoint]);
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    mediaQueryList.addListener(onStoreChange);
+    return () => mediaQueryList.removeListener(onStoreChange);
+  }, [mediaQueryList]);
+  return useSyncExternalStore(subscribe, () => mediaQueryList.matches, () => false);
+};`,
+      `import * as React from "react";
+const { useMemo: memo } = React;
+export const useMediaQuery = (breakpoint: string): boolean => {
+  const mediaQueryList = memo(() => window.matchMedia(breakpoint), [breakpoint]);
+  const subscribe = React.useCallback((onStoreChange: () => void) => {
+    mediaQueryList.addListener(onStoreChange);
+    return () => mediaQueryList.removeListener(onStoreChange);
+  }, [mediaQueryList]);
+  return React.useSyncExternalStore(subscribe, () => mediaQueryList.matches, () => false);
+};`,
+    ];
+    for (const source of sources) {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it.each([
+    {
+      name: "missing cleanup",
+      cleanup: "return () => undefined;",
+    },
+    {
+      name: "different handler",
+      cleanup: "return () => mediaQueryList.removeListener(otherHandler);",
+    },
+    {
+      name: "different receiver",
+      cleanup: "return () => otherMediaQueryList.removeListener(onStoreChange);",
+    },
+    {
+      name: "cleanup on only one path",
+      cleanup: `if (shouldCleanup) {
+        return () => mediaQueryList.removeListener(onStoreChange);
+      }
+      return undefined;`,
+    },
+  ])("rejects useMemo MediaQueryList $name", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+export const useMediaQuery = (
+  breakpoint: string,
+  otherHandler: () => void,
+  shouldCleanup: boolean,
+): boolean => {
+  const mediaQueryList = React.useMemo(() => window.matchMedia(breakpoint), [breakpoint]);
+  const otherMediaQueryList = React.useMemo(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)"),
+    [],
+  );
+  const subscribe = React.useCallback(
+    (onStoreChange: () => void) => {
+      mediaQueryList.addListener(onStoreChange);
+      ${cleanup}
+    },
+    [mediaQueryList, otherHandler, otherMediaQueryList, shouldCleanup],
+  );
+  return React.useSyncExternalStore(subscribe, () => mediaQueryList.matches, () => false);
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts direct, aliased, and typed MediaQueryList cleanup", () => {
     const sources = [
       `import { useEffect } from "react";
@@ -280,6 +413,50 @@ export const ShadowedMediaQueryList = ({ handle }) => {
     return () => media.removeListener(handle);
   }, [handle]);
   return null;
+};`,
+      `import React from "react";
+export const CustomMemoizedListener = ({ customBus }) => {
+  const memoizedBus = React.useMemo(() => customBus, [customBus]);
+  const subscribe = React.useCallback(
+    (handle) => {
+      memoizedBus.addListener(handle);
+      return () => memoizedBus.removeListener(handle);
+    },
+    [memoizedBus],
+  );
+  return React.useSyncExternalStore(subscribe, getSnapshot);
+};`,
+      `import React from "react";
+export const MutableMemoizedListener = ({ customBus, shouldUseMediaQuery }) => {
+  const memoizedBus = React.useMemo(() => {
+    let bus = customBus;
+    if (shouldUseMediaQuery) {
+      bus = window.matchMedia("(prefers-color-scheme: dark)");
+    }
+    return bus;
+  }, [customBus, shouldUseMediaQuery]);
+  const subscribe = React.useCallback(
+    (handle) => {
+      memoizedBus.addListener(handle);
+      return () => memoizedBus.removeListener(handle);
+    },
+    [memoizedBus],
+  );
+  return React.useSyncExternalStore(subscribe, getSnapshot);
+};`,
+      `import React from "react";
+const useMemo = (factory) => factory();
+const memo = useMemo;
+export const ShadowedMemo = ({ handle }) => {
+  const mediaQueryList = memo(
+    () => window.matchMedia("(prefers-color-scheme: dark)"),
+    [],
+  );
+  const subscribe = React.useCallback(() => {
+    mediaQueryList.addListener(handle);
+    return () => mediaQueryList.removeListener(handle);
+  }, [handle, mediaQueryList]);
+  return React.useSyncExternalStore(subscribe, getSnapshot);
 };`,
     ];
     for (const source of sources) {

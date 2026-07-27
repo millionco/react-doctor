@@ -1,4 +1,4 @@
-import { Text } from "ink";
+import { Box, Text } from "ink";
 import type { ReactNode } from "react";
 
 export interface StatusBarProps {
@@ -11,6 +11,7 @@ export interface StatusBarProps {
   readonly projectCount?: number;
   readonly keyHints?: ReactNode;
   readonly exitHint?: string;
+  readonly compact?: boolean;
 }
 
 export const StatusBar = ({
@@ -23,32 +24,58 @@ export const StatusBar = ({
   projectCount,
   keyHints = <Text dimColor>↑/↓ to move</Text>,
   exitHint = "q to quit",
-}: StatusBarProps) => (
-  <Text wrap="truncate-end">
-    <Text bold>
-      {total} {total === 1 ? "issue" : "issues"}
-    </Text>
-    <Text dimColor> › </Text>
-    <Text color="red">{errorCount} errors</Text>
-    <Text dimColor>, </Text>
-    <Text color="yellow" dimColor>
-      {warningCount} warnings
-    </Text>
-    {unreadCount !== undefined ? (
-      <Text color={unreadCount > 0 ? "cyan" : undefined} dimColor={unreadCount === 0}>
-        {" · "}
-        {unreadCount} unread
+  compact = false,
+}: StatusBarProps) => {
+  const counts = (
+    <>
+      <Text bold>
+        {total} {total === 1 ? "issue" : "issues"}
       </Text>
-    ) : null}
-    {projectCount !== undefined ? (
-      <Text dimColor>
-        {" · "}
-        {projectCount} {projectCount === 1 ? "project" : "projects"}
+      <Text dimColor>{"  "}</Text>
+      <Text color="red">{errorCount} errors</Text>
+      <Text dimColor>{"  "}</Text>
+      <Text color="yellow">{warningCount} warnings</Text>
+    </>
+  );
+
+  if (compact)
+    return (
+      <Text wrap="truncate-end">
+        {counts}
+        <Text dimColor>
+          {"  ·  "}
+          {position}/{groupCount}
+          {"  ·  "}
+        </Text>
+        {keyHints}
+        <Text dimColor> · {exitHint}</Text>
       </Text>
-    ) : null}
-    <Text dimColor>
-      {"   "}
-      {position}/{groupCount} · {keyHints} · {exitHint}
-    </Text>
-  </Text>
-);
+    );
+
+  return (
+    <Box flexDirection="column">
+      <Text wrap="truncate-end">
+        {counts}
+        <Text dimColor>
+          {"  ·  "}
+          {position}/{groupCount}
+        </Text>
+        {projectCount !== undefined ? (
+          <Text dimColor>
+            {"  ·  "}
+            {projectCount} {projectCount === 1 ? "project" : "projects"}
+          </Text>
+        ) : null}
+      </Text>
+      <Text wrap="truncate-end">
+        {unreadCount !== undefined ? (
+          <Text color={unreadCount > 0 ? "cyan" : undefined} dimColor={unreadCount === 0}>
+            {unreadCount} unread{"  ·  "}
+          </Text>
+        ) : null}
+        {keyHints}
+        <Text dimColor> · {exitHint}</Text>
+      </Text>
+    </Box>
+  );
+};

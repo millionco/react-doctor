@@ -20,6 +20,7 @@ export interface ScoreHeaderProps {
   readonly issueCount: number;
   readonly noScoreMessage?: string;
   readonly width?: number;
+  readonly compact?: boolean;
 }
 
 const BRANDING = "https://react.doctor";
@@ -31,6 +32,7 @@ export const ScoreHeader = ({
   issueCount,
   noScoreMessage,
   width,
+  compact = false,
 }: ScoreHeaderProps) => {
   const { columns } = useStdoutDimensions();
   const availableWidth = width ?? columns;
@@ -41,6 +43,27 @@ export const ScoreHeader = ({
     projectedScore,
     animate: animate && score !== null,
   });
+
+  if (compact) {
+    return score ? (
+      <Text wrap="truncate-end">
+        <Text color={scoreColorName(score.score)} bold>
+          {displayScore}
+        </Text>
+        <Text dimColor> / {PERFECT_SCORE} </Text>
+        <Text color={scoreColorName(score.score)}>{score.label}</Text>
+        <Text dimColor>
+          {" · "}
+          {projectName}
+        </Text>
+      </Text>
+    ) : (
+      <Text wrap="truncate-end">
+        React Doctor{" "}
+        <Text dimColor>· {noScoreMessage ?? `${issueCount} issues · ${projectName}`}</Text>
+      </Text>
+    );
+  }
 
   if (!score) {
     return (

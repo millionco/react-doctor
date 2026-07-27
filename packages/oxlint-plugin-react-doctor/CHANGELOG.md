@@ -1,5 +1,21 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.2
+
+### Patch Changes
+
+- [#1451](https://github.com/millionco/react-doctor/pull/1451) [`4fbab2d`](https://github.com/millionco/react-doctor/commit/4fbab2ddc8a3e808afe90a291325b4da0f7817ab) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect TanStack Start root documents that omit client scripts and unsafe filesystem containment checks that compare resolved paths with a bare string prefix.
+
+- [#1454](https://github.com/millionco/react-doctor/pull/1454) [`4ebd0a0`](https://github.com/millionco/react-doctor/commit/4ebd0a0706a4014edb62ec5bcfd369bac3a23901) Thanks [@aidenybai](https://github.com/aidenybai)! - Add opt-in diagnostics for auto-scrolling content, decorative radial effects, pulsing status dots, repeated container copy, and shape-assembled illustrations. Improve existing design and copy diagnostics with stricter visibility, cascade, motion, contrast, and structural analysis.
+
+- [#1452](https://github.com/millionco/react-doctor/pull/1452) [`49c5c1e`](https://github.com/millionco/react-doctor/commit/49c5c1e8370ed153bc66bb36142e6e20341ae428) Thanks [@aidenybai](https://github.com/aidenybai)! - Improve diagnostic precision for effect cleanup, derived state, parent callbacks, deferred state transitions, and KaTeX HTML rendering.
+
+- [#1455](https://github.com/millionco/react-doctor/pull/1455) [`846c2df`](https://github.com/millionco/react-doctor/commit/846c2df84465d6ebce31ea894669afc5c28ae01f) Thanks [@aidenybai](https://github.com/aidenybai)! - Add parsed GLSL diagnostics for Three.js shader correctness, stage and uniform contracts, undefined constant operations, and GPU performance pitfalls. Detect per-frame material recompilation and variant-dependent `onBeforeCompile` patches without program cache keys.
+
+- [#1445](https://github.com/millionco/react-doctor/pull/1445) [`b1b62db`](https://github.com/millionco/react-doctor/commit/b1b62db71d43b6d34ca5108f5598b9e2f6392f91) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `jsx-no-undef` false positives for identifiers confirmed by an active `unplugin-auto-import` configuration and its current generated ESLint globals.
+
+- [#1427](https://github.com/millionco/react-doctor/pull/1427) [`5d2f66d`](https://github.com/millionco/react-doctor/commit/5d2f66d055447e3d91b725564e735fb87c25f8d9) Thanks [@aidenybai](https://github.com/aidenybai)! - Add React Native diagnostics for Reanimated 4 migrations, Gorhom Bottom Sheet integration, Expo platform tree shaking, Babel plugin order, and Android release shrinking. Expand recycler support to current Legend List and animated FlashList entrypoints, follow proven same-file renderer indirection, tighten heterogeneous recycler detection, and refresh outdated React Native recommendations.
+
 ## 0.9.1
 
 ### Patch Changes

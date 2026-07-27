@@ -7,6 +7,7 @@ import pLimit from "p-limit";
 import { cleanupEvaluationSandboxes } from "./cleanup-evaluation-sandboxes.js";
 import {
   BUILD_REACT_DOCTOR_COMMANDS,
+  DAYTONA_RUN_NAME,
   EVALUATION_CLEANUP_RESERVE_MINUTES,
   EVALUATION_RETRY_CONCURRENCIES,
   MILLISECONDS_PER_MINUTE,
@@ -61,7 +62,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
 
   const daytona = new Daytona();
   const evaluationId = randomUUID();
-  const snapshotName = `react-doctor-eval-${evaluationId}`;
+  const snapshotName = `${DAYTONA_RUN_NAME}-snapshot-${evaluationId}`;
   try {
     process.stderr.write(`Building React Doctor snapshot ${snapshotName}\n`);
     await daytona.snapshot.create(
@@ -117,8 +118,9 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
             autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
             labels: {
               evaluation: evaluationId,
-              project: "react-doctor",
+              project: DAYTONA_RUN_NAME,
               purpose: "eval-repository",
+              run: DAYTONA_RUN_NAME,
             },
           },
           {

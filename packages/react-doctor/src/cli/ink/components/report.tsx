@@ -1,9 +1,13 @@
 import { Box, Text, useInput } from "ink";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { ScoreResult } from "@react-doctor/core";
 import type { CliAgentId } from "../../utils/launch-agent.js";
 import {
+  METRIC,
   TUI_REPORT_COLUMN_GUTTER_COLUMNS,
+  TUI_REPORT_COMPACT_HEADER_ROWS,
+  TUI_REPORT_COMPACT_MAX_ROWS,
+  TUI_REPORT_COMPACT_STATUS_ROWS,
   TUI_REPORT_DETAIL_ROWS,
   TUI_REPORT_DETAIL_WIDTH_FRACTION,
   TUI_REPORT_DIVIDER_ROWS,
@@ -13,14 +17,17 @@ import {
   TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
   TUI_REPORT_MIN_LIST_ROWS,
   TUI_REPORT_MIN_WIDTH_CHARS,
+  TUI_REPORT_STACKED_MAX_LIST_ROWS,
   TUI_REPORT_STATUS_ROWS,
   TUI_REPORT_WIDE_MIN_COLUMNS,
   TUI_REPORT_WIDE_MIN_ROWS,
 } from "../../utils/constants.js";
+import { recordCount } from "../../utils/record-metric.js";
 import type { ScanReport, TuiHandoffRequest } from "../scan-store.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { buildDiagnosticRows } from "../lib/diagnostic-rows.js";
 import { DiagnosticList } from "./diagnostic-list.js";
+import type { DiagnosticListLayout } from "./diagnostic-list.js";
 import { ScoreHeader } from "./score-header.js";
 
 export interface ReportProps {
@@ -70,6 +77,14 @@ export const Report = ({
 
   const width = Math.max(TUI_REPORT_MIN_WIDTH_CHARS, columns - TUI_HORIZONTAL_PADDING_COLUMNS);
   const isWide = columns >= TUI_REPORT_WIDE_MIN_COLUMNS && terminalRows >= TUI_REPORT_WIDE_MIN_ROWS;
+  const isCompact = !isWide && terminalRows <= TUI_REPORT_COMPACT_MAX_ROWS;
+  const didRecordCompactReport = useRef(false);
+  const didRecordStackedReportCap = useRef(false);
+  useEffect(() => {
+    if (!isCompact || didRecordCompactReport.current) return;
+    didRecordCompactReport.current = true;
+    recordCount(METRIC.tuiCompactReportShown);
+  }, [isCompact]);
   const detailHeight = isWide
     ? Math.max(0, terminalRows - TUI_REPORT_STATUS_ROWS)
     : Math.max(
@@ -79,10 +94,26 @@ export const Report = ({
           terminalRows - STACKED_FIXED_ROWS - TUI_REPORT_MIN_LIST_ROWS,
         ),
       );
-  const listHeight = Math.max(
+  const availableListHeight = Math.max(
     TUI_REPORT_MIN_LIST_ROWS,
     terminalRows - (isWide ? SPLIT_CHROME_ROWS : STACKED_FIXED_ROWS + detailHeight),
   );
+  const isStackedReportCapped =
+    !isCompact && !isWide && availableListHeight > TUI_REPORT_STACKED_MAX_LIST_ROWS;
+  useEffect(() => {
+    if (!isStackedReportCapped || didRecordStackedReportCap.current) return;
+    didRecordStackedReportCap.current = true;
+    recordCount(METRIC.tuiStackedReportCapped);
+  }, [isStackedReportCapped]);
+  let listHeight = availableListHeight;
+  if (isCompact) {
+    listHeight = Math.max(
+      TUI_REPORT_MIN_LIST_ROWS,
+      terminalRows - TUI_REPORT_COMPACT_HEADER_ROWS - TUI_REPORT_COMPACT_STATUS_ROWS,
+    );
+  } else if (!isWide) {
+    listHeight = Math.min(TUI_REPORT_STACKED_MAX_LIST_ROWS, availableListHeight);
+  }
   const detailColumnWidth = Math.max(
     TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
     Math.floor(width * TUI_REPORT_DETAIL_WIDTH_FRACTION),
@@ -91,6 +122,9 @@ export const Report = ({
     TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
     width - detailColumnWidth - TUI_REPORT_COLUMN_GUTTER_COLUMNS,
   );
+  let layout: DiagnosticListLayout = "stacked";
+  if (isCompact) layout = "compact";
+  else if (isWide) layout = "split";
 
   const scoreHeader = (
     <ScoreHeader
@@ -100,6 +134,7 @@ export const Report = ({
       issueCount={report.diagnostics.length}
       noScoreMessage={report.noScoreMessage}
       width={isWide ? listColumnWidth : width}
+      compact={isCompact}
     />
   );
 
@@ -129,7 +164,7 @@ export const Report = ({
       detailColumnWidth={detailColumnWidth}
       listHeight={listHeight}
       detailHeight={detailHeight}
-      layout={isWide ? "split" : "stacked"}
+      layout={layout}
       rootDirectory={report.rootDirectory}
       projectName={report.projectName}
       launchableAgents={launchableAgents}

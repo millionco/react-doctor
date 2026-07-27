@@ -1,16 +1,25 @@
 import type { Reference } from "eslint-scope";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
+import { collectPossibleAssignedExpressions } from "../../../utils/collect-possible-assigned-expressions.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
+import { functionReturnsMatchingExpression } from "../../../utils/function-returns-matching-expression.js";
 import { resolveImportedExportName } from "../../../utils/find-exported-function-body.js";
+import { hasPossibleStaticPropertyWriteBefore } from "../../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
+import { isEarlyExitIfStatement } from "../../../utils/is-early-exit-if-statement.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
+import { isNodeReachableWithinFunction } from "../../../utils/is-node-reachable-within-function.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
+import { isSynchronousIteratorCall } from "../../../utils/is-synchronous-iterator-callback.js";
 import { readsPostMountValue } from "../../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { resolveCrossFileFunctionExport } from "../../../utils/resolve-cross-file-function-export.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
+import { walkSynchronousCallbackFlow } from "../../../utils/walk-synchronous-callback-flow.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
 import { isExternallyDrivenState } from "./effect/external-state.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
@@ -56,7 +65,7 @@ interface HelperReturnSummary {
 }
 
 interface HelperSummaryEnvironment {
-  parameterIndices: ReadonlyMap<string, number | null>;
+  parameterIndices: Map<string, ReadonlySet<number> | null>;
   recursiveNames: ReadonlySet<string>;
   shadowedGlobalNames: ReadonlySet<string>;
 }
@@ -75,11 +84,15 @@ export interface EffectStateWriteFact {
   setterReference: Reference;
   stateDeclarator: EsTreeNode;
   sourceReferences: ReadonlyArray<Reference>;
+  hasIndependentWriter: boolean;
   isDeferred: boolean;
   isRenderKnownCopy: boolean;
   isSynchronousRenderValue: boolean;
   matchesStateInitializer: boolean;
+  readsWrittenState: boolean;
   resetsSourceState: boolean;
+  writtenIndexedMemberRootReference: Reference | null;
+  writesPropDerivedMemberValue: boolean;
 }
 
 const SYNCHRONOUS_ITERATOR_METHOD_NAMES: ReadonlySet<string> = new Set([
@@ -182,6 +195,16 @@ const PURE_MEMBER_TRANSFORM_NAMES: ReadonlySet<string> = new Set([
   "trim",
 ]);
 
+const FRESH_ARRAY_COPY_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "concat",
+  "filter",
+  "flatMap",
+  "map",
+  "slice",
+  "split",
+  "toSorted",
+]);
+
 const STORAGE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "indexedDB",
   "localStorage",
@@ -210,6 +233,34 @@ const getCallCalleeName = (callExpression: EsTreeNode): string | null => {
   const callee = stripParenExpression(callExpression.callee);
   if (isNodeOfType(callee, "Identifier")) return callee.name;
   return getStaticMemberName(callee);
+};
+
+const isFreshArrayCopyExpression = (expression: EsTreeNode): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "ArrayExpression")) return true;
+  if (!isNodeOfType(candidate, "CallExpression")) return false;
+  const callee = stripParenExpression(candidate.callee);
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    FRESH_ARRAY_COPY_METHOD_NAMES.has(getStaticMemberName(callee) ?? "")
+  );
+};
+
+const isCopyFirstSortCallee = (callee: EsTreeNode): boolean =>
+  isNodeOfType(callee, "MemberExpression") &&
+  getStaticMemberName(callee) === "sort" &&
+  isFreshArrayCopyExpression(callee.object as EsTreeNode);
+
+const isDirectDateGetTimeCallee = (callee: EsTreeNode): boolean => {
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  if (getStaticMemberName(callee) !== "getTime") return false;
+  const receiver = stripParenExpression(callee.object as EsTreeNode);
+  return (
+    isNodeOfType(receiver, "NewExpression") &&
+    isNodeOfType(receiver.callee, "Identifier") &&
+    receiver.callee.name === "Date" &&
+    (receiver.arguments ?? []).length > 0
+  );
 };
 
 const getFunctionParameters = (functionNode: EsTreeNode): ReadonlyArray<EsTreeNode> =>
@@ -678,6 +729,10 @@ const analyzeHelperStatements = (
     expressionUsedParameterIndices: Set<number>,
   ) => boolean,
 ): HelperControlFlowSummary => {
+  const localEnvironment: HelperSummaryEnvironment = {
+    ...environment,
+    parameterIndices: new Map(environment.parameterIndices),
+  };
   let canContinue = true;
   for (const statement of statements) {
     if (!canContinue) {
@@ -687,10 +742,29 @@ const analyzeHelperStatements = (
       continue;
     }
     if (isNodeOfType(statement, "EmptyStatement")) continue;
+    if (isNodeOfType(statement, "VariableDeclaration")) {
+      if (statement.kind !== "const") return { canContinue: false, isValid: false };
+      for (const declaration of statement.declarations ?? []) {
+        const initializerParameterIndices = new Set<number>();
+        if (
+          !isNodeOfType(declaration.id, "Identifier") ||
+          !declaration.init ||
+          !analyzeExpression(
+            declaration.init as EsTreeNode,
+            localEnvironment,
+            initializerParameterIndices,
+          )
+        ) {
+          return { canContinue: false, isValid: false };
+        }
+        localEnvironment.parameterIndices.set(declaration.id.name, initializerParameterIndices);
+      }
+      continue;
+    }
     if (isNodeOfType(statement, "ReturnStatement")) {
       if (
         !statement.argument ||
-        !analyzeExpression(statement.argument as EsTreeNode, environment, usedParameterIndices)
+        !analyzeExpression(statement.argument as EsTreeNode, localEnvironment, usedParameterIndices)
       ) {
         return { canContinue: false, isValid: false };
       }
@@ -700,7 +774,7 @@ const analyzeHelperStatements = (
     if (isNodeOfType(statement, "BlockStatement")) {
       const blockSummary = analyzeHelperStatements(
         (statement.body ?? []) as ReadonlyArray<EsTreeNode>,
-        environment,
+        localEnvironment,
         usedParameterIndices,
         analyzeExpression,
       );
@@ -709,12 +783,14 @@ const analyzeHelperStatements = (
       continue;
     }
     if (isNodeOfType(statement, "IfStatement")) {
-      if (!analyzeExpression(statement.test as EsTreeNode, environment, usedParameterIndices)) {
+      if (
+        !analyzeExpression(statement.test as EsTreeNode, localEnvironment, usedParameterIndices)
+      ) {
         return { canContinue: false, isValid: false };
       }
       const consequentSummary = analyzeHelperStatements(
         [statement.consequent as EsTreeNode],
-        environment,
+        localEnvironment,
         usedParameterIndices,
         analyzeExpression,
       );
@@ -722,7 +798,7 @@ const analyzeHelperStatements = (
       const alternateSummary = statement.alternate
         ? analyzeHelperStatements(
             [statement.alternate as EsTreeNode],
-            environment,
+            localEnvironment,
             usedParameterIndices,
             analyzeExpression,
           )
@@ -746,9 +822,13 @@ const analyzeHelperExpression = (
     return true;
   }
   if (isNodeOfType(node, "Identifier")) {
-    const parameterIndex = environment.parameterIndices.get(node.name);
-    if (parameterIndex !== undefined) {
-      if (parameterIndex !== null) usedParameterIndices.add(parameterIndex);
+    const referencedParameterIndices = environment.parameterIndices.get(node.name);
+    if (referencedParameterIndices !== undefined) {
+      if (referencedParameterIndices !== null) {
+        for (const parameterIndex of referencedParameterIndices) {
+          usedParameterIndices.add(parameterIndex);
+        }
+      }
       return true;
     }
     return node.name === "undefined" || node.name === "NaN" || node.name === "Infinity";
@@ -889,9 +969,19 @@ const analyzeHelperExpression = (
     const isPureMemberTransform =
       isNodeOfType(callee, "MemberExpression") &&
       PURE_MEMBER_TRANSFORM_NAMES.has(getStaticMemberName(callee) ?? "");
-    if (!isPureGlobalCall && !isPureNamespaceCall && !isPureMemberTransform) return false;
+    const isCopyFirstSort = isCopyFirstSortCallee(callee);
+    const isDirectDateGetTime = isDirectDateGetTimeCallee(callee);
     if (
-      isPureMemberTransform &&
+      !isPureGlobalCall &&
+      !isPureNamespaceCall &&
+      !isPureMemberTransform &&
+      !isCopyFirstSort &&
+      !isDirectDateGetTime
+    ) {
+      return false;
+    }
+    if (
+      (isPureMemberTransform || isCopyFirstSort || isDirectDateGetTime) &&
       isNodeOfType(callee, "MemberExpression") &&
       !analyzeHelperExpression(callee.object as EsTreeNode, environment, usedParameterIndices)
     ) {
@@ -916,7 +1006,7 @@ const summarizeHelperReturn = (functionNode: EsTreeNode): HelperReturnSummary | 
     helperSummaryCache.set(functionNode, null);
     return null;
   }
-  const parameterIndices = new Map<string, number | null>();
+  const parameterIndices = new Map<string, ReadonlySet<number> | null>();
   const parameters = getFunctionParameters(functionNode);
   for (let parameterIndex = 0; parameterIndex < parameters.length; parameterIndex += 1) {
     const parameter = parameters[parameterIndex];
@@ -928,7 +1018,7 @@ const summarizeHelperReturn = (functionNode: EsTreeNode): HelperReturnSummary | 
       helperSummaryCache.set(functionNode, null);
       return null;
     }
-    parameterIndices.set(parameter.name, parameterIndex);
+    parameterIndices.set(parameter.name, new Set([parameterIndex]));
   }
   const environment: HelperSummaryEnvironment = {
     parameterIndices,
@@ -1559,6 +1649,133 @@ const matchesStateInitializer = (
   return isSameSimpleValue(analysis, writtenValue as EsTreeNode, unwrappedInitializer);
 };
 
+const writesPropDerivedMemberValue = (
+  analysis: ProgramAnalysis,
+  expression: EsTreeNode,
+  frame: EffectExecutionFrame,
+  visitedBindings: ReadonlySet<unknown> = new Set(),
+): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const reference = getRef(analysis, candidate);
+    const bindingIdentity = reference?.resolved ?? candidate;
+    if (visitedBindings.has(bindingIdentity)) return false;
+    const substitution = frame.substitutions.get(bindingIdentity);
+    return substitution
+      ? writesPropDerivedMemberValue(
+          analysis,
+          substitution.expression,
+          substitution.frame,
+          new Set(visitedBindings).add(bindingIdentity),
+        )
+      : false;
+  }
+  if (!isNodeOfType(candidate, "MemberExpression")) return false;
+  let root = stripParenExpression(candidate.object as EsTreeNode);
+  while (isNodeOfType(root, "MemberExpression")) {
+    root = stripParenExpression(root.object as EsTreeNode);
+  }
+  if (!isNodeOfType(root, "Identifier")) return false;
+  const reference = getRef(analysis, root);
+  if (!reference) return false;
+  const bindingIdentity = reference.resolved ?? root;
+  if (visitedBindings.has(bindingIdentity)) return false;
+  const substitution = frame.substitutions.get(bindingIdentity);
+  if (substitution) {
+    return writesPropDerivedMemberValue(
+      analysis,
+      substitution.expression,
+      substitution.frame,
+      new Set(visitedBindings).add(bindingIdentity),
+    );
+  }
+  return getUpstreamRefs(analysis, reference).some((upstreamReference) =>
+    isProp(analysis, upstreamReference),
+  );
+};
+
+const getWrittenIndexedMemberRootReference = (
+  analysis: ProgramAnalysis,
+  expression: EsTreeNode,
+  frame: EffectExecutionFrame,
+  hasIndexedAccess = false,
+  visitedBindings: ReadonlySet<unknown> = new Set(),
+): Reference | null => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const reference = getRef(analysis, candidate);
+    const bindingIdentity = reference?.resolved ?? candidate;
+    if (visitedBindings.has(bindingIdentity)) return null;
+    const substitution = frame.substitutions.get(bindingIdentity);
+    return substitution
+      ? getWrittenIndexedMemberRootReference(
+          analysis,
+          substitution.expression,
+          substitution.frame,
+          hasIndexedAccess,
+          new Set(visitedBindings).add(bindingIdentity),
+        )
+      : hasIndexedAccess
+        ? reference
+        : null;
+  }
+  if (!isNodeOfType(candidate, "MemberExpression")) return null;
+  const isIndexedAccess =
+    candidate.computed &&
+    isNodeOfType(candidate.property, "Literal") &&
+    typeof candidate.property.value === "number";
+  return getWrittenIndexedMemberRootReference(
+    analysis,
+    candidate.object as EsTreeNode,
+    frame,
+    hasIndexedAccess || isIndexedAccess,
+    visitedBindings,
+  );
+};
+
+const getFunctionalUpdaterIndexedMemberRootReference = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  updater: EsTreeNode,
+  frame: EffectExecutionFrame,
+): Reference | null => {
+  const currentStateParameter = getFunctionParameters(updater)[0];
+  if (!currentStateParameter || !isNodeOfType(currentStateParameter, "Identifier")) return null;
+  const currentStateParameterSymbol = context.scopes.symbolFor(currentStateParameter);
+  if (!currentStateParameterSymbol) return null;
+  let indexedMemberRootReference: Reference | null = null;
+  const areAllReturnsCompatible = functionReturnsMatchingExpression(
+    updater,
+    context.scopes,
+    (returnedExpression) => {
+      const candidate = stripParenExpression(returnedExpression);
+      if (
+        isNodeOfType(candidate, "Identifier") &&
+        context.scopes.symbolFor(candidate) === currentStateParameterSymbol
+      ) {
+        return true;
+      }
+      const returnedRootReference = getWrittenIndexedMemberRootReference(
+        analysis,
+        candidate,
+        frame,
+      );
+      if (!returnedRootReference?.resolved) return false;
+      if (
+        indexedMemberRootReference &&
+        indexedMemberRootReference.resolved !== returnedRootReference.resolved
+      ) {
+        return false;
+      }
+      indexedMemberRootReference = returnedRootReference;
+      return true;
+    },
+    context.cfg,
+    "every",
+  );
+  return areAllReturnsCompatible ? indexedMemberRootReference : null;
+};
+
 const collectFrameSetterCalls = (
   analysis: ProgramAnalysis,
   frame: EffectExecutionFrame,
@@ -1571,6 +1788,302 @@ const collectFrameSetterCalls = (
     if (setterReference) calls.push({ callExpression: child, setterReference });
   });
   return calls;
+};
+
+const expressionReadsStateDeclarator = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  expression: EsTreeNode,
+  stateDeclarator: EsTreeNode,
+): boolean => {
+  const isUnmodifiedMemberCall = (
+    callExpression: EsTreeNode,
+    executionReferenceNode: EsTreeNode = callExpression,
+  ): boolean => {
+    if (!isNodeOfType(callExpression, "CallExpression")) return false;
+    const callee = stripParenExpression(callExpression.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return false;
+    const methodName = getStaticMemberName(callee);
+    if (!methodName) return false;
+    const receiver = stripParenExpression(callee.object);
+    const hasPropertyWriteBefore = (referenceNode: EsTreeNode): boolean =>
+      isNodeOfType(receiver, "Identifier") &&
+      hasPossibleStaticPropertyWriteBefore(receiver, methodName, referenceNode, context.scopes);
+    return Boolean(
+      !isNodeOfType(receiver, "Identifier") ||
+      (!hasPropertyWriteBefore(callExpression) && !hasPropertyWriteBefore(executionReferenceNode)),
+    );
+  };
+  const isRenderPropCollectionReference = (candidateExpression: EsTreeNode): boolean => {
+    const candidate = stripParenExpression(candidateExpression);
+    if (!isNodeOfType(candidate, "Identifier")) return false;
+    const reference = getRef(analysis, candidate);
+    return Boolean(reference && isProp(analysis, reference));
+  };
+  const isProvenRenderKnownArrayValue = (
+    candidateExpression: EsTreeNode,
+    visitedSymbolIds: ReadonlySet<number> = new Set(),
+    executionReferenceNode: EsTreeNode = candidateExpression,
+  ): boolean => {
+    const candidate = stripParenExpression(candidateExpression);
+    if (isNodeOfType(candidate, "ArrayExpression")) return candidate.elements.length > 0;
+    if (isNodeOfType(candidate, "Identifier")) {
+      const symbol = context.scopes.symbolFor(candidate);
+      if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+      const assignedExpressions = collectPossibleAssignedExpressions(
+        symbol,
+        candidate,
+        context.cfg,
+      );
+      if (assignedExpressions.length === 0) return false;
+      const nextVisitedSymbolIds = new Set(visitedSymbolIds).add(symbol.id);
+      let hasArraySource = false;
+      for (const assignedExpression of assignedExpressions) {
+        const assignedCandidate = stripParenExpression(assignedExpression);
+        const assignedCallee = isNodeOfType(assignedCandidate, "CallExpression")
+          ? stripParenExpression(assignedCandidate.callee)
+          : null;
+        if (
+          assignedCallee &&
+          isNodeOfType(assignedCallee, "MemberExpression") &&
+          FRESH_ARRAY_COPY_METHOD_NAMES.has(getStaticMemberName(assignedCallee) ?? "") &&
+          isNodeOfType(assignedCallee.object, "Identifier") &&
+          context.scopes.symbolFor(assignedCallee.object) === symbol
+        ) {
+          if (!isUnmodifiedMemberCall(assignedCandidate, executionReferenceNode)) return false;
+          continue;
+        }
+        if (
+          !isProvenRenderKnownArrayValue(
+            assignedCandidate,
+            nextVisitedSymbolIds,
+            executionReferenceNode,
+          )
+        ) {
+          return false;
+        }
+        hasArraySource = true;
+      }
+      return (
+        hasArraySource ||
+        Boolean(
+          symbol.initializer &&
+          isProvenRenderKnownArrayValue(
+            symbol.initializer,
+            nextVisitedSymbolIds,
+            executionReferenceNode,
+          ),
+        )
+      );
+    }
+    if (!isNodeOfType(candidate, "CallExpression")) return false;
+    if (isReactHookCall(candidate, "useMemo", context.scopes)) {
+      const factoryArgument = candidate.arguments?.[0];
+      const factory =
+        factoryArgument && !isNodeOfType(factoryArgument, "SpreadElement")
+          ? resolveWrappedCallable(analysis, factoryArgument)
+          : null;
+      return Boolean(
+        factory &&
+        !isAsyncOrGeneratorFunction(factory) &&
+        functionReturnsMatchingExpression(
+          factory,
+          context.scopes,
+          (returnedExpression) =>
+            isProvenRenderKnownArrayValue(returnedExpression, visitedSymbolIds, candidate),
+          context.cfg,
+          "every",
+        ),
+      );
+    }
+    const callee = stripParenExpression(candidate.callee);
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      !isUnmodifiedMemberCall(candidate, executionReferenceNode)
+    ) {
+      return false;
+    }
+    const methodName = getStaticMemberName(callee);
+    return Boolean(
+      methodName &&
+      FRESH_ARRAY_COPY_METHOD_NAMES.has(methodName) &&
+      (isProvenRenderKnownArrayValue(callee.object, visitedSymbolIds, executionReferenceNode) ||
+        (methodName === "filter" && isRenderPropCollectionReference(callee.object))),
+    );
+  };
+  const isProvenMemoizedArrayReceiver = (
+    receiverExpression: EsTreeNode,
+    visitedSymbolIds: ReadonlySet<number> = new Set(),
+  ): boolean => {
+    const receiver = stripParenExpression(receiverExpression);
+    if (isNodeOfType(receiver, "CallExpression")) {
+      return (
+        isReactHookCall(receiver, "useMemo", context.scopes) &&
+        isProvenRenderKnownArrayValue(receiver, visitedSymbolIds)
+      );
+    }
+    if (!isNodeOfType(receiver, "Identifier")) return false;
+    const symbol = context.scopes.symbolFor(receiver);
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+    const assignedExpressions = collectPossibleAssignedExpressions(symbol, receiver, context.cfg);
+    if (assignedExpressions.length === 0) return false;
+    const nextVisitedSymbolIds = new Set(visitedSymbolIds).add(symbol.id);
+    return assignedExpressions.every((assignedExpression) =>
+      isProvenMemoizedArrayReceiver(assignedExpression, nextVisitedSymbolIds),
+    );
+  };
+  let readsState = false;
+  walkSynchronousCallbackFlow(
+    expression,
+    (child: EsTreeNode): void => {
+      if (readsState) return;
+      if (!isNodeOfType(child, "Identifier")) return;
+      const reference = getRef(analysis, child);
+      if (
+        reference?.isRead() &&
+        isState(analysis, reference) &&
+        getUseStateDecl(analysis, reference) === stateDeclarator &&
+        isNodeReachableWithinFunction(child, context)
+      ) {
+        readsState = true;
+      }
+    },
+    (callExpression, callbackArgument) => {
+      if (!isUnmodifiedMemberCall(callExpression)) return false;
+      if (isSynchronousIteratorCall(callExpression, callbackArgument, context.scopes)) return true;
+      const callee = stripParenExpression(callExpression.callee);
+      return Boolean(
+        callExpression.arguments[0] === callbackArgument &&
+        isNodeOfType(callee, "MemberExpression") &&
+        SYNCHRONOUS_ITERATOR_METHOD_NAMES.has(getStaticMemberName(callee) ?? "") &&
+        isProvenMemoizedArrayReceiver(callee.object),
+      );
+    },
+    (functionNode) => !isAsyncOrGeneratorFunction(functionNode),
+  );
+  return readsState;
+};
+
+const functionalUpdaterReadsCurrentState = (
+  analysis: ProgramAnalysis,
+  callExpression: EsTreeNode,
+): boolean => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
+  const updater = callExpression.arguments?.[0] as EsTreeNode | undefined;
+  if (!updater || !isFunctionLike(updater)) return false;
+  const currentStateParameter = getFunctionParameters(updater)[0];
+  if (!currentStateParameter || !isNodeOfType(currentStateParameter, "Identifier")) return false;
+  let readsCurrentState = false;
+  walkAst(updater.body as EsTreeNode, (child: EsTreeNode): boolean | void => {
+    if (readsCurrentState) return false;
+    if (child !== updater.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "Identifier") &&
+      child.name === currentStateParameter.name &&
+      getRef(analysis, child)?.resolved?.identifiers.includes(currentStateParameter as never)
+    ) {
+      readsCurrentState = true;
+      return false;
+    }
+  });
+  return readsCurrentState;
+};
+
+const isNodeControlledByStateInFrame = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  frame: EffectExecutionFrame,
+  executionNode: EsTreeNode,
+  stateDeclarator: EsTreeNode,
+): boolean => {
+  let child: EsTreeNode = executionNode;
+  let cursor = child.parent;
+  while (cursor && cursor !== frame.functionNode) {
+    if (
+      isNodeOfType(cursor, "IfStatement") &&
+      (isAstDescendant(child, cursor.consequent as EsTreeNode) ||
+        Boolean(cursor.alternate && isAstDescendant(child, cursor.alternate as EsTreeNode))) &&
+      expressionReadsStateDeclarator(analysis, context, cursor.test as EsTreeNode, stateDeclarator)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(cursor, "ConditionalExpression") &&
+      (isAstDescendant(child, cursor.consequent as EsTreeNode) ||
+        isAstDescendant(child, cursor.alternate as EsTreeNode)) &&
+      expressionReadsStateDeclarator(analysis, context, cursor.test as EsTreeNode, stateDeclarator)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(cursor, "LogicalExpression") &&
+      isAstDescendant(child, cursor.right as EsTreeNode) &&
+      expressionReadsStateDeclarator(analysis, context, cursor.left as EsTreeNode, stateDeclarator)
+    ) {
+      return true;
+    }
+    if (isNodeOfType(cursor, "BlockStatement")) {
+      const containingStatement = (cursor.body ?? []).find((statement) =>
+        isAstDescendant(child, statement as EsTreeNode),
+      ) as EsTreeNode | undefined;
+      const containingStatementIndex = containingStatement
+        ? (cursor.body ?? []).indexOf(containingStatement as never)
+        : -1;
+      for (let statementIndex = 0; statementIndex < containingStatementIndex; statementIndex += 1) {
+        const precedingStatement = cursor.body?.[statementIndex] as EsTreeNode | undefined;
+        if (
+          precedingStatement &&
+          isNodeOfType(precedingStatement, "IfStatement") &&
+          isEarlyExitIfStatement(precedingStatement) &&
+          expressionReadsStateDeclarator(
+            analysis,
+            context,
+            precedingStatement.test as EsTreeNode,
+            stateDeclarator,
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+    child = cursor;
+    cursor = cursor.parent;
+  }
+  return false;
+};
+
+const isWriteControlledByState = (
+  analysis: ProgramAnalysis,
+  context: RuleContext,
+  frameByFunctionNode: ReadonlyMap<EsTreeNode, EffectExecutionFrame>,
+  frame: EffectExecutionFrame,
+  callExpression: EsTreeNode,
+  stateDeclarator: EsTreeNode,
+): boolean => {
+  if (functionalUpdaterReadsCurrentState(analysis, callExpression)) return true;
+  let currentFrame: EffectExecutionFrame | undefined = frame;
+  let executionNode = callExpression;
+  const visitedFrames = new Set<EffectExecutionFrame>();
+  while (currentFrame && !visitedFrames.has(currentFrame)) {
+    visitedFrames.add(currentFrame);
+    if (
+      isNodeControlledByStateInFrame(
+        analysis,
+        context,
+        currentFrame,
+        executionNode,
+        stateDeclarator,
+      )
+    ) {
+      return true;
+    }
+    const invocation = currentFrame.invocation;
+    if (!invocation) return false;
+    const parentFunction = findEnclosingFunction(invocation);
+    executionNode = invocation;
+    currentFrame = parentFunction ? frameByFunctionNode.get(parentFunction) : undefined;
+  }
+  return false;
 };
 
 const areInMutuallyExclusiveBranches = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
@@ -1601,6 +2114,12 @@ export const collectEffectStateWriteFacts = (
 ): ReadonlyArray<EffectStateWriteFact> => {
   const frames = collectBoundedEffectExecutionFrames(analysis, effectNode, currentFilename);
   if (frames.length === 0) return [];
+  const frameByFunctionNode = new Map<EsTreeNode, EffectExecutionFrame>();
+  for (const frame of frames) {
+    if (!frameByFunctionNode.has(frame.functionNode)) {
+      frameByFunctionNode.set(frame.functionNode, frame);
+    }
+  }
   const effectHasCleanup = hasCleanup(analysis, effectNode);
   const cleanupManagedStateDeclarators = new Set<EsTreeNode>();
   const facts: CollectedEffectStateWriteFact[] = [];
@@ -1683,6 +2202,7 @@ export const collectEffectStateWriteFacts = (
         setterReference,
         stateDeclarator,
         sourceReferences,
+        hasIndependentWriter,
         isDeferred: frame.isDeferred,
         isRenderKnownCopy,
         isSynchronousRenderValue:
@@ -1691,7 +2211,19 @@ export const collectEffectStateWriteFacts = (
           !valueEvidence.hasDeferredIntroducedValue &&
           !valueEvidence.readsExternalValue,
         matchesStateInitializer: doesMatchStateInitializer,
+        readsWrittenState: isWriteControlledByState(
+          analysis,
+          context,
+          frameByFunctionNode,
+          frame,
+          callExpression,
+          stateDeclarator,
+        ),
         resetsSourceState: false,
+        writtenIndexedMemberRootReference: isFunctionLike(writtenValue)
+          ? getFunctionalUpdaterIndexedMemberRootReference(analysis, context, writtenValue, frame)
+          : getWrittenIndexedMemberRootReference(analysis, writtenValue, frame),
+        writesPropDerivedMemberValue: writesPropDerivedMemberValue(analysis, writtenValue, frame),
       });
     }
   }

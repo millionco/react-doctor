@@ -88,6 +88,9 @@ importers:
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
+      oxc-resolver:
+        specifier: ^11.24.2
+        version: 11.24.2
       oxlint:
         specifier: '>=1.74.0 <1.75.0'
         version: 1.74.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.1.20(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.22.4)(typescript@6.0.3)(vite@7.3.1(@types/node@25.6.0)(jiti@2.7.0)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.22.4)(yaml@2.9.0))(yaml@2.9.0))
@@ -221,6 +224,9 @@ importers:
 
   packages/oxlint-plugin-react-doctor:
     dependencies:
+      '@shaderfrog/glsl-parser':
+        specifier: ^7.0.1
+        version: 7.0.1
       '@typescript-eslint/types':
         specifier: ^8.59.3
         version: 8.59.3
@@ -276,6 +282,9 @@ importers:
       magicast:
         specifier: ^0.5.3
         version: 0.5.3
+      oxc-resolver:
+        specifier: ^11.24.2
+        version: 11.24.2
       oxlint:
         specifier: '>=1.74.0 <1.75.0'
         version: 1.74.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.1.20(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.0)(tsx@4.22.4)(typescript@5.9.3)(vite@7.3.1(@types/node@25.6.0)(jiti@2.7.0)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.22.4)(yaml@2.9.0))(yaml@2.9.0))
@@ -2393,6 +2402,10 @@ packages:
       '@opentelemetry/core': ^1.30.1 || ^2.1.0
       '@opentelemetry/sdk-trace-base': ^1.30.1 || ^2.1.0
       '@opentelemetry/semantic-conventions': ^1.39.0
+
+  '@shaderfrog/glsl-parser@7.0.1':
+    resolution: {integrity: sha512-8mpfsoPeRhesY3pOrzNZBL8uG6N5GVX1EHLBYbd4gzKs+c7vaEIqpTNK5VrffU33qQN4cwpP2v3u4aPPBU32sw==}
+    engines: {node: '>=16'}
 
   '@smithy/core@3.29.3':
     resolution: {integrity: sha512-L+Ys6ecjk5vwPMAKHBpPKlJ3DkqwNcnfEISXBZIsVvWG/XKXfsAP8mwIYlTeLcd2ElHdesPI8OuOmJSFAPhm6A==}
@@ -6161,6 +6174,8 @@ snapshots:
       '@opentelemetry/sdk-trace-base': 2.7.1(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.41.1
       '@sentry/core': 10.54.0
+
+  '@shaderfrog/glsl-parser@7.0.1': {}
 
   '@smithy/core@3.29.3':
     dependencies:

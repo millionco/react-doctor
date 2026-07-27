@@ -446,6 +446,7 @@ interface ExperimentalTuiOptions {
   readonly blocking?: string;
   readonly deadCode?: boolean;
   readonly score?: boolean;
+  readonly supplyChain?: boolean;
   readonly project?: string;
   readonly yes?: boolean;
 }
@@ -460,6 +461,7 @@ program
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .option("--no-dead-code", "skip dead-code analysis")
+  .option("--no-supply-chain", "skip the dependency supply-chain scan")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")
@@ -467,6 +469,7 @@ program
     const options: ExperimentalTuiOptions = command.optsWithGlobals();
     const deadCode = options.deadCode === false ? false : undefined;
     const noScore = options.score === false ? true : undefined;
+    const supplyChain = options.supplyChain === false ? false : undefined;
     const nodeMajorVersion = Number(process.versions.node.split(".")[0]);
     if (
       process.stdout.isTTY !== true ||
@@ -477,6 +480,7 @@ program
       await inspectAction(directory, {
         deadCode,
         score: options.score === false ? false : undefined,
+        supplyChain,
         project: options.project,
         yes: options.yes,
         blocking: options.blocking,
@@ -487,7 +491,7 @@ program
     const { runScanApp } = await import("./ink/run-scan-app.js");
     const { shouldFail } = await runScanApp({
       directory,
-      options: { deadCode, noScore },
+      options: { deadCode, noScore, supplyChain },
       projectFlag: options.project,
       skipPrompts: options.yes ?? false,
       blocking: options.blocking,

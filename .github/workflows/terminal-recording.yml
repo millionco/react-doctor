@@ -1,0 +1,137 @@
+name: Terminal Recording
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terminal-recording-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  record:
+    name: Record interactive CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      artifact-url: ${{ steps.upload.outputs.artifact-url }}
+      recording-url: ${{ steps.publish.outputs.recording-url }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.25.8"
+          cache: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Create recording directory
+        run: mkdir -p artifacts
+
+      - name: Install VHS runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          mkdir -p "$RUNNER_TEMP/vhs-bin"
+          curl --fail --location --silent --show-error \
+            https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
+            --output "$RUNNER_TEMP/vhs-bin/ttyd"
+          echo "8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55  $RUNNER_TEMP/vhs-bin/ttyd" \
+            | sha256sum --check
+          chmod +x "$RUNNER_TEMP/vhs-bin/ttyd"
+          go install github.com/charmbracelet/vhs@v0.11.0
+          echo "$RUNNER_TEMP/vhs-bin" >> "$GITHUB_PATH"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Render terminal recording
+        run: vhs scripts/terminal-recording.tape
+
+      - name: Upload recording artifact
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: terminal-recording-${{ github.event.pull_request.number }}
+          path: |
+            artifacts/react-doctor-terminal.gif
+            artifacts/react-doctor-terminal.mp4
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish GIF preview
+        id: publish
+        run: |
+          recording_url="$(vhs publish artifacts/react-doctor-terminal.gif)"
+          case "$recording_url" in
+            https://vhs.charm.sh/*) ;;
+            *) echo "Unexpected VHS recording URL: $recording_url" >&2; exit 1 ;;
+          esac
+          echo "recording-url=$recording_url" >> "$GITHUB_OUTPUT"
+
+  comment:
+    name: Post recording to PR
+    needs: record
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Upsert terminal recording comment
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          ARTIFACT_URL: ${{ needs.record.outputs.artifact-url }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          RECORDING_URL: ${{ needs.record.outputs.recording-url }}
+        with:
+          script: |
+            const marker = "<!-- react-doctor:terminal-recording -->";
+            const recordingUrl = process.env.RECORDING_URL;
+            if (!recordingUrl.startsWith("https://vhs.charm.sh/")) {
+              core.setFailed(`Unexpected VHS recording URL: ${recordingUrl}`);
+              return;
+            }
+            const body = [
+              marker,
+              "## Interactive terminal E2E",
+              "",
+              `![React Doctor interactive terminal recording](${recordingUrl})`,
+              "",
+              `Recorded from the built CLI at \`${process.env.COMMIT_SHA.slice(0, 7)}\` in a real terminal. The fixture holds Git busy for three seconds, so \`Scanning...\` must appear immediately after project selection, then exercises the compact interactive report.`,
+              "",
+              `[Download the GIF and MP4 artifact](${process.env.ARTIFACT_URL})`,
+            ].join("\n");
+            const { owner, repo } = context.repo;
+            const issueNumber = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issueNumber,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            try {
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              }
+            } catch (error) {
+              core.warning(`Could not upsert the terminal recording comment: ${error.message}`);
+            }

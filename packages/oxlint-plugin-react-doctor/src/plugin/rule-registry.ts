@@ -219,6 +219,7 @@ import { noArrayIndexKey } from "./rules/react-builtins/no-array-index-key.js";
 import { noAssertiveStatus } from "./rules/a11y/no-assertive-status.js";
 import { noAsyncEffectCallback } from "./rules/state-and-effects/no-async-effect-callback.js";
 import { noAsyncEventHandlerWithoutReentryGuard } from "./rules/state-and-effects/no-async-event-handler-without-reentry-guard.js";
+import { noAutoScrollingContent } from "./rules/design/no-auto-scrolling-content.js";
 import { noAutofocus } from "./rules/a11y/no-autofocus.js";
 import { noAutoplayWithoutMuted } from "./rules/a11y/no-autoplay-without-muted.js";
 import { noBarrelImport } from "./rules/bundle-size/no-barrel-import.js";
@@ -249,6 +250,7 @@ import { noDarkModeGlow } from "./rules/design/no-dark-mode-glow.js";
 import { noDecorativeBlurOrb } from "./rules/design/no-decorative-blur-orb.js";
 import { noDecorativeGridBackground } from "./rules/design/no-decorative-grid-background.js";
 import { noDecorativePulse } from "./rules/design/no-decorative-pulse.js";
+import { noDecorativeRadialSpotlight } from "./rules/design/no-decorative-radial-spotlight.js";
 import { noDefaultProps } from "./rules/architecture/no-default-props.js";
 import { noDefaultPurplePageGradient } from "./rules/design/no-default-purple-page-gradient.js";
 import { noDefaultWarmPageSurface } from "./rules/design/no-default-warm-page-surface.js";
@@ -395,8 +397,10 @@ import { noPromiseThenSideEffectInEffectWithoutCatch } from "./rules/state-and-e
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
 import { noPropCallbackInRender } from "./rules/state-and-effects/no-prop-callback-in-render.js";
 import { noPropTypes } from "./rules/architecture/no-prop-types.js";
+import { noPulsingStatusDot } from "./rules/design/no-pulsing-status-dot.js";
 import { noPureBlackBackground } from "./rules/design/no-pure-black-background.js";
 import { noPureBlackShadow } from "./rules/design/no-pure-black-shadow.js";
+import { noRadialHalo } from "./rules/design/no-radial-halo.js";
 import { noRandomKey } from "./rules/correctness/no-random-key.js";
 import { noReactChildren } from "./rules/react-builtins/no-react-children.js";
 import { noReactDomDeprecatedApis } from "./rules/architecture/no-react-dom-deprecated-apis.js";
@@ -411,6 +415,7 @@ import { noRefCurrentInRender } from "./rules/state-and-effects/no-ref-current-i
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
 import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-value.js";
+import { noRepeatedContainerText } from "./rules/design/no-repeated-container-text.js";
 import { noRepeatedEmojiTiles } from "./rules/design/no-repeated-emoji-tiles.js";
 import { noRepeatedGlassSurfaces } from "./rules/design/no-repeated-glass-surfaces.js";
 import { noRepeatedHoverScale } from "./rules/design/no-repeated-hover-scale.js";
@@ -427,6 +432,7 @@ import { noServerSideImageMap } from "./rules/a11y/no-server-side-image-map.js";
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateAfterAwaitInEffect } from "./rules/state-and-effects/no-set-state-after-await-in-effect.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
+import { noShapeAssembledIllustration } from "./rules/design/no-shape-assembled-illustration.js";
 import { noSideEffectInStateUpdaterFunction } from "./rules/state-and-effects/no-side-effect-in-state-updater-function.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
 import { noSkippedHeadingLevel } from "./rules/a11y/no-skipped-heading-level.js";
@@ -725,10 +731,15 @@ import { threeLimitShadowedPointLights } from "./rules/r3f/three-limit-shadowed-
 import { threeNoAllocationInPointerMove } from "./rules/r3f/three-no-allocation-in-pointer-move.js";
 import { threeNoAsyncAnimationLoop } from "./rules/r3f/three-no-async-animation-loop.js";
 import { threeNoCloneInAnimationLoop } from "./rules/r3f/three-no-clone-in-animation-loop.js";
+import { threeNoMaterialRecompileInAnimationLoop } from "./rules/r3f/three-no-material-recompile-in-animation-loop.js";
 import { threeNoNewInAnimationLoop } from "./rules/r3f/three-no-new-in-animation-loop.js";
 import { threeNoObjectConstructionInRender } from "./rules/r3f/three-no-object-construction-in-render.js";
+import { threeNoRedundantUniformsNeedUpdate } from "./rules/r3f/three-no-redundant-uniforms-need-update.js";
 import { threeNoStateInAnimationLoop } from "./rules/r3f/three-no-state-in-animation-loop.js";
 import { threeNoStateInPointerMove } from "./rules/r3f/three-no-state-in-pointer-move.js";
+import { threeOnBeforeCompileRequireProgramCacheKey } from "./rules/r3f/three-on-before-compile-require-program-cache-key.js";
+import { threeRawShaderRequireFragmentFloatPrecision } from "./rules/r3f/three-raw-shader-require-fragment-float-precision.js";
+import { threeRawShaderRequireGlsl3Version } from "./rules/r3f/three-raw-shader-require-glsl3-version.js";
 import { threeRequireAnimationMixerCleanup } from "./rules/r3f/three-require-animation-mixer-cleanup.js";
 import { threeRequireControlsCleanup } from "./rules/r3f/three-require-controls-cleanup.js";
 import { threeRequireFrameDelta } from "./rules/r3f/three-require-frame-delta.js";
@@ -740,6 +751,22 @@ import { threeRequirePostprocessingCleanup } from "./rules/r3f/three-require-pos
 import { threeRequireProjectionMatrixUpdate } from "./rules/r3f/three-require-projection-matrix-update.js";
 import { threeRequireRenderTargetCleanup } from "./rules/r3f/three-require-render-target-cleanup.js";
 import { threeRequireRendererCleanup } from "./rules/r3f/three-require-renderer-cleanup.js";
+import { threeShaderNoConstantOutOfBoundsIndex } from "./rules/r3f/three-shader-no-constant-out-of-bounds-index.js";
+import { threeShaderNoDerivativesInNonuniformFlow } from "./rules/r3f/three-shader-no-derivatives-in-nonuniform-flow.js";
+import { threeShaderNoInvalidClampBounds } from "./rules/r3f/three-shader-no-invalid-clamp-bounds.js";
+import { threeShaderNoInvalidConstantBitOperations } from "./rules/r3f/three-shader-no-invalid-constant-bit-operations.js";
+import { threeShaderNoInvalidConstantMath } from "./rules/r3f/three-shader-no-invalid-constant-math.js";
+import { threeShaderNoInvalidSmoothstepEdges } from "./rules/r3f/three-shader-no-invalid-smoothstep-edges.js";
+import { threeShaderNoInverseOfUniform } from "./rules/r3f/three-shader-no-inverse-of-uniform.js";
+import { threeShaderNoRedeclaredBuiltins } from "./rules/r3f/three-shader-no-redeclared-builtins.js";
+import { threeShaderNoRedundantFragDepth } from "./rules/r3f/three-shader-no-redundant-frag-depth.js";
+import { threeShaderNoVersionDirective } from "./rules/r3f/three-shader-no-version-directive.js";
+import { threeShaderPreferSmallIntegerPow } from "./rules/r3f/three-shader-prefer-small-integer-pow.js";
+import { threeShaderPreferSquaredDistanceComparison } from "./rules/r3f/three-shader-prefer-squared-distance-comparison.js";
+import { threeShaderRequireMatchingUniforms } from "./rules/r3f/three-shader-require-matching-uniforms.js";
+import { threeShaderRequireMatchingVaryings } from "./rules/r3f/three-shader-require-matching-varyings.js";
+import { threeShaderRequirePositionOnAllPaths } from "./rules/r3f/three-shader-require-position-on-all-paths.js";
+import { threeShaderRequireUniformBindings } from "./rules/r3f/three-shader-require-uniform-bindings.js";
 import { threeTslNoJsUniformBranch } from "./rules/r3f/three-tsl-no-js-uniform-branch.js";
 import { threeWebgpuNoLegacyEffectComposer } from "./rules/r3f/three-webgpu-no-legacy-effect-composer.js";
 import { threeWebgpuNoLegacyMaterialApi } from "./rules/r3f/three-webgpu-no-legacy-material-api.js";
@@ -3273,6 +3300,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-auto-scrolling-content",
+    id: "no-auto-scrolling-content",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noAutoScrollingContent,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noAutoScrollingContent.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-autofocus",
     id: "no-autofocus",
     source: "react-doctor",
@@ -3637,6 +3676,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       tags: [...new Set(["design", ...(noDecorativePulse.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-decorative-radial-spotlight",
+    id: "no-decorative-radial-spotlight",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDecorativeRadialSpotlight,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noDecorativeRadialSpotlight.tags ?? [])])],
     },
   },
   {
@@ -5419,6 +5470,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-pulsing-status-dot",
+    id: "no-pulsing-status-dot",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPulsingStatusDot,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noPulsingStatusDot.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-pure-black-background",
     id: "no-pure-black-background",
     source: "react-doctor",
@@ -5440,6 +5503,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       tags: [...new Set(["design", ...(noPureBlackShadow.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-radial-halo",
+    id: "no-radial-halo",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRadialHalo,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noRadialHalo.tags ?? [])])],
     },
   },
   {
@@ -5607,6 +5682,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noRenderReturnValue.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-repeated-container-text",
+    id: "no-repeated-container-text",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRepeatedContainerText,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noRepeatedContainerText.tags ?? [])])],
     },
   },
   {
@@ -5804,6 +5891,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noSetStateInRender.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-shape-assembled-illustration",
+    id: "no-shape-assembled-illustration",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noShapeAssembledIllustration,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["design", ...(noShapeAssembledIllustration.tags ?? [])])],
     },
   },
   {
@@ -9503,6 +9602,26 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-no-material-recompile-in-animation-loop",
+    id: "three-no-material-recompile-in-animation-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoMaterialRecompileInAnimationLoop,
+      framework: "global",
+      category: "Performance",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeNoMaterialRecompileInAnimationLoop.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeNoMaterialRecompileInAnimationLoop.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-no-new-in-animation-loop",
     id: "three-no-new-in-animation-loop",
     source: "react-doctor",
@@ -9535,6 +9654,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-no-redundant-uniforms-need-update",
+    id: "three-no-redundant-uniforms-need-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoRedundantUniformsNeedUpdate,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeNoRedundantUniformsNeedUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeNoRedundantUniformsNeedUpdate.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-no-state-in-animation-loop",
     id: "three-no-state-in-animation-loop",
     source: "react-doctor",
@@ -9561,6 +9695,61 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeNoStateInPointerMove.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "three", ...(threeNoStateInPointerMove.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-on-before-compile-require-program-cache-key",
+    id: "three-on-before-compile-require-program-cache-key",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeOnBeforeCompileRequireProgramCacheKey,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeOnBeforeCompileRequireProgramCacheKey.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeOnBeforeCompileRequireProgramCacheKey.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-raw-shader-require-fragment-float-precision",
+    id: "three-raw-shader-require-fragment-float-precision",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRawShaderRequireFragmentFloatPrecision,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeRawShaderRequireFragmentFloatPrecision.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeRawShaderRequireFragmentFloatPrecision.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-raw-shader-require-glsl3-version",
+    id: "three-raw-shader-require-glsl3-version",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRawShaderRequireGlsl3Version,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRawShaderRequireGlsl3Version.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRawShaderRequireGlsl3Version.requires ?? [])]),
       ],
     },
   },
@@ -9748,6 +9937,264 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeRequireRendererCleanup.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "three", ...(threeRequireRendererCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-constant-out-of-bounds-index",
+    id: "three-shader-no-constant-out-of-bounds-index",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoConstantOutOfBoundsIndex,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoConstantOutOfBoundsIndex.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeShaderNoConstantOutOfBoundsIndex.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-derivatives-in-nonuniform-flow",
+    id: "three-shader-no-derivatives-in-nonuniform-flow",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoDerivativesInNonuniformFlow,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeShaderNoDerivativesInNonuniformFlow.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeShaderNoDerivativesInNonuniformFlow.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-invalid-clamp-bounds",
+    id: "three-shader-no-invalid-clamp-bounds",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoInvalidClampBounds,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoInvalidClampBounds.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoInvalidClampBounds.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-invalid-constant-bit-operations",
+    id: "three-shader-no-invalid-constant-bit-operations",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoInvalidConstantBitOperations,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeShaderNoInvalidConstantBitOperations.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeShaderNoInvalidConstantBitOperations.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-invalid-constant-math",
+    id: "three-shader-no-invalid-constant-math",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoInvalidConstantMath,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoInvalidConstantMath.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoInvalidConstantMath.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-invalid-smoothstep-edges",
+    id: "three-shader-no-invalid-smoothstep-edges",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoInvalidSmoothstepEdges,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoInvalidSmoothstepEdges.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoInvalidSmoothstepEdges.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-inverse-of-uniform",
+    id: "three-shader-no-inverse-of-uniform",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoInverseOfUniform,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoInverseOfUniform.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoInverseOfUniform.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-redeclared-builtins",
+    id: "three-shader-no-redeclared-builtins",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoRedeclaredBuiltins,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoRedeclaredBuiltins.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoRedeclaredBuiltins.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-redundant-frag-depth",
+    id: "three-shader-no-redundant-frag-depth",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoRedundantFragDepth,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoRedundantFragDepth.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoRedundantFragDepth.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-version-directive",
+    id: "three-shader-no-version-directive",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoVersionDirective,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoVersionDirective.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoVersionDirective.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-prefer-small-integer-pow",
+    id: "three-shader-prefer-small-integer-pow",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderPreferSmallIntegerPow,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeShaderPreferSmallIntegerPow.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderPreferSmallIntegerPow.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-prefer-squared-distance-comparison",
+    id: "three-shader-prefer-squared-distance-comparison",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderPreferSquaredDistanceComparison,
+      framework: "global",
+      category: "Performance",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeShaderPreferSquaredDistanceComparison.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeShaderPreferSquaredDistanceComparison.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-require-matching-uniforms",
+    id: "three-shader-require-matching-uniforms",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderRequireMatchingUniforms,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderRequireMatchingUniforms.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderRequireMatchingUniforms.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-require-matching-varyings",
+    id: "three-shader-require-matching-varyings",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderRequireMatchingVaryings,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderRequireMatchingVaryings.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderRequireMatchingVaryings.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-require-position-on-all-paths",
+    id: "three-shader-require-position-on-all-paths",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderRequirePositionOnAllPaths,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderRequirePositionOnAllPaths.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderRequirePositionOnAllPaths.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-require-uniform-bindings",
+    id: "three-shader-require-uniform-bindings",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderRequireUniformBindings,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderRequireUniformBindings.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderRequireUniformBindings.requires ?? [])]),
       ],
     },
   },

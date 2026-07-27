@@ -50,71 +50,86 @@ const createFunctionReturnMatcher = (
   const functionMatches = (candidateFunction: EsTreeNode): boolean => {
     if (visitedFunctions.has(candidateFunction)) return false;
     visitedFunctions.add(candidateFunction);
-    const returnedExpressions = collectReturnedExpressions(candidateFunction);
-    if (
-      matchMode === "every" &&
-      isFunctionLike(candidateFunction) &&
-      isNodeOfType(candidateFunction.body, "BlockStatement") &&
-      (!statementAlwaysExits(candidateFunction.body) || functionHasBareReturn(candidateFunction))
-    ) {
-      return false;
+    try {
+      const returnedExpressions = collectReturnedExpressions(candidateFunction);
+      if (
+        matchMode === "every" &&
+        isFunctionLike(candidateFunction) &&
+        isNodeOfType(candidateFunction.body, "BlockStatement") &&
+        (!statementAlwaysExits(candidateFunction.body) || functionHasBareReturn(candidateFunction))
+      ) {
+        return false;
+      }
+      return (
+        returnedExpressions.length > 0 &&
+        (matchMode === "every"
+          ? returnedExpressions.every(expressionMatches)
+          : returnedExpressions.some(expressionMatches))
+      );
+    } finally {
+      visitedFunctions.delete(candidateFunction);
     }
-    return (
-      returnedExpressions.length > 0 &&
-      (matchMode === "every"
-        ? returnedExpressions.every(expressionMatches)
-        : returnedExpressions.some(expressionMatches))
-    );
   };
 
   expressionMatches = (expression: EsTreeNode): boolean => {
     const unwrappedExpression = stripParenExpression(expression);
     if (visitedExpressions.has(unwrappedExpression)) return false;
     visitedExpressions.add(unwrappedExpression);
-    if (matchesExpression(unwrappedExpression)) return true;
+    try {
+      if (matchesExpression(unwrappedExpression)) return true;
 
-    if (isNodeOfType(unwrappedExpression, "Identifier")) {
-      const symbol = scopes.symbolFor(unwrappedExpression);
-      if (!symbol || (symbol.kind !== "const" && !REASSIGNABLE_BINDING_KINDS.has(symbol.kind))) {
-        return false;
-      }
-      return collectPossibleAssignedExpressions(symbol, unwrappedExpression, controlFlow).some(
-        (assignedExpression) => {
+      if (isNodeOfType(unwrappedExpression, "Identifier")) {
+        const symbol = scopes.symbolFor(unwrappedExpression);
+        if (!symbol || (symbol.kind !== "const" && !REASSIGNABLE_BINDING_KINDS.has(symbol.kind))) {
+          return false;
+        }
+        const assignedExpressions = collectPossibleAssignedExpressions(
+          symbol,
+          unwrappedExpression,
+          controlFlow,
+        );
+        const doesAssignmentMatch = (assignedExpression: EsTreeNode): boolean => {
           const assignedValue = stripParenExpression(assignedExpression);
           return !isFunctionLike(assignedValue) && expressionMatches(assignedValue);
-        },
-      );
-    }
-
-    if (isNodeOfType(unwrappedExpression, "CallExpression")) {
-      if (unwrappedExpression.arguments.length !== 0) return false;
-      if (!isNodeOfType(unwrappedExpression.callee, "Identifier")) return false;
-      const symbol = scopes.symbolFor(unwrappedExpression.callee);
-      if (!symbol || (symbol.kind !== "const" && symbol.kind !== "function")) return false;
-      const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
-      const candidateFunction = isFunctionLike(initializer)
-        ? initializer
-        : isFunctionLike(symbol.declarationNode)
-          ? symbol.declarationNode
-          : null;
-      if (
-        !candidateFunction ||
-        candidateFunction.async ||
-        candidateFunction.generator ||
-        candidateFunction.params.length !== 0
-      ) {
-        return false;
+        };
+        return matchMode === "every"
+          ? assignedExpressions.length > 0 && assignedExpressions.every(doesAssignmentMatch)
+          : assignedExpressions.some(doesAssignmentMatch);
       }
-      return functionMatches(candidateFunction);
-    }
 
-    if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
-      return branchesMatch(unwrappedExpression.consequent, unwrappedExpression.alternate);
+      if (isNodeOfType(unwrappedExpression, "CallExpression")) {
+        if (unwrappedExpression.arguments.length !== 0) return false;
+        if (!isNodeOfType(unwrappedExpression.callee, "Identifier")) return false;
+        const symbol = scopes.symbolFor(unwrappedExpression.callee);
+        if (!symbol || (symbol.kind !== "const" && symbol.kind !== "function")) return false;
+        const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+        let candidateFunction: EsTreeNode | null = null;
+        if (isFunctionLike(initializer)) {
+          candidateFunction = initializer;
+        } else if (isFunctionLike(symbol.declarationNode)) {
+          candidateFunction = symbol.declarationNode;
+        }
+        if (
+          !candidateFunction ||
+          candidateFunction.async ||
+          candidateFunction.generator ||
+          candidateFunction.params.length !== 0
+        ) {
+          return false;
+        }
+        return functionMatches(candidateFunction);
+      }
+
+      if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
+        return branchesMatch(unwrappedExpression.consequent, unwrappedExpression.alternate);
+      }
+      if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
+        return branchesMatch(unwrappedExpression.left, unwrappedExpression.right);
+      }
+      return false;
+    } finally {
+      visitedExpressions.delete(unwrappedExpression);
     }
-    if (isNodeOfType(unwrappedExpression, "LogicalExpression")) {
-      return branchesMatch(unwrappedExpression.left, unwrappedExpression.right);
-    }
-    return false;
   };
 
   const branchesMatch = (firstBranch: EsTreeNode, secondBranch: EsTreeNode): boolean => {

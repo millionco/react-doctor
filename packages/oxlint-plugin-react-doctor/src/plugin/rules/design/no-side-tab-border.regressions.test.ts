@@ -206,4 +206,242 @@ describe("design/no-side-tab-border — regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags static chromatic inset shadows that paint one 3–12px edge", () => {
+    const result = run(
+      `const C = () => <>
+        <div style={{ boxShadow: "inset 4px 0 0 #ef4444" }} />
+        <div style={{ boxShadow: "red -3px 0 inset" }} />
+        <div style={{ boxShadow: "inset 0 12px rgb(37 99 235 / 50%)" }} />
+        <div style={{ boxShadow: "0 -8px 0 0 hsl(280 70% 50%) inset" }} />
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(4);
+  });
+
+  it("flags supported Tailwind arbitrary inset shadows", () => {
+    const result = run(
+      `const C = () => <>
+        <div className="shadow-[inset_4px_0_0_#ef4444]" />
+        <div className="shadow-[rgb(37_99_235/0.5)_0_-6px_inset]" />
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps neutral and transparent inset shadows quiet", () => {
+    const result = run(
+      `const C = () => <>
+        <div style={{ boxShadow: "inset 4px 0 0 black" }} />
+        <div style={{ boxShadow: "inset 4px 0 0 #e5e7eb" }} />
+        <div style={{ boxShadow: "inset 4px 0 0 rgb(120 120 120)" }} />
+        <div style={{ boxShadow: "inset 4px 0 0 rgba(255, 0, 0, 0)" }} />
+        <div style={{ boxShadow: "inset 4px 0 0 #f000" }} />
+        <div className="shadow-[inset_4px_0_0_rgb(120_120_120)]" />
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps non-stripe shadow geometry quiet", () => {
+    const result = run(
+      `const C = () => <>
+        <div style={{ boxShadow: "inset 2px 0 0 red" }} />
+        <div style={{ boxShadow: "inset 13px 0 0 red" }} />
+        <div style={{ boxShadow: "inset 4px 4px 0 red" }} />
+        <div style={{ boxShadow: "inset 4px 0 2px red" }} />
+        <div style={{ boxShadow: "inset 4px 0 0 1px red" }} />
+        <div style={{ boxShadow: "inset 4px 0 0 red, 0 1px 2px black" }} />
+        <div className="shadow-[inset_4px_0_2px_#ef4444]" />
+        <div className="shadow-[inset_4px_0_0_#ef4444,0_1px_2px_#000]" />
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("abstains from dynamic and unresolved inset shadow values", () => {
+    const result = run(
+      `const C = ({ shadow }) => <>
+        <div style={{ boxShadow: shadow }} />
+        <div style={{ boxShadow: "inset 4px 0 0 var(--accent)" }} />
+        <div style={{ boxShadow: "inset 4px 0 0 brand" }} />
+        <div className="shadow-[inset_4px_0_0_var(--accent)]" />
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps focus, selection, and interactive inset indicators quiet", () => {
+    const result = run(
+      `const C = ({ selected }) => <>
+        <button style={{ boxShadow: "inset 4px 0 0 red" }}>Save</button>
+        <a href="/" className="shadow-[inset_4px_0_0_#ef4444]">Home</a>
+        <div role="tab" style={{ boxShadow: "inset 4px 0 0 red" }} />
+        <div aria-selected={selected} className="shadow-[inset_4px_0_0_#ef4444]" />
+        <div aria-current="page" style={{ boxShadow: "inset 4px 0 0 red" }} />
+        <div className="focus:shadow-[inset_4px_0_0_#ef4444]" />
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags inactive aria selection states", () => {
+    const result = run(
+      `const C = () => <>
+        <div aria-selected={false} style={{ boxShadow: "inset 4px 0 0 red" }} />
+        <div aria-current="false" className="shadow-[inset_4px_0_0_#ef4444]" />
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("abstains from ambiguous Tailwind shadows and honors inline precedence", () => {
+    const result = run(
+      `const C = () => <>
+        <div className="shadow-[inset_4px_0_0_#ef4444] shadow-none" />
+        <div className="!shadow-none shadow-[inset_4px_0_0_#ef4444]" />
+        <div className="shadow-[inset_4px_0_0_#ef4444]" style={{ boxShadow: "none" }} />
+        <div className="!shadow-[inset_4px_0_0_#ef4444]" style={{ boxShadow: "none" }} />
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags static vertical pseudo-element stripes on short labels", () => {
+    const result = run(
+      `const C = () => <>
+        <div className="relative before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">Projects</div>
+        <span className="relative side-tab after:absolute after:right-0 after:top-2 after:bottom-3 after:w-[3px] after:bg-[rgb(37_99_235)]" />
+        <div className="relative after:absolute after:right-0 after:h-full after:w-3 after:bg-emerald-500">Deployment</div>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("flags horizontal pseudo-element stripes that nearly span a label", () => {
+    const result = run(
+      `const C = () => <>
+        <div className="relative before:absolute before:bottom-0 before:inset-x-1 before:h-2 before:bg-blue-500">Release status</div>
+        <span className="relative label after:absolute after:top-0 after:left-[20px] after:right-5 after:h-[3px] after:bg-[#ef4444]" />
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("keeps neutral, transparent, unresolved, and non-stripe pseudo fills quiet", () => {
+    const result = run(
+      `const C = () => <>
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-gray-500" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-transparent" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500/0" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-[#ff0000]/0" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-[#ff0000]/[0%]" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-[var(--accent)]" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-0.5 before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-4 before:bg-red-500" />
+        <span className="relative label before:absolute before:left-1 before:inset-y-0 before:w-1 before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:top-0 before:w-1 before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:top-[var(--start)] before:bottom-0 before:w-1 before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:top-[var(--start)] before:h-full before:w-1 before:bg-red-500" />
+        <span className="label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500" />
+        <span className="relative static label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500" />
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("abstains from conditional, selected, and ambiguous pseudo constructions", () => {
+    const result = run(
+      `const C = ({ selected }) => <>
+        <span className="relative label hover:before:absolute hover:before:left-0 hover:before:inset-y-0 hover:before:w-1 hover:before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 focus:before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 aria-selected:before:bg-red-500" />
+        <span aria-selected={selected} className="relative before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">Settings</span>
+        <span aria-current="page" className="relative before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">Home</span>
+        <span data-state={selected ? "active" : "idle"} className="relative before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">Filters</span>
+        <span className="relative label selected before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:w-2 before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:right-0 before:inset-y-0 before:w-1 before:bg-red-500" />
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps horizontal link underlines quiet without exempting vertical link stripes", () => {
+    const result = run(
+      `const C = () => <>
+        <a href="/" className="relative before:absolute before:bottom-0 before:inset-x-0 before:h-1 before:bg-blue-500">Docs</a>
+        <Button className="relative after:absolute after:top-0 after:inset-x-0 after:h-1 after:bg-red-500">Save</Button>
+        <a href="/" className="relative before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-blue-500">Account</a>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps structural and glyph-sized pseudo artwork quiet", () => {
+    const result = run(
+      `const C = () => <>
+        <blockquote className="relative side-tab before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">Quote</blockquote>
+        <table className="relative side-tab before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500"><tbody /></table>
+        <svg className="relative side-tab before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500" />
+        <LogoMark className="relative side-tab before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500" />
+        <span className="relative logo-mark before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500" />
+        <span className="relative label size-10 before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500" />
+      </>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat narrow labeled tabs as glyph artwork", () => {
+    const result = run(
+      `const C = () => <>
+        <span className="relative label h-24 w-10 before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">Analytics</span>
+        <span className="relative label size-10 before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-blue-500">Beta</span>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("requires a static label or explicit side-tab context", () => {
+    const result = run(
+      `const C = ({ label, className }) => <>
+        <div className="relative before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">{label}</div>
+        <div className={className}>Reports</div>
+        <div className="relative side-tab before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">{label}</div>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("honors important pseudo geometry and abstains from important conflicts", () => {
+    const result = run(
+      `const C = () => <>
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:!w-2 before:bg-red-500" />
+        <span className="relative label before:absolute before:left-0 before:inset-y-0 before:!w-1 before:!w-2 before:bg-red-500" />
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags pseudo stripes with explicitly inactive selection attributes", () => {
+    const result = run(
+      `const C = () => <>
+        <span aria-selected={false} className="relative before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">Reports</span>
+        <span aria-current="false" className="relative before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500">Archive</span>
+      </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("does not inspect pseudo Tailwind utilities when Tailwind capability is disabled", () => {
+    const result = runRule(
+      noSideTabBorder,
+      `const C = () => <span className="relative label before:absolute before:left-0 before:inset-y-0 before:w-1 before:bg-red-500" />;`,
+      {
+        filename: "fixture.tsx",
+        settings: { "react-doctor": { capabilities: [] } },
+      },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

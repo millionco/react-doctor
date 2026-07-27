@@ -134,6 +134,110 @@ describe("security-scan/dangerous-html-sink — KaTeX provenance", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it.each([
+    "(false && katex.renderToString(value)) + suffix",
+    "(true || katex.renderToString(value)) + suffix",
+    "(`ready` || katex.renderToString(value)) + suffix",
+    "(typeof suffix || katex.renderToString(value)) + suffix",
+    "(undefined && katex.renderToString(value)) + suffix",
+    "(!0 || katex.renderToString(value)) + suffix",
+    '(false ? katex.renderToString(value) : "") + suffix',
+    '(true ? "" : katex.renderToString(value)) + suffix',
+    '({} ? "" : katex.renderToString(value)) + suffix',
+    '([] ? "" : katex.renderToString(value)) + suffix',
+    '(void 0 ? katex.renderToString(value) : "") + suffix',
+    '((0, {}) ? "" : katex.renderToString(value)) + suffix',
+    '(!0 ? "" : katex.renderToString(value)) + suffix',
+    '(undefined ? katex.renderToString(value) : "") + suffix',
+    '(NaN ? katex.renderToString(value) : "") + suffix',
+    '(typeof suffix ? "" : katex.renderToString(value)) + suffix',
+    '(`x` ? "" : katex.renderToString(value)) + suffix',
+  ])("ignores dead KaTeX provenance combined with unknown HTML: %s", (expression) => {
+    const findings = scan(`
+      import katex from "katex";
+
+      export const MathNode = ({ value, suffix }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it.each([
+    "(true && katex.renderToString(value)) + suffix",
+    "(false || katex.renderToString(value)) + suffix",
+    "(`` || katex.renderToString(value)) + suffix",
+    "(void 0 || katex.renderToString(value)) + suffix",
+    "(!1 || katex.renderToString(value)) + suffix",
+    '(true ? katex.renderToString(value) : "") + suffix',
+    '(false ? "" : katex.renderToString(value)) + suffix',
+    '({} ? katex.renderToString(value) : "") + suffix',
+    '([] ? katex.renderToString(value) : "") + suffix',
+    '(void 0 ? "" : katex.renderToString(value)) + suffix',
+    '((0, {}) ? katex.renderToString(value) : "") + suffix',
+    '(!0 ? katex.renderToString(value) : "") + suffix',
+    '(undefined ? "" : katex.renderToString(value)) + suffix',
+    '(NaN ? "" : katex.renderToString(value)) + suffix',
+    '(typeof suffix ? katex.renderToString(value) : "") + suffix',
+    '(`x` ? katex.renderToString(value) : "") + suffix',
+  ])("keeps reachable KaTeX provenance combined with unknown HTML unsafe: %s", (expression) => {
+    const findings = scan(`
+      import katex from "katex";
+
+      export const MathNode = ({ value, suffix }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: ${expression} }} />
+      );
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+
+  it.each([
+    '(condition ? katex.renderToString(value) : "") + suffix',
+    '((0, condition) ? katex.renderToString(value) : "") + suffix',
+    '(!condition ? katex.renderToString(value) : "") + suffix',
+  ])(
+    "keeps dynamically selected KaTeX provenance combined with unknown HTML unsafe: %s",
+    (expression) => {
+      const findings = scan(`
+      import katex from "katex";
+
+      export const MathNode = ({ condition, value, suffix }: Props) => (
+        <span
+          dangerouslySetInnerHTML={{
+            __html: ${expression},
+          }}
+        />
+      );
+    `);
+
+      expect(findings).toHaveLength(1);
+    },
+  );
+
+  it.each(["undefined", "NaN"])(
+    "keeps shadowed %s conditional provenance dynamic",
+    (identifierName) => {
+      const findings = scan(`
+        import katex from "katex";
+
+        export const MathNode = ({ value, suffix }: Props) => {
+          const ${identifierName} = suffix;
+          return (
+            <span
+              dangerouslySetInnerHTML={{
+                __html: (${identifierName} ? katex.renderToString(value) : "") + suffix,
+              }}
+            />
+          );
+        };
+      `);
+
+      expect(findings).toHaveLength(1);
+    },
+  );
+
   it("accepts an escaped fallback from a named KaTeX import", () => {
     const findings = scan(`
       import { renderToString as renderKatex } from "katex";

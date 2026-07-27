@@ -1,4 +1,5 @@
 import { ROOT_FONT_SIZE_PX } from "../../../constants/design.js";
+import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../../utils/get-authoritative-jsx-attribute.js";
@@ -32,6 +33,7 @@ const getFontSizePx = (property: EsTreeNode): number | null => {
 export const getStaticEffectiveFontSize = (
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
   hasTailwind: boolean,
+  scopes?: ScopeAnalysis,
 ): number | null => {
   const classNameValue = getStringFromClassNameAttr(openingElement);
   const tailwindFontSize = hasTailwind ? getStaticTailwindFontSize(classNameValue) : null;
@@ -43,7 +45,7 @@ export const getStaticEffectiveFontSize = (
   if (!styleAttribute) {
     return hasJsxSpreadAttribute(openingElement.attributes) ? null : tailwindFontSize;
   }
-  const styleExpression = getInlineStyleExpression(styleAttribute);
+  const styleExpression = getInlineStyleExpression(styleAttribute, scopes);
   if (!styleExpression) return null;
   const fontSizeProperty = getEffectiveStyleProperty(styleExpression.properties, "fontSize");
   if (fontSizeProperty) return getFontSizePx(fontSizeProperty);

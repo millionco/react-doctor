@@ -4,9 +4,12 @@ import { DaytonaNotFoundError } from "@daytona/sdk";
 import type { Daytona, Sandbox } from "@daytona/sdk";
 
 import {
+  DAYTONA_RUN_NAME,
   EVALUATION_SCHEMA_VERSION,
   RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
   SANDBOX_DELETE_TIMEOUT_SECONDS,
+  SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
+  SANDBOX_REPORT_PATH,
   SANDBOX_SCAN_TIMEOUT_SECONDS,
   SANDBOX_SETUP_TIMEOUT_SECONDS,
   SCAN_COMMAND,
@@ -115,7 +118,17 @@ const evaluateRepositoryGroup = async ({
         description: `Scan ${repository.org}/${repository.name}:${repository.rootDir}`,
         acceptNonZeroExitCode: true,
       });
-      const report = parseReactDoctorReport(commandResult.output, commandResult.exitCode);
+      const reportContents = await sandbox.fs.downloadFile(
+        SANDBOX_REPORT_PATH,
+        getEvaluationTimeoutSeconds({
+          deadlineMilliseconds: evaluationDeadlineMilliseconds,
+          maximumTimeoutSeconds: SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
+        }),
+      );
+      const report = parseReactDoctorReport(
+        reportContents.toString("utf8"),
+        commandResult.exitCode,
+      );
       await onRecord({
         schemaVersion: EVALUATION_SCHEMA_VERSION,
         repository,
@@ -135,7 +148,7 @@ export const evaluateRepositoryBatch = async ({
   evaluationDeadlineMilliseconds,
   onRecord,
 }: EvaluateRepositoryBatchInput): Promise<ReadonlyArray<CorpusEvaluationRecord>> => {
-  const sandboxName = `react-doctor-eval-${randomUUID()}`;
+  const sandboxName = `${DAYTONA_RUN_NAME}-${randomUUID()}`;
   let sandbox: Sandbox | undefined;
   let shouldRecoverSandbox = true;
   try {

@@ -23,6 +23,7 @@ import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
@@ -459,6 +460,63 @@ const resolveStableMediaQueryListenerIdentityKey = (
   return null;
 };
 
+const isProvenMediaQueryListExpression = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (
+    getProvenDomEventTargetPrototypeOwnerNames(unwrappedExpression, context.scopes).includes(
+      "MediaQueryList",
+    )
+  ) {
+    return true;
+  }
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    const symbol = context.scopes.symbolFor(unwrappedExpression);
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+    const initializer = getDirectUnreassignedInitializer(symbol);
+    if (!initializer) return false;
+    const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+    nextVisitedSymbolIds.add(symbol.id);
+    return isProvenMediaQueryListExpression(initializer, context, nextVisitedSymbolIds);
+  }
+  if (
+    !isNodeOfType(unwrappedExpression, "CallExpression") ||
+    !isReactApiCall(unwrappedExpression, "useMemo", context.scopes, {
+      resolveNamedAliases: true,
+    })
+  ) {
+    return false;
+  }
+  const factory = getEffectCallback(unwrappedExpression, context.scopes);
+  return Boolean(
+    factory &&
+    functionReturnsMatchingExpression(
+      factory,
+      context.scopes,
+      (returnedExpression) => {
+        const unwrappedReturnedExpression = stripParenExpression(returnedExpression);
+        return (
+          (isNodeOfType(unwrappedReturnedExpression, "Literal") &&
+            unwrappedReturnedExpression.value === null) ||
+          (isNodeOfType(unwrappedReturnedExpression, "Identifier") &&
+            unwrappedReturnedExpression.name === "undefined" &&
+            context.scopes.isGlobalReference(unwrappedReturnedExpression)) ||
+          isProvenMediaQueryListExpression(
+            unwrappedReturnedExpression,
+            context,
+            new Set(visitedSymbolIds),
+          )
+        );
+      },
+      context.cfg,
+      "every",
+    ),
+  );
+};
+
 const isProvenLegacyMediaQueryListMethodCall = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   methodName: "addListener" | "removeListener",
@@ -471,9 +529,7 @@ const isProvenLegacyMediaQueryListMethodCall = (
     !callee.computed &&
     isNodeOfType(callee.property, "Identifier") &&
     callee.property.name === methodName &&
-    getProvenDomEventTargetPrototypeOwnerNames(callee.object, context.scopes).includes(
-      "MediaQueryList",
-    )
+    isProvenMediaQueryListExpression(callee.object, context)
   );
 };
 

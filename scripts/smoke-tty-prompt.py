@@ -17,12 +17,14 @@ the parent's stdin to itself be a TTY, which CI runners don't provide. Python's
 needs no native build.
 
 Verdict:
-  PASS  -> the prompt rendered AND the process was still alive when we killed
-           it at the timeout (the TTY held the event loop open, as it must).
+  PASS  -> the prompt rendered, stayed alive waiting for input, and showed the
+           scan indicator before a deliberately delayed git lookup completed.
   FAIL  -> the process exited on its own (the #576 regression: "dies by
-           itself"), or the prompt never rendered (setup/environment problem).
+           itself"), the prompt never rendered, or scan feedback arrived late.
 """
 
+import argparse
+import fcntl
 import json
 import os
 import pty
@@ -30,8 +32,10 @@ import select
 import shutil
 import signal
 import subprocess
+import struct
 import sys
 import tempfile
+import termios
 import time
 
 REPOSITORY_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -42,7 +46,13 @@ CLI_BINARY_PATH = os.path.join(REPOSITORY_ROOT, "packages", "react-doctor", "dis
 # prompt rendering, so this window has a wide safety margin for slow CI cold
 # starts.
 STAY_ALIVE_WINDOW_SECONDS = 6.0
+PROMPT_STABILITY_WINDOW_SECONDS = 0.5
+SCAN_FEEDBACK_WINDOW_SECONDS = 1.5
+GIT_DELAY_SECONDS = 3
+TERMINAL_ROWS = 24
+TERMINAL_COLUMNS = 100
 PROMPT_MARKER = "Select projects"
+SCAN_FEEDBACK_MARKER = "Scanning..."
 
 # Env vars that make `shouldSkipPrompts()` short-circuit to non-interactive
 # (so the multiselect would never render). CI sets CI / GITHUB_ACTIONS, and a
@@ -109,25 +119,121 @@ def create_workspace_fixture(root_directory):
     )
     for package_name in ("app-a", "app-b"):
         package_directory = os.path.join(root_directory, "packages", package_name)
+        package_json = {
+            "name": package_name,
+            "version": "0.0.0",
+            "dependencies": {"react": "18.3.1"},
+        }
+        if package_name == "app-a":
+            package_json["devDependencies"] = {
+                "typescript": "5.9.2",
+                "vite": "7.1.3",
+                "vitest": "3.2.4",
+            }
         write_package_json(
             package_directory,
-            {"name": package_name, "version": "0.0.0", "dependencies": {"react": "18.3.1"}},
+            package_json,
         )
         source_directory = os.path.join(package_directory, "src")
         os.makedirs(source_directory, exist_ok=True)
         with open(os.path.join(source_directory, "index.tsx"), "w", encoding="utf-8") as handle:
-            handle.write("export const Component = () => null;\n")
+            if package_name == "app-a":
+                handle.write(
+                    'import { useEffect, useState } from "react";\n'
+                    'const items = ["first", "second"];\n'
+                    "export const Component = () => {\n"
+                    "  const [count, setCount] = useState(0);\n"
+                    "  useEffect(() => setCount(1), []);\n"
+                    "  const Nested = () => <span>{count}</span>;\n"
+                    "  return items.map((item, index) => <Nested key={index}>{item}</Nested>);\n"
+                    "};\n"
+                )
+            else:
+                handle.write("export const Component = () => null;\n")
 
 
-def run_prompt_in_pty(fixture_directory):
+def initialize_git_repository(fixture_directory):
+    git_binary_path = resolve_git_binary()
+    subprocess.run([git_binary_path, "init", "-q", "-b", "main"], cwd=fixture_directory, check=True)
+    subprocess.run(
+        [git_binary_path, "config", "user.email", "tty-smoke@react.doctor"],
+        cwd=fixture_directory,
+        check=True,
+    )
+    subprocess.run(
+        [git_binary_path, "config", "user.name", "React Doctor TTY Smoke"],
+        cwd=fixture_directory,
+        check=True,
+    )
+    subprocess.run([git_binary_path, "add", "."], cwd=fixture_directory, check=True)
+    subprocess.run(
+        [git_binary_path, "commit", "-q", "-m", "Initial fixture"],
+        cwd=fixture_directory,
+        check=True,
+    )
+    return git_binary_path
+
+
+def resolve_git_binary():
+    git_binary_path = shutil.which("git")
+    if git_binary_path is None:
+        fail("`git` not found on PATH.")
+    return git_binary_path
+
+
+def create_delayed_git_wrapper(fixture_directory, git_binary_path):
+    wrapper_directory = os.path.join(fixture_directory, ".terminal-recording-bin")
+    os.makedirs(wrapper_directory, exist_ok=True)
+    delay_marker_path = os.path.join(wrapper_directory, "did-delay")
+    wrapper_path = os.path.join(wrapper_directory, "git")
+    with open(wrapper_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "#!/bin/sh\n"
+            'for argument in "$@"; do\n'
+            '  if [ "$argument" = "diff" ] && '
+            f'mkdir "{delay_marker_path}" 2>/dev/null; then\n'
+            f"    sleep {GIT_DELAY_SECONDS}\n"
+            "    break\n"
+            "  fi\n"
+            "done\n"
+            f'exec "{git_binary_path}" "$@"\n'
+        )
+    os.chmod(wrapper_path, 0o755)
+    return wrapper_directory
+
+
+def read_pty_until(master_fd, process, captured_output, deadline, marker=None):
+    while time.time() < deadline and process.poll() is None:
+        readable, _, _ = select.select([master_fd], [], [], 0.05)
+        if not readable:
+            continue
+        try:
+            chunk = os.read(master_fd, 4096)
+        except OSError:
+            chunk = b""
+        if chunk:
+            captured_output += chunk
+            if marker is not None and marker.encode() in captured_output:
+                break
+    return captured_output
+
+
+def run_prompt_in_pty(fixture_directory, delayed_git_directory):
     child_environment = {
         key: value
         for key, value in os.environ.items()
         if key not in NON_INTERACTIVE_ENVIRONMENT_VARIABLES
     }
     child_environment["FORCE_COLOR"] = "0"
+    child_environment["TERM"] = "xterm-256color"
+    child_environment["PATH"] = delayed_git_directory + os.pathsep + child_environment["PATH"]
 
     master_fd, slave_fd = pty.openpty()
+    fcntl.ioctl(
+        slave_fd,
+        termios.TIOCSWINSZ,
+        struct.pack("HHHH", TERMINAL_ROWS, TERMINAL_COLUMNS, 0, 0),
+    )
     process = subprocess.Popen(
         [NODE_BINARY_PATH, CLI_BINARY_PATH, fixture_directory, "--no-lint", "--no-dead-code", "--no-score"],
         stdin=slave_fd,
@@ -138,36 +244,71 @@ def run_prompt_in_pty(fixture_directory):
     )
     os.close(slave_fd)
 
-    captured_output = b""
-    deadline = time.time() + STAY_ALIVE_WINDOW_SECONDS
-    while time.time() < deadline and process.poll() is None:
-        readable, _, _ = select.select([master_fd], [], [], 0.2)
-        if not readable:
-            continue
-        try:
-            chunk = os.read(master_fd, 4096)
-        except OSError:
-            chunk = b""
-        if chunk:
-            captured_output += chunk
-    os.close(master_fd)
-
+    captured_output = read_pty_until(
+        master_fd,
+        process,
+        b"",
+        time.time() + STAY_ALIVE_WINDOW_SECONDS,
+        PROMPT_MARKER,
+    )
+    prompt_rendered = PROMPT_MARKER.encode() in captured_output
+    if prompt_rendered:
+        captured_output = read_pty_until(
+            master_fd,
+            process,
+            captured_output,
+            time.time() + PROMPT_STABILITY_WINDOW_SECONDS,
+        )
     exited_by_itself = process.poll() is not None
-    if not exited_by_itself:
+    scan_feedback_rendered = False
+    if prompt_rendered and not exited_by_itself:
+        os.write(master_fd, b" \r")
+        captured_output = read_pty_until(
+            master_fd,
+            process,
+            captured_output,
+            time.time() + SCAN_FEEDBACK_WINDOW_SECONDS,
+            SCAN_FEEDBACK_MARKER,
+        )
+        scan_feedback_rendered = SCAN_FEEDBACK_MARKER.encode() in captured_output
+
+    if process.poll() is None:
         process.send_signal(signal.SIGKILL)
         process.wait()
+    os.close(master_fd)
 
-    return exited_by_itself, captured_output.decode("utf-8", "replace")
+    return exited_by_itself, scan_feedback_rendered, captured_output.decode("utf-8", "replace")
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    preparation_mode = parser.add_mutually_exclusive_group()
+    preparation_mode.add_argument("--prepare-fixture")
+    preparation_mode.add_argument("--prepare-git-wrapper")
+    arguments = parser.parse_args()
+    if arguments.prepare_fixture:
+        fixture_directory = os.path.abspath(arguments.prepare_fixture)
+        create_workspace_fixture(fixture_directory)
+        git_binary_path = initialize_git_repository(fixture_directory)
+        create_delayed_git_wrapper(fixture_directory, git_binary_path)
+        return
+    if arguments.prepare_git_wrapper:
+        fixture_directory = os.path.abspath(arguments.prepare_git_wrapper)
+        create_delayed_git_wrapper(fixture_directory, resolve_git_binary())
+        return
+
     if not os.path.isfile(CLI_BINARY_PATH):
         fail(f"Built CLI missing at {CLI_BINARY_PATH}. Run `pnpm build` first.")
 
     fixture_directory = tempfile.mkdtemp(prefix="react-doctor-tty-smoke-")
     try:
         create_workspace_fixture(fixture_directory)
-        exited_by_itself, output = run_prompt_in_pty(fixture_directory)
+        git_binary_path = initialize_git_repository(fixture_directory)
+        delayed_git_directory = create_delayed_git_wrapper(fixture_directory, git_binary_path)
+        exited_by_itself, scan_feedback_rendered, output = run_prompt_in_pty(
+            fixture_directory,
+            delayed_git_directory,
+        )
     finally:
         shutil.rmtree(fixture_directory, ignore_errors=True)
 
@@ -187,9 +328,17 @@ def main():
             "(the #576 unref-stdin regression: prompts die by themselves)."
         )
 
+    if not scan_feedback_rendered:
+        print(output[:1000], file=sys.stderr)
+        fail(
+            f'The "{SCAN_FEEDBACK_MARKER}" indicator did not render within '
+            f"{SCAN_FEEDBACK_WINDOW_SECONDS}s after project selection while git was still busy."
+        )
+
     print(
         f'Smoke OK: "{PROMPT_MARKER}" prompt rendered in a real PTY and the '
-        "process stayed alive waiting for input (held the event loop open)."
+        f'process stayed alive waiting for input; "{SCAN_FEEDBACK_MARKER}" then '
+        "rendered before the delayed git lookup completed."
     )
 
 

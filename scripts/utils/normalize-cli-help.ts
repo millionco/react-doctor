@@ -9,7 +9,12 @@ export const normalizeCliHelp = (
   const normalizedOutput = stripVTControlCharacters(output)
     .replace(/\r\n?/g, "\n")
     .replaceAll(workingDirectory, "<cwd>")
-    .replaceAll(normalizedWorkingDirectory, "<cwd>");
-  if (version === undefined) return normalizedOutput;
-  return normalizedOutput.replaceAll(version, "<version>");
+    .replaceAll(normalizedWorkingDirectory, "<cwd>")
+    .replace(
+      /working\s+directory\s+\(default:\s+"<cwd>"\)/g,
+      'working directory (default: "<cwd>")',
+    );
+  return version === undefined
+    ? normalizedOutput
+    : normalizedOutput.replaceAll(version, "<version>");
 };

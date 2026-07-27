@@ -16,6 +16,16 @@ describe("CLI help contracts", () => {
     );
   });
 
+  it("normalizes Windows wrapping around the dynamic working directory", () => {
+    const output =
+      '  -c, --cwd <cwd>  working directory (default:\r\n                     "C:\\Users\\runner\\AppData\\Local\\Temp")\r\n';
+
+    assert.equal(
+      normalizeCliHelp(output, "C:\\Users\\runner\\AppData\\Local\\Temp"),
+      '  -c, --cwd <cwd>  working directory (default: "<cwd>")\n',
+    );
+  });
+
   it("extracts canonical commands and aliases without wrapped descriptions", () => {
     const output = `Usage: tool [command]
 

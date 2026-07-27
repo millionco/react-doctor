@@ -19,8 +19,8 @@ interface CompatibilityDeltaLedger {
 
 const COMPATIBILITY_DELTA_SCHEMA_VERSION = 1;
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
-const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
-const LEDGER_PATH = path.join(REPOSITORY_ROOT, "contracts", "compatibility-deltas.json");
+const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "../..");
+const LEDGER_PATH = path.join(REPOSITORY_ROOT, "compatibility", "approved-deltas.json");
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
@@ -56,7 +56,7 @@ const isCompatibilityDeltaLedger = (value: unknown): value is CompatibilityDelta
 };
 
 if (!fs.existsSync(LEDGER_PATH)) {
-  console.error("Missing contracts/compatibility-deltas.json.");
+  console.error("Missing compatibility/approved-deltas.json.");
   process.exit(1);
 }
 

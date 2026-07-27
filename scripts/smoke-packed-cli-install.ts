@@ -6,15 +6,15 @@ import { JsonReport } from "@react-doctor/core/schemas";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CLI_HELP_INVOCATIONS } from "./utils/cli-help-invocations.ts";
-import { normalizeCliHelp } from "./utils/normalize-cli-help.ts";
-import { parseHelpCommandAliases } from "./utils/parse-help-command-aliases.ts";
+import { CLI_HELP_INVOCATIONS } from "./compatibility/cli-help-invocations.ts";
+import { normalizeCliHelp } from "./compatibility/normalize-cli-help.ts";
+import { parseHelpCommandAliases } from "./compatibility/parse-help-command-aliases.ts";
 import type {
   CliHelpSnapshotEntry,
-  PackedEntryContract,
+  PackedEntrySnapshot,
   PackedFilePolicy,
   PackedPublicEntryPointSnapshot,
-} from "./utils/public-package-contract-types.ts";
+} from "./compatibility/public-package-snapshot-types.ts";
 import { readPackageExportValue } from "./utils/read-package-export-value.ts";
 
 interface CommandInput {
@@ -33,12 +33,9 @@ interface StringRecord {
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const FIXTURE_DIRECTORY = path.resolve(REPOSITORY_ROOT, "packages/core/tests/fixtures/basic-react");
-const CLI_HELP_SNAPSHOT_PATH = path.join(REPOSITORY_ROOT, "contracts", "cli-help.json");
-const PACKED_ENTRY_SNAPSHOT_PATH = path.join(
-  REPOSITORY_ROOT,
-  "contracts",
-  "packed-public-entry-points.json",
-);
+const SNAPSHOT_DIRECTORY = path.join(REPOSITORY_ROOT, "compatibility", "snapshots");
+const CLI_HELP_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "cli-help.json");
+const PACKED_ENTRY_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "packed-public-entry-points.json");
 const FORBIDDEN_INSTALLED_PACKAGES: readonly string[] = [
   "ini",
   "effect",
@@ -164,12 +161,12 @@ const collectRuntimeTargets = (exportValue: unknown): string[] => {
 
 const assertPackedEntryFiles = (
   installDirectory: string,
-  entryContracts: ReadonlyArray<PackedEntryContract>,
+  entrySnapshots: ReadonlyArray<PackedEntrySnapshot>,
 ): void => {
-  for (const entryContract of entryContracts) {
-    const packageDirectory = path.join(installDirectory, "node_modules", entryContract.packageName);
+  for (const entrySnapshot of entrySnapshots) {
+    const packageDirectory = path.join(installDirectory, "node_modules", entrySnapshot.packageName);
     const manifest = readJson<StringRecord>(path.join(packageDirectory, "package.json"));
-    const exportValue = readPackageExportValue(manifest.exports, entryContract.subpath);
+    const exportValue = readPackageExportValue(manifest.exports, entrySnapshot.subpath);
     const runtimeTargets = collectRuntimeTargets(exportValue);
     const declarationTargets = collectConditionalTargets(exportValue, "types");
 
@@ -177,7 +174,7 @@ const assertPackedEntryFiles = (
       const targetPath = path.resolve(packageDirectory, target);
       if (!fs.existsSync(targetPath)) {
         console.error(
-          `Packed entry ${entryContract.packageName}${entryContract.subpath} points to missing ${target}.`,
+          `Packed entry ${entrySnapshot.packageName}${entrySnapshot.subpath} points to missing ${target}.`,
         );
         process.exit(1);
       }
@@ -188,7 +185,7 @@ const assertPackedEntryFiles = (
     );
     if (hasJavaScriptRuntime && declarationTargets.length === 0) {
       console.error(
-        `Packed entry ${entryContract.packageName}${entryContract.subpath} has no declaration target.`,
+        `Packed entry ${entrySnapshot.packageName}${entrySnapshot.subpath} has no declaration target.`,
       );
       process.exit(1);
     }
@@ -213,17 +210,17 @@ const assertPackedBins = (packageDirectory: string): void => {
   }
 };
 
-const toPackageSpecifier = (entryContract: PackedEntryContract): string =>
-  entryContract.subpath === "."
-    ? entryContract.packageName
-    : `${entryContract.packageName}/${entryContract.subpath.slice(2)}`;
+const toPackageSpecifier = (entrySnapshot: PackedEntrySnapshot): string =>
+  entrySnapshot.subpath === "."
+    ? entrySnapshot.packageName
+    : `${entrySnapshot.packageName}/${entrySnapshot.subpath.slice(2)}`;
 
 const probeRuntimeExportKeys = (
   installDirectory: string,
-  entryContract: PackedEntryContract,
+  entrySnapshot: PackedEntrySnapshot,
   moduleMode: "import" | "require",
 ): string[] => {
-  const packageSpecifier = toPackageSpecifier(entryContract);
+  const packageSpecifier = toPackageSpecifier(entrySnapshot);
   const importAttributes = packageSpecifier.endsWith("/package.json")
     ? ', { with: { type: "json" } }'
     : "";
@@ -256,26 +253,26 @@ process.stdout.write(${JSON.stringify(RUNTIME_EXPORT_MARKER)} + JSON.stringify(O
   return JSON.parse(markerLine.slice(RUNTIME_EXPORT_MARKER.length));
 };
 
-const captureRuntimeEntryContracts = (
+const captureRuntimeEntrySnapshots = (
   installDirectory: string,
-  entryContracts: ReadonlyArray<PackedEntryContract>,
-): PackedEntryContract[] =>
-  entryContracts.map((entryContract) => {
-    if (entryContract.executionOnly === true) return entryContract;
-    if (entryContract.exportKeys === undefined) {
+  entrySnapshots: ReadonlyArray<PackedEntrySnapshot>,
+): PackedEntrySnapshot[] =>
+  entrySnapshots.map((entrySnapshot) => {
+    if (entrySnapshot.executionOnly === true) return entrySnapshot;
+    if (entrySnapshot.exportKeys === undefined) {
       console.error(
-        `Library entry ${entryContract.packageName}${entryContract.subpath} is missing runtime export keys.`,
+        `Library entry ${entrySnapshot.packageName}${entrySnapshot.subpath} is missing runtime export keys.`,
       );
       process.exit(1);
     }
     const exportKeys: { import?: ReadonlyArray<string>; require?: ReadonlyArray<string> } = {};
-    if (entryContract.exportKeys.import !== undefined) {
-      exportKeys.import = probeRuntimeExportKeys(installDirectory, entryContract, "import");
+    if (entrySnapshot.exportKeys.import !== undefined) {
+      exportKeys.import = probeRuntimeExportKeys(installDirectory, entrySnapshot, "import");
     }
-    if (entryContract.exportKeys.require !== undefined) {
-      exportKeys.require = probeRuntimeExportKeys(installDirectory, entryContract, "require");
+    if (entrySnapshot.exportKeys.require !== undefined) {
+      exportKeys.require = probeRuntimeExportKeys(installDirectory, entrySnapshot, "require");
     }
-    return { ...entryContract, exportKeys };
+    return { ...entrySnapshot, exportKeys };
   });
 
 const captureCliHelpSnapshot = (
@@ -375,13 +372,13 @@ const assertFixtureExists = (): void => {
 const main = (): void => {
   assertFixtureExists();
   const argumentsList = process.argv.slice(2);
-  const shouldUpdateContracts =
-    argumentsList.length === 1 && argumentsList[0] === "--update-contracts";
-  if (argumentsList.length > 0 && !shouldUpdateContracts) {
-    console.error("Usage: node scripts/smoke-packed-cli-install.ts [--update-contracts]");
+  const shouldUpdateSnapshots =
+    argumentsList.length === 1 && argumentsList[0] === "--update-snapshots";
+  if (argumentsList.length > 0 && !shouldUpdateSnapshots) {
+    console.error("Usage: node scripts/smoke-packed-cli-install.ts [--update-snapshots]");
     process.exit(1);
   }
-  if (!fs.existsSync(CLI_HELP_SNAPSHOT_PATH) && !shouldUpdateContracts) {
+  if (!fs.existsSync(CLI_HELP_SNAPSHOT_PATH) && !shouldUpdateSnapshots) {
     console.error(`Missing ${path.relative(REPOSITORY_ROOT, CLI_HELP_SNAPSHOT_PATH)}.`);
     process.exit(1);
   }
@@ -463,19 +460,19 @@ const main = (): void => {
     }
 
     assertPackedEntryFiles(installDirectory, packedSnapshot.entries);
-    const currentEntryContracts = captureRuntimeEntryContracts(
+    const currentEntrySnapshots = captureRuntimeEntrySnapshots(
       installDirectory,
       packedSnapshot.entries,
     );
-    if (shouldUpdateContracts) {
+    if (shouldUpdateSnapshots) {
       writeJson(PACKED_ENTRY_SNAPSHOT_PATH, {
         ...packedSnapshot,
-        entries: currentEntryContracts,
+        entries: currentEntrySnapshots,
       });
-    } else if (!isDeepStrictEqual(currentEntryContracts, packedSnapshot.entries)) {
+    } else if (!isDeepStrictEqual(currentEntrySnapshots, packedSnapshot.entries)) {
       console.error("Packed runtime export key drift detected.");
       console.error("Expected:", JSON.stringify(packedSnapshot.entries, null, 2));
-      console.error("Received:", JSON.stringify(currentEntryContracts, null, 2));
+      console.error("Received:", JSON.stringify(currentEntrySnapshots, null, 2));
       process.exit(1);
     }
 
@@ -519,13 +516,13 @@ const main = (): void => {
     );
     const cliHelp = captureCliHelpSnapshot(cliModulePath, version);
     assertHelpCommandCoverage(cliHelp.rawOutputByName);
-    if (shouldUpdateContracts) {
+    if (shouldUpdateSnapshots) {
       writeJson(CLI_HELP_SNAPSHOT_PATH, cliHelp.snapshot);
     } else {
       const expectedCliHelp = readJson<ReadonlyArray<CliHelpSnapshotEntry>>(CLI_HELP_SNAPSHOT_PATH);
       if (!isDeepStrictEqual(cliHelp.snapshot, expectedCliHelp)) {
-        console.error("Packed CLI help contract drift detected.");
-        console.error("Run the packed smoke with --update-contracts after reviewing the change.");
+        console.error("Packed CLI help compatibility snapshot drift detected.");
+        console.error("Run `nr compatibility:packed:update` after reviewing the change.");
         process.exit(1);
       }
     }
@@ -557,7 +554,7 @@ const main = (): void => {
     }
 
     console.log(
-      `Packed install smoke OK: version=${version} diagnostics=${decoded.diagnostics.length} entries=${currentEntryContracts.length} help=${cliHelp.snapshot.length} forbiddenPackages=0`,
+      `Packed install smoke OK: version=${version} diagnostics=${decoded.diagnostics.length} entries=${currentEntrySnapshots.length} help=${cliHelp.snapshot.length} forbiddenPackages=0`,
     );
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });

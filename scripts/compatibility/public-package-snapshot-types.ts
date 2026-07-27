@@ -4,7 +4,7 @@ export interface CliHelpSnapshotEntry {
   readonly output: string;
 }
 
-export interface PackedEntryContract {
+export interface PackedEntrySnapshot {
   readonly packageName: string;
   readonly subpath: string;
   readonly executionOnly?: boolean;
@@ -22,6 +22,6 @@ export interface PackedFilePolicy {
 }
 
 export interface PackedPublicEntryPointSnapshot {
-  readonly entries: ReadonlyArray<PackedEntryContract>;
+  readonly entries: ReadonlyArray<PackedEntrySnapshot>;
   readonly filePolicies: ReadonlyArray<PackedFilePolicy>;
 }

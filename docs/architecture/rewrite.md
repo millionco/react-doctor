@@ -239,6 +239,9 @@ Large rule and fixture files are not automatically architectural problems. Gener
 
 Before moving implementation, freeze the current observable contract.
 
+See [Compatibility guarantees and snapshots](compatibility.md) for the terminology, repository
+layout, and update commands used by these gates.
+
 ### Published packages and modules
 
 Preserve:
@@ -1669,10 +1672,10 @@ Parity evidence:
 
 Completed:
 
-- added an enforced compatibility-delta ledger to `contracts/compatibility-deltas.json`; every
+- added an enforced compatibility-delta ledger to `compatibility/approved-deltas.json`; every
   nonzero migration delta must now provide an ID, owner, scope, rationale, observed difference,
   expiry condition, and removal issue, while the accepted ledger remains empty;
-- made the ledger validator part of both `contracts:check` and the aggregate `check` command;
+- made the ledger validator part of both `compatibility:check` and the aggregate `check` command;
 - extracted score-request metadata assembly from `runInspect` and characterized exact key order,
   nullish omission, and defined empty-string preservation;
 - extracted the CLI's changed-line diagnostic filter while preserving relative/absolute path
@@ -2434,7 +2437,7 @@ How 1:1 is enforced after this migration:
   boundaries;
 - only elapsed time, generated temporary roots, and Oxlint's generated `start_time` are normalized.
   A diagnostic, ordering, output, error, or schema mismatch cannot be waived as “effectively
-  identical”; it needs a reviewed entry in `contracts/compatibility-deltas.json`.
+  identical”; it needs a reviewed entry in `compatibility/approved-deltas.json`.
 
 Final validation evidence:
 

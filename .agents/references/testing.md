@@ -26,8 +26,8 @@ Run each additional check owned by the changed surface:
 ```bash
 nr architecture:check
 nr test:architecture
-nr contracts:check
-nr test:contracts
+nr compatibility:check
+nr test:compatibility
 nr test:build-policy
 nr skills:check
 nr build
@@ -38,6 +38,6 @@ nr smoke:packed-cli-install
 - Run `nr test:deslop` after changing `deslop-js` or `deslop-cli`
 - Run `nr --filter oxlint-plugin-react-doctor gen:check` after changing rule registration or generated inputs
 - Run `nr skills:check` after changing `AGENTS.md`, `.agents/references/`, `.agents/skills/`, or `skills/`
-- Run packed and public-contract checks after changing a published package's files, exports, binary, or bundled assets
+- Run packed compatibility checks after changing a published package's files, exports, binary, or bundled assets
 
 Do not treat a focused test as proof of repository-wide compatibility. Match validation depth to the affected boundary, then run the pre-commit matrix.

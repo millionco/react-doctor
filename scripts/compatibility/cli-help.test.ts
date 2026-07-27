@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { normalizeCliHelp } from "./normalize-cli-help.ts";
 import { parseHelpCommandAliases } from "./parse-help-command-aliases.ts";
 
-describe("CLI help contracts", () => {
+describe("CLI help compatibility", () => {
   it("normalizes only ANSI, line endings, the working directory, and version", () => {
     const output =
       '\u001B[2mUsage:\u001B[22m tool 1.2.3\r\n  --cwd <cwd>  working directory (default: "C:\\repo\\project")\r\n' +

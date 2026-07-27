@@ -5,26 +5,23 @@ import * as path from "node:path";
 import {
   findPublishedPackageManifests,
   type PackageManifest,
-} from "./utils/find-published-package-manifests.ts";
-import { CLI_HELP_INVOCATIONS } from "./utils/cli-help-invocations.ts";
+} from "../utils/find-published-package-manifests.ts";
+import { CLI_HELP_INVOCATIONS } from "./cli-help-invocations.ts";
 import type {
   CliHelpSnapshotEntry,
   PackedPublicEntryPointSnapshot,
-} from "./utils/public-package-contract-types.ts";
-import { readPackageExportValue } from "./utils/read-package-export-value.ts";
+} from "./public-package-snapshot-types.ts";
+import { readPackageExportValue } from "../utils/read-package-export-value.ts";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
-const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
+const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "../..");
 const PACKAGES_DIRECTORY = path.join(REPOSITORY_ROOT, "packages");
-const SNAPSHOT_PATH = path.join(REPOSITORY_ROOT, "contracts", "public-packages.json");
-const CLI_HELP_SNAPSHOT_PATH = path.join(REPOSITORY_ROOT, "contracts", "cli-help.json");
-const PACKED_ENTRY_SNAPSHOT_PATH = path.join(
-  REPOSITORY_ROOT,
-  "contracts",
-  "packed-public-entry-points.json",
-);
+const SNAPSHOT_DIRECTORY = path.join(REPOSITORY_ROOT, "compatibility", "snapshots");
+const PUBLIC_PACKAGES_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "public-packages.json");
+const CLI_HELP_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "cli-help.json");
+const PACKED_ENTRY_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "packed-public-entry-points.json");
 
-interface PublicPackageContract {
+interface PublicPackageSnapshot {
   readonly name: string;
   readonly directory: string;
   readonly type: string | null;
@@ -39,11 +36,11 @@ interface PublicPackageContract {
   readonly peerDependencies: PackageManifest["peerDependencies"] | null;
 }
 
-interface PackageExportsContract {
+interface PackageExportsSnapshot {
   readonly exports?: unknown;
 }
 
-const buildPublicPackageContracts = (): ReadonlyArray<PublicPackageContract> =>
+const buildPublicPackageSnapshots = (): ReadonlyArray<PublicPackageSnapshot> =>
   findPublishedPackageManifests(PACKAGES_DIRECTORY).map(({ directory, manifest }) => ({
     name: manifest.name,
     directory: path.relative(REPOSITORY_ROOT, directory).split(path.sep).join("/"),
@@ -59,12 +56,12 @@ const buildPublicPackageContracts = (): ReadonlyArray<PublicPackageContract> =>
     peerDependencies: manifest.peerDependencies ?? null,
   }));
 
-const serializeContracts = (contracts: ReadonlyArray<PublicPackageContract>): string =>
-  `${JSON.stringify(contracts, null, 2)}\n`;
+const serializeSnapshots = (snapshots: ReadonlyArray<PublicPackageSnapshot>): string =>
+  `${JSON.stringify(snapshots, null, 2)}\n`;
 
 const readJson = <Value>(filePath: string): Value => JSON.parse(fs.readFileSync(filePath, "utf8"));
 
-const collectExportSubpaths = (manifest: PackageExportsContract): string[] => {
+const collectExportSubpaths = (manifest: PackageExportsSnapshot): string[] => {
   if (manifest.exports === undefined || manifest.exports === null) return [];
   if (
     typeof manifest.exports !== "object" ||
@@ -99,8 +96,8 @@ const collectRuntimeModes = (exportValue: unknown): Array<"import" | "require"> 
   return [...runtimeModes].sort();
 };
 
-const validatePackedContractCoverage = (
-  packageContracts: ReadonlyArray<PublicPackageContract>,
+const validatePackedSnapshotCoverage = (
+  packageSnapshots: ReadonlyArray<PublicPackageSnapshot>,
 ): void => {
   for (const snapshotPath of [CLI_HELP_SNAPSHOT_PATH, PACKED_ENTRY_SNAPSHOT_PATH]) {
     if (!fs.existsSync(snapshotPath)) {
@@ -126,10 +123,10 @@ const validatePackedContractCoverage = (
   }
 
   const packedSnapshot = readJson<PackedPublicEntryPointSnapshot>(PACKED_ENTRY_SNAPSHOT_PATH);
-  const expectedEntries = packageContracts
-    .flatMap((packageContract) =>
-      collectExportSubpaths(packageContract).map((subpath) => ({
-        packageName: packageContract.name,
+  const expectedEntries = packageSnapshots
+    .flatMap((packageSnapshot) =>
+      collectExportSubpaths(packageSnapshot).map((subpath) => ({
+        packageName: packageSnapshot.name,
         subpath,
       })),
     )
@@ -153,38 +150,38 @@ const validatePackedContractCoverage = (
     console.error("Packed runtime entry baseline does not cover every published export subpath.");
     process.exit(1);
   }
-  const packageContractByName = new Map(
-    packageContracts.map((packageContract) => [packageContract.name, packageContract]),
+  const packageSnapshotByName = new Map(
+    packageSnapshots.map((packageSnapshot) => [packageSnapshot.name, packageSnapshot]),
   );
-  for (const entryContract of packedSnapshot.entries) {
-    if (entryContract.executionOnly === true) {
-      if (entryContract.exportKeys !== undefined) {
+  for (const entrySnapshot of packedSnapshot.entries) {
+    if (entrySnapshot.executionOnly === true) {
+      if (entrySnapshot.exportKeys !== undefined) {
         console.error(
-          `Execution-only entry ${entryContract.packageName}${entryContract.subpath} must not pin runtime export keys.`,
+          `Execution-only entry ${entrySnapshot.packageName}${entrySnapshot.subpath} must not pin runtime export keys.`,
         );
         process.exit(1);
       }
       continue;
     }
-    if (entryContract.exportKeys === undefined) {
+    if (entrySnapshot.exportKeys === undefined) {
       console.error(
-        `Library entry ${entryContract.packageName}${entryContract.subpath} is missing runtime export keys.`,
+        `Library entry ${entrySnapshot.packageName}${entrySnapshot.subpath} is missing runtime export keys.`,
       );
       process.exit(1);
     }
-    const packageContract = packageContractByName.get(entryContract.packageName);
-    const exportValue = readPackageExportValue(packageContract?.exports, entryContract.subpath);
+    const packageSnapshot = packageSnapshotByName.get(entrySnapshot.packageName);
+    const exportValue = readPackageExportValue(packageSnapshot?.exports, entrySnapshot.subpath);
     const expectedRuntimeModes = collectRuntimeModes(exportValue);
-    const snapshotRuntimeModes = Object.keys(entryContract.exportKeys).sort();
+    const snapshotRuntimeModes = Object.keys(entrySnapshot.exportKeys).sort();
     if (!isDeepStrictEqual(snapshotRuntimeModes, expectedRuntimeModes)) {
       console.error(
-        `Runtime export baseline modes do not match ${entryContract.packageName}${entryContract.subpath}.`,
+        `Runtime export baseline modes do not match ${entrySnapshot.packageName}${entrySnapshot.subpath}.`,
       );
       process.exit(1);
     }
   }
 
-  const expectedPackageNames = packageContracts.map(({ name }) => name).sort();
+  const expectedPackageNames = packageSnapshots.map(({ name }) => name).sort();
   const policyPackageNames = packedSnapshot.filePolicies
     .map(({ packageName }) => packageName)
     .sort();
@@ -197,31 +194,33 @@ const validatePackedContractCoverage = (
 const argumentsList = process.argv.slice(2);
 const shouldUpdate = argumentsList.length === 1 && argumentsList[0] === "--update";
 if (argumentsList.length > 0 && !shouldUpdate) {
-  console.error("Usage: node scripts/check-public-package-contracts.ts [--update]");
+  console.error("Usage: node scripts/compatibility/check-public-packages.ts [--update]");
   process.exit(1);
 }
 
-const currentContracts = buildPublicPackageContracts();
+const currentSnapshots = buildPublicPackageSnapshots();
 
 if (shouldUpdate) {
-  fs.mkdirSync(path.dirname(SNAPSHOT_PATH), { recursive: true });
-  fs.writeFileSync(SNAPSHOT_PATH, serializeContracts(currentContracts));
-  console.log(`Updated ${path.relative(REPOSITORY_ROOT, SNAPSHOT_PATH)}.`);
+  fs.mkdirSync(path.dirname(PUBLIC_PACKAGES_SNAPSHOT_PATH), { recursive: true });
+  fs.writeFileSync(PUBLIC_PACKAGES_SNAPSHOT_PATH, serializeSnapshots(currentSnapshots));
+  console.log(`Updated ${path.relative(REPOSITORY_ROOT, PUBLIC_PACKAGES_SNAPSHOT_PATH)}.`);
   process.exit(0);
 }
 
-if (!fs.existsSync(SNAPSHOT_PATH)) {
-  console.error(`Missing ${path.relative(REPOSITORY_ROOT, SNAPSHOT_PATH)}.`);
-  console.error("Run `nr contracts:update` after reviewing the public surface.");
+if (!fs.existsSync(PUBLIC_PACKAGES_SNAPSHOT_PATH)) {
+  console.error(`Missing ${path.relative(REPOSITORY_ROOT, PUBLIC_PACKAGES_SNAPSHOT_PATH)}.`);
+  console.error("Run `nr compatibility:update` after reviewing the public surface.");
   process.exit(1);
 }
 
-const expectedContracts = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, "utf8"));
-if (!isDeepStrictEqual(currentContracts, expectedContracts)) {
-  console.error("Published package contract drift detected.");
-  console.error("Review the package surface, then run `nr contracts:update` if it is intentional.");
+const expectedSnapshots = JSON.parse(fs.readFileSync(PUBLIC_PACKAGES_SNAPSHOT_PATH, "utf8"));
+if (!isDeepStrictEqual(currentSnapshots, expectedSnapshots)) {
+  console.error("Published package compatibility snapshot drift detected.");
+  console.error(
+    "Review the package surface, then run `nr compatibility:update` if it is intentional.",
+  );
   process.exit(1);
 }
 
-validatePackedContractCoverage(currentContracts);
-console.log(`Public package contracts match for ${currentContracts.length} packages.`);
+validatePackedSnapshotCoverage(currentSnapshots);
+console.log(`Public package compatibility matches for ${currentSnapshots.length} packages.`);

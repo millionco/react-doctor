@@ -15,7 +15,7 @@ const INLINE_CODE_PATTERN = /`([^`\r\n]+)`/g;
 const NR_COMMAND_PATTERN =
   /\bnr(?:[ \t]+--filter[ \t]+([A-Za-z0-9@/._-]+))?[ \t]+([A-Za-z0-9:_-]+)/g;
 const REPOSITORY_PATH_PATTERN =
-  /^(?:AGENTS\.md|action\.yml|package\.json|pnpm-lock\.yaml|(?:\.agents|\.github|contracts|packages|scripts|skills)\/)/;
+  /^(?:AGENTS\.md|action\.yml|package\.json|pnpm-lock\.yaml|(?:\.agents|\.github|compatibility|docs|packages|scripts|skills)\/)/;
 const SKILL_DIRECTORY_RESOURCE_PATTERN =
   /(?:\$(?:\{SKILL_DIR\}|SKILL_DIR)|<skill-directory>)\/((?:assets|scripts)\/[A-Za-z0-9_./-]+)/gi;
 const REPOSITORY_RESOURCE_PATTERN =

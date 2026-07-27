@@ -1,0 +1,148 @@
+:root {
+  color: #d4d4d8;
+  background: #000;
+  font-family: "IBM Plex Mono", monospace;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  overflow: hidden;
+  background: #000;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.video-workspace {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+}
+
+.video-frame {
+  position: relative;
+  flex: none;
+}
+
+.video-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  transform-origin: top left;
+  background: #0a0a0a;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.v2-scan-overlay {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: center;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(10, 10, 10, 0.96) 0%,
+    rgba(10, 10, 10, 0.85) 50%,
+    rgba(10, 10, 10, 0) 100%
+  );
+}
+
+.v2-diagnostic-badge {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.playback-controls {
+  position: fixed;
+  z-index: 50;
+  top: 24px;
+  left: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.playback-controls button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: white;
+  background: rgba(10, 10, 10, 0.8);
+  cursor: pointer;
+}
+
+.playback-controls button:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.playback-controls button:focus-visible,
+.playback-controls input:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 3px;
+}
+
+.playback-controls input {
+  width: 192px;
+  height: 20px;
+  cursor: ew-resize;
+  accent-color: white;
+}
+
+.playback-time {
+  min-width: 86px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

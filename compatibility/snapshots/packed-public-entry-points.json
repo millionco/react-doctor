@@ -191,6 +191,7 @@
         "dist/skills/improve-react/PLAN-TEMPLATE.md",
         "dist/skills/improve-react/SKILL.md",
         "dist/skills/react-doctor/SKILL.md",
+        "dist/skills/react-doctor/references/explain.md",
         "package.json"
       ],
       "allowedPatterns": ["LICENSE", "README.md", "bin/**", "dist/**", "package.json"],

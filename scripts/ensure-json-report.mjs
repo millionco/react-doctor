@@ -32,58 +32,57 @@ const buildFallbackReport = (errorMessage) => ({
   },
 });
 
+const failWithReport = (errorMessage) => {
+  fs.writeFileSync(reportPath, `${JSON.stringify(buildFallbackReport(errorMessage))}\n`);
+  process.exit(1);
+};
+
 const KNOWN_SCHEMA_VERSIONS = new Set([1, 2, 3]);
 
+let raw;
+
 try {
-  const raw = fs.readFileSync(reportPath, "utf8").trim();
-
-  if (!raw) {
-    const fallbackReport = buildFallbackReport(
-      `react-doctor exited with status ${Number.isFinite(status) ? status : 1} but produced an empty report. This may occur when no files were scanned or an unexpected error occurred.`,
-    );
-    fs.writeFileSync(reportPath, `${JSON.stringify(fallbackReport)}\n`);
-    process.exit(1);
-  }
-
-  const parsed = JSON.parse(raw);
-
-  if (!parsed || typeof parsed !== "object") {
-    const fallbackReport = buildFallbackReport(
-      `react-doctor produced invalid JSON output. This may indicate a crash or unexpected error during the scan.`,
-    );
-    fs.writeFileSync(reportPath, `${JSON.stringify(fallbackReport)}\n`);
-    process.exit(1);
-  }
-
-  if (typeof parsed.schemaVersion !== "number") {
-    const fallbackReport = buildFallbackReport(
-      `react-doctor produced a JSON report without a schemaVersion field. The installed react-doctor version may be incompatible with this GitHub Action version.`,
-    );
-    fs.writeFileSync(reportPath, `${JSON.stringify(fallbackReport)}\n`);
-    process.exit(1);
-  }
-
-  if (!KNOWN_SCHEMA_VERSIONS.has(parsed.schemaVersion)) {
-    const fallbackReport = buildFallbackReport(
-      `react-doctor produced a JSON report with schema version ${parsed.schemaVersion}, which is not supported by this GitHub Action version (supports: ${Array.from(KNOWN_SCHEMA_VERSIONS).sort().join(", ")}). Please update the GitHub Action to the latest version (millionco/react-doctor@v2) or pin the react-doctor version to match this Action release.`,
-    );
-    fs.writeFileSync(reportPath, `${JSON.stringify(fallbackReport)}\n`);
-    process.exit(1);
-  }
-
-  if (typeof parsed.ok !== "boolean") {
-    const fallbackReport = buildFallbackReport(
-      `react-doctor produced a JSON report with schema version ${parsed.schemaVersion} but is missing the required 'ok' field. The report may be corrupted.`,
-    );
-    fs.writeFileSync(reportPath, `${JSON.stringify(fallbackReport)}\n`);
-    process.exit(1);
-  }
-
-  process.exit(0);
-} catch (parseError) {
-  const fallbackReport = buildFallbackReport(
-    `react-doctor produced unparseable JSON output. Parse error: ${parseError.message}`,
+  raw = fs.readFileSync(reportPath, "utf8").trim();
+} catch {
+  failWithReport(
+    `react-doctor exited with status ${Number.isFinite(status) ? status : 1} without producing a readable JSON report.`,
   );
-  fs.writeFileSync(reportPath, `${JSON.stringify(fallbackReport)}\n`);
-  process.exit(1);
 }
+
+if (!raw) {
+  failWithReport(
+    `react-doctor exited with status ${Number.isFinite(status) ? status : 1} but produced an empty report.`,
+  );
+}
+
+let parsed;
+
+try {
+  parsed = JSON.parse(raw);
+} catch {
+  failWithReport("react-doctor produced output that is not valid JSON.");
+}
+
+if (!parsed || typeof parsed !== "object") {
+  failWithReport("react-doctor produced JSON that is not a report object.");
+}
+
+if (typeof parsed.schemaVersion !== "number") {
+  failWithReport(
+    "react-doctor produced a JSON report without a schemaVersion. The installed CLI may be incompatible with this GitHub Action version.",
+  );
+}
+
+if (!KNOWN_SCHEMA_VERSIONS.has(parsed.schemaVersion)) {
+  failWithReport(
+    `react-doctor produced schema version ${parsed.schemaVersion}, but this GitHub Action supports ${Array.from(KNOWN_SCHEMA_VERSIONS).sort().join(", ")}. Update millionco/react-doctor@v2 or pin the CLI version to match the Action release.`,
+  );
+}
+
+if (typeof parsed.ok !== "boolean") {
+  failWithReport(
+    `react-doctor produced a schema version ${parsed.schemaVersion} report without the required ok field.`,
+  );
+}
+
+process.exit(0);

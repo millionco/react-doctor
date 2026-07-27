@@ -969,6 +969,31 @@ describe("discoverProject", () => {
     expect(projectInfo.reactMajorVersion).toBe(19);
   });
 
+  it("does not mask an unresolved leaf React declaration with the monorepo version", () => {
+    const monorepoRoot = path.join(tempDirectory, "leaf-react-declaration-isolation");
+    const packageDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "root",
+        workspaces: ["apps/*"],
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({
+        name: "web",
+        dependencies: { react: "workspace:*" },
+      }),
+    );
+
+    const projectInfo = discoverProject(packageDirectory);
+    expect(projectInfo.reactVersion).toBe("workspace:*");
+    expect(projectInfo.reactMajorVersion).toBeNull();
+  });
+
   it("uses monorepo React fallback for Next leaf packages without direct React declarations", () => {
     const monorepoRoot = path.join(tempDirectory, "next-leaf-uses-root-react-fallback");
     fs.mkdirSync(path.join(monorepoRoot, "packages", "next-adapter"), { recursive: true });

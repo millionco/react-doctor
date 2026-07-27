@@ -662,7 +662,7 @@ export const findDependencyInfoFromMonorepoRoot = (
   return {
     reactVersion: shouldUseReactFallback
       ? (reactCatalogVersion ?? rootInfo.reactVersion ?? workspaceFacts.reactVersion)
-      : (rootInfo.reactVersion ?? workspaceFacts.reactVersion),
+      : null,
     tailwindVersion: shouldUseTailwindFallback
       ? (tailwindCatalogVersion ?? rootInfo.tailwindVersion ?? workspaceFacts.tailwindVersion)
       : null,

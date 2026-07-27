@@ -256,13 +256,13 @@ describe("spawnLintBatches shared slot timing", () => {
       rootDirectory: process.cwd(),
       nodeBinaryPath: process.execPath,
       project,
-      spawnTimeoutMs: 250,
+      spawnTimeoutMs: 2_000,
       spawnSlots,
       onFileProgress: (scannedFileCount, totalFileCount) => {
         progressUpdates.push([scannedFileCount, totalFileCount]);
       },
     });
-    await new Promise<void>((resolve) => setTimeout(resolve, 400));
+    await new Promise<void>((resolve) => setTimeout(resolve, 2_200));
     expect(progressUpdates).toEqual([]);
     releaseHeldSlot();
     await heldSlot;

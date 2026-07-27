@@ -199,7 +199,7 @@ describe("persistent oxlint worker pool prototype", () => {
       expect(secondDiagnostics).toEqual(firstDiagnostics);
       expect(firstDiagnostics).toMatchObject([
         {
-          filePath: path.join("src", "file.ts"),
+          filePath: "src/file.ts",
           plugin: "react-doctor",
           rule: "no-eval",
           severity: "error",

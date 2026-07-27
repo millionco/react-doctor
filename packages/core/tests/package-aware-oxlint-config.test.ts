@@ -122,7 +122,15 @@ describe("package-aware oxlint config", () => {
       },
       {
         relativeDirectory: "packages/legacy",
-        capabilities: ["client-only", "react", "react:17", "react:18", "vite"],
+        capabilities: [
+          "client-only",
+          "pre-es2023",
+          "react",
+          "react:17",
+          "react:18",
+          "typescript",
+          "vite",
+        ],
         dependencies: [
           {
             name: "react",
@@ -177,14 +185,16 @@ describe("package-aware oxlint config", () => {
           "nextjs",
           "nextjs:15",
           "nextjs:16",
+          "nextjs:static-export",
           "react",
+          "react-compiler",
           "react:17",
           "react:18",
           "react:19",
           "react:19.2",
-          "server-actions",
           "ssr",
           "tanstack-query",
+          "typescript",
         ],
         dependencies: [
           {

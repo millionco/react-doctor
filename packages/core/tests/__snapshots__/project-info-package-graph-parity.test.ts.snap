@@ -459,7 +459,7 @@ exports[`ProjectInfo PackageGraph parity > preserves package-local-capabilities 
     "rootDirectory": "<fixture:package-local-capabilities>",
     "shopifyFlashListMajorVersion": null,
     "shopifyFlashListVersion": null,
-    "sourceFileCount": 3,
+    "sourceFileCount": 4,
     "styledComponentsVersion": null,
     "tailwindVersion": null,
     "tanstackQueryVersion": "^5.66.0",

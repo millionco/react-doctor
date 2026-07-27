@@ -61,7 +61,7 @@ describe("package graph", () => {
     const modernDirectory = path.join(graph.rootDirectory, "packages", "modern");
 
     expect(graph.getCapabilities(legacyDirectory)).toEqual(
-      new Set(["vite", "react", "react:17", "react:18", "client-only"]),
+      new Set(["vite", "react", "react:17", "react:18", "client-only", "typescript", "pre-es2023"]),
     );
     expect(graph.getCapabilities(mobileDirectory)).toEqual(
       new Set([
@@ -79,15 +79,17 @@ describe("package graph", () => {
       new Set([
         "nextjs",
         "react",
-        "server-actions",
         "ssr",
+        "nextjs:static-export",
         "nextjs:15",
         "nextjs:16",
         "react:17",
         "react:18",
         "react:19",
         "react:19.2",
+        "react-compiler",
         "tanstack-query",
+        "typescript",
       ]),
     );
     expect(graph.getCapabilitiesForFile(path.join(modernDirectory, "src", "app.tsx"))).toBe(

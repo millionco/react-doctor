@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import type { Capability } from "oxlint-plugin-react-doctor/contracts";
 import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
 import type { ProjectInfo } from "../types/index.js";
@@ -12,8 +13,15 @@ import {
   REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES,
   TANSTACK_REACT_QUERY_PACKAGE_NAMES,
 } from "./capability-dependency-names.js";
+import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
 import { REACT_SECTIONS, TAILWIND_ZOD_SECTIONS } from "./dependencies.js";
+import {
+  detectNextjsStaticExport,
+  detectReactCompiler,
+  detectReactCompilerLintPlugin,
+} from "./detectors.js";
 import { findPreferredDependency } from "./find-preferred-dependency.js";
+import { isFile } from "./fs-utils.js";
 import { hasI18nDependency } from "./has-i18n-dependency.js";
 import type {
   PackageGraph,
@@ -109,6 +117,7 @@ export const buildPackageCapabilities = (
     packageNode.dependencyInfo.framework === "nextjs"
       ? getDependencyVersion(packageGraph, packageNode, "next")
       : null;
+  const hasTypeScript = isFile(path.join(packageNode.directory, "tsconfig.json"));
   const hasReactThreeFiber = REACT_THREE_FIBER_ECOSYSTEM_DEPENDENCY_NAMES.some(
     (dependencyName) => getDependencyVersion(packageGraph, packageNode, dependencyName) !== null,
   );
@@ -136,9 +145,12 @@ export const buildPackageCapabilities = (
     zustandVersion,
     zustandMajorVersion: zustandVersion === null ? null : getLowestDependencyMajor(zustandVersion),
     framework: packageNode.dependencyInfo.framework,
-    hasTypeScript: false,
-    hasReactCompiler: false,
-    hasReactCompilerLintPlugin: false,
+    hasTypeScript,
+    hasReactCompiler: detectReactCompiler(packageNode.directory, packageNode.manifest),
+    hasReactCompilerLintPlugin: detectReactCompilerLintPlugin(
+      packageNode.directory,
+      packageNode.manifest,
+    ),
     hasTanStackQuery: tanstackQuery !== null,
     hasI18nLibrary: hasI18nDependency(packageNode.manifest),
     tanstackQueryVersion: tanstackQuery?.value ?? null,
@@ -171,8 +183,10 @@ export const buildPackageCapabilities = (
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
     reanimatedVersion,
-    isPreES2023Target: false,
-    isStaticExport: false,
+    isPreES2023Target: hasTypeScript && detectPreES2023Target(packageNode.directory),
+    isStaticExport:
+      packageNode.dependencyInfo.framework === "nextjs" &&
+      detectNextjsStaticExport(packageNode.directory),
     sourceFileCount: 0,
   };
   return buildCapabilities(projectInfo);

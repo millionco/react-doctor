@@ -724,8 +724,8 @@ const oxlintBinaryPath = path.join(
 const pluginPath = path.resolve(import.meta.dirname, "../../dist/index.js");
 
 const runOxlintProject = (input: OxlintProjectParityInput): OxlintRunResult => {
-  const temporaryDirectory = fs.mkdtempSync(
-    path.join(os.tmpdir(), "react-doctor-evaluator-parity-"),
+  const temporaryDirectory = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-evaluator-parity-")),
   );
   temporaryDirectories.push(temporaryDirectory);
   const configPath = path.join(temporaryDirectory, "oxlintrc.json");

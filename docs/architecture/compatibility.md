@@ -11,16 +11,18 @@ The word “contract” is still used in code where it has a precise meaning:
 - a contract test runs multiple implementations through the same behavior suite.
 
 The old root `contracts/` directory did not contain interfaces or specifications. It contained
-machine-generated golden snapshots, so it now lives under `compatibility/` with explicit names.
+machine-generated golden snapshots, so that evidence now lives beside the repository-wide tooling
+that owns it under `scripts/compatibility/`.
 
 ## Repository layout
 
-- `compatibility/snapshots/public-packages.json` records published package manifests and exports;
-- `compatibility/snapshots/packed-public-entry-points.json` records installed runtime entry points,
-  export keys, and packed-file policies;
-- `compatibility/snapshots/cli-help.json` records every supported CLI help surface;
-- `compatibility/approved-deltas.json` records reviewed temporary differences between old and new
-  implementations.
+- `scripts/compatibility/snapshots/public-packages.json` records published package manifests and
+  exports;
+- `scripts/compatibility/snapshots/packed-public-entry-points.json` records installed runtime entry
+  points, export keys, and packed-file policies;
+- `scripts/compatibility/snapshots/cli-help.json` records every supported CLI help surface;
+- `scripts/compatibility/approved-deltas.json` records reviewed temporary differences between old
+  and new implementations.
 
 The public `oxlint-plugin-react-doctor/contracts` package subpath is different: it is a supported API
 entry point for shared rule and capability vocabulary. Renaming it would break consumers, so the
@@ -47,5 +49,5 @@ change is additive or otherwise authorized before committing it.
 ## Approved differences
 
 An old/new mismatch must not be hidden by loose normalization. Add a temporary entry to
-`compatibility/approved-deltas.json` only when it has an owner, rationale, exact observed
+`scripts/compatibility/approved-deltas.json` only when it has an owner, rationale, exact observed
 difference, expiry condition, and removal issue. The normal state is an empty list.

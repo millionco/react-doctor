@@ -16,7 +16,7 @@ import { readPackageExportValue } from "../utils/read-package-export-value.ts";
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "../..");
 const PACKAGES_DIRECTORY = path.join(REPOSITORY_ROOT, "packages");
-const SNAPSHOT_DIRECTORY = path.join(REPOSITORY_ROOT, "compatibility", "snapshots");
+const SNAPSHOT_DIRECTORY = path.join(SCRIPT_DIRECTORY, "snapshots");
 const PUBLIC_PACKAGES_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "public-packages.json");
 const CLI_HELP_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "cli-help.json");
 const PACKED_ENTRY_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "packed-public-entry-points.json");

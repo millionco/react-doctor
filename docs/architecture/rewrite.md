@@ -1672,7 +1672,7 @@ Parity evidence:
 
 Completed:
 
-- added an enforced compatibility-delta ledger to `compatibility/approved-deltas.json`; every
+- added an enforced compatibility-delta ledger to `scripts/compatibility/approved-deltas.json`; every
   nonzero migration delta must now provide an ID, owner, scope, rationale, observed difference,
   expiry condition, and removal issue, while the accepted ledger remains empty;
 - made the ledger validator part of both `compatibility:check` and the aggregate `check` command;
@@ -2437,7 +2437,7 @@ How 1:1 is enforced after this migration:
   boundaries;
 - only elapsed time, generated temporary roots, and Oxlint's generated `start_time` are normalized.
   A diagnostic, ordering, output, error, or schema mismatch cannot be waived as “effectively
-  identical”; it needs a reviewed entry in `compatibility/approved-deltas.json`.
+  identical”; it needs a reviewed entry in `scripts/compatibility/approved-deltas.json`.
 
 Final validation evidence:
 

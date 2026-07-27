@@ -33,7 +33,7 @@ interface StringRecord {
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const FIXTURE_DIRECTORY = path.resolve(REPOSITORY_ROOT, "packages/core/tests/fixtures/basic-react");
-const SNAPSHOT_DIRECTORY = path.join(REPOSITORY_ROOT, "compatibility", "snapshots");
+const SNAPSHOT_DIRECTORY = path.join(SCRIPT_DIRECTORY, "compatibility", "snapshots");
 const CLI_HELP_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "cli-help.json");
 const PACKED_ENTRY_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "packed-public-entry-points.json");
 const FORBIDDEN_INSTALLED_PACKAGES: readonly string[] = [

@@ -137,17 +137,38 @@ describe("package-aware rule context", () => {
     );
   });
 
-  it("preserves project-level capabilities that are not package-derived", () => {
+  it("preserves project-level capabilities that package contexts do not derive", () => {
     const rule: Rule = {
+      id: "target-blank-disabled",
+      severity: "warn",
+      disabledWhen: ["target-blank-needs-explicit-protection"],
+      create: () => ({}),
+    };
+    const settings = buildSettings(true);
+    settings["react-doctor"].capabilities.push("target-blank-needs-explicit-protection");
+
+    expect(didCreateRule(rule, "/workspace/packages/modern/src/app.tsx", settings)).toBe(false);
+  });
+
+  it("does not leak package-derived project capabilities into an owning package", () => {
+    const compilerDisabledRule: Rule = {
       id: "compiler-disabled",
       severity: "warn",
       disabledWhen: ["react-compiler"],
       create: () => ({}),
     };
+    const requiresTypeScriptRule: Rule = {
+      id: "requires-typescript",
+      severity: "warn",
+      requires: ["typescript"],
+      create: () => ({}),
+    };
     const settings = buildSettings(true);
-    settings["react-doctor"].capabilities.push("react-compiler");
+    settings["react-doctor"].capabilities.push("react-compiler", "typescript");
+    const filename = "/workspace/packages/modern/src/app.tsx";
 
-    expect(didCreateRule(rule, "/workspace/packages/modern/src/app.tsx", settings)).toBe(false);
+    expect(didCreateRule(compilerDisabledRule, filename, settings)).toBe(true);
+    expect(didCreateRule(requiresTypeScriptRule, filename, settings)).toBe(false);
   });
 
   it("falls back to project capabilities when no owning package is available", () => {

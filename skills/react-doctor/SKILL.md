@@ -37,6 +37,7 @@ The playbook is the single source of truth — a scan → filter → triage → 
 Pair it with the matching per-rule prompts at `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md` (fetched on demand inside the playbook) so each fix uses the canonical, reviewer-tested recipe.
 
 **Security note:** For environments that require vendored instructions, download and commit the playbook locally:
+
 ```bash
 mkdir -p .react-doctor
 curl https://www.react.doctor/prompts/react-doctor-agent.md > .react-doctor/playbook.md

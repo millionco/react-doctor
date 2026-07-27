@@ -779,7 +779,7 @@ const runInspectWithRuntime = async (
       runConsole(
         Console.log(
           highlighter.gray(
-            `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@0.x react-doctor@0.x`,
+            `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@0.x`,
           ),
         ),
       );

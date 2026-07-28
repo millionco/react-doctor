@@ -6,7 +6,7 @@ import {
   MOTION_LIBRARY_PACKAGES as LEGACY_MOTION_LIBRARY_PACKAGES,
 } from "./index.js";
 
-describe("contracts entry", () => {
+describe("shared vocabulary entry", () => {
   it("exposes the shared runtime vocabulary", () => {
     expect(FRAMEWORK_TOKENS).toContain("react-native");
     expect(FRAMEWORK_TOKENS).toContain("unknown");
@@ -15,7 +15,7 @@ describe("contracts entry", () => {
     expect(LEGACY_MOTION_LIBRARY_PACKAGES).toBe(MOTION_LIBRARY_PACKAGES);
   });
 
-  it("depends only on side-effect-free contract modules", () => {
+  it("depends only on side-effect-free modules", () => {
     const source = fs.readFileSync(new URL("./contracts.ts", import.meta.url), "utf8");
     const importSpecifiers = [...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1]);
 

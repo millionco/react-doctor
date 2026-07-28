@@ -83,7 +83,7 @@ const RUNTIME_LAYER_PATH_PATTERNS = [
 
 export const DEFAULT_FORBIDDEN_DEPENDENCY_RULES: ReadonlyArray<ForbiddenDependencyRule> = [
   {
-    name: "neutral-contracts",
+    name: "neutral-foundations",
     sourcePathPatterns: [
       /\/src\/types\//,
       /\/src\/contracts(?:\/|\.[cm]?[jt]sx?$)/,
@@ -92,7 +92,7 @@ export const DEFAULT_FORBIDDEN_DEPENDENCY_RULES: ReadonlyArray<ForbiddenDependen
     ],
     forbiddenTargetPathPatterns: RUNTIME_LAYER_PATH_PATTERNS,
     reason:
-      "Neutral contracts must remain independent of CLI, telemetry, services, runners, and orchestrators.",
+      "Foundation types, schemas, and errors must remain independent of CLI, telemetry, services, runners, and orchestrators.",
   },
   {
     name: "project-discovery",

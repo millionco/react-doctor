@@ -194,15 +194,15 @@ describe("source architecture", () => {
             rule: dependency.ruleName,
           })),
           [
-            { line: 2, typeOnly: false, dynamic: true, rule: "neutral-contracts" },
-            { line: 1, typeOnly: true, dynamic: false, rule: "neutral-contracts" },
+            { line: 2, typeOnly: false, dynamic: true, rule: "neutral-foundations" },
+            { line: 1, typeOnly: true, dynamic: false, rule: "neutral-foundations" },
           ],
         );
 
         const output = formatSourceArchitectureFailures(rootDirectory, result);
         assert.match(output, /packages\/example\/src\/contracts\.ts:1/);
         assert.match(output, /packages\/example\/src\/cli\/state\.ts/);
-        assert.match(output, /Neutral contracts must remain independent/);
+        assert.match(output, /Foundation types, schemas, and errors must remain independent/);
       },
     );
   });

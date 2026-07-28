@@ -11,7 +11,7 @@ const expectDerivedStateDiagnostics = (code: string, diagnosticCount: number): v
   expect(result.diagnostics).toHaveLength(diagnosticCount);
 };
 
-describe("derived-state effect-write contract", () => {
+describe("derived-state effect-write behavior", () => {
   it("reports direct aliases and branch-local copies from props or state", () => {
     expectDerivedStateDiagnostics(
       `function Example({ value, enabled }) {
@@ -346,7 +346,7 @@ describe("derived-state effect-write contract", () => {
   });
 });
 
-describe("derived-state family contracts", () => {
+describe("derived-state family behavior", () => {
   const code = `function Example({ value }) {
     const [mirror, setMirror] = useState(null);
     useEffect(() => {

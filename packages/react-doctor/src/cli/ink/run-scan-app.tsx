@@ -20,7 +20,7 @@ import type {
   WorkspacePackage,
 } from "../../core/core-types.js";
 import { createInvocationInspect } from "../../inspect.js";
-import type { ReactDoctorInspectOptions } from "../../contracts/inspect-options.js";
+import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";

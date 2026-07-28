@@ -12,10 +12,7 @@ import {
   type ResolveBaselineComparisonInput,
 } from "../src/cli/utils/resolve-baseline-comparison.js";
 import { resolveInspectOptions } from "../src/cli/utils/resolve-inspect-options.js";
-import type {
-  ReactDoctorInspectOptions,
-  ResolvedInspectOptions,
-} from "../src/contracts/inspect-options.js";
+import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "../src/inspect-options.js";
 
 vi.mock("../src/cli/utils/materialize-baseline-files.js", () => ({
   materializeBaselineFiles: vi.fn(),

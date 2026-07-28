@@ -1,7 +1,7 @@
 import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
 import { computeExplicitLintIncludePaths } from "./explicit-lint-include-paths.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
-import type { InspectInput } from "./run-inspect-contracts.js";
+import type { InspectInput } from "./run-inspect-types.js";
 import type { ReactDoctorConfig } from "./types/index.js";
 
 interface InspectScanSettings {

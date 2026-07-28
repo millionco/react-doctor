@@ -1,4 +1,4 @@
-import type { GitBaselineDiffPlan } from "./git-contracts.js";
+import type { GitBaselineDiffPlan } from "./git-types.js";
 
 export const trimGitOutputOrNull = (value: string): string | null => {
   const trimmedValue = value.trim();

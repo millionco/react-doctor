@@ -21,15 +21,15 @@ Use this reference when choosing package ownership or an import direction. Root 
 
 Keep dependencies pointing down this list:
 
-1. Neutral contracts in `packages/core/src/types/`, `packages/core/src/schemas.ts`, and `packages/core/src/errors.ts`
+1. Foundation types in `packages/core/src/types/`, `packages/core/src/schemas.ts`, and `packages/core/src/errors.ts`
 2. Project discovery and the normalized package graph in `packages/core/src/project-info/`
 3. Domain logic and leaf utilities
-4. Service contracts and implementations in `packages/core/src/services/`
+4. Service interfaces and implementations in `packages/core/src/services/`
 5. Backend implementations in `packages/core/src/runners/`
 6. Scan orchestration in `packages/core/src/run-inspect.ts`
 7. API, CLI, language-server, and editor adapters
 
-Neutral contracts must not import services, runners, orchestration, telemetry, or CLI code. Project discovery must remain below runtime services and orchestration. Leaf utilities must not depend on those runtime layers.
+Foundation types, schemas, and errors must not import services, runners, orchestration, telemetry, or CLI code. Project discovery must remain below runtime services and orchestration. Leaf utilities must not depend on those runtime layers.
 
 The package graph owns workspace package boundaries, dependency declarations, catalog and workspace resolution, and package-local capability queries. Keep legacy `ProjectInfo` as a compatibility projection rather than a second discovery model.
 

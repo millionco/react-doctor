@@ -50,7 +50,7 @@ Emit sites pass only metric-specific attributes. Project shape comes from `recor
 
 The richest telemetry is one high-dimensionality wide event per scan, not a collection of narrow counters. `recordRunEvent` and `buildRunEventAttributes` live in `packages/react-doctor/src/cli/utils/build-run-event.ts`.
 
-`packages/react-doctor/src/cli/utils/render-inspect-result.ts` records a successful scan after `recordScanMetrics`. `packages/react-doctor/src/inspect.ts` records failures at the outer span boundary and rethrows the original error. Both paths preserve the `outcome.status`, `outcome.exitCode`, and `outcome.errorTag` contract.
+`packages/react-doctor/src/cli/utils/render-inspect-result.ts` records a successful scan after `recordScanMetrics`. `packages/react-doctor/src/inspect.ts` records failures at the outer span boundary and rethrows the original error. Both paths preserve the `outcome.status`, `outcome.exitCode`, and `outcome.errorTag` fields.
 
 The root span already contains run tags and project shape. The wide event adds only the remaining fields. Namespace every attribute through `withNamespace` in `packages/react-doctor/src/cli/utils/with-namespace.ts`:
 

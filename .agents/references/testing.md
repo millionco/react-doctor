@@ -6,7 +6,7 @@ Tests live beside source in package `tests/` directories or next to the implemen
 
 - `packages/core/tests/`: engine, service, discovery, and orchestration tests
 - `packages/api/tests/`: API shell and boundary tests
-- `packages/react-doctor/tests/`: CLI, rendering, cache, contract, and end-to-end tests
+- `packages/react-doctor/tests/`: CLI, rendering, cache, compatibility, and end-to-end tests
 - `packages/oxlint-plugin-react-doctor/src/`: rule, semantic-engine, and evaluator tests
 
 The test framework is `vite-plus/test`, the existing Vitest wrapper.

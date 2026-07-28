@@ -1,7 +1,4 @@
-import type {
-  ReactDoctorInspectOptions,
-  ResolvedInspectOptions,
-} from "../../contracts/inspect-options.js";
+import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "../../inspect-options.js";
 import { DEFAULT_SHOW_WARNINGS } from "../../core/core-configuration.js";
 import type { ReactDoctorConfig } from "../../core/core-configuration.js";
 import { resolveCliCategories } from "./resolve-cli-categories.js";

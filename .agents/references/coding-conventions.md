@@ -11,7 +11,7 @@ Use this reference for every code change. Root [AGENTS.md](../../AGENTS.md) make
 
 ## TypeScript
 
-- Use an interface for an object contract that callers construct, implement, or extend
+- Use an interface for an object shape that callers construct, implement, or extend
 - Use a type alias for unions, primitives, tuples, function signatures, mapped or conditional types, schema-derived types, and re-exports
 - Declare shared types at module scope in the narrowest owning module. Do not add ambient global declarations unless a global runtime integration requires them
 - Prefer arrow functions when an arrow and a declaration express the same behavior. Use declarations when the language or framework requires them, including generators and overloads

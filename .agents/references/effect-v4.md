@@ -22,7 +22,7 @@ The codebase uses `effect@4.0.0-beta.70`. The conventions below are binding. Opt
 - **`Effect.catchReasons(errorTag, cases, orElse?)`**: dispatch on a `Schema.TaggedErrorClass` reason union. Each entry catches one reason `_tag`; optional `orElse` handles unmatched reasons. NEVER write manual reason ladders inside a catch block. See `packages/core/src/errors.ts` and `packages/api/src/diagnose.ts`
 - **`Effect.catchTag(tag, handler)`**: recover one tagged error, such as `Effect.catchTag("PlatformError", ...)`
 - **`Effect.catch`**: use for catch-all recovery; it replaced v3 `Effect.catchAll`
-- **`Effect.die(error)`**: promote a recovered value into a defect that `runPromise` re-throws unchanged. Use it in `catchReasons` handlers where the programmatic contract still requires the legacy `Error` class
+- **`Effect.die(error)`**: promote a recovered value into a defect that `runPromise` re-throws unchanged. Use it in `catchReasons` handlers where the programmatic API still requires the legacy `Error` class
 - NEVER use `try/catch` inside `Effect.gen`. Wrap synchronous throws in `Effect.try({ try, catch })` and recover with `Effect.orElseSucceed` or `Effect.catch`. See `packages/react-doctor/src/cli/utils/render-summary.ts`
 
 ## Generator hygiene

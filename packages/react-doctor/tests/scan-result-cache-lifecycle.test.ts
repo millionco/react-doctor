@@ -18,10 +18,7 @@ import {
 import { resolveInspectOptions } from "../src/cli/utils/resolve-inspect-options.js";
 import { VERSION } from "../src/cli/utils/version.js";
 import { recordSentryProjectContext } from "../src/cli/utils/with-sentry-run-span.js";
-import type {
-  ReactDoctorInspectOptions,
-  ResolvedInspectOptions,
-} from "../src/contracts/inspect-options.js";
+import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "../src/inspect-options.js";
 
 vi.mock("../src/cli/utils/record-metric.js", () => ({
   recordCount: vi.fn(),

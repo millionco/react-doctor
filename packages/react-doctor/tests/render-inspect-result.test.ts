@@ -18,10 +18,7 @@ import {
 } from "../src/cli/utils/render-summary.js";
 import type { CachedScanPayload } from "../src/cli/utils/scan-result-cache.js";
 import { resolveInspectOptions } from "../src/cli/utils/resolve-inspect-options.js";
-import type {
-  ReactDoctorInspectOptions,
-  ResolvedInspectOptions,
-} from "../src/contracts/inspect-options.js";
+import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "../src/inspect-options.js";
 
 vi.mock("../src/cli/utils/build-run-event.js", () => ({
   recordRunEvent: vi.fn(),

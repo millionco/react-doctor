@@ -48,16 +48,13 @@ import { resolveBaselineComparison } from "./cli/utils/resolve-baseline-comparis
 import type { OxlintInvocationRuntime } from "./cli/utils/resolve-baseline-comparison.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
-import type {
-  ReactDoctorInspectOptions,
-  ResolvedInspectOptions,
-} from "./contracts/inspect-options.js";
+import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "./inspect-options.js";
 
 export type {
   InspectUiLayers,
   ReactDoctorInspectOptions,
   ResolvedInspectOptions,
-} from "./contracts/inspect-options.js";
+} from "./inspect-options.js";
 
 const runConsole = (effect: Effect.Effect<void>): void => {
   Effect.runSync(effect);

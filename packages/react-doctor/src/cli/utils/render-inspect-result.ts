@@ -6,7 +6,7 @@ import { filterDiagnosticsForSurface } from "../../core/core-diagnostic-semantic
 import { highlighter } from "../../core/core-presentation.js";
 import { buildSkippedChecks } from "../../core/core-reporting.js";
 import type { Diagnostic, InspectResult, ScoreResult } from "../../core/core-types.js";
-import type { ResolvedInspectOptions } from "../../contracts/inspect-options.js";
+import type { ResolvedInspectOptions } from "../../inspect-options.js";
 import { buildInspectResult } from "./build-inspect-result.js";
 import { buildNoScoreMessage } from "./build-no-score-message.js";
 import { recordRunEvent } from "./build-run-event.js";

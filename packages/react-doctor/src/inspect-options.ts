@@ -4,7 +4,7 @@ import type {
   InspectOptions,
   Progress,
   Reporter,
-} from "../core/core-types.js";
+} from "./core/core-types.js";
 import type * as Layer from "effect/Layer";
 
 export interface InspectUiLayers {

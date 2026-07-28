@@ -21,7 +21,7 @@ import { dedupeDiagnostics } from "../src/utils/dedupe-diagnostics.js";
 
 const project: ProjectInfo = {
   rootDirectory: "/repo",
-  projectName: "postprocessing-contract",
+  projectName: "postprocessing-parity",
   reactVersion: "19.0.0",
   reactMajorVersion: 19,
   tailwindVersion: null,
@@ -202,7 +202,7 @@ const expectedFinalDiagnostics = [
   restampedDuplicate,
 ];
 
-describe("diagnostic post-processing compatibility contract", () => {
+describe("diagnostic post-processing parity", () => {
   it("freezes backend acceptance through reporter, score, and final output boundaries", async () => {
     expect(backendDiagnostics).toEqual([
       exactDiagnostic,
@@ -252,7 +252,7 @@ describe("diagnostic post-processing compatibility contract", () => {
           DeadCode.layerOf([]),
           Git.layerOf({
             headSha: "abc123",
-            githubRepo: "millionco/postprocessing-contract",
+            githubRepo: "millionco/postprocessing-parity",
             defaultBranch: "main",
           }),
           scoreLayer,

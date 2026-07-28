@@ -1,5 +1,5 @@
 import type { ChangedFileLineRanges } from "../../core/core-types.js";
-import type { ResolvedInspectOptions } from "../../contracts/inspect-options.js";
+import type { ResolvedInspectOptions } from "../../inspect-options.js";
 
 export interface ScanResultCachePolicy {
   readonly lint: boolean;

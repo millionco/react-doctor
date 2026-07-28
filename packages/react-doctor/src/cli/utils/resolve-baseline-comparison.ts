@@ -13,7 +13,7 @@ import { computeDiagnosticDelta } from "../../core/core-diagnostic-semantics.js"
 import { restoreLegacyThrow } from "../../core/core-errors.js";
 import { filterSourceFiles } from "../../core/core-project-discovery.js";
 import type { Diagnostic, InspectResult, ProjectInfo, WorkerSlots } from "../../core/core-types.js";
-import type { ResolvedInspectOptions } from "../../contracts/inspect-options.js";
+import type { ResolvedInspectOptions } from "../../inspect-options.js";
 import { buildRuntimeLayers } from "./build-runtime-layers.js";
 import { BASELINE_FILES_TEMP_DIR_PREFIX } from "./constants.js";
 import { countDeadlineSkippedFiles } from "./count-deadline-skipped-files.js";

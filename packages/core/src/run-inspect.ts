@@ -24,7 +24,7 @@ import {
   ScanDeadlineMs,
 } from "./refs.js";
 import { resolveInspectScanSettings } from "./resolve-inspect-scan-settings.js";
-import type { InspectHooks, InspectInput } from "./run-inspect-contracts.js";
+import type { InspectHooks, InspectInput } from "./run-inspect-types.js";
 import { type LintFailureState, runLintPhase } from "./run-lint-phase.js";
 import { startScoreMetadataExecution } from "./score-metadata-execution.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
@@ -43,7 +43,7 @@ import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 import { resolveScanFileCoverage } from "./utils/resolve-scan-file-coverage.js";
 
 export type { InspectOutput } from "./assemble-inspect-output.js";
-export type { InspectHooks, InspectInput } from "./run-inspect-contracts.js";
+export type { InspectHooks, InspectInput } from "./run-inspect-types.js";
 
 const NO_HOOKS: Required<InspectHooks<never>> = {
   beforeLint: () => Effect.void,

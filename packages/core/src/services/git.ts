@@ -29,9 +29,9 @@ import type {
   GitDiffSelection,
   GitGrepResult,
   GitService,
-} from "./git-contracts.js";
+} from "./git-types.js";
 
-export type { GitBaselineDiffPlan, GitDiffSelection } from "./git-contracts.js";
+export type { GitBaselineDiffPlan, GitDiffSelection } from "./git-types.js";
 
 const parseGithubRepo = (repo: string): { owner: string; name: string } | null => {
   const [owner, name, ...extraParts] = repo.split("/");

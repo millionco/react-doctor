@@ -51,9 +51,26 @@ declare module "react" {
     getServerSnapshot?: () => Snapshot,
   ) => Snapshot;
 
-  export class Component<Properties = Record<string, unknown>> {
+  export class Component<Properties = Record<string, unknown>, State = Record<string, unknown>> {
+    constructor(properties: Properties);
     props: Properties;
+    state: State;
+    setState(
+      nextState:
+        | Partial<State>
+        | null
+        | ((
+            previousState: Readonly<State>,
+            properties: Readonly<Properties>,
+          ) => Partial<State> | State | null),
+      callback?: () => void,
+    ): void;
   }
+
+  export class PureComponent<
+    Properties = Record<string, unknown>,
+    State = Record<string, unknown>,
+  > extends Component<Properties, State> {}
 }
 
 declare module "react/jsx-runtime" {

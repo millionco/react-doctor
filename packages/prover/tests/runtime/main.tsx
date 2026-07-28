@@ -16,6 +16,8 @@ import type { ChangeEvent } from "react";
 import { createRoot } from "react-dom/client";
 import {
   FAST_QUERY_DELAY_MS,
+  CLASS_UPDATE_INITIAL_REVISION,
+  CLASS_UPDATE_NEXT_REVISION,
   INITIAL_CALLBACK_REVISION,
   NEXT_CALLBACK_REVISION,
   PRIMARY_STORE_INITIAL_VERSION,
@@ -32,6 +34,8 @@ declare global {
     classListenerHits: number;
     classMounts: number;
     classSchedulerHits: number;
+    classStateUpdates: number;
+    classStateWrites: number;
     classUnmounts: number;
     listenerHits: number;
     observerHits: number;
@@ -43,6 +47,8 @@ window.effectEventSetupRuns = 0;
 window.classListenerHits = 0;
 window.classMounts = 0;
 window.classSchedulerHits = 0;
+window.classStateUpdates = 0;
+window.classStateWrites = 0;
 window.classUnmounts = 0;
 window.listenerHits = 0;
 window.observerHits = 0;
@@ -200,6 +206,75 @@ const ClassSchedulerOracle = () => {
         unmount class scheduler
       </button>
       {isMounted ? <Scheduler /> : null}
+    </main>
+  );
+};
+
+interface ClassDraftProperties {
+  value: string;
+}
+
+interface ClassDraftState {
+  draft: string;
+}
+
+class GuardedClassDraft extends Component<ClassDraftProperties, ClassDraftState> {
+  state = { draft: "alpha" };
+
+  componentDidUpdate(previousProperties: ClassDraftProperties) {
+    window.classStateUpdates += 1;
+    if (previousProperties.value !== this.props.value) {
+      window.classStateWrites += 1;
+      this.setState({ draft: this.props.value });
+    }
+  }
+
+  render() {
+    return <output data-testid="class-draft">{this.state.draft}</output>;
+  }
+}
+
+interface LoopState {
+  revision: number;
+}
+
+interface LoopProperties {
+  triggerRevision: number;
+}
+
+class UnguardedClassUpdate extends Component<LoopProperties, LoopState> {
+  state = { revision: CLASS_UPDATE_INITIAL_REVISION };
+
+  componentDidUpdate() {
+    window.classStateUpdates += 1;
+    this.setState({ revision: CLASS_UPDATE_NEXT_REVISION });
+  }
+
+  render() {
+    return <output>{this.state.revision}</output>;
+  }
+}
+
+const ClassStateTransitionOracle = () => {
+  const [value, setValue] = useState("alpha");
+  const [loopRevision, setLoopRevision] = useState(CLASS_UPDATE_INITIAL_REVISION);
+  const isGuardedMode = new URLSearchParams(window.location.search).get("mode") === "guarded";
+  if (isGuardedMode) {
+    return (
+      <main>
+        <button type="button" onClick={() => setValue("beta")}>
+          update class prop
+        </button>
+        <GuardedClassDraft value={value} />
+      </main>
+    );
+  }
+  return (
+    <main>
+      <button type="button" onClick={() => setLoopRevision(CLASS_UPDATE_NEXT_REVISION)}>
+        trigger class loop
+      </button>
+      <UnguardedClassUpdate triggerRevision={loopRevision} />
     </main>
   );
 };
@@ -726,13 +801,19 @@ const RuntimeOracle = () => {
   if (oracle === "class-scheduler") {
     return <ClassSchedulerOracle />;
   }
+  if (oracle === "class-state-transition") {
+    return <ClassStateTransitionOracle />;
+  }
   return <ListenerOracle />;
 };
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing runtime oracle root");
 const oracle = new URLSearchParams(window.location.search).get("oracle");
-const isClassLifecycleOracle = oracle === "class-listener" || oracle === "class-scheduler";
+const isClassLifecycleOracle =
+  oracle === "class-listener" ||
+  oracle === "class-scheduler" ||
+  oracle === "class-state-transition";
 createRoot(rootElement).render(
   isClassLifecycleOracle ? (
     <StrictMode>

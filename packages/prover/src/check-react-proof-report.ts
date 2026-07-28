@@ -3,6 +3,9 @@ import {
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
   ReactCallableRefFreshness,
+  ReactClassComponentBase,
+  ReactClassStateUpdaterStatus,
+  ReactClassUpdateCycleStatus,
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
   ReactExecutionPhase,
@@ -72,6 +75,34 @@ const expectedCallableRefFreshnessStatus = (
   return report.graph.callableRefs
     .filter((callableRef) => callableRef.ownerId === unit.id)
     .some((callableRef) => !callableRef.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedClassStateTransitionStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  if (unit.kind !== ReactUnitKind.ClassComponent) {
+    return ReactObligationStatus.Proved;
+  }
+  const transitions = report.graph.classStateTransitions.filter(
+    (transition) => transition.ownerId === unit.id,
+  );
+  if (
+    transitions.some(
+      (transition) =>
+        transition.updaterStatus === ReactClassStateUpdaterStatus.Impure ||
+        transition.cycleStatus === ReactClassUpdateCycleStatus.Guaranteed,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  const lifecycle = report.graph.classLifecycles.find((candidate) => candidate.ownerId === unit.id);
+  return !lifecycle?.sourceComplete || transitions.some((transition) => !transition.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -180,6 +211,17 @@ const checkClaimCoverage = (
         `Callable ref facts require ${expectedCallableRefStatus}, not ${callableRefFreshness.status}`,
       );
     }
+    const classStateTransitions = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ClassStateTransitions,
+    );
+    const expectedClassStateStatus = expectedClassStateTransitionStatus(semanticUnit, report);
+    if (classStateTransitions && classStateTransitions.status !== expectedClassStateStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Class state transition facts require ${expectedClassStateStatus}, not ${classStateTransitions.status}`,
+      );
+    }
     const scheduledCallbackLifetime = unitProof.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.ScheduledCallbackLifetime,
     );
@@ -227,6 +269,18 @@ const checkGraphReferences = (
   );
   const contextIds = new Set(report.graph.contexts.map((context) => context.id));
   const providerIds = new Set(report.graph.contextProviders.map((provider) => provider.id));
+  for (const unit of report.graph.units) {
+    if (
+      unit.kind === ReactUnitKind.ClassComponent &&
+      unit.classComponentBase !== ReactClassComponentBase.Component &&
+      unit.classComponentBase !== ReactClassComponentBase.PureComponent
+    ) {
+      addFailure(failures, unit.id, "A class component has no supported React base");
+    }
+    if (unit.kind !== ReactUnitKind.ClassComponent && unit.classComponentBase !== null) {
+      addFailure(failures, unit.id, "A non-class unit declares a React class base");
+    }
+  }
 
   for (const edge of report.graph.edges) {
     if (!unitIds.has(edge.sourceId)) {
@@ -656,6 +710,80 @@ const checkGraphReferences = (
     report.graph.schedulers.map((scheduler) => [scheduler.id, scheduler]),
   );
   const resourcesById = new Map(report.graph.resources.map((resource) => [resource.id, resource]));
+  const transitionsById = new Map(
+    report.graph.classStateTransitions.map((transition) => [transition.id, transition]),
+  );
+  for (const transition of report.graph.classStateTransitions) {
+    const owner = unitsById.get(transition.ownerId);
+    if (owner?.kind !== ReactUnitKind.ClassComponent) {
+      addFailure(
+        failures,
+        transition.id,
+        "A class state transition has an unknown or non-class owner",
+      );
+    }
+    const lifecycleCallback = callbacksById.get(transition.lifecycleCallbackId);
+    const expectedLifecycleKind =
+      transition.phase === ReactExecutionPhase.ClassMount
+        ? ReactSemanticCallbackKind.ClassMount
+        : ReactSemanticCallbackKind.ClassUpdate;
+    if (
+      lifecycleCallback?.ownerId !== transition.ownerId ||
+      lifecycleCallback.kind !== expectedLifecycleKind ||
+      lifecycleCallback.phase !== transition.phase
+    ) {
+      addFailure(failures, transition.id, "A class state transition has an invalid lifecycle");
+    }
+    const updaterCallback = transition.updaterCallbackId
+      ? callbacksById.get(transition.updaterCallbackId)
+      : null;
+    const updaterRequiresCallback =
+      transition.updaterStatus === ReactClassStateUpdaterStatus.Pure ||
+      transition.updaterStatus === ReactClassStateUpdaterStatus.Impure;
+    const updaterForbidsCallback =
+      transition.updaterStatus === ReactClassStateUpdaterStatus.Noop ||
+      transition.updaterStatus === ReactClassStateUpdaterStatus.Object;
+    if (
+      (updaterRequiresCallback && !transition.updaterCallbackId) ||
+      (updaterForbidsCallback && transition.updaterCallbackId) ||
+      (transition.updaterCallbackId &&
+        (updaterCallback?.ownerId !== transition.ownerId ||
+          updaterCallback.kind !== ReactSemanticCallbackKind.ClassStateUpdater ||
+          updaterCallback.phase !== ReactExecutionPhase.StateTransition))
+    ) {
+      addFailure(failures, transition.id, "A class state transition has an invalid updater");
+    }
+    const expectsGuard = transition.cycleStatus === ReactClassUpdateCycleStatus.Bounded;
+    const hasGuard = transition.guardLocations.length > 0;
+    if (expectsGuard !== hasGuard) {
+      addFailure(failures, transition.id, "A bounded class state transition has invalid guards");
+    }
+    const expectedSourceComplete =
+      transition.updaterStatus !== ReactClassStateUpdaterStatus.Unknown &&
+      !transition.commitCallbackProvided;
+    if (transition.sourceComplete !== expectedSourceComplete) {
+      addFailure(
+        failures,
+        transition.id,
+        "A class state transition source flag does not match its modeled surface",
+      );
+    }
+    const hasSafeUpdater =
+      transition.updaterStatus !== ReactClassStateUpdaterStatus.Impure &&
+      transition.updaterStatus !== ReactClassStateUpdaterStatus.Unknown;
+    const hasSafeCycle =
+      transition.cycleStatus !== ReactClassUpdateCycleStatus.Guaranteed &&
+      transition.cycleStatus !== ReactClassUpdateCycleStatus.Unknown;
+    const expectedComplete =
+      transition.sourceComplete && hasSafeUpdater && hasSafeCycle && Boolean(lifecycleCallback);
+    if (transition.complete !== expectedComplete) {
+      addFailure(
+        failures,
+        transition.id,
+        "A class state transition completeness flag does not match its certificate",
+      );
+    }
+  }
   const lifecycleOwnerIds = new Set<string>();
   for (const lifecycle of report.graph.classLifecycles) {
     const owner = unitsById.get(lifecycle.ownerId);
@@ -688,6 +816,17 @@ const checkGraphReferences = (
     ) {
       addFailure(failures, lifecycle.id, "A class lifecycle has an invalid unmount callback");
     }
+    const updateCallback = lifecycle.updateCallbackId
+      ? callbacksById.get(lifecycle.updateCallbackId)
+      : null;
+    if (
+      lifecycle.updateCallbackId &&
+      (updateCallback?.ownerId !== lifecycle.ownerId ||
+        updateCallback.kind !== ReactSemanticCallbackKind.ClassUpdate ||
+        updateCallback.phase !== ReactExecutionPhase.ClassUpdate)
+    ) {
+      addFailure(failures, lifecycle.id, "A class lifecycle has an invalid update callback");
+    }
     const lifecycleResources = lifecycle.resourceIds.flatMap((resourceId) => {
       const resource = resourcesById.get(resourceId);
       if (!resource || resource.ownerId !== lifecycle.ownerId || resource.effectId !== null) {
@@ -710,12 +849,29 @@ const checkGraphReferences = (
     if (new Set(lifecycle.schedulerIds).size !== lifecycle.schedulerIds.length) {
       addFailure(failures, lifecycle.id, "A class lifecycle repeats a scheduler link");
     }
+    const lifecycleTransitions = lifecycle.transitionIds.flatMap((transitionId) => {
+      const transition = transitionsById.get(transitionId);
+      if (!transition || transition.ownerId !== lifecycle.ownerId) {
+        addFailure(
+          failures,
+          lifecycle.id,
+          "A class lifecycle has an invalid state transition link",
+        );
+        return [];
+      }
+      return [transition];
+    });
+    if (new Set(lifecycle.transitionIds).size !== lifecycle.transitionIds.length) {
+      addFailure(failures, lifecycle.id, "A class lifecycle repeats a state transition link");
+    }
     const expectedComplete =
       lifecycle.sourceComplete &&
       lifecycleResources.length === lifecycle.resourceIds.length &&
       lifecycleResources.every((resource) => resource.complete) &&
       lifecycleSchedulers.length === lifecycle.schedulerIds.length &&
-      lifecycleSchedulers.every((scheduler) => scheduler.complete);
+      lifecycleSchedulers.every((scheduler) => scheduler.complete) &&
+      lifecycleTransitions.length === lifecycle.transitionIds.length &&
+      lifecycleTransitions.every((transition) => transition.complete);
     if (lifecycle.complete !== expectedComplete) {
       addFailure(
         failures,
@@ -749,6 +905,17 @@ const checkGraphReferences = (
       )
     ) {
       addFailure(failures, resource.id, "A class resource has no lifecycle certificate");
+    }
+  }
+  for (const transition of report.graph.classStateTransitions) {
+    if (
+      !report.graph.classLifecycles.some(
+        (lifecycle) =>
+          lifecycle.ownerId === transition.ownerId &&
+          lifecycle.transitionIds.includes(transition.id),
+      )
+    ) {
+      addFailure(failures, transition.id, "A class state transition has no lifecycle certificate");
     }
   }
   for (const reachableFunction of report.graph.reachableFunctions) {
@@ -1074,6 +1241,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Class lifecycles",
     report.graph.classLifecycles.map((lifecycle) => lifecycle.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Class state transitions",
+    report.graph.classStateTransitions.map((transition) => transition.id),
   );
   checkUniqueIds(
     failures,

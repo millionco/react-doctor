@@ -5,31 +5,34 @@ import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { getFunctionName } from "./get-function-name.js";
 import { isReactHookName } from "./is-react-hook-name.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
-import { ReactUnitKind } from "./types.js";
+import { ReactClassComponentBase, ReactUnitKind } from "./types.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
 import { getStaticPropertyName } from "./utils/get-static-property-name.js";
 import type { ReactUnitDescriptor } from "./types.js";
 
 const isReactComponentName = (name: string): boolean => /^[A-Z]/.test(name);
 
-const REACT_CLASS_BASE_NAMES = new Set(["Component", "PureComponent"]);
-
-const isReactComponentClass = (
+const getReactClassComponentBase = (
   classNode: ts.ClassDeclaration,
   typeChecker: ts.TypeChecker,
-): boolean =>
-  Boolean(
-    classNode.heritageClauses?.some((heritageClause) =>
-      heritageClause.types.some((heritageType) =>
-        REACT_CLASS_BASE_NAMES.has(
-          getCanonicalReactApiName(heritageType.expression, typeChecker) ?? "",
-        ),
-      ),
-    ),
-  );
+): ReactClassComponentBase | null => {
+  for (const heritageClause of classNode.heritageClauses ?? []) {
+    for (const heritageType of heritageClause.types) {
+      const baseName = getCanonicalReactApiName(heritageType.expression, typeChecker);
+      if (baseName === ReactClassComponentBase.Component) {
+        return ReactClassComponentBase.Component;
+      }
+      if (baseName === ReactClassComponentBase.PureComponent) {
+        return ReactClassComponentBase.PureComponent;
+      }
+    }
+  }
+  return null;
+};
 
 const SUPPORTED_CLASS_LIFECYCLE_NAMES = new Set([
   "componentDidMount",
+  "componentDidUpdate",
   "componentWillUnmount",
   "render",
 ]);
@@ -66,10 +69,9 @@ const hasSupportedClassSyntax = (
     const methodName = getStaticPropertyName(member.name);
     if (!methodName || getClassMethodDeclaration(classNode, methodName) !== member) return false;
     if (isReservedClassLifecycleName(methodName)) {
-      return (
-        SUPPORTED_CLASS_LIFECYCLE_NAMES.has(methodName) &&
-        (methodName === "render" || member.parameters.length === 0)
-      );
+      if (!SUPPORTED_CLASS_LIFECYCLE_NAMES.has(methodName)) return false;
+      if (methodName === "componentDidUpdate") return member.parameters.length <= 2;
+      return member.parameters.length === 0;
     }
     return true;
   });
@@ -140,16 +142,20 @@ export const collectReactUnits = (
     if (isFunctionBoundary(node)) {
       const functionUnit = collectFunctionUnit(node, typeChecker);
       if (functionUnit) units.push(functionUnit);
-    } else if (ts.isClassDeclaration(node) && isReactComponentClass(node, typeChecker)) {
-      const renderMethod = getClassMethodDeclaration(node, "render");
-      units.push({
-        name: node.name?.text ?? "DefaultComponent",
-        kind: ReactUnitKind.ClassComponent,
-        node,
-        classNode: node,
-        functionNode: renderMethod ?? undefined,
-        sourceComplete: Boolean(renderMethod && hasSupportedClassSyntax(node, renderMethod)),
-      });
+    } else if (ts.isClassDeclaration(node)) {
+      const classComponentBase = getReactClassComponentBase(node, typeChecker);
+      if (classComponentBase) {
+        const renderMethod = getClassMethodDeclaration(node, "render");
+        units.push({
+          name: node.name?.text ?? "DefaultComponent",
+          kind: ReactUnitKind.ClassComponent,
+          node,
+          classNode: node,
+          classComponentBase,
+          functionNode: renderMethod ?? undefined,
+          sourceComplete: Boolean(renderMethod && hasSupportedClassSyntax(node, renderMethod)),
+        });
+      }
     }
     node.forEachChild(visit);
   };

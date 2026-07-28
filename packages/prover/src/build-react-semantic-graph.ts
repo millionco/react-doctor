@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { collectAsyncEffectTaskDescriptors } from "./collect-async-effect-task-descriptors.js";
+import { collectClassStateTransitions } from "./collect-class-state-transitions.js";
 import { collectCallableRefProtocols } from "./collect-callable-ref-protocols.js";
 import { collectCallbackStateWrites } from "./collect-callback-state-writes.js";
 import { createComponentCallbackFlow } from "./create-component-callback-flow.js";
@@ -43,6 +44,8 @@ import { mergeCallableBindings } from "./resolve-callable-expression.js";
 import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
 import {
   ReactCallableRefFreshness,
+  ReactClassStateUpdaterStatus,
+  ReactClassUpdateCycleStatus,
   ReactEffectDependencyMode,
   ReactExecutionPhase,
   ReactIdentityStability,
@@ -65,6 +68,7 @@ import type {
   ReactSemanticCallbackPropFlow,
   ReactSemanticCallableRef,
   ReactSemanticClassLifecycle,
+  ReactSemanticClassStateTransition,
   ReactSemanticExternalStore,
   ReactSemanticFunctionCall,
   ReactSemanticGraph,
@@ -97,6 +101,7 @@ interface EffectGraphFacts {
 
 interface ClassLifecycleGraphFacts {
   lifecycle: ReactSemanticClassLifecycle | null;
+  transitions: ReadonlyArray<ReactSemanticClassStateTransition>;
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
   resources: ReadonlyArray<ReactSemanticEffectResource>;
   callbacks: ReadonlyArray<ReactSemanticCallback>;
@@ -1016,6 +1021,7 @@ const collectClassLifecycleGraph = (
   if (identity.descriptor.kind !== ReactUnitKind.ClassComponent || !classNode || !renderMethod) {
     return {
       lifecycle: null,
+      transitions: [],
       schedulers: [],
       resources: [],
       callbacks: [],
@@ -1025,6 +1031,7 @@ const collectClassLifecycleGraph = (
   }
   const mountMethod = getClassMethodDeclaration(classNode, "componentDidMount");
   const unmountMethod = getClassMethodDeclaration(classNode, "componentWillUnmount");
+  const updateMethod = getClassMethodDeclaration(classNode, "componentDidUpdate");
   const callbacks: ReactSemanticCallback[] = [];
   const reachableFunctions: ReactSemanticReachableFunction[] = [];
   const functionCalls: ReactSemanticFunctionCall[] = [];
@@ -1063,6 +1070,12 @@ const collectClassLifecycleGraph = (
     ReactExecutionPhase.ClassUnmount,
     "componentWillUnmount",
   );
+  const updateCallback = createLifecycleCallback(
+    updateMethod,
+    ReactSemanticCallbackKind.ClassUpdate,
+    ReactExecutionPhase.ClassUpdate,
+    "componentDidUpdate",
+  );
   const resourceProtocols = mountMethod
     ? collectLifecycleResourceProtocols(
         mountMethod,
@@ -1079,6 +1092,85 @@ const collectClassLifecycleGraph = (
         context,
       )
     : [];
+  const transitionDescriptors = identity.descriptor.classComponentBase
+    ? collectClassStateTransitions(
+        mountMethod,
+        updateMethod,
+        identity.descriptor.classComponentBase,
+        context,
+      )
+    : [];
+  const transitions: ReactSemanticClassStateTransition[] = [];
+  const transitionUpdaterFunctions = new Set<ts.FunctionLikeDeclaration>();
+  for (const descriptor of transitionDescriptors) {
+    const transitionId = createSemanticId(
+      "class-state-transition",
+      descriptor.phase,
+      descriptor.callExpression,
+      context,
+    );
+    const updaterCallback = descriptor.updaterFunction
+      ? createCallbackFact(
+          identity,
+          descriptor.updaterFunction,
+          descriptor.updaterFunction,
+          new Set(),
+          ReactSemanticCallbackKind.ClassStateUpdater,
+          ReactExecutionPhase.StateTransition,
+          "class-state-updater",
+          context,
+        )
+      : null;
+    const identifiedUpdaterCallback =
+      updaterCallback && descriptor.updaterFunction
+        ? {
+            ...updaterCallback,
+            id: createSemanticId(
+              `class-state-updater:${transitionId}`,
+              "updater",
+              descriptor.updaterFunction,
+              context,
+            ),
+          }
+        : null;
+    if (identifiedUpdaterCallback && descriptor.updaterFunction) {
+      transitionUpdaterFunctions.add(descriptor.updaterFunction);
+      callbacks.push(identifiedUpdaterCallback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        identity,
+        descriptor.updaterFunction,
+        identifiedUpdaterCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    const lifecycleCallback =
+      descriptor.phase === ReactExecutionPhase.ClassMount ? mountCallback : updateCallback;
+    const hasSafeUpdater =
+      descriptor.updaterStatus !== ReactClassStateUpdaterStatus.Impure &&
+      descriptor.updaterStatus !== ReactClassStateUpdaterStatus.Unknown;
+    const hasSafeCycle =
+      descriptor.cycleStatus !== ReactClassUpdateCycleStatus.Guaranteed &&
+      descriptor.cycleStatus !== ReactClassUpdateCycleStatus.Unknown;
+    transitions.push({
+      id: transitionId,
+      ownerId: identity.semanticUnit.id,
+      lifecycleCallbackId: lifecycleCallback?.id ?? "",
+      updaterCallbackId: identifiedUpdaterCallback?.id ?? null,
+      phase: descriptor.phase,
+      location: getNodeLocation(descriptor.callExpression, context.rootDirectory),
+      guardLocations: descriptor.guardNodes.map((guardNode) =>
+        getNodeLocation(guardNode, context.rootDirectory),
+      ),
+      updaterStatus: descriptor.updaterStatus,
+      cycleStatus: descriptor.cycleStatus,
+      commitCallbackProvided: descriptor.commitCallbackProvided,
+      sourceComplete: descriptor.isSourceComplete,
+      complete:
+        descriptor.isSourceComplete && hasSafeUpdater && hasSafeCycle && Boolean(lifecycleCallback),
+    });
+  }
   const resources: ReactSemanticEffectResource[] = [];
   const resourceCallbackFunctions = new Set<ts.FunctionLikeDeclaration>();
   for (const protocol of resourceProtocols) {
@@ -1233,17 +1325,21 @@ const collectClassLifecycleGraph = (
       protocol.registrationCall,
       ...protocol.cancellationCalls,
     ]),
+    ...transitionDescriptors.map((descriptor) => descriptor.callExpression),
   ]);
   const lifecycleCalls = [
     ...(mountMethod ? collectReachableCallExpressions(mountMethod, context.typeChecker) : []),
     ...(unmountMethod ? collectReachableCallExpressions(unmountMethod, context.typeChecker) : []),
+    ...(updateMethod ? collectReachableCallExpressions(updateMethod, context.typeChecker) : []),
   ];
   const representedClassMembers = new Set<ts.ClassElement>([
     renderMethod,
     ...(mountMethod ? [mountMethod] : []),
     ...(unmountMethod ? [unmountMethod] : []),
+    ...(updateMethod ? [updateMethod] : []),
     ...[...resourceCallbackFunctions].filter(ts.isMethodDeclaration),
     ...[...schedulerCallbackFunctions].filter(ts.isMethodDeclaration),
+    ...[...transitionUpdaterFunctions].filter(ts.isMethodDeclaration),
     ...schedulerProtocols.flatMap((protocol) =>
       protocol.handleDeclaration ? [protocol.handleDeclaration] : [],
     ),
@@ -1265,14 +1361,18 @@ const collectClassLifecycleGraph = (
       location: getNodeLocation(classNode, context.rootDirectory),
       mountCallbackId: mountCallback?.id ?? null,
       unmountCallbackId: unmountCallback?.id ?? null,
+      updateCallbackId: updateCallback?.id ?? null,
       resourceIds: resources.map((resource) => resource.id),
       schedulerIds: schedulers.map((scheduler) => scheduler.id),
+      transitionIds: transitions.map((transition) => transition.id),
       sourceComplete,
       complete:
         sourceComplete &&
         resources.every((resource) => resource.complete) &&
-        schedulers.every((scheduler) => scheduler.complete),
+        schedulers.every((scheduler) => scheduler.complete) &&
+        transitions.every((transition) => transition.complete),
     },
+    transitions,
     schedulers,
     resources,
     callbacks,
@@ -1953,6 +2053,7 @@ export const buildReactSemanticGraph = (
         id: createSemanticId("unit", descriptor.name, descriptor.node, context),
         name: descriptor.name,
         kind: descriptor.kind,
+        classComponentBase: descriptor.classComponentBase ?? null,
         location: getNodeLocation(descriptor.node, context.rootDirectory),
         sourceComplete: descriptor.sourceComplete,
       },
@@ -1976,6 +2077,7 @@ export const buildReactSemanticGraph = (
   const schedulers: ReactSemanticScheduler[] = [];
   const resources: ReactSemanticEffectResource[] = [];
   const classLifecycles: ReactSemanticClassLifecycle[] = [];
+  const classStateTransitions: ReactSemanticClassStateTransition[] = [];
   const effectEvents: ReactSemanticEffectEvent[] = [];
   const externalStores: ReactSemanticExternalStore[] = [];
   const asyncTasks: ReactSemanticAsyncTask[] = [];
@@ -2028,6 +2130,7 @@ export const buildReactSemanticGraph = (
     if (classLifecycleGraph.lifecycle) {
       classLifecycles.push(classLifecycleGraph.lifecycle);
     }
+    classStateTransitions.push(...classLifecycleGraph.transitions);
     schedulers.push(...classLifecycleGraph.schedulers);
     resources.push(...classLifecycleGraph.resources);
     callbacks.push(...classLifecycleGraph.callbacks);
@@ -2116,6 +2219,7 @@ export const buildReactSemanticGraph = (
     schedulers,
     resources,
     classLifecycles,
+    classStateTransitions,
     compiler: extractReactCompilerGraph(sourceFiles, context.rootDirectory),
   };
 };

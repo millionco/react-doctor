@@ -1,4 +1,6 @@
 export const FAST_QUERY_DELAY_MS = 20;
+export const CLASS_UPDATE_INITIAL_REVISION = 0;
+export const CLASS_UPDATE_NEXT_REVISION = 1;
 export const INITIAL_CALLBACK_REVISION = 0;
 export const LATE_QUERY_SETTLE_WAIT_MS = 250;
 export const NEXT_CALLBACK_REVISION = 1;

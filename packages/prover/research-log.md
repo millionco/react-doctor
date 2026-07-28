@@ -716,8 +716,9 @@ Known regions that must force `incomplete` until modeled:
 - Reconciliation outside direct arrays, map callbacks, and imperative `for`-loop list construction
 - Component tree position and state preservation outside represented list identities
 - Server Components, client boundaries, hydration, and serialization
-- Class constructors, derived state, update lifecycles, snapshots, error boundaries, refs, and
-  state-transition fixpoints outside direct render and mount/unmount ownership
+- Class constructors, derived state, snapshots, error boundaries, refs, `shouldComponentUpdate`,
+  commit callbacks, helper-mediated state writes, state-to-instance convergence, and
+  state-transition fixpoints outside direct mount/update ownership and prop-history guards
 - Effect transition fixpoints beyond mount-bounded writes and unconditional boolean/fresh-reference
   self-cycles
 - Library hooks without semantic summaries
@@ -738,13 +739,13 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 4. Add reconciliation state for component type, key, position, hook slots, refs, and effect
    instances.
 5. Extend the independent structural report checker with source-derived block invariants and
-   lifecycle transition certificates.
+   richer lifecycle transition certificates.
 6. Evaluate against React Bench workspaces and open-source applications. Every new unsupported
    construct becomes explicit corpus coverage, never an implicit pass.
 
 ### Test stack
 
-Current checkpoint: 210 TypeScript fixture projects, 399 static tests, and 30 Chromium runtime
+Current checkpoint: 222 TypeScript fixture projects, 411 static tests, and 32 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -777,6 +778,9 @@ oracles.
 - Class lifecycle oracles run under root Strict Mode. Exact listener removal survives the synthetic
   mount/unmount/remount sequence, while omitted teardown remains observable after final unmount.
   Exact timeout cancellation suppresses both timer generations; omitted cancellation fires both.
+- The class state-transition oracle confirms that a previous-props guard converges after one state
+  write and that an unguarded `componentDidUpdate` write reaches React's maximum-update-depth
+  failure.
 
 ## Effect resource lifetime certificates
 
@@ -872,9 +876,9 @@ Added corpus:
 
 React inheritance is resolved through TypeScript symbols and only canonical React `Component` or
 `PureComponent` declarations create class units. A complete class certificate currently permits a
-pure ordinary `render`, direct ordinary `componentDidMount` and `componentWillUnmount` methods,
-stable callback methods, and primitive scheduler-handle properties whose sole write is the
-certified registration assignment.
+pure ordinary `render`, direct ordinary `componentDidMount`, `componentDidUpdate`, and
+`componentWillUnmount` methods, stable callback methods, and primitive scheduler-handle properties
+whose sole write is the certified registration assignment.
 
 Mount/unmount listener facts reuse the DOM identity certificate. Timer facts require an exact
 property symbol, one registration write, an entry-dominating matching cancellation, a synchronous
@@ -891,11 +895,58 @@ lifecycle rule corpus and checked against the official React semantics above.
 
 Added corpus:
 
-- proved: `class-component`, `proved-pure-class-render`, `proved-class-listener`, and
-  `proved-class-timeout`
+- proved: `class-component`, `proved-pure-class-render`, `proved-class-listener`,
+  `proved-class-timeout`, and the empty-update `incomplete-class-lifecycle` characterization
 - refuted: `class-render-impurity`, `class-listener-leak`,
   `class-listener-capture-mismatch`, and `class-timeout-leak`
-- incomplete: `incomplete-class-field`, `incomplete-class-lifecycle`,
-  `incomplete-class-helper-lifecycle`, `incomplete-class-listener-method-reassigned`, and
-  `incomplete-class-timeout-reassigned`
+- incomplete: `incomplete-class-field`, `incomplete-class-helper-lifecycle`,
+  `incomplete-class-listener-method-reassigned`, and `incomplete-class-timeout-reassigned`
 - declaration guard: `shadowed-component-class`
+
+## Class state-transition certificates
+
+### React semantics
+
+- The official [`Component` reference](https://react.dev/reference/react/Component) defines
+  `setState` updater functions as pure queued calculations and warns that calling `setState` in
+  `componentDidUpdate` must be guarded or it can create an infinite loop.
+- An object update shallow-merges state and schedules another render. A `null` updater is a no-op.
+  `PureComponent` may skip an update, so an unguarded object update on `PureComponent` is unknown
+  rather than a claimed guaranteed cycle.
+- A previous-props inequality guard over the same top-level property becomes false after the
+  state-only update because props did not change. This is the first bounded update invariant.
+  Conjunctions need one such conjunct; disjunctions require every alternative to have the
+  invariant. Nested property paths remain unknown because a mutable object or getter can change
+  without a new top-level prop. Broad number-valued guards also remain unknown because
+  `NaN !== NaN` stays true across a state-only update; finite numeric-literal unions exclude that
+  counterexample and can be certified.
+
+### Proof boundary
+
+`this.setState` is recognized only through a symbol whose declaration belongs to React's
+`Component`; lookalike and overridden methods are not proof evidence. Function updaters reuse the
+render-purity analyzer and receive their own `state-transition` callback root. Direct object
+updates, pure updater functions, and `null` are modeled. An entry-dominating unguarded object
+update in an ordinary `Component` is a concrete refutation. A same-path previous/current props
+inequality guard certifies a bounded transition only for the supported top-level reflexive types.
+
+The semantic graph links each state transition to its mount or update callback, optional updater
+callback, source guard locations, updater classification, convergence classification, and exact
+completeness flag. The independent checker derives the obligation verdict again from those facts
+and rejects forged lifecycle links, callback phases, guard evidence, and completeness. Report
+schema 14 and graph schema 20 reject stale certificates.
+
+Commit callbacks, destructured previous props, nested mutable paths, number-valued inequalities,
+opaque or asynchronous updater work, equality-plus-else guards, state-to-instance convergence,
+helper-mediated writes, `shouldComponentUpdate`, and ambiguous `PureComponent` convergence remain
+`incomplete`.
+
+Added corpus:
+
+- proved: `proved-class-prop-transition`, `proved-class-compound-prop-transition`,
+  `proved-class-number-literal-prop-transition`, and `proved-class-pure-state-updater`
+- refuted: `class-update-loop` and `class-impure-state-updater`
+- incomplete: `incomplete-pure-component-update`, `incomplete-class-update-callback`,
+  `incomplete-class-destructured-prop-transition`,
+  `incomplete-class-nested-prop-transition`, `incomplete-class-number-prop-transition`, and
+  `incomplete-class-opaque-state-updater`

@@ -15,6 +15,7 @@ export enum ReactObligationStatus {
 export enum ReactProofClaim {
   BoundaryCoverage = "boundary-coverage",
   CallableRefFreshness = "callable-ref-freshness",
+  ClassStateTransitions = "class-state-transitions",
   ComponentIdentity = "component-identity",
   ComponentInvocation = "component-invocation",
   ContextTopology = "context-topology",
@@ -41,6 +42,11 @@ export enum ReactUnitKind {
   InvalidHookOwner = "invalid-hook-owner",
 }
 
+export enum ReactClassComponentBase {
+  Component = "Component",
+  PureComponent = "PureComponent",
+}
+
 export enum ReactSemanticEdgeKind {
   CallsHook = "calls-hook",
   RendersComponent = "renders-component",
@@ -60,6 +66,7 @@ export enum ReactCompilerFactStatus {
 export enum ReactExecutionPhase {
   ClassMount = "class-mount",
   ClassUnmount = "class-unmount",
+  ClassUpdate = "class-update",
   Deferred = "deferred",
   EffectCleanup = "effect-cleanup",
   EffectEvent = "effect-event",
@@ -73,7 +80,9 @@ export enum ReactExecutionPhase {
 
 export enum ReactSemanticCallbackKind {
   ClassMount = "class-mount",
+  ClassStateUpdater = "class-state-updater",
   ClassUnmount = "class-unmount",
+  ClassUpdate = "class-update",
   ComponentRender = "component-render",
   EffectCleanup = "effect-cleanup",
   EffectEvent = "effect-event",
@@ -129,6 +138,7 @@ export interface ReactSemanticUnit {
   name: string;
   kind: ReactUnitKind;
   location: ReactProofLocation;
+  classComponentBase: ReactClassComponentBase | null;
   sourceComplete: boolean;
 }
 
@@ -420,8 +430,40 @@ export interface ReactSemanticClassLifecycle {
   location: ReactProofLocation;
   mountCallbackId: string | null;
   unmountCallbackId: string | null;
+  updateCallbackId: string | null;
   resourceIds: ReadonlyArray<string>;
   schedulerIds: ReadonlyArray<string>;
+  transitionIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactClassStateUpdaterStatus {
+  Impure = "impure",
+  Noop = "noop",
+  Object = "object",
+  Pure = "pure",
+  Unknown = "unknown",
+}
+
+export enum ReactClassUpdateCycleStatus {
+  Bounded = "bounded",
+  Guaranteed = "guaranteed",
+  None = "none",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticClassStateTransition {
+  id: string;
+  ownerId: string;
+  lifecycleCallbackId: string;
+  updaterCallbackId: string | null;
+  phase: ReactExecutionPhase.ClassMount | ReactExecutionPhase.ClassUpdate;
+  location: ReactProofLocation;
+  guardLocations: ReadonlyArray<ReactProofLocation>;
+  updaterStatus: ReactClassStateUpdaterStatus;
+  cycleStatus: ReactClassUpdateCycleStatus;
+  commitCallbackProvided: boolean;
   sourceComplete: boolean;
   complete: boolean;
 }
@@ -487,6 +529,7 @@ export interface ReactSemanticGraph {
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
   resources: ReadonlyArray<ReactSemanticEffectResource>;
   classLifecycles: ReadonlyArray<ReactSemanticClassLifecycle>;
+  classStateTransitions: ReadonlyArray<ReactSemanticClassStateTransition>;
   compiler: ReactCompilerGraph;
 }
 
@@ -518,6 +561,7 @@ export interface ReactUnitDescriptor {
   kind: ReactUnitKind;
   node: ts.Node;
   classNode?: ts.ClassDeclaration;
+  classComponentBase?: ReactClassComponentBase;
   functionNode?: ts.FunctionLikeDeclaration;
   invalidHookCalls?: ReadonlyArray<ts.CallExpression>;
   sourceComplete: boolean;

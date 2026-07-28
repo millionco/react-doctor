@@ -7,6 +7,9 @@ import {
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
   ReactCallableRefFreshness,
+  ReactClassComponentBase,
+  ReactClassStateUpdaterStatus,
+  ReactClassUpdateCycleStatus,
   ReactCompilerFactStatus,
   ReactEffectDependencyMode,
   ReactEffectResourceDisposalStatus,
@@ -37,6 +40,16 @@ const proveFixture = (fixtureName: string) =>
   });
 
 const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
+  {
+    fixtureName: "class-update-loop",
+    claim: ReactProofClaim.ClassStateTransitions,
+    evidencePattern: /guarantees another update/,
+  },
+  {
+    fixtureName: "class-impure-state-updater",
+    claim: ReactProofClaim.ClassStateTransitions,
+    evidencePattern: /observable side effect/,
+  },
   {
     fixtureName: "conditional-hook",
     claim: ReactProofClaim.HookOrder,
@@ -415,6 +428,10 @@ describe("proveReactApp", () => {
     "proved-pure-class-render",
     "proved-class-listener",
     "proved-class-timeout",
+    "proved-class-prop-transition",
+    "proved-class-pure-state-updater",
+    "proved-class-compound-prop-transition",
+    "proved-class-number-literal-prop-transition",
   ])("proves the complete %s application graph", (fixtureName) => {
     const report = proveFixture(fixtureName);
 
@@ -473,7 +490,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.graph.schemaVersion).toBe(19);
+    expect(report.schemaVersion).toBe(14);
+    expect(report.graph.schemaVersion).toBe(20);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -2352,9 +2370,149 @@ describe("proveReactApp", () => {
 
     expect(report.status).toBe(ReactAppProofStatus.Proved);
     expect(report.graph.units[0]?.kind).toBe("class-component");
+    expect(report.graph.units[0]?.classComponentBase).toBe(ReactClassComponentBase.Component);
     expect(report.graph.units[0]?.sourceComplete).toBe(true);
     expect(renderCallback?.phase).toBe(ReactExecutionPhase.Render);
     expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("certifies a prop-history guard as a bounded class update transition", () => {
+    const report = proveFixture("proved-class-prop-transition");
+    const lifecycle = report.graph.classLifecycles[0];
+    const transition = report.graph.classStateTransitions[0];
+    const updateCallback = report.graph.callbacks.find(
+      (callback) => callback.id === lifecycle?.updateCallbackId,
+    );
+    const transitionProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ClassStateTransitions,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(transition?.phase).toBe(ReactExecutionPhase.ClassUpdate);
+    expect(transition?.updaterStatus).toBe(ReactClassStateUpdaterStatus.Object);
+    expect(transition?.cycleStatus).toBe(ReactClassUpdateCycleStatus.Bounded);
+    expect(transition?.guardLocations).toHaveLength(1);
+    expect(transition?.complete).toBe(true);
+    expect(lifecycle?.transitionIds).toEqual([transition?.id]);
+    expect(updateCallback?.kind).toBe(ReactSemanticCallbackKind.ClassUpdate);
+    expect(updateCallback?.phase).toBe(ReactExecutionPhase.ClassUpdate);
+    expect(transitionProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("certifies a pure setState updater in the state-transition phase", () => {
+    const report = proveFixture("proved-class-pure-state-updater");
+    const transition = report.graph.classStateTransitions[0];
+    const updaterCallback = report.graph.callbacks.find(
+      (callback) => callback.id === transition?.updaterCallbackId,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(transition?.phase).toBe(ReactExecutionPhase.ClassMount);
+    expect(transition?.updaterStatus).toBe(ReactClassStateUpdaterStatus.Pure);
+    expect(transition?.cycleStatus).toBe(ReactClassUpdateCycleStatus.None);
+    expect(updaterCallback?.kind).toBe(ReactSemanticCallbackKind.ClassStateUpdater);
+    expect(updaterCallback?.phase).toBe(ReactExecutionPhase.StateTransition);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("fails closed on PureComponent convergence, commit callbacks, and destructured guards", () => {
+    const pureComponentReport = proveFixture("incomplete-pure-component-update");
+    const commitCallbackReport = proveFixture("incomplete-class-update-callback");
+    const destructuredGuardReport = proveFixture("incomplete-class-destructured-prop-transition");
+    const nestedGuardReport = proveFixture("incomplete-class-nested-prop-transition");
+    const numberGuardReport = proveFixture("incomplete-class-number-prop-transition");
+    const opaqueUpdaterReport = proveFixture("incomplete-class-opaque-state-updater");
+
+    expect(pureComponentReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(pureComponentReport.graph.units[0]?.classComponentBase).toBe(
+      ReactClassComponentBase.PureComponent,
+    );
+    expect(pureComponentReport.graph.classStateTransitions[0]?.cycleStatus).toBe(
+      ReactClassUpdateCycleStatus.Unknown,
+    );
+    expect(commitCallbackReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(commitCallbackReport.graph.classStateTransitions[0]?.commitCallbackProvided).toBe(true);
+    expect(commitCallbackReport.graph.classStateTransitions[0]?.sourceComplete).toBe(false);
+    expect(destructuredGuardReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(destructuredGuardReport.graph.classStateTransitions[0]?.cycleStatus).toBe(
+      ReactClassUpdateCycleStatus.Unknown,
+    );
+    expect(nestedGuardReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(nestedGuardReport.graph.classStateTransitions[0]?.cycleStatus).toBe(
+      ReactClassUpdateCycleStatus.Unknown,
+    );
+    expect(numberGuardReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(numberGuardReport.graph.classStateTransitions[0]?.cycleStatus).toBe(
+      ReactClassUpdateCycleStatus.Unknown,
+    );
+    expect(opaqueUpdaterReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(opaqueUpdaterReport.graph.classStateTransitions[0]?.updaterStatus).toBe(
+      ReactClassStateUpdaterStatus.Unknown,
+    );
+    expect(opaqueUpdaterReport.graph.classStateTransitions[0]?.updaterCallbackId).not.toBeNull();
+    expect(checkReactProofReport(opaqueUpdaterReport).status).toBe(
+      ReactProofCertificateStatus.Valid,
+    );
+  });
+
+  it("rejects a class transition certificate with a forged lifecycle link", () => {
+    const report = proveFixture("proved-class-prop-transition");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        classLifecycles: report.graph.classLifecycles.map((lifecycle) => ({
+          ...lifecycle,
+          transitionIds: ["forged-transition"],
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("invalid state transition link"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a class transition certificate without its pure updater callback", () => {
+    const report = proveFixture("proved-class-pure-state-updater");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        classStateTransitions: report.graph.classStateTransitions.map((transition) => ({
+          ...transition,
+          updaterCallbackId: null,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("invalid updater")),
+    ).toBe(true);
+  });
+
+  it("rejects a class transition certificate with contradictory guard facts", () => {
+    const report = proveFixture("proved-class-prop-transition");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        classStateTransitions: report.graph.classStateTransitions.map((transition) => ({
+          ...transition,
+          cycleStatus: ReactClassUpdateCycleStatus.None,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("invalid guards")),
+    ).toBe(true);
   });
 
   it("certifies a class mount-listener-unmount lifecycle with exact method identity", () => {
@@ -2495,17 +2653,20 @@ describe("proveReactApp", () => {
     expect(renderProof?.evidence[0]?.description).toMatch(/not pure during render/);
   });
 
-  it("fails closed for class fields and lifecycle methods until their phases are certified", () => {
+  it("fails closed for class fields while certifying an empty update lifecycle", () => {
     const fieldReport = proveFixture("incomplete-class-field");
     const lifecycleReport = proveFixture("incomplete-class-lifecycle");
+    const transitionProof = lifecycleReport.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ClassStateTransitions,
+    );
 
     expect(fieldReport.status).toBe(ReactAppProofStatus.Incomplete);
     expect(fieldReport.graph.units[0]?.sourceComplete).toBe(false);
-    expect(lifecycleReport.status).toBe(ReactAppProofStatus.Incomplete);
-    expect(lifecycleReport.graph.units[0]?.sourceComplete).toBe(false);
-    expect(lifecycleReport.units[0]?.obligations[0]?.evidence[0]?.description).toMatch(
-      /constructor, field, lifecycle, ref, or custom method/,
-    );
+    expect(lifecycleReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(lifecycleReport.graph.units[0]?.sourceComplete).toBe(true);
+    expect(lifecycleReport.graph.classLifecycles[0]?.updateCallbackId).not.toBeNull();
+    expect(lifecycleReport.graph.classStateTransitions).toEqual([]);
+    expect(transitionProof?.status).toBe(ReactObligationStatus.Proved);
   });
 
   it("does not mistake a shadowed Component base for React inheritance", () => {

@@ -1,6 +1,7 @@
 import { analyzeAsyncEffectOwnership } from "./analyze-async-effect-ownership.js";
 import { analyzeBoundaryCoverage } from "./analyze-boundary-coverage.js";
 import { analyzeCallableRefFreshness } from "./analyze-callable-ref-freshness.js";
+import { analyzeClassStateTransitions } from "./analyze-class-state-transitions.js";
 import { analyzeComponentIdentity } from "./analyze-component-identity.js";
 import { analyzeComponentInvocation } from "./analyze-component-invocation.js";
 import { analyzeContextTopology } from "./analyze-context-topology.js";
@@ -27,6 +28,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.AsyncEffectOwnership,
   ReactProofClaim.BoundaryCoverage,
   ReactProofClaim.CallableRefFreshness,
+  ReactProofClaim.ClassStateTransitions,
   ReactProofClaim.ComponentIdentity,
   ReactProofClaim.ComponentInvocation,
   ReactProofClaim.ContextTopology,
@@ -119,6 +121,7 @@ export const analyzeReactUnit = (
       analyzeAsyncEffectOwnership(unit.functionNode, context),
       analyzeBoundaryCoverage(unit, context),
       analyzeCallableRefFreshness(unit, context),
+      analyzeClassStateTransitions(unit, context),
       analyzeComponentIdentity(unit.functionNode, context),
       analyzeComponentInvocation(unit.functionNode, context),
       analyzeContextTopology(unit, context),

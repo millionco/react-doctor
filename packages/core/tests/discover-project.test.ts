@@ -2583,7 +2583,7 @@ describe("discoverProject", () => {
         name: "vite-react-compiler-preset-defineconfig",
         dependencies: { react: "19.2.3" },
         devDependencies: {
-          "vite": "^8.1.0",
+          vite: "^8.1.0",
           "@vitejs/plugin-react": "^6.0.1",
           "@rolldown/plugin-babel": "^0.2.3",
           "babel-plugin-react-compiler": "^1.0.0",
@@ -2612,7 +2612,7 @@ describe("discoverProject", () => {
           name: `vite-react-compiler-preset-${extension.slice(1)}`,
           dependencies: { react: "^19.0.0" },
           devDependencies: {
-            "vite": "^8.1.0",
+            vite: "^8.1.0",
             "@vitejs/plugin-react": "^6.0.1",
             "@rolldown/plugin-babel": "^0.2.3",
           },
@@ -2629,10 +2629,7 @@ describe("discoverProject", () => {
   });
 
   it("detects the Vite 6 React Compiler preset without babel-plugin-react-compiler listed", () => {
-    const projectDirectory = path.join(
-      tempDirectory,
-      "vite-react-compiler-preset-no-babel-plugin",
-    );
+    const projectDirectory = path.join(tempDirectory, "vite-react-compiler-preset-no-babel-plugin");
     fs.mkdirSync(projectDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(projectDirectory, "package.json"),
@@ -2640,7 +2637,7 @@ describe("discoverProject", () => {
         name: "vite-react-compiler-preset-no-babel-plugin",
         dependencies: { react: "19.2.3" },
         devDependencies: {
-          "vite": "^8.1.0",
+          vite: "^8.1.0",
           "@vitejs/plugin-react": "^6.0.1",
           "@rolldown/plugin-babel": "^0.2.3",
         },

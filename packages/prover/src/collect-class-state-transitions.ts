@@ -1,8 +1,7 @@
 import ts from "typescript";
-import { analyzeRenderPurity } from "./analyze-render-purity.js";
+import { analyzeUpdaterFunction } from "./analyze-updater-function.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isNodeWithin } from "./is-node-within.js";
-import { resolveFunction } from "./resolve-function.js";
 import {
   ReactClassComponentBase,
   ReactClassStateUpdaterStatus,
@@ -15,7 +14,6 @@ import type { ReactAnalysisContext } from "./types.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
 import { getStaticAccessMemberName } from "./utils/get-static-access-member-name.js";
 import { isEntryDominatingNode } from "./utils/is-entry-dominating-node.js";
-import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 import { isReactSetStateCall } from "./utils/is-react-set-state-call.js";
 
 export interface ClassStateTransitionDescriptor {
@@ -188,28 +186,15 @@ const analyzeUpdater = (
       updaterStatus: ReactClassStateUpdaterStatus.Object,
     };
   }
-  const updaterFunction = resolveFunction(unwrappedUpdater, context.typeChecker);
-  if (!updaterFunction) {
-    return {
-      updaterFunction: null,
-      updaterStatus: ReactClassStateUpdaterStatus.Unknown,
-    };
-  }
-  if (updaterFunction.asteriskToken || !isDeferredCallbackSynchronous(updaterFunction, context)) {
-    return {
-      updaterFunction,
-      updaterStatus: ReactClassStateUpdaterStatus.Unknown,
-    };
-  }
-  const purityProof = analyzeRenderPurity(updaterFunction, context);
+  const updaterAnalysis = analyzeUpdaterFunction(unwrappedUpdater, context);
   let updaterStatus = ReactClassStateUpdaterStatus.Unknown;
-  if (purityProof.status === ReactObligationStatus.Proved) {
+  if (updaterAnalysis.status === ReactObligationStatus.Proved) {
     updaterStatus = ReactClassStateUpdaterStatus.Pure;
-  } else if (purityProof.status === ReactObligationStatus.Violated) {
+  } else if (updaterAnalysis.status === ReactObligationStatus.Violated) {
     updaterStatus = ReactClassStateUpdaterStatus.Impure;
   }
   return {
-    updaterFunction,
+    updaterFunction: updaterAnalysis.updaterFunction,
     updaterStatus,
   };
 };

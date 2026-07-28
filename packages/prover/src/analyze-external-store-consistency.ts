@@ -12,6 +12,7 @@ import { resolveFunction } from "./resolve-function.js";
 import { ReactObligationStatus, ReactProofClaim } from "./types.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import { collectSymbolWrites } from "./utils/collect-symbol-writes.js";
+import { getContainingFunction } from "./utils/get-containing-function.js";
 import { isAssignmentOperator } from "./utils/is-assignment-operator.js";
 import type {
   ReactAnalysisContext,
@@ -239,15 +240,6 @@ const isStaticPrimitiveExpression = (expression: ts.Expression): boolean => {
     unwrappedExpression.kind === ts.SyntaxKind.FalseKeyword ||
     unwrappedExpression.kind === ts.SyntaxKind.NullKeyword
   );
-};
-
-const getContainingFunction = (node: ts.Node): ts.FunctionLikeDeclaration | null => {
-  let currentNode = node.parent;
-  while (currentNode) {
-    if (isFunctionBoundary(currentNode)) return currentNode;
-    currentNode = currentNode.parent;
-  }
-  return null;
 };
 
 const hasRegistryNotificationAfterWrite = (

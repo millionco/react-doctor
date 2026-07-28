@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 16;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 22;
+export const REACT_PROOF_SCHEMA_VERSION = 17;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 23;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -105,6 +105,9 @@ export const KNOWN_PURE_METHOD_NAMES = new Set([
   "trim",
   "values",
 ]);
+
+export const KNOWN_PURE_STANDARD_METHOD_NAMES = new Set(["get", "has"]);
+export const KNOWN_MUTATING_STANDARD_METHOD_NAMES = new Set(["add", "clear", "delete", "set"]);
 
 export const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
   "every",

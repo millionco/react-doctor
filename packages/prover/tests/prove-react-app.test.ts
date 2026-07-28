@@ -21,6 +21,7 @@ import {
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
   ReactExecutionPhase,
+  ReactHookStateUpdaterStatus,
   ReactIdentityStability,
   ReactObligationStatus,
   ReactProofClaim,
@@ -51,6 +52,11 @@ const proveFixture = (fixtureName: string) =>
   });
 
 const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
+  {
+    fixtureName: "refuted-impure-hook-state-updater",
+    claim: ReactProofClaim.HookStateTransitions,
+    evidencePattern: /observable side effect/,
+  },
   {
     fixtureName: "refuted-class-invalid-state",
     claim: ReactProofClaim.ClassConstruction,
@@ -457,6 +463,10 @@ describe("proveReactApp", () => {
     "proved-aliased-hook",
     "proved-static-list-keys",
     "proved-mount-state-update",
+    "proved-hook-functional-updater",
+    "proved-hook-direct-state-value",
+    "proved-effect-functional-updater",
+    "proved-state-setter-lookalikes",
     "proved-external-store",
     "proved-effect-event",
     "proved-helper-effect-cleanup",
@@ -562,8 +572,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(16);
-    expect(report.graph.schemaVersion).toBe(22);
+    expect(report.schemaVersion).toBe(17);
+    expect(report.graph.schemaVersion).toBe(23);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -2884,6 +2894,110 @@ describe("proveReactApp", () => {
       expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
     },
   );
+
+  it("certifies a realistic event updater through its reachable helper", () => {
+    const report = proveFixture("proved-hook-functional-updater");
+    const transition = report.graph.hookStateTransitions[0];
+    const updaterCallback = report.graph.callbacks.find(
+      (callback) => callback.id === transition?.updaterCallbackId,
+    );
+    const executionCallbacks = report.graph.callbacks.filter((callback) =>
+      transition?.executionCallbackIds.includes(callback.id),
+    );
+    const transitionProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.HookStateTransitions,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(transition?.stateName).toBe("openPaths");
+    expect(transition?.setterName).toBe("setOpenPaths");
+    expect(transition?.updaterStatus).toBe(ReactHookStateUpdaterStatus.Pure);
+    expect(transition?.sourceComplete).toBe(true);
+    expect(transition?.complete).toBe(true);
+    expect(
+      executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.Event),
+    ).toBe(true);
+    expect(updaterCallback?.kind).toBe(ReactSemanticCallbackKind.HookStateUpdater);
+    expect(updaterCallback?.phase).toBe(ReactExecutionPhase.StateTransition);
+    expect(transitionProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("separates direct state values and reducer actions from functional state updaters", () => {
+    const directReport = proveFixture("proved-hook-direct-state-value");
+    const lookalikeReport = proveFixture("proved-state-setter-lookalikes");
+
+    expect(directReport.graph.hookStateTransitions).toHaveLength(2);
+    expect(
+      directReport.graph.hookStateTransitions.every(
+        (transition) => transition.updaterStatus === ReactHookStateUpdaterStatus.DirectValue,
+      ),
+    ).toBe(true);
+    expect(
+      directReport.graph.hookStateTransitions.every(
+        (transition) => transition.updaterCallbackId === null,
+      ),
+    ).toBe(true);
+    expect(lookalikeReport.graph.hookStateTransitions).toHaveLength(1);
+    expect(lookalikeReport.graph.hookStateTransitions[0]?.setterName).toBe("updateCount");
+    expect(lookalikeReport.graph.hookStateTransitions[0]?.updaterStatus).toBe(
+      ReactHookStateUpdaterStatus.DirectValue,
+    );
+  });
+
+  it("roots a functional state updater in an Effect setup callback", () => {
+    const report = proveFixture("proved-effect-functional-updater");
+    const transition = report.graph.hookStateTransitions[0];
+    const executionCallbacks = report.graph.callbacks.filter((callback) =>
+      transition?.executionCallbackIds.includes(callback.id),
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(transition?.updaterStatus).toBe(ReactHookStateUpdaterStatus.Pure);
+    expect(
+      executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.EffectSetup),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["incomplete-opaque-hook-state-updater", ReactHookStateUpdaterStatus.Unknown],
+    ["incomplete-hook-state-setter-escape", ReactHookStateUpdaterStatus.SetterEscape],
+    ["incomplete-hook-setter-in-reducer", ReactHookStateUpdaterStatus.Pure],
+  ])("fails closed for unresolved Hook state flow in %s", (fixtureName, updaterStatus) => {
+    const report = proveFixture(fixtureName);
+    const transition = report.graph.hookStateTransitions.find(
+      (candidate) => candidate.updaterStatus === updaterStatus,
+    );
+    const transitionProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.HookStateTransitions,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(transition?.sourceComplete).toBe(false);
+    expect(transition?.complete).toBe(false);
+    expect(transitionProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged Hook state transition certificate", () => {
+    const report = proveFixture("incomplete-opaque-hook-state-updater");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        hookStateTransitions: report.graph.hookStateTransitions.map((transition) => ({
+          ...transition,
+          sourceComplete: true,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("Hook state transition")),
+    ).toBe(true);
+  });
 
   it("records concrete invalid state, constructor side-effect, setState, and missing-state issues", () => {
     const expectations: ReadonlyArray<ClassConstructionIssueExpectation> = [

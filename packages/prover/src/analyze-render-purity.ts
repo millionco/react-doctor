@@ -1,8 +1,10 @@
 import ts from "typescript";
 import {
   KNOWN_IMPURE_RENDER_CALLS,
+  KNOWN_MUTATING_STANDARD_METHOD_NAMES,
   KNOWN_PURE_GLOBAL_CALLS,
   KNOWN_PURE_METHOD_NAMES,
+  KNOWN_PURE_STANDARD_METHOD_NAMES,
   MUTATING_METHOD_NAMES,
   REACT_MODELED_HOOK_NAMES,
   REACT_UNMODELED_HOOK_NAMES,
@@ -39,6 +41,23 @@ const KNOWN_RENDER_SIDE_EFFECT_CALLS = new Set([
   "sessionStorage.setItem",
 ]);
 
+const isStandardLibraryMethodCall = (
+  callExpression: ts.CallExpression,
+  methodNames: ReadonlySet<string>,
+  context: ReactAnalysisContext,
+): boolean => {
+  if (!ts.isPropertyAccessExpression(callExpression.expression)) return false;
+  const methodName = callExpression.expression.name.text;
+  if (!methodNames.has(methodName)) return false;
+  const methodSymbol = context.typeChecker.getSymbolAtLocation(callExpression.expression.name);
+  return Boolean(
+    methodSymbol?.declarations?.length &&
+    methodSymbol.declarations.every((declaration) =>
+      context.program.isSourceFileDefaultLibrary(declaration.getSourceFile()),
+    ),
+  );
+};
+
 const isProtectedMutation = (
   expression: ts.Expression,
   functionNode: ts.FunctionLikeDeclaration,
@@ -67,6 +86,14 @@ const isFreshLocalMutation = (
   functionNode: ts.FunctionLikeDeclaration,
   context: ReactAnalysisContext,
 ): boolean => {
+  const unwrappedExpression = unwrapTypescriptExpression(expression);
+  if (
+    ts.isArrayLiteralExpression(unwrappedExpression) ||
+    ts.isObjectLiteralExpression(unwrappedExpression) ||
+    ts.isNewExpression(unwrappedExpression)
+  ) {
+    return true;
+  }
   const rootIdentifier = getRootIdentifier(expression);
   if (!rootIdentifier) return false;
   const rootSymbol = context.typeChecker.getSymbolAtLocation(rootIdentifier);
@@ -178,7 +205,8 @@ export const analyzeRenderPurity = (
         }
         if (
           ts.isPropertyAccessExpression(node.expression) &&
-          MUTATING_METHOD_NAMES.has(node.expression.name.text)
+          (MUTATING_METHOD_NAMES.has(node.expression.name.text) ||
+            isStandardLibraryMethodCall(node, KNOWN_MUTATING_STANDARD_METHOD_NAMES, context))
         ) {
           if (
             isProtectedMutation(
@@ -222,7 +250,8 @@ export const analyzeRenderPurity = (
         if (
           (callName && KNOWN_PURE_GLOBAL_CALLS.has(callName)) ||
           (ts.isPropertyAccessExpression(node.expression) &&
-            KNOWN_PURE_METHOD_NAMES.has(node.expression.name.text))
+            KNOWN_PURE_METHOD_NAMES.has(node.expression.name.text)) ||
+          isStandardLibraryMethodCall(node, KNOWN_PURE_STANDARD_METHOD_NAMES, context)
         ) {
           for (const argument of node.arguments) {
             if (ts.isFunctionExpression(argument) || ts.isArrowFunction(argument)) {

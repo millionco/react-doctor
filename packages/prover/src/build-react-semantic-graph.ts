@@ -25,6 +25,7 @@ import {
 } from "./collect-effect-resource-protocols.js";
 import { collectHookBindings } from "./collect-hook-bindings.js";
 import { collectHookCalls } from "./collect-hook-calls.js";
+import { collectHookStateTransitions } from "./collect-hook-state-transitions.js";
 import { collectReactiveCaptures } from "./collect-reactive-captures.js";
 import { collectReachableFunctionGraph } from "./collect-reachable-functions.js";
 import {
@@ -54,6 +55,7 @@ import {
   ReactClassUpdateCycleStatus,
   ReactEffectDependencyMode,
   ReactExecutionPhase,
+  ReactHookStateUpdaterStatus,
   ReactIdentityStability,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
@@ -81,6 +83,7 @@ import type {
   ReactSemanticFunctionCall,
   ReactSemanticGraph,
   ReactSemanticHookCall,
+  ReactSemanticHookStateTransition,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
   ReactSemanticEffectResource,
@@ -91,6 +94,7 @@ import type {
 import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
+import { getContainingFunction } from "./utils/get-containing-function.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 
 interface UnitGraphIdentity {
@@ -156,6 +160,10 @@ interface EventGraphFacts extends CallbackGraphFacts {
 
 interface CallbackPropGraphFacts extends CallbackGraphFacts {
   callbackPropFlows: ReadonlyArray<ReactSemanticCallbackPropFlow>;
+}
+
+interface HookStateTransitionGraphFacts extends CallbackGraphFacts {
+  transitions: ReadonlyArray<ReactSemanticHookStateTransition>;
 }
 
 interface CallbackPropReachabilityDescriptor {
@@ -1859,6 +1867,121 @@ const collectReducerCallbacks = (
   return { callbacks, reachableFunctions, functionCalls };
 };
 
+const collectHookStateTransitionGraph = (
+  identity: UnitGraphIdentity,
+  existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
+  existingReachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>,
+  context: ReactAnalysisContext,
+): HookStateTransitionGraphFacts => {
+  const functionNode = identity.descriptor.functionNode;
+  if (
+    !functionNode ||
+    identity.descriptor.kind === ReactUnitKind.ClassComponent ||
+    identity.descriptor.kind === ReactUnitKind.InvalidHookOwner
+  ) {
+    return { transitions: [], callbacks: [], reachableFunctions: [], functionCalls: [] };
+  }
+  const callbacks: ReactSemanticCallback[] = [];
+  const reachableFunctions: ReactSemanticReachableFunction[] = [];
+  const functionCalls: ReactSemanticFunctionCall[] = [];
+  const existingCallbacksById = new Map(
+    existingCallbacks.map((callback) => [callback.id, callback]),
+  );
+  const transitions = collectHookStateTransitions(functionNode, context).map((descriptor) => {
+    const transitionId = createSemanticId(
+      "hook-state-transition",
+      descriptor.setterName,
+      descriptor.evidenceNode,
+      context,
+    );
+    const containingFunction = descriptor.callExpression
+      ? getContainingFunction(descriptor.callExpression)
+      : null;
+    const containingLocation = containingFunction
+      ? getNodeLocation(containingFunction, context.rootDirectory)
+      : null;
+    const executionCallbackIds = containingLocation
+      ? [
+          ...new Set([
+            ...existingCallbacks.flatMap((callback) =>
+              callback.ownerId === identity.semanticUnit.id &&
+              areProofLocationsEqual(callback.location, containingLocation)
+                ? [callback.id]
+                : [],
+            ),
+            ...existingReachableFunctions.flatMap((reachableFunction) =>
+              reachableFunction.ownerId === identity.semanticUnit.id &&
+              areProofLocationsEqual(reachableFunction.location, containingLocation)
+                ? [reachableFunction.rootCallbackId]
+                : [],
+            ),
+          ]),
+        ]
+      : [];
+    const updaterCallback = descriptor.updaterFunction
+      ? createCallbackFact(
+          identity,
+          descriptor.updaterFunction,
+          functionNode,
+          new Set(),
+          ReactSemanticCallbackKind.HookStateUpdater,
+          ReactExecutionPhase.StateTransition,
+          "hook-state-updater",
+          context,
+        )
+      : null;
+    const identifiedUpdaterCallback =
+      updaterCallback && descriptor.updaterFunction
+        ? {
+            ...updaterCallback,
+            id: createSemanticId(
+              `hook-state-updater:${transitionId}`,
+              "updater",
+              descriptor.updaterFunction,
+              context,
+            ),
+          }
+        : null;
+    if (identifiedUpdaterCallback && descriptor.updaterFunction) {
+      callbacks.push(identifiedUpdaterCallback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        identity,
+        descriptor.updaterFunction,
+        identifiedUpdaterCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    const hasModeledExecutionRoot =
+      executionCallbackIds.length > 0 &&
+      executionCallbackIds.every(
+        (callbackId) =>
+          existingCallbacksById.get(callbackId)?.phase !== ReactExecutionPhase.StateTransition,
+      );
+    const sourceComplete =
+      hasModeledExecutionRoot &&
+      descriptor.updaterStatus !== ReactHookStateUpdaterStatus.SetterEscape &&
+      descriptor.updaterStatus !== ReactHookStateUpdaterStatus.Unknown;
+    return {
+      id: transitionId,
+      ownerId: identity.semanticUnit.id,
+      stateName: descriptor.stateName,
+      setterName: descriptor.setterName,
+      location: getNodeLocation(descriptor.evidenceNode, context.rootDirectory),
+      executionCallbackIds,
+      updaterCallbackId: identifiedUpdaterCallback?.id ?? null,
+      updaterStatus: descriptor.updaterStatus,
+      sourceComplete,
+      complete:
+        sourceComplete &&
+        (descriptor.updaterStatus === ReactHookStateUpdaterStatus.DirectValue ||
+          descriptor.updaterStatus === ReactHookStateUpdaterStatus.Pure),
+    };
+  });
+  return { transitions, callbacks, reachableFunctions, functionCalls };
+};
+
 const collectExternalStoreGraph = (
   identity: UnitGraphIdentity,
   identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
@@ -2196,6 +2319,7 @@ export const buildReactSemanticGraph = (
   const classLifecycles: ReactSemanticClassLifecycle[] = [];
   const classStateWrites: ReactSemanticClassStateWrite[] = [];
   const classStateTransitions: ReactSemanticClassStateTransition[] = [];
+  const hookStateTransitions: ReactSemanticHookStateTransition[] = [];
   const effectEvents: ReactSemanticEffectEvent[] = [];
   const externalStores: ReactSemanticExternalStore[] = [];
   const asyncTasks: ReactSemanticAsyncTask[] = [];
@@ -2310,6 +2434,18 @@ export const buildReactSemanticGraph = (
   callbacks.push(...callbackPropGraph.callbacks);
   reachableFunctions.push(...callbackPropGraph.reachableFunctions);
   functionCalls.push(...callbackPropGraph.functionCalls);
+  for (const identity of identities) {
+    const hookStateTransitionGraph = collectHookStateTransitionGraph(
+      identity,
+      callbacks,
+      reachableFunctions,
+      context,
+    );
+    hookStateTransitions.push(...hookStateTransitionGraph.transitions);
+    callbacks.push(...hookStateTransitionGraph.callbacks);
+    reachableFunctions.push(...hookStateTransitionGraph.reachableFunctions);
+    functionCalls.push(...hookStateTransitionGraph.functionCalls);
+  }
   const contextConsumers = resolveContextConsumers(
     identities.map((identity) => identity.semanticUnit),
     edges,
@@ -2344,6 +2480,7 @@ export const buildReactSemanticGraph = (
     classLifecycles,
     classStateWrites,
     classStateTransitions,
+    hookStateTransitions,
     compiler: extractReactCompilerGraph(sourceFiles, context.rootDirectory),
   };
 };

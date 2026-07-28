@@ -28,6 +28,7 @@ export enum ReactProofClaim {
   ExternalStoreConsistency = "external-store-consistency",
   HookOrder = "hook-order",
   HookOwnership = "hook-ownership",
+  HookStateTransitions = "hook-state-transitions",
   MemoDependencies = "memo-dependencies",
   ReconciliationIdentity = "reconciliation-identity",
   ReducerPurity = "reducer-purity",
@@ -92,6 +93,7 @@ export enum ReactSemanticCallbackKind {
   EventHandler = "event-handler",
   ExternalStoreSnapshot = "external-store-snapshot",
   ExternalStoreSubscribe = "external-store-subscribe",
+  HookStateUpdater = "hook-state-updater",
   MemoFactory = "memo-factory",
   MemoizedCallback = "memoized-callback",
   Reducer = "reducer",
@@ -558,6 +560,27 @@ export interface ReactSemanticClassStateTransition {
   complete: boolean;
 }
 
+export enum ReactHookStateUpdaterStatus {
+  DirectValue = "direct-value",
+  Impure = "impure",
+  Pure = "pure",
+  SetterEscape = "setter-escape",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticHookStateTransition {
+  id: string;
+  ownerId: string;
+  stateName: string;
+  setterName: string;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  updaterCallbackId: string | null;
+  updaterStatus: ReactHookStateUpdaterStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export interface ReactCompilerInstructionFact {
   id: string;
   valueKind: string;
@@ -622,6 +645,7 @@ export interface ReactSemanticGraph {
   classLifecycles: ReadonlyArray<ReactSemanticClassLifecycle>;
   classStateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
   classStateTransitions: ReadonlyArray<ReactSemanticClassStateTransition>;
+  hookStateTransitions: ReadonlyArray<ReactSemanticHookStateTransition>;
   compiler: ReactCompilerGraph;
 }
 

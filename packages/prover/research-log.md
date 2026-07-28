@@ -711,7 +711,7 @@ Known regions that must force `incomplete` until modeled:
   and emitter `on`/`once` contracts
 - Mutable-object external-store snapshots requiring cache summaries, selectors, or third-party
   store contracts
-- Transitions, deferred values, optimistic state, and Actions
+- Transitions, deferred values, optimistic state, and Actions beyond certified `useState` updates
 - Suspense and abandoned render behavior
 - Reconciliation outside direct arrays, map callbacks, and imperative `for`-loop list construction
 - Component tree position and state preservation outside represented list identities
@@ -745,7 +745,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 257 TypeScript fixture projects, 444 static tests, and 34 Chromium runtime
+Current checkpoint: 265 TypeScript fixture projects, 456 static tests, and 35 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -781,6 +781,8 @@ oracles.
 - The class state-transition oracle confirms that a previous-props guard converges after one state
   write and that an unguarded `componentDidUpdate` write reaches React's maximum-update-depth
   failure.
+- The Hook state-transition oracle confirms that one event commits one state increment while root
+  Strict Mode invokes the functional updater twice to expose accidental impurity.
 
 ## Effect resource lifetime certificates
 
@@ -1126,3 +1128,93 @@ Changeset is warranted before publication.
 Kill: If the construction fact cannot distinguish a concrete invalid initialization from an opaque
 factory without false `proved` results across two proof-schema releases, remove the dedicated claim
 and keep class applications incomplete until a stronger constructor CFG is available.
+
+## Hook state-transition certificates
+
+### React semantics
+
+- The official [`useState` reference](https://react.dev/reference/react/useState) defines a
+  functional setter argument as an updater queued by React. The updater receives pending state,
+  must be pure, and returns the next state.
+- The same reference states that root Strict Mode may invoke an updater twice in development to
+  find accidental impurities while ignoring one result. Updater side effects can therefore happen
+  twice even when React commits only one state transition.
+- A non-function setter argument is a direct next-state value. The setter identity is stable, so a
+  dependency-array reference is not an escaped callback.
+
+### Proof boundary
+
+The new `hook-state-transitions` obligation is driven by TypeScript symbols from the second tuple
+element of canonical `useState` calls. It does not trust `set` naming conventions, and it does not
+reinterpret the second result of `useReducer` as a state updater. Each setter call records its state
+and setter names, source location, every represented execution-root callback, optional updater
+callback, updater classification, and exact source/completeness flags.
+
+Direct non-callable values are complete when the call belongs to an existing callback graph.
+Resolved synchronous functions reuse the render-purity proof and execute in their own
+`state-transition` callback graph. Observable writes, browser storage, logging, time, randomness,
+network access, and other known effects refute updater purity. Unknown or callable union values,
+asynchronous or generator updaters, and bodies without project source remain unknown.
+
+Execution ownership is inherited from the semantic graph rather than inferred again: direct
+render, intrinsic and forwarded event, Effect setup/cleanup, scheduled, memoized, and reachable
+helper functions point back to their already certified root callbacks. A setter reference passed
+outside a direct call is a `setter-escape` fact unless it is only a Hook dependency. Escaped setters
+and calls with no represented root fail closed.
+
+The TypeScript standard-library symbols for `Map` and `Set` reads and mutators refine the shared
+purity proof. Reading `has`/`get` is pure; mutating a freshly constructed local collection is pure;
+mutating prior state or another protected input is a violation. User-defined methods with the same
+names receive no platform contract.
+
+The independent checker re-derives the claim verdict, validates non-class ownership, execution
+callback ownership, the updater callback's `state-transition` phase, updater/status coherence, and
+the exact source/completeness equations. Report schema 17 and graph schema 23 reject stale or
+forged certificates.
+
+This claim proves transition ownership and updater purity, not application-specific next-state
+correctness. Queue ordering across multiple updates, function-valued state wrappers, render-phase
+convergence, setter flow through arbitrary libraries, transitions, optimistic state, Actions,
+Suspense interruption, and cross-component state-machine invariants remain explicit future proof
+work.
+
+The React Bench checkout supplied realistic shapes for the corpus: event toggles in the gallery and
+sidebar harnesses, Effect-owned request counters, and the viewer's immutable `Set` replacement
+pattern. The proof fixture keeps that `Set` pattern instead of reducing the milestone to scalar
+arithmetic.
+
+Added corpus:
+
+- proved: `proved-hook-functional-updater`, `proved-hook-direct-state-value`,
+  `proved-effect-functional-updater`, and `proved-state-setter-lookalikes`
+- refuted: `refuted-impure-hook-state-updater`
+- incomplete: `incomplete-opaque-hook-state-updater`,
+  `incomplete-hook-state-setter-escape`, and `incomplete-hook-setter-in-reducer`
+- runtime: `hook-state-transition-oracle.spec.ts`
+
+### Product brief: internal Hook state-transition facts
+
+Job: Prover consumers need to know whether React may safely replay a functional state updater and
+whether every represented setter invocation remains inside the modeled callback graph.
+
+Change: Add one private Hook state-transition claim and a versioned fact for each direct setter call
+or setter escape.
+
+Reuse: Truffler searches for Hook state transitions, `useState` setter calls, functional updater
+purity, setter symbols, and Hook bindings found no existing transition certificate. The
+implementation reuses `collectHookBindings`, callback reachability, TypeScript symbol resolution,
+render purity, execution phases, and the independent checker. Class and Hook updaters now share one
+updater-function purity entry point.
+
+Metric: The private package has no CLI telemetry path. Its deterministic acceptance metric is
+complete separation of pure event/Effect updaters, direct values, an impure updater, an opaque
+updater, a setter escape, and the `useReducer`/name-lookalike controls, plus a Chromium oracle that
+observes two updater evaluations and one committed increment.
+
+Compat: No React Doctor CLI, score, config, Action, or JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 17 and its semantic graph to schema 23. No
+Changeset is warranted before publication.
+
+Kill: If execution-root matching or updater classification cannot separate the React Bench
+controls without false `proved` results across two proof-schema releases, remove the dedicated
+claim and keep `useState` applications incomplete until callback SSA provides the missing proof.

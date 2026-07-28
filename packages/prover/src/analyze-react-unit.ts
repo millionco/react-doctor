@@ -13,6 +13,7 @@ import { analyzeEffectStateUpdates } from "./analyze-effect-state-updates.js";
 import { analyzeExternalStoreConsistency } from "./analyze-external-store-consistency.js";
 import { analyzeHookOrder } from "./analyze-hook-order.js";
 import { analyzeHookOwnership } from "./analyze-hook-ownership.js";
+import { analyzeHookStateTransitions } from "./analyze-hook-state-transitions.js";
 import { analyzeMemoDependencies } from "./analyze-memo-dependencies.js";
 import { analyzeRefAccess } from "./analyze-ref-access.js";
 import { analyzeReducerPurity } from "./analyze-reducer-purity.js";
@@ -41,6 +42,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.ExternalStoreConsistency,
   ReactProofClaim.HookOrder,
   ReactProofClaim.HookOwnership,
+  ReactProofClaim.HookStateTransitions,
   ReactProofClaim.MemoDependencies,
   ReactProofClaim.ReconciliationIdentity,
   ReactProofClaim.ReducerPurity,
@@ -135,6 +137,7 @@ export const analyzeReactUnit = (
       analyzeExternalStoreConsistency(unit, context),
       analyzeHookOrder(unit.functionNode, context),
       analyzeHookOwnership(unit.functionNode),
+      analyzeHookStateTransitions(unit, context),
       analyzeMemoDependencies(unit.functionNode, context),
       analyzeReconciliationIdentity(unit.functionNode, context),
       analyzeReducerPurity(unit.functionNode, context),

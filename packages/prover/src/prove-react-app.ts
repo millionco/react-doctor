@@ -47,6 +47,7 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
       classLifecycles: [],
       classStateWrites: [],
       classStateTransitions: [],
+      hookStateTransitions: [],
       compiler: {
         version: REACT_COMPILER_VERSION,
         phase: REACT_COMPILER_FACT_PHASE,

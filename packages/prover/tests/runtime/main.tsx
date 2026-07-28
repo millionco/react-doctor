@@ -16,6 +16,9 @@ import type { ChangeEvent } from "react";
 import { createRoot } from "react-dom/client";
 import {
   FAST_QUERY_DELAY_MS,
+  HOOK_STATE_INCREMENT,
+  HOOK_STATE_INITIAL_COUNT,
+  HOOK_STATE_UPDATER_INITIAL_RUNS,
   CLASS_UPDATE_INITIAL_REVISION,
   CLASS_UPDATE_NEXT_REVISION,
   INITIAL_CALLBACK_REVISION,
@@ -26,6 +29,7 @@ import {
   SLOW_QUERY_DELAY_MS,
   STORE_VERSION_INCREMENT,
   STRICT_MODE_CONSTRUCTION_RUNS,
+  STRICT_MODE_HOOK_UPDATER_RUNS,
   UNOBSERVED_CALLBACK_REVISION,
 } from "./constants.js";
 
@@ -44,6 +48,7 @@ declare global {
     listenerHits: number;
     observerHits: number;
     schedulerHits: number;
+    hookStateUpdaterRuns: number;
   }
 }
 
@@ -60,6 +65,30 @@ window.classUnmounts = 0;
 window.listenerHits = 0;
 window.observerHits = 0;
 window.schedulerHits = 0;
+window.hookStateUpdaterRuns = HOOK_STATE_UPDATER_INITIAL_RUNS;
+
+const HookStateTransitionOracle = () => {
+  const [count, setCount] = useState(HOOK_STATE_INITIAL_COUNT);
+  return (
+    <main>
+      <button
+        type="button"
+        onClick={() =>
+          setCount((previousCount) => {
+            window.hookStateUpdaterRuns += 1;
+            return previousCount + HOOK_STATE_INCREMENT;
+          })
+        }
+      >
+        increment
+      </button>
+      <output data-testid="hook-state-count">{count}</output>
+      <output data-testid="expected-hook-state-updater-runs">
+        {STRICT_MODE_HOOK_UPDATER_RUNS}
+      </output>
+    </main>
+  );
+};
 
 const LeakyListener = () => {
   useEffect(() => {
@@ -882,20 +911,24 @@ const RuntimeOracle = () => {
   if (oracle === "class-construction") {
     return <ClassConstructionOracle />;
   }
+  if (oracle === "hook-state-transition") {
+    return <HookStateTransitionOracle />;
+  }
   return <ListenerOracle />;
 };
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing runtime oracle root");
 const oracle = new URLSearchParams(window.location.search).get("oracle");
-const isClassLifecycleOracle =
+const isStrictModeOracle =
   oracle === "class-listener" ||
   oracle === "class-scheduler" ||
   oracle === "class-construction" ||
   oracle === "class-state-ownership" ||
-  oracle === "class-state-transition";
+  oracle === "class-state-transition" ||
+  oracle === "hook-state-transition";
 createRoot(rootElement).render(
-  isClassLifecycleOracle ? (
+  isStrictModeOracle ? (
     <StrictMode>
       <RuntimeOracle />
     </StrictMode>

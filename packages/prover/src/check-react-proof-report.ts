@@ -16,6 +16,7 @@ import {
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
   ReactExecutionPhase,
+  ReactHookStateUpdaterStatus,
   ReactObligationStatus,
   ReactProofCertificateStatus,
   ReactProofClaim,
@@ -32,6 +33,8 @@ import type {
   ReactProofCertificateFailure,
   ReactSemanticUnit,
 } from "./types.js";
+
+const HOOK_STATE_UPDATER_STATUSES = new Set(Object.values(ReactHookStateUpdaterStatus));
 
 const addFailure = (
   failures: ReactProofCertificateFailure[],
@@ -141,6 +144,31 @@ const expectedClassConstructionStatus = (
     return ReactObligationStatus.Violated;
   }
   return !construction || construction.status === ReactClassConstructionStatus.Unknown
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedHookStateTransitionStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  if (unit.kind === ReactUnitKind.ClassComponent) {
+    return ReactObligationStatus.Proved;
+  }
+  const transitions = report.graph.hookStateTransitions.filter(
+    (transition) => transition.ownerId === unit.id,
+  );
+  if (
+    transitions.some(
+      (transition) => transition.updaterStatus === ReactHookStateUpdaterStatus.Impure,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return transitions.some((transition) => !transition.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -269,6 +297,17 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `Class construction facts require ${expectedConstructionStatus}, not ${classConstruction.status}`,
+      );
+    }
+    const hookStateTransitions = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.HookStateTransitions,
+    );
+    const expectedHookStateStatus = expectedHookStateTransitionStatus(semanticUnit, report);
+    if (hookStateTransitions && hookStateTransitions.status !== expectedHookStateStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Hook state transition facts require ${expectedHookStateStatus}, not ${hookStateTransitions.status}`,
       );
     }
     const scheduledCallbackLifetime = unitProof.obligations.find(
@@ -762,6 +801,84 @@ const checkGraphReferences = (
   const transitionsById = new Map(
     report.graph.classStateTransitions.map((transition) => [transition.id, transition]),
   );
+  for (const transition of report.graph.hookStateTransitions) {
+    const owner = unitsById.get(transition.ownerId);
+    if (
+      !owner ||
+      owner.kind === ReactUnitKind.ClassComponent ||
+      owner.kind === ReactUnitKind.InvalidHookOwner
+    ) {
+      addFailure(
+        failures,
+        transition.id,
+        "A Hook state transition has an unknown or invalid owner",
+      );
+    }
+    if (!transition.stateName || !transition.setterName) {
+      addFailure(failures, transition.id, "A Hook state transition has an unnamed binding");
+    }
+    if (!HOOK_STATE_UPDATER_STATUSES.has(transition.updaterStatus)) {
+      addFailure(failures, transition.id, "A Hook state transition has an invalid updater status");
+    }
+    if (new Set(transition.executionCallbackIds).size !== transition.executionCallbackIds.length) {
+      addFailure(failures, transition.id, "A Hook state transition repeats an execution callback");
+    }
+    for (const callbackId of transition.executionCallbackIds) {
+      const executionCallback = callbacksById.get(callbackId);
+      if (!executionCallback || executionCallback.ownerId !== transition.ownerId) {
+        addFailure(
+          failures,
+          transition.id,
+          "A Hook state transition has an invalid execution callback",
+        );
+      }
+    }
+    const updaterCallback = transition.updaterCallbackId
+      ? callbacksById.get(transition.updaterCallbackId)
+      : null;
+    const updaterRequiresCallback =
+      transition.updaterStatus === ReactHookStateUpdaterStatus.Pure ||
+      transition.updaterStatus === ReactHookStateUpdaterStatus.Impure;
+    const updaterForbidsCallback =
+      transition.updaterStatus === ReactHookStateUpdaterStatus.DirectValue ||
+      transition.updaterStatus === ReactHookStateUpdaterStatus.SetterEscape;
+    if (
+      (updaterRequiresCallback && !transition.updaterCallbackId) ||
+      (updaterForbidsCallback && transition.updaterCallbackId) ||
+      (transition.updaterCallbackId &&
+        (updaterCallback?.ownerId !== transition.ownerId ||
+          updaterCallback.kind !== ReactSemanticCallbackKind.HookStateUpdater ||
+          updaterCallback.phase !== ReactExecutionPhase.StateTransition))
+    ) {
+      addFailure(failures, transition.id, "A Hook state transition has an invalid updater");
+    }
+    const expectedSourceComplete =
+      transition.executionCallbackIds.length > 0 &&
+      transition.executionCallbackIds.every(
+        (callbackId) =>
+          callbacksById.get(callbackId)?.phase !== ReactExecutionPhase.StateTransition,
+      ) &&
+      transition.updaterStatus !== ReactHookStateUpdaterStatus.SetterEscape &&
+      transition.updaterStatus !== ReactHookStateUpdaterStatus.Unknown;
+    if (transition.sourceComplete !== expectedSourceComplete) {
+      addFailure(
+        failures,
+        transition.id,
+        "A Hook state transition source flag does not match its modeled surface",
+      );
+    }
+    const expectedComplete =
+      transition.sourceComplete &&
+      (transition.updaterStatus === ReactHookStateUpdaterStatus.DirectValue ||
+        transition.updaterStatus === ReactHookStateUpdaterStatus.Pure);
+    if (transition.complete !== expectedComplete) {
+      addFailure(
+        failures,
+        transition.id,
+        "A Hook state transition completeness flag does not match its certificate",
+      );
+    }
+  }
   const stateWritesById = new Map(
     report.graph.classStateWrites.map((stateWrite) => [stateWrite.id, stateWrite]),
   );
@@ -1585,6 +1702,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Class state transitions",
     report.graph.classStateTransitions.map((transition) => transition.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Hook state transitions",
+    report.graph.hookStateTransitions.map((transition) => transition.id),
   );
   checkUniqueIds(
     failures,

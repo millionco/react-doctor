@@ -636,7 +636,7 @@ export const findDependencyInfoFromMonorepoRoot = (
   const shouldUseTailwindFallback = leafTailwindDeclaration !== null;
   const shouldUseZodFallback = leafZodDeclaration !== null;
   const reactCatalogVersion = shouldUseReactFallback
-    ? resolveCatalogVersion(rootPackageJson, "react", monorepoRoot, null)
+    ? resolveCatalogVersion(rootPackageJson, "react", monorepoRoot)
     : null;
   const tailwindCatalogVersion = shouldUseTailwindFallback
     ? resolveCatalogVersion(

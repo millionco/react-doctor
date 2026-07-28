@@ -969,6 +969,22 @@ describe("discoverProject", () => {
     expect(projectInfo.reactMajorVersion).toBe(19);
   });
 
+  it("applies a monorepo React catalog when the root manifest does not declare React", () => {
+    const monorepoRoot = path.join(tempDirectory, "leaf-uses-root-only-react-catalog");
+    const packageDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - apps/*\n\ncatalog:\n  react: ^19.1.0\n",
+    );
+    fs.writeFileSync(path.join(monorepoRoot, "package.json"), JSON.stringify({ name: "root" }));
+    fs.writeFileSync(path.join(packageDirectory, "package.json"), JSON.stringify({ name: "web" }));
+
+    const projectInfo = discoverProject(packageDirectory);
+    expect(projectInfo.reactVersion).toBe("^19.1.0");
+    expect(projectInfo.reactMajorVersion).toBe(19);
+  });
+
   it("does not mask an unresolved leaf React declaration with the monorepo version", () => {
     const monorepoRoot = path.join(tempDirectory, "leaf-react-declaration-isolation");
     const packageDirectory = path.join(monorepoRoot, "apps", "web");

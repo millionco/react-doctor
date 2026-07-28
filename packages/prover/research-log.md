@@ -235,6 +235,26 @@ model and must not become the whole-app proof substrate.
   index signatures, unconstrained type parameters, getters, mutated or escaping objects,
   unresolved nested prop objects, and object-literal spread merges still fail closed. A Playwright
   oracle confirms both precedence directions in React 19.2.5.
+- React's [`useRef`](https://react.dev/reference/react/useRef) contract says the initial value is
+  ignored after the first render, the ref object is stable, and render-phase reads or writes are
+  generally forbidden. [`useLayoutEffect`](https://react.dev/reference/react/useLayoutEffect)
+  runs after commit but before repaint, whereas [`useEffect`](https://react.dev/reference/react/useEffect)
+  may run after the browser paints. React's own Effect Event implementation updates its callback
+  payload in the before-mutation or mutation phase
+  ([hooks](https://github.com/facebook/react/blob/9ceb1e7d9e20bd0302cf6ab31b038c5ec673178d/packages/react-reconciler/src/ReactFiberHooks.js),
+  [commit](https://github.com/facebook/react/blob/9ceb1e7d9e20bd0302cf6ab31b038c5ec673178d/packages/react-reconciler/src/ReactFiberCommitWork.js)),
+  which is a stronger primitive than a passive userland ref update.
+- Real libraries implement several distinct userland protocols. Yet Another React Lightbox uses a
+  client layout-effect alias and `useCallback`; MUI uses an enhanced layout effect and a stable
+  wrapper ref; Radix uses passive `useEffect` plus `useMemo`
+  ([Lightbox source](https://github.com/igordanchenko/yet-another-react-lightbox/blob/189830b19c0ed95370a485433f754b64aa09df04/src/hooks/useEventCallback.ts),
+  [MUI source](https://github.com/mui/material-ui/blob/7fb01101f45fb72fdbeb3d826984030583e71ea9/packages/mui-utils/src/useEventCallback/useEventCallback.ts),
+  [Radix source](https://github.com/radix-ui/primitives/blob/e1646bd74289e9de2ef8506204adec33c820876f/packages/react/use-callback-ref/src/use-callback-ref.tsx)).
+  The prover does not trust those names. It checks the ref declaration, the sole `.current` write,
+  dependency coverage, non-escape, wrapper return flow, and the concrete React execution phase.
+  A Chromium oracle updates a callback and programmatically clicks during the same component's
+  later layout effect: the layout-synchronized protocol observes revision 1, while the passive
+  protocol still invokes revision 0.
 
 ### Current proof model
 
@@ -249,7 +269,7 @@ builtin-hook calls, cross-module JSX render edges, and effect dependency, captur
 cleanup facts. Context definitions, provider instances, consumer reads, and the provider stack
 active at each render edge are also explicit graph facts. Async task facts link `await` and Promise
 continuations to their owning Effect and record state writes plus guarded, unguarded, or unknown
-ownership. Schema version 14 also records every source-resolved project helper reachable from
+ownership. Schema version 15 also records every source-resolved project helper reachable from
 render, event, memo, reducer, Effect setup, Effect cleanup, Effect Event, and external-store
 callbacks, together with its root callback, execution phase, and conditional reachability. When a
 helper is reachable by both conditional and unconditional paths, the graph retains the stronger
@@ -259,7 +279,7 @@ obligations and graph extraction share the symbol-resolved collectors. A React C
 therefore replace individual fact producers without changing the report contract or proof
 consumers.
 
-Schema version 14 records the call edges that justify helper reachability. Direct source calls,
+Schema version 15 records the call edges that justify helper reachability. Direct source calls,
 source callbacks invoked through formal parameters or captured factory parameters, object-property
 invocations, and callbacks passed to known synchronous iteration methods are distinct facts with
 source and target function IDs, execution phase, conditional reachability, and the relevant
@@ -285,8 +305,10 @@ returns while a normally completing `finally` preserves them. Loop summaries pro
 zero-iteration paths, bodies that terminate on their first entered iteration, one-pass
 `do...while (false)`, and finite fresh array literals without spreads. An unranked repeating body,
 `break`/`continue`, spread or opaque iterables, grouped or fallthrough switch clauses,
-non-exhaustive switches, unresolved callable arguments, mutable callable properties, and
-ref-backed indirection remain explicit failed proofs. A `const` binding iterating a nonempty fresh
+non-exhaustive switches, unresolved callable arguments, and mutable callable properties remain
+explicit failed proofs. Layout-synchronized callable refs are the narrow exception: the evaluator
+joins their initializer and sole effect-written value and carries that target through
+`ref.current()` only when the source protocol is complete. A `const` binding iterating a nonempty fresh
 literal is additionally bound to the join of its callable elements. Identifier, object, tuple, and
 nested object/tuple paths can therefore carry returned or directly invoked loop callbacks into the
 phase graph. Defaults, rest elements, computed keys, mutable declarations, and incomplete
@@ -320,9 +342,19 @@ and project-helper state writes. The current model fails this case closed pendin
 identity-stability and cross-component rerender fixpoint proof; a source callback with no state
 writes can be proved in Effect setup or cleanup.
 
+Callable refs have a separate temporal certificate. A complete fact requires one local `const`
+`useRef` initialized from the same callback symbol written to `.current`, exactly one simple write
+inside `useLayoutEffect`, dependency coverage or an omitted dependency tuple, no escape or
+non-call read, and at least one concrete event-phase invocation. Generic `useCallback` and
+`useMemo` wrappers both preserve the factory environment into the event graph. Passive
+`useEffect`, multiple writes, render access, unresolved aliases, imported effect wrappers, and
+non-event invocation channels remain `unknown`. The independent checker requires a complete fact
+to name the layout update and an event callback whose graph contains the corresponding
+`ref.current` call edge.
+
 `useSyncExternalStore` arguments use the same project callback lattice but terminate in three
 distinct protocol channels: subscription lifetime, client render snapshot, and server-render
-snapshot. Schema version 14 stores callback sets and completeness independently for all three and
+snapshot. Schema version 15 stores callback sets and completeness independently for all three and
 links each callback-prop flow to its certified JSX render fact.
 External-store consistency resolves the source functions from those certified callback IDs before
 checking symmetric cleanup, cached snapshot identity, store-write notification, and hydration
@@ -402,6 +434,7 @@ Each function unit receives these obligations:
 | Claim                        | Current evidence                                                                            |
 | ---------------------------- | ------------------------------------------------------------------------------------------- |
 | `async-effect-ownership`     | Post-`await` and Promise-continuation commits, cleanup invalidation, abort guards           |
+| `callable-ref-freshness`     | Initial value, exclusive effect write, commit timing, non-escape, concrete event channels   |
 | `hook-order`                 | Conditional, looped, nested, and post-early-return hook positions                           |
 | `hook-ownership`             | Module, helper, method, and anonymous-callback hook calls without a valid React owner       |
 | `context-topology`           | Exact object identity, defaults, provider values, nested overrides, render/hook propagation |
@@ -486,6 +519,8 @@ Proved:
 - `proved-for-of-nested-binding-handler`
 - `proved-helper-local-rebinding`
 - `proved-branch-effect-cleanup`
+- `proved-layout-ref-backed-event-callback`
+- `proved-layout-ref-backed-memo-event-callback`
 
 Refuted:
 
@@ -544,6 +579,7 @@ Refuted:
 - `for-of-returned-render-impurity`
 - `for-of-invoked-render-impurity`
 - `for-of-destructured-render-impurity`
+- `refuted-layout-ref-missing-dependency`
 
 Incomplete:
 
@@ -593,6 +629,8 @@ Incomplete:
 - `incomplete-for-of-rest-binding-handler`
 - `incomplete-for-of-computed-binding-handler`
 - `incomplete-ref-backed-event-callback`
+- `incomplete-layout-ref-escaped-event-callback`
+- `incomplete-layout-ref-multiple-write-event-callback`
 - `incomplete-mutable-object-callback`
 - missing project configuration
 
@@ -616,7 +654,7 @@ Known regions that must force `incomplete` until modeled:
 - Implicit synchronous exceptions from calls and property operations without checked throw
   contracts; catch branches are over-approximated, but uncaught expression throws are not yet a
   whole-project obligation
-- Ref-backed callback freshness and assignment across render/commit/event phases
+- Passive, multiply written, escaping, imported-wrapper, or non-event callable-ref protocols
 - Async phase/lifetime transforms for timers, promises, schedulers, and subscription registries
 - Phase-polymorphic callbacks crossing opaque library or Promise registration contracts
 - Context propagation through opaque library components, portals, and externally mounted exports
@@ -676,3 +714,6 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 - The JSX spread oracle confirms React's ordered property-copy semantics in both directions:
   trailing explicit callbacks replace spread callbacks, and trailing spread callbacks replace
   explicit callbacks.
+- The callable-ref oracle performs an update and a programmatic click in one commit. The
+  layout-synchronized ref observes the new callback; the passive ref exposes the previous callback
+  before its Effect runs.

@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { collectCallableTargetFunctions } from "./collect-callable-target-functions.js";
+import { getCallableRefProtocolForInitializer } from "./collect-callable-ref-protocols.js";
 import { SYNCHRONOUS_CALLBACK_METHOD_NAMES } from "./constants.js";
 import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { isIdentifierReference } from "./is-identifier-reference.js";
@@ -151,6 +152,17 @@ const isReactDependencyArrayElement = (
     hookCall &&
     hookCall.arguments[1] === dependencyArray &&
     getCanonicalReactApiName(hookCall.expression, typeChecker),
+  );
+};
+
+const isModeledCallableRefInitializer = (
+  identifier: ts.Identifier,
+  typeChecker: ts.TypeChecker,
+): boolean => {
+  const callExpression = ts.isCallExpression(identifier.parent) ? identifier.parent : null;
+  if (!callExpression || callExpression.arguments[0] !== identifier) return false;
+  return Boolean(
+    getCallableRefProtocolForInitializer(callExpression, typeChecker)?.isSourceComplete,
   );
 };
 
@@ -325,7 +337,8 @@ export const collectReachableFunctionGraph = (
                 .isComplete,
             ) ||
             isModeledObjectArgument(node, typeChecker) ||
-            isReactDependencyArrayElement(node, typeChecker);
+            isReactDependencyArrayElement(node, typeChecker) ||
+            isModeledCallableRefInitializer(node, typeChecker);
           if (
             !isDirectInvocation &&
             !isForwardedArgument &&

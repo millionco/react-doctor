@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { collectAsyncEffectTaskDescriptors } from "./collect-async-effect-task-descriptors.js";
+import { collectCallableRefProtocols } from "./collect-callable-ref-protocols.js";
 import { collectCallbackStateWrites } from "./collect-callback-state-writes.js";
 import { createComponentCallbackFlow } from "./create-component-callback-flow.js";
 import type {
@@ -32,6 +33,7 @@ import { isReactContextExpression } from "./is-react-context-expression.js";
 import { resolveFunction } from "./resolve-function.js";
 import { mergeCallableBindings } from "./resolve-callable-expression.js";
 import {
+  ReactCallableRefFreshness,
   ReactEffectDependencyMode,
   ReactExecutionPhase,
   ReactIdentityStability,
@@ -52,6 +54,7 @@ import type {
   ReactSemanticEventBinding,
   ReactSemanticCallbackPropAlternative,
   ReactSemanticCallbackPropFlow,
+  ReactSemanticCallableRef,
   ReactSemanticExternalStore,
   ReactSemanticFunctionCall,
   ReactSemanticGraph,
@@ -61,6 +64,7 @@ import type {
   ReactSemanticUnit,
   ReactUnitDescriptor,
 } from "./types.js";
+import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
 
 interface UnitGraphIdentity {
@@ -148,6 +152,65 @@ interface ContextGraphFacts {
   providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>;
   contextIdsBySymbol: ReadonlyMap<ts.Symbol, string>;
 }
+
+const collectCallableRefGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  callbacks: ReadonlyArray<ReactSemanticCallback>,
+  functionCalls: ReadonlyArray<ReactSemanticFunctionCall>,
+  context: ReactAnalysisContext,
+): ReadonlyArray<ReactSemanticCallableRef> => {
+  const callbacksById = new Map(callbacks.map((callback) => [callback.id, callback]));
+  return identities.flatMap((identity) => {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) return [];
+    return collectCallableRefProtocols(functionNode, context.typeChecker).map((protocol) => {
+      const invocationLocations = protocol.invocationExpressions.map((invocationExpression) =>
+        getNodeLocation(invocationExpression, context.rootDirectory),
+      );
+      const invocationCalls = functionCalls.filter(
+        (functionCall) =>
+          invocationLocations.some((location) =>
+            areProofLocationsEqual(location, functionCall.location),
+          ) &&
+          callbacksById.get(functionCall.rootCallbackId)?.kind !==
+            ReactSemanticCallbackKind.MemoizedCallback,
+      );
+      const invocationCallbackIds = [
+        ...new Set(invocationCalls.map((functionCall) => functionCall.rootCallbackId)),
+      ];
+      const invocationCallbacks = invocationCallbackIds.flatMap((callbackId) => {
+        const callback = callbacksById.get(callbackId);
+        return callback ? [callback] : [];
+      });
+      const isEventSynchronized =
+        protocol.isSourceComplete &&
+        protocol.updateHookName === "useLayoutEffect" &&
+        invocationCallbacks.length > 0 &&
+        invocationCallbacks.every((callback) => callback.phase === ReactExecutionPhase.Event);
+      const freshness = isEventSynchronized
+        ? ReactCallableRefFreshness.EventSynchronized
+        : protocol.updateHookName === "useEffect"
+          ? ReactCallableRefFreshness.PassiveLag
+          : ReactCallableRefFreshness.Unknown;
+      return {
+        id: createSemanticId("callable-ref", protocol.refName, protocol.declaration, context),
+        ownerId: identity.semanticUnit.id,
+        name: protocol.refName,
+        location: getNodeLocation(protocol.declaration, context.rootDirectory),
+        updateHookName: protocol.updateHookName,
+        updateLocation: protocol.updateHookCall
+          ? getNodeLocation(protocol.updateHookCall, context.rootDirectory)
+          : null,
+        invocationCallIds: invocationCalls.map((functionCall) => functionCall.id),
+        invocationCallbackIds,
+        invocationLocations,
+        freshness,
+        sourceComplete: protocol.isSourceComplete,
+        complete: isEventSynchronized,
+      };
+    });
+  });
+};
 
 interface RenderGraphFacts {
   edges: ReadonlyArray<ReactSemanticEdge>;
@@ -1477,6 +1540,7 @@ export const buildReactSemanticGraph = (
     contextGraph.contextProviders,
     contextGraph.contextConsumers,
   );
+  const callableRefs = collectCallableRefGraph(identities, callbacks, functionCalls, context);
   return {
     schemaVersion: REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
     units: identities.map((identity) => identity.semanticUnit),
@@ -1495,6 +1559,7 @@ export const buildReactSemanticGraph = (
     functionCalls,
     eventBindings: eventGraph.eventBindings,
     callbackPropFlows: callbackPropGraph.callbackPropFlows,
+    callableRefs,
     compiler: extractReactCompilerGraph(sourceFiles, context.rootDirectory),
   };
 };

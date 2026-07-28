@@ -3,6 +3,7 @@ export { checkReactProofReport } from "./check-react-proof-report.js";
 export {
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
+  ReactCallableRefFreshness,
   ReactCompilerFactStatus,
   ReactEffectDependencyMode,
   ReactExecutionPhase,
@@ -39,6 +40,7 @@ export type {
   ReactSemanticCallbackGuard,
   ReactSemanticCallbackPropAlternative,
   ReactSemanticCallbackPropFlow,
+  ReactSemanticCallableRef,
   ReactSemanticExternalStore,
   ReactSemanticCallback,
   ReactSemanticAsyncTask,

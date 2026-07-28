@@ -40,6 +40,10 @@ The report includes:
   replace earlier callbacks, while finite symbol-identified path guards preserve correlated
   ternary alternatives without relying on source order, including immutable identifier guards
   substituted through source callback factories;
+- callable-ref protocol facts that tie a `useRef` initializer, its exclusive effect write, the
+  write's commit phase, and every concrete invocation channel to the resolved source callback;
+  layout-synchronized, non-escaping refs used only by modeled events can be proved, while passive,
+  multiply written, escaping, and unresolved protocols fail closed;
 - normalized React Compiler CFG, instruction-effect, and reactive-place facts;
 - per-unit proof obligations with `proved`, `violated`, or `unknown` results;
 - project evidence for type unsoundness, compiler diagnostics, and opaque boundaries.
@@ -55,8 +59,9 @@ obligations. It also rejects function-call edges that cross owners, callback roo
 phases, and flow kinds whose parameter/argument indexes are inconsistent. This is a structural
 proof certificate today. Callback-prop channels are also checked for known owners, phase-matched
 source callbacks, complete channels with actual sources, and internally consistent guarded
-alternatives. Source-derived block invariants and lifecycle transition certificates remain future
-work.
+alternatives. Callable refs additionally require a source-complete `useLayoutEffect` update, a
+concrete event callback, and a `ref.current` call edge. Source-derived block invariants and broader
+lifecycle transition certificates remain future work.
 
 ## Verification
 

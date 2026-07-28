@@ -1,9 +1,12 @@
 import {
   createContext,
   memo,
+  useCallback,
   useContext,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -11,10 +14,13 @@ import type { ChangeEvent } from "react";
 import { createRoot } from "react-dom/client";
 import {
   FAST_QUERY_DELAY_MS,
+  INITIAL_CALLBACK_REVISION,
+  NEXT_CALLBACK_REVISION,
   PRIMARY_STORE_INITIAL_VERSION,
   SECONDARY_STORE_INITIAL_VERSION,
   SLOW_QUERY_DELAY_MS,
   STORE_VERSION_INCREMENT,
+  UNOBSERVED_CALLBACK_REVISION,
 } from "./constants.js";
 
 declare global {
@@ -422,6 +428,69 @@ const JsxSpreadOrderOracle = () => {
   );
 };
 
+interface CallableRefProbeProperties {
+  onObservedRevision: (revision: number) => void;
+  revision: number;
+}
+
+const useLayoutSynchronizedCallback = (callback: () => void) => {
+  const callbackRef = useRef(callback);
+  useLayoutEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+  return useCallback(() => callbackRef.current(), []);
+};
+
+const usePassiveSynchronizedCallback = (callback: () => void) => {
+  const callbackRef = useRef(callback);
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+  return useCallback(() => callbackRef.current(), []);
+};
+
+const LayoutCallableRefProbe = ({ onObservedRevision, revision }: CallableRefProbeProperties) => {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const handleProbe = useLayoutSynchronizedCallback(() => onObservedRevision(revision));
+  useLayoutEffect(() => {
+    if (revision === NEXT_CALLBACK_REVISION) buttonRef.current?.click();
+  }, [revision]);
+  return (
+    <button ref={buttonRef} type="button" onClick={handleProbe}>
+      phase probe
+    </button>
+  );
+};
+
+const PassiveCallableRefProbe = ({ onObservedRevision, revision }: CallableRefProbeProperties) => {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const handleProbe = usePassiveSynchronizedCallback(() => onObservedRevision(revision));
+  useLayoutEffect(() => {
+    if (revision === NEXT_CALLBACK_REVISION) buttonRef.current?.click();
+  }, [revision]);
+  return (
+    <button ref={buttonRef} type="button" onClick={handleProbe}>
+      phase probe
+    </button>
+  );
+};
+
+const CallableRefPhaseOracle = () => {
+  const [revision, setRevision] = useState(INITIAL_CALLBACK_REVISION);
+  const [observedRevision, setObservedRevision] = useState(UNOBSERVED_CALLBACK_REVISION);
+  const isLayoutMode = new URLSearchParams(window.location.search).get("mode") === "layout";
+  const Probe = isLayoutMode ? LayoutCallableRefProbe : PassiveCallableRefProbe;
+  return (
+    <main>
+      <button type="button" onClick={() => setRevision(NEXT_CALLBACK_REVISION)}>
+        advance revision
+      </button>
+      <Probe revision={revision} onObservedRevision={setObservedRevision} />
+      <output data-testid="observed-callback-revision">{observedRevision}</output>
+    </main>
+  );
+};
+
 const RuntimeOracle = () => {
   const oracle = new URLSearchParams(window.location.search).get("oracle");
   if (oracle === "keys") {
@@ -456,6 +525,9 @@ const RuntimeOracle = () => {
   }
   if (oracle === "jsx-spread-order") {
     return <JsxSpreadOrderOracle />;
+  }
+  if (oracle === "callable-ref-phase") {
+    return <CallableRefPhaseOracle />;
   }
   return <ListenerOracle />;
 };

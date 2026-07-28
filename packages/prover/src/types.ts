@@ -14,6 +14,7 @@ export enum ReactObligationStatus {
 
 export enum ReactProofClaim {
   BoundaryCoverage = "boundary-coverage",
+  CallableRefFreshness = "callable-ref-freshness",
   ComponentIdentity = "component-identity",
   ComponentInvocation = "component-invocation",
   ContextTopology = "context-topology",
@@ -155,6 +156,12 @@ export interface ReactSemanticEffect {
 export enum ReactIdentityStability {
   Stable = "stable",
   Unstable = "unstable",
+  Unknown = "unknown",
+}
+
+export enum ReactCallableRefFreshness {
+  EventSynchronized = "event-synchronized",
+  PassiveLag = "passive-lag",
   Unknown = "unknown",
 }
 
@@ -322,6 +329,21 @@ export interface ReactSemanticCallbackPropFlow {
   complete: boolean;
 }
 
+export interface ReactSemanticCallableRef {
+  id: string;
+  ownerId: string;
+  name: string;
+  location: ReactProofLocation;
+  updateHookName: string | null;
+  updateLocation: ReactProofLocation | null;
+  invocationCallIds: ReadonlyArray<string>;
+  invocationCallbackIds: ReadonlyArray<string>;
+  invocationLocations: ReadonlyArray<ReactProofLocation>;
+  freshness: ReactCallableRefFreshness;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export interface ReactCompilerInstructionFact {
   id: string;
   valueKind: string;
@@ -379,6 +401,7 @@ export interface ReactSemanticGraph {
   functionCalls: ReadonlyArray<ReactSemanticFunctionCall>;
   eventBindings: ReadonlyArray<ReactSemanticEventBinding>;
   callbackPropFlows: ReadonlyArray<ReactSemanticCallbackPropFlow>;
+  callableRefs: ReadonlyArray<ReactSemanticCallableRef>;
   compiler: ReactCompilerGraph;
 }
 

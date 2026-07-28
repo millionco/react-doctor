@@ -6,6 +6,7 @@ import {
   proveReactApp,
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
+  ReactCallableRefFreshness,
   ReactCompilerFactStatus,
   ReactEffectDependencyMode,
   ReactExecutionPhase,
@@ -39,6 +40,11 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
   },
   {
     fixtureName: "stale-effect",
+    claim: ReactProofClaim.EffectDependencies,
+    evidencePattern: /absent from the effect dependency list/,
+  },
+  {
+    fixtureName: "refuted-layout-ref-missing-dependency",
     claim: ReactProofClaim.EffectDependencies,
     evidencePattern: /absent from the effect dependency list/,
   },
@@ -397,7 +403,7 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.graph.schemaVersion).toBe(14);
+    expect(report.graph.schemaVersion).toBe(15);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -1740,6 +1746,115 @@ describe("proveReactApp", () => {
 
     expect(report.status).toBe(ReactAppProofStatus.Incomplete);
     expect(boundaryProof).toBeDefined();
+  });
+
+  it("proves a non-escaping callable ref synchronized before an intrinsic event", () => {
+    const report = proveFixture("proved-layout-ref-backed-event-callback");
+    const callableRef = report.graph.callableRefs[0];
+    const refCall = report.graph.functionCalls.find(
+      (functionCall) =>
+        functionCall.phase === ReactExecutionPhase.Event &&
+        functionCall.sourcePropertyPath.at(-1) === "current",
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(callableRef?.freshness).toBe(ReactCallableRefFreshness.EventSynchronized);
+    expect(callableRef?.complete).toBe(true);
+    expect(callableRef?.invocationCallIds).toHaveLength(1);
+    expect(callableRef?.invocationCallbackIds).toHaveLength(1);
+    expect(callableRef?.invocationLocations).toHaveLength(1);
+    expect(refCall).toBeDefined();
+  });
+
+  it("rejects a callable-ref certificate without its layout synchronization fact", () => {
+    const report = proveFixture("proved-layout-ref-backed-event-callback");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        callableRefs: report.graph.callableRefs.map((callableRef) => ({
+          ...callableRef,
+          updateHookName: "useEffect",
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("layout-synchronized event certificate"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a callable-ref certificate without its invocation call edge", () => {
+    const report = proveFixture("proved-layout-ref-backed-event-callback");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        callableRefs: report.graph.callableRefs.map((callableRef) => ({
+          ...callableRef,
+          invocationCallIds: ["missing-call"],
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("unknown invocation call"),
+      ),
+    ).toBe(true);
+  });
+
+  it("records the post-commit lag of a passive callable-ref update", () => {
+    const report = proveFixture("incomplete-ref-backed-event-callback");
+    const callableRef = report.graph.callableRefs[0];
+    const freshnessProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find(
+        (obligation) =>
+          obligation.claim === ReactProofClaim.CallableRefFreshness &&
+          obligation.status === ReactObligationStatus.Unknown,
+      );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(callableRef?.freshness).toBe(ReactCallableRefFreshness.PassiveLag);
+    expect(callableRef?.complete).toBe(false);
+    expect(freshnessProof?.evidence[0]?.description).toMatch(/passive Effect/);
+  });
+
+  it("proves the layout-synchronized useMemo wrapper used by component libraries", () => {
+    const report = proveFixture("proved-layout-ref-backed-memo-event-callback");
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(report.graph.callableRefs[0]?.complete).toBe(true);
+    expect(
+      report.graph.functionCalls.some(
+        (functionCall) =>
+          functionCall.phase === ReactExecutionPhase.Event &&
+          functionCall.sourcePropertyPath.at(-1) === "current",
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    "incomplete-layout-ref-escaped-event-callback",
+    "incomplete-layout-ref-multiple-write-event-callback",
+  ])("fails closed when the callable ref protocol is not exclusive in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const freshnessProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find(
+        (obligation) =>
+          obligation.claim === ReactProofClaim.CallableRefFreshness &&
+          obligation.status === ReactObligationStatus.Unknown,
+      );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.callableRefs[0]?.sourceComplete).toBe(false);
+    expect(freshnessProof).toBeDefined();
   });
 
   it("requires SSA evidence after mutating a callable object property", () => {

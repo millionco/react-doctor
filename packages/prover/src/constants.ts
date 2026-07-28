@@ -1,5 +1,5 @@
-export const REACT_PROOF_SCHEMA_VERSION = 8;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 14;
+export const REACT_PROOF_SCHEMA_VERSION = 9;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 15;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;

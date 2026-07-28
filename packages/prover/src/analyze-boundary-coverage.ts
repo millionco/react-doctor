@@ -5,15 +5,14 @@ import {
   REACT_RUNTIME_MODULE_NAMES,
   REACT_UNMODELED_HOOK_NAMES,
 } from "./constants.js";
+import { getCallableRefProtocolForCurrentAccess } from "./collect-callable-ref-protocols.js";
 import { collectReachableFunctionGraph } from "./collect-reachable-functions.js";
 import { createEvidence } from "./create-evidence.js";
 import { createObligation } from "./create-obligation.js";
 import { getCanonicalHookName } from "./get-canonical-hook-name.js";
-import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { getCallName } from "./get-call-name.js";
 import { getComponentPropName } from "./get-component-prop-name.js";
 import { getNodeLocation } from "./get-node-location.js";
-import { getRootIdentifier } from "./get-root-identifier.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isComponentPropExpression } from "./is-component-prop-expression.js";
 import { isReactContextExpression } from "./is-react-context-expression.js";
@@ -25,6 +24,7 @@ import {
   ReactProofClaim,
   ReactUnitKind,
 } from "./types.js";
+import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import { collectJsxSpreadProperties } from "./utils/collect-jsx-spread-properties.js";
 import { isEffectiveJsxPropertySource } from "./utils/is-effective-jsx-property-source.js";
 import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
@@ -62,29 +62,6 @@ const isProjectModule = (
   );
 };
 
-const isCallableRefInvocation = (
-  callExpression: ts.CallExpression,
-  typeChecker: ts.TypeChecker,
-): boolean => {
-  if (
-    !ts.isPropertyAccessExpression(callExpression.expression) ||
-    callExpression.expression.name.text !== "current"
-  ) {
-    return false;
-  }
-  const rootIdentifier = getRootIdentifier(callExpression.expression);
-  const rootSymbol = rootIdentifier ? typeChecker.getSymbolAtLocation(rootIdentifier) : null;
-  return Boolean(
-    rootSymbol?.declarations?.some(
-      (declaration) =>
-        ts.isVariableDeclaration(declaration) &&
-        declaration.initializer &&
-        ts.isCallExpression(declaration.initializer) &&
-        getCanonicalReactApiName(declaration.initializer.expression, typeChecker) === "useRef",
-    ),
-  );
-};
-
 export const analyzeBoundaryCoverage = (
   unit: ReactUnitDescriptor,
   context: ReactAnalysisContext,
@@ -101,6 +78,19 @@ export const analyzeBoundaryCoverage = (
   const sourceFile = functionNode.getSourceFile();
   const isComponentUnit = unit.kind === ReactUnitKind.Component;
   const semanticOwnerId = findSemanticUnit(unit, context)?.id;
+  const isCompleteCallableRefAccess = (accessExpression: ts.PropertyAccessExpression): boolean => {
+    const protocol = getCallableRefProtocolForCurrentAccess(accessExpression, context.typeChecker);
+    if (!protocol) return false;
+    const protocolLocation = getNodeLocation(protocol.declaration, context.rootDirectory);
+    return Boolean(
+      context.graph?.callableRefs.some(
+        (callableRef) =>
+          callableRef.ownerId === semanticOwnerId &&
+          areProofLocationsEqual(callableRef.location, protocolLocation) &&
+          callableRef.complete,
+      ),
+    );
+  };
   const isModeledCallbackPropInvocation = (
     callExpression: ts.CallExpression,
     propName: string,
@@ -281,7 +271,11 @@ export const analyzeBoundaryCoverage = (
           ),
         );
       }
-      if (isCallableRefInvocation(node, context.typeChecker)) {
+      if (
+        ts.isPropertyAccessExpression(node.expression) &&
+        getCallableRefProtocolForCurrentAccess(node.expression, context.typeChecker) &&
+        !isCompleteCallableRefAccess(node.expression)
+      ) {
         unknownEvidence.push(
           createEvidence(
             node,
@@ -356,6 +350,7 @@ export const analyzeBoundaryCoverage = (
       node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
       node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
       ts.isPropertyAccessExpression(node.left) &&
+      !isCompleteCallableRefAccess(node.left) &&
       doesTypeContainCallable(context.typeChecker.getTypeAtLocation(node.left), context.typeChecker)
     ) {
       unknownEvidence.push(

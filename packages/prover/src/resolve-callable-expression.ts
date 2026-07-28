@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { getCallableRefProtocolForCurrentAccess } from "./collect-callable-ref-protocols.js";
 import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { getForOfBindingDescriptor } from "./get-for-of-binding-descriptor.js";
 import { resolveFunction } from "./resolve-function.js";
@@ -500,11 +501,42 @@ const resolveCallResult = (
   bindings: ReadonlyMap<ts.Symbol, ResolvedCallableValueDescriptor>,
   state: CallableResolutionState,
 ): ResolvedCallableValueDescriptor => {
-  if (getCanonicalReactApiName(callExpression.expression, typeChecker) === "useCallback") {
+  const reactApiName = getCanonicalReactApiName(callExpression.expression, typeChecker);
+  if (reactApiName === "useCallback") {
     const callbackExpression = callExpression.arguments[0];
     return callbackExpression
       ? resolveCallableExpressionWithState(callbackExpression, typeChecker, bindings, state)
       : createEmptyCallableValue(false);
+  }
+  if (reactApiName === "useMemo") {
+    const factoryExpression = callExpression.arguments[0];
+    const factoryFunction = factoryExpression
+      ? resolveFunction(factoryExpression, typeChecker)
+      : null;
+    if (!factoryFunction || state.resolvingFunctions.has(factoryFunction)) {
+      return createEmptyCallableValue(false);
+    }
+    const returnSummary = summarizeFunctionReturns(factoryFunction, typeChecker);
+    const resolvingFunctions = new Set(state.resolvingFunctions);
+    resolvingFunctions.add(factoryFunction);
+    const returnValue = mergeCallableValues(
+      returnSummary.expressions.map((returnExpression) => {
+        const resolvedValue = resolveCallableExpressionWithState(
+          returnExpression.expression,
+          typeChecker,
+          bindings,
+          { ...state, resolvingFunctions },
+        );
+        return returnExpression.isConditionallyReached
+          ? markCallableValueConditional(resolvedValue)
+          : resolvedValue;
+      }),
+    );
+    return {
+      ...returnValue,
+      isComplete:
+        returnSummary.isComplete && !returnSummary.canFallThrough && returnValue.isComplete,
+    };
   }
   const targetFunction = resolveFunction(callExpression.expression, typeChecker);
   if (!targetFunction || state.resolvingFunctions.has(targetFunction)) {
@@ -731,6 +763,26 @@ const resolveCallableExpressionWithState = (
     };
   }
   if (ts.isPropertyAccessExpression(unwrappedExpression)) {
+    const callableRefProtocol = getCallableRefProtocolForCurrentAccess(
+      unwrappedExpression,
+      typeChecker,
+    );
+    if (callableRefProtocol?.isSourceComplete && callableRefProtocol.updateExpression) {
+      return mergeCallableValues([
+        resolveCallableExpressionWithState(
+          callableRefProtocol.initialValueExpression,
+          typeChecker,
+          bindings,
+          state,
+        ),
+        resolveCallableExpressionWithState(
+          callableRefProtocol.updateExpression,
+          typeChecker,
+          bindings,
+          state,
+        ),
+      ]);
+    }
     const ownerValue = resolveCallableExpressionWithState(
       unwrappedExpression.expression,
       typeChecker,

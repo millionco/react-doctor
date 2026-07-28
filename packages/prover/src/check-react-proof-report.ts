@@ -2,6 +2,7 @@ import { REACT_PROOF_SCHEMA_VERSION, REACT_SEMANTIC_GRAPH_SCHEMA_VERSION } from 
 import {
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
+  ReactCallableRefFreshness,
   ReactExecutionPhase,
   ReactObligationStatus,
   ReactProofCertificateStatus,
@@ -11,6 +12,7 @@ import {
   ReactSemanticFunctionCallKind,
   ReactUnitKind,
 } from "./types.js";
+import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import type {
   ReactAppProofReport,
   ReactProofCertificateCheck,
@@ -57,6 +59,20 @@ const expectedAsyncOwnershipStatus = (
   return ReactObligationStatus.Proved;
 };
 
+const expectedCallableRefFreshnessStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (unit.kind === ReactUnitKind.ClassComponent || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  return report.graph.callableRefs
+    .filter((callableRef) => callableRef.ownerId === unit.id)
+    .some((callableRef) => !callableRef.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
 const checkClaimCoverage = (
   report: ReactAppProofReport,
   failures: ReactProofCertificateFailure[],
@@ -93,6 +109,17 @@ const checkClaimCoverage = (
         `Async Effect ownership facts require ${expectedStatus}, not ${asyncOwnership.status}`,
       );
     }
+    const callableRefFreshness = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.CallableRefFreshness,
+    );
+    const expectedCallableRefStatus = expectedCallableRefFreshnessStatus(semanticUnit, report);
+    if (callableRefFreshness && callableRefFreshness.status !== expectedCallableRefStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Callable ref facts require ${expectedCallableRefStatus}, not ${callableRefFreshness.status}`,
+      );
+    }
   }
 };
 
@@ -104,6 +131,9 @@ const checkGraphReferences = (
   const effectIds = new Set(report.graph.effects.map((effect) => effect.id));
   const callbackIds = new Set(report.graph.callbacks.map((callback) => callback.id));
   const callbacksById = new Map(report.graph.callbacks.map((callback) => [callback.id, callback]));
+  const functionCallsById = new Map(
+    report.graph.functionCalls.map((functionCall) => [functionCall.id, functionCall]),
+  );
   const rendersById = new Map(report.graph.renders.map((render) => [render.id, render]));
   const reachableFunctionsById = new Map(
     report.graph.reachableFunctions.map((reachableFunction) => [
@@ -264,6 +294,102 @@ const checkGraphReferences = (
     }
     if (!effectIds.has(task.effectId)) {
       addFailure(failures, task.id, "An async task has an unknown source Effect");
+    }
+  }
+  for (const callableRef of report.graph.callableRefs) {
+    if (!unitIds.has(callableRef.ownerId)) {
+      addFailure(failures, callableRef.id, "A callable ref has an unknown owner unit");
+    }
+    const declaredInvocationCallbackIds = new Set(callableRef.invocationCallbackIds);
+    const invocationCallbackIds = new Set<string>();
+    const matchedInvocationLocations = new Set<number>();
+    for (const invocationCallId of callableRef.invocationCallIds) {
+      const functionCall = functionCallsById.get(invocationCallId);
+      if (!functionCall) {
+        addFailure(failures, callableRef.id, "A callable ref has an unknown invocation call");
+        continue;
+      }
+      invocationCallbackIds.add(functionCall.rootCallbackId);
+      const invocationLocationIndex = callableRef.invocationLocations.findIndex((location) =>
+        areProofLocationsEqual(location, functionCall.location),
+      );
+      if (invocationLocationIndex >= 0) matchedInvocationLocations.add(invocationLocationIndex);
+      if (invocationLocationIndex < 0 || functionCall.sourcePropertyPath.at(-1) !== "current") {
+        addFailure(
+          failures,
+          callableRef.id,
+          "A callable ref invocation call does not match its source location and ref-current path",
+        );
+      }
+      if (!declaredInvocationCallbackIds.has(functionCall.rootCallbackId)) {
+        addFailure(
+          failures,
+          callableRef.id,
+          "A callable ref invocation call has an undeclared root callback",
+        );
+      }
+    }
+    if (matchedInvocationLocations.size !== callableRef.invocationLocations.length) {
+      addFailure(
+        failures,
+        callableRef.id,
+        "A callable ref invocation location has no serialized call edge",
+      );
+    }
+    for (const invocationCallbackId of callableRef.invocationCallbackIds) {
+      const callback = callbacksById.get(invocationCallbackId);
+      if (!callback) {
+        addFailure(failures, callableRef.id, "A callable ref has an unknown invocation callback");
+      } else if (callableRef.complete && callback.phase !== ReactExecutionPhase.Event) {
+        addFailure(
+          failures,
+          callableRef.id,
+          "A callable ref invocation is outside the modeled event phase",
+        );
+      }
+      if (!invocationCallbackIds.has(invocationCallbackId)) {
+        addFailure(
+          failures,
+          callableRef.id,
+          "A callable ref invocation callback has no ref-current call edge",
+        );
+      }
+    }
+    if (
+      callableRef.complete &&
+      (!callableRef.sourceComplete ||
+        callableRef.freshness !== ReactCallableRefFreshness.EventSynchronized ||
+        callableRef.updateHookName !== "useLayoutEffect" ||
+        !callableRef.updateLocation ||
+        callableRef.invocationCallIds.length === 0 ||
+        callableRef.invocationCallbackIds.length === 0 ||
+        callableRef.invocationLocations.length === 0)
+    ) {
+      addFailure(
+        failures,
+        callableRef.id,
+        "A complete callable ref lacks a layout-synchronized event certificate",
+      );
+    }
+    if (
+      callableRef.freshness === ReactCallableRefFreshness.EventSynchronized &&
+      !callableRef.complete
+    ) {
+      addFailure(
+        failures,
+        callableRef.id,
+        "An event-synchronized callable ref is not marked complete",
+      );
+    }
+    if (
+      callableRef.freshness === ReactCallableRefFreshness.PassiveLag &&
+      callableRef.updateHookName !== "useEffect"
+    ) {
+      addFailure(
+        failures,
+        callableRef.id,
+        "A passive-lag callable ref is not updated by useEffect",
+      );
     }
   }
   for (const reachableFunction of report.graph.reachableFunctions) {
@@ -616,6 +742,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "callback prop flows",
     report.graph.callbackPropFlows.map((propFlow) => propFlow.id),
+  );
+  checkUniqueIds(
+    failures,
+    "callable refs",
+    report.graph.callableRefs.map((callableRef) => callableRef.id),
   );
   checkUniqueIds(
     failures,

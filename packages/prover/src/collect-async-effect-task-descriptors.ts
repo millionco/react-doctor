@@ -2,12 +2,14 @@ import ts from "typescript";
 import { collectEffectCleanupFunctions } from "./collect-effect-cleanup-functions.js";
 import { collectEffectCalls } from "./collect-effect-calls.js";
 import { collectHookBindings } from "./collect-hook-bindings.js";
+import { PROMISE_CONTINUATION_METHOD_NAMES } from "./constants.js";
 import { getEffectCallback } from "./get-effect-callback.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { resolveFunction } from "./resolve-function.js";
-import { summarizeFunctionReturns } from "./summarize-function-returns.js";
 import { ReactAsyncOwnershipStatus } from "./types.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
+import { containsAwaitOutsideNestedFunction } from "./utils/contains-await-outside-nested-function.js";
+import { hasGuaranteedEffectCleanup } from "./utils/has-guaranteed-effect-cleanup.js";
 import type { ReactAnalysisContext, ReactAsyncEffectTaskDescriptor } from "./types.js";
 
 interface AsyncStateWrite {
@@ -27,22 +29,6 @@ interface EffectInvalidationGuards {
   invalidatedBooleanSymbols: ReadonlySet<ts.Symbol>;
 }
 
-const PROMISE_CONTINUATION_METHODS = new Set(["catch", "finally", "then"]);
-
-const containsAwait = (node: ts.Node, owner: ts.FunctionLikeDeclaration): boolean => {
-  let didFindAwait = false;
-  const visit = (currentNode: ts.Node): void => {
-    if (didFindAwait || (currentNode !== owner && isFunctionBoundary(currentNode))) return;
-    if (ts.isAwaitExpression(currentNode)) {
-      didFindAwait = true;
-      return;
-    }
-    currentNode.forEachChild(visit);
-  };
-  node.forEachChild(visit);
-  return didFindAwait;
-};
-
 const getDirectStatement = (node: ts.Node, block: ts.Block): ts.Statement | null => {
   let currentNode = node;
   while (currentNode.parent !== block) {
@@ -57,13 +43,13 @@ const hasSequentialAwaitBefore = (
   taskFunction: ts.FunctionLikeDeclaration,
 ): boolean => {
   if (!taskFunction.body || !ts.isBlock(taskFunction.body)) return false;
-  if (containsAwait(operationNode, taskFunction)) return true;
+  if (containsAwaitOutsideNestedFunction(operationNode, taskFunction)) return true;
   const containingStatement = getDirectStatement(operationNode, taskFunction.body);
   if (!containingStatement) return false;
   const statementIndex = taskFunction.body.statements.indexOf(containingStatement);
   return taskFunction.body.statements
     .slice(0, statementIndex)
-    .some((statement) => containsAwait(statement, taskFunction));
+    .some((statement) => containsAwaitOutsideNestedFunction(statement, taskFunction));
 };
 
 const getIdentifierSymbol = (
@@ -195,21 +181,6 @@ const hasGuardingEarlyReturn = (
   return false;
 };
 
-const hasGuaranteedCleanupReturn = (
-  effectCallback: ts.FunctionLikeDeclaration,
-  typeChecker: ts.TypeChecker,
-): boolean => {
-  const returnSummary = summarizeFunctionReturns(effectCallback, typeChecker);
-  return (
-    returnSummary.isComplete &&
-    !returnSummary.canFallThrough &&
-    returnSummary.expressions.length > 0 &&
-    returnSummary.expressions.every((returnExpression) =>
-      Boolean(resolveFunction(returnExpression.expression, typeChecker)),
-    )
-  );
-};
-
 const intersectSymbols = (
   symbolSets: ReadonlyArray<ReadonlySet<ts.Symbol>>,
 ): ReadonlySet<ts.Symbol> => {
@@ -269,7 +240,7 @@ const collectInvalidationGuards = (
   cleanupFunctions: ReadonlyArray<ts.FunctionLikeDeclaration>,
   typeChecker: ts.TypeChecker,
 ): EffectInvalidationGuards => {
-  if (!hasGuaranteedCleanupReturn(effectCallback, typeChecker)) {
+  if (!hasGuaranteedEffectCleanup(effectCallback, typeChecker)) {
     return {
       abortedControllerSymbols: new Set(),
       invalidatedBooleanSymbols: new Set(),
@@ -297,7 +268,7 @@ const collectInvokedAsyncFunctions = (
     if (node !== effectCallback && isFunctionBoundary(node)) return;
     if (ts.isCallExpression(node)) {
       const taskFunction = resolveFunction(node.expression, typeChecker);
-      if (taskFunction && containsAwait(taskFunction, taskFunction)) {
+      if (taskFunction && containsAwaitOutsideNestedFunction(taskFunction, taskFunction)) {
         taskFunctions.add(taskFunction);
       }
     }
@@ -334,7 +305,7 @@ const collectAsyncTaskOperations = (
         isAfterSuspension &&
         !(
           ts.isPropertyAccessExpression(node.expression) &&
-          PROMISE_CONTINUATION_METHODS.has(node.expression.name.text)
+          PROMISE_CONTINUATION_METHOD_NAMES.has(node.expression.name.text)
         )
       ) {
         unknownOperation ??= node;
@@ -402,7 +373,7 @@ const createTaskDescriptor = (
 const isPromiseContinuationCall = (node: ts.Node): node is ts.CallExpression =>
   ts.isCallExpression(node) &&
   ts.isPropertyAccessExpression(node.expression) &&
-  PROMISE_CONTINUATION_METHODS.has(node.expression.name.text);
+  PROMISE_CONTINUATION_METHOD_NAMES.has(node.expression.name.text);
 
 const collectPromiseContinuationDescriptors = (
   ownerFunction: ts.FunctionLikeDeclaration,

@@ -13,6 +13,8 @@ import {
   ReactIdentityStability,
   ReactObligationStatus,
   ReactProofClaim,
+  ReactSchedulerCancellationStatus,
+  ReactSchedulerKind,
   ReactProofCertificateStatus,
   ReactSemanticEdgeKind,
   ReactSemanticCallbackKind,
@@ -47,6 +49,11 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
     fixtureName: "refuted-layout-ref-missing-dependency",
     claim: ReactProofClaim.EffectDependencies,
     evidencePattern: /absent from the effect dependency list/,
+  },
+  {
+    fixtureName: "refuted-timer-partial-cleanup",
+    claim: ReactProofClaim.ScheduledCallbackLifetime,
+    evidencePattern: /remain active/,
   },
   {
     fixtureName: "impure-render",
@@ -110,8 +117,8 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
   },
   {
     fixtureName: "timer-leak",
-    claim: ReactProofClaim.EffectCleanup,
-    evidencePattern: /same resource identity/,
+    claim: ReactProofClaim.ScheduledCallbackLifetime,
+    evidencePattern: /remain active/,
   },
   {
     fixtureName: "invalid-hook-helper",
@@ -309,6 +316,10 @@ describe("proveReactApp", () => {
   it.each([
     "proved-local-graph",
     "proved-timer",
+    "proved-window-timeout",
+    "proved-animation-frame",
+    "proved-aliased-window-timeout",
+    "proved-shadowed-timeout",
     "proved-custom-hook",
     "proved-cfg",
     "proved-memo",
@@ -403,7 +414,7 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.graph.schemaVersion).toBe(15);
+    expect(report.graph.schemaVersion).toBe(16);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -417,6 +428,126 @@ describe("proveReactApp", () => {
       report.graph.callbacks.find((callback) => callback.id === effect?.cleanupCallbackIds[0])
         ?.phase,
     ).toBe(ReactExecutionPhase.EffectCleanup);
+  });
+
+  it("certifies an interval callback in the deferred phase with guaranteed cancellation", () => {
+    const report = proveFixture("proved-timer");
+    const scheduler = report.graph.schedulers[0];
+    const callback = report.graph.callbacks.find(
+      (candidate) => candidate.id === scheduler?.callbackIds[0],
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(scheduler?.kind).toBe(ReactSchedulerKind.Interval);
+    expect(scheduler?.phase).toBe(ReactExecutionPhase.Deferred);
+    expect(scheduler?.cancellationStatus).toBe(ReactSchedulerCancellationStatus.Guaranteed);
+    expect(scheduler?.complete).toBe(true);
+    expect(callback?.kind).toBe(ReactSemanticCallbackKind.ScheduledCallback);
+    expect(callback?.phase).toBe(ReactExecutionPhase.Deferred);
+  });
+
+  it("certifies platform timeout and animation-frame scheduler identities", () => {
+    const timeoutReport = proveFixture("proved-window-timeout");
+    const animationFrameReport = proveFixture("proved-animation-frame");
+
+    expect(timeoutReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(timeoutReport.graph.schedulers[0]?.kind).toBe(ReactSchedulerKind.Timeout);
+    expect(animationFrameReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(animationFrameReport.graph.schedulers[0]?.kind).toBe(ReactSchedulerKind.AnimationFrame);
+  });
+
+  it("resolves immutable platform aliases without trusting a shadowed scheduler name", () => {
+    const aliasedReport = proveFixture("proved-aliased-window-timeout");
+    const shadowedReport = proveFixture("proved-shadowed-timeout");
+
+    expect(aliasedReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(aliasedReport.graph.schedulers[0]?.kind).toBe(ReactSchedulerKind.Timeout);
+    expect(shadowedReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(shadowedReport.graph.schedulers).toEqual([]);
+  });
+
+  it("refutes a scheduler canceled by only one cleanup return alternative", () => {
+    const report = proveFixture("refuted-timer-partial-cleanup");
+    const schedulerProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find((obligation) => obligation.claim === ReactProofClaim.ScheduledCallbackLifetime);
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(report.graph.schedulers[0]?.cancellationStatus).toBe(
+      ReactSchedulerCancellationStatus.Missing,
+    );
+    expect(schedulerProof?.status).toBe(ReactObligationStatus.Violated);
+  });
+
+  it.each([
+    "incomplete-mutable-timer-handle",
+    "incomplete-conditional-timer-cancellation",
+    "incomplete-early-return-timer-cleanup",
+  ])("fails closed on an unproved scheduler handle or cleanup path in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const schedulerProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find((obligation) => obligation.claim === ReactProofClaim.ScheduledCallbackLifetime);
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.schedulers[0]?.complete).toBe(false);
+    expect(schedulerProof?.status).toBe(ReactObligationStatus.Unknown);
+  });
+
+  it("fails closed on a scheduler registered outside an Effect lifecycle", () => {
+    const report = proveFixture("incomplete-event-timeout");
+    const boundaryProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find((obligation) => obligation.claim === ReactProofClaim.BoundaryCoverage);
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.schedulers).toEqual([]);
+    expect(boundaryProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(boundaryProof?.evidence[0]?.description).toMatch(/deferred callback/);
+  });
+
+  it.each([
+    "incomplete-timer-async-continuation",
+    "incomplete-timer-floating-promise",
+    "incomplete-nested-timeout",
+  ])(
+    "fails closed when a scheduled callback creates transitive async work in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+
+      expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+      expect(report.graph.schedulers[0]?.callbackComplete).toBe(false);
+      expect(report.graph.schedulers[0]?.complete).toBe(false);
+    },
+  );
+
+  it("records an uncancellable microtask without granting lifecycle ownership", () => {
+    const report = proveFixture("incomplete-effect-microtask");
+    const scheduler = report.graph.schedulers[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(scheduler?.kind).toBe(ReactSchedulerKind.Microtask);
+    expect(scheduler?.cancellationStatus).toBe(ReactSchedulerCancellationStatus.Unknown);
+    expect(scheduler?.complete).toBe(false);
+  });
+
+  it("rejects a scheduler certificate with contradictory cancellation facts", () => {
+    const report = proveFixture("proved-window-timeout");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        schedulers: report.graph.schedulers.map((scheduler) => ({
+          ...scheduler,
+          cancellationStatus: ReactSchedulerCancellationStatus.Missing,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("completeness flag")),
+    ).toBe(true);
   });
 
   it("assigns memo, event, and reducer callbacks to execution phases", () => {
@@ -1204,6 +1335,19 @@ describe("proveReactApp", () => {
     "proved-local-object-callback",
     "incomplete-ref-backed-event-callback",
     "incomplete-mutable-object-callback",
+    "proved-window-timeout",
+    "proved-animation-frame",
+    "proved-aliased-window-timeout",
+    "proved-shadowed-timeout",
+    "incomplete-event-timeout",
+    "incomplete-mutable-timer-handle",
+    "refuted-timer-partial-cleanup",
+    "incomplete-conditional-timer-cancellation",
+    "incomplete-early-return-timer-cleanup",
+    "incomplete-timer-async-continuation",
+    "incomplete-timer-floating-promise",
+    "incomplete-effect-microtask",
+    "incomplete-nested-timeout",
   ])("independently checks the %s proof certificate", (fixtureName) => {
     const certificate = checkReactProofReport(proveFixture(fixtureName));
 

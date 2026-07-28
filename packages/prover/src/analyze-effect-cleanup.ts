@@ -8,6 +8,7 @@ import { getCallName } from "./get-call-name.js";
 import { getEffectCallback } from "./get-effect-callback.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { ReactObligationStatus, ReactProofClaim } from "./types.js";
+import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
 import type { ReactAnalysisContext, ReactProofEvidence, ReactProofObligation } from "./types.js";
 
 interface ResourceAcquisition {
@@ -44,22 +45,6 @@ const getAssignedName = (expression: ts.Expression): string | null => {
     return parentNode.left.text;
   }
   return null;
-};
-
-const collectCalls = (
-  functionNode: ts.FunctionLikeDeclaration,
-  typeChecker: ts.TypeChecker,
-): ReadonlyArray<ts.CallExpression> => {
-  const calls: ts.CallExpression[] = [];
-  for (const reachableFunction of collectReachableFunctions(functionNode, typeChecker)) {
-    const visit = (node: ts.Node): void => {
-      if (node !== reachableFunction.functionNode && isFunctionBoundary(node)) return;
-      if (ts.isCallExpression(node)) calls.push(node);
-      node.forEachChild(visit);
-    };
-    reachableFunction.functionNode.forEachChild(visit);
-  }
-  return calls;
 };
 
 const getEventListenerIdentity = (
@@ -109,22 +94,6 @@ const collectResourceAcquisitions = (
             isConditionallyReached: reachableFunction.isConditionallyReached,
             ownerFunction: reachableFunction.functionNode,
             eventListener,
-          });
-        } else if (
-          callName === "setInterval" ||
-          callName === "setTimeout" ||
-          callName === "requestAnimationFrame"
-        ) {
-          const assignedName = getAssignedName(node);
-          let cleanupFunctionName = "cancelAnimationFrame";
-          if (callName === "setInterval") cleanupFunctionName = "clearInterval";
-          if (callName === "setTimeout") cleanupFunctionName = "clearTimeout";
-          acquisitions.push({
-            node,
-            description: `${callName} registration`,
-            cleanupNames: assignedName ? [`${cleanupFunctionName}(${assignedName})`] : [],
-            isConditionallyReached: reachableFunction.isConditionallyReached,
-            ownerFunction: reachableFunction.functionNode,
           });
         } else if (
           ts.isPropertyAccessExpression(node.expression) &&
@@ -249,7 +218,7 @@ export const analyzeEffectCleanup = (
     }
     const cleanupFunctions = collectEffectCleanupFunctions(effectCallback, context.typeChecker);
     const cleanupCallExpressions = cleanupFunctions.flatMap((cleanupFunction) =>
-      collectCalls(cleanupFunction, context.typeChecker),
+      collectReachableCallExpressions(cleanupFunction, context.typeChecker),
     );
     const cleanupCalls = new Set(cleanupCallExpressions.map(getCanonicalCall));
     for (const acquisition of collectResourceAcquisitions(effectCallback, context.typeChecker)) {

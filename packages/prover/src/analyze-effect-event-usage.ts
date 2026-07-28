@@ -14,6 +14,7 @@ import { isIdentifierReference } from "./is-identifier-reference.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isNodeWithin } from "./is-node-within.js";
 import { ReactObligationStatus, ReactProofClaim } from "./types.js";
+import { getEnclosingFunction } from "./utils/get-enclosing-function.js";
 import type { ReactAnalysisContext, ReactProofEvidence, ReactProofObligation } from "./types.js";
 
 const isEffectDependencyReference = (
@@ -71,15 +72,6 @@ const collectContextValueSymbols = (
   };
   functionNode.forEachChild(visit);
   return contextValueSymbols;
-};
-
-const getContainingFunction = (node: ts.Node): ts.FunctionLikeDeclaration | null => {
-  let currentNode = node.parent;
-  while (currentNode) {
-    if (isFunctionBoundary(currentNode)) return currentNode;
-    currentNode = currentNode.parent;
-  }
-  return null;
 };
 
 export const analyzeEffectEventUsage = (
@@ -170,7 +162,7 @@ export const analyzeEffectEventUsage = (
           );
           return;
         }
-        const containingFunction = getContainingFunction(node);
+        const containingFunction = getEnclosingFunction(node);
         const isAllowedOwner = Boolean(containingFunction && allowedOwners.has(containingFunction));
         const isEventOwner = Boolean(containingFunction && eventOwners.has(containingFunction));
         if (

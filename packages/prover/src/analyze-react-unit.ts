@@ -16,6 +16,7 @@ import { analyzeRefAccess } from "./analyze-ref-access.js";
 import { analyzeReducerPurity } from "./analyze-reducer-purity.js";
 import { analyzeReconciliationIdentity } from "./analyze-reconciliation-identity.js";
 import { analyzeRenderPurity } from "./analyze-render-purity.js";
+import { analyzeScheduledCallbackLifetime } from "./analyze-scheduled-callback-lifetime.js";
 import { createEvidence } from "./create-evidence.js";
 import { createObligation } from "./create-obligation.js";
 import { getNodeLocation } from "./get-node-location.js";
@@ -41,6 +42,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.ReducerPurity,
   ReactProofClaim.RefAccess,
   ReactProofClaim.RenderPurity,
+  ReactProofClaim.ScheduledCallbackLifetime,
 ];
 
 export const analyzeReactUnit = (
@@ -124,6 +126,7 @@ export const analyzeReactUnit = (
       analyzeReducerPurity(unit.functionNode, context),
       analyzeRefAccess(unit.functionNode, context),
       analyzeRenderPurity(unit.functionNode, context),
+      analyzeScheduledCallbackLifetime(unit, context),
     ],
   };
 };

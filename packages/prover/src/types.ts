@@ -31,6 +31,7 @@ export enum ReactProofClaim {
   ReducerPurity = "reducer-purity",
   RefAccess = "ref-access",
   RenderPurity = "render-purity",
+  ScheduledCallbackLifetime = "scheduled-callback-lifetime",
 }
 
 export enum ReactUnitKind {
@@ -80,6 +81,7 @@ export enum ReactSemanticCallbackKind {
   MemoizedCallback = "memoized-callback",
   Reducer = "reducer",
   ReducerInitializer = "reducer-initializer",
+  ScheduledCallback = "scheduled-callback",
   ServerSnapshot = "server-snapshot",
 }
 
@@ -162,6 +164,21 @@ export enum ReactIdentityStability {
 export enum ReactCallableRefFreshness {
   EventSynchronized = "event-synchronized",
   PassiveLag = "passive-lag",
+  Unknown = "unknown",
+}
+
+export enum ReactSchedulerKind {
+  AnimationFrame = "animation-frame",
+  IdleCallback = "idle-callback",
+  Immediate = "immediate",
+  Interval = "interval",
+  Microtask = "microtask",
+  Timeout = "timeout",
+}
+
+export enum ReactSchedulerCancellationStatus {
+  Guaranteed = "guaranteed",
+  Missing = "missing",
   Unknown = "unknown",
 }
 
@@ -344,6 +361,22 @@ export interface ReactSemanticCallableRef {
   complete: boolean;
 }
 
+export interface ReactSemanticScheduler {
+  id: string;
+  ownerId: string;
+  effectId: string;
+  registrationCallbackId: string;
+  kind: ReactSchedulerKind;
+  phase: ReactExecutionPhase;
+  location: ReactProofLocation;
+  callbackIds: ReadonlyArray<string>;
+  callbackComplete: boolean;
+  cancellationStatus: ReactSchedulerCancellationStatus;
+  cancellationLocations: ReadonlyArray<ReactProofLocation>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export interface ReactCompilerInstructionFact {
   id: string;
   valueKind: string;
@@ -402,6 +435,7 @@ export interface ReactSemanticGraph {
   eventBindings: ReadonlyArray<ReactSemanticEventBinding>;
   callbackPropFlows: ReadonlyArray<ReactSemanticCallbackPropFlow>;
   callableRefs: ReadonlyArray<ReactSemanticCallableRef>;
+  schedulers: ReadonlyArray<ReactSemanticScheduler>;
   compiler: ReactCompilerGraph;
 }
 

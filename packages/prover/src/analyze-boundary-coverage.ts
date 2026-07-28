@@ -6,6 +6,7 @@ import {
   REACT_UNMODELED_HOOK_NAMES,
 } from "./constants.js";
 import { getCallableRefProtocolForCurrentAccess } from "./collect-callable-ref-protocols.js";
+import { getPlatformSchedulerKind } from "./collect-effect-scheduler-protocols.js";
 import { collectReachableFunctionGraph } from "./collect-reachable-functions.js";
 import { createEvidence } from "./create-evidence.js";
 import { createObligation } from "./create-obligation.js";
@@ -245,6 +246,24 @@ export const analyzeBoundaryCoverage = (
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const callName = getCallName(node);
+      const schedulerKind = getPlatformSchedulerKind(node, context);
+      if (schedulerKind) {
+        const schedulerLocation = getNodeLocation(node, context.rootDirectory);
+        const isModeledScheduler = context.graph?.schedulers.some(
+          (scheduler) =>
+            scheduler.complete && areProofLocationsEqual(scheduler.location, schedulerLocation),
+        );
+        if (!isModeledScheduler) {
+          unknownEvidence.push(
+            createEvidence(
+              node,
+              context.rootDirectory,
+              `${schedulerKind} crosses an unproved deferred callback or cancellation boundary`,
+              [schedulerKind, "deferred callback", "unknown phase or lifetime"],
+            ),
+          );
+        }
+      }
       const finalCallName = getCanonicalHookName(node, context.typeChecker);
       const isModeledContextRead =
         finalCallName === "use" &&

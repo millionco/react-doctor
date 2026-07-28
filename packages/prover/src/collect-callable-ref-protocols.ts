@@ -7,6 +7,7 @@ import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isNodeWithin } from "./is-node-within.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import { collectSymbolWrites } from "./utils/collect-symbol-writes.js";
+import { getEnclosingFunction } from "./utils/get-enclosing-function.js";
 
 export interface CallableRefProtocolDescriptor {
   declaration: ts.VariableDeclaration;
@@ -23,15 +24,6 @@ export interface CallableRefProtocolDescriptor {
 }
 
 const protocolCache = new WeakMap<ts.VariableDeclaration, CallableRefProtocolDescriptor | null>();
-
-const getEnclosingFunction = (node: ts.Node): ts.FunctionLikeDeclaration | null => {
-  let currentNode = node.parent;
-  while (currentNode) {
-    if (isFunctionBoundary(currentNode)) return currentNode;
-    currentNode = currentNode.parent;
-  }
-  return null;
-};
 
 const getRefDeclaration = (
   symbol: ts.Symbol,

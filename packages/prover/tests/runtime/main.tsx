@@ -17,6 +17,7 @@ import {
   INITIAL_CALLBACK_REVISION,
   NEXT_CALLBACK_REVISION,
   PRIMARY_STORE_INITIAL_VERSION,
+  SCHEDULER_CALLBACK_DELAY_MS,
   SECONDARY_STORE_INITIAL_VERSION,
   SLOW_QUERY_DELAY_MS,
   STORE_VERSION_INCREMENT,
@@ -27,11 +28,13 @@ declare global {
   interface Window {
     effectEventSetupRuns: number;
     listenerHits: number;
+    schedulerHits: number;
   }
 }
 
 window.effectEventSetupRuns = 0;
 window.listenerHits = 0;
+window.schedulerHits = 0;
 
 const LeakyListener = () => {
   useEffect(() => {
@@ -72,6 +75,34 @@ const ListenerOracle = () => {
       </button>
       <output data-testid="listener-hits">{window.listenerHits}</output>
       {isMounted ? <Listener /> : null}
+    </main>
+  );
+};
+
+interface SchedulerProbeProperties {
+  shouldCancel: boolean;
+}
+
+const SchedulerProbe = ({ shouldCancel }: SchedulerProbeProperties) => {
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      window.schedulerHits += 1;
+    }, SCHEDULER_CALLBACK_DELAY_MS);
+    if (shouldCancel) return () => window.clearTimeout(timeoutId);
+    return undefined;
+  }, [shouldCancel]);
+  return null;
+};
+
+const SchedulerLifetimeOracle = () => {
+  const [isMounted, setIsMounted] = useState(true);
+  const shouldCancel = new URLSearchParams(window.location.search).get("mode") === "cancel";
+  return (
+    <main>
+      <button type="button" onClick={() => setIsMounted(false)}>
+        unmount scheduler
+      </button>
+      {isMounted ? <SchedulerProbe shouldCancel={shouldCancel} /> : null}
     </main>
   );
 };
@@ -528,6 +559,9 @@ const RuntimeOracle = () => {
   }
   if (oracle === "callable-ref-phase") {
     return <CallableRefPhaseOracle />;
+  }
+  if (oracle === "scheduler-lifetime") {
+    return <SchedulerLifetimeOracle />;
   }
   return <ListenerOracle />;
 };

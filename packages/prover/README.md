@@ -44,6 +44,10 @@ The report includes:
   write's commit phase, and every concrete invocation channel to the resolved source callback;
   layout-synchronized, non-escaping refs used only by modeled events can be proved, while passive,
   multiply written, escaping, and unresolved protocols fail closed;
+- scheduler lifetime facts that tie a platform timer, animation frame, idle callback, immediate,
+  or microtask registration to its owning Effect, deferred callback set, exact handle, and cleanup
+  cancellation paths; only source-resolved synchronous callbacks with entry-dominating cleanup
+  cancellation are complete;
 - normalized React Compiler CFG, instruction-effect, and reactive-place facts;
 - per-unit proof obligations with `proved`, `violated`, or `unknown` results;
 - project evidence for type unsoundness, compiler diagnostics, and opaque boundaries.
@@ -60,8 +64,10 @@ phases, and flow kinds whose parameter/argument indexes are inconsistent. This i
 proof certificate today. Callback-prop channels are also checked for known owners, phase-matched
 source callbacks, complete channels with actual sources, and internally consistent guarded
 alternatives. Callable refs additionally require a source-complete `useLayoutEffect` update, a
-concrete event callback, and a `ref.current` call edge. Source-derived block invariants and broader
-lifecycle transition certificates remain future work.
+concrete event callback, and a `ref.current` call edge. Scheduler certificates require a real
+Effect setup callback, deferred callback facts, exact cancellation evidence, and internally
+consistent completeness. Source-derived block invariants and broader lifecycle transition
+certificates remain future work.
 
 ## Verification
 

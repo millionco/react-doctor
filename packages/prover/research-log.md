@@ -58,6 +58,11 @@ closed-world coverage remains too low for representative applications.
   inputs, React-owned component invocation, and hook call restrictions.
 - [useEffect](https://react.dev/reference/react/useEffect) defines reactive dependencies and the
   setup, cleanup, rerun, unmount, and Strict Mode stress-test lifecycle.
+- The HTML Standard defines timers as active handles removed by
+  [`clearTimeout`/`clearInterval`](https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-cleartimeout)
+  and animation-frame callbacks as handles removed by
+  [`cancelAnimationFrame`](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#dom-cancelanimationframe).
+  These are ownership transitions, not merely paired API names.
 - [Lifecycle of Reactive Effects](https://react.dev/learn/lifecycle-of-reactive-effects) frames
   each Effect as an independent synchronization process whose setup and cleanup may repeat.
 - [StrictMode](https://react.dev/reference/react/StrictMode) deliberately runs an extra
@@ -255,6 +260,16 @@ model and must not become the whole-app proof substrate.
   A Chromium oracle updates a callback and programmatically clicks during the same component's
   later layout effect: the layout-synchronized protocol observes revision 1, while the passive
   protocol still invokes revision 0.
+- `/home/aidenybai/Developer/react-bench-internal/tasks/fix-react-formidablelabs-victory-victory-animation`
+  guards delayed animation work by generation and clears the exact timeout handle; its unmount
+  verifier requires the animation not to complete after ownership ends.
+  `/home/aidenybai/Developer/react-bench-internal/tasks/write-react-tombelieber-claude-view-70`
+  supplies the ordinary interval setup/cleanup lifecycle. In contrast,
+  `/home/aidenybai/Developer/react-bench-internal/tasks/fix-react-floating-ui-floating-ui-2914`
+  schedules a timeout from an event and
+  `/home/aidenybai/Developer/react-bench-internal/tasks/write-react-radix-context-menu-controlled-open`
+  stores long-press timeout ownership in a ref across event handlers. Those event-owned protocols
+  must remain incomplete until the graph models their state machine.
 
 ### Current proof model
 
@@ -269,7 +284,7 @@ builtin-hook calls, cross-module JSX render edges, and effect dependency, captur
 cleanup facts. Context definitions, provider instances, consumer reads, and the provider stack
 active at each render edge are also explicit graph facts. Async task facts link `await` and Promise
 continuations to their owning Effect and record state writes plus guarded, unguarded, or unknown
-ownership. Schema version 15 also records every source-resolved project helper reachable from
+ownership. Schema version 16 also records every source-resolved project helper reachable from
 render, event, memo, reducer, Effect setup, Effect cleanup, Effect Event, and external-store
 callbacks, together with its root callback, execution phase, and conditional reachability. When a
 helper is reachable by both conditional and unconditional paths, the graph retains the stronger
@@ -279,7 +294,7 @@ obligations and graph extraction share the symbol-resolved collectors. A React C
 therefore replace individual fact producers without changing the report contract or proof
 consumers.
 
-Schema version 15 records the call edges that justify helper reachability. Direct source calls,
+Schema version 16 records the call edges that justify helper reachability. Direct source calls,
 source callbacks invoked through formal parameters or captured factory parameters, object-property
 invocations, and callbacks passed to known synchronous iteration methods are distinct facts with
 source and target function IDs, execution phase, conditional reachability, and the relevant
@@ -352,9 +367,21 @@ non-event invocation channels remain `unknown`. The independent checker requires
 to name the layout update and an event callback whose graph contains the corresponding
 `ref.current` call edge.
 
+Platform schedulers inside Effects have a first-class lifetime certificate. Timer, interval,
+animation-frame, idle-callback, immediate, and microtask registrations are symbol-checked against
+platform declaration files so project functions that merely share those names are not trusted.
+Each fact links the registration to its owning Effect and setup callback, resolves the registered
+function into the deferred execution phase, propagates its reachable project calls, and records
+the exact cancellation locations. Completeness currently requires an immutable local `const`
+handle, unconditional registration, a source-resolved synchronous callback, and every possible
+Effect cleanup return to begin with cancellation of that exact handle. Conditional cancellation,
+an earlier cleanup return, mutable or property handles, microtasks, nested scheduling, `await`, and
+Promise continuations fail closed. Schedulers outside Effects are rejected by boundary coverage
+until an event-lifetime or external owner protocol exists.
+
 `useSyncExternalStore` arguments use the same project callback lattice but terminate in three
 distinct protocol channels: subscription lifetime, client render snapshot, and server-render
-snapshot. Schema version 15 stores callback sets and completeness independently for all three and
+snapshot. Schema version 16 stores callback sets and completeness independently for all three and
 links each callback-prop flow to its certified JSX render fact.
 External-store consistency resolves the source functions from those certified callback IDs before
 checking symmetric cleanup, cached snapshot identity, store-write notification, and hydration
@@ -431,26 +458,27 @@ Discovered React units currently include:
 
 Each function unit receives these obligations:
 
-| Claim                        | Current evidence                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| `async-effect-ownership`     | Post-`await` and Promise-continuation commits, cleanup invalidation, abort guards           |
-| `callable-ref-freshness`     | Initial value, exclusive effect write, commit timing, non-escape, concrete event channels   |
-| `hook-order`                 | Conditional, looped, nested, and post-early-return hook positions                           |
-| `hook-ownership`             | Module, helper, method, and anonymous-callback hook calls without a valid React owner       |
-| `context-topology`           | Exact object identity, defaults, provider values, nested overrides, render/hook propagation |
-| `render-purity`              | State writes, input mutation, known non-idempotence, transitive local helpers, opaque calls |
-| `effect-dependencies`        | Symbol-resolved reactive captures versus inline dependency tuples                           |
-| `effect-cleanup`             | Transitive listener/resource acquisition, identity symmetry, and conditional helper paths   |
-| `effect-state-updates`       | Transitive writes, mount bounds, local-rerender stability, and unknown fixpoints            |
-| `effect-event-usage`         | Local Effect ownership, non-escape, dependency exclusion, intentionally unstable identity   |
-| `external-store-consistency` | Stable snapshots, symmetric subscriptions, write notification, hydration agreement          |
-| `memo-dependencies`          | `useMemo` and `useCallback` captures versus inline dependency tuples                        |
-| `reconciliation-identity`    | Missing, duplicate, index-derived, and unconstrained dynamic list keys                      |
-| `reducer-purity`             | Reducer and reducer-initializer transition purity                                           |
-| `ref-access`                 | Render-phase access to refs created by `useRef`                                             |
-| `component-identity`         | Component definitions created during another render                                         |
-| `component-invocation`       | Source-resolved component functions called outside reconciliation                           |
-| `boundary-coverage`          | Opaque modules, dynamic code, unsupported hooks, and unmodeled event callbacks              |
+| Claim                         | Current evidence                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------- |
+| `async-effect-ownership`      | Post-`await` and Promise-continuation commits, cleanup invalidation, abort guards           |
+| `callable-ref-freshness`      | Initial value, exclusive effect write, commit timing, non-escape, concrete event channels   |
+| `hook-order`                  | Conditional, looped, nested, and post-early-return hook positions                           |
+| `hook-ownership`              | Module, helper, method, and anonymous-callback hook calls without a valid React owner       |
+| `context-topology`            | Exact object identity, defaults, provider values, nested overrides, render/hook propagation |
+| `render-purity`               | State writes, input mutation, known non-idempotence, transitive local helpers, opaque calls |
+| `effect-dependencies`         | Symbol-resolved reactive captures versus inline dependency tuples                           |
+| `effect-cleanup`              | Transitive listener/resource acquisition, identity symmetry, and conditional helper paths   |
+| `effect-state-updates`        | Transitive writes, mount bounds, local-rerender stability, and unknown fixpoints            |
+| `effect-event-usage`          | Local Effect ownership, non-escape, dependency exclusion, intentionally unstable identity   |
+| `external-store-consistency`  | Stable snapshots, symmetric subscriptions, write notification, hydration agreement          |
+| `memo-dependencies`           | `useMemo` and `useCallback` captures versus inline dependency tuples                        |
+| `reconciliation-identity`     | Missing, duplicate, index-derived, and unconstrained dynamic list keys                      |
+| `reducer-purity`              | Reducer and reducer-initializer transition purity                                           |
+| `ref-access`                  | Render-phase access to refs created by `useRef`                                             |
+| `scheduled-callback-lifetime` | Effect ownership, deferred callback resolution, exact handles, guaranteed cancellation      |
+| `component-identity`          | Component definitions created during another render                                         |
+| `component-invocation`        | Source-resolved component functions called outside reconciliation                           |
+| `boundary-coverage`           | Opaque modules, dynamic code, unsupported hooks, and unmodeled event callbacks              |
 
 Application status is derived globally:
 
@@ -521,6 +549,10 @@ Proved:
 - `proved-branch-effect-cleanup`
 - `proved-layout-ref-backed-event-callback`
 - `proved-layout-ref-backed-memo-event-callback`
+- `proved-window-timeout`
+- `proved-animation-frame`
+- `proved-aliased-window-timeout`
+- `proved-shadowed-timeout`
 
 Refuted:
 
@@ -580,6 +612,7 @@ Refuted:
 - `for-of-invoked-render-impurity`
 - `for-of-destructured-render-impurity`
 - `refuted-layout-ref-missing-dependency`
+- `refuted-timer-partial-cleanup`
 
 Incomplete:
 
@@ -632,6 +665,14 @@ Incomplete:
 - `incomplete-layout-ref-escaped-event-callback`
 - `incomplete-layout-ref-multiple-write-event-callback`
 - `incomplete-mutable-object-callback`
+- `incomplete-event-timeout`
+- `incomplete-mutable-timer-handle`
+- `incomplete-conditional-timer-cancellation`
+- `incomplete-early-return-timer-cleanup`
+- `incomplete-timer-async-continuation`
+- `incomplete-timer-floating-promise`
+- `incomplete-effect-microtask`
+- `incomplete-nested-timeout`
 - missing project configuration
 
 ### Soundness ledger
@@ -655,7 +696,8 @@ Known regions that must force `incomplete` until modeled:
   contracts; catch branches are over-approximated, but uncaught expression throws are not yet a
   whole-project obligation
 - Passive, multiply written, escaping, imported-wrapper, or non-event callable-ref protocols
-- Async phase/lifetime transforms for timers, promises, schedulers, and subscription registries
+- Event-owned, ref-owned, custom, and opaque schedulers; scheduler callbacks that create nested,
+  awaited, or Promise-continuation work; and exception paths between acquisition and cleanup
 - Phase-polymorphic callbacks crossing opaque library or Promise registration contracts
 - Context propagation through opaque library components, portals, and externally mounted exports
 - Effect Event registration APIs beyond directly modeled timers, browser listeners, subscriptions,
@@ -717,3 +759,5 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 - The callable-ref oracle performs an update and a programmatic click in one commit. The
   layout-synchronized ref observes the new callback; the passive ref exposes the previous callback
   before its Effect runs.
+- The scheduler-lifetime oracle unmounts before a timeout expires. Exact cleanup cancellation
+  keeps the post-unmount hit count at zero, while the uncanceled control fires once after unmount.

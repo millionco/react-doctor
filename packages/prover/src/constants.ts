@@ -1,5 +1,5 @@
-export const REACT_PROOF_SCHEMA_VERSION = 9;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 15;
+export const REACT_PROOF_SCHEMA_VERSION = 10;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 16;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -27,6 +27,7 @@ export const EFFECT_EVENT_REGISTRATION_CALL_NAMES = new Set([
   "setTimeout",
   "subscribe",
 ]);
+export const PROMISE_CONTINUATION_METHOD_NAMES = new Set(["catch", "finally", "then"]);
 
 export const REACT_MODELED_HOOK_NAMES = new Set([
   "useCallback",

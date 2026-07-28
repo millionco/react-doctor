@@ -7,6 +7,7 @@ import {
   ReactObligationStatus,
   ReactProofCertificateStatus,
   ReactProofClaim,
+  ReactSchedulerCancellationStatus,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
   ReactSemanticFunctionCallKind,
@@ -73,6 +74,26 @@ const expectedCallableRefFreshnessStatus = (
     : ReactObligationStatus.Proved;
 };
 
+const expectedScheduledCallbackLifetimeStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (unit.kind === ReactUnitKind.ClassComponent || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const schedulers = report.graph.schedulers.filter((scheduler) => scheduler.ownerId === unit.id);
+  if (
+    schedulers.some(
+      (scheduler) => scheduler.cancellationStatus === ReactSchedulerCancellationStatus.Missing,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return schedulers.some((scheduler) => !scheduler.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
 const checkClaimCoverage = (
   report: ReactAppProofReport,
   failures: ReactProofCertificateFailure[],
@@ -120,6 +141,17 @@ const checkClaimCoverage = (
         `Callable ref facts require ${expectedCallableRefStatus}, not ${callableRefFreshness.status}`,
       );
     }
+    const scheduledCallbackLifetime = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ScheduledCallbackLifetime,
+    );
+    const expectedSchedulerStatus = expectedScheduledCallbackLifetimeStatus(semanticUnit, report);
+    if (scheduledCallbackLifetime && scheduledCallbackLifetime.status !== expectedSchedulerStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Scheduler facts require ${expectedSchedulerStatus}, not ${scheduledCallbackLifetime.status}`,
+      );
+    }
   }
 };
 
@@ -129,6 +161,7 @@ const checkGraphReferences = (
 ): void => {
   const unitIds = new Set(report.graph.units.map((unit) => unit.id));
   const effectIds = new Set(report.graph.effects.map((effect) => effect.id));
+  const effectsById = new Map(report.graph.effects.map((effect) => [effect.id, effect]));
   const callbackIds = new Set(report.graph.callbacks.map((callback) => callback.id));
   const callbacksById = new Map(report.graph.callbacks.map((callback) => [callback.id, callback]));
   const functionCallsById = new Map(
@@ -390,6 +423,53 @@ const checkGraphReferences = (
         callableRef.id,
         "A passive-lag callable ref is not updated by useEffect",
       );
+    }
+  }
+  for (const scheduler of report.graph.schedulers) {
+    if (!unitIds.has(scheduler.ownerId)) {
+      addFailure(failures, scheduler.id, "A scheduler has an unknown owner unit");
+    }
+    const effect = effectsById.get(scheduler.effectId);
+    if (!effect || effect.ownerId !== scheduler.ownerId) {
+      addFailure(failures, scheduler.id, "A scheduler has an unknown or cross-owner Effect");
+    } else if (effect.setupCallbackId !== scheduler.registrationCallbackId) {
+      addFailure(
+        failures,
+        scheduler.id,
+        "A scheduler registration is not linked to its Effect setup callback",
+      );
+    }
+    for (const callbackId of scheduler.callbackIds) {
+      const callback = callbacksById.get(callbackId);
+      if (!callback) {
+        addFailure(failures, scheduler.id, "A scheduler has an unknown deferred callback");
+      } else if (
+        callback.kind !== ReactSemanticCallbackKind.ScheduledCallback ||
+        callback.phase !== ReactExecutionPhase.Deferred
+      ) {
+        addFailure(
+          failures,
+          scheduler.id,
+          "A scheduler callback has the wrong kind or execution phase",
+        );
+      }
+    }
+    const expectedComplete =
+      scheduler.sourceComplete &&
+      scheduler.callbackComplete &&
+      scheduler.cancellationStatus === ReactSchedulerCancellationStatus.Guaranteed &&
+      scheduler.cancellationLocations.length > 0 &&
+      scheduler.callbackIds.length > 0 &&
+      scheduler.phase === ReactExecutionPhase.Deferred;
+    if (scheduler.complete !== expectedComplete) {
+      addFailure(
+        failures,
+        scheduler.id,
+        "A scheduler completeness flag does not match its deferred lifetime certificate",
+      );
+    }
+    if (scheduler.callbackComplete && scheduler.callbackIds.length === 0) {
+      addFailure(failures, scheduler.id, "A complete scheduler callback set is empty");
     }
   }
   for (const reachableFunction of report.graph.reachableFunctions) {
@@ -697,6 +777,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "units",
     report.graph.units.map((unit) => unit.id),
+  );
+  checkUniqueIds(
+    failures,
+    "schedulers",
+    report.graph.schedulers.map((scheduler) => scheduler.id),
   );
   checkUniqueIds(
     failures,

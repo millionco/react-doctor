@@ -11,15 +11,23 @@ import { collectDirectHookCalls } from "./collect-direct-hook-calls.js";
 import { collectEffectEventBindings } from "./collect-effect-event-bindings.js";
 import { collectEffectCleanupFunctions } from "./collect-effect-cleanup-functions.js";
 import { collectEffectCalls } from "./collect-effect-calls.js";
+import {
+  collectEffectSchedulerProtocols,
+  getPlatformSchedulerKind,
+} from "./collect-effect-scheduler-protocols.js";
 import { collectHookBindings } from "./collect-hook-bindings.js";
 import { collectHookCalls } from "./collect-hook-calls.js";
 import { collectReactiveCaptures } from "./collect-reactive-captures.js";
-import { collectReachableFunctionGraph } from "./collect-reachable-functions.js";
+import {
+  collectReachableFunctionGraph,
+  collectReachableFunctions,
+} from "./collect-reachable-functions.js";
 import {
   REACT_EXTERNAL_STORE_HOOK_NAMES,
   REACT_MEMO_HOOK_NAMES,
   REACT_REDUCER_HOOK_NAMES,
   REACT_CONTEXT_DEFAULT_SOURCE_ID,
+  PROMISE_CONTINUATION_METHOD_NAMES,
   REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
 } from "./constants.js";
 import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
@@ -32,6 +40,7 @@ import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isReactContextExpression } from "./is-react-context-expression.js";
 import { resolveFunction } from "./resolve-function.js";
 import { mergeCallableBindings } from "./resolve-callable-expression.js";
+import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
 import {
   ReactCallableRefFreshness,
   ReactEffectDependencyMode,
@@ -61,11 +70,13 @@ import type {
   ReactSemanticHookCall,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
+  ReactSemanticScheduler,
   ReactSemanticUnit,
   ReactUnitDescriptor,
 } from "./types.js";
 import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
-import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
+import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
+import { containsAwaitOutsideNestedFunction } from "./utils/contains-await-outside-nested-function.js";
 
 interface UnitGraphIdentity {
   descriptor: ReactUnitDescriptor;
@@ -74,6 +85,7 @@ interface UnitGraphIdentity {
 
 interface EffectGraphFacts {
   effects: ReadonlyArray<ReactSemanticEffect>;
+  schedulers: ReadonlyArray<ReactSemanticScheduler>;
   callbacks: ReadonlyArray<ReactSemanticCallback>;
   reachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>;
   functionCalls: ReadonlyArray<ReactSemanticFunctionCall>;
@@ -558,6 +570,34 @@ const createCallbackFact = (
   stateWrites: collectCallbackStateWrites(callback, owner, context.typeChecker),
 });
 
+const containsThenableType = (type: ts.Type, typeChecker: ts.TypeChecker): boolean =>
+  Boolean(typeChecker.getPropertyOfType(type, "then")) ||
+  (type.isUnionOrIntersection() &&
+    type.types.some((memberType) => containsThenableType(memberType, typeChecker)));
+
+const isScheduledCallbackSynchronous = (
+  callback: ts.FunctionLikeDeclaration,
+  context: ReactAnalysisContext,
+): boolean =>
+  collectReachableFunctions(callback, context.typeChecker).every(
+    (reachableFunction) =>
+      !(ts.getCombinedModifierFlags(reachableFunction.functionNode) & ts.ModifierFlags.Async) &&
+      !containsAwaitOutsideNestedFunction(
+        reachableFunction.functionNode,
+        reachableFunction.functionNode,
+      ),
+  ) &&
+  !collectReachableCallExpressions(callback, context.typeChecker).some(
+    (callExpression) =>
+      Boolean(getPlatformSchedulerKind(callExpression, context)) ||
+      containsThenableType(
+        context.typeChecker.getTypeAtLocation(callExpression),
+        context.typeChecker,
+      ) ||
+      (ts.isPropertyAccessExpression(callExpression.expression) &&
+        PROMISE_CONTINUATION_METHOD_NAMES.has(callExpression.expression.name.text)),
+  );
+
 const createCallbackPropAlternative = (
   callbackId: string,
   callbackDescriptor: ComponentCallbackDescriptor,
@@ -639,12 +679,19 @@ const collectReachabilityGraphFacts = (
 
 const collectEffectGraph = (
   identity: UnitGraphIdentity,
+  identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
   context: ReactAnalysisContext,
   componentFlow: ComponentCallbackFlowDescriptor,
 ): EffectGraphFacts => {
   const functionNode = identity.descriptor.functionNode;
   if (!functionNode || identity.descriptor.kind === ReactUnitKind.InvalidHookOwner) {
-    return { effects: [], callbacks: [], reachableFunctions: [], functionCalls: [] };
+    return {
+      effects: [],
+      schedulers: [],
+      callbacks: [],
+      reachableFunctions: [],
+      functionCalls: [],
+    };
   }
   const hookBindings = collectHookBindings(functionNode, context.typeChecker);
   const stableSymbols = new Set([
@@ -653,9 +700,11 @@ const collectEffectGraph = (
     ...hookBindings.stateSetters,
   ]);
   const effects: ReactSemanticEffect[] = [];
+  const schedulers: ReactSemanticScheduler[] = [];
   const callbacks: ReactSemanticCallback[] = [];
   const reachableFunctions: ReactSemanticReachableFunction[] = [];
   const functionCalls: ReactSemanticFunctionCall[] = [];
+  const schedulerProtocols = collectEffectSchedulerProtocols(functionNode, context);
   for (const effectCall of collectEffectCalls(functionNode, context.typeChecker)) {
     const hookName = getCanonicalHookName(effectCall, context.typeChecker) ?? "unknown-effect";
     const effectCallback = getEffectCallback(effectCall, context.typeChecker);
@@ -732,7 +781,7 @@ const collectEffectGraph = (
         functionCalls.push(...reachabilityFacts.functionCalls);
       }
     }
-    effects.push({
+    const effectFact: ReactSemanticEffect = {
       id: createSemanticId("effect", hookName, effectCall, context),
       ownerId: identity.semanticUnit.id,
       hookName,
@@ -744,9 +793,97 @@ const collectEffectGraph = (
       hasCleanup: cleanupFunctions.length > 0,
       setupCallbackId: setupCallback?.id ?? null,
       cleanupCallbackIds: cleanupCallbacks.map((callback) => callback.id),
-    });
+    };
+    effects.push(effectFact);
+    for (const protocol of schedulerProtocols.filter(
+      (candidate) => candidate.effectCall === effectCall,
+    )) {
+      const schedulerId = createSemanticId(
+        "scheduler",
+        protocol.kind,
+        protocol.registrationCall,
+        context,
+      );
+      const callbackResolution = protocol.callbackExpression
+        ? componentFlow.resolveExpression(
+            protocol.callbackExpression,
+            functionNode,
+            ReactExecutionPhase.Deferred,
+          )
+        : null;
+      const schedulerCallbacks = (callbackResolution?.callbacks ?? []).map((callbackDescriptor) => {
+        const callbackOwner =
+          identitiesByFunction.get(callbackDescriptor.ownerFunction) ?? identity;
+        const callbackHookBindings = collectHookBindings(
+          callbackDescriptor.ownerFunction,
+          context.typeChecker,
+        );
+        const callbackFact = createCallbackFact(
+          callbackOwner,
+          callbackDescriptor.callbackFunction,
+          callbackDescriptor.ownerFunction,
+          new Set([...callbackHookBindings.refs, ...callbackHookBindings.stateSetters]),
+          ReactSemanticCallbackKind.ScheduledCallback,
+          ReactExecutionPhase.Deferred,
+          protocol.kind,
+          context,
+        );
+        return {
+          ...callbackFact,
+          id: createSemanticId(
+            `scheduled-callback:${schedulerId}`,
+            protocol.kind,
+            callbackDescriptor.callbackFunction,
+            context,
+          ),
+        };
+      });
+      callbacks.push(...schedulerCallbacks);
+      for (const [callbackIndex, callbackDescriptor] of (
+        callbackResolution?.callbacks ?? []
+      ).entries()) {
+        const callbackFact = schedulerCallbacks[callbackIndex];
+        if (!callbackFact) continue;
+        const callbackOwner =
+          identitiesByFunction.get(callbackDescriptor.ownerFunction) ?? identity;
+        const reachabilityFacts = collectReachabilityGraphFacts(
+          callbackOwner,
+          callbackDescriptor.callbackFunction,
+          callbackFact,
+          context,
+          callbackDescriptor.bindings,
+        );
+        reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+        functionCalls.push(...reachabilityFacts.functionCalls);
+      }
+      const callbackComplete = Boolean(
+        callbackResolution?.isComplete &&
+        schedulerCallbacks.length > 0 &&
+        callbackResolution.callbacks.every((callbackDescriptor) =>
+          isScheduledCallbackSynchronous(callbackDescriptor.callbackFunction, context),
+        ),
+      );
+      schedulers.push({
+        id: schedulerId,
+        ownerId: identity.semanticUnit.id,
+        effectId: effectFact.id,
+        registrationCallbackId: effectFact.setupCallbackId ?? "",
+        kind: protocol.kind,
+        phase: ReactExecutionPhase.Deferred,
+        location: getNodeLocation(protocol.registrationCall, context.rootDirectory),
+        callbackIds: schedulerCallbacks.map((callback) => callback.id),
+        callbackComplete,
+        cancellationStatus: protocol.cancellationStatus,
+        cancellationLocations: protocol.cancellationCalls.map((cancellationCall) =>
+          getNodeLocation(cancellationCall, context.rootDirectory),
+        ),
+        sourceComplete: protocol.isSourceComplete,
+        complete:
+          protocol.isSourceComplete && callbackComplete && Boolean(effectFact.setupCallbackId),
+      });
+    }
   }
-  return { effects, callbacks, reachableFunctions, functionCalls };
+  return { effects, schedulers, callbacks, reachableFunctions, functionCalls };
 };
 
 const collectAsyncTaskGraph = (
@@ -1440,6 +1577,7 @@ export const buildReactSemanticGraph = (
   const renders: ReactSemanticRender[] = [];
   const hookCalls: ReactSemanticHookCall[] = [];
   const effects: ReactSemanticEffect[] = [];
+  const schedulers: ReactSemanticScheduler[] = [];
   const effectEvents: ReactSemanticEffectEvent[] = [];
   const externalStores: ReactSemanticExternalStore[] = [];
   const asyncTasks: ReactSemanticAsyncTask[] = [];
@@ -1498,8 +1636,14 @@ export const buildReactSemanticGraph = (
     );
     edges.push(...renderGraph.edges);
     renders.push(...renderGraph.renders);
-    const effectGraph = collectEffectGraph(identity, context, componentFlow);
+    const effectGraph = collectEffectGraph(
+      identity,
+      unitIdentitiesByFunction,
+      context,
+      componentFlow,
+    );
     effects.push(...effectGraph.effects);
+    schedulers.push(...effectGraph.schedulers);
     callbacks.push(...effectGraph.callbacks);
     reachableFunctions.push(...effectGraph.reachableFunctions);
     functionCalls.push(...effectGraph.functionCalls);
@@ -1560,6 +1704,7 @@ export const buildReactSemanticGraph = (
     eventBindings: eventGraph.eventBindings,
     callbackPropFlows: callbackPropGraph.callbackPropFlows,
     callableRefs,
+    schedulers,
     compiler: extractReactCompilerGraph(sourceFiles, context.rootDirectory),
   };
 };

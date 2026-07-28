@@ -26,6 +26,8 @@ import {
 import { collectHookBindings } from "./collect-hook-bindings.js";
 import { collectHookCalls } from "./collect-hook-calls.js";
 import { collectHookStateTransitions } from "./collect-hook-state-transitions.js";
+import { collectFormActions } from "./collect-form-actions.js";
+import { collectOptimisticState } from "./collect-optimistic-state.js";
 import { collectTransitionActions } from "./collect-transition-actions.js";
 import type { TransitionActionDescriptor } from "./collect-transition-actions.js";
 import { collectReactiveCaptures } from "./collect-reactive-captures.js";
@@ -57,8 +59,11 @@ import {
   ReactClassUpdateCycleStatus,
   ReactEffectDependencyMode,
   ReactExecutionPhase,
+  ReactFormActionStatus,
   ReactHookStateUpdaterStatus,
   ReactIdentityStability,
+  ReactOptimisticActionStatus,
+  ReactOptimisticReducerStatus,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
   ReactTransitionActionStatus,
@@ -83,10 +88,13 @@ import type {
   ReactSemanticClassStateWrite,
   ReactSemanticClassStateTransition,
   ReactSemanticExternalStore,
+  ReactSemanticFormAction,
   ReactSemanticFunctionCall,
   ReactSemanticGraph,
   ReactSemanticHookCall,
   ReactSemanticHookStateTransition,
+  ReactSemanticOptimisticState,
+  ReactSemanticOptimisticUpdate,
   ReactSemanticTransitionAction,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
@@ -97,8 +105,8 @@ import type {
 } from "./types.js";
 import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
+import { collectExecutionCallbackIds } from "./utils/collect-execution-callback-ids.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
-import { getContainingFunction } from "./utils/get-containing-function.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 
 interface UnitGraphIdentity {
@@ -166,8 +174,17 @@ interface CallbackPropGraphFacts extends CallbackGraphFacts {
   callbackPropFlows: ReadonlyArray<ReactSemanticCallbackPropFlow>;
 }
 
+interface FormActionGraphFacts extends CallbackGraphFacts {
+  actions: ReadonlyArray<ReactSemanticFormAction>;
+}
+
 interface HookStateTransitionGraphFacts extends CallbackGraphFacts {
   transitions: ReadonlyArray<ReactSemanticHookStateTransition>;
+}
+
+interface OptimisticStateGraphFacts extends CallbackGraphFacts {
+  states: ReadonlyArray<ReactSemanticOptimisticState>;
+  updates: ReadonlyArray<ReactSemanticOptimisticUpdate>;
 }
 
 interface TransitionActionGraphFacts extends CallbackGraphFacts {
@@ -1881,6 +1898,111 @@ const collectReducerCallbacks = (
   return { callbacks, reachableFunctions, functionCalls };
 };
 
+const collectFormActionGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  context: ReactAnalysisContext,
+  componentFlow: ComponentCallbackFlowDescriptor,
+): FormActionGraphFacts => {
+  const identitiesByFunction = new Map(
+    identities.flatMap(
+      (identity): ReadonlyArray<[ts.FunctionLikeDeclaration, UnitGraphIdentity]> =>
+        identity.descriptor.functionNode ? [[identity.descriptor.functionNode, identity]] : [],
+    ),
+  );
+  const actions: ReactSemanticFormAction[] = [];
+  const callbacks: ReactSemanticCallback[] = [];
+  const reachableFunctions: ReactSemanticReachableFunction[] = [];
+  const functionCalls: ReactSemanticFunctionCall[] = [];
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    for (const descriptor of collectFormActions(identity.descriptor, context.typeChecker)) {
+      const actionId = createSemanticId(
+        "form-action",
+        descriptor.propertyName,
+        descriptor.evidenceNode,
+        context,
+      );
+      const resolution = descriptor.isSpread
+        ? componentFlow.resolveProperty(
+            descriptor.actionExpression,
+            descriptor.propertyName,
+            functionNode,
+            ReactExecutionPhase.FormAction,
+          )
+        : componentFlow.resolveExpression(
+            descriptor.actionExpression,
+            functionNode,
+            ReactExecutionPhase.FormAction,
+          );
+      const actionCallbackIds: string[] = [];
+      for (const callbackDescriptor of resolution.callbacks) {
+        const callbackIdentity = identitiesByFunction.get(callbackDescriptor.ownerFunction);
+        if (!callbackIdentity) continue;
+        const hookBindings = collectHookBindings(
+          callbackDescriptor.ownerFunction,
+          context.typeChecker,
+        );
+        const callbackFact = {
+          ...createCallbackFact(
+            callbackIdentity,
+            callbackDescriptor.callbackFunction,
+            callbackDescriptor.ownerFunction,
+            new Set([
+              ...hookBindings.refs,
+              ...hookBindings.stateSetters,
+              ...hookBindings.transitionStarters,
+            ]),
+            ReactSemanticCallbackKind.FormAction,
+            ReactExecutionPhase.FormAction,
+            descriptor.propertyName,
+            context,
+          ),
+          id: createSemanticId(
+            `form-action-callback:${actionId}`,
+            getFunctionName(callbackDescriptor.callbackFunction) ?? descriptor.propertyName,
+            callbackDescriptor.callbackFunction,
+            context,
+          ),
+        };
+        callbacks.push(callbackFact);
+        actionCallbackIds.push(callbackFact.id);
+        const reachabilityFacts = collectReachabilityGraphFacts(
+          callbackIdentity,
+          callbackDescriptor.callbackFunction,
+          callbackFact,
+          context,
+          callbackDescriptor.bindings,
+        );
+        reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+        functionCalls.push(...reachabilityFacts.functionCalls);
+      }
+      const callbackComplete =
+        resolution.isComplete &&
+        actionCallbackIds.length > 0 &&
+        actionCallbackIds.length === resolution.callbacks.length;
+      let status = descriptor.status;
+      if (status === ReactFormActionStatus.Resolved && !callbackComplete) {
+        status = ReactFormActionStatus.Opaque;
+      }
+      const sourceComplete = callbackComplete && status !== ReactFormActionStatus.Opaque;
+      actions.push({
+        id: actionId,
+        ownerId: identity.semanticUnit.id,
+        kind: descriptor.kind,
+        propName: descriptor.propertyName,
+        location: getNodeLocation(descriptor.evidenceNode, context.rootDirectory),
+        actionCallbackIds,
+        status,
+        callbackComplete,
+        sourceComplete,
+        complete: sourceComplete && status === ReactFormActionStatus.Resolved,
+      });
+    }
+  }
+  return { actions, callbacks, reachableFunctions, functionCalls };
+};
+
 const collectTransitionActionGraph = (
   identity: UnitGraphIdentity,
   existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
@@ -1955,34 +2077,18 @@ const collectTransitionActionGraph = (
     ReactExecutionPhase.EffectSetup,
     ReactExecutionPhase.Event,
     ReactExecutionPhase.ExternalStoreSubscription,
+    ReactExecutionPhase.FormAction,
     ReactExecutionPhase.TransitionAction,
   ]);
   const actions = actionIdentities.map(
     ({ actionCallback, actionId, descriptor }): ReactSemanticTransitionAction => {
-      const containingFunction = descriptor.callExpression
-        ? getContainingFunction(descriptor.callExpression)
-        : null;
-      const containingLocation = containingFunction
-        ? getNodeLocation(containingFunction, context.rootDirectory)
-        : null;
-      const executionCallbackIds = containingLocation
-        ? [
-            ...new Set([
-              ...allCallbacks.flatMap((callback) =>
-                callback.ownerId === identity.semanticUnit.id &&
-                areProofLocationsEqual(callback.location, containingLocation)
-                  ? [callback.id]
-                  : [],
-              ),
-              ...allReachableFunctions.flatMap((reachableFunction) =>
-                reachableFunction.ownerId === identity.semanticUnit.id &&
-                areProofLocationsEqual(reachableFunction.location, containingLocation)
-                  ? [reachableFunction.rootCallbackId]
-                  : [],
-              ),
-            ]),
-          ]
-        : [];
+      const executionCallbackIds = collectExecutionCallbackIds({
+        callbacks: allCallbacks,
+        evidenceNode: descriptor.callExpression,
+        ownerId: identity.semanticUnit.id,
+        reachableFunctions: allReachableFunctions,
+        rootDirectory: context.rootDirectory,
+      });
       const hasValidExecutionRoot =
         executionCallbackIds.length > 0 &&
         executionCallbackIds.every((callbackId) => {
@@ -2043,30 +2149,13 @@ const collectHookStateTransitionGraph = (
       descriptor.evidenceNode,
       context,
     );
-    const containingFunction = descriptor.callExpression
-      ? getContainingFunction(descriptor.callExpression)
-      : null;
-    const containingLocation = containingFunction
-      ? getNodeLocation(containingFunction, context.rootDirectory)
-      : null;
-    const executionCallbackIds = containingLocation
-      ? [
-          ...new Set([
-            ...existingCallbacks.flatMap((callback) =>
-              callback.ownerId === identity.semanticUnit.id &&
-              areProofLocationsEqual(callback.location, containingLocation)
-                ? [callback.id]
-                : [],
-            ),
-            ...existingReachableFunctions.flatMap((reachableFunction) =>
-              reachableFunction.ownerId === identity.semanticUnit.id &&
-              areProofLocationsEqual(reachableFunction.location, containingLocation)
-                ? [reachableFunction.rootCallbackId]
-                : [],
-            ),
-          ]),
-        ]
-      : [];
+    const executionCallbackIds = collectExecutionCallbackIds({
+      callbacks: existingCallbacks,
+      evidenceNode: descriptor.callExpression,
+      ownerId: identity.semanticUnit.id,
+      reachableFunctions: existingReachableFunctions,
+      rootDirectory: context.rootDirectory,
+    });
     const updaterCallback = descriptor.updaterFunction
       ? createCallbackFact(
           identity,
@@ -2129,6 +2218,206 @@ const collectHookStateTransitionGraph = (
     };
   });
   return { transitions, callbacks, reachableFunctions, functionCalls };
+};
+
+const collectOptimisticStateGraph = (
+  identity: UnitGraphIdentity,
+  existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
+  existingReachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>,
+  existingTransitionActions: ReadonlyArray<ReactSemanticTransitionAction>,
+  context: ReactAnalysisContext,
+): OptimisticStateGraphFacts => {
+  const functionNode = identity.descriptor.functionNode;
+  if (
+    !functionNode ||
+    identity.descriptor.kind === ReactUnitKind.ClassComponent ||
+    identity.descriptor.kind === ReactUnitKind.InvalidHookOwner
+  ) {
+    return {
+      states: [],
+      updates: [],
+      callbacks: [],
+      reachableFunctions: [],
+      functionCalls: [],
+    };
+  }
+  const collection = collectOptimisticState(functionNode, context);
+  const callbacks: ReactSemanticCallback[] = [];
+  const reachableFunctions: ReactSemanticReachableFunction[] = [];
+  const functionCalls: ReactSemanticFunctionCall[] = [];
+  const stateIdsBySetter = new Map<ts.Symbol, string>();
+  const states = collection.states.map((descriptor): ReactSemanticOptimisticState => {
+    const stateId = createSemanticId(
+      "optimistic-state",
+      descriptor.binding.setterSymbol?.getName() ??
+        descriptor.binding.stateSymbol?.getName() ??
+        "useOptimistic",
+      descriptor.binding.callExpression,
+      context,
+    );
+    if (descriptor.binding.setterSymbol) {
+      stateIdsBySetter.set(descriptor.binding.setterSymbol, stateId);
+    }
+    const reducerCallback = descriptor.reducerFunction
+      ? {
+          ...createCallbackFact(
+            identity,
+            descriptor.reducerFunction,
+            functionNode,
+            new Set(),
+            ReactSemanticCallbackKind.OptimisticReducer,
+            ReactExecutionPhase.OptimisticReducer,
+            "optimistic-reducer",
+            context,
+          ),
+          id: createSemanticId(
+            `optimistic-reducer:${stateId}`,
+            "reducer",
+            descriptor.reducerFunction,
+            context,
+          ),
+        }
+      : null;
+    if (reducerCallback && descriptor.reducerFunction) {
+      callbacks.push(reducerCallback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        identity,
+        descriptor.reducerFunction,
+        reducerCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    const sourceComplete =
+      descriptor.reducerStatus === ReactOptimisticReducerStatus.Absent ||
+      ((descriptor.reducerStatus === ReactOptimisticReducerStatus.Pure ||
+        descriptor.reducerStatus === ReactOptimisticReducerStatus.Impure) &&
+        Boolean(reducerCallback));
+    return {
+      id: stateId,
+      ownerId: identity.semanticUnit.id,
+      stateName: descriptor.binding.stateSymbol?.getName() ?? "unused optimistic state",
+      setterName: descriptor.binding.setterSymbol?.getName() ?? "unused optimistic setter",
+      location: getNodeLocation(descriptor.binding.callExpression, context.rootDirectory),
+      reducerCallbackId: reducerCallback?.id ?? null,
+      reducerStatus: descriptor.reducerStatus,
+      sourceComplete,
+      complete:
+        sourceComplete &&
+        (descriptor.reducerStatus === ReactOptimisticReducerStatus.Absent ||
+          descriptor.reducerStatus === ReactOptimisticReducerStatus.Pure),
+    };
+  });
+  const rootCallbacks = [...existingCallbacks, ...callbacks];
+  const rootReachableFunctions = [...existingReachableFunctions, ...reachableFunctions];
+  const rootCallbacksById = new Map(rootCallbacks.map((callback) => [callback.id, callback]));
+  const completeTransitionCallbackIds = new Set(
+    existingTransitionActions.flatMap((action) =>
+      action.complete && action.actionCallbackId ? [action.actionCallbackId] : [],
+    ),
+  );
+  const updates = collection.updates.map((descriptor): ReactSemanticOptimisticUpdate => {
+    const optimisticStateId =
+      stateIdsBySetter.get(descriptor.binding.setterSymbol) ??
+      createSemanticId(
+        "optimistic-state",
+        descriptor.binding.setterSymbol.getName(),
+        descriptor.binding.callExpression,
+        context,
+      );
+    const updateId = createSemanticId(
+      "optimistic-update",
+      descriptor.binding.setterSymbol.getName(),
+      descriptor.evidenceNode,
+      context,
+    );
+    const executionCallbackIds = collectExecutionCallbackIds({
+      callbacks: rootCallbacks,
+      evidenceNode: descriptor.callExpression,
+      ownerId: identity.semanticUnit.id,
+      reachableFunctions: rootReachableFunctions,
+      rootDirectory: context.rootDirectory,
+    });
+    const executionCallbacks = executionCallbackIds.flatMap((callbackId) => {
+      const callback = rootCallbacksById.get(callbackId);
+      return callback ? [callback] : [];
+    });
+    let actionStatus = ReactOptimisticActionStatus.Unknown;
+    if (executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.Render)) {
+      actionStatus = ReactOptimisticActionStatus.Render;
+    } else if (
+      executionCallbacks.length > 0 &&
+      executionCallbacks.every(
+        (callback) =>
+          callback.phase === ReactExecutionPhase.FormAction ||
+          (callback.phase === ReactExecutionPhase.TransitionAction &&
+            completeTransitionCallbackIds.has(callback.id)),
+      )
+    ) {
+      actionStatus = ReactOptimisticActionStatus.Action;
+    } else if (
+      executionCallbacks.some(
+        (callback) =>
+          callback.phase !== ReactExecutionPhase.FormAction &&
+          callback.phase !== ReactExecutionPhase.TransitionAction,
+      )
+    ) {
+      actionStatus = ReactOptimisticActionStatus.OutsideAction;
+    }
+    const updaterCallback = descriptor.updaterFunction
+      ? {
+          ...createCallbackFact(
+            identity,
+            descriptor.updaterFunction,
+            functionNode,
+            new Set(),
+            ReactSemanticCallbackKind.OptimisticUpdater,
+            ReactExecutionPhase.OptimisticUpdater,
+            "optimistic-updater",
+            context,
+          ),
+          id: createSemanticId(
+            `optimistic-updater:${updateId}`,
+            "updater",
+            descriptor.updaterFunction,
+            context,
+          ),
+        }
+      : null;
+    if (updaterCallback && descriptor.updaterFunction) {
+      callbacks.push(updaterCallback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        identity,
+        descriptor.updaterFunction,
+        updaterCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    const sourceComplete =
+      actionStatus !== ReactOptimisticActionStatus.Unknown &&
+      descriptor.updaterStatus !== ReactHookStateUpdaterStatus.SetterEscape &&
+      descriptor.updaterStatus !== ReactHookStateUpdaterStatus.Unknown;
+    return {
+      id: updateId,
+      ownerId: identity.semanticUnit.id,
+      optimisticStateId,
+      location: getNodeLocation(descriptor.evidenceNode, context.rootDirectory),
+      executionCallbackIds,
+      updaterCallbackId: updaterCallback?.id ?? null,
+      updaterStatus: descriptor.updaterStatus,
+      actionStatus,
+      sourceComplete,
+      complete:
+        sourceComplete &&
+        actionStatus === ReactOptimisticActionStatus.Action &&
+        (descriptor.updaterStatus === ReactHookStateUpdaterStatus.DirectValue ||
+          descriptor.updaterStatus === ReactHookStateUpdaterStatus.Pure),
+    };
+  });
+  return { states, updates, callbacks, reachableFunctions, functionCalls };
 };
 
 const collectExternalStoreGraph = (
@@ -2468,7 +2757,10 @@ export const buildReactSemanticGraph = (
   const classLifecycles: ReactSemanticClassLifecycle[] = [];
   const classStateWrites: ReactSemanticClassStateWrite[] = [];
   const classStateTransitions: ReactSemanticClassStateTransition[] = [];
+  const formActions: ReactSemanticFormAction[] = [];
   const hookStateTransitions: ReactSemanticHookStateTransition[] = [];
+  const optimisticStates: ReactSemanticOptimisticState[] = [];
+  const optimisticUpdates: ReactSemanticOptimisticUpdate[] = [];
   const transitionActions: ReactSemanticTransitionAction[] = [];
   const effectEvents: ReactSemanticEffectEvent[] = [];
   const externalStores: ReactSemanticExternalStore[] = [];
@@ -2490,6 +2782,11 @@ export const buildReactSemanticGraph = (
   callbacks.push(...eventGraph.callbacks);
   reachableFunctions.push(...eventGraph.reachableFunctions);
   functionCalls.push(...eventGraph.functionCalls);
+  const formActionGraph = collectFormActionGraph(identities, context, componentFlow);
+  formActions.push(...formActionGraph.actions);
+  callbacks.push(...formActionGraph.callbacks);
+  reachableFunctions.push(...formActionGraph.reachableFunctions);
+  functionCalls.push(...formActionGraph.functionCalls);
   for (const identity of identities) {
     const functionNode = identity.descriptor.functionNode;
     if (
@@ -2608,6 +2905,20 @@ export const buildReactSemanticGraph = (
     reachableFunctions.push(...hookStateTransitionGraph.reachableFunctions);
     functionCalls.push(...hookStateTransitionGraph.functionCalls);
   }
+  for (const identity of identities) {
+    const optimisticStateGraph = collectOptimisticStateGraph(
+      identity,
+      callbacks,
+      reachableFunctions,
+      transitionActions,
+      context,
+    );
+    optimisticStates.push(...optimisticStateGraph.states);
+    optimisticUpdates.push(...optimisticStateGraph.updates);
+    callbacks.push(...optimisticStateGraph.callbacks);
+    reachableFunctions.push(...optimisticStateGraph.reachableFunctions);
+    functionCalls.push(...optimisticStateGraph.functionCalls);
+  }
   const contextConsumers = resolveContextConsumers(
     identities.map((identity) => identity.semanticUnit),
     edges,
@@ -2642,7 +2953,10 @@ export const buildReactSemanticGraph = (
     classLifecycles,
     classStateWrites,
     classStateTransitions,
+    formActions,
     hookStateTransitions,
+    optimisticStates,
+    optimisticUpdates,
     transitionActions,
     compiler: extractReactCompilerGraph(sourceFiles, context.rootDirectory),
   };

@@ -37,6 +37,15 @@ declare module "react" {
     factory: () => Value,
     dependencies: ReadonlyArray<unknown>,
   ) => Value;
+  export const useOptimistic: {
+    <State>(
+      passthrough: State,
+    ): [State, (updateAction: State | ((pendingState: State) => State)) => void];
+    <State, Action>(
+      passthrough: State,
+      reducer: (pendingState: State, action: Action) => State,
+    ): [State, (action: Action) => void];
+  };
   export const useRef: <Value>(initialValue: Value) => MutableRefObject<Value>;
   export const useContext: <Value>(context: Context<Value>) => Value;
   export const useReducer: <State, Action>(

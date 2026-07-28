@@ -16,8 +16,12 @@ import {
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
   ReactExecutionPhase,
+  ReactFormActionKind,
+  ReactFormActionStatus,
   ReactHookStateUpdaterStatus,
   ReactObligationStatus,
+  ReactOptimisticActionStatus,
+  ReactOptimisticReducerStatus,
   ReactProofCertificateStatus,
   ReactProofClaim,
   ReactSchedulerCancellationStatus,
@@ -37,6 +41,10 @@ import type {
 } from "./types.js";
 
 const HOOK_STATE_UPDATER_STATUSES = new Set(Object.values(ReactHookStateUpdaterStatus));
+const FORM_ACTION_KINDS = new Set(Object.values(ReactFormActionKind));
+const FORM_ACTION_STATUSES = new Set(Object.values(ReactFormActionStatus));
+const OPTIMISTIC_ACTION_STATUSES = new Set(Object.values(ReactOptimisticActionStatus));
+const OPTIMISTIC_REDUCER_STATUSES = new Set(Object.values(ReactOptimisticReducerStatus));
 const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionStatus));
 const TRANSITION_STARTER_KINDS = new Set(Object.values(ReactTransitionStarterKind));
 const TRANSITION_ACTION_ORIGIN_PHASES = new Set([
@@ -48,6 +56,7 @@ const TRANSITION_ACTION_ORIGIN_PHASES = new Set([
   ReactExecutionPhase.EffectSetup,
   ReactExecutionPhase.Event,
   ReactExecutionPhase.ExternalStoreSubscription,
+  ReactExecutionPhase.FormAction,
   ReactExecutionPhase.TransitionAction,
 ]);
 
@@ -204,6 +213,47 @@ const expectedTransitionActionStatus = (
     : ReactObligationStatus.Proved;
 };
 
+const expectedFormActionStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const actions = report.graph.formActions.filter((action) => action.ownerId === unit.id);
+  if (actions.some((action) => action.status === ReactFormActionStatus.UnsupportedControl)) {
+    return ReactObligationStatus.Violated;
+  }
+  return actions.some((action) => !action.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedOptimisticStateStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const states = report.graph.optimisticStates.filter((state) => state.ownerId === unit.id);
+  const updates = report.graph.optimisticUpdates.filter((update) => update.ownerId === unit.id);
+  if (
+    states.some((state) => state.reducerStatus === ReactOptimisticReducerStatus.Impure) ||
+    updates.some(
+      (update) =>
+        update.actionStatus === ReactOptimisticActionStatus.OutsideAction ||
+        update.actionStatus === ReactOptimisticActionStatus.Render ||
+        update.updaterStatus === ReactHookStateUpdaterStatus.Impure,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return states.some((state) => !state.complete) || updates.some((update) => !update.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
 const expectedScheduledCallbackLifetimeStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
@@ -350,6 +400,28 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `Transition Action facts require ${expectedTransitionStatus}, not ${transitionActions.status}`,
+      );
+    }
+    const formActions = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.FormActions,
+    );
+    const expectedFormStatus = expectedFormActionStatus(semanticUnit, report);
+    if (formActions && formActions.status !== expectedFormStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Form Action facts require ${expectedFormStatus}, not ${formActions.status}`,
+      );
+    }
+    const optimisticState = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.OptimisticState,
+    );
+    const expectedOptimisticStatus = expectedOptimisticStateStatus(semanticUnit, report);
+    if (optimisticState && optimisticState.status !== expectedOptimisticStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Optimistic state facts require ${expectedOptimisticStatus}, not ${optimisticState.status}`,
       );
     }
     const scheduledCallbackLifetime = unitProof.obligations.find(
@@ -919,6 +991,200 @@ const checkGraphReferences = (
         transition.id,
         "A Hook state transition completeness flag does not match its certificate",
       );
+    }
+  }
+  for (const action of report.graph.formActions) {
+    const owner = unitsById.get(action.ownerId);
+    if (!owner || owner.kind === ReactUnitKind.InvalidHookOwner) {
+      addFailure(failures, action.id, "A Form Action has an unknown or invalid owner");
+    }
+    if (!FORM_ACTION_KINDS.has(action.kind)) {
+      addFailure(failures, action.id, "A Form Action has an invalid control kind");
+    }
+    if (!FORM_ACTION_STATUSES.has(action.status)) {
+      addFailure(failures, action.id, "A Form Action has an invalid status");
+    }
+    let expectedKind: ReactFormActionKind | null = null;
+    if (action.propName === "action") {
+      expectedKind = ReactFormActionKind.Form;
+    } else if (action.propName === "formAction") {
+      expectedKind = ReactFormActionKind.Submitter;
+    }
+    if (!expectedKind || action.kind !== expectedKind) {
+      addFailure(failures, action.id, "A Form Action property contradicts its control kind");
+    }
+    if (new Set(action.actionCallbackIds).size !== action.actionCallbackIds.length) {
+      addFailure(failures, action.id, "A Form Action repeats an Action callback");
+    }
+    const hasValidCallbacks = action.actionCallbackIds.every((callbackId) => {
+      const callback = callbacksById.get(callbackId);
+      return Boolean(
+        callback &&
+        callback.kind === ReactSemanticCallbackKind.FormAction &&
+        callback.phase === ReactExecutionPhase.FormAction,
+      );
+    });
+    if (!hasValidCallbacks) {
+      addFailure(failures, action.id, "A Form Action has an invalid Action callback");
+    }
+    if (action.callbackComplete && action.actionCallbackIds.length === 0) {
+      addFailure(failures, action.id, "A complete Form Action callback set is empty");
+    }
+    const expectedSourceComplete =
+      action.callbackComplete &&
+      hasValidCallbacks &&
+      action.status !== ReactFormActionStatus.Opaque;
+    if (action.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, action.id, "A Form Action source flag contradicts its callback model");
+    }
+    const expectedComplete =
+      action.sourceComplete && action.status === ReactFormActionStatus.Resolved;
+    if (action.complete !== expectedComplete) {
+      addFailure(failures, action.id, "A Form Action completeness flag is inconsistent");
+    }
+  }
+  const optimisticStatesById = new Map(
+    report.graph.optimisticStates.map((state) => [state.id, state]),
+  );
+  const completeTransitionCallbackIds = new Set(
+    report.graph.transitionActions.flatMap((action) =>
+      action.complete && action.actionCallbackId ? [action.actionCallbackId] : [],
+    ),
+  );
+  for (const state of report.graph.optimisticStates) {
+    const owner = unitsById.get(state.ownerId);
+    if (
+      !owner ||
+      owner.kind === ReactUnitKind.ClassComponent ||
+      owner.kind === ReactUnitKind.InvalidHookOwner
+    ) {
+      addFailure(failures, state.id, "An optimistic state has an unknown or invalid owner");
+    }
+    if (!state.stateName || !state.setterName) {
+      addFailure(failures, state.id, "An optimistic state has an unnamed tuple binding");
+    }
+    if (!OPTIMISTIC_REDUCER_STATUSES.has(state.reducerStatus)) {
+      addFailure(failures, state.id, "An optimistic state has an invalid reducer status");
+    }
+    const reducerCallback = state.reducerCallbackId
+      ? callbacksById.get(state.reducerCallbackId)
+      : null;
+    const reducerRequiresCallback =
+      state.reducerStatus === ReactOptimisticReducerStatus.Impure ||
+      state.reducerStatus === ReactOptimisticReducerStatus.Pure;
+    if (
+      (reducerRequiresCallback && !state.reducerCallbackId) ||
+      (state.reducerStatus === ReactOptimisticReducerStatus.Absent && state.reducerCallbackId) ||
+      (state.reducerCallbackId &&
+        (reducerCallback?.ownerId !== state.ownerId ||
+          reducerCallback.kind !== ReactSemanticCallbackKind.OptimisticReducer ||
+          reducerCallback.phase !== ReactExecutionPhase.OptimisticReducer))
+    ) {
+      addFailure(failures, state.id, "An optimistic state has an invalid reducer callback");
+    }
+    const expectedSourceComplete =
+      state.reducerStatus === ReactOptimisticReducerStatus.Absent ||
+      (reducerRequiresCallback && Boolean(reducerCallback));
+    if (state.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, state.id, "An optimistic state source flag is inconsistent");
+    }
+    const expectedComplete =
+      state.sourceComplete &&
+      (state.reducerStatus === ReactOptimisticReducerStatus.Absent ||
+        state.reducerStatus === ReactOptimisticReducerStatus.Pure);
+    if (state.complete !== expectedComplete) {
+      addFailure(failures, state.id, "An optimistic state completeness flag is inconsistent");
+    }
+  }
+  for (const update of report.graph.optimisticUpdates) {
+    const owner = unitsById.get(update.ownerId);
+    const optimisticState = optimisticStatesById.get(update.optimisticStateId);
+    if (
+      !owner ||
+      owner.kind === ReactUnitKind.ClassComponent ||
+      owner.kind === ReactUnitKind.InvalidHookOwner
+    ) {
+      addFailure(failures, update.id, "An optimistic update has an unknown or invalid owner");
+    }
+    if (!optimisticState || optimisticState.ownerId !== update.ownerId) {
+      addFailure(failures, update.id, "An optimistic update has an invalid state binding");
+    }
+    if (!HOOK_STATE_UPDATER_STATUSES.has(update.updaterStatus)) {
+      addFailure(failures, update.id, "An optimistic update has an invalid updater status");
+    }
+    if (!OPTIMISTIC_ACTION_STATUSES.has(update.actionStatus)) {
+      addFailure(failures, update.id, "An optimistic update has an invalid Action status");
+    }
+    if (new Set(update.executionCallbackIds).size !== update.executionCallbackIds.length) {
+      addFailure(failures, update.id, "An optimistic update repeats an execution callback");
+    }
+    const executionCallbacks = update.executionCallbackIds.flatMap((callbackId) => {
+      const callback = callbacksById.get(callbackId);
+      if (!callback || callback.ownerId !== update.ownerId) {
+        addFailure(failures, update.id, "An optimistic update has an invalid execution callback");
+        return [];
+      }
+      return [callback];
+    });
+    let expectedActionStatus = ReactOptimisticActionStatus.Unknown;
+    if (executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.Render)) {
+      expectedActionStatus = ReactOptimisticActionStatus.Render;
+    } else if (
+      executionCallbacks.length > 0 &&
+      executionCallbacks.every(
+        (callback) =>
+          callback.phase === ReactExecutionPhase.FormAction ||
+          (callback.phase === ReactExecutionPhase.TransitionAction &&
+            completeTransitionCallbackIds.has(callback.id)),
+      )
+    ) {
+      expectedActionStatus = ReactOptimisticActionStatus.Action;
+    } else if (
+      executionCallbacks.some(
+        (callback) =>
+          callback.phase !== ReactExecutionPhase.FormAction &&
+          callback.phase !== ReactExecutionPhase.TransitionAction,
+      )
+    ) {
+      expectedActionStatus = ReactOptimisticActionStatus.OutsideAction;
+    }
+    if (update.actionStatus !== expectedActionStatus) {
+      addFailure(failures, update.id, "An optimistic update Action status is inconsistent");
+    }
+    const updaterCallback = update.updaterCallbackId
+      ? callbacksById.get(update.updaterCallbackId)
+      : null;
+    const updaterRequiresCallback =
+      update.updaterStatus === ReactHookStateUpdaterStatus.Impure ||
+      update.updaterStatus === ReactHookStateUpdaterStatus.Pure;
+    const updaterForbidsCallback =
+      update.updaterStatus === ReactHookStateUpdaterStatus.DirectValue ||
+      update.updaterStatus === ReactHookStateUpdaterStatus.SetterEscape;
+    if (
+      (updaterRequiresCallback && !update.updaterCallbackId) ||
+      (updaterForbidsCallback && update.updaterCallbackId) ||
+      (update.updaterCallbackId &&
+        (updaterCallback?.ownerId !== update.ownerId ||
+          updaterCallback.kind !== ReactSemanticCallbackKind.OptimisticUpdater ||
+          updaterCallback.phase !== ReactExecutionPhase.OptimisticUpdater))
+    ) {
+      addFailure(failures, update.id, "An optimistic update has an invalid updater callback");
+    }
+    const expectedSourceComplete =
+      Boolean(optimisticState) &&
+      expectedActionStatus !== ReactOptimisticActionStatus.Unknown &&
+      update.updaterStatus !== ReactHookStateUpdaterStatus.SetterEscape &&
+      update.updaterStatus !== ReactHookStateUpdaterStatus.Unknown;
+    if (update.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, update.id, "An optimistic update source flag is inconsistent");
+    }
+    const expectedComplete =
+      update.sourceComplete &&
+      expectedActionStatus === ReactOptimisticActionStatus.Action &&
+      (update.updaterStatus === ReactHookStateUpdaterStatus.DirectValue ||
+        update.updaterStatus === ReactHookStateUpdaterStatus.Pure);
+    if (update.complete !== expectedComplete) {
+      addFailure(failures, update.id, "An optimistic update completeness flag is inconsistent");
     }
   }
   for (const action of report.graph.transitionActions) {
@@ -1841,6 +2107,21 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Hook state transitions",
     report.graph.hookStateTransitions.map((transition) => transition.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Form Actions",
+    report.graph.formActions.map((action) => action.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Optimistic states",
+    report.graph.optimisticStates.map((state) => state.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Optimistic updates",
+    report.graph.optimisticUpdates.map((update) => update.id),
   );
   checkUniqueIds(
     failures,

@@ -1,11 +1,11 @@
 import ts from "typescript";
-import { analyzeUpdaterFunction } from "./analyze-updater-function.js";
 import { collectHookBindings } from "./collect-hook-bindings.js";
 import { isIdentifierReference } from "./is-identifier-reference.js";
 import { isNodeWithin } from "./is-node-within.js";
-import { ReactHookStateUpdaterStatus, ReactObligationStatus } from "./types.js";
+import { ReactHookStateUpdaterStatus } from "./types.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import type { ReactAnalysisContext } from "./types.js";
+import { analyzeStateUpdateExpression } from "./utils/analyze-state-update-expression.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
 import { isReactHookDependencyReference } from "./utils/is-react-hook-dependency-reference.js";
 
@@ -17,47 +17,6 @@ export interface HookStateTransitionDescriptor {
   updaterFunction: ts.FunctionLikeDeclaration | null;
   updaterStatus: ReactHookStateUpdaterStatus;
 }
-
-const doesTypeIncludeCallable = (type: ts.Type): boolean =>
-  type.getCallSignatures().length > 0 ||
-  (type.isUnionOrIntersection() && type.types.some(doesTypeIncludeCallable));
-
-const getUpdaterStatus = (
-  updaterExpression: ts.Expression,
-  context: ReactAnalysisContext,
-): {
-  updaterFunction: ts.FunctionLikeDeclaration | null;
-  updaterStatus: ReactHookStateUpdaterStatus;
-} => {
-  const unwrappedUpdater = unwrapTypescriptExpression(updaterExpression);
-  const updaterAnalysis = analyzeUpdaterFunction(unwrappedUpdater, context);
-  if (updaterAnalysis.updaterFunction) {
-    let updaterStatus = ReactHookStateUpdaterStatus.Unknown;
-    if (updaterAnalysis.status === ReactObligationStatus.Proved) {
-      updaterStatus = ReactHookStateUpdaterStatus.Pure;
-    } else if (updaterAnalysis.status === ReactObligationStatus.Violated) {
-      updaterStatus = ReactHookStateUpdaterStatus.Impure;
-    }
-    return {
-      updaterFunction: updaterAnalysis.updaterFunction,
-      updaterStatus,
-    };
-  }
-  const updaterType = context.typeChecker.getTypeAtLocation(unwrappedUpdater);
-  if (
-    updaterType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown) ||
-    doesTypeIncludeCallable(updaterType)
-  ) {
-    return {
-      updaterFunction: null,
-      updaterStatus: ReactHookStateUpdaterStatus.Unknown,
-    };
-  }
-  return {
-    updaterFunction: null,
-    updaterStatus: ReactHookStateUpdaterStatus.DirectValue,
-  };
-};
 
 export const collectHookStateTransitions = (
   functionNode: ts.FunctionLikeDeclaration,
@@ -80,7 +39,7 @@ export const collectHookStateTransitions = (
       if (setterSymbol && stateName) {
         const updaterExpression = node.arguments[0];
         const updaterAnalysis = updaterExpression
-          ? getUpdaterStatus(updaterExpression, context)
+          ? analyzeStateUpdateExpression(updaterExpression, context)
           : {
               updaterFunction: null,
               updaterStatus: ReactHookStateUpdaterStatus.Unknown,

@@ -8,6 +8,7 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useOptimistic,
   useRef,
   useState,
   useSyncExternalStore,
@@ -24,6 +25,8 @@ import {
   CLASS_UPDATE_NEXT_REVISION,
   INITIAL_CALLBACK_REVISION,
   NEXT_CALLBACK_REVISION,
+  OPTIMISTIC_ACTION_DELAY_MS,
+  OPTIMISTIC_ACTION_INITIAL_RUNS,
   PRIMARY_STORE_INITIAL_VERSION,
   SCHEDULER_CALLBACK_DELAY_MS,
   SECONDARY_STORE_INITIAL_VERSION,
@@ -52,6 +55,7 @@ declare global {
     observerHits: number;
     schedulerHits: number;
     hookStateUpdaterRuns: number;
+    optimisticActionRuns: number;
     transitionActionRuns: number;
   }
 }
@@ -70,7 +74,48 @@ window.listenerHits = 0;
 window.observerHits = 0;
 window.schedulerHits = 0;
 window.hookStateUpdaterRuns = HOOK_STATE_UPDATER_INITIAL_RUNS;
+window.optimisticActionRuns = OPTIMISTIC_ACTION_INITIAL_RUNS;
 window.transitionActionRuns = TRANSITION_ACTION_INITIAL_RUNS;
+
+interface OptimisticTodo {
+  label: string;
+  isPending: boolean;
+}
+
+const OptimisticFormActionOracle = () => {
+  const [confirmedTodos, setConfirmedTodos] = useState<ReadonlyArray<OptimisticTodo>>([
+    { label: "Read", isPending: false },
+  ]);
+  const [optimisticTodos, addOptimisticTodo] = useOptimistic(
+    confirmedTodos,
+    (pendingTodos, label: string) => [...pendingTodos, { label, isPending: true }],
+  );
+  const submitAction = async (formData: FormData) => {
+    window.optimisticActionRuns += 1;
+    const label = String(formData.get("todo"));
+    addOptimisticTodo(label);
+    await new Promise((resolve) => {
+      setTimeout(resolve, OPTIMISTIC_ACTION_DELAY_MS);
+    });
+    setConfirmedTodos((previousTodos) => [...previousTodos, { label, isPending: false }]);
+  };
+  return (
+    <main>
+      <form action={submitAction}>
+        <input name="todo" defaultValue="Write" />
+        <button type="submit">add todo</button>
+      </form>
+      <output data-testid="optimistic-todos">
+        {optimisticTodos
+          .map((todo) => `${todo.label}:${todo.isPending ? "pending" : "confirmed"}`)
+          .join("|")}
+      </output>
+      <output data-testid="optimistic-pending">
+        {String(optimisticTodos.some((todo) => todo.isPending))}
+      </output>
+    </main>
+  );
+};
 
 const TransitionActionOracle = () => {
   const [panel, setPanel] = useState("overview");
@@ -945,6 +990,9 @@ const RuntimeOracle = () => {
   if (oracle === "transition-action") {
     return <TransitionActionOracle />;
   }
+  if (oracle === "optimistic-form-action") {
+    return <OptimisticFormActionOracle />;
+  }
   return <ListenerOracle />;
 };
 
@@ -958,7 +1006,8 @@ const isStrictModeOracle =
   oracle === "class-state-ownership" ||
   oracle === "class-state-transition" ||
   oracle === "hook-state-transition" ||
-  oracle === "transition-action";
+  oracle === "transition-action" ||
+  oracle === "optimistic-form-action";
 createRoot(rootElement).render(
   isStrictModeOracle ? (
     <StrictMode>

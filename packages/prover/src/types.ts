@@ -26,10 +26,12 @@ export enum ReactProofClaim {
   EffectEventUsage = "effect-event-usage",
   EffectStateUpdates = "effect-state-updates",
   ExternalStoreConsistency = "external-store-consistency",
+  FormActions = "form-actions",
   HookOrder = "hook-order",
   HookOwnership = "hook-ownership",
   HookStateTransitions = "hook-state-transitions",
   MemoDependencies = "memo-dependencies",
+  OptimisticState = "optimistic-state",
   ReconciliationIdentity = "reconciliation-identity",
   ReducerPurity = "reducer-purity",
   RefAccess = "ref-access",
@@ -77,6 +79,9 @@ export enum ReactExecutionPhase {
   EffectSetup = "effect-setup",
   Event = "event",
   ExternalStoreSubscription = "external-store-subscription",
+  FormAction = "form-action",
+  OptimisticReducer = "optimistic-reducer",
+  OptimisticUpdater = "optimistic-updater",
   Render = "render",
   ServerRender = "server-render",
   StateTransition = "state-transition",
@@ -95,9 +100,12 @@ export enum ReactSemanticCallbackKind {
   EventHandler = "event-handler",
   ExternalStoreSnapshot = "external-store-snapshot",
   ExternalStoreSubscribe = "external-store-subscribe",
+  FormAction = "form-action",
   HookStateUpdater = "hook-state-updater",
   MemoFactory = "memo-factory",
   MemoizedCallback = "memoized-callback",
+  OptimisticReducer = "optimistic-reducer",
+  OptimisticUpdater = "optimistic-updater",
   Reducer = "reducer",
   ReducerInitializer = "reducer-initializer",
   ResourceCallback = "resource-callback",
@@ -584,6 +592,69 @@ export interface ReactSemanticHookStateTransition {
   complete: boolean;
 }
 
+export enum ReactFormActionKind {
+  Form = "form",
+  Submitter = "submitter",
+}
+
+export enum ReactFormActionStatus {
+  Opaque = "opaque",
+  Resolved = "resolved",
+  UnsupportedControl = "unsupported-control",
+}
+
+export interface ReactSemanticFormAction {
+  id: string;
+  ownerId: string;
+  kind: ReactFormActionKind;
+  propName: string;
+  location: ReactProofLocation;
+  actionCallbackIds: ReadonlyArray<string>;
+  status: ReactFormActionStatus;
+  callbackComplete: boolean;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactOptimisticReducerStatus {
+  Absent = "absent",
+  Impure = "impure",
+  Pure = "pure",
+  Unknown = "unknown",
+}
+
+export enum ReactOptimisticActionStatus {
+  Action = "action",
+  OutsideAction = "outside-action",
+  Render = "render",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticOptimisticState {
+  id: string;
+  ownerId: string;
+  stateName: string;
+  setterName: string;
+  location: ReactProofLocation;
+  reducerCallbackId: string | null;
+  reducerStatus: ReactOptimisticReducerStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticOptimisticUpdate {
+  id: string;
+  ownerId: string;
+  optimisticStateId: string;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  updaterCallbackId: string | null;
+  updaterStatus: ReactHookStateUpdaterStatus;
+  actionStatus: ReactOptimisticActionStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export enum ReactTransitionStarterKind {
   Global = "global",
   Hook = "hook",
@@ -676,7 +747,10 @@ export interface ReactSemanticGraph {
   classLifecycles: ReadonlyArray<ReactSemanticClassLifecycle>;
   classStateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
   classStateTransitions: ReadonlyArray<ReactSemanticClassStateTransition>;
+  formActions: ReadonlyArray<ReactSemanticFormAction>;
   hookStateTransitions: ReadonlyArray<ReactSemanticHookStateTransition>;
+  optimisticStates: ReadonlyArray<ReactSemanticOptimisticState>;
+  optimisticUpdates: ReadonlyArray<ReactSemanticOptimisticUpdate>;
   transitionActions: ReadonlyArray<ReactSemanticTransitionAction>;
   compiler: ReactCompilerGraph;
 }

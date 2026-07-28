@@ -57,6 +57,12 @@ export interface ComponentCallbackFlowDescriptor {
     ownerFunction: ts.FunctionLikeDeclaration,
     phase: ReactExecutionPhase,
   ): ComponentCallbackExpressionResolutionDescriptor;
+  resolveProperty(
+    expression: ts.Expression,
+    propertyName: string,
+    ownerFunction: ts.FunctionLikeDeclaration,
+    phase: ReactExecutionPhase,
+  ): ComponentCallbackExpressionResolutionDescriptor;
 }
 
 export interface ComponentCallbackResolutionDescriptor {
@@ -604,5 +610,28 @@ export const createComponentCallbackFlow = (
         new Set(),
         phase,
       ),
+    resolveProperty: (expression, propertyName, ownerFunction, phase) => {
+      const unwrappedExpression = unwrapTypescriptExpression(expression);
+      const isDirectPropertiesObject = isDirectComponentPropertiesObject(
+        unwrappedExpression,
+        ownerFunction,
+        typeChecker,
+      );
+      const objectValue =
+        !isDirectPropertiesObject &&
+        isJsxSpreadSourceComplete(expression, ownerFunction, typeChecker)
+          ? resolveCallableExpression(expression, typeChecker)
+          : null;
+      return resolveCallbackSource(
+        createSpreadPropertyCallbackSource(
+          propertyName,
+          ownerFunction,
+          isDirectPropertiesObject,
+          objectValue,
+        ),
+        new Set(),
+        phase,
+      );
+    },
   };
 };

@@ -21,9 +21,12 @@ import {
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
   ReactExecutionPhase,
+  ReactFormActionStatus,
   ReactHookStateUpdaterStatus,
   ReactIdentityStability,
   ReactObligationStatus,
+  ReactOptimisticActionStatus,
+  ReactOptimisticReducerStatus,
   ReactProofClaim,
   ReactSchedulerCancellationStatus,
   ReactSchedulerKind,
@@ -54,6 +57,36 @@ const proveFixture = (fixtureName: string) =>
   });
 
 const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
+  {
+    fixtureName: "refuted-unsupported-form-action-control",
+    claim: ReactProofClaim.FormActions,
+    evidencePattern: /cannot invoke/,
+  },
+  {
+    fixtureName: "refuted-optimistic-outside-action",
+    claim: ReactProofClaim.OptimisticState,
+    evidencePattern: /outside a Transition or Form Action/,
+  },
+  {
+    fixtureName: "refuted-optimistic-render-update",
+    claim: ReactProofClaim.OptimisticState,
+    evidencePattern: /during render/,
+  },
+  {
+    fixtureName: "refuted-impure-optimistic-reducer",
+    claim: ReactProofClaim.OptimisticState,
+    evidencePattern: /impure optimistic reducer/,
+  },
+  {
+    fixtureName: "refuted-impure-optimistic-updater",
+    claim: ReactProofClaim.OptimisticState,
+    evidencePattern: /observable side effect/,
+  },
+  {
+    fixtureName: "refuted-mixed-optimistic-action-roots",
+    claim: ReactProofClaim.OptimisticState,
+    evidencePattern: /outside a Transition or Form Action/,
+  },
   {
     fixtureName: "refuted-transition-controlled-input",
     claim: ReactProofClaim.TransitionActions,
@@ -482,6 +515,10 @@ describe("proveReactApp", () => {
     "proved-transition-tabs",
     "proved-use-transition-action",
     "proved-transition-lookalike",
+    "proved-optimistic-form",
+    "proved-form-action-submitter",
+    "proved-helper-spread-form-action",
+    "proved-optimistic-transition-updater",
     "proved-external-store",
     "proved-effect-event",
     "proved-helper-effect-cleanup",
@@ -587,8 +624,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(18);
-    expect(report.graph.schemaVersion).toBe(24);
+    expect(report.schemaVersion).toBe(19);
+    expect(report.graph.schemaVersion).toBe(25);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -3156,6 +3193,125 @@ describe("proveReactApp", () => {
     expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
     expect(
       certificate.failures.some((failure) => failure.description.includes("Transition Action")),
+    ).toBe(true);
+  });
+
+  it("certifies a Form Action, pure optimistic reducer, and optimistic update together", () => {
+    const report = proveFixture("proved-optimistic-form");
+    const formAction = report.graph.formActions[0];
+    const formCallback = report.graph.callbacks.find(
+      (callback) => callback.id === formAction?.actionCallbackIds[0],
+    );
+    const optimisticState = report.graph.optimisticStates[0];
+    const optimisticUpdate = report.graph.optimisticUpdates[0];
+    const reducerCallback = report.graph.callbacks.find(
+      (callback) => callback.id === optimisticState?.reducerCallbackId,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(formAction?.status).toBe(ReactFormActionStatus.Resolved);
+    expect(formAction?.complete).toBe(true);
+    expect(formCallback?.kind).toBe(ReactSemanticCallbackKind.FormAction);
+    expect(formCallback?.phase).toBe(ReactExecutionPhase.FormAction);
+    expect(optimisticState?.reducerStatus).toBe(ReactOptimisticReducerStatus.Pure);
+    expect(optimisticState?.complete).toBe(true);
+    expect(reducerCallback?.phase).toBe(ReactExecutionPhase.OptimisticReducer);
+    expect(optimisticUpdate?.actionStatus).toBe(ReactOptimisticActionStatus.Action);
+    expect(optimisticUpdate?.updaterStatus).toBe(ReactHookStateUpdaterStatus.DirectValue);
+    expect(optimisticUpdate?.executionCallbackIds).toContain(formAction?.actionCallbackIds[0]);
+    expect(optimisticUpdate?.complete).toBe(true);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("certifies nested submitters and helper-rendered spread Actions", () => {
+    const submitterReport = proveFixture("proved-form-action-submitter");
+    const helperReport = proveFixture("proved-helper-spread-form-action");
+
+    expect(submitterReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(submitterReport.graph.formActions[0]?.status).toBe(ReactFormActionStatus.Resolved);
+    expect(helperReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(helperReport.graph.formActions[0]?.status).toBe(ReactFormActionStatus.Resolved);
+    expect(helperReport.graph.optimisticUpdates[0]?.actionStatus).toBe(
+      ReactOptimisticActionStatus.Action,
+    );
+  });
+
+  it("certifies a pure updater owned by a Transition Action", () => {
+    const report = proveFixture("proved-optimistic-transition-updater");
+    const update = report.graph.optimisticUpdates[0];
+    const updaterCallback = report.graph.callbacks.find(
+      (callback) => callback.id === update?.updaterCallbackId,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(update?.actionStatus).toBe(ReactOptimisticActionStatus.Action);
+    expect(update?.updaterStatus).toBe(ReactHookStateUpdaterStatus.Pure);
+    expect(updaterCallback?.phase).toBe(ReactExecutionPhase.OptimisticUpdater);
+  });
+
+  it.each([
+    ["incomplete-dynamic-form-action-control", ReactFormActionStatus.Opaque],
+    ["incomplete-composed-form-action-submitter", ReactFormActionStatus.Opaque],
+    ["incomplete-form-action-prop", ReactFormActionStatus.Opaque],
+  ])("fails closed for incomplete Form Action semantics in %s", (fixtureName, expectedStatus) => {
+    const report = proveFixture(fixtureName);
+    const formAction = report.graph.formActions[0];
+    const formProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.FormActions,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(formAction?.status).toBe(expectedStatus);
+    expect(formAction?.complete).toBe(false);
+    expect(formProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("fails closed when an optimistic setter escapes its execution graph", () => {
+    const report = proveFixture("incomplete-optimistic-setter-escape");
+    const update = report.graph.optimisticUpdates.find(
+      (candidate) => candidate.updaterStatus === ReactHookStateUpdaterStatus.SetterEscape,
+    );
+    const optimisticProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.OptimisticState,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(update?.actionStatus).toBe(ReactOptimisticActionStatus.Unknown);
+    expect(update?.complete).toBe(false);
+    expect(optimisticProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("does not treat an incomplete async Transition root as optimistic Action ownership", () => {
+    const report = proveFixture("incomplete-optimistic-async-transition");
+    const update = report.graph.optimisticUpdates[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(update?.actionStatus).toBe(ReactOptimisticActionStatus.Unknown);
+    expect(update?.sourceComplete).toBe(false);
+    expect(update?.complete).toBe(false);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged optimistic Action certificate", () => {
+    const report = proveFixture("refuted-optimistic-outside-action");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        optimisticUpdates: report.graph.optimisticUpdates.map((update) => ({
+          ...update,
+          actionStatus: ReactOptimisticActionStatus.Action,
+          sourceComplete: true,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("optimistic update")),
     ).toBe(true);
   });
 

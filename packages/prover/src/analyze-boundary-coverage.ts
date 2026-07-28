@@ -143,6 +143,80 @@ export const analyzeBoundaryCoverage = (
         )),
     );
   };
+  const isModeledFormAction = (attribute: ts.JsxAttributeLike, propName: string): boolean => {
+    const location = getNodeLocation(attribute, context.rootDirectory);
+    return Boolean(
+      context.graph?.formActions.some(
+        (action) =>
+          action.ownerId === semanticOwnerId &&
+          action.propName === propName &&
+          action.sourceComplete &&
+          areProofLocationsEqual(action.location, location),
+      ),
+    );
+  };
+  const isModeledOptimisticCall = (callExpression: ts.CallExpression): boolean => {
+    const location = getNodeLocation(callExpression, context.rootDirectory);
+    return Boolean(
+      context.graph?.optimisticStates.some(
+        (state) =>
+          state.ownerId === semanticOwnerId && areProofLocationsEqual(state.location, location),
+      ),
+    );
+  };
+  const isModeledFormActionCallableUse = (node: ts.Node): boolean => {
+    let currentNode = node;
+    while (currentNode !== functionNode && currentNode.parent) {
+      if (ts.isJsxAttribute(currentNode)) {
+        return isModeledFormAction(currentNode, currentNode.name.getText());
+      }
+      if (ts.isJsxSpreadAttribute(currentNode)) {
+        const location = getNodeLocation(currentNode, context.rootDirectory);
+        return Boolean(
+          context.graph?.formActions.some(
+            (action) =>
+              action.ownerId === semanticOwnerId &&
+              action.sourceComplete &&
+              areProofLocationsEqual(action.location, location),
+          ),
+        );
+      }
+      if (isFunctionBoundary(currentNode.parent)) return false;
+      currentNode = currentNode.parent;
+    }
+    return false;
+  };
+  const isModeledOptimisticCallableUse = (node: ts.Node): boolean => {
+    let currentNode = node;
+    while (currentNode !== functionNode && currentNode.parent) {
+      const parentNode = currentNode.parent;
+      if (
+        ts.isCallExpression(parentNode) &&
+        parentNode.arguments.some((argument) => argument === currentNode)
+      ) {
+        const location = getNodeLocation(parentNode, context.rootDirectory);
+        if (
+          context.graph?.optimisticStates.some(
+            (state) =>
+              state.ownerId === semanticOwnerId &&
+              state.sourceComplete &&
+              areProofLocationsEqual(state.location, location),
+          ) ||
+          context.graph?.optimisticUpdates.some(
+            (update) =>
+              update.ownerId === semanticOwnerId &&
+              update.sourceComplete &&
+              areProofLocationsEqual(update.location, location),
+          )
+        ) {
+          return true;
+        }
+      }
+      if (isFunctionBoundary(parentNode)) return false;
+      currentNode = parentNode;
+    }
+    return false;
+  };
   const isModeledUseTransitionCall = (callExpression: ts.CallExpression): boolean => {
     if (callExpression.arguments.length > 0) return false;
     const declaration = ts.isVariableDeclaration(callExpression.parent)
@@ -272,6 +346,8 @@ export const analyzeBoundaryCoverage = (
     const reachabilityGraph = collectReachableFunctionGraph(executionRoot, context.typeChecker);
     for (const unmodeledUse of reachabilityGraph.unmodeledCallableUses) {
       if (getModeledTransitionAction(unmodeledUse.node)?.sourceComplete) continue;
+      if (isModeledFormActionCallableUse(unmodeledUse.node)) continue;
+      if (isModeledOptimisticCallableUse(unmodeledUse.node)) continue;
       const location = unmodeledUse.node.getStart();
       const locationKey = `${unmodeledUse.node.getSourceFile().fileName}:${location}`;
       if (unmodeledCallableUseLocations.has(locationKey)) continue;
@@ -350,7 +426,8 @@ export const analyzeBoundaryCoverage = (
         canonicalReactApiName &&
         REACT_UNMODELED_HOOK_NAMES.has(canonicalReactApiName) &&
         !isModeledContextRead &&
-        !(canonicalReactApiName === "useTransition" && isModeledUseTransitionCall(node))
+        !(canonicalReactApiName === "useTransition" && isModeledUseTransitionCall(node)) &&
+        !(canonicalReactApiName === "useOptimistic" && isModeledOptimisticCall(node))
       ) {
         unknownEvidence.push(
           createEvidence(
@@ -489,6 +566,29 @@ export const analyzeBoundaryCoverage = (
         );
       }
     }
+    if (
+      ts.isJsxAttribute(node) &&
+      isIntrinsicJsxElement(node.parent.parent) &&
+      (node.name.getText() === "action" || node.name.getText() === "formAction") &&
+      node.initializer &&
+      ts.isJsxExpression(node.initializer) &&
+      node.initializer.expression &&
+      doesTypeContainCallable(
+        context.typeChecker.getTypeAtLocation(node.initializer.expression),
+        context.typeChecker,
+      ) &&
+      isEffectiveJsxPropertySource(node, node.name.getText(), context.typeChecker) &&
+      !isModeledFormAction(node, node.name.getText())
+    ) {
+      unknownEvidence.push(
+        createEvidence(
+          node,
+          context.rootDirectory,
+          `${node.name.getText()} does not resolve to a complete intrinsic Form Action`,
+          ["committed form", node.name.getText(), "opaque Action callback or control"],
+        ),
+      );
+    }
     if (ts.isJsxSpreadAttribute(node)) {
       const spreadProperties = collectJsxSpreadProperties(node.expression, context.typeChecker);
       const openingElement = node.parent.parent;
@@ -525,6 +625,22 @@ export const analyzeBoundaryCoverage = (
             ["committed tree", eventName, "opaque spread event callback"],
           ),
         );
+      }
+      if (isIntrinsicJsxElement(openingElement)) {
+        for (const actionPropName of spreadProperties.callablePropertyNames.filter(
+          (propertyName) => propertyName === "action" || propertyName === "formAction",
+        )) {
+          if (!isEffectiveJsxPropertySource(node, actionPropName, context.typeChecker)) continue;
+          if (isModeledFormAction(node, actionPropName)) continue;
+          unknownEvidence.push(
+            createEvidence(
+              node,
+              context.rootDirectory,
+              `${actionPropName} from a JSX spread does not resolve to a complete intrinsic Form Action`,
+              ["committed form", actionPropName, "opaque spread Action callback"],
+            ),
+          );
+        }
       }
     }
     node.forEachChild(visit);

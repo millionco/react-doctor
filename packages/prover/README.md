@@ -76,6 +76,15 @@ The report includes:
   from async/deferred, opaque, and escaped boundaries; direct updates to state that controls an
   intrinsic input are refuted, while derived local aliases are followed and component-prop or
   spread control flow fails closed;
+- Form Action facts for callable `action` on intrinsic forms and `formAction` on statically nested
+  submit buttons and inputs; direct and immutable-spread callback sources follow JSX precedence
+  through reachable helpers, while dynamic control types, composed form association, custom
+  components, and opaque callback props fail closed;
+- optimistic state facts that identify canonical `useOptimistic` tuples, give reducers and
+  no-reducer functional updaters dedicated execution phases, reuse the updater-purity proof, and
+  require every setter call to be owned exclusively by Form or Transition Actions; render calls,
+  ordinary-event calls, mixed Action/event reuse, and observable reducer or updater effects are
+  refuted, while setter escape and unresolved callback flow remain unknown;
 - normalized React Compiler CFG, instruction-effect, and reactive-place facts;
 - per-unit proof obligations with `proved`, `violated`, or `unknown` results;
 - project evidence for type unsoundness, compiler diagnostics, and opaque boundaries.
@@ -115,6 +124,11 @@ Transition Action certificates require a valid non-render execution root, a symb
 starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
 source/completeness equations. The checker rejects forged synchronous, controlled-input,
 starter-escape, callback, owner, and execution-phase combinations.
+Form Action certificates require phase-correct callback facts, a coherent intrinsic prop/control
+kind, nonempty complete callback resolution, and exact source/completeness equations. Optimistic
+certificates independently validate tuple ownership, reducer and updater callback phases, derive
+Action ownership from every execution root, and reject forged purity, render/event origin, state
+binding, escape, and completeness combinations.
 
 ## Verification
 

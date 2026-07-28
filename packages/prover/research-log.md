@@ -475,7 +475,9 @@ Each discovered unit receives these obligations:
 | `effect-state-updates`        | Transitive writes, mount bounds, local-rerender stability, and unknown fixpoints            |
 | `effect-event-usage`          | Local Effect ownership, non-escape, dependency exclusion, intentionally unstable identity   |
 | `external-store-consistency`  | Stable snapshots, symmetric subscriptions, write notification, hydration agreement          |
+| `form-actions`                | Intrinsic form/submitter semantics, callback identity, form association, Action phase       |
 | `memo-dependencies`           | `useMemo` and `useCallback` captures versus inline dependency tuples                        |
+| `optimistic-state`            | Reducer/updater purity, setter identity, render exclusion, Form/Transition Action ownership |
 | `reconciliation-identity`     | Missing, duplicate, index-derived, and unconstrained dynamic list keys                      |
 | `reducer-purity`              | Reducer and reducer-initializer transition purity                                           |
 | `ref-access`                  | Render-phase access to refs created by `useRef`                                             |
@@ -751,7 +753,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 275 TypeScript fixture projects, 472 static tests, and 36 Chromium runtime
+Current checkpoint: 281 TypeScript fixture projects, 491 static tests, and 37 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -1271,8 +1273,9 @@ Async or scheduled Actions, opaque callback values, escaped starters, indirect `
 tuple access, invalid origin phases, and transitive control flow fail closed. A nested synchronous
 Action after `await` can be individually complete while the enclosing async Action and application
 remain incomplete. The current fact proves Action ownership and the direct local urgency subset,
-not request ordering, async context, `useDeferredValue`, `useOptimistic`, `useActionState`, form or
-Server Actions, Suspense fallback preservation, or whole-application transition state machines.
+not request ordering, async context, `useDeferredValue`, `useActionState`, Server Actions, Suspense
+fallback preservation, or whole-application transition state machines. Form Actions and
+`useOptimistic` now have the separate certificates below.
 
 The independent checker re-derives the obligation verdict, validates starter and Action statuses,
 owner and callback phases, unique execution roots, callback/status coherence, controlled and
@@ -1328,3 +1331,117 @@ Changeset is warranted before publication.
 Kill: If Action origin or state-control evidence produces a false `proved` result across two proof
 schema releases, remove the complete Transition status and keep Actions incomplete until scalar
 prop SSA and the lifecycle machine can carry the missing evidence.
+
+## Form Action and optimistic state certificates
+
+### React semantics
+
+- The official [`<form>` reference](https://react.dev/reference/react-dom/components/form) defines
+  a function-valued `action` as a React Action. React supplies `FormData`, resets uncontrolled
+  fields after success, and manages async submission through a Transition.
+- The same reference permits a submit-capable `button` or `input` to override the form Action with
+  `formAction`. That behavior depends on submitter type and association with a form, not merely the
+  presence of a callable JSX prop.
+- The official [`useOptimistic` reference](https://react.dev/reference/react/useOptimistic)
+  requires its reducer to be pure and its setter to run inside an Action or Transition. A setter
+  call during render is an error; a call outside an Action can briefly show and then revert the
+  optimistic value.
+- Without a reducer, a callable setter argument is a state updater and must be replay-safe. With a
+  reducer, the same callable value is an Action payload and must not be confused with an updater.
+- An ordinary async `startTransition` callback is not enough to prove post-`await` ownership.
+  React's Transition context limitation still requires a nested Transition. A Form Action has its
+  own managed async Action lifetime.
+
+### Form Action boundary
+
+The `form-actions` obligation recognizes callable `action` and `formAction` only on intrinsic JSX.
+It respects effective JSX precedence, resolves direct expressions and immutable finite spreads,
+and follows reachable helper rendering and project callback flow. Each resolution creates one or
+more dedicated `form-action` callbacks and records the intrinsic property, control kind, callback
+set, callback-resolution flag, and exact source/completeness flags.
+
+The complete subset includes function Actions on intrinsic forms and `formAction` on statically
+nested submit-capable buttons and inputs. A statically wrong tag or submitter type is a concrete
+violation. Dynamic button types, explicit `form="id"` association, submitters composed through
+another component, open spreads, and unresolved callback props remain opaque. This distinction is
+important: component composition may establish a valid runtime form owner, so absence of a local
+JSX form ancestor cannot be called a violation.
+
+A Form Action fact is source-complete only when callback resolution is complete, at least one
+phase-correct callback is represented, and the control status is not opaque. It is complete only
+when that source is complete and the control is resolved. The checker re-derives these equations,
+validates property/control coherence, rejects duplicate or invalid callbacks, and re-derives the
+per-unit obligation verdict.
+
+### Optimistic state boundary
+
+The `optimistic-state` obligation recognizes only a canonical React `useOptimistic` call assigned
+to a direct tuple pattern. Either tuple binding may be unused, so reducer purity is still checked
+when code reads only the optimistic value. The optimistic value joins the existing render-state
+symbol set, while its setter is deliberately excluded from ordinary `useState` transition facts.
+
+Every reducer gets a dedicated `optimistic-reducer` callback and the shared updater-purity
+analysis. Every setter call records the linked optimistic state, execution callback roots, optional
+`optimistic-updater` callback, updater classification, and Action classification. With a reducer,
+the setter argument is an Action payload even if its type is callable. Without a reducer, a
+callable argument is analyzed as an updater; object values that merely contain callable
+properties remain direct values.
+
+Action ownership is conjunctive. Every represented execution root must be either a Form Action or
+a Transition Action with its own complete synchronous certificate. A render root is a concrete
+render violation. Any ordinary event, Effect, scheduler, or other non-Action root is a concrete
+outside-Action violation. A root in an incomplete async Transition remains unknown rather than
+being incorrectly promoted or refuted. Reusing one function as both a Form Action and an ordinary
+event handler is therefore refuted because React can invoke the optimistic setter outside the
+Action path.
+
+Optimistic state is complete only when the reducer is absent or proved pure. An update is complete
+only when its linked state exists, its Action origin is known and exclusive, its setter has not
+escaped, and its direct value or updater is proved replay-safe. The independent checker recomputes
+reducer/updater callback requirements, linked-state ownership, Action status from callback phases
+and complete Transition certificates, source flags, completeness, and the obligation verdict.
+
+Added corpus:
+
+- proved: `proved-optimistic-form`, `proved-form-action-submitter`,
+  `proved-helper-spread-form-action`, and `proved-optimistic-transition-updater`
+- refuted: `refuted-optimistic-outside-action`, `refuted-optimistic-render-update`,
+  `refuted-impure-optimistic-reducer`, `refuted-impure-optimistic-updater`,
+  `refuted-mixed-optimistic-action-roots`, and `refuted-unsupported-form-action-control`
+- incomplete: `incomplete-dynamic-form-action-control`,
+  `incomplete-composed-form-action-submitter`, `incomplete-form-action-prop`,
+  `incomplete-optimistic-setter-escape`, and `incomplete-optimistic-async-transition`
+- runtime: `optimistic-form-action-oracle.spec.ts`
+
+The Chromium oracle runs under root Strict Mode. It submits an async Form Action, observes the
+optimistic todo while the Action is pending, records one Action invocation, and then observes the
+confirmed todo replacing the pending value. The oracle calibrates the fixture against the pinned
+React runtime; it does not upgrade the static proof.
+
+### Product brief: internal Form Action and optimistic facts
+
+Job: Prover consumers need to know whether optimistic state is pure, replay-safe, and owned by a
+real React Action, rather than merely seeing a `useOptimistic` name or callable form prop.
+
+Change: Add two private claims, three execution phases, versioned Form Action/state/update facts,
+and independent checker equations.
+
+Reuse: Truffler searches found no dedicated certificate. The implementation reuses canonical React
+symbol resolution, Hook tuple bindings, JSX precedence and immutable spread analysis, component
+callback flow, execution-root matching, updater purity, render-state tracking, and the report
+checker. Hook and optimistic functional updates now share one state-update classifier, while
+shallow callable-state detection preserves function-containing object values as direct values.
+
+Metric: The private package has no CLI telemetry path. Its deterministic acceptance metric is
+complete separation of direct and spread Form Actions, valid and unresolved submitter association,
+pure and impure reducers/updaters, reducer Action payloads, render/event/Form/Transition/mixed
+origins, setter escape, and async Transition uncertainty, plus a Chromium pending/reconciliation
+oracle.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 19 and its semantic graph to schema 25. No
+Changeset is warranted before publication.
+
+Kill: If form association or Action-root composition produces a false `proved` result across two
+proof-schema releases, remove the affected complete status and keep that surface incomplete until
+the lifecycle graph can represent the missing topology.

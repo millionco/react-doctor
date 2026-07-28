@@ -11,10 +11,12 @@ import { analyzeEffectDependencies } from "./analyze-effect-dependencies.js";
 import { analyzeEffectEventUsage } from "./analyze-effect-event-usage.js";
 import { analyzeEffectStateUpdates } from "./analyze-effect-state-updates.js";
 import { analyzeExternalStoreConsistency } from "./analyze-external-store-consistency.js";
+import { analyzeFormActions } from "./analyze-form-actions.js";
 import { analyzeHookOrder } from "./analyze-hook-order.js";
 import { analyzeHookOwnership } from "./analyze-hook-ownership.js";
 import { analyzeHookStateTransitions } from "./analyze-hook-state-transitions.js";
 import { analyzeMemoDependencies } from "./analyze-memo-dependencies.js";
+import { analyzeOptimisticState } from "./analyze-optimistic-state.js";
 import { analyzeRefAccess } from "./analyze-ref-access.js";
 import { analyzeReducerPurity } from "./analyze-reducer-purity.js";
 import { analyzeReconciliationIdentity } from "./analyze-reconciliation-identity.js";
@@ -41,10 +43,12 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.EffectEventUsage,
   ReactProofClaim.EffectStateUpdates,
   ReactProofClaim.ExternalStoreConsistency,
+  ReactProofClaim.FormActions,
   ReactProofClaim.HookOrder,
   ReactProofClaim.HookOwnership,
   ReactProofClaim.HookStateTransitions,
   ReactProofClaim.MemoDependencies,
+  ReactProofClaim.OptimisticState,
   ReactProofClaim.ReconciliationIdentity,
   ReactProofClaim.ReducerPurity,
   ReactProofClaim.RefAccess,
@@ -137,10 +141,12 @@ export const analyzeReactUnit = (
       analyzeEffectEventUsage(unit.functionNode, context),
       analyzeEffectStateUpdates(unit, context),
       analyzeExternalStoreConsistency(unit, context),
+      analyzeFormActions(unit, context),
       analyzeHookOrder(unit.functionNode, context),
       analyzeHookOwnership(unit.functionNode),
       analyzeHookStateTransitions(unit, context),
       analyzeMemoDependencies(unit.functionNode, context),
+      analyzeOptimisticState(unit, context),
       analyzeReconciliationIdentity(unit.functionNode, context),
       analyzeReducerPurity(unit.functionNode, context),
       analyzeRefAccess(unit.functionNode, context),

@@ -216,14 +216,6 @@ API.
 The `Linter` service owns backend selection. Production still uses fresh Oxlint subprocesses with
 the existing OOM splitting and serial fallback.
 
-A persistent-worker prototype exists behind the runner seam for measurement and parity testing. It
-is not wired into production because repeated scans currently require private Oxlint internals and
-process-global state resets.
-
-Measured steady-state reuse showed substantial startup savings for tiny inputs and diminishing
-savings as parsing and rules dominate larger inputs. That evidence supports continued research,
-not a production switch.
-
 ### Backend-neutral diagnostic processing
 
 Suppression, severity overrides, deduplication, ordering, score filtering, and result assembly are
@@ -255,10 +247,8 @@ Compatibility evidence and its tooling live together under `scripts/compatibilit
 | Package-aware rule context                  | Implemented with legacy activation unchanged by default                         |
 | In-process production backend               | Rejected for now; the host surface and parity corpus are incomplete             |
 | Oxlint/in-process parity suite              | Implemented for the supported evaluator corpus                                  |
-| Subprocess-overhead benchmark               | Implemented with phase-attributed and persistent-worker measurements            |
 | Explicit `--workers` CLI option             | Deferred as a public product decision                                           |
 | Global scan worker budgeting                | Implemented internally across concurrent project scans                          |
-| Persistent worker pool                      | Prototype only; not production-safe against supported Oxlint APIs               |
 | Backend-neutral post-processing             | Implemented and protected by shared behavior tests                              |
 | Separate `diagnose()` and `evaluate()` APIs | `diagnose()` remains public; `evaluate()` remains private                       |
 
@@ -313,8 +303,6 @@ and the React Doctor self-scan.
   a public `evaluate()` API.
 - Revisit an in-process backend only after effectively complete parity over a representative
   corpus.
-- Revisit persistent workers only through supported Oxlint APIs with cold-start, memory, crash, and
-  lifecycle evidence.
 - Treat `--workers` as a separately reviewed CLI decision.
 - Keep legacy `ProjectInfo` compatibility fields until a separately authorized breaking release.
 - Add a downstream TypeScript consumer fixture to the installed-tarball checks.

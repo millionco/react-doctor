@@ -8,28 +8,18 @@ import { analyzeHeapProfiles } from "../../../scripts/performance/analyze-heap-p
 import { buildBenchmarkComparisons } from "../../../scripts/performance/build-benchmark-comparisons.ts";
 import { buildBenchmarkEnvironment } from "../../../scripts/performance/build-benchmark-environment.ts";
 import type { BuildBenchmarkEnvironmentInput } from "../../../scripts/performance/build-benchmark-environment.ts";
-import { buildOxlintOverheadResiduals } from "../../../scripts/performance/build-oxlint-overhead-residuals.ts";
-import { buildOxlintOverheadWorkloadResult } from "../../../scripts/performance/build-oxlint-overhead-workload-result.ts";
 import { clearBenchmarkRunArtifacts } from "../../../scripts/performance/clear-benchmark-run-artifacts.ts";
 import { PERFORMANCE_PROFILE_TEST_TIMEOUT_MS } from "../../../scripts/performance/constants.ts";
-import { createOxlintOverheadWorkload } from "../../../scripts/performance/create-oxlint-overhead-workload.ts";
 import { createStressProject } from "../../../scripts/performance/create-stress-project.ts";
 import { parsePerformanceArguments } from "../../../scripts/performance/parse-performance-arguments.ts";
-import { parseOxlintOverheadArguments } from "../../../scripts/performance/parse-oxlint-overhead-arguments.ts";
 import { parseProcessResourceUsage } from "../../../scripts/performance/parse-process-resource-usage.ts";
 import { parseStressPerformanceArguments } from "../../../scripts/performance/parse-stress-performance-arguments.ts";
 import { readBenchmarkReport } from "../../../scripts/performance/read-benchmark-report.ts";
 import { renderPerformanceMarkdown } from "../../../scripts/performance/render-performance-markdown.ts";
-import { renderOxlintOverheadMarkdown } from "../../../scripts/performance/render-oxlint-overhead-markdown.ts";
 import { runPerformance } from "../../../scripts/performance/run-performance.ts";
 import { runStressPerformance } from "../../../scripts/performance/run-stress-performance.ts";
 import { summarizeDistribution } from "../../../scripts/performance/summarize-distribution.ts";
-import type {
-  BenchmarkSeries,
-  OxlintOverheadMeasurement,
-  OxlintOverheadResult,
-  PerformanceResult,
-} from "../../../scripts/performance/types.ts";
+import type { BenchmarkSeries, PerformanceResult } from "../../../scripts/performance/types.ts";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "../../..");
 const builtCliPath = path.join(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js");
@@ -155,24 +145,6 @@ describe("performance harness", () => {
       "Unknown cache cohort",
     );
     expect(() => parseStressPerformanceArguments(["--files", "1e3"])).toThrow("--files");
-  });
-
-  it("parses opt-in oxlint overhead benchmark arguments", () => {
-    expect(
-      parseOxlintOverheadArguments([
-        "--samples",
-        "7",
-        "--warmups",
-        "2",
-        "--out",
-        "./tmp/custom-overhead",
-      ]),
-    ).toEqual({
-      samples: 7,
-      warmups: 2,
-      outputPrefix: path.resolve("./tmp/custom-overhead"),
-    });
-    expect(() => parseOxlintOverheadArguments(["--warmups", "-1"])).toThrow("--warmups");
   });
 
   it("isolates cache cohorts and supports profile paths with spaces", () => {
@@ -505,219 +477,6 @@ describe("performance harness", () => {
       maximum: 100,
       medianAbsoluteDeviation: 1,
     });
-  });
-
-  it("labels oxlint overhead residuals as inferred median differences", () => {
-    const createMeasurement = (
-      id: string,
-      medianMilliseconds: number,
-    ): OxlintOverheadMeasurement => ({
-      id,
-      label: id,
-      method: "test",
-      classification: "direct",
-      milliseconds: {
-        minimum: medianMilliseconds,
-        median: medianMilliseconds,
-        maximum: medianMilliseconds,
-        medianAbsoluteDeviation: 0,
-      },
-    });
-    const residuals = buildOxlintOverheadResiduals([
-      createMeasurement("node-startup", 20),
-      createMeasurement("oxlint-startup", 70),
-      createMeasurement("parse-no-rules", 90),
-      createMeasurement("plugin-no-rules", 250),
-      createMeasurement("representative-rule", 265),
-    ]);
-
-    expect(residuals.map((residual) => residual.medianMilliseconds)).toEqual([50, 20, 160, 15]);
-    expect(residuals.every((residual) => residual.classification === "inferred")).toBe(true);
-  });
-
-  it("measures inferred overhead shares against repository-scale rule scans", () => {
-    const createMeasurement = (
-      id: string,
-      medianMilliseconds: number,
-    ): OxlintOverheadMeasurement => ({
-      id,
-      label: id,
-      method: "test",
-      classification: "direct",
-      milliseconds: {
-        minimum: medianMilliseconds,
-        median: medianMilliseconds,
-        maximum: medianMilliseconds,
-        medianAbsoluteDeviation: 0,
-      },
-    });
-    const measurements = [
-      createMeasurement("parse-no-rules", 80),
-      createMeasurement("plugin-no-rules", 180),
-      createMeasurement("representative-rule", 200),
-    ];
-    const result = buildOxlintOverheadWorkloadResult(
-      {
-        id: "medium",
-        label: "Medium project",
-        sourceFileCount: 50,
-        sourceDirectoryCount: 5,
-        callExpressionsPerFile: 200,
-        sourceByteCount: 500_000,
-        totalCallExpressionCount: 10_000,
-      },
-      measurements,
-      40,
-    );
-
-    expect(result.residuals.map((residual) => residual.medianMilliseconds)).toEqual([100, 20]);
-    expect(result.shares.map((share) => share.percentage)).toEqual([20, 50, 10]);
-    expect(result.shares.every((share) => share.classification === "inferred")).toBe(true);
-    expect(() => buildOxlintOverheadWorkloadResult(result, measurements.slice(1), 40)).toThrow(
-      "parse-no-rules",
-    );
-    expect(() =>
-      buildOxlintOverheadWorkloadResult(
-        result,
-        [
-          createMeasurement("parse-no-rules", 0),
-          createMeasurement("plugin-no-rules", 0),
-          createMeasurement("representative-rule", 0),
-        ],
-        40,
-      ),
-    ).toThrow("greater than zero");
-  });
-
-  it("creates deterministic directory-shaped oxlint overhead workloads", () => {
-    const rootDirectory = createTemporaryDirectory();
-    const workload = createOxlintOverheadWorkload(rootDirectory, {
-      id: "test",
-      label: "Test project",
-      sourceFileCount: 4,
-      sourceDirectoryCount: 2,
-      callExpressionsPerFile: 3,
-    });
-    const sourceDirectories = fs.readdirSync(workload.sourceDirectory).sort();
-    const sourceFiles = sourceDirectories.flatMap((sourceDirectoryName) =>
-      fs
-        .readdirSync(path.join(workload.sourceDirectory, sourceDirectoryName))
-        .map((sourceFilename) => path.join(sourceDirectoryName, sourceFilename)),
-    );
-
-    expect(sourceDirectories).toEqual(["source-0", "source-1"]);
-    expect(sourceFiles).toHaveLength(4);
-    expect(workload.metadata.totalCallExpressionCount).toBe(12);
-    expect(workload.metadata.sourceByteCount).toBeGreaterThan(0);
-    expect(
-      fs.readFileSync(path.join(workload.sourceDirectory, sourceFiles[0] ?? ""), "utf8"),
-    ).toContain('eval("benchmark")');
-    expect(() =>
-      createOxlintOverheadWorkload(rootDirectory, {
-        id: "invalid",
-        label: "Invalid project",
-        sourceFileCount: 1,
-        sourceDirectoryCount: 2,
-        callExpressionsPerFile: 3,
-      }),
-    ).toThrow("source directory count");
-  });
-
-  it("renders direct measurements separately from inferred oxlint residuals", () => {
-    const measurement: OxlintOverheadMeasurement = {
-      id: "node-startup",
-      label: "Bare Node startup",
-      method: "parent wall clock",
-      classification: "direct",
-      milliseconds: {
-        minimum: 10,
-        median: 11,
-        maximum: 12,
-        medianAbsoluteDeviation: 1,
-      },
-    };
-    const result: OxlintOverheadResult = {
-      schemaVersion: 1,
-      generatedAt: "2026-07-27T00:00:00.000Z",
-      host: {
-        platform: "linux",
-        architecture: "x64",
-        nodeVersion: "v24.0.0",
-        v8Version: "13.6",
-        cpuModel: "Test CPU",
-        cpuCount: 8,
-      },
-      toolchain: {
-        oxlintVersion: "1.74.0",
-        pluginPath: "/tmp/plugin.js",
-        representativeRule: "react-doctor/no-eval",
-        representativeSourceBytes: 100,
-        representativeCallExpressionCount: 10,
-        oxlintThreadCount: 1,
-      },
-      options: {
-        samples: 3,
-        warmups: 1,
-        outputPrefix: "/tmp/result",
-      },
-      measurements: [measurement],
-      residuals: [
-        {
-          id: "residual",
-          label: "Residual",
-          calculation: "left - right",
-          classification: "inferred",
-          medianMilliseconds: -1,
-        },
-      ],
-      workloads: [
-        buildOxlintOverheadWorkloadResult(
-          {
-            id: "small",
-            label: "Small project",
-            sourceFileCount: 1,
-            sourceDirectoryCount: 1,
-            callExpressionsPerFile: 10,
-            sourceByteCount: 1_024,
-            totalCallExpressionCount: 10,
-          },
-          [
-            { ...measurement, id: "parse-no-rules", milliseconds: { ...measurement.milliseconds } },
-            {
-              ...measurement,
-              id: "plugin-no-rules",
-              milliseconds: {
-                ...measurement.milliseconds,
-                minimum: 14,
-                median: 15,
-                maximum: 16,
-              },
-            },
-            {
-              ...measurement,
-              id: "representative-rule",
-              milliseconds: {
-                ...measurement.milliseconds,
-                minimum: 19,
-                median: 20,
-                maximum: 21,
-              },
-            },
-          ],
-          5,
-        ),
-      ],
-      limitations: ["Negative residuals can be measurement noise."],
-    };
-
-    const markdown = renderOxlintOverheadMarkdown(result);
-    expect(markdown).toContain("## Direct measurements");
-    expect(markdown).toContain("## Inferred residuals");
-    expect(markdown).toContain("## Repository-scale workloads");
-    expect(markdown).toContain("1 files / 1 directories");
-    expect(markdown).toContain("25.0%");
-    expect(markdown).toContain("-1.00 ms");
-    expect(markdown).toContain("Negative residuals can be measurement noise.");
   });
 
   it("validates reports and hashes diagnostics", () => {

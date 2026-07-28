@@ -1,31 +1,5 @@
 export const DEFAULT_SAMPLE_COUNT = 5;
 export const DEFAULT_WARMUP_COUNT = 1;
-export const DEFAULT_OXLINT_OVERHEAD_SAMPLE_COUNT = 15;
-export const DEFAULT_OXLINT_OVERHEAD_WARMUP_COUNT = 3;
-export const REPRESENTATIVE_RULE_CALL_EXPRESSION_COUNT = 10_000;
-export const OXLINT_OVERHEAD_WORKLOAD_DEFINITIONS = [
-  {
-    id: "small",
-    label: "Small project",
-    sourceFileCount: 1,
-    sourceDirectoryCount: 1,
-    callExpressionsPerFile: 50,
-  },
-  {
-    id: "medium",
-    label: "Medium project",
-    sourceFileCount: 50,
-    sourceDirectoryCount: 5,
-    callExpressionsPerFile: 200,
-  },
-  {
-    id: "large",
-    label: "Large project",
-    sourceFileCount: 250,
-    sourceDirectoryCount: 25,
-    callExpressionsPerFile: 400,
-  },
-];
 export const DEFAULT_WORKER_COUNTS = ["auto"];
 export const DEFAULT_BENCHMARK_MODES = ["lint"];
 export const DEFAULT_CACHE_COHORTS = ["no-cache"];

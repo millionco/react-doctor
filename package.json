@@ -15,8 +15,6 @@
     "dev": "turbo run dev --filter=react-doctor",
     "build": "turbo run build",
     "performance": "tsx scripts/performance/run-performance.ts",
-    "performance:overhead": "tsx scripts/performance/run-oxlint-overhead.ts",
-    "performance:persistent-overhead": "tsx scripts/performance/run-persistent-oxlint-overhead.ts",
     "performance:stress": "tsx scripts/performance/run-stress-performance.ts",
     "performance:profile": "tsx scripts/performance/analyze-cpu-profile.ts",
     "performance:memory": "tsx scripts/performance/analyze-heap-profile.ts",

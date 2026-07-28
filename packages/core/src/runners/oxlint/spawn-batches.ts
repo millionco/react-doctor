@@ -16,8 +16,7 @@ import { remainingDeadlineBudgetMs } from "../../utils/remaining-deadline-budget
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
 import type { WorkerSlots } from "../../utils/create-worker-slots.js";
 import { parseOxlintOutput } from "./parse-output.js";
-import type { OxlintBatchRunner } from "./spawn-oxlint.js";
-import { spawnOxlintBatchRunner } from "./spawn-oxlint.js";
+import { spawnOxlint } from "./spawn-oxlint.js";
 
 // OS-level `spawn` failures that mean "the system can't accommodate ANOTHER
 // concurrent subprocess right now": fork ran out of process slots (EAGAIN),
@@ -94,7 +93,6 @@ export interface SpawnLintBatchesInput {
    */
   readonly concurrency?: number;
   readonly spawnSlots?: WorkerSlots;
-  readonly batchRunner?: OxlintBatchRunner;
 }
 
 interface BatchPassOutcome {
@@ -245,19 +243,19 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
             batchState.deadlineSkippedFileCount += batch.length;
             return Promise.resolve(null);
           }
-          return (input.batchRunner ?? spawnOxlintBatchRunner).run({
-            args: batchArgs,
+          return spawnOxlint(
+            batchArgs,
             rootDirectory,
             nodeBinaryPath,
             spawnTimeoutMs,
             outputMaxBytes,
-            abortSignal: signal,
-            onSpawn: () => {
+            signal,
+            () => {
               if (batchState.didStart) return;
               batchState.didStart = true;
               startedFileCount += batchState.initialFileCount;
             },
-          });
+          );
         };
         const stdout =
           input.spawnSlots === undefined

@@ -11,20 +11,6 @@ import { buildProfiledNodeArguments } from "../../utils/build-profiled-node-argu
 
 const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
 
-export interface OxlintBatchRunnerInput {
-  readonly args: ReadonlyArray<string>;
-  readonly rootDirectory: string;
-  readonly nodeBinaryPath: string;
-  readonly spawnTimeoutMs?: number;
-  readonly outputMaxBytes?: number;
-  readonly abortSignal?: AbortSignal;
-  readonly onSpawn?: () => void;
-}
-
-export interface OxlintBatchRunner {
-  readonly run: (input: OxlintBatchRunnerInput) => Promise<string>;
-}
-
 /**
  * Spawn one oxlint subprocess with hard ceilings on wall time and
  * output size. Returns stdout on success; raises a tagged
@@ -198,16 +184,3 @@ export const spawnOxlint = (
       resolve(output);
     });
   });
-
-export const spawnOxlintBatchRunner: OxlintBatchRunner = {
-  run: (input) =>
-    spawnOxlint(
-      [...input.args],
-      input.rootDirectory,
-      input.nodeBinaryPath,
-      input.spawnTimeoutMs,
-      input.outputMaxBytes,
-      input.abortSignal,
-      input.onSpawn,
-    ),
-};

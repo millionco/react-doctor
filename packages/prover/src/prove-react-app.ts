@@ -37,6 +37,7 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
       contextProviders: [],
       contextConsumers: [],
       renders: [],
+      slotFlows: [],
       callbacks: [],
       reachableFunctions: [],
       functionCalls: [],

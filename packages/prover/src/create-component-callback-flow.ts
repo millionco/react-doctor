@@ -10,6 +10,7 @@ import { mergeCallableBindings, resolveCallableExpression } from "./resolve-call
 import { ReactExecutionPhase } from "./types.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import { collectJsxSpreadProperties } from "./utils/collect-jsx-spread-properties.js";
+import { getJsxComponentTargetFunction } from "./utils/get-jsx-component-target-function.js";
 import { isDirectComponentPropertiesObject } from "./utils/is-direct-component-properties-object.js";
 import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
 import { isJsxSpreadSourceComplete } from "./utils/is-jsx-spread-source-complete.js";
@@ -145,20 +146,6 @@ const getComponentPropChannel = (
 const getOpeningElement = (node: ts.Node): ts.JsxOpeningLikeElement | null => {
   if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) return node;
   return null;
-};
-
-const getTargetFunction = (
-  openingElement: ts.JsxOpeningLikeElement,
-  unitFunctionsBySymbol: ReadonlyMap<ts.Symbol, ts.FunctionLikeDeclaration>,
-  typeChecker: ts.TypeChecker,
-): ts.FunctionLikeDeclaration | null => {
-  const directSymbol = typeChecker.getSymbolAtLocation(openingElement.tagName);
-  if (!directSymbol) return null;
-  const targetSymbol =
-    directSymbol.flags & ts.SymbolFlags.Alias
-      ? typeChecker.getAliasedSymbol(directSymbol)
-      : directSymbol;
-  return unitFunctionsBySymbol.get(targetSymbol) ?? null;
 };
 
 const deduplicateCallbacks = (
@@ -336,7 +323,7 @@ export const createComponentCallbackFlow = (
           node.forEachChild(visit);
           return;
         }
-        const targetFunction = getTargetFunction(
+        const targetFunction = getJsxComponentTargetFunction(
           openingElement,
           unitFunctionsBySymbol,
           typeChecker,

@@ -15,7 +15,7 @@ import {
   useSyncExternalStore,
   useTransition,
 } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
@@ -134,6 +134,28 @@ const FormStatusOracle = () => {
     </main>
   );
 };
+
+interface FormStatusSlotShellProperties {
+  children: ReactNode;
+}
+
+const FormStatusSlotShell = ({ children }: FormStatusSlotShellProperties) => (
+  <form action={submitFormStatus}>
+    <label>
+      Username
+      <input name="username" />
+    </label>
+    {children}
+  </form>
+);
+
+const FormStatusSlotOracle = () => (
+  <main>
+    <FormStatusSlotShell>
+      <FormStatusDetails />
+    </FormStatusSlotShell>
+  </main>
+);
 
 const ActionStateOracle = () => {
   const [submittedItems, submitItem, isPending] = useActionState(
@@ -1076,6 +1098,9 @@ const RuntimeOracle = () => {
   if (oracle === "form-status") {
     return <FormStatusOracle />;
   }
+  if (oracle === "form-status-slot") {
+    return <FormStatusSlotOracle />;
+  }
   return <ListenerOracle />;
 };
 
@@ -1092,7 +1117,8 @@ const isStrictModeOracle =
   oracle === "transition-action" ||
   oracle === "optimistic-form-action" ||
   oracle === "action-state" ||
-  oracle === "form-status";
+  oracle === "form-status" ||
+  oracle === "form-status-slot";
 createRoot(rootElement).render(
   isStrictModeOracle ? (
     <StrictMode>

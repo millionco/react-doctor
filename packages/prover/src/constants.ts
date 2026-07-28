@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 21;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 27;
+export const REACT_PROOF_SCHEMA_VERSION = 22;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 28;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -9,6 +9,7 @@ export const FIRST_SOURCE_COLUMN = 1;
 export const PROVER_RUNTIME_ORACLE_PORT = 4178;
 export const PROVER_RUNTIME_ORACLE_TIMEOUT_MS = 30_000;
 export const REACT_CONTEXT_DEFAULT_SOURCE_ID = "react:context-default";
+export const REACT_CONTEXT_UNKNOWN_SOURCE_ID = "react:context-unknown";
 export const REACT_FORM_OUTSIDE_SOURCE_ID = "react:form-outside";
 export const REACT_FORM_UNKNOWN_SOURCE_ID = "react:form-unknown";
 export const REACT_ACTION_STATE_DISPATCHER_INDEX = 1;
@@ -74,6 +75,8 @@ export const REACT_UNMODELED_HOOK_NAMES = new Set([
   "useOptimistic",
   "useTransition",
 ]);
+
+export const REACT_PURE_RENDER_API_NAMES = new Set(["createPortal"]);
 
 export const KNOWN_IMPURE_RENDER_CALLS = new Set([
   "crypto.randomUUID",
@@ -165,3 +168,12 @@ export const REACT_RUNTIME_MODULE_NAMES = new Set([
 ]);
 
 export const REACT_EVENT_PROP_PATTERN = /^on[A-Z]/;
+
+export const REACT_TRANSPARENT_COMPONENT_NAMES = new Set([
+  "Activity",
+  "Fragment",
+  "Profiler",
+  "StrictMode",
+  "Suspense",
+  "ViewTransition",
+]);

@@ -12,6 +12,8 @@ import type {
   ComponentCallbackDescriptor,
   ComponentCallbackFlowDescriptor,
 } from "./create-component-callback-flow.js";
+import { createComponentSlotFlow } from "./create-component-slot-flow.js";
+import type { ComponentSlotFlowDescriptor } from "./create-component-slot-flow.js";
 import { collectDirectHookCalls } from "./collect-direct-hook-calls.js";
 import { collectEffectEventBindings } from "./collect-effect-event-bindings.js";
 import { collectEffectCleanupFunctions } from "./collect-effect-cleanup-functions.js";
@@ -38,9 +40,11 @@ import {
   REACT_MEMO_HOOK_NAMES,
   REACT_REDUCER_HOOK_NAMES,
   REACT_CONTEXT_DEFAULT_SOURCE_ID,
+  REACT_CONTEXT_UNKNOWN_SOURCE_ID,
   REACT_FORM_OUTSIDE_SOURCE_ID,
   REACT_FORM_UNKNOWN_SOURCE_ID,
   REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
+  REACT_TRANSPARENT_COMPONENT_NAMES,
 } from "./constants.js";
 import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { getCanonicalHookName } from "./get-canonical-hook-name.js";
@@ -73,6 +77,7 @@ import {
   ReactOptimisticReducerStatus,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
+  ReactSemanticRenderKind,
   ReactTransitionActionStatus,
   ReactUnitKind,
 } from "./types.js";
@@ -109,6 +114,7 @@ import type {
   ReactSemanticTransitionAction,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
+  ReactSemanticSlotFlow,
   ReactSemanticEffectResource,
   ReactSemanticScheduler,
   ReactSemanticUnit,
@@ -118,6 +124,7 @@ import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
 import { collectExecutionCallbackIds } from "./utils/collect-execution-callback-ids.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
+import { getJsxOpeningElementForAttribute } from "./utils/get-jsx-opening-element-for-attribute.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
 import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
@@ -323,6 +330,18 @@ const collectCallableRefGraph = (
 interface RenderGraphFacts {
   edges: ReadonlyArray<ReactSemanticEdge>;
   renders: ReadonlyArray<ReactSemanticRender>;
+}
+
+interface RenderSlotBoundary {
+  complete: boolean;
+  containerRenderId: string | null;
+  node: ts.Node;
+  propName: string | null;
+}
+
+interface SlotGraphFacts {
+  renders: ReadonlyArray<ReactSemanticRender>;
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>;
 }
 
 const createSemanticId = (
@@ -546,10 +565,11 @@ const collectContextGraph = (
 const collectActiveContextProviderIds = (
   node: ts.Node,
   providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
+  stopNode: ts.Node | null = null,
 ): ReadonlyArray<string> => {
   const providerIds: string[] = [];
   let currentNode: ts.Node | undefined = node.parent;
-  while (currentNode) {
+  while (currentNode && currentNode !== stopNode && !isFunctionBoundary(currentNode)) {
     if (ts.isJsxElement(currentNode)) {
       const provider = providersByOpeningNode.get(currentNode.openingElement);
       if (provider) providerIds.unshift(provider.id);
@@ -606,32 +626,21 @@ const collectFormTopologyGraph = (
   return { forms, formStatuses, formsByOpeningNode };
 };
 
-const collectActiveFormTopology = (
-  tagName: ts.JsxTagNameExpression,
+const collectActiveFormIds = (
+  node: ts.Node,
   formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>,
-): { activeFormIds: ReadonlyArray<string>; complete: boolean } => {
+  stopNode: ts.Node | null = null,
+): ReadonlyArray<string> => {
   const activeFormIds: string[] = [];
-  let foundNearestForm = false;
-  let complete = true;
-  const openingElement = tagName.parent;
-  let currentNode: ts.Node | undefined =
-    ts.isJsxOpeningElement(openingElement) && ts.isJsxElement(openingElement.parent)
-      ? openingElement.parent.parent
-      : openingElement.parent;
-  while (currentNode && !isFunctionBoundary(currentNode)) {
+  let currentNode: ts.Node | undefined = node.parent;
+  while (currentNode && currentNode !== stopNode && !isFunctionBoundary(currentNode)) {
     if (ts.isJsxElement(currentNode)) {
-      const openingElement = currentNode.openingElement;
-      const form = formsByOpeningNode.get(openingElement);
-      if (form) {
-        activeFormIds.unshift(form.id);
-        foundNearestForm = true;
-      } else if (!foundNearestForm && !isIntrinsicJsxElement(openingElement)) {
-        complete = false;
-      }
+      const form = formsByOpeningNode.get(currentNode.openingElement);
+      if (form) activeFormIds.unshift(form.id);
     }
     currentNode = currentNode.parent;
   }
-  return { activeFormIds, complete };
+  return activeFormIds;
 };
 
 const collectUnitIdentitiesBySymbol = (
@@ -658,6 +667,124 @@ const resolveUnitTarget = (
   return symbol ? (unitIdsBySymbol.get(symbol) ?? null) : null;
 };
 
+const isTransparentSlotOpening = (
+  openingElement: ts.JsxOpeningLikeElement,
+  providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
+  typeChecker: ts.TypeChecker,
+): boolean => {
+  if (isIntrinsicJsxElement(openingElement) || providersByOpeningNode.has(openingElement)) {
+    return true;
+  }
+  const reactComponentName = ts.isJsxNamespacedName(openingElement.tagName)
+    ? null
+    : getCanonicalReactApiName(openingElement.tagName, typeChecker);
+  return Boolean(reactComponentName && REACT_TRANSPARENT_COMPONENT_NAMES.has(reactComponentName));
+};
+
+const getContainingRenderSlotBoundary = (
+  tagName: ts.JsxTagNameExpression,
+  unitIdsBySymbol: ReadonlyMap<ts.Symbol, string>,
+  providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
+  context: ReactAnalysisContext,
+): RenderSlotBoundary | null => {
+  const ownOpeningElement = tagName.parent;
+  let complete = true;
+  let currentNode: ts.Node =
+    ts.isJsxOpeningElement(ownOpeningElement) && ts.isJsxElement(ownOpeningElement.parent)
+      ? ownOpeningElement.parent
+      : ownOpeningElement;
+  while (!ts.isSourceFile(currentNode) && !isFunctionBoundary(currentNode)) {
+    const parentNode = currentNode.parent;
+    if (!parentNode) break;
+    let openingElement: ts.JsxOpeningLikeElement | null = null;
+    let propName: string | null = null;
+    if (ts.isJsxAttribute(parentNode)) {
+      openingElement = getJsxOpeningElementForAttribute(parentNode);
+      propName = parentNode.name.getText();
+    } else if (ts.isJsxSpreadAttribute(parentNode)) {
+      openingElement =
+        ts.isJsxOpeningElement(parentNode.parent) || ts.isJsxSelfClosingElement(parentNode.parent)
+          ? parentNode.parent
+          : null;
+      complete = false;
+    } else if (ts.isJsxElement(parentNode)) {
+      openingElement = parentNode.openingElement;
+      propName = "children";
+    }
+    if (
+      openingElement &&
+      !isTransparentSlotOpening(openingElement, providersByOpeningNode, context.typeChecker)
+    ) {
+      const targetId = resolveUnitTarget(
+        openingElement.tagName,
+        unitIdsBySymbol,
+        context.typeChecker,
+      );
+      return {
+        complete,
+        containerRenderId: targetId
+          ? createSemanticId("render", targetId, openingElement.tagName, context)
+          : null,
+        node: openingElement,
+        propName,
+      };
+    }
+    if (openingElement && propName !== null && propName !== "children") {
+      complete = false;
+    }
+    if (
+      ts.isCallExpression(parentNode) &&
+      !(
+        getCanonicalReactApiName(parentNode.expression, context.typeChecker) === "createPortal" &&
+        parentNode.arguments[0] === currentNode
+      )
+    ) {
+      complete = false;
+    } else if (ts.isConditionalExpression(parentNode) && parentNode.condition === currentNode) {
+      complete = false;
+    } else if (ts.isBinaryExpression(parentNode)) {
+      const operatorKind = parentNode.operatorToken.kind;
+      if (
+        parentNode.right !== currentNode ||
+        (operatorKind !== ts.SyntaxKind.AmpersandAmpersandToken &&
+          operatorKind !== ts.SyntaxKind.BarBarToken &&
+          operatorKind !== ts.SyntaxKind.QuestionQuestionToken)
+      ) {
+        complete = false;
+      }
+    } else if (
+      ts.isVariableDeclaration(parentNode) ||
+      ts.isPropertyAssignment(parentNode) ||
+      ts.isShorthandPropertyAssignment(parentNode) ||
+      ts.isElementAccessExpression(parentNode) ||
+      ts.isPropertyAccessExpression(parentNode) ||
+      ts.isExpressionStatement(parentNode)
+    ) {
+      complete = false;
+    }
+    if (
+      (ts.isReturnStatement(parentNode) && parentNode.expression === currentNode) ||
+      (ts.isArrowFunction(parentNode) && parentNode.body === currentNode)
+    ) {
+      return complete
+        ? null
+        : {
+            complete: false,
+            containerRenderId: null,
+            node: currentNode,
+            propName: null,
+          };
+    }
+    currentNode = parentNode;
+  }
+  return {
+    complete: false,
+    containerRenderId: null,
+    node: currentNode,
+    propName: null,
+  };
+};
+
 const collectRenderEdges = (
   identity: UnitGraphIdentity,
   unitIdsBySymbol: ReadonlyMap<ts.Symbol, string>,
@@ -673,16 +800,22 @@ const collectRenderEdges = (
     if (node !== functionNode && isFunctionBoundary(node)) {
       return;
     }
-    const tagName = ts.isJsxOpeningElement(node)
-      ? node.tagName
-      : ts.isJsxSelfClosingElement(node)
-        ? node.tagName
-        : null;
-    if (tagName && ts.isIdentifier(tagName) && /^[A-Z]/.test(tagName.text)) {
+    const openingElement =
+      ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node) ? node : null;
+    const tagName = openingElement?.tagName ?? null;
+    if (tagName && openingElement && !isIntrinsicJsxElement(openingElement)) {
       const targetId = resolveUnitTarget(tagName, unitIdsBySymbol, context.typeChecker);
       if (targetId) {
         const location = getNodeLocation(tagName, context.rootDirectory);
-        const formTopology = collectActiveFormTopology(tagName, formsByOpeningNode);
+        const slotBoundary = getContainingRenderSlotBoundary(
+          tagName,
+          unitIdsBySymbol,
+          providersByOpeningNode,
+          context,
+        );
+        const topologyKind = slotBoundary
+          ? ReactSemanticRenderKind.SlotInput
+          : ReactSemanticRenderKind.Direct;
         edges.push({
           kind: ReactSemanticEdgeKind.RendersComponent,
           sourceId: identity.semanticUnit.id,
@@ -694,12 +827,23 @@ const collectRenderEdges = (
           ownerId: identity.semanticUnit.id,
           targetId,
           location,
+          kind: topologyKind,
+          sourceRenderId: null,
+          containerRenderId: slotBoundary?.containerRenderId ?? null,
+          slotPropName: slotBoundary?.propName ?? null,
+          topologyOwnerIds: [identity.semanticUnit.id],
           activeContextProviderIds: collectActiveContextProviderIds(
             tagName,
             providersByOpeningNode,
+            slotBoundary?.node ?? null,
           ),
-          activeFormIds: formTopology.activeFormIds,
-          formTopologyComplete: formTopology.complete,
+          contextTopologyComplete: slotBoundary?.complete ?? true,
+          activeFormIds: collectActiveFormIds(
+            tagName,
+            formsByOpeningNode,
+            slotBoundary?.node ?? null,
+          ),
+          formTopologyComplete: slotBoundary?.complete ?? true,
         });
       }
     }
@@ -707,6 +851,121 @@ const collectRenderEdges = (
   };
   functionNode.forEachChild(visit);
   return { edges, renders };
+};
+
+const collectSlotGraph = (
+  renders: ReadonlyArray<ReactSemanticRender>,
+  identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
+  slotFlow: ComponentSlotFlowDescriptor,
+  providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
+  formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>,
+  context: ReactAnalysisContext,
+): SlotGraphFacts => {
+  const rendersById = new Map(renders.map((render) => [render.id, render]));
+  const identitiesByUnitId = new Map(
+    [...identitiesByFunction.values()].map((identity) => [identity.semanticUnit.id, identity]),
+  );
+  const resolvedRenders: ReactSemanticRender[] = [];
+  const slotRenders: ReactSemanticRender[] = [];
+  const slotFlows: ReactSemanticSlotFlow[] = [];
+  for (const render of renders) {
+    if (render.kind !== ReactSemanticRenderKind.SlotInput) {
+      resolvedRenders.push(render);
+      continue;
+    }
+    const containerRender = render.containerRenderId
+      ? rendersById.get(render.containerRenderId)
+      : null;
+    const containerIdentity = containerRender
+      ? identitiesByUnitId.get(containerRender.targetId)
+      : null;
+    const containerFunction = containerIdentity?.descriptor.functionNode ?? null;
+    const resolution =
+      containerFunction && render.slotPropName
+        ? slotFlow.resolveSlot(containerFunction, render.slotPropName)
+        : { complete: false, placements: [] };
+    const sourceComplete = render.contextTopologyComplete;
+    const placementComplete = resolution.complete;
+    let complete = sourceComplete && placementComplete;
+    const renderIds: string[] = [];
+    for (const placement of resolution.placements) {
+      const placementIdentities = placement.topologyFrames.map((topologyFrame) =>
+        identitiesByFunction.get(topologyFrame.ownerFunction),
+      );
+      const placementIdentity = placementIdentities.at(-1);
+      if (!placementIdentity || placementIdentities.some((identity) => !identity)) {
+        complete = false;
+        continue;
+      }
+      const topologyPathIdentity = placement.topologyFrames
+        .map((topologyFrame) => {
+          const location = getNodeLocation(topologyFrame.node, context.rootDirectory);
+          return `${location.filePath}:${location.line}:${location.column}`;
+        })
+        .join(">");
+      const slotRender: ReactSemanticRender = {
+        id: createSemanticId(
+          "slot-render",
+          `${render.id}:${topologyPathIdentity}`,
+          placement.node,
+          context,
+        ),
+        ownerId: placementIdentity.semanticUnit.id,
+        targetId: render.targetId,
+        location: getNodeLocation(placement.node, context.rootDirectory),
+        kind: ReactSemanticRenderKind.Slot,
+        sourceRenderId: render.id,
+        containerRenderId: render.containerRenderId,
+        slotPropName: render.slotPropName,
+        topologyOwnerIds: [
+          ...new Set([
+            ...placementIdentities.flatMap((identity) =>
+              identity ? [identity.semanticUnit.id] : [],
+            ),
+            render.ownerId,
+          ]),
+        ],
+        activeContextProviderIds: [
+          ...new Set([
+            ...placement.topologyFrames.flatMap((topologyFrame) =>
+              collectActiveContextProviderIds(topologyFrame.node, providersByOpeningNode),
+            ),
+            ...render.activeContextProviderIds,
+          ]),
+        ],
+        contextTopologyComplete: true,
+        activeFormIds: [
+          ...new Set([
+            ...placement.topologyFrames.flatMap((topologyFrame) =>
+              collectActiveFormIds(topologyFrame.node, formsByOpeningNode),
+            ),
+            ...render.activeFormIds,
+          ]),
+        ],
+        formTopologyComplete: true,
+      };
+      slotRenders.push(slotRender);
+      renderIds.push(slotRender.id);
+    }
+    resolvedRenders.push({
+      ...render,
+      contextTopologyComplete: complete,
+      formTopologyComplete: complete,
+    });
+    slotFlows.push({
+      id: `${render.id}:slot-flow:${render.slotPropName ?? "unknown"}`,
+      ownerId: render.ownerId,
+      sourceRenderId: render.id,
+      containerRenderId: render.containerRenderId,
+      propName: render.slotPropName,
+      renderIds,
+      location: render.location,
+      sourceComplete,
+      placementComplete,
+      complete,
+    });
+  }
+  return { renders: [...resolvedRenders, ...slotRenders], slotFlows };
 };
 
 const collectHookGraph = (
@@ -3022,6 +3281,7 @@ const resolveContextConsumers = (
   units: ReadonlyArray<ReactSemanticUnit>,
   edges: ReadonlyArray<ReactSemanticEdge>,
   renders: ReadonlyArray<ReactSemanticRender>,
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
   contexts: ReadonlyArray<ReactSemanticContext>,
   providers: ReadonlyArray<ReactSemanticContextProvider>,
   consumers: ReadonlyArray<ReactSemanticContextConsumer>,
@@ -3030,12 +3290,9 @@ const resolveContextConsumers = (
   const customHookEdges = edges.filter(
     (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && localUnitIds.has(edge.targetId),
   );
-  const incomingUnitIds = new Set([
-    ...renders.map((render) => render.targetId),
-    ...customHookEdges.map((edge) => edge.targetId),
-  ]);
-  const rootUnitIds = units.map((unit) => unit.id).filter((unitId) => !incomingUnitIds.has(unitId));
+  const rootUnitIds = units.flatMap((unit) => (unit.canBeRenderRoot ? [unit.id] : []));
   const providersById = new Map(providers.map((provider) => [provider.id, provider]));
+  const rendersById = new Map(renders.map((render) => [render.id, render]));
   const sourcesByUnit = new Map<string, Map<string, Set<string>>>();
 
   for (const rootUnitId of rootUnitIds) {
@@ -3048,6 +3305,7 @@ const resolveContextConsumers = (
   while (didSourcesChange) {
     didSourcesChange = false;
     for (const render of renders) {
+      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
       for (const context of contexts) {
         const nearestProvider = getNearestProvider(
           render.activeContextProviderIds,
@@ -3066,6 +3324,29 @@ const resolveContextConsumers = (
             addContextSource(sourcesByUnit, render.targetId, context.id, sourceId) ||
             didSourcesChange;
         }
+        if (!render.contextTopologyComplete) {
+          didSourcesChange =
+            addContextSource(
+              sourcesByUnit,
+              render.targetId,
+              context.id,
+              REACT_CONTEXT_UNKNOWN_SOURCE_ID,
+            ) || didSourcesChange;
+        }
+      }
+    }
+    for (const slotFlow of slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (!sourceRender) continue;
+      for (const context of contexts) {
+        didSourcesChange =
+          addContextSource(
+            sourcesByUnit,
+            sourceRender.targetId,
+            context.id,
+            REACT_CONTEXT_UNKNOWN_SOURCE_ID,
+          ) || didSourcesChange;
       }
     }
     for (const hookEdge of customHookEdges) {
@@ -3086,10 +3367,13 @@ const resolveContextConsumers = (
     return {
       ...consumer,
       sourceProviderIds: sourceIds.filter(
-        (sourceId) => sourceId !== REACT_CONTEXT_DEFAULT_SOURCE_ID,
+        (sourceId) =>
+          sourceId !== REACT_CONTEXT_DEFAULT_SOURCE_ID &&
+          sourceId !== REACT_CONTEXT_UNKNOWN_SOURCE_ID,
       ),
       usesDefaultValue: sourceIds.includes(REACT_CONTEXT_DEFAULT_SOURCE_ID),
-      topologyComplete: sourceIds.length > 0,
+      topologyComplete:
+        sourceIds.length > 0 && !sourceIds.includes(REACT_CONTEXT_UNKNOWN_SOURCE_ID),
     };
   });
 };
@@ -3113,13 +3397,15 @@ const resolveFormStatuses = (
   units: ReadonlyArray<ReactSemanticUnit>,
   edges: ReadonlyArray<ReactSemanticEdge>,
   renders: ReadonlyArray<ReactSemanticRender>,
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
   formStatuses: ReadonlyArray<ReactSemanticFormStatus>,
 ): ReadonlyArray<ReactSemanticFormStatus> => {
   const localUnitIds = new Set(units.map((unit) => unit.id));
   const customHookEdges = edges.filter(
     (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && localUnitIds.has(edge.targetId),
   );
-  const rootUnitIds = units.filter((unit) => unit.canBeRenderRoot).map((unit) => unit.id);
+  const rootUnitIds = units.flatMap((unit) => (unit.canBeRenderRoot ? [unit.id] : []));
+  const rendersById = new Map(renders.map((render) => [render.id, render]));
   const sourcesByUnit = new Map<string, Set<string>>();
   for (const rootUnitId of rootUnitIds) {
     addFormSource(sourcesByUnit, rootUnitId, REACT_FORM_OUTSIDE_SOURCE_ID);
@@ -3129,6 +3415,7 @@ const resolveFormStatuses = (
   while (didSourcesChange) {
     didSourcesChange = false;
     for (const render of renders) {
+      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
       const nearestFormId = render.activeFormIds.at(-1);
       if (nearestFormId) {
         didSourcesChange =
@@ -3148,6 +3435,14 @@ const resolveFormStatuses = (
           addFormSource(sourcesByUnit, render.targetId, REACT_FORM_UNKNOWN_SOURCE_ID) ||
           didSourcesChange;
       }
+    }
+    for (const slotFlow of slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (!sourceRender) continue;
+      didSourcesChange =
+        addFormSource(sourcesByUnit, sourceRender.targetId, REACT_FORM_UNKNOWN_SOURCE_ID) ||
+        didSourcesChange;
     }
     for (const hookEdge of customHookEdges) {
       const ownerSources = sourcesByUnit.get(hookEdge.sourceId) ?? [];
@@ -3215,6 +3510,12 @@ export const buildReactSemanticGraph = (
         identity.descriptor.functionNode ? [[identity.descriptor.functionNode, identity]] : [],
     ),
   );
+  const unitFunctionsBySymbol = new Map(
+    [...unitIdentitiesBySymbol].flatMap(
+      ([symbol, identity]): ReadonlyArray<[ts.Symbol, ts.FunctionLikeDeclaration]> =>
+        identity.descriptor.functionNode ? [[symbol, identity.descriptor.functionNode]] : [],
+    ),
+  );
   const contextGraph = collectContextGraph(identities, sourceFiles, context);
   const formTopologyGraph = collectFormTopologyGraph(identities, context);
   const edges: ReactSemanticEdge[] = [];
@@ -3242,12 +3543,13 @@ export const buildReactSemanticGraph = (
   const functionCalls: ReactSemanticFunctionCall[] = [];
   const componentFlow = createComponentCallbackFlow(
     [...unitIdentitiesByFunction.keys()],
-    new Map(
-      [...unitIdentitiesBySymbol].flatMap(
-        ([symbol, identity]): ReadonlyArray<[ts.Symbol, ts.FunctionLikeDeclaration]> =>
-          identity.descriptor.functionNode ? [[symbol, identity.descriptor.functionNode]] : [],
-      ),
-    ),
+    unitFunctionsBySymbol,
+    context.typeChecker,
+  );
+  const slotFlow = createComponentSlotFlow(
+    [...unitIdentitiesByFunction.keys()],
+    unitFunctionsBySymbol,
+    new Set(contextGraph.providersByOpeningNode.keys()),
     context.typeChecker,
   );
   const eventGraph = collectEventGraph(identities, context, componentFlow);
@@ -3421,10 +3723,19 @@ export const buildReactSemanticGraph = (
     reachableFunctions.push(...optimisticStateGraph.reachableFunctions);
     functionCalls.push(...optimisticStateGraph.functionCalls);
   }
+  const slotGraph = collectSlotGraph(
+    renders,
+    unitIdentitiesByFunction,
+    slotFlow,
+    contextGraph.providersByOpeningNode,
+    formTopologyGraph.formsByOpeningNode,
+    context,
+  );
   const contextConsumers = resolveContextConsumers(
     identities.map((identity) => identity.semanticUnit),
     edges,
-    renders,
+    slotGraph.renders,
+    slotGraph.slotFlows,
     contextGraph.contexts,
     contextGraph.contextProviders,
     contextGraph.contextConsumers,
@@ -3432,7 +3743,8 @@ export const buildReactSemanticGraph = (
   const formStatuses = resolveFormStatuses(
     identities.map((identity) => identity.semanticUnit),
     edges,
-    renders,
+    slotGraph.renders,
+    slotGraph.slotFlows,
     formTopologyGraph.formStatuses,
   );
   const callableRefs = collectCallableRefGraph(identities, callbacks, functionCalls, context);
@@ -3450,7 +3762,8 @@ export const buildReactSemanticGraph = (
     contexts: contextGraph.contexts,
     contextProviders: contextGraph.contextProviders,
     contextConsumers,
-    renders,
+    renders: slotGraph.renders,
+    slotFlows: slotGraph.slotFlows,
     callbacks,
     reachableFunctions,
     functionCalls,

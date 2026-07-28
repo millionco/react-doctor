@@ -1,4 +1,6 @@
 import {
+  REACT_CONTEXT_DEFAULT_SOURCE_ID,
+  REACT_CONTEXT_UNKNOWN_SOURCE_ID,
   REACT_FORM_OUTSIDE_SOURCE_ID,
   REACT_FORM_UNKNOWN_SOURCE_ID,
   REACT_PROOF_SCHEMA_VERSION,
@@ -37,6 +39,7 @@ import {
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
   ReactSemanticFunctionCallKind,
+  ReactSemanticRenderKind,
   ReactTransitionActionStatus,
   ReactTransitionStarterKind,
   ReactUnitKind,
@@ -315,6 +318,20 @@ const expectedOptimisticStateStatus = (
     : ReactObligationStatus.Proved;
 };
 
+const expectedReactNodeFlowStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  return report.graph.slotFlows
+    .filter((slotFlow) => slotFlow.ownerId === unit.id)
+    .some((slotFlow) => !slotFlow.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
 const expectedScheduledCallbackLifetimeStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
@@ -507,6 +524,17 @@ const checkClaimCoverage = (
         `Optimistic state facts require ${expectedOptimisticStatus}, not ${optimisticState.status}`,
       );
     }
+    const reactNodeFlow = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ReactNodeFlow,
+    );
+    const expectedReactNodeStatus = expectedReactNodeFlowStatus(semanticUnit, report);
+    if (reactNodeFlow && reactNodeFlow.status !== expectedReactNodeStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `ReactNode slot facts require ${expectedReactNodeStatus}, not ${reactNodeFlow.status}`,
+      );
+    }
     const scheduledCallbackLifetime = unitProof.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.ScheduledCallbackLifetime,
     );
@@ -532,6 +560,106 @@ const checkClaimCoverage = (
   }
 };
 
+const addContextSource = (
+  sourcesByUnit: Map<string, Map<string, Set<string>>>,
+  unitId: string,
+  contextId: string,
+  sourceId: string,
+): boolean => {
+  let sourcesByContext = sourcesByUnit.get(unitId);
+  if (!sourcesByContext) {
+    sourcesByContext = new Map();
+    sourcesByUnit.set(unitId, sourcesByContext);
+  }
+  let sources = sourcesByContext.get(contextId);
+  if (!sources) {
+    sources = new Set();
+    sourcesByContext.set(contextId, sources);
+  }
+  const previousSize = sources.size;
+  sources.add(sourceId);
+  return sources.size !== previousSize;
+};
+
+const deriveContextSourcesByUnit = (
+  report: ReactAppProofReport,
+): ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>> => {
+  const unitIds = new Set(report.graph.units.map((unit) => unit.id));
+  const customHookEdges = report.graph.edges.filter(
+    (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && unitIds.has(edge.targetId),
+  );
+  const providersById = new Map(
+    report.graph.contextProviders.map((provider) => [provider.id, provider]),
+  );
+  const contexts = report.graph.contexts;
+  const rendersById = new Map(report.graph.renders.map((render) => [render.id, render]));
+  const sourcesByUnit = new Map<string, Map<string, Set<string>>>();
+  for (const unit of report.graph.units) {
+    if (!unit.canBeRenderRoot) continue;
+    for (const context of contexts) {
+      addContextSource(sourcesByUnit, unit.id, context.id, REACT_CONTEXT_DEFAULT_SOURCE_ID);
+    }
+  }
+
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const render of report.graph.renders) {
+      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
+      for (const context of contexts) {
+        const nearestProvider = render.activeContextProviderIds
+          .toReversed()
+          .map((providerId) => providersById.get(providerId))
+          .find((provider) => provider?.contextId === context.id);
+        if (nearestProvider) {
+          didSourcesChange =
+            addContextSource(sourcesByUnit, render.targetId, context.id, nearestProvider.id) ||
+            didSourcesChange;
+        } else {
+          for (const sourceId of sourcesByUnit.get(render.ownerId)?.get(context.id) ?? []) {
+            didSourcesChange =
+              addContextSource(sourcesByUnit, render.targetId, context.id, sourceId) ||
+              didSourcesChange;
+          }
+        }
+        if (!render.contextTopologyComplete) {
+          didSourcesChange =
+            addContextSource(
+              sourcesByUnit,
+              render.targetId,
+              context.id,
+              REACT_CONTEXT_UNKNOWN_SOURCE_ID,
+            ) || didSourcesChange;
+        }
+      }
+    }
+    for (const slotFlow of report.graph.slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (!sourceRender) continue;
+      for (const context of contexts) {
+        didSourcesChange =
+          addContextSource(
+            sourcesByUnit,
+            sourceRender.targetId,
+            context.id,
+            REACT_CONTEXT_UNKNOWN_SOURCE_ID,
+          ) || didSourcesChange;
+      }
+    }
+    for (const hookEdge of customHookEdges) {
+      for (const context of contexts) {
+        for (const sourceId of sourcesByUnit.get(hookEdge.sourceId)?.get(context.id) ?? []) {
+          didSourcesChange =
+            addContextSource(sourcesByUnit, hookEdge.targetId, context.id, sourceId) ||
+            didSourcesChange;
+        }
+      }
+    }
+  }
+  return sourcesByUnit;
+};
+
 const deriveFormSourcesByUnit = (
   report: ReactAppProofReport,
 ): ReadonlyMap<string, ReadonlySet<string>> => {
@@ -539,6 +667,7 @@ const deriveFormSourcesByUnit = (
   const customHookEdges = report.graph.edges.filter(
     (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && unitIds.has(edge.targetId),
   );
+  const rendersById = new Map(report.graph.renders.map((render) => [render.id, render]));
   const sourcesByUnit = new Map<string, Set<string>>();
   const addSource = (unitId: string, sourceId: string): boolean => {
     let sources = sourcesByUnit.get(unitId);
@@ -560,6 +689,7 @@ const deriveFormSourcesByUnit = (
   while (didSourcesChange) {
     didSourcesChange = false;
     for (const render of report.graph.renders) {
+      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
       const nearestFormId = render.activeFormIds.at(-1);
       if (nearestFormId) {
         didSourcesChange = addSource(render.targetId, nearestFormId) || didSourcesChange;
@@ -574,6 +704,14 @@ const deriveFormSourcesByUnit = (
       if (!render.formTopologyComplete) {
         didSourcesChange =
           addSource(render.targetId, REACT_FORM_UNKNOWN_SOURCE_ID) || didSourcesChange;
+      }
+    }
+    for (const slotFlow of report.graph.slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (sourceRender) {
+        didSourcesChange =
+          addSource(sourceRender.targetId, REACT_FORM_UNKNOWN_SOURCE_ID) || didSourcesChange;
       }
     }
     for (const hookEdge of customHookEdges) {
@@ -607,7 +745,11 @@ const checkGraphReferences = (
   );
   const contextIds = new Set(report.graph.contexts.map((context) => context.id));
   const providerIds = new Set(report.graph.contextProviders.map((provider) => provider.id));
+  const providersById = new Map(
+    report.graph.contextProviders.map((provider) => [provider.id, provider]),
+  );
   const formsById = new Map(report.graph.forms.map((form) => [form.id, form]));
+  const contextSourcesByUnit = deriveContextSourcesByUnit(report);
   const formSourcesByUnit = deriveFormSourcesByUnit(report);
   for (const unit of report.graph.units) {
     if (
@@ -644,13 +786,132 @@ const checkGraphReferences = (
     if (new Set(render.activeFormIds).size !== render.activeFormIds.length) {
       addFailure(failures, render.id, "A render repeats an active form");
     }
+    if (new Set(render.activeContextProviderIds).size !== render.activeContextProviderIds.length) {
+      addFailure(failures, render.id, "A render repeats an active context provider");
+    }
+    if (
+      render.topologyOwnerIds.length === 0 ||
+      new Set(render.topologyOwnerIds).size !== render.topologyOwnerIds.length ||
+      render.topologyOwnerIds.some((ownerId) => !unitIds.has(ownerId))
+    ) {
+      addFailure(failures, render.id, "A render has inconsistent topology owners");
+    }
+    const sourceRender = render.sourceRenderId ? rendersById.get(render.sourceRenderId) : null;
+    if (
+      render.kind === ReactSemanticRenderKind.Direct &&
+      (render.sourceRenderId !== null ||
+        render.containerRenderId !== null ||
+        render.slotPropName !== null ||
+        !render.contextTopologyComplete ||
+        !render.formTopologyComplete)
+    ) {
+      addFailure(failures, render.id, "A direct render has slot-only topology facts");
+    }
+    if (
+      render.kind !== ReactSemanticRenderKind.Slot &&
+      (render.topologyOwnerIds.length !== 1 || render.topologyOwnerIds[0] !== render.ownerId)
+    ) {
+      addFailure(failures, render.id, "A non-slot render has inconsistent topology ownership");
+    }
+    if (render.kind === ReactSemanticRenderKind.SlotInput && render.sourceRenderId !== null) {
+      addFailure(failures, render.id, "A slot input has inconsistent source facts");
+    }
+    if (render.kind === ReactSemanticRenderKind.Slot) {
+      if (
+        !sourceRender ||
+        sourceRender.kind !== ReactSemanticRenderKind.SlotInput ||
+        render.slotPropName !== sourceRender.slotPropName ||
+        render.containerRenderId !== sourceRender.containerRenderId ||
+        !render.topologyOwnerIds.includes(render.ownerId) ||
+        !render.topologyOwnerIds.includes(sourceRender.ownerId)
+      ) {
+        addFailure(failures, render.id, "A slot render has an inconsistent source render");
+      }
+    } else if (render.sourceRenderId !== null) {
+      addFailure(failures, render.id, "A non-slot render references a source render");
+    }
+    const allowedTopologyOwnerIds = new Set(render.topologyOwnerIds);
+    for (const providerId of render.activeContextProviderIds) {
+      const provider = providersById.get(providerId);
+      if (!provider) {
+        addFailure(failures, render.id, "A render has an unknown active context provider");
+      } else if (!allowedTopologyOwnerIds.has(provider.ownerId)) {
+        addFailure(
+          failures,
+          render.id,
+          "A render has an active context provider owned by an unrelated unit",
+        );
+      }
+    }
     for (const formId of render.activeFormIds) {
       const form = formsById.get(formId);
       if (!form) {
         addFailure(failures, render.id, "A render has an unknown active form");
-      } else if (form.ownerId !== render.ownerId) {
-        addFailure(failures, render.id, "A render has an active form owned by another unit");
+      } else if (!allowedTopologyOwnerIds.has(form.ownerId)) {
+        addFailure(failures, render.id, "A render has an active form owned by an unrelated unit");
       }
+    }
+  }
+  const slotFlowsBySourceRenderId = new Map<string, typeof report.graph.slotFlows>();
+  for (const slotFlow of report.graph.slotFlows) {
+    const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+    const containerRender = slotFlow.containerRenderId
+      ? rendersById.get(slotFlow.containerRenderId)
+      : null;
+    const slotRenders = report.graph.renders.filter(
+      (render) => render.sourceRenderId === slotFlow.sourceRenderId,
+    );
+    if (
+      !sourceRender ||
+      sourceRender.kind !== ReactSemanticRenderKind.SlotInput ||
+      sourceRender.ownerId !== slotFlow.ownerId
+    ) {
+      addFailure(failures, slotFlow.id, "A slot flow has an inconsistent source render");
+    }
+    if (slotFlow.containerRenderId && !containerRender) {
+      addFailure(failures, slotFlow.id, "A slot flow has an unknown container render");
+    }
+    if (slotFlow.placementComplete && (!containerRender || !slotFlow.propName)) {
+      addFailure(failures, slotFlow.id, "A complete slot flow has no project-local placement");
+    }
+    if (
+      sourceRender &&
+      (slotFlow.containerRenderId !== sourceRender.containerRenderId ||
+        slotFlow.propName !== sourceRender.slotPropName ||
+        slotFlow.complete !== (slotFlow.sourceComplete && slotFlow.placementComplete) ||
+        slotFlow.complete !== sourceRender.contextTopologyComplete ||
+        slotFlow.complete !== sourceRender.formTopologyComplete)
+    ) {
+      addFailure(failures, slotFlow.id, "A slot flow disagrees with its source certificate");
+    }
+    if (new Set(slotFlow.renderIds).size !== slotFlow.renderIds.length) {
+      addFailure(failures, slotFlow.id, "A slot flow repeats an effective render");
+    }
+    if (
+      slotFlow.renderIds.length !== slotRenders.length ||
+      slotRenders.some((render) => !slotFlow.renderIds.includes(render.id))
+    ) {
+      addFailure(failures, slotFlow.id, "A slot flow has an inconsistent effective render set");
+    }
+    for (const renderId of slotFlow.renderIds) {
+      const slotRender = rendersById.get(renderId);
+      if (
+        slotRender?.kind !== ReactSemanticRenderKind.Slot ||
+        !slotRender.contextTopologyComplete ||
+        !slotRender.formTopologyComplete
+      ) {
+        addFailure(failures, slotFlow.id, "A slot flow references an invalid effective render");
+      }
+    }
+    const sourceSlotFlows = slotFlowsBySourceRenderId.get(slotFlow.sourceRenderId) ?? [];
+    slotFlowsBySourceRenderId.set(slotFlow.sourceRenderId, [...sourceSlotFlows, slotFlow]);
+  }
+  for (const render of report.graph.renders) {
+    if (
+      render.kind === ReactSemanticRenderKind.SlotInput &&
+      slotFlowsBySourceRenderId.get(render.id)?.length !== 1
+    ) {
+      addFailure(failures, render.id, "A slot input has no unique slot-flow certificate");
     }
   }
   for (const effect of report.graph.effects) {
@@ -2309,8 +2570,29 @@ const checkGraphReferences = (
         addFailure(failures, consumer.id, "A consumer has an unknown source provider");
       }
     }
-    const hasResolvedSource = consumer.sourceProviderIds.length > 0 || consumer.usesDefaultValue;
-    if (consumer.topologyComplete !== Boolean(consumer.contextId && hasResolvedSource)) {
+    const expectedSources = consumer.contextId
+      ? (contextSourcesByUnit.get(consumer.ownerId)?.get(consumer.contextId) ?? new Set())
+      : new Set<string>();
+    const expectedProviderIds = [...expectedSources].filter(
+      (sourceId) =>
+        sourceId !== REACT_CONTEXT_DEFAULT_SOURCE_ID &&
+        sourceId !== REACT_CONTEXT_UNKNOWN_SOURCE_ID,
+    );
+    if (
+      consumer.sourceProviderIds.length !== expectedProviderIds.length ||
+      expectedProviderIds.some((providerId) => !consumer.sourceProviderIds.includes(providerId))
+    ) {
+      addFailure(failures, consumer.id, "A context consumer has an inconsistent provider set");
+    }
+    const expectedUsesDefaultValue = expectedSources.has(REACT_CONTEXT_DEFAULT_SOURCE_ID);
+    const expectedTopologyComplete =
+      Boolean(consumer.contextId) &&
+      expectedSources.size > 0 &&
+      !expectedSources.has(REACT_CONTEXT_UNKNOWN_SOURCE_ID);
+    if (consumer.usesDefaultValue !== expectedUsesDefaultValue) {
+      addFailure(failures, consumer.id, "A context consumer has an inconsistent default source");
+    }
+    if (consumer.topologyComplete !== expectedTopologyComplete) {
       addFailure(
         failures,
         consumer.id,
@@ -2565,6 +2847,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "renders",
     report.graph.renders.map((render) => render.id),
+  );
+  checkUniqueIds(
+    failures,
+    "slot flows",
+    report.graph.slotFlows.map((slotFlow) => slotFlow.id),
   );
   checkUniqueIds(
     failures,

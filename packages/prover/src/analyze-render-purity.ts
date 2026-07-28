@@ -7,6 +7,7 @@ import {
   KNOWN_PURE_STANDARD_METHOD_NAMES,
   MUTATING_METHOD_NAMES,
   REACT_MODELED_HOOK_NAMES,
+  REACT_PURE_RENDER_API_NAMES,
   REACT_UNMODELED_HOOK_NAMES,
 } from "./constants.js";
 import { collectBindingIdentifiers } from "./collect-binding-identifiers.js";
@@ -15,6 +16,7 @@ import { collectReachableFunctionGraph } from "./collect-reachable-functions.js"
 import { createEvidence } from "./create-evidence.js";
 import { createObligation } from "./create-obligation.js";
 import { getCanonicalHookName } from "./get-canonical-hook-name.js";
+import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { getCallName } from "./get-call-name.js";
 import { getRootIdentifier } from "./get-root-identifier.js";
 import { isNodeWithin } from "./is-node-within.js";
@@ -178,6 +180,7 @@ export const analyzeRenderPurity = (
       if (ts.isCallExpression(node)) {
         const callName = getCallName(node);
         const finalCallName = getCanonicalHookName(node, context.typeChecker);
+        const reactApiName = getCanonicalReactApiName(node.expression, context.typeChecker);
         const callSymbol = context.typeChecker.getSymbolAtLocation(node.expression);
         if (callSymbol && hookBindings.stateSetters.has(callSymbol)) {
           violations.push(
@@ -248,6 +251,7 @@ export const analyzeRenderPurity = (
           return;
         }
         if (
+          (reactApiName && REACT_PURE_RENDER_API_NAMES.has(reactApiName)) ||
           (callName && KNOWN_PURE_GLOBAL_CALLS.has(callName)) ||
           (ts.isPropertyAccessExpression(node.expression) &&
             KNOWN_PURE_METHOD_NAMES.has(node.expression.name.text)) ||

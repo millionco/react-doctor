@@ -85,10 +85,14 @@ The report includes:
   through reachable helpers, while dynamic control types, composed form association, custom
   components, and opaque callback props fail closed;
 - Form Status facts that identify canonical `react-dom` `useFormStatus` calls and propagate the
-  nearest intrinsic parent form through closed component-render and custom-Hook paths; a detached,
-  same-component, exported consumer, or mixed outside-form path is refuted, while
-  component-composed `children` placement and JSX returned from unmodeled render callbacks remain
-  unknown;
+  nearest intrinsic parent form through closed component-render, ReactNode-slot, and custom-Hook
+  paths; a detached, same-component, exported consumer, or mixed outside-form path is refuted;
+- ReactNode flow facts that distinguish JSX element construction from an effective render,
+  certify direct `children` and named-slot placement through transitive project-local
+  components, string-literal computed props, and portals, and retain every provider/form topology
+  frame along the path; external components, source or receiver aliases, dynamic computed props,
+  whole-props spreads, JSX value spreads, non-rendered JSX props, `Children` transforms, cycles,
+  and unmodeled callbacks fail closed instead of borrowing lexical JSX ancestry;
 - optimistic state facts that identify canonical `useOptimistic` tuples, give reducers and
   no-reducer functional updaters dedicated execution phases, reuse the updater-purity proof, and
   require every setter call to be owned exclusively by Form or Transition Actions; render calls,
@@ -139,8 +143,11 @@ Action State dispatchers link the form fact to their reducer-Action callback. Ac
 certificates independently validate tuple ownership, reducer callback phase, dispatch kind,
 Action-prop association, execution roots, linked state, and exact source/completeness equations.
 Form Status certificates independently recompute parent-form sources from render and custom-Hook
-edges, require one fact for every canonical Hook call, validate active-form ownership, and reject
-forged outside-form, source, topology-status, and completeness fields.
+edges plus effective ReactNode slot renders, require one fact for every canonical Hook call,
+validate active-form ownership, and reject forged outside-form, source, topology-status, and
+completeness fields. ReactNode certificates require exactly one slot-flow fact per slot input,
+separate source-expression and placement completeness, reciprocal effective-render links,
+path-owned provider/form facts, unique semantic IDs, and the exact completeness conjunction.
 Optimistic
 certificates independently validate tuple ownership, reducer and updater callback phases, derive
 Action ownership from every execution root, and reject forged purity, render/event origin, state

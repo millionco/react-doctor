@@ -28,19 +28,25 @@ const getDestructuredPropName = (
 };
 
 const getObjectParameterPropName = (
-  expression: ts.PropertyAccessExpression,
+  expression: ts.ElementAccessExpression | ts.PropertyAccessExpression,
   functionNode: ts.FunctionLikeDeclaration,
   typeChecker: ts.TypeChecker,
 ): string | null => {
   if (!ts.isIdentifier(expression.expression)) return null;
   const expressionSymbol = typeChecker.getSymbolAtLocation(expression.expression);
   if (!expressionSymbol) return null;
-  return functionNode.parameters.some(
+  const isObjectParameter = functionNode.parameters.some(
     (parameter) =>
       ts.isIdentifier(parameter.name) &&
       typeChecker.getSymbolAtLocation(parameter.name) === expressionSymbol,
-  )
-    ? expression.name.text
+  );
+  if (!isObjectParameter) return null;
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  const argumentExpression = expression.argumentExpression;
+  return argumentExpression &&
+    (ts.isStringLiteral(argumentExpression) ||
+      ts.isNoSubstitutionTemplateLiteral(argumentExpression))
+    ? argumentExpression.text
     : null;
 };
 
@@ -52,7 +58,7 @@ export const getComponentPropName = (
   if (ts.isIdentifier(expression)) {
     return getDestructuredPropName(expression, functionNode, typeChecker);
   }
-  if (ts.isPropertyAccessExpression(expression)) {
+  if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
     return getObjectParameterPropName(expression, functionNode, typeChecker);
   }
   return null;

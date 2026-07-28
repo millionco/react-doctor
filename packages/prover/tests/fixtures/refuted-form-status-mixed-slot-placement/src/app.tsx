@@ -1,10 +1,16 @@
 import { useFormStatus } from "react-dom";
+import type { ReactNode } from "react";
 
 interface FormShellProperties {
-  children?: unknown;
+  children: ReactNode;
 }
 
-const FormShell = ({ children }: FormShellProperties) => <form>{children}</form>;
+const FormShell = ({ children }: FormShellProperties) => (
+  <>
+    <form>{children}</form>
+    <section>{children}</section>
+  </>
+);
 
 const SubmitButton = () => {
   const { pending } = useFormStatus();

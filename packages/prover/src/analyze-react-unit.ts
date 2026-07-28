@@ -20,6 +20,7 @@ import { analyzeHookStateTransitions } from "./analyze-hook-state-transitions.js
 import { analyzeMemoDependencies } from "./analyze-memo-dependencies.js";
 import { analyzeOptimisticState } from "./analyze-optimistic-state.js";
 import { analyzeRefAccess } from "./analyze-ref-access.js";
+import { analyzeReactNodeFlow } from "./analyze-react-node-flow.js";
 import { analyzeReducerPurity } from "./analyze-reducer-purity.js";
 import { analyzeReconciliationIdentity } from "./analyze-reconciliation-identity.js";
 import { analyzeRenderPurity } from "./analyze-render-purity.js";
@@ -53,6 +54,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.HookStateTransitions,
   ReactProofClaim.MemoDependencies,
   ReactProofClaim.OptimisticState,
+  ReactProofClaim.ReactNodeFlow,
   ReactProofClaim.ReconciliationIdentity,
   ReactProofClaim.ReducerPurity,
   ReactProofClaim.RefAccess,
@@ -153,6 +155,7 @@ export const analyzeReactUnit = (
       analyzeHookStateTransitions(unit, context),
       analyzeMemoDependencies(unit.functionNode, context),
       analyzeOptimisticState(unit, context),
+      analyzeReactNodeFlow(unit, context),
       analyzeReconciliationIdentity(unit.functionNode, context),
       analyzeReducerPurity(unit.functionNode, context),
       analyzeRefAccess(unit.functionNode, context),

@@ -17,3 +17,18 @@ test("Form Status observes only a parent form during a Strict Mode Action", asyn
     .toBe(FORM_STATUS_ACTION_EXPECTED_RUNS);
   await expect(page.getByTestId("form-status-pending")).toHaveText("false");
 });
+
+test("Form Status observes a parent form introduced by a component slot", async ({ page }) => {
+  await page.goto("/?oracle=form-status-slot");
+
+  await page.getByRole("textbox", { name: "Username" }).fill("grace");
+  await page.getByRole("button", { name: "request username" }).click();
+
+  await expect(page.getByTestId("form-status-pending")).toHaveText("true");
+  await expect(page.getByTestId("form-status-data")).toHaveText("grace");
+  await expect(page.getByTestId("form-status-action")).toHaveText("true");
+  await expect
+    .poll(() => page.evaluate(() => window.formStatusActionRuns))
+    .toBe(FORM_STATUS_ACTION_EXPECTED_RUNS);
+  await expect(page.getByTestId("form-status-pending")).toHaveText("false");
+});

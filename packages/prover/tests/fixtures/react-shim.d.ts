@@ -12,6 +12,7 @@ declare module "react" {
   }
 
   export interface Context<Value> {
+    (properties: { value?: Value; children?: unknown }): null;
     Provider: (properties: { value?: Value; children?: unknown }) => null;
   }
 
@@ -42,6 +43,12 @@ declare module "react" {
     ): [State, (actionPayload: ActionPayload) => void, boolean];
   };
   export const createContext: <Value>(defaultValue: Value) => Context<Value>;
+  export const Children: {
+    map: <Child, Result>(
+      children: Child,
+      transform: (child: Child) => Result,
+    ) => ReadonlyArray<Result>;
+  };
   export const memo: <Component>(component: Component) => Component;
   export const StrictMode: (properties: { children?: unknown }) => unknown;
   export const startTransition: (action: () => void | Promise<void>) => void;

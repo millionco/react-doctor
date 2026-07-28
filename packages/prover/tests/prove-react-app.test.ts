@@ -38,6 +38,7 @@ import {
   ReactSemanticEdgeKind,
   ReactSemanticCallbackKind,
   ReactSemanticFunctionCallKind,
+  ReactSemanticRenderKind,
   ReactTransitionActionStatus,
   ReactTransitionStarterKind,
 } from "../src/index.js";
@@ -93,6 +94,11 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
   },
   {
     fixtureName: "refuted-form-status-exported-child",
+    claim: ReactProofClaim.FormStatus,
+    evidencePattern: /without a parent <form>/,
+  },
+  {
+    fixtureName: "refuted-form-status-mixed-slot-placement",
     claim: ReactProofClaim.FormStatus,
     evidencePattern: /without a parent <form>/,
   },
@@ -658,8 +664,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(21);
-    expect(report.graph.schemaVersion).toBe(27);
+    expect(report.schemaVersion).toBe(22);
+    expect(report.graph.schemaVersion).toBe(28);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -3384,25 +3390,170 @@ describe("proveReactApp", () => {
     expect(formStatus?.complete).toBe(true);
   });
 
-  it("fails closed when a component wrapper owns the possible parent form", () => {
-    const report = proveFixture("incomplete-form-status-composed-form");
+  it("certifies a Form Status consumer through a component-owned children slot", () => {
+    const report = proveFixture("proved-form-status-composed-form");
     const formStatus = report.graph.formStatuses[0];
-    const formStatusProof = report.units
+    const slotFlowProof = report.units
       .flatMap((unit) => unit.obligations)
       .find(
         (obligation) =>
-          obligation.claim === ReactProofClaim.FormStatus &&
-          obligation.status === ReactObligationStatus.Unknown,
+          obligation.claim === ReactProofClaim.ReactNodeFlow &&
+          obligation.status === ReactObligationStatus.Proved,
+      );
+    const slotInput = report.graph.renders.find(
+      (render) => render.kind === ReactSemanticRenderKind.SlotInput,
+    );
+    const slotRender = report.graph.renders.find(
+      (render) => render.kind === ReactSemanticRenderKind.Slot,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(formStatus?.sourceFormIds).toEqual([report.graph.forms[0]?.id]);
+    expect(formStatus?.outsideForm).toBe(false);
+    expect(formStatus?.status).toBe(ReactFormStatusTopologyStatus.Resolved);
+    expect(formStatus?.sourceComplete).toBe(true);
+    expect(formStatus?.complete).toBe(true);
+    expect(report.graph.slotFlows[0]?.complete).toBe(true);
+    expect(slotRender?.sourceRenderId).toBe(slotInput?.id);
+    expect(slotRender?.activeFormIds).toEqual([report.graph.forms[0]?.id]);
+    expect(slotFlowProof).toBeDefined();
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it.each([
+    "proved-form-status-transitive-slot",
+    "proved-form-status-named-slot",
+    "proved-form-status-source-form-slot",
+    "proved-form-status-computed-slot",
+    "proved-form-status-portal-slot",
+  ])("certifies project-local ReactNode topology in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const formStatus = report.graph.formStatuses[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(report.graph.slotFlows.every((slotFlow) => slotFlow.complete)).toBe(true);
+    expect(formStatus?.status).toBe(ReactFormStatusTopologyStatus.Resolved);
+    expect(formStatus?.complete).toBe(true);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it.each(["proved-context-provider-slot", "proved-context-provider-transitive-slot"])(
+    "carries a context provider through component-owned children slots in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const provider = report.graph.contextProviders[0];
+      const consumer = report.graph.contextConsumers[0];
+
+      expect(report.status).toBe(ReactAppProofStatus.Proved);
+      expect(report.graph.slotFlows[0]?.complete).toBe(true);
+      expect(consumer?.sourceProviderIds).toEqual([provider?.id]);
+      expect(consumer?.usesDefaultValue).toBe(false);
+      expect(consumer?.topologyComplete).toBe(true);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it.each([
+    {
+      fixtureName: "incomplete-react-node-external-slot",
+      placementComplete: false,
+      sourceComplete: true,
+    },
+    {
+      fixtureName: "incomplete-react-node-alias-slot",
+      placementComplete: false,
+      sourceComplete: true,
+    },
+    {
+      fixtureName: "incomplete-react-node-children-map",
+      placementComplete: false,
+      sourceComplete: true,
+    },
+    {
+      fixtureName: "incomplete-react-node-source-alias",
+      placementComplete: false,
+      sourceComplete: false,
+    },
+    {
+      fixtureName: "incomplete-react-node-spread-slot",
+      placementComplete: false,
+      sourceComplete: false,
+    },
+    {
+      fixtureName: "incomplete-react-node-computed-slot",
+      placementComplete: false,
+      sourceComplete: true,
+    },
+    {
+      fixtureName: "incomplete-react-node-props-spread",
+      placementComplete: false,
+      sourceComplete: true,
+    },
+    {
+      fixtureName: "incomplete-react-node-non-rendered-prop",
+      placementComplete: false,
+      sourceComplete: false,
+    },
+  ])(
+    "fails closed for unresolved ReactNode topology in $fixtureName",
+    ({ fixtureName, placementComplete, sourceComplete }) => {
+      const report = proveFixture(fixtureName);
+      const incompleteSlotFlow = report.graph.slotFlows.find((slotFlow) => !slotFlow.complete);
+      const reactNodeProof = report.units
+        .flatMap((unit) => unit.obligations)
+        .find(
+          (obligation) =>
+            obligation.claim === ReactProofClaim.ReactNodeFlow &&
+            obligation.status === ReactObligationStatus.Unknown,
+        );
+
+      expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+      expect(incompleteSlotFlow?.placementComplete).toBe(placementComplete);
+      expect(incompleteSlotFlow?.sourceComplete).toBe(sourceComplete);
+      expect(report.graph.formStatuses[0]?.status).toBe(ReactFormStatusTopologyStatus.Unknown);
+      expect(reactNodeProof?.evidence[0]?.description).toMatch(
+        /project-local|unresolved source expression/,
+      );
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("does not turn a ReactNode used only as a condition into an effective render", () => {
+    const report = proveFixture("incomplete-react-node-dropped-slot");
+    const slotFlow = report.graph.slotFlows[0];
+    const reactNodeProof = report.units
+      .find((unit) => unit.name === "Checkout")
+      ?.obligations.find(
+        (obligation) =>
+          obligation.claim === ReactProofClaim.ReactNodeFlow &&
+          obligation.status === ReactObligationStatus.Proved,
       );
 
     expect(report.status).toBe(ReactAppProofStatus.Incomplete);
-    expect(formStatus?.sourceFormIds).toEqual([]);
-    expect(formStatus?.outsideForm).toBe(false);
-    expect(formStatus?.status).toBe(ReactFormStatusTopologyStatus.Unknown);
-    expect(formStatus?.sourceComplete).toBe(false);
-    expect(formStatus?.complete).toBe(false);
-    expect(formStatusProof?.evidence[0]?.description).toMatch(/cannot be resolved/);
+    expect(slotFlow?.complete).toBe(true);
+    expect(slotFlow?.renderIds).toEqual([]);
+    expect(report.graph.formStatuses[0]?.status).toBe(ReactFormStatusTopologyStatus.Unknown);
+    expect(reactNodeProof).toBeDefined();
     expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged ReactNode slot-flow certificate", () => {
+    const report = proveFixture("proved-form-status-composed-form");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        slotFlows: report.graph.slotFlows.map((slotFlow) => ({
+          ...slotFlow,
+          complete: false,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(certificate.failures.some((failure) => failure.description.includes("slot flow"))).toBe(
+      true,
+    );
   });
 
   it("fails closed when a synchronous render callback has unmodeled form ancestry", () => {

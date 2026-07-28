@@ -755,7 +755,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 306 TypeScript fixture projects, 509 static tests, and 39 Chromium runtime
+Current checkpoint: 324 TypeScript fixture projects, 527 static tests, and 40 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -1641,3 +1641,122 @@ Changeset is warranted before publication.
 Kill: If lexical render topology produces a false `proved` result in a component-composed or
 renderer-specific form tree, remove the complete source status and keep Form Status incomplete
 until ReactNode slot flow or a renderer contract carries the missing ancestry.
+
+## ReactNode slot-flow certificates
+
+### Semantic correction
+
+JSX syntax constructs React element values. It does not by itself establish that the represented
+component is rendered. In `<Shell><Child /></Shell>`, the caller creates the `Child` element and
+passes it as `Shell`'s `children`; `Shell` controls whether, where, and how often that value enters
+the React tree. Treating the lexical nesting as an immediate caller-to-child render edge is
+unsound for context, Form Status, execution multiplicity, and any future lifecycle theorem.
+
+The official React material makes the distinction explicit:
+
+- [Passing Props to a Component](https://react.dev/learn/passing-props-to-a-component) defines
+  nested JSX as the `children` prop and describes wrapper components as leaving a hole for their
+  caller.
+- [`Children`](https://react.dev/reference/react/Children) defines `children` as opaque and warns
+  that traversal does not render or descend through a component's returned JSX.
+- [`createPortal`](https://react.dev/reference/react-dom/createPortal) changes physical DOM
+  placement while retaining React-tree context and event propagation.
+- [`cloneElement`](https://react.dev/reference/react/cloneElement) and arbitrary child
+  transformations are documented as fragile, so they need an explicit value-flow model rather
+  than a transparent-wrapper assumption.
+
+This certificate therefore separates three render facts:
+
+- `direct`: the JSX value reaches the component's returned ReactNode through a supported transparent
+  expression path;
+- `slot-input`: the JSX value is supplied to a component prop or crosses an unresolved source-value
+  boundary;
+- `slot`: one effective project-local placement of that input, linked back to its source and
+  container render.
+
+### Closed subset and fail-closed boundary
+
+The complete subset follows destructured, object-parameter, or string-literal computed props
+through direct `children` and named JSX attributes, including transitive local wrappers, portals,
+and multiple placements. Each forwarding hop retains its component owner and lexically active
+context-provider/form frames. Effective topology is ordered from outer placement frames to the
+source-local frame, so the nearest source provider or form remains nearest after insertion.
+
+Source and placement completeness are separate:
+
+- `sourceComplete` proves that the JSX element reaches the slot without an alias, object container,
+  unsupported call, spread, property access, or other value transformation;
+- `placementComplete` proves that every use of the receiving prop reaches a terminal JSX or portal
+  placement through project-local channels;
+- `complete` is exactly their conjunction.
+
+External components, receiver aliases, `Children.map`, unresolved calls, JSX spread slots, source
+aliases, cycles, property mutation, callback boundaries, and unknown named values stay incomplete.
+A channel may have both known effective placements and an unknown use; the known renders remain in
+the graph, while the unknown source is propagated into context and Form Status fixed points. This
+preserves useful evidence without turning partial reachability into a proof.
+
+React Bench supplied realistic shapes rather than a synthetic UI calculus:
+
+- `viewer/src/components/trial-nav.tsx` uses both direct `children` and a named `content: ReactNode`
+  slot.
+- `viewer/src/components/ui/tooltip.tsx` combines a named slot with `asChild` and a portal, showing
+  why wrapper identity and physical DOM placement cannot be conflated.
+- the migrated OpenCode applications contain many provider shells that forward `props.children`;
+  floating-ui list boxes similarly place children under a provider.
+- the composition guidance in
+  `brain/vercel-composition-patterns/rules/patterns-children-over-render-props.md` favors form and
+  layout composition through `children`, making this a core React boundary rather than an exotic
+  pattern.
+
+### Certificate checker and corpus
+
+The independent checker recomputes context and form fixed points using effective renders only.
+Every slot input must have exactly one slot-flow certificate. It validates unique IDs, reciprocal
+source/effective-render links, source/container/prop agreement, exact render sets, source and
+placement completeness equations, topology owners, provider/form ownership, and the resulting
+`react-node-flow`, context, Form Status, report-summary, and application verdicts. Report schema 22
+and graph schema 28 reject stale certificates.
+
+Added or promoted corpus:
+
+- proved: composed, transitive, named, and source-form Form Status slots plus direct and transitive
+  context-provider slots;
+- refuted: a child placed both under and outside a form;
+- incomplete: external wrappers, receiver aliases, `Children.map`, source aliases, JSX spreads,
+  dynamic computed slots, whole-props forwarding, non-rendered JSX props, and a dropped child used
+  only as a condition;
+- forged: a slot-flow completeness mutation rejected by the checker;
+- runtime: a Strict Mode Form Action whose status consumer reaches its parent form only through a
+  component-owned `children` slot.
+
+The complete package gates now cover 324 TypeScript fixture projects, 527 static tests, and 40
+Chromium runtime oracles. The new browser oracle observes pending state, submitted `FormData`, and
+Action identity through the slot and confirms one Action invocation. Runtime evidence calibrates
+React 19.2.5 behavior but does not upgrade an incomplete static channel.
+
+### Product brief: internal ReactNode flow facts
+
+Job: Prover consumers need to know where component-valued props actually enter the React tree before
+trusting context, Form Status, execution, or lifecycle claims.
+
+Change: Add one private `react-node-flow` claim, versioned direct/input/effective render facts,
+source and placement completeness, transitive topology frames, and independent checker equations.
+
+Reuse: Truffler searches for ReactNode value flow, JSX child placement, rendered component targets,
+and provider/form wrapper topology found no reusable prover symbol. The implementation reuses
+TypeScript symbol identity, component-prop extraction, JSX spread utilities, semantic render IDs,
+and the existing context/Form Status fixed-point machinery. The shared JSX component-target
+resolver was extracted from callback-prop flow instead of duplicated.
+
+Metric: The deterministic acceptance metric separates direct, named, transitive, duplicated,
+provider-bearing, source-form, mixed-placement, external, aliased, transformed, and spread cases,
+with every emitted certificate accepted by the checker and the forged certificate rejected.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 22 and its semantic graph to schema 28. No
+Changeset is warranted before publication.
+
+Kill: If a complete slot channel produces a false `proved` topology in two proof-schema releases,
+remove complete slot propagation and keep ReactNode inputs unknown until value-level SSA or a
+library proof contract carries the missing semantics.

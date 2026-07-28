@@ -34,6 +34,7 @@ export enum ReactProofClaim {
   HookStateTransitions = "hook-state-transitions",
   MemoDependencies = "memo-dependencies",
   OptimisticState = "optimistic-state",
+  ReactNodeFlow = "react-node-flow",
   ReconciliationIdentity = "reconciliation-identity",
   ReducerPurity = "reducer-purity",
   RefAccess = "ref-access",
@@ -325,9 +326,34 @@ export interface ReactSemanticRender {
   ownerId: string;
   targetId: string;
   location: ReactProofLocation;
+  kind: ReactSemanticRenderKind;
+  sourceRenderId: string | null;
+  containerRenderId: string | null;
+  slotPropName: string | null;
+  topologyOwnerIds: ReadonlyArray<string>;
   activeContextProviderIds: ReadonlyArray<string>;
+  contextTopologyComplete: boolean;
   activeFormIds: ReadonlyArray<string>;
   formTopologyComplete: boolean;
+}
+
+export enum ReactSemanticRenderKind {
+  Direct = "direct",
+  Slot = "slot",
+  SlotInput = "slot-input",
+}
+
+export interface ReactSemanticSlotFlow {
+  id: string;
+  ownerId: string;
+  sourceRenderId: string;
+  containerRenderId: string | null;
+  propName: string | null;
+  renderIds: ReadonlyArray<string>;
+  location: ReactProofLocation;
+  sourceComplete: boolean;
+  placementComplete: boolean;
+  complete: boolean;
 }
 
 export interface ReactSemanticCallback {
@@ -810,6 +836,7 @@ export interface ReactSemanticGraph {
   contextProviders: ReadonlyArray<ReactSemanticContextProvider>;
   contextConsumers: ReadonlyArray<ReactSemanticContextConsumer>;
   renders: ReadonlyArray<ReactSemanticRender>;
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>;
   callbacks: ReadonlyArray<ReactSemanticCallback>;
   reachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>;
   functionCalls: ReadonlyArray<ReactSemanticFunctionCall>;

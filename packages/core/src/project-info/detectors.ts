@@ -489,13 +489,23 @@ interface ConfigImportBinding {
   readonly isNamespace: boolean;
 }
 
+interface ConfigExpressionReference {
+  readonly expression: ts.Expression | null;
+  readonly analysis: ConfigExpressionAnalysis;
+}
+
+interface ConfigPropertyReference {
+  readonly node: ts.Expression | ts.MethodDeclaration;
+  readonly analysis: ConfigExpressionAnalysis;
+}
+
 interface ConfigExpressionAnalysis {
   readonly filePath: string;
   readonly sourceFile: ts.SourceFile;
   readonly importDepth: number;
   readonly visitedModules: ReadonlySet<string>;
   readonly visitedNodes: Set<string>;
-  readonly localBindings: ReadonlyMap<string, ts.Expression | null>;
+  readonly localBindings: ReadonlyMap<string, ConfigExpressionReference>;
   readonly activeFunctions: ReadonlySet<number>;
 }
 
@@ -655,14 +665,17 @@ const getTopLevelBinding = (
 const getFunctionLocalBindings = (
   functionNode: ts.FunctionLikeDeclaration,
   argumentsList: readonly ts.Expression[],
-): Map<string, ts.Expression | null> => {
-  const localBindings = new Map<string, ts.Expression | null>();
+  argumentAnalysis: ConfigExpressionAnalysis,
+  functionAnalysis: ConfigExpressionAnalysis,
+): Map<string, ConfigExpressionReference> => {
+  const localBindings = new Map<string, ConfigExpressionReference>();
   functionNode.parameters.forEach((parameter, parameterIndex) => {
     if (ts.isIdentifier(parameter.name)) {
-      localBindings.set(
-        parameter.name.text,
-        argumentsList[parameterIndex] ?? parameter.initializer ?? null,
-      );
+      const argument = argumentsList[parameterIndex];
+      localBindings.set(parameter.name.text, {
+        expression: argument ?? parameter.initializer ?? null,
+        analysis: argument ? argumentAnalysis : functionAnalysis,
+      });
     }
   });
   return localBindings;
@@ -958,9 +971,13 @@ const getStaticConfigValueState = (
   }
   if (ts.isIdentifier(unwrappedExpression)) {
     if (analysis.localBindings.has(unwrappedExpression.text)) {
-      const localInitializer = analysis.localBindings.get(unwrappedExpression.text);
-      return localInitializer
-        ? getStaticConfigValueState(localInitializer, analysis, nextVisitedExpressions)
+      const localReference = analysis.localBindings.get(unwrappedExpression.text);
+      return localReference?.expression
+        ? getStaticConfigValueState(
+            localReference.expression,
+            localReference.analysis,
+            nextVisitedExpressions,
+          )
         : null;
     }
     const topLevelBinding = getTopLevelBinding(analysis.sourceFile, unwrappedExpression.text);
@@ -1064,9 +1081,13 @@ const getReactCompilerFlagState = (
       };
     }
     if (analysis.localBindings.has(unwrappedExpression.text)) {
-      const localInitializer = analysis.localBindings.get(unwrappedExpression.text);
-      return localInitializer
-        ? getReactCompilerFlagState(localInitializer, analysis, nextVisitedExpressions)
+      const localReference = analysis.localBindings.get(unwrappedExpression.text);
+      return localReference?.expression
+        ? getReactCompilerFlagState(
+            localReference.expression,
+            localReference.analysis,
+            nextVisitedExpressions,
+          )
         : null;
     }
     const topLevelBinding = getTopLevelBinding(analysis.sourceFile, unwrappedExpression.text);
@@ -1102,7 +1123,7 @@ const getSelectedObjectProperty = (
   propertyName: string,
   analysis: ConfigExpressionAnalysis,
   visitedExpressions: Set<ts.Expression> = new Set(),
-): ts.Expression | ts.MethodDeclaration | null => {
+): ConfigPropertyReference | null => {
   let resolvedExpression = expression;
   while (
     ts.isParenthesizedExpression(resolvedExpression) ||
@@ -1117,9 +1138,14 @@ const getSelectedObjectProperty = (
   visitedExpressions.add(resolvedExpression);
   if (ts.isIdentifier(resolvedExpression)) {
     if (analysis.localBindings.has(resolvedExpression.text)) {
-      const localInitializer = analysis.localBindings.get(resolvedExpression.text);
-      return localInitializer
-        ? getSelectedObjectProperty(localInitializer, propertyName, analysis, visitedExpressions)
+      const localReference = analysis.localBindings.get(resolvedExpression.text);
+      return localReference?.expression
+        ? getSelectedObjectProperty(
+            localReference.expression,
+            propertyName,
+            localReference.analysis,
+            visitedExpressions,
+          )
         : null;
     }
     const scopedBinding = getScopedConfigBinding(resolvedExpression);
@@ -1144,13 +1170,13 @@ const getSelectedObjectProperty = (
       ts.isPropertyAssignment(property) &&
       getStaticPropertyName(property.name) === propertyName
     ) {
-      return property.initializer;
+      return { node: property.initializer, analysis };
     }
     if (ts.isMethodDeclaration(property) && getStaticPropertyName(property.name) === propertyName) {
-      return property;
+      return { node: property, analysis };
     }
     if (ts.isShorthandPropertyAssignment(property) && property.name.text === propertyName) {
-      return property.name;
+      return { node: property.name, analysis };
     }
     if (ts.isSpreadAssignment(property)) {
       const spreadProperty = getSelectedObjectProperty(
@@ -1182,9 +1208,13 @@ const configExpressionMayDefineProperty = (
   }
   if (ts.isIdentifier(resolvedExpression)) {
     if (analysis.localBindings.has(resolvedExpression.text)) {
-      const localInitializer = analysis.localBindings.get(resolvedExpression.text);
-      return localInitializer
-        ? configExpressionMayDefineProperty(localInitializer, propertyName, analysis)
+      const localReference = analysis.localBindings.get(resolvedExpression.text);
+      return localReference?.expression
+        ? configExpressionMayDefineProperty(
+            localReference.expression,
+            propertyName,
+            localReference.analysis,
+          )
         : true;
     }
     const scopedBinding = getScopedConfigBinding(resolvedExpression);
@@ -1395,6 +1425,7 @@ const analyzeConfigModuleExport = (
   importDepth: number,
   visitedModules: ReadonlySet<string>,
   argumentsList: readonly ts.Expression[] = [],
+  argumentAnalysis?: ConfigExpressionAnalysis,
 ): boolean => {
   if (!isFile(filePath) || importDepth > REACT_COMPILER_CONFIG_IMPORT_MAX_DEPTH) return false;
   const moduleVisitKey = `${filePath}:${exportName}:${allowCompilerTransform}`;
@@ -1410,6 +1441,7 @@ const analyzeConfigModuleExport = (
     importDepth,
     nextVisitedModules,
     argumentsList,
+    argumentAnalysis,
   );
 };
 
@@ -1421,6 +1453,7 @@ const analyzeConfigSourceFileExport = (
   importDepth: number,
   visitedModules: ReadonlySet<string>,
   argumentsList: readonly ts.Expression[] = [],
+  argumentAnalysis?: ConfigExpressionAnalysis,
 ): boolean => {
   const analysis: ConfigExpressionAnalysis = {
     filePath,
@@ -1428,16 +1461,59 @@ const analyzeConfigSourceFileExport = (
     importDepth,
     visitedModules,
     visitedNodes: new Set<string>(),
-    localBindings: new Map<string, ts.Expression | null>(),
+    localBindings: new Map<string, ConfigExpressionReference>(),
     activeFunctions: new Set<number>(),
   };
+  const resolvedArgumentAnalysis = argumentAnalysis ?? analysis;
   const exportedConfigNodes = getExportedConfigNodes(sourceFile, exportName);
   return (
-    exportedConfigNodes.some((node) =>
-      ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)
-        ? analyzeConfigFunction(node, analysis, allowCompilerTransform, argumentsList)
-        : analyzeConfigNode(node, analysis, allowCompilerTransform),
-    ) ||
+    exportedConfigNodes.some((node) => {
+      if (
+        ts.isArrowFunction(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isFunctionDeclaration(node)
+      ) {
+        return analyzeConfigFunction(
+          node,
+          analysis,
+          allowCompilerTransform,
+          argumentsList,
+          resolvedArgumentAnalysis,
+        );
+      }
+      if (argumentsList.length > 0 && ts.isIdentifier(node)) {
+        const topLevelBinding = getTopLevelBinding(sourceFile, node.text);
+        if (topLevelBinding && ts.isFunctionLike(topLevelBinding)) {
+          return analyzeConfigFunction(
+            topLevelBinding,
+            analysis,
+            allowCompilerTransform,
+            argumentsList,
+            resolvedArgumentAnalysis,
+          );
+        }
+        const importBinding = getImportBinding(sourceFile, node.text);
+        if (importBinding) {
+          const importedFilePath = resolveImportedConfigFile(
+            filePath,
+            importBinding.moduleSpecifier,
+          );
+          return Boolean(
+            importedFilePath &&
+            analyzeConfigModuleExport(
+              importedFilePath,
+              importBinding.exportName,
+              allowCompilerTransform,
+              importDepth + 1,
+              visitedModules,
+              argumentsList,
+              resolvedArgumentAnalysis,
+            ),
+          );
+        }
+      }
+      return analyzeConfigNode(node, analysis, allowCompilerTransform);
+    }) ||
     getReExportedConfigModules(sourceFile, exportName).some((binding) => {
       if (exportedConfigNodes.length > 0 && binding.isNamespace) return false;
       const importedFilePath = resolveImportedConfigFile(filePath, binding.moduleSpecifier);
@@ -1450,6 +1526,7 @@ const analyzeConfigSourceFileExport = (
           importDepth + 1,
           visitedModules,
           argumentsList,
+          resolvedArgumentAnalysis,
         ),
       );
     })
@@ -1461,6 +1538,7 @@ const analyzeConfigFunction = (
   analysis: ConfigExpressionAnalysis,
   allowCompilerTransform: boolean,
   argumentsList: readonly ts.Expression[] = [],
+  argumentAnalysis: ConfigExpressionAnalysis = analysis,
 ): boolean => {
   if (!functionNode.body) return false;
   if (analysis.activeFunctions.has(functionNode.pos)) return false;
@@ -1469,7 +1547,12 @@ const analyzeConfigFunction = (
   const functionAnalysis: ConfigExpressionAnalysis = {
     ...analysis,
     visitedNodes: new Set<string>(),
-    localBindings: getFunctionLocalBindings(functionNode, argumentsList),
+    localBindings: getFunctionLocalBindings(
+      functionNode,
+      argumentsList,
+      argumentAnalysis,
+      analysis,
+    ),
     activeFunctions,
   };
   if (!ts.isBlock(functionNode.body)) {
@@ -1504,6 +1587,7 @@ const analyzeImportedConfig = ({
     analysis.importDepth + 1,
     analysis.visitedModules,
     argumentsList,
+    analysis,
   );
 };
 
@@ -1540,12 +1624,12 @@ const analyzeConfigIdentifier = (
   if (assignedPlugins.wasFound) overriddenPropertyNames.add("plugins");
   if (assignedPresets.wasFound) overriddenPropertyNames.add("presets");
   if (analysis.localBindings.has(identifier.text)) {
-    const localInitializer = analysis.localBindings.get(identifier.text);
+    const localReference = analysis.localBindings.get(identifier.text);
     return Boolean(
-      localInitializer &&
+      localReference?.expression &&
       analyzeConfigNode(
-        localInitializer,
-        analysis,
+        localReference.expression,
+        localReference.analysis,
         allowCompilerTransform,
         isCompilerTransformCollection,
         overriddenPropertyNames,
@@ -1693,14 +1777,15 @@ const analyzeConfigCallTarget = (
 
   const selectedProperty = getSelectedObjectProperty(target.expression, propertyName, analysis);
   if (selectedProperty === null) return null;
-  return ts.isFunctionLike(selectedProperty)
+  return ts.isFunctionLike(selectedProperty.node)
     ? analyzeConfigFunction(
-        selectedProperty,
-        analysis,
+        selectedProperty.node,
+        selectedProperty.analysis,
         allowCompilerTransform,
         callExpression.arguments,
+        analysis,
       )
-    : analyzeConfigNode(selectedProperty, analysis, allowCompilerTransform);
+    : analyzeConfigNode(selectedProperty.node, selectedProperty.analysis, allowCompilerTransform);
 };
 
 const analyzeConfigNode = (
@@ -2002,7 +2087,12 @@ const analyzeConfigNode = (
           analysis,
         );
         return Boolean(
-          selectedProperty && analyzeConfigNode(selectedProperty, analysis, allowCompilerTransform),
+          selectedProperty &&
+          analyzeConfigNode(
+            selectedProperty.node,
+            selectedProperty.analysis,
+            allowCompilerTransform,
+          ),
         );
       }
       const importBinding = getImportBinding(analysis.sourceFile, node.expression.text);
@@ -2027,7 +2117,11 @@ const analyzeConfigNode = (
       }
       const selectedProperty = getSelectedObjectProperty(node.expression, node.name.text, analysis);
       if (selectedProperty) {
-        return analyzeConfigNode(selectedProperty, analysis, allowCompilerTransform);
+        return analyzeConfigNode(
+          selectedProperty.node,
+          selectedProperty.analysis,
+          allowCompilerTransform,
+        );
       }
       return false;
     }
@@ -2049,7 +2143,12 @@ const analyzeConfigNode = (
           analysis,
         );
         return Boolean(
-          selectedProperty && analyzeConfigNode(selectedProperty, analysis, allowCompilerTransform),
+          selectedProperty &&
+          analyzeConfigNode(
+            selectedProperty.node,
+            selectedProperty.analysis,
+            allowCompilerTransform,
+          ),
         );
       }
       const importBinding = getImportBinding(analysis.sourceFile, node.expression.text);
@@ -2075,7 +2174,11 @@ const analyzeConfigNode = (
         analysis,
       );
       if (selectedProperty) {
-        return analyzeConfigNode(selectedProperty, analysis, allowCompilerTransform);
+        return analyzeConfigNode(
+          selectedProperty.node,
+          selectedProperty.analysis,
+          allowCompilerTransform,
+        );
       }
       return false;
     }

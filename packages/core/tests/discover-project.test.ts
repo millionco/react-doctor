@@ -2551,9 +2551,11 @@ describe("discoverProject", () => {
     expect(projectInfo.hasReactCompilerLintPlugin).toBe(true);
   });
 
-  it("detects the Vite 6 React Compiler preset", () => {
+  it("detects the official Vite 8 React Compiler preset through defineConfig re-exports", () => {
     const projectDirectory = path.join(tempDirectory, "vite-react-compiler-preset");
-    fs.mkdirSync(projectDirectory, { recursive: true });
+    const viteDirectory = path.join(projectDirectory, "node_modules", "vite");
+    const viteChunksDirectory = path.join(viteDirectory, "chunks");
+    fs.mkdirSync(viteChunksDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(projectDirectory, "package.json"),
       JSON.stringify({
@@ -2562,17 +2564,87 @@ describe("discoverProject", () => {
         devDependencies: {
           "@rolldown/plugin-babel": "^0.2.0",
           "@vitejs/plugin-react": "^6.0.0",
+          vite: "^8.1.0",
         },
       }),
     );
     fs.writeFileSync(
+      path.join(viteDirectory, "package.json"),
+      JSON.stringify({
+        name: "vite",
+        type: "module",
+        exports: "./index.js",
+      }),
+    );
+    fs.writeFileSync(
+      path.join(viteDirectory, "index.js"),
+      "import { d as defineConfig } from './chunks/config.js';\nexport { defineConfig };\n",
+    );
+    fs.writeFileSync(
+      path.join(viteChunksDirectory, "config.js"),
+      "const defineConfig = (config) => config;\nexport { defineConfig as d };\n",
+    );
+    fs.writeFileSync(
       path.join(projectDirectory, "vite.config.ts"),
-      "import react, { reactCompilerPreset } from '@vitejs/plugin-react';\nimport babel from '@rolldown/plugin-babel';\nexport default { plugins: [react(), babel({ presets: [reactCompilerPreset()] })] };\n",
+      "import { defineConfig } from 'vite';\nimport react, { reactCompilerPreset } from '@vitejs/plugin-react';\nimport babel from '@rolldown/plugin-babel';\nexport default defineConfig({ plugins: [react(), babel({ presets: [reactCompilerPreset()] })] });\n",
     );
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasReactCompiler).toBe(true);
   });
+
+  it.each([
+    { wrapperName: "withNextConfig", argument: "nextConfig", expected: true },
+    { wrapperName: "selectNextConfig", argument: "{ config: nextConfig }", expected: true },
+    { wrapperName: "withoutNextConfig", argument: "nextConfig", expected: false },
+  ])(
+    "preserves caller imports through bundled Next.js wrappers: $wrapperName",
+    ({ wrapperName, argument, expected }) => {
+      const projectDirectory = path.join(tempDirectory, `nextjs-bundled-wrapper-${wrapperName}`);
+      const wrapperDirectory = path.join(
+        projectDirectory,
+        "node_modules",
+        "@fixture",
+        "next-wrapper",
+      );
+      const wrapperChunksDirectory = path.join(wrapperDirectory, "chunks");
+      fs.mkdirSync(wrapperChunksDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `nextjs-bundled-wrapper-${wrapperName}`,
+          dependencies: { next: "^16.0.0", react: "^19.0.0" },
+          devDependencies: { "@fixture/next-wrapper": "workspace:*" },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(wrapperDirectory, "package.json"),
+        JSON.stringify({
+          name: "@fixture/next-wrapper",
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+      fs.writeFileSync(
+        path.join(wrapperDirectory, "index.js"),
+        "import { a as withNextConfig, b as selectNextConfig, c as withoutNextConfig } from './chunks/config.js';\nexport { withNextConfig, selectNextConfig, withoutNextConfig };\n",
+      );
+      fs.writeFileSync(
+        path.join(wrapperChunksDirectory, "config.js"),
+        "const withNextConfig = (config) => config;\nconst selectNextConfig = (options) => options.config;\nconst withoutNextConfig = () => ({ turbopack: {} });\nexport { withNextConfig as a, selectNextConfig as b, withoutNextConfig as c };\n",
+      );
+      fs.writeFileSync(
+        path.join(projectDirectory, "compiler-config.ts"),
+        "export default { reactCompiler: { compilationMode: 'annotation' }, turbopack: { rules: {} } };\n",
+      );
+      fs.writeFileSync(
+        path.join(projectDirectory, "next.config.ts"),
+        `import { ${wrapperName} } from '@fixture/next-wrapper';\nimport nextConfig from './compiler-config';\nexport default ${wrapperName}(${argument});\n`,
+      );
+
+      expect(discoverProject(projectDirectory).hasReactCompiler).toBe(expected);
+    },
+  );
 
   it("detects the Rsbuild React Compiler transform", () => {
     const projectDirectory = path.join(tempDirectory, "rsbuild-react-compiler");

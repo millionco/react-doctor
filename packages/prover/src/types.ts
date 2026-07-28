@@ -15,6 +15,7 @@ export enum ReactObligationStatus {
 export enum ReactProofClaim {
   BoundaryCoverage = "boundary-coverage",
   CallableRefFreshness = "callable-ref-freshness",
+  ClassConstruction = "class-construction",
   ClassStateTransitions = "class-state-transitions",
   ComponentIdentity = "component-identity",
   ComponentInvocation = "component-invocation",
@@ -64,6 +65,7 @@ export enum ReactCompilerFactStatus {
 }
 
 export enum ReactExecutionPhase {
+  ClassConstruction = "class-construction",
   ClassMount = "class-mount",
   ClassUnmount = "class-unmount",
   ClassUpdate = "class-update",
@@ -428,6 +430,7 @@ export interface ReactSemanticClassLifecycle {
   id: string;
   ownerId: string;
   location: ReactProofLocation;
+  constructionId: string;
   mountCallbackId: string | null;
   unmountCallbackId: string | null;
   updateCallbackId: string | null;
@@ -435,6 +438,62 @@ export interface ReactSemanticClassLifecycle {
   schedulerIds: ReadonlyArray<string>;
   stateWriteIds: ReadonlyArray<string>;
   transitionIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactClassConstructionIssueKind {
+  InvalidStateValue = "invalid-state-value",
+  InvalidSuperCall = "invalid-super-call",
+  MissingStateInitialization = "missing-state-initialization",
+  MultipleStateInitializations = "multiple-state-initializations",
+  SetStateCall = "set-state-call",
+  SideEffect = "side-effect",
+  UnsupportedConstructorStatement = "unsupported-constructor-statement",
+  UnsupportedInitializer = "unsupported-initializer",
+}
+
+export enum ReactClassConstructionIssueStatus {
+  Unknown = "unknown",
+  Violated = "violated",
+}
+
+export enum ReactClassConstructionStatus {
+  Invalid = "invalid",
+  Unknown = "unknown",
+  Valid = "valid",
+}
+
+export enum ReactClassStateInitializationKind {
+  ConstructorAssignment = "constructor-assignment",
+  Multiple = "multiple",
+  None = "none",
+  PublicField = "public-field",
+}
+
+export enum ReactClassStateInitializationRequirement {
+  Conditional = "conditional",
+  None = "none",
+  Required = "required",
+}
+
+export interface ReactSemanticClassConstructionIssue {
+  kind: ReactClassConstructionIssueKind;
+  location: ReactProofLocation;
+  status: ReactClassConstructionIssueStatus;
+}
+
+export interface ReactSemanticClassConstruction {
+  id: string;
+  ownerId: string;
+  phase: ReactExecutionPhase.ClassConstruction;
+  location: ReactProofLocation;
+  constructorLocation: ReactProofLocation | null;
+  initializationKind: ReactClassStateInitializationKind;
+  initializationLocation: ReactProofLocation | null;
+  stateRequirement: ReactClassStateInitializationRequirement;
+  issues: ReadonlyArray<ReactSemanticClassConstructionIssue>;
+  status: ReactClassConstructionStatus;
   sourceComplete: boolean;
   complete: boolean;
 }
@@ -559,6 +618,7 @@ export interface ReactSemanticGraph {
   callableRefs: ReadonlyArray<ReactSemanticCallableRef>;
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
   resources: ReadonlyArray<ReactSemanticEffectResource>;
+  classConstructions: ReadonlyArray<ReactSemanticClassConstruction>;
   classLifecycles: ReadonlyArray<ReactSemanticClassLifecycle>;
   classStateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
   classStateTransitions: ReadonlyArray<ReactSemanticClassStateTransition>;

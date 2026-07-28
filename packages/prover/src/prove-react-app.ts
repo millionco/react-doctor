@@ -43,6 +43,7 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
       callableRefs: [],
       schedulers: [],
       resources: [],
+      classConstructions: [],
       classLifecycles: [],
       classStateWrites: [],
       classStateTransitions: [],

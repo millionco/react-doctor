@@ -8,6 +8,10 @@ import {
   ReactAsyncOwnershipStatus,
   ReactCallableRefFreshness,
   ReactClassComponentBase,
+  ReactClassConstructionIssueKind,
+  ReactClassConstructionStatus,
+  ReactClassStateInitializationKind,
+  ReactClassStateInitializationRequirement,
   ReactClassStateUpdaterStatus,
   ReactClassStateWriteKind,
   ReactClassStateWriteStatus,
@@ -34,6 +38,11 @@ interface RefutedFixtureExpectation {
   evidencePattern: RegExp;
 }
 
+interface ClassConstructionIssueExpectation {
+  fixtureName: string;
+  issueKind: ReactClassConstructionIssueKind;
+}
+
 const fixturesDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 const proveFixture = (fixtureName: string) =>
@@ -42,6 +51,46 @@ const proveFixture = (fixtureName: string) =>
   });
 
 const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
+  {
+    fixtureName: "refuted-class-invalid-state",
+    claim: ReactProofClaim.ClassConstruction,
+    evidencePattern: /not an object/,
+  },
+  {
+    fixtureName: "refuted-class-constructor-side-effect",
+    claim: ReactProofClaim.ClassConstruction,
+    evidencePattern: /observable or non-idempotent/,
+  },
+  {
+    fixtureName: "refuted-class-constructor-subscription",
+    claim: ReactProofClaim.ClassConstruction,
+    evidencePattern: /observable or non-idempotent/,
+  },
+  {
+    fixtureName: "refuted-class-field-side-effect",
+    claim: ReactProofClaim.ClassConstruction,
+    evidencePattern: /observable or non-idempotent/,
+  },
+  {
+    fixtureName: "refuted-class-constructor-order",
+    claim: ReactProofClaim.ClassConstruction,
+    evidencePattern: /super with its props before/,
+  },
+  {
+    fixtureName: "refuted-class-constructor-set-state",
+    claim: ReactProofClaim.ClassConstruction,
+    evidencePattern: /calls setState/,
+  },
+  {
+    fixtureName: "refuted-class-missing-state",
+    claim: ReactProofClaim.ClassConstruction,
+    evidencePattern: /without a proved initialization/,
+  },
+  {
+    fixtureName: "refuted-class-missing-updater-state",
+    claim: ReactProofClaim.ClassConstruction,
+    evidencePattern: /without a proved initialization/,
+  },
   {
     fixtureName: "class-direct-state-mutation",
     claim: ReactProofClaim.ClassStateTransitions,
@@ -449,6 +498,10 @@ describe("proveReactApp", () => {
     "proved-class-pure-state-updater",
     "proved-class-primitive-state-read",
     "proved-class-state-computed-key-read",
+    "proved-class-state-field",
+    "proved-class-field-from-props",
+    "proved-class-constructor-state",
+    "proved-class-constructor-binding",
     "proved-class-compound-prop-transition",
     "proved-class-number-literal-prop-transition",
   ])("proves the complete %s application graph", (fixtureName) => {
@@ -509,8 +562,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(15);
-    expect(report.graph.schemaVersion).toBe(21);
+    expect(report.schemaVersion).toBe(16);
+    expect(report.graph.schemaVersion).toBe(22);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -2779,20 +2832,176 @@ describe("proveReactApp", () => {
     expect(renderProof?.evidence[0]?.description).toMatch(/not pure during render/);
   });
 
-  it("fails closed for class fields while certifying an empty update lifecycle", () => {
-    const fieldReport = proveFixture("incomplete-class-field");
+  it("certifies public-field state construction and an empty update lifecycle", () => {
+    const fieldReport = proveFixture("proved-class-state-field");
     const lifecycleReport = proveFixture("incomplete-class-lifecycle");
     const transitionProof = lifecycleReport.units[0]?.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.ClassStateTransitions,
     );
 
-    expect(fieldReport.status).toBe(ReactAppProofStatus.Incomplete);
-    expect(fieldReport.graph.units[0]?.sourceComplete).toBe(false);
+    expect(fieldReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(fieldReport.graph.units[0]?.sourceComplete).toBe(true);
+    expect(fieldReport.graph.classConstructions[0]?.initializationKind).toBe(
+      ReactClassStateInitializationKind.PublicField,
+    );
+    expect(fieldReport.graph.classConstructions[0]?.stateRequirement).toBe(
+      ReactClassStateInitializationRequirement.Required,
+    );
+    expect(fieldReport.graph.classConstructions[0]?.status).toBe(
+      ReactClassConstructionStatus.Valid,
+    );
     expect(lifecycleReport.status).toBe(ReactAppProofStatus.Proved);
     expect(lifecycleReport.graph.units[0]?.sourceComplete).toBe(true);
     expect(lifecycleReport.graph.classLifecycles[0]?.updateCallbackId).not.toBeNull();
     expect(lifecycleReport.graph.classStateTransitions).toEqual([]);
     expect(transitionProof?.status).toBe(ReactObligationStatus.Proved);
+  });
+
+  it.each(["proved-class-constructor-state", "proved-class-constructor-binding"])(
+    "certifies canonical constructor state and method binding in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const construction = report.graph.classConstructions[0];
+      const constructionProof = report.units[0]?.obligations.find(
+        (obligation) => obligation.claim === ReactProofClaim.ClassConstruction,
+      );
+
+      expect(report.status).toBe(ReactAppProofStatus.Proved);
+      expect(construction?.phase).toBe(ReactExecutionPhase.ClassConstruction);
+      expect(construction?.constructorLocation).not.toBeNull();
+      expect(construction?.initializationKind).toBe(
+        ReactClassStateInitializationKind.ConstructorAssignment,
+      );
+      expect(construction?.stateRequirement).toBe(
+        ReactClassStateInitializationRequirement.Required,
+      );
+      expect(construction?.issues).toEqual([]);
+      expect(construction?.status).toBe(ReactClassConstructionStatus.Valid);
+      expect(construction?.sourceComplete).toBe(true);
+      expect(construction?.complete).toBe(true);
+      expect(report.graph.classLifecycles[0]?.constructionId).toBe(construction?.id);
+      expect(constructionProof?.status).toBe(ReactObligationStatus.Proved);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("records concrete invalid state, constructor side-effect, setState, and missing-state issues", () => {
+    const expectations: ReadonlyArray<ClassConstructionIssueExpectation> = [
+      {
+        fixtureName: "refuted-class-invalid-state",
+        issueKind: ReactClassConstructionIssueKind.InvalidStateValue,
+      },
+      {
+        fixtureName: "refuted-class-constructor-side-effect",
+        issueKind: ReactClassConstructionIssueKind.SideEffect,
+      },
+      {
+        fixtureName: "refuted-class-constructor-subscription",
+        issueKind: ReactClassConstructionIssueKind.SideEffect,
+      },
+      {
+        fixtureName: "refuted-class-field-side-effect",
+        issueKind: ReactClassConstructionIssueKind.SideEffect,
+      },
+      {
+        fixtureName: "refuted-class-constructor-order",
+        issueKind: ReactClassConstructionIssueKind.InvalidSuperCall,
+      },
+      {
+        fixtureName: "refuted-class-constructor-set-state",
+        issueKind: ReactClassConstructionIssueKind.SetStateCall,
+      },
+      {
+        fixtureName: "refuted-class-missing-state",
+        issueKind: ReactClassConstructionIssueKind.MissingStateInitialization,
+      },
+      {
+        fixtureName: "refuted-class-missing-updater-state",
+        issueKind: ReactClassConstructionIssueKind.MissingStateInitialization,
+      },
+    ];
+
+    for (const expectation of expectations) {
+      const report = proveFixture(expectation.fixtureName);
+      const construction = report.graph.classConstructions[0];
+
+      expect(report.status).toBe(ReactAppProofStatus.Refuted);
+      expect(construction?.issues.some((issue) => issue.kind === expectation.issueKind)).toBe(true);
+      expect(construction?.status).toBe(ReactClassConstructionStatus.Invalid);
+      expect(construction?.sourceComplete).toBe(true);
+      expect(construction?.complete).toBe(false);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    }
+  });
+
+  it.each([
+    [
+      "incomplete-class-opaque-state-initializer",
+      ReactClassConstructionIssueKind.UnsupportedInitializer,
+    ],
+    [
+      "incomplete-class-multiple-state-initializers",
+      ReactClassConstructionIssueKind.MultipleStateInitializations,
+    ],
+    [
+      "incomplete-class-conditional-state-initializer",
+      ReactClassConstructionIssueKind.UnsupportedConstructorStatement,
+    ],
+    [
+      "incomplete-class-custom-subscription-lookalike",
+      ReactClassConstructionIssueKind.UnsupportedInitializer,
+    ],
+  ])("fails closed for unresolved class construction in %s", (fixtureName, issueKind) => {
+    const report = proveFixture(fixtureName);
+    const construction = report.graph.classConstructions[0];
+    const constructionProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ClassConstruction,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(construction?.issues.some((issue) => issue.kind === issueKind)).toBe(true);
+    expect(construction?.status).toBe(ReactClassConstructionStatus.Unknown);
+    expect(construction?.sourceComplete).toBe(false);
+    expect(construction?.complete).toBe(false);
+    expect(constructionProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("leaves unsupported class field syntax incomplete after proving its initializer", () => {
+    const report = proveFixture("incomplete-class-accessor-field");
+    const construction = report.graph.classConstructions[0];
+    const constructionProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ClassConstruction,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(construction?.issues.map((issue) => issue.kind)).toEqual([
+      ReactClassConstructionIssueKind.UnsupportedInitializer,
+    ]);
+    expect(construction?.status).toBe(ReactClassConstructionStatus.Unknown);
+    expect(constructionProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged class construction status", () => {
+    const report = proveFixture("proved-class-state-field");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        classConstructions: report.graph.classConstructions.map((construction) => ({
+          ...construction,
+          status: ReactClassConstructionStatus.Invalid,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("status does not match its issues"),
+      ),
+    ).toBe(true);
   });
 
   it("does not mistake a shadowed Component base for React inheritance", () => {

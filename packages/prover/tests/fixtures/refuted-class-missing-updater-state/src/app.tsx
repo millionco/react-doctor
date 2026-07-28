@@ -1,0 +1,15 @@
+import { Component } from "react";
+
+interface CounterState {
+  count: number;
+}
+
+export class Counter extends Component<Record<string, never>, CounterState> {
+  componentDidMount() {
+    this.setState((previousState) => ({ count: previousState.count + 1 }));
+  }
+
+  render() {
+    return null;
+  }
+}

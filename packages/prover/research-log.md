@@ -745,7 +745,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 232 TypeScript fixture projects, 423 static tests, and 33 Chromium runtime
+Current checkpoint: 257 TypeScript fixture projects, 444 static tests, and 34 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -1027,3 +1027,102 @@ the package has a published contract.
 Kill: If `classStateWrites` produces no verdict distinct from generic lifecycle incompleteness in
 the real-world evaluation corpus across two proof-schema releases, fold the facts back into the
 transition representation while retaining the direct-mutation refutations.
+
+## Class construction certificates
+
+### React semantics
+
+- The official [`Component` reference](https://react.dev/reference/react/Component) defines class
+  state as an object, identifies direct constructor assignment and a public `state` field as the
+  two initialization forms, forbids `setState` in the constructor, and requires `super(props)`
+  before every other statement.
+- The same reference forbids constructor side effects and subscriptions. Root
+  [`StrictMode`](https://react.dev/reference/react/StrictMode) calls the constructor twice in
+  development and discards one instance, so construction must be safe when evaluated more than
+  once. Server rendering also executes construction before render.
+- A missing initializer is a concrete failure when `render` or a React lifecycle reads
+  `this.state`: React's base instance begins with no application state. A read confined to an
+  unmodeled custom method is not automatically reachable, so that case remains incomplete rather
+  than becoming a speculative refutation.
+
+### Proof boundary
+
+Every class component now owns exactly one `class-construction` graph fact in the
+`class-construction` execution phase. The fact records the constructor and initializer locations,
+public-field versus constructor-assignment provenance, whether state is required by guaranteed or
+conditional execution, typed issue evidence, source completeness, and exact certificate
+completeness. Its ID is linked reciprocally from the class lifecycle.
+
+The first complete subset includes:
+
+- fresh object-literal state with nested literal, array, object, function, conditional, unary,
+  binary, template, constructor-parameter, and `this.props` values;
+- every statically named, non-static instance field initializer under the same expression-purity
+  model;
+- pure immutable constructor locals used by the state object;
+- a first-statement `super()` for a zero-parameter constructor or symbol-identical
+  `super(properties)` for an explicit properties parameter;
+- canonical `this.method = this.method.bind(this)` when `bind` resolves to the platform
+  declaration;
+- classes that do not need application state.
+
+Known time, randomness, logging, browser storage, network, timer, and scheduling operations are
+construction violations. Scalar or null state, constructor `setState`, a missing required
+initializer, and a non-leading or mismatched superclass call are also refutations. Opaque calls,
+external identifier values, object spreads, dynamic property semantics, nontrivial constructor
+control flow, duplicate state sources, and unresolved statements fail closed. This is intentionally
+an abstract expression proof rather than trusting the TypeScript state generic: TypeScript permits
+`Component<Properties, number>`, but React's runtime contract still requires object state.
+
+The independent checker re-derives construction status from issue statuses, rejects duplicate or
+invalid issue kinds, enforces initialization-kind/location and state-demand coherence, checks the
+construction phase and class owner, verifies one construction per class and reciprocal lifecycle
+ownership, and derives `sourceComplete` and `complete` exactly. Report schema 16 and graph schema
+22 reject stale certificates.
+
+The Chromium oracle mounts constructor-assigned and public-field state under root Strict Mode.
+React 19.2.5 evaluates both initialization paths twice and commits the second instance, confirming
+that a construction-time observable operation is duplicated even though one instance is discarded.
+
+Added corpus:
+
+- proved: `proved-class-state-field`, `proved-class-field-from-props`,
+  `proved-class-constructor-state`, and `proved-class-constructor-binding`
+- refuted: `refuted-class-invalid-state`, `refuted-class-missing-state`,
+  `refuted-class-missing-updater-state`,
+  `refuted-class-constructor-side-effect`, `refuted-class-field-side-effect`,
+  `refuted-class-constructor-subscription`, `refuted-class-constructor-set-state`, and
+  `refuted-class-constructor-order`
+- incomplete: `incomplete-class-opaque-state-initializer`,
+  `incomplete-class-multiple-state-initializers`, and
+  `incomplete-class-conditional-state-initializer`, plus
+  `incomplete-class-custom-subscription-lookalike` as the platform-symbol control and
+  `incomplete-class-accessor-field` as the unsupported-field-syntax boundary
+- runtime: `class-construction-oracle.spec.ts`
+
+### Product brief: internal class construction facts
+
+Job: Prover consumers need to know that a class reaches its first render with valid state and that
+React may safely repeat construction; previously every real constructor or object-valued state
+field was generically incomplete, while some uninitialized state reads were incorrectly proved.
+
+Change: Add one private construction claim and one versioned construction fact per class, then
+link it into the existing lifecycle certificate.
+
+Reuse: Truffler searches for constructor state initialization, field purity, superclass ordering,
+and class object literals found no construction-proof abstraction. The implementation reuses the
+class lifecycle owner, source locations, TypeScript symbols, platform-declaration identity,
+existing render/state analyses, and independent report checker. The shared `this.state` path
+predicate was moved into one utility and reused by post-construction state ownership.
+
+Metric: The private package has no CLI telemetry path. Its deterministic acceptance metric is
+complete separation of the proved, refuted, and incomplete construction fixtures, plus a Chromium
+oracle that observes exactly two constructor and field-initializer evaluations in root Strict Mode.
+
+Compat: No React Doctor CLI, score, config, Action, or JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 16 and its semantic graph to schema 22. No
+Changeset is warranted before publication.
+
+Kill: If the construction fact cannot distinguish a concrete invalid initialization from an opaque
+factory without false `proved` results across two proof-schema releases, remove the dedicated claim
+and keep class applications incomplete until a stronger constructor CFG is available.

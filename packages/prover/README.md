@@ -52,6 +52,11 @@ The report includes:
   intersection observers owned by Effects or class mount/unmount pairs; listener disposal follows
   the DOM's type/callback/capture identity rule or an exact `AbortController`, observers record
   every `observe()` activation, and every cleanup alternative must reach exact-object disposal;
+- class construction facts that distinguish public `state` fields, direct constructor assignment,
+  duplicate initialization, and absent state; the certificate proves every supported instance-field
+  initializer, object-valued state, first-statement `super(props)`, pure constructor locals,
+  canonical method binding, and Strict-Mode-safe expressions, while accessor fields, conditional
+  control flow, and opaque factories fail closed;
 - class lifecycle facts that certify symbol-resolved `Component` and `PureComponent` inheritance,
   pure render callbacks, direct `componentDidMount`/`componentDidUpdate`/
   `componentWillUnmount` ownership transitions, exact stable method identities, immutable
@@ -83,7 +88,10 @@ state-write and state-transition links, and a completeness flag derived exactly 
 fact. State ownership certificates independently check lifecycle phase, forbidden/unknown
 classification, and exact completeness. State transition certificates independently check updater
 callback phase, guard evidence, convergence classification, and exact completeness. Broader
-source-derived block invariants remain future work. Resource certificates
+source-derived block invariants remain future work. Construction certificates independently check
+one fact per class owner, the construction execution phase, initialization kind/location,
+state-demand classification, issue/status coherence, reciprocal lifecycle ownership, and exact
+source/completeness flags. Resource certificates
 additionally require a real Effect setup or class mount, platform-declaration identity, deferred
 or Effect Event callback facts, nonempty activation and disposal evidence, and a completeness flag
 derived exactly from those facts.

@@ -9,6 +9,8 @@ interface CounterState {
 }
 
 export class Counter extends Component<CounterProperties, CounterState> {
+  state = { count: 0 };
+
   componentDidMount() {
     const stateAlias = this.props.enabled ? this.state : { count: 0 };
     stateAlias.count = 1;

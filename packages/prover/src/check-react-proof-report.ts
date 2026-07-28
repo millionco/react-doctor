@@ -4,6 +4,11 @@ import {
   ReactAsyncOwnershipStatus,
   ReactCallableRefFreshness,
   ReactClassComponentBase,
+  ReactClassConstructionIssueKind,
+  ReactClassConstructionIssueStatus,
+  ReactClassConstructionStatus,
+  ReactClassStateInitializationKind,
+  ReactClassStateInitializationRequirement,
   ReactClassStateUpdaterStatus,
   ReactClassStateWriteKind,
   ReactClassStateWriteStatus,
@@ -115,6 +120,27 @@ const expectedClassStateTransitionStatus = (
   return !lifecycle?.sourceComplete ||
     stateWrites.some((stateWrite) => !stateWrite.complete) ||
     transitions.some((transition) => !transition.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedClassConstructionStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  if (unit.kind !== ReactUnitKind.ClassComponent) {
+    return ReactObligationStatus.Proved;
+  }
+  const construction = report.graph.classConstructions.find(
+    (candidate) => candidate.ownerId === unit.id,
+  );
+  if (construction?.status === ReactClassConstructionStatus.Invalid) {
+    return ReactObligationStatus.Violated;
+  }
+  return !construction || construction.status === ReactClassConstructionStatus.Unknown
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -232,6 +258,17 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `Class state transition facts require ${expectedClassStateStatus}, not ${classStateTransitions.status}`,
+      );
+    }
+    const classConstruction = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ClassConstruction,
+    );
+    const expectedConstructionStatus = expectedClassConstructionStatus(semanticUnit, report);
+    if (classConstruction && classConstruction.status !== expectedConstructionStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Class construction facts require ${expectedConstructionStatus}, not ${classConstruction.status}`,
       );
     }
     const scheduledCallbackLifetime = unitProof.obligations.find(
@@ -728,6 +765,150 @@ const checkGraphReferences = (
   const stateWritesById = new Map(
     report.graph.classStateWrites.map((stateWrite) => [stateWrite.id, stateWrite]),
   );
+  const constructionsById = new Map(
+    report.graph.classConstructions.map((construction) => [construction.id, construction]),
+  );
+  const constructionOwnerIds = new Set<string>();
+  for (const construction of report.graph.classConstructions) {
+    const owner = unitsById.get(construction.ownerId);
+    if (owner?.kind !== ReactUnitKind.ClassComponent) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction has an unknown or non-class owner",
+      );
+    }
+    if (constructionOwnerIds.has(construction.ownerId)) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class component has multiple construction certificates",
+      );
+    }
+    constructionOwnerIds.add(construction.ownerId);
+    if (construction.phase !== ReactExecutionPhase.ClassConstruction) {
+      addFailure(failures, construction.id, "A class construction has an invalid phase");
+    }
+    if (
+      !Object.values(ReactClassStateInitializationKind).includes(construction.initializationKind)
+    ) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction has an invalid initialization kind",
+      );
+    }
+    if (
+      !Object.values(ReactClassStateInitializationRequirement).includes(
+        construction.stateRequirement,
+      )
+    ) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction has an invalid state requirement",
+      );
+    }
+    const hasInitialization =
+      construction.initializationKind !== ReactClassStateInitializationKind.None;
+    if (hasInitialization !== Boolean(construction.initializationLocation)) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction initialization kind and location disagree",
+      );
+    }
+    const hasMissingInitializationIssue = construction.issues.some(
+      (issue) => issue.kind === ReactClassConstructionIssueKind.MissingStateInitialization,
+    );
+    if (
+      (construction.initializationKind === ReactClassStateInitializationKind.None &&
+        construction.stateRequirement !== ReactClassStateInitializationRequirement.None) !==
+      hasMissingInitializationIssue
+    ) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction has inconsistent missing-state evidence",
+      );
+    }
+    const hasMultipleInitializationIssue = construction.issues.some(
+      (issue) => issue.kind === ReactClassConstructionIssueKind.MultipleStateInitializations,
+    );
+    if (
+      (construction.initializationKind === ReactClassStateInitializationKind.Multiple) !==
+      hasMultipleInitializationIssue
+    ) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction has inconsistent multiple-initialization evidence",
+      );
+    }
+    if (
+      construction.initializationKind === ReactClassStateInitializationKind.ConstructorAssignment &&
+      !construction.constructorLocation
+    ) {
+      addFailure(
+        failures,
+        construction.id,
+        "A constructor state assignment has no constructor location",
+      );
+    }
+    const issueIdentities = construction.issues.map(
+      (issue) =>
+        `${issue.kind}:${issue.status}:${issue.location.filePath}:${issue.location.line}:${issue.location.column}`,
+    );
+    if (new Set(issueIdentities).size !== issueIdentities.length) {
+      addFailure(failures, construction.id, "A class construction repeats an issue");
+    }
+    for (const issue of construction.issues) {
+      if (!Object.values(ReactClassConstructionIssueKind).includes(issue.kind)) {
+        addFailure(failures, construction.id, "A class construction has an invalid issue kind");
+      }
+      if (!Object.values(ReactClassConstructionIssueStatus).includes(issue.status)) {
+        addFailure(failures, construction.id, "A class construction has an invalid issue status");
+      }
+    }
+    let expectedStatus = ReactClassConstructionStatus.Valid;
+    if (
+      construction.issues.some(
+        (issue) => issue.status === ReactClassConstructionIssueStatus.Violated,
+      )
+    ) {
+      expectedStatus = ReactClassConstructionStatus.Invalid;
+    } else if (
+      construction.issues.some(
+        (issue) => issue.status === ReactClassConstructionIssueStatus.Unknown,
+      )
+    ) {
+      expectedStatus = ReactClassConstructionStatus.Unknown;
+    }
+    if (construction.status !== expectedStatus) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction status does not match its issues",
+      );
+    }
+    if (
+      construction.sourceComplete !==
+      (construction.status !== ReactClassConstructionStatus.Unknown)
+    ) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction source flag does not match its status",
+      );
+    }
+    if (construction.complete !== (construction.status === ReactClassConstructionStatus.Valid)) {
+      addFailure(
+        failures,
+        construction.id,
+        "A class construction completeness flag does not match its status",
+      );
+    }
+  }
   for (const stateWrite of report.graph.classStateWrites) {
     if (!Object.values(ReactClassStateWriteKind).includes(stateWrite.kind)) {
       addFailure(failures, stateWrite.id, "A class state write has an invalid write kind");
@@ -897,6 +1078,17 @@ const checkGraphReferences = (
       addFailure(failures, lifecycle.id, "A class component has multiple lifecycle certificates");
     }
     lifecycleOwnerIds.add(lifecycle.ownerId);
+    const construction = constructionsById.get(lifecycle.constructionId);
+    if (!construction || construction.ownerId !== lifecycle.ownerId) {
+      addFailure(failures, lifecycle.id, "A class lifecycle has an invalid construction link");
+    }
+    if (lifecycle.sourceComplete && !construction?.sourceComplete) {
+      addFailure(
+        failures,
+        lifecycle.id,
+        "A class lifecycle is source-complete without complete construction source",
+      );
+    }
     const mountCallback = lifecycle.mountCallbackId
       ? callbacksById.get(lifecycle.mountCallbackId)
       : null;
@@ -980,6 +1172,7 @@ const checkGraphReferences = (
     }
     const expectedComplete =
       lifecycle.sourceComplete &&
+      Boolean(construction?.complete) &&
       lifecycleResources.length === lifecycle.resourceIds.length &&
       lifecycleResources.every((resource) => resource.complete) &&
       lifecycleSchedulers.length === lifecycle.schedulerIds.length &&
@@ -999,6 +1192,9 @@ const checkGraphReferences = (
   for (const unit of report.graph.units) {
     if (unit.kind === ReactUnitKind.ClassComponent && !lifecycleOwnerIds.has(unit.id)) {
       addFailure(failures, unit.id, "A class component has no lifecycle certificate");
+    }
+    if (unit.kind === ReactUnitKind.ClassComponent && !constructionOwnerIds.has(unit.id)) {
+      addFailure(failures, unit.id, "A class component has no construction certificate");
     }
   }
   for (const scheduler of report.graph.schedulers) {
@@ -1043,6 +1239,17 @@ const checkGraphReferences = (
       )
     ) {
       addFailure(failures, stateWrite.id, "A class state write has no lifecycle certificate");
+    }
+  }
+  for (const construction of report.graph.classConstructions) {
+    if (
+      !report.graph.classLifecycles.some(
+        (lifecycle) =>
+          lifecycle.ownerId === construction.ownerId &&
+          lifecycle.constructionId === construction.id,
+      )
+    ) {
+      addFailure(failures, construction.id, "A class construction has no lifecycle certificate");
     }
   }
   for (const reachableFunction of report.graph.reachableFunctions) {
@@ -1368,6 +1575,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Class lifecycles",
     report.graph.classLifecycles.map((lifecycle) => lifecycle.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Class constructions",
+    report.graph.classConstructions.map((construction) => construction.id),
   );
   checkUniqueIds(
     failures,

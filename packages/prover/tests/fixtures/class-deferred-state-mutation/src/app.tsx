@@ -5,6 +5,8 @@ interface ListenerState {
 }
 
 export class ResizeListener extends Component<Record<string, never>, ListenerState> {
+  state = { resizeCount: 0 };
+
   handleResize() {
     this.state.resizeCount += 1;
   }

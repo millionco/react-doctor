@@ -5,6 +5,8 @@ interface QueueState {
 }
 
 export class Queue extends Component<Record<string, never>, QueueState> {
+  state: QueueState = { items: [] };
+
   componentDidUpdate() {
     this.state.items.push("queued");
   }

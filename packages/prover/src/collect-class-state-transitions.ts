@@ -16,6 +16,7 @@ import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
 import { getStaticAccessMemberName } from "./utils/get-static-access-member-name.js";
 import { isEntryDominatingNode } from "./utils/is-entry-dominating-node.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
+import { isReactSetStateCall } from "./utils/is-react-set-state-call.js";
 
 export interface ClassStateTransitionDescriptor {
   callExpression: ts.CallExpression;
@@ -32,41 +33,6 @@ interface ClassStateSourcePath {
   members: ReadonlyArray<string>;
   source: "current-props" | "previous-props";
 }
-
-const getEnclosingClass = (node: ts.Node): ts.ClassLikeDeclaration | null => {
-  let currentNode: ts.Node | undefined = node.parent;
-  while (currentNode) {
-    if (ts.isClassLike(currentNode)) return currentNode;
-    currentNode = currentNode.parent;
-  }
-  return null;
-};
-
-const isReactSetStateCall = (
-  callExpression: ts.CallExpression,
-  context: ReactAnalysisContext,
-): boolean => {
-  const callTarget = unwrapTypescriptExpression(callExpression.expression);
-  if (
-    !ts.isPropertyAccessExpression(callTarget) ||
-    callTarget.expression.kind !== ts.SyntaxKind.ThisKeyword ||
-    callTarget.name.text !== "setState"
-  ) {
-    return false;
-  }
-  const symbol = getResolvedSymbol(callTarget.name, context.typeChecker);
-  return Boolean(
-    symbol?.declarations?.some((declaration) => {
-      const enclosingClass = getEnclosingClass(declaration);
-      return Boolean(
-        declaration.getSourceFile().isDeclarationFile &&
-        enclosingClass?.name &&
-        ts.isIdentifier(enclosingClass.name) &&
-        enclosingClass.name.text === ReactClassComponentBase.Component,
-      );
-    }),
-  );
-};
 
 const getStateSourcePath = (
   expression: ts.Expression,

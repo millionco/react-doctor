@@ -5,6 +5,8 @@ interface CounterState {
 }
 
 export class Counter extends Component<Record<string, never>, CounterState> {
+  state = { count: 0 };
+
   componentDidMount() {
     this.state.count = 1;
   }

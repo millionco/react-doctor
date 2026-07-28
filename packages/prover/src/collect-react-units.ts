@@ -49,20 +49,18 @@ const hasSupportedClassSyntax = (
 ): boolean =>
   renderMethod.parameters.length === 0 &&
   classNode.members.every((member) => {
+    if (ts.isConstructorDeclaration(member)) {
+      return classNode.members.find(ts.isConstructorDeclaration) === member;
+    }
     if (ts.isPropertyDeclaration(member)) {
       const propertyName = getStaticPropertyName(member.name);
-      const initializer = member.initializer;
       return Boolean(
         propertyName &&
         !member.modifiers?.some(
           (modifier) =>
             modifier.kind === ts.SyntaxKind.StaticKeyword ||
             modifier.kind === ts.SyntaxKind.AccessorKeyword,
-        ) &&
-        (!initializer ||
-          ts.isNumericLiteral(initializer) ||
-          initializer.kind === ts.SyntaxKind.NullKeyword ||
-          (ts.isIdentifier(initializer) && initializer.text === "undefined")),
+        ),
       );
     }
     if (!ts.isMethodDeclaration(member)) return false;

@@ -9,8 +9,8 @@ import {
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import type { ReactAnalysisContext } from "./types.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
-import { getStaticAccessMemberName } from "./utils/get-static-access-member-name.js";
 import { getStaticPropertyName } from "./utils/get-static-property-name.js";
+import { isThisStateExpression } from "./utils/is-this-state-expression.js";
 import { isPlatformDeclarationSymbol } from "./utils/is-platform-declaration-symbol.js";
 import { isAssignmentOperator } from "./utils/is-assignment-operator.js";
 
@@ -37,21 +37,6 @@ export interface ClassStateWriteRootDescriptor {
     | ReactExecutionPhase.Deferred
     | ReactExecutionPhase.StateTransition;
 }
-
-const isThisStateExpression = (expression: ts.Expression): boolean => {
-  let currentExpression = unwrapTypescriptExpression(expression);
-  const members: string[] = [];
-  while (
-    ts.isPropertyAccessExpression(currentExpression) ||
-    ts.isElementAccessExpression(currentExpression)
-  ) {
-    const memberName = getStaticAccessMemberName(currentExpression);
-    if (!memberName) return false;
-    members.unshift(memberName);
-    currentExpression = unwrapTypescriptExpression(currentExpression.expression);
-  }
-  return currentExpression.kind === ts.SyntaxKind.ThisKeyword && members[0] === "state";
-};
 
 const isThisStateAssignmentTarget = (node: ts.Node): boolean => {
   if (ts.isExpression(node) && isThisStateExpression(node)) return true;

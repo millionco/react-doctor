@@ -25,6 +25,7 @@ import {
   SECONDARY_STORE_INITIAL_VERSION,
   SLOW_QUERY_DELAY_MS,
   STORE_VERSION_INCREMENT,
+  STRICT_MODE_CONSTRUCTION_RUNS,
   UNOBSERVED_CALLBACK_REVISION,
 } from "./constants.js";
 
@@ -37,6 +38,8 @@ declare global {
     classStateUpdates: number;
     classStateWrites: number;
     classDirectStateValue: number;
+    classConstructorRuns: number;
+    classFieldInitializerRuns: number;
     classUnmounts: number;
     listenerHits: number;
     observerHits: number;
@@ -51,6 +54,8 @@ window.classSchedulerHits = 0;
 window.classStateUpdates = 0;
 window.classStateWrites = 0;
 window.classDirectStateValue = CLASS_UPDATE_INITIAL_REVISION;
+window.classConstructorRuns = CLASS_UPDATE_INITIAL_REVISION;
+window.classFieldInitializerRuns = CLASS_UPDATE_INITIAL_REVISION;
 window.classUnmounts = 0;
 window.listenerHits = 0;
 window.observerHits = 0;
@@ -306,6 +311,45 @@ class DirectStateMutation extends Component<Record<string, never>, DirectStateMu
 }
 
 const ClassStateOwnershipOracle = () => <DirectStateMutation />;
+
+interface ConstructionProbeState {
+  run: number;
+}
+
+class ConstructorConstructionProbe extends Component<
+  Record<string, never>,
+  ConstructionProbeState
+> {
+  constructor(properties: Record<string, never>) {
+    super(properties);
+    window.classConstructorRuns += CLASS_UPDATE_NEXT_REVISION;
+    this.state = { run: window.classConstructorRuns };
+  }
+
+  render() {
+    return <output data-testid="constructor-run">{this.state.run}</output>;
+  }
+}
+
+const initializeFieldConstructionState = (): ConstructionProbeState => {
+  window.classFieldInitializerRuns += CLASS_UPDATE_NEXT_REVISION;
+  return { run: window.classFieldInitializerRuns };
+};
+
+class FieldConstructionProbe extends Component<Record<string, never>, ConstructionProbeState> {
+  state = initializeFieldConstructionState();
+
+  render() {
+    return <output data-testid="field-initializer-run">{this.state.run}</output>;
+  }
+}
+
+const ClassConstructionOracle = () => (
+  <main data-expected-construction-runs={STRICT_MODE_CONSTRUCTION_RUNS}>
+    <ConstructorConstructionProbe />
+    <FieldConstructionProbe />
+  </main>
+);
 
 interface SchedulerProbeProperties {
   shouldCancel: boolean;
@@ -835,6 +879,9 @@ const RuntimeOracle = () => {
   if (oracle === "class-state-ownership") {
     return <ClassStateOwnershipOracle />;
   }
+  if (oracle === "class-construction") {
+    return <ClassConstructionOracle />;
+  }
   return <ListenerOracle />;
 };
 
@@ -844,6 +891,7 @@ const oracle = new URLSearchParams(window.location.search).get("oracle");
 const isClassLifecycleOracle =
   oracle === "class-listener" ||
   oracle === "class-scheduler" ||
+  oracle === "class-construction" ||
   oracle === "class-state-ownership" ||
   oracle === "class-state-transition";
 createRoot(rootElement).render(

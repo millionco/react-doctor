@@ -5,6 +5,8 @@ interface ConnectionState {
 }
 
 export class Connection extends Component<Record<string, never>, ConnectionState> {
+  state = { connected: true };
+
   componentWillUnmount() {
     this.state.connected = false;
   }

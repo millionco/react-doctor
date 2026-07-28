@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { collectAsyncEffectTaskDescriptors } from "./collect-async-effect-task-descriptors.js";
+import { collectClassConstruction } from "./collect-class-construction.js";
 import { collectClassStateTransitions } from "./collect-class-state-transitions.js";
 import { collectClassStateWrites } from "./collect-class-state-writes.js";
 import type { ClassStateWriteRootDescriptor } from "./collect-class-state-writes.js";
@@ -46,6 +47,8 @@ import { mergeCallableBindings } from "./resolve-callable-expression.js";
 import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
 import {
   ReactCallableRefFreshness,
+  ReactClassConstructionIssueStatus,
+  ReactClassConstructionStatus,
   ReactClassStateUpdaterStatus,
   ReactClassStateWriteStatus,
   ReactClassUpdateCycleStatus,
@@ -70,6 +73,7 @@ import type {
   ReactSemanticCallbackPropAlternative,
   ReactSemanticCallbackPropFlow,
   ReactSemanticCallableRef,
+  ReactSemanticClassConstruction,
   ReactSemanticClassLifecycle,
   ReactSemanticClassStateWrite,
   ReactSemanticClassStateTransition,
@@ -104,6 +108,7 @@ interface EffectGraphFacts {
 }
 
 interface ClassLifecycleGraphFacts {
+  construction: ReactSemanticClassConstruction | null;
   lifecycle: ReactSemanticClassLifecycle | null;
   stateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
   transitions: ReadonlyArray<ReactSemanticClassStateTransition>;
@@ -1025,6 +1030,7 @@ const collectClassLifecycleGraph = (
   const renderMethod = classNode ? getClassMethodDeclaration(classNode, "render") : null;
   if (identity.descriptor.kind !== ReactUnitKind.ClassComponent || !classNode || !renderMethod) {
     return {
+      construction: null,
       lifecycle: null,
       stateWrites: [],
       transitions: [],
@@ -1035,6 +1041,46 @@ const collectClassLifecycleGraph = (
       functionCalls: [],
     };
   }
+  const constructionDescriptor = collectClassConstruction(classNode, renderMethod, context);
+  const constructionId = createSemanticId(
+    "class-construction",
+    identity.descriptor.name,
+    classNode,
+    context,
+  );
+  const constructionIssues = constructionDescriptor.issues.map((issue) => ({
+    kind: issue.kind,
+    location: getNodeLocation(issue.node, context.rootDirectory),
+    status: issue.status,
+  }));
+  let constructionStatus = ReactClassConstructionStatus.Valid;
+  if (
+    constructionIssues.some((issue) => issue.status === ReactClassConstructionIssueStatus.Violated)
+  ) {
+    constructionStatus = ReactClassConstructionStatus.Invalid;
+  } else if (
+    constructionIssues.some((issue) => issue.status === ReactClassConstructionIssueStatus.Unknown)
+  ) {
+    constructionStatus = ReactClassConstructionStatus.Unknown;
+  }
+  const construction: ReactSemanticClassConstruction = {
+    id: constructionId,
+    ownerId: identity.semanticUnit.id,
+    phase: ReactExecutionPhase.ClassConstruction,
+    location: getNodeLocation(classNode, context.rootDirectory),
+    constructorLocation: constructionDescriptor.constructorDeclaration
+      ? getNodeLocation(constructionDescriptor.constructorDeclaration, context.rootDirectory)
+      : null,
+    initializationKind: constructionDescriptor.initializationKind,
+    initializationLocation: constructionDescriptor.initializationNode
+      ? getNodeLocation(constructionDescriptor.initializationNode, context.rootDirectory)
+      : null,
+    stateRequirement: constructionDescriptor.stateRequirement,
+    issues: constructionIssues,
+    status: constructionStatus,
+    sourceComplete: constructionStatus !== ReactClassConstructionStatus.Unknown,
+    complete: constructionStatus === ReactClassConstructionStatus.Valid,
+  };
   const mountMethod = getClassMethodDeclaration(classNode, "componentDidMount");
   const unmountMethod = getClassMethodDeclaration(classNode, "componentWillUnmount");
   const updateMethod = getClassMethodDeclaration(classNode, "componentDidUpdate");
@@ -1396,6 +1442,7 @@ const collectClassLifecycleGraph = (
   ];
   const representedClassMembers = new Set<ts.ClassElement>([
     renderMethod,
+    ...constructionDescriptor.representedMembers,
     ...(mountMethod ? [mountMethod] : []),
     ...(unmountMethod ? [unmountMethod] : []),
     ...(updateMethod ? [updateMethod] : []),
@@ -1408,6 +1455,7 @@ const collectClassLifecycleGraph = (
   ]);
   const sourceComplete =
     identity.descriptor.sourceComplete &&
+    construction.sourceComplete &&
     classNode.members.every((member) => representedClassMembers.has(member)) &&
     lifecycleCalls.every((callExpression) => representedLifecycleCalls.has(callExpression));
   const lifecycleId = createSemanticId(
@@ -1417,10 +1465,12 @@ const collectClassLifecycleGraph = (
     context,
   );
   return {
+    construction,
     lifecycle: {
       id: lifecycleId,
       ownerId: identity.semanticUnit.id,
       location: getNodeLocation(classNode, context.rootDirectory),
+      constructionId,
       mountCallbackId: mountCallback?.id ?? null,
       unmountCallbackId: unmountCallback?.id ?? null,
       updateCallbackId: updateCallback?.id ?? null,
@@ -1431,6 +1481,7 @@ const collectClassLifecycleGraph = (
       sourceComplete,
       complete:
         sourceComplete &&
+        construction.complete &&
         resources.every((resource) => resource.complete) &&
         schedulers.every((scheduler) => scheduler.complete) &&
         stateWrites.every((stateWrite) => stateWrite.complete) &&
@@ -2141,6 +2192,7 @@ export const buildReactSemanticGraph = (
   const effects: ReactSemanticEffect[] = [];
   const schedulers: ReactSemanticScheduler[] = [];
   const resources: ReactSemanticEffectResource[] = [];
+  const classConstructions: ReactSemanticClassConstruction[] = [];
   const classLifecycles: ReactSemanticClassLifecycle[] = [];
   const classStateWrites: ReactSemanticClassStateWrite[] = [];
   const classStateTransitions: ReactSemanticClassStateTransition[] = [];
@@ -2193,6 +2245,9 @@ export const buildReactSemanticGraph = (
       functionCalls.push(...reachabilityFacts.functionCalls);
     }
     const classLifecycleGraph = collectClassLifecycleGraph(identity, context);
+    if (classLifecycleGraph.construction) {
+      classConstructions.push(classLifecycleGraph.construction);
+    }
     if (classLifecycleGraph.lifecycle) {
       classLifecycles.push(classLifecycleGraph.lifecycle);
     }
@@ -2285,6 +2340,7 @@ export const buildReactSemanticGraph = (
     callableRefs,
     schedulers,
     resources,
+    classConstructions,
     classLifecycles,
     classStateWrites,
     classStateTransitions,

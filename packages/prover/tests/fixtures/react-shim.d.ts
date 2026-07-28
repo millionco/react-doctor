@@ -24,6 +24,7 @@ declare module "react" {
   export const createContext: <Value>(defaultValue: Value) => Context<Value>;
   export const memo: <Component>(component: Component) => Component;
   export const StrictMode: (properties: { children?: unknown }) => unknown;
+  export const startTransition: (action: () => void | Promise<void>) => void;
   export const useEffect: (
     setup: () => void | (() => void),
     dependencies?: ReadonlyArray<unknown>,
@@ -50,6 +51,7 @@ declare module "react" {
     getSnapshot: () => Snapshot,
     getServerSnapshot?: () => Snapshot,
   ) => Snapshot;
+  export const useTransition: () => [boolean, typeof startTransition];
 
   export class Component<Properties = Record<string, unknown>, State = Record<string, unknown>> {
     constructor(properties: Properties);

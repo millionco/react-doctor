@@ -3,6 +3,7 @@ import ts from "typescript";
 import {
   REACT_EVENT_PROP_PATTERN,
   REACT_RUNTIME_MODULE_NAMES,
+  REACT_USE_TRANSITION_TUPLE_LENGTH,
   REACT_UNMODELED_HOOK_NAMES,
 } from "./constants.js";
 import { getCallableRefProtocolForCurrentAccess } from "./collect-callable-ref-protocols.js";
@@ -11,12 +12,14 @@ import { collectReachableFunctionGraph } from "./collect-reachable-functions.js"
 import { createEvidence } from "./create-evidence.js";
 import { createObligation } from "./create-obligation.js";
 import { getCanonicalHookName } from "./get-canonical-hook-name.js";
+import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { getCallName } from "./get-call-name.js";
 import { getComponentPropName } from "./get-component-prop-name.js";
 import { getNodeLocation } from "./get-node-location.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isComponentPropExpression } from "./is-component-prop-expression.js";
 import { isReactContextExpression } from "./is-react-context-expression.js";
+import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import { doesTypeContainCallable } from "./resolve-callable-expression.js";
 import { findSemanticUnit } from "./find-semantic-unit.js";
 import {
@@ -140,6 +143,50 @@ export const analyzeBoundaryCoverage = (
         )),
     );
   };
+  const isModeledUseTransitionCall = (callExpression: ts.CallExpression): boolean => {
+    if (callExpression.arguments.length > 0) return false;
+    const declaration = ts.isVariableDeclaration(callExpression.parent)
+      ? callExpression.parent
+      : null;
+    if (
+      !declaration ||
+      declaration.initializer !== callExpression ||
+      !ts.isArrayBindingPattern(declaration.name) ||
+      declaration.name.elements.length > REACT_USE_TRANSITION_TUPLE_LENGTH
+    ) {
+      return false;
+    }
+    return declaration.name.elements.every(
+      (element) =>
+        ts.isOmittedExpression(element) ||
+        (ts.isBindingElement(element) && !element.dotDotDotToken && ts.isIdentifier(element.name)),
+    );
+  };
+  const getModeledTransitionAction = (node: ts.Node) => {
+    let actionExpression: ts.Node = node;
+    while (
+      actionExpression.parent &&
+      ts.isExpression(actionExpression.parent) &&
+      unwrapTypescriptExpression(actionExpression.parent) === node
+    ) {
+      actionExpression = actionExpression.parent;
+    }
+    let callExpression: ts.CallExpression | null = ts.isCallExpression(node) ? node : null;
+    if (
+      actionExpression.parent &&
+      ts.isCallExpression(actionExpression.parent) &&
+      actionExpression.parent.arguments.some((argument) => argument === actionExpression)
+    ) {
+      callExpression = actionExpression.parent;
+    }
+    if (!callExpression) return null;
+    const location = getNodeLocation(callExpression, context.rootDirectory);
+    return (
+      context.graph?.transitionActions.find((action) =>
+        areProofLocationsEqual(action.location, location),
+      ) ?? null
+    );
+  };
   const isModeledExternalStorePropForwarding = (
     callExpression: ts.CallExpression,
     argument: ts.Expression,
@@ -224,6 +271,7 @@ export const analyzeBoundaryCoverage = (
   for (const executionRoot of executionRoots) {
     const reachabilityGraph = collectReachableFunctionGraph(executionRoot, context.typeChecker);
     for (const unmodeledUse of reachabilityGraph.unmodeledCallableUses) {
+      if (getModeledTransitionAction(unmodeledUse.node)?.sourceComplete) continue;
       const location = unmodeledUse.node.getStart();
       const locationKey = `${unmodeledUse.node.getSourceFile().fileName}:${location}`;
       if (unmodeledCallableUseLocations.has(locationKey)) continue;
@@ -292,19 +340,35 @@ export const analyzeBoundaryCoverage = (
           );
         }
       }
-      const finalCallName = getCanonicalHookName(node, context.typeChecker);
+      const canonicalReactApiName = getCanonicalReactApiName(node.expression, context.typeChecker);
       const isModeledContextRead =
-        finalCallName === "use" &&
+        canonicalReactApiName === "use" &&
         Boolean(
           node.arguments[0] && isReactContextExpression(node.arguments[0], context.typeChecker),
         );
-      if (finalCallName && REACT_UNMODELED_HOOK_NAMES.has(finalCallName) && !isModeledContextRead) {
+      if (
+        canonicalReactApiName &&
+        REACT_UNMODELED_HOOK_NAMES.has(canonicalReactApiName) &&
+        !isModeledContextRead &&
+        !(canonicalReactApiName === "useTransition" && isModeledUseTransitionCall(node))
+      ) {
         unknownEvidence.push(
           createEvidence(
             node,
             context.rootDirectory,
-            `${finalCallName} does not yet have a complete lifecycle model`,
-            ["render", finalCallName, "unmodeled React primitive"],
+            `${canonicalReactApiName} does not yet have a complete lifecycle model`,
+            ["render", canonicalReactApiName, "unmodeled React primitive"],
+          ),
+        );
+      }
+      const transitionAction = getModeledTransitionAction(node);
+      if (transitionAction && !transitionAction.sourceComplete) {
+        unknownEvidence.push(
+          createEvidence(
+            node,
+            context.rootDirectory,
+            "A Transition Action crosses an unproved callback, async, or state-priority boundary",
+            ["Transition Action", transitionAction.status, "incomplete execution model"],
           ),
         );
       }

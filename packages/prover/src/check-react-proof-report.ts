@@ -24,6 +24,8 @@ import {
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
   ReactSemanticFunctionCallKind,
+  ReactTransitionActionStatus,
+  ReactTransitionStarterKind,
   ReactUnitKind,
 } from "./types.js";
 import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
@@ -35,6 +37,19 @@ import type {
 } from "./types.js";
 
 const HOOK_STATE_UPDATER_STATUSES = new Set(Object.values(ReactHookStateUpdaterStatus));
+const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionStatus));
+const TRANSITION_STARTER_KINDS = new Set(Object.values(ReactTransitionStarterKind));
+const TRANSITION_ACTION_ORIGIN_PHASES = new Set([
+  ReactExecutionPhase.ClassMount,
+  ReactExecutionPhase.ClassUpdate,
+  ReactExecutionPhase.Deferred,
+  ReactExecutionPhase.EffectCleanup,
+  ReactExecutionPhase.EffectEvent,
+  ReactExecutionPhase.EffectSetup,
+  ReactExecutionPhase.Event,
+  ReactExecutionPhase.ExternalStoreSubscription,
+  ReactExecutionPhase.TransitionAction,
+]);
 
 const addFailure = (
   failures: ReactProofCertificateFailure[],
@@ -169,6 +184,22 @@ const expectedHookStateTransitionStatus = (
     return ReactObligationStatus.Violated;
   }
   return transitions.some((transition) => !transition.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedTransitionActionStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const actions = report.graph.transitionActions.filter((action) => action.ownerId === unit.id);
+  if (actions.some((action) => action.status === ReactTransitionActionStatus.ControlledInput)) {
+    return ReactObligationStatus.Violated;
+  }
+  return actions.some((action) => !action.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -308,6 +339,17 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `Hook state transition facts require ${expectedHookStateStatus}, not ${hookStateTransitions.status}`,
+      );
+    }
+    const transitionActions = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.TransitionActions,
+    );
+    const expectedTransitionStatus = expectedTransitionActionStatus(semanticUnit, report);
+    if (transitionActions && transitionActions.status !== expectedTransitionStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Transition Action facts require ${expectedTransitionStatus}, not ${transitionActions.status}`,
       );
     }
     const scheduledCallbackLifetime = unitProof.obligations.find(
@@ -876,6 +918,98 @@ const checkGraphReferences = (
         failures,
         transition.id,
         "A Hook state transition completeness flag does not match its certificate",
+      );
+    }
+  }
+  for (const action of report.graph.transitionActions) {
+    const owner = unitsById.get(action.ownerId);
+    if (!owner || owner.kind === ReactUnitKind.InvalidHookOwner) {
+      addFailure(failures, action.id, "A Transition Action has an unknown or invalid owner");
+    }
+    if (!TRANSITION_STARTER_KINDS.has(action.starterKind)) {
+      addFailure(failures, action.id, "A Transition Action has an invalid starter kind");
+    }
+    if (!TRANSITION_ACTION_STATUSES.has(action.status)) {
+      addFailure(failures, action.id, "A Transition Action has an invalid status");
+    }
+    if (new Set(action.executionCallbackIds).size !== action.executionCallbackIds.length) {
+      addFailure(failures, action.id, "A Transition Action repeats an execution callback");
+    }
+    for (const callbackId of action.executionCallbackIds) {
+      const executionCallback = callbacksById.get(callbackId);
+      if (!executionCallback || executionCallback.ownerId !== action.ownerId) {
+        addFailure(failures, action.id, "A Transition Action has an invalid execution callback");
+      }
+    }
+    const actionCallback = action.actionCallbackId
+      ? callbacksById.get(action.actionCallbackId)
+      : null;
+    const statusRequiresCallback =
+      action.status !== ReactTransitionActionStatus.Opaque &&
+      action.status !== ReactTransitionActionStatus.StarterEscape;
+    if (
+      (statusRequiresCallback && !action.actionCallbackId) ||
+      (!statusRequiresCallback && action.actionCallbackId) ||
+      (action.actionCallbackId &&
+        (actionCallback?.ownerId !== action.ownerId ||
+          actionCallback.kind !== ReactSemanticCallbackKind.TransitionAction ||
+          actionCallback.phase !== ReactExecutionPhase.TransitionAction))
+    ) {
+      addFailure(failures, action.id, "A Transition Action has an invalid Action callback");
+    }
+    const controlledStateNames = new Set(action.controlledStateNames);
+    const unknownControlStateNames = new Set(action.unknownControlStateNames);
+    if (
+      controlledStateNames.size !== action.controlledStateNames.length ||
+      unknownControlStateNames.size !== action.unknownControlStateNames.length ||
+      action.controlledStateNames.some((stateName) => !stateName) ||
+      action.unknownControlStateNames.some((stateName) => !stateName)
+    ) {
+      addFailure(failures, action.id, "A Transition Action has invalid state-control evidence");
+    }
+    if (
+      (action.status === ReactTransitionActionStatus.ControlledInput) !==
+        action.controlledStateNames.length > 0 ||
+      (action.status === ReactTransitionActionStatus.UnknownControl) !==
+        action.unknownControlStateNames.length > 0
+    ) {
+      addFailure(failures, action.id, "A Transition Action status contradicts its state controls");
+    }
+    if (
+      action.status === ReactTransitionActionStatus.StarterEscape &&
+      action.executionCallbackIds.length > 0
+    ) {
+      addFailure(failures, action.id, "An escaped Transition starter has an execution callback");
+    }
+    const hasValidExecutionRoot =
+      action.executionCallbackIds.length > 0 &&
+      action.executionCallbackIds.every((callbackId) => {
+        const callback = callbacksById.get(callbackId);
+        return Boolean(
+          callback &&
+          callback.ownerId === action.ownerId &&
+          TRANSITION_ACTION_ORIGIN_PHASES.has(callback.phase),
+        );
+      });
+    const hasCompleteSourceStatus =
+      action.status === ReactTransitionActionStatus.Synchronous ||
+      action.status === ReactTransitionActionStatus.ControlledInput;
+    const expectedSourceComplete =
+      hasValidExecutionRoot && Boolean(actionCallback) && hasCompleteSourceStatus;
+    if (action.sourceComplete !== expectedSourceComplete) {
+      addFailure(
+        failures,
+        action.id,
+        "A Transition Action source flag does not match its modeled surface",
+      );
+    }
+    const expectedComplete =
+      action.sourceComplete && action.status === ReactTransitionActionStatus.Synchronous;
+    if (action.complete !== expectedComplete) {
+      addFailure(
+        failures,
+        action.id,
+        "A Transition Action completeness flag does not match its certificate",
       );
     }
   }
@@ -1707,6 +1841,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Hook state transitions",
     report.graph.hookStateTransitions.map((transition) => transition.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Transition Actions",
+    report.graph.transitionActions.map((action) => action.id),
   );
   checkUniqueIds(
     failures,

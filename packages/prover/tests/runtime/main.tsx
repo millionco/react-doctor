@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  useTransition,
 } from "react";
 import type { ChangeEvent } from "react";
 import { createRoot } from "react-dom/client";
@@ -30,6 +31,8 @@ import {
   STORE_VERSION_INCREMENT,
   STRICT_MODE_CONSTRUCTION_RUNS,
   STRICT_MODE_HOOK_UPDATER_RUNS,
+  TRANSITION_ACTION_DELAY_MS,
+  TRANSITION_ACTION_INITIAL_RUNS,
   UNOBSERVED_CALLBACK_REVISION,
 } from "./constants.js";
 
@@ -49,6 +52,7 @@ declare global {
     observerHits: number;
     schedulerHits: number;
     hookStateUpdaterRuns: number;
+    transitionActionRuns: number;
   }
 }
 
@@ -66,6 +70,30 @@ window.listenerHits = 0;
 window.observerHits = 0;
 window.schedulerHits = 0;
 window.hookStateUpdaterRuns = HOOK_STATE_UPDATER_INITIAL_RUNS;
+window.transitionActionRuns = TRANSITION_ACTION_INITIAL_RUNS;
+
+const TransitionActionOracle = () => {
+  const [panel, setPanel] = useState("overview");
+  const [isPending, startPanelTransition] = useTransition();
+  const showActivity = () => {
+    startPanelTransition(async () => {
+      window.transitionActionRuns += 1;
+      await new Promise((resolve) => {
+        setTimeout(resolve, TRANSITION_ACTION_DELAY_MS);
+      });
+      startPanelTransition(() => setPanel("activity"));
+    });
+  };
+  return (
+    <main>
+      <button type="button" onClick={showActivity}>
+        show activity
+      </button>
+      <output data-testid="transition-panel">{panel}</output>
+      <output data-testid="transition-pending">{String(isPending)}</output>
+    </main>
+  );
+};
 
 const HookStateTransitionOracle = () => {
   const [count, setCount] = useState(HOOK_STATE_INITIAL_COUNT);
@@ -914,6 +942,9 @@ const RuntimeOracle = () => {
   if (oracle === "hook-state-transition") {
     return <HookStateTransitionOracle />;
   }
+  if (oracle === "transition-action") {
+    return <TransitionActionOracle />;
+  }
   return <ListenerOracle />;
 };
 
@@ -926,7 +957,8 @@ const isStrictModeOracle =
   oracle === "class-construction" ||
   oracle === "class-state-ownership" ||
   oracle === "class-state-transition" ||
-  oracle === "hook-state-transition";
+  oracle === "hook-state-transition" ||
+  oracle === "transition-action";
 createRoot(rootElement).render(
   isStrictModeOracle ? (
     <StrictMode>

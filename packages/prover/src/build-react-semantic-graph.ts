@@ -26,6 +26,8 @@ import {
 import { collectHookBindings } from "./collect-hook-bindings.js";
 import { collectHookCalls } from "./collect-hook-calls.js";
 import { collectHookStateTransitions } from "./collect-hook-state-transitions.js";
+import { collectTransitionActions } from "./collect-transition-actions.js";
+import type { TransitionActionDescriptor } from "./collect-transition-actions.js";
 import { collectReactiveCaptures } from "./collect-reactive-captures.js";
 import { collectReachableFunctionGraph } from "./collect-reachable-functions.js";
 import {
@@ -59,6 +61,7 @@ import {
   ReactIdentityStability,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
+  ReactTransitionActionStatus,
   ReactUnitKind,
 } from "./types.js";
 import type {
@@ -84,6 +87,7 @@ import type {
   ReactSemanticGraph,
   ReactSemanticHookCall,
   ReactSemanticHookStateTransition,
+  ReactSemanticTransitionAction,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
   ReactSemanticEffectResource,
@@ -164,6 +168,16 @@ interface CallbackPropGraphFacts extends CallbackGraphFacts {
 
 interface HookStateTransitionGraphFacts extends CallbackGraphFacts {
   transitions: ReadonlyArray<ReactSemanticHookStateTransition>;
+}
+
+interface TransitionActionGraphFacts extends CallbackGraphFacts {
+  actions: ReadonlyArray<ReactSemanticTransitionAction>;
+}
+
+interface TransitionActionGraphIdentity {
+  actionCallback: ReactSemanticCallback | null;
+  actionId: string;
+  descriptor: TransitionActionDescriptor;
 }
 
 interface CallbackPropReachabilityDescriptor {
@@ -1867,6 +1881,141 @@ const collectReducerCallbacks = (
   return { callbacks, reachableFunctions, functionCalls };
 };
 
+const collectTransitionActionGraph = (
+  identity: UnitGraphIdentity,
+  existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
+  existingReachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>,
+  context: ReactAnalysisContext,
+): TransitionActionGraphFacts => {
+  const functionNode = identity.descriptor.functionNode;
+  if (!functionNode || identity.descriptor.kind === ReactUnitKind.InvalidHookOwner) {
+    return { actions: [], callbacks: [], reachableFunctions: [], functionCalls: [] };
+  }
+  const callbacks: ReactSemanticCallback[] = [];
+  const reachableFunctions: ReactSemanticReachableFunction[] = [];
+  const functionCalls: ReactSemanticFunctionCall[] = [];
+  const hookBindings = collectHookBindings(functionNode, context.typeChecker);
+  const stableSymbols = new Set([
+    ...hookBindings.refs,
+    ...hookBindings.stateSetters,
+    ...hookBindings.transitionStarters,
+  ]);
+  const actionIdentities: TransitionActionGraphIdentity[] = collectTransitionActions(
+    identity.descriptor,
+    context,
+  ).map((descriptor) => {
+    const actionId = createSemanticId(
+      "transition-action",
+      descriptor.starterKind,
+      descriptor.evidenceNode,
+      context,
+    );
+    const actionCallback = descriptor.actionFunction
+      ? {
+          ...createCallbackFact(
+            identity,
+            descriptor.actionFunction,
+            functionNode,
+            stableSymbols,
+            ReactSemanticCallbackKind.TransitionAction,
+            ReactExecutionPhase.TransitionAction,
+            "transition-action",
+            context,
+          ),
+          id: createSemanticId(
+            `transition-action-callback:${actionId}`,
+            "action",
+            descriptor.actionFunction,
+            context,
+          ),
+        }
+      : null;
+    if (actionCallback && descriptor.actionFunction) {
+      callbacks.push(actionCallback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        identity,
+        descriptor.actionFunction,
+        actionCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    return { actionCallback, actionId, descriptor };
+  });
+  const allCallbacks = [...existingCallbacks, ...callbacks];
+  const allReachableFunctions = [...existingReachableFunctions, ...reachableFunctions];
+  const callbacksById = new Map(allCallbacks.map((callback) => [callback.id, callback]));
+  const validOriginPhases = new Set([
+    ReactExecutionPhase.ClassMount,
+    ReactExecutionPhase.ClassUpdate,
+    ReactExecutionPhase.Deferred,
+    ReactExecutionPhase.EffectCleanup,
+    ReactExecutionPhase.EffectEvent,
+    ReactExecutionPhase.EffectSetup,
+    ReactExecutionPhase.Event,
+    ReactExecutionPhase.ExternalStoreSubscription,
+    ReactExecutionPhase.TransitionAction,
+  ]);
+  const actions = actionIdentities.map(
+    ({ actionCallback, actionId, descriptor }): ReactSemanticTransitionAction => {
+      const containingFunction = descriptor.callExpression
+        ? getContainingFunction(descriptor.callExpression)
+        : null;
+      const containingLocation = containingFunction
+        ? getNodeLocation(containingFunction, context.rootDirectory)
+        : null;
+      const executionCallbackIds = containingLocation
+        ? [
+            ...new Set([
+              ...allCallbacks.flatMap((callback) =>
+                callback.ownerId === identity.semanticUnit.id &&
+                areProofLocationsEqual(callback.location, containingLocation)
+                  ? [callback.id]
+                  : [],
+              ),
+              ...allReachableFunctions.flatMap((reachableFunction) =>
+                reachableFunction.ownerId === identity.semanticUnit.id &&
+                areProofLocationsEqual(reachableFunction.location, containingLocation)
+                  ? [reachableFunction.rootCallbackId]
+                  : [],
+              ),
+            ]),
+          ]
+        : [];
+      const hasValidExecutionRoot =
+        executionCallbackIds.length > 0 &&
+        executionCallbackIds.every((callbackId) => {
+          const callback = callbacksById.get(callbackId);
+          return Boolean(
+            callback &&
+            callback.ownerId === identity.semanticUnit.id &&
+            validOriginPhases.has(callback.phase),
+          );
+        });
+      const hasCompleteSourceStatus =
+        descriptor.status === ReactTransitionActionStatus.Synchronous ||
+        descriptor.status === ReactTransitionActionStatus.ControlledInput;
+      const sourceComplete =
+        hasValidExecutionRoot && Boolean(actionCallback) && hasCompleteSourceStatus;
+      return {
+        id: actionId,
+        ownerId: identity.semanticUnit.id,
+        starterKind: descriptor.starterKind,
+        location: getNodeLocation(descriptor.evidenceNode, context.rootDirectory),
+        executionCallbackIds,
+        actionCallbackId: actionCallback?.id ?? null,
+        controlledStateNames: descriptor.controlledStateNames,
+        unknownControlStateNames: descriptor.unknownControlStateNames,
+        status: descriptor.status,
+        sourceComplete,
+        complete: sourceComplete && descriptor.status === ReactTransitionActionStatus.Synchronous,
+      };
+    },
+  );
+  return { actions, callbacks, reachableFunctions, functionCalls };
+};
+
 const collectHookStateTransitionGraph = (
   identity: UnitGraphIdentity,
   existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
@@ -2320,6 +2469,7 @@ export const buildReactSemanticGraph = (
   const classStateWrites: ReactSemanticClassStateWrite[] = [];
   const classStateTransitions: ReactSemanticClassStateTransition[] = [];
   const hookStateTransitions: ReactSemanticHookStateTransition[] = [];
+  const transitionActions: ReactSemanticTransitionAction[] = [];
   const effectEvents: ReactSemanticEffectEvent[] = [];
   const externalStores: ReactSemanticExternalStore[] = [];
   const asyncTasks: ReactSemanticAsyncTask[] = [];
@@ -2430,6 +2580,18 @@ export const buildReactSemanticGraph = (
     reachableFunctions.push(...externalStoreGraph.reachableFunctions);
     functionCalls.push(...externalStoreGraph.functionCalls);
   }
+  for (const identity of identities) {
+    const transitionActionGraph = collectTransitionActionGraph(
+      identity,
+      callbacks,
+      reachableFunctions,
+      context,
+    );
+    transitionActions.push(...transitionActionGraph.actions);
+    callbacks.push(...transitionActionGraph.callbacks);
+    reachableFunctions.push(...transitionActionGraph.reachableFunctions);
+    functionCalls.push(...transitionActionGraph.functionCalls);
+  }
   const callbackPropGraph = collectCallbackPropGraph(identities, context, componentFlow, callbacks);
   callbacks.push(...callbackPropGraph.callbacks);
   reachableFunctions.push(...callbackPropGraph.reachableFunctions);
@@ -2481,6 +2643,7 @@ export const buildReactSemanticGraph = (
     classStateWrites,
     classStateTransitions,
     hookStateTransitions,
+    transitionActions,
     compiler: extractReactCompilerGraph(sourceFiles, context.rootDirectory),
   };
 };

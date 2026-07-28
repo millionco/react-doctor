@@ -29,6 +29,8 @@ export {
   ReactSemanticEdgeKind,
   ReactSemanticCallbackKind,
   ReactSemanticFunctionCallKind,
+  ReactTransitionActionStatus,
+  ReactTransitionStarterKind,
   ReactUnitKind,
 } from "./types.js";
 export type {
@@ -69,6 +71,7 @@ export type {
   ReactSemanticFunctionCall,
   ReactSemanticHookCall,
   ReactSemanticHookStateTransition,
+  ReactSemanticTransitionAction,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
   ReactSemanticScheduler,

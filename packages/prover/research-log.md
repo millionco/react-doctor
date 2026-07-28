@@ -284,7 +284,7 @@ builtin-hook calls, cross-module JSX render edges, and effect dependency, captur
 cleanup facts. Context definitions, provider instances, consumer reads, and the provider stack
 active at each render edge are also explicit graph facts. Async task facts link `await` and Promise
 continuations to their owning Effect and record state writes plus guarded, unguarded, or unknown
-ownership. Schema version 16 also records every source-resolved project helper reachable from
+ownership. The graph also records every source-resolved project helper reachable from
 render, event, memo, reducer, Effect setup, Effect cleanup, Effect Event, and external-store
 callbacks, together with its root callback, execution phase, and conditional reachability. When a
 helper is reachable by both conditional and unconditional paths, the graph retains the stronger
@@ -294,7 +294,7 @@ obligations and graph extraction share the symbol-resolved collectors. A React C
 therefore replace individual fact producers without changing the report contract or proof
 consumers.
 
-Schema version 16 records the call edges that justify helper reachability. Direct source calls,
+The graph records the call edges that justify helper reachability. Direct source calls,
 source callbacks invoked through formal parameters or captured factory parameters, object-property
 invocations, and callbacks passed to known synchronous iteration methods are distinct facts with
 source and target function IDs, execution phase, conditional reachability, and the relevant
@@ -381,7 +381,7 @@ until an event-lifetime or external owner protocol exists.
 
 `useSyncExternalStore` arguments use the same project callback lattice but terminate in three
 distinct protocol channels: subscription lifetime, client render snapshot, and server-render
-snapshot. Schema version 16 stores callback sets and completeness independently for all three and
+snapshot. The graph stores callback sets and completeness independently for all three and
 links each callback-prop flow to its certified JSX render fact.
 External-store consistency resolves the source functions from those certified callback IDs before
 checking symmetric cleanup, cached snapshot identity, store-write notification, and hydration
@@ -454,16 +454,20 @@ Discovered React units currently include:
 - Uppercase, default-exported, and `memo`/`forwardRef`-wrapped function components, including
   components that return `null`
 - Custom hooks named with the `use` convention
-- Class components, which are discovered but currently force `incomplete`
+- Symbol-resolved `Component` and `PureComponent` classes with conservative construction,
+  lifecycle, state-transition, and state-ownership certificates
 
-Each function unit receives these obligations:
+Each discovered unit receives these obligations:
 
 | Claim                         | Current evidence                                                                            |
 | ----------------------------- | ------------------------------------------------------------------------------------------- |
 | `async-effect-ownership`      | Post-`await` and Promise-continuation commits, cleanup invalidation, abort guards           |
 | `callable-ref-freshness`      | Initial value, exclusive effect write, commit timing, non-escape, concrete event channels   |
+| `class-construction`          | State initialization, field purity, superclass ordering, repeat-safe construction           |
+| `class-state-transitions`     | State ownership, updater purity, lifecycle phase, bounded update convergence                |
 | `hook-order`                  | Conditional, looped, nested, and post-early-return hook positions                           |
 | `hook-ownership`              | Module, helper, method, and anonymous-callback hook calls without a valid React owner       |
+| `hook-state-transitions`      | Setter identity, callback ownership, direct values, replay-safe functional updaters         |
 | `context-topology`            | Exact object identity, defaults, provider values, nested overrides, render/hook propagation |
 | `render-purity`               | State writes, input mutation, known non-idempotence, transitive local helpers, opaque calls |
 | `effect-dependencies`         | Symbol-resolved reactive captures versus inline dependency tuples                           |
@@ -476,6 +480,7 @@ Each function unit receives these obligations:
 | `reducer-purity`              | Reducer and reducer-initializer transition purity                                           |
 | `ref-access`                  | Render-phase access to refs created by `useRef`                                             |
 | `scheduled-callback-lifetime` | Effect ownership, deferred callback resolution, exact handles, guaranteed cancellation      |
+| `transition-actions`          | Starter identity, Action ownership/phase, synchrony, direct controlled-input state          |
 | `component-identity`          | Component definitions created during another render                                         |
 | `component-invocation`        | Source-resolved component functions called outside reconciliation                           |
 | `boundary-coverage`           | Opaque modules, dynamic code, unsupported hooks, and unmodeled event callbacks              |
@@ -711,7 +716,8 @@ Known regions that must force `incomplete` until modeled:
   and emitter `on`/`once` contracts
 - Mutable-object external-store snapshots requiring cache summaries, selectors, or third-party
   store contracts
-- Transitions, deferred values, optimistic state, and Actions beyond certified `useState` updates
+- Async Transition ordering, deferred values, optimistic state, form Actions, and transition state
+  flow beyond direct local `useState` controls
 - Suspense and abandoned render behavior
 - Reconciliation outside direct arrays, map callbacks, and imperative `for`-loop list construction
 - Component tree position and state preservation outside represented list identities
@@ -745,7 +751,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 265 TypeScript fixture projects, 456 static tests, and 35 Chromium runtime
+Current checkpoint: 275 TypeScript fixture projects, 472 static tests, and 36 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -1218,3 +1224,107 @@ Changeset is warranted before publication.
 Kill: If execution-root matching or updater classification cannot separate the React Bench
 controls without false `proved` results across two proof-schema releases, remove the dedicated
 claim and keep `useState` applications incomplete until callback SSA provides the missing proof.
+
+## Transition Action certificates
+
+### React semantics
+
+- The official [`startTransition` reference](https://react.dev/reference/react/startTransition)
+  says React calls the Action immediately and marks state updates scheduled synchronously during
+  that call as non-blocking Transitions.
+- The same reference says timer-owned updates are outside the Transition, post-`await` setters
+  currently require another `startTransition`, Transition renders are interruptible, and
+  Transition updates cannot control text inputs.
+- The official [`useTransition` reference](https://react.dev/reference/react/useTransition)
+  defines the second tuple value as the Action starter and keeps `isPending` true until its Actions
+  complete. It also records request completion ordering as an unsolved concern for custom async
+  Actions.
+
+### Proof boundary
+
+The new `transition-actions` obligation recognizes global `startTransition` by React import symbol,
+including aliases and namespace access, and recognizes Hook starters only from the second binding
+of a canonical direct `useTransition` tuple. It does not trust a local function named
+`startTransition`. Dependency-array references to the stable Hook starter are not escapes; any
+other starter reference outside its direct call is an explicit `starter-escape` fact.
+
+Each direct call records its owner, starter kind, source location, represented invoking callback
+roots, optional Action callback, direct controlled-state evidence, and exact source/completeness
+flags. A resolved Action gets a dedicated `transition-action` callback and reachable helper graph.
+This lets a nested post-`await` `startTransition` use the outer Action as its execution root and lets
+existing Hook state-transition facts identify their actual Transition Action owner.
+
+The first complete subset requires a source-resolved Action whose full reachable source graph is
+synchronous: no async function, `await`, thenable call, Promise continuation, or platform
+scheduler. Its invocation must be owned by an event, Effect setup/cleanup, Effect Event, deferred
+callback, external-store subscription, class mount/update, or another Transition Action. Render,
+server-render, constructor, reducer/updater, unmount, and unresolved roots do not certify an Action.
+
+For direct local `useState` updates, immutable `const` aliases retain their originating state
+symbols through expressions and object construction. An intrinsic `input`, `textarea`, or `select`
+`value`/`checked` dependency on updated state is a concrete violation. State forwarded through a
+component prop, custom-Hook return, or form-control spread is unknown because the graph does not
+yet have scalar prop/state SSA across those boundaries. This avoids claiming that a renamed or
+wrapped controlled value is safe.
+
+Async or scheduled Actions, opaque callback values, escaped starters, indirect `useTransition`
+tuple access, invalid origin phases, and transitive control flow fail closed. A nested synchronous
+Action after `await` can be individually complete while the enclosing async Action and application
+remain incomplete. The current fact proves Action ownership and the direct local urgency subset,
+not request ordering, async context, `useDeferredValue`, `useOptimistic`, `useActionState`, form or
+Server Actions, Suspense fallback preservation, or whole-application transition state machines.
+
+The independent checker re-derives the obligation verdict, validates starter and Action statuses,
+owner and callback phases, unique execution roots, callback/status coherence, controlled and
+unknown state-control evidence, and the exact source/completeness equations. Report schema 18 and
+graph schema 24 reject stale or forged certificates.
+
+React Bench supplied the realistic shapes: titlebar and tabs navigation wrap several synchronous
+store/router operations; tab removal clones or filters collection state; dialog helpers wrap
+context actions; and nested navigation can start another Transition. The proved corpus keeps the
+immutable tab filter and reachable event helper rather than reducing the certificate to a direct
+scalar setter.
+
+Added corpus:
+
+- proved: `proved-transition-tabs`, `proved-use-transition-action`, and
+  `proved-transition-lookalike`
+- refuted: `refuted-transition-controlled-input` and
+  `refuted-transition-derived-controlled-input`
+- incomplete: `incomplete-async-transition-action`, `incomplete-opaque-transition-action`,
+  `incomplete-transition-starter-escape`, `incomplete-transition-control-prop`, and
+  `incomplete-use-transition-tuple`
+- runtime: `transition-action-oracle.spec.ts`
+
+The Chromium oracle runs under root Strict Mode. It observes one async Action invocation, an
+intermediate pending render, and a final nested post-`await` Transition commit. This validates the
+runtime distinction while leaving the async static certificate incomplete.
+
+### Product brief: internal Transition Action facts
+
+Job: Prover consumers need to distinguish a synchronous, owned non-blocking update from an opaque,
+escaped, delayed, or input-controlling Transition; previously `useTransition` was blanket
+unsupported and global `startTransition` had no execution-phase certificate.
+
+Change: Add one private Transition Action claim and one versioned fact per direct Action call or
+starter escape.
+
+Reuse: Truffler searches for Transition Actions, `startTransition`, `useTransition` bindings,
+controlled input state, async Action boundaries, and execution callback roots found no dedicated
+certificate. The implementation reuses React API symbol resolution, Hook tuple bindings, callback
+reachability, synchronous deferred-callback analysis, source locations, state setter symbols, and
+the independent checker. The Hook dependency-reference predicate was extracted and shared with
+state setters.
+
+Metric: The private package has no CLI telemetry path. Its deterministic acceptance metric is
+complete separation of both React starters, a user lookalike, direct and derived controlled state,
+async and opaque Actions, starter escape, transitive control uncertainty, and tuple indirection,
+plus a Chromium oracle for pending and nested post-`await` behavior.
+
+Compat: No React Doctor CLI, score, config, Action, or JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 18 and its semantic graph to schema 24. No
+Changeset is warranted before publication.
+
+Kill: If Action origin or state-control evidence produces a false `proved` result across two proof
+schema releases, remove the complete Transition status and keep Actions incomplete until scalar
+prop SSA and the lifecycle machine can carry the missing evidence.

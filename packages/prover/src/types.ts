@@ -35,6 +35,7 @@ export enum ReactProofClaim {
   RefAccess = "ref-access",
   RenderPurity = "render-purity",
   ScheduledCallbackLifetime = "scheduled-callback-lifetime",
+  TransitionActions = "transition-actions",
 }
 
 export enum ReactUnitKind {
@@ -79,6 +80,7 @@ export enum ReactExecutionPhase {
   Render = "render",
   ServerRender = "server-render",
   StateTransition = "state-transition",
+  TransitionAction = "transition-action",
 }
 
 export enum ReactSemanticCallbackKind {
@@ -101,6 +103,7 @@ export enum ReactSemanticCallbackKind {
   ResourceCallback = "resource-callback",
   ScheduledCallback = "scheduled-callback",
   ServerSnapshot = "server-snapshot",
+  TransitionAction = "transition-action",
 }
 
 export enum ReactSemanticFunctionCallKind {
@@ -581,6 +584,34 @@ export interface ReactSemanticHookStateTransition {
   complete: boolean;
 }
 
+export enum ReactTransitionStarterKind {
+  Global = "global",
+  Hook = "hook",
+}
+
+export enum ReactTransitionActionStatus {
+  Async = "async",
+  ControlledInput = "controlled-input",
+  Opaque = "opaque",
+  StarterEscape = "starter-escape",
+  Synchronous = "synchronous",
+  UnknownControl = "unknown-control",
+}
+
+export interface ReactSemanticTransitionAction {
+  id: string;
+  ownerId: string;
+  starterKind: ReactTransitionStarterKind;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  actionCallbackId: string | null;
+  controlledStateNames: ReadonlyArray<string>;
+  unknownControlStateNames: ReadonlyArray<string>;
+  status: ReactTransitionActionStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export interface ReactCompilerInstructionFact {
   id: string;
   valueKind: string;
@@ -646,6 +677,7 @@ export interface ReactSemanticGraph {
   classStateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
   classStateTransitions: ReadonlyArray<ReactSemanticClassStateTransition>;
   hookStateTransitions: ReadonlyArray<ReactSemanticHookStateTransition>;
+  transitionActions: ReadonlyArray<ReactSemanticTransitionAction>;
   compiler: ReactCompilerGraph;
 }
 

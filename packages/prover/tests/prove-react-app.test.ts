@@ -31,6 +31,8 @@ import {
   ReactSemanticEdgeKind,
   ReactSemanticCallbackKind,
   ReactSemanticFunctionCallKind,
+  ReactTransitionActionStatus,
+  ReactTransitionStarterKind,
 } from "../src/index.js";
 
 interface RefutedFixtureExpectation {
@@ -52,6 +54,16 @@ const proveFixture = (fixtureName: string) =>
   });
 
 const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
+  {
+    fixtureName: "refuted-transition-controlled-input",
+    claim: ReactProofClaim.TransitionActions,
+    evidencePattern: /updates controlled input state/,
+  },
+  {
+    fixtureName: "refuted-transition-derived-controlled-input",
+    claim: ReactProofClaim.TransitionActions,
+    evidencePattern: /updates controlled input state/,
+  },
   {
     fixtureName: "refuted-impure-hook-state-updater",
     claim: ReactProofClaim.HookStateTransitions,
@@ -467,6 +479,9 @@ describe("proveReactApp", () => {
     "proved-hook-direct-state-value",
     "proved-effect-functional-updater",
     "proved-state-setter-lookalikes",
+    "proved-transition-tabs",
+    "proved-use-transition-action",
+    "proved-transition-lookalike",
     "proved-external-store",
     "proved-effect-event",
     "proved-helper-effect-cleanup",
@@ -572,8 +587,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(17);
-    expect(report.graph.schemaVersion).toBe(23);
+    expect(report.schemaVersion).toBe(18);
+    expect(report.graph.schemaVersion).toBe(24);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -2996,6 +3011,151 @@ describe("proveReactApp", () => {
     expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
     expect(
       certificate.failures.some((failure) => failure.description.includes("Hook state transition")),
+    ).toBe(true);
+  });
+
+  it("certifies a realistic global Transition Action and its state update", () => {
+    const report = proveFixture("proved-transition-tabs");
+    const action = report.graph.transitionActions[0];
+    const actionCallback = report.graph.callbacks.find(
+      (callback) => callback.id === action?.actionCallbackId,
+    );
+    const executionCallbacks = report.graph.callbacks.filter((callback) =>
+      action?.executionCallbackIds.includes(callback.id),
+    );
+    const hookTransition = report.graph.hookStateTransitions[0];
+    const transitionProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.TransitionActions,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(action?.starterKind).toBe(ReactTransitionStarterKind.Global);
+    expect(action?.status).toBe(ReactTransitionActionStatus.Synchronous);
+    expect(action?.controlledStateNames).toEqual([]);
+    expect(action?.unknownControlStateNames).toEqual([]);
+    expect(action?.sourceComplete).toBe(true);
+    expect(action?.complete).toBe(true);
+    expect(actionCallback?.kind).toBe(ReactSemanticCallbackKind.TransitionAction);
+    expect(actionCallback?.phase).toBe(ReactExecutionPhase.TransitionAction);
+    expect(
+      executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.Event),
+    ).toBe(true);
+    expect(hookTransition?.executionCallbackIds).toContain(action?.actionCallbackId);
+    expect(transitionProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("certifies a useTransition starter without confusing a user lookalike", () => {
+    const hookReport = proveFixture("proved-use-transition-action");
+    const lookalikeReport = proveFixture("proved-transition-lookalike");
+
+    expect(hookReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(hookReport.graph.transitionActions).toHaveLength(1);
+    expect(hookReport.graph.transitionActions[0]?.starterKind).toBe(
+      ReactTransitionStarterKind.Hook,
+    );
+    expect(hookReport.graph.transitionActions[0]?.complete).toBe(true);
+    expect(lookalikeReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(lookalikeReport.graph.transitionActions).toEqual([]);
+  });
+
+  it("refutes a Transition update to direct controlled input state", () => {
+    const report = proveFixture("refuted-transition-controlled-input");
+    const action = report.graph.transitionActions[0];
+    const transitionProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.TransitionActions,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(action?.status).toBe(ReactTransitionActionStatus.ControlledInput);
+    expect(action?.controlledStateNames).toEqual(["query"]);
+    expect(action?.sourceComplete).toBe(true);
+    expect(action?.complete).toBe(false);
+    expect(transitionProof?.status).toBe(ReactObligationStatus.Violated);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("tracks a controlled input through an immutable derived alias", () => {
+    const report = proveFixture("refuted-transition-derived-controlled-input");
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(report.graph.transitionActions[0]?.status).toBe(
+      ReactTransitionActionStatus.ControlledInput,
+    );
+    expect(report.graph.transitionActions[0]?.controlledStateNames).toEqual(["query"]);
+  });
+
+  it.each([
+    ["incomplete-async-transition-action", ReactTransitionActionStatus.Async],
+    ["incomplete-opaque-transition-action", ReactTransitionActionStatus.Opaque],
+    ["incomplete-transition-starter-escape", ReactTransitionActionStatus.StarterEscape],
+    ["incomplete-transition-control-prop", ReactTransitionActionStatus.UnknownControl],
+  ])("fails closed for incomplete Transition semantics in %s", (fixtureName, expectedStatus) => {
+    const report = proveFixture(fixtureName);
+    const action = report.graph.transitionActions.find(
+      (candidate) => candidate.status === expectedStatus,
+    );
+    const actionOwner = report.graph.units.find((unit) => unit.id === action?.ownerId);
+    const transitionProof = report.units
+      .find(
+        (unit) =>
+          unit.name === actionOwner?.name &&
+          unit.location.filePath === actionOwner.location.filePath &&
+          unit.location.line === actionOwner.location.line &&
+          unit.location.column === actionOwner.location.column,
+      )
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.TransitionActions);
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(action?.sourceComplete).toBe(false);
+    expect(action?.complete).toBe(false);
+    expect(transitionProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("keeps indirect useTransition tuple access outside the modeled boundary", () => {
+    const report = proveFixture("incomplete-use-transition-tuple");
+    const boundaryProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.BoundaryCoverage,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.transitionActions).toEqual([]);
+    expect(boundaryProof?.status).toBe(ReactObligationStatus.Unknown);
+  });
+
+  it("separates an async Action from its nested post-await Transition", () => {
+    const report = proveFixture("incomplete-async-transition-action");
+    const outerAction = report.graph.transitionActions.find(
+      (action) => action.status === ReactTransitionActionStatus.Async,
+    );
+    const nestedAction = report.graph.transitionActions.find(
+      (action) => action.status === ReactTransitionActionStatus.Synchronous,
+    );
+
+    expect(outerAction?.complete).toBe(false);
+    expect(nestedAction?.complete).toBe(true);
+    expect(nestedAction?.executionCallbackIds).toContain(outerAction?.actionCallbackId);
+  });
+
+  it("rejects a forged Transition Action certificate", () => {
+    const report = proveFixture("incomplete-async-transition-action");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        transitionActions: report.graph.transitionActions.map((action) => ({
+          ...action,
+          status: ReactTransitionActionStatus.Synchronous,
+          sourceComplete: true,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("Transition Action")),
     ).toBe(true);
   });
 

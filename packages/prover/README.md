@@ -70,6 +70,12 @@ The report includes:
   synchronous pure updaters are certified, observable effects are refuted, and opaque updater
   bodies or escaped setters fail closed without confusing `useReducer` dispatch or similarly named
   functions with state setters;
+- Transition Action facts that identify imported or namespace `startTransition` and the second
+  tuple binding from a canonical `useTransition`, connect each source-resolved Action to its
+  invoking callback and a dedicated `transition-action` phase, and distinguish synchronous Actions
+  from async/deferred, opaque, and escaped boundaries; direct updates to state that controls an
+  intrinsic input are refuted, while derived local aliases are followed and component-prop or
+  spread control flow fails closed;
 - normalized React Compiler CFG, instruction-effect, and reactive-place facts;
 - per-unit proof obligations with `proved`, `violated`, or `unknown` results;
 - project evidence for type unsoundness, compiler diagnostics, and opaque boundaries.
@@ -105,6 +111,10 @@ Hook state-transition certificates additionally require a non-class owner, phase
 execution roots, a `state-transition` updater callback for every resolved functional updater, and
 source/completeness flags derived from the updater classification. The checker rejects forged
 purity, setter-escape, callback ownership, and completeness combinations.
+Transition Action certificates require a valid non-render execution root, a symbol-identified
+starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
+source/completeness equations. The checker rejects forged synchronous, controlled-input,
+starter-escape, callback, owner, and execution-phase combinations.
 
 ## Verification
 

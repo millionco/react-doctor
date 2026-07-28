@@ -1,13 +1,13 @@
 import ts from "typescript";
 import { analyzeUpdaterFunction } from "./analyze-updater-function.js";
 import { collectHookBindings } from "./collect-hook-bindings.js";
-import { getCanonicalHookName } from "./get-canonical-hook-name.js";
 import { isIdentifierReference } from "./is-identifier-reference.js";
 import { isNodeWithin } from "./is-node-within.js";
 import { ReactHookStateUpdaterStatus, ReactObligationStatus } from "./types.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import type { ReactAnalysisContext } from "./types.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
+import { isReactHookDependencyReference } from "./utils/is-react-hook-dependency-reference.js";
 
 export interface HookStateTransitionDescriptor {
   callExpression: ts.CallExpression | null;
@@ -21,26 +21,6 @@ export interface HookStateTransitionDescriptor {
 const doesTypeIncludeCallable = (type: ts.Type): boolean =>
   type.getCallSignatures().length > 0 ||
   (type.isUnionOrIntersection() && type.types.some(doesTypeIncludeCallable));
-
-const isHookDependencyReference = (
-  identifier: ts.Identifier,
-  context: ReactAnalysisContext,
-): boolean => {
-  let currentNode: ts.Node = identifier;
-  while (
-    currentNode.parent &&
-    ts.isExpression(currentNode.parent) &&
-    unwrapTypescriptExpression(currentNode.parent) === identifier
-  ) {
-    currentNode = currentNode.parent;
-  }
-  if (!currentNode.parent || !ts.isArrayLiteralExpression(currentNode.parent)) return false;
-  const dependencyArray = currentNode.parent;
-  const hookCall = dependencyArray.parent;
-  if (!ts.isCallExpression(hookCall)) return false;
-  const dependencyIndex = hookCall.arguments.indexOf(dependencyArray);
-  return dependencyIndex > 0 && Boolean(getCanonicalHookName(hookCall, context.typeChecker));
-};
 
 const getUpdaterStatus = (
   updaterExpression: ts.Expression,
@@ -139,7 +119,7 @@ export const collectHookStateTransitions = (
       if (
         setterSymbol &&
         stateName &&
-        !isHookDependencyReference(node, context) &&
+        !isReactHookDependencyReference(node, context.typeChecker) &&
         !transitions.some(
           (transition) =>
             transition.callExpression && isNodeWithin(node, transition.callExpression.expression),

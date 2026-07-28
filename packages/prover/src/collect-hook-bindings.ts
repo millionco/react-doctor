@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { collectEffectEventBindings } from "./collect-effect-event-bindings.js";
-import { getCanonicalHookName } from "./get-canonical-hook-name.js";
+import { REACT_TRANSITION_STARTER_INDEX } from "./constants.js";
+import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 
 export interface HookBindings {
@@ -9,6 +10,7 @@ export interface HookBindings {
   stateSetters: ReadonlySet<ts.Symbol>;
   stateValueBySetter: ReadonlyMap<ts.Symbol, ts.Symbol>;
   stateValues: ReadonlySet<ts.Symbol>;
+  transitionStarters: ReadonlySet<ts.Symbol>;
 }
 
 const getBindingSymbol = (
@@ -30,6 +32,7 @@ export const collectHookBindings = (
   const stateSetters = new Set<ts.Symbol>();
   const stateValueBySetter = new Map<ts.Symbol, ts.Symbol>();
   const stateValues = new Set<ts.Symbol>();
+  const transitionStarters = new Set<ts.Symbol>();
   const visit = (node: ts.Node): void => {
     if (node !== functionNode && isFunctionBoundary(node)) {
       return;
@@ -39,7 +42,7 @@ export const collectHookBindings = (
       node.initializer &&
       ts.isCallExpression(node.initializer)
     ) {
-      const callName = getCanonicalHookName(node.initializer, typeChecker);
+      const callName = getCanonicalReactApiName(node.initializer.expression, typeChecker);
       if (
         (callName === "useState" || callName === "useReducer") &&
         ts.isArrayBindingPattern(node.name)
@@ -62,9 +65,23 @@ export const collectHookBindings = (
         const refSymbol = getBindingSymbol(node.name, typeChecker);
         if (refSymbol) refs.add(refSymbol);
       }
+      if (callName === "useTransition" && ts.isArrayBindingPattern(node.name)) {
+        const starterBinding = node.name.elements[REACT_TRANSITION_STARTER_INDEX];
+        const starterBindingName =
+          starterBinding && ts.isBindingElement(starterBinding) ? starterBinding.name : undefined;
+        const starterSymbol = getBindingSymbol(starterBindingName, typeChecker);
+        if (starterSymbol) transitionStarters.add(starterSymbol);
+      }
     }
     node.forEachChild(visit);
   };
   functionNode.forEachChild(visit);
-  return { effectEvents, refs, stateSetters, stateValueBySetter, stateValues };
+  return {
+    effectEvents,
+    refs,
+    stateSetters,
+    stateValueBySetter,
+    stateValues,
+    transitionStarters,
+  };
 };

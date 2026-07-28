@@ -2,6 +2,7 @@ import ts from "typescript";
 import { unwrapTypescriptExpression } from "../unwrap-typescript-expression.js";
 import { collectSymbolWrites } from "./collect-symbol-writes.js";
 import { getResolvedSymbol } from "./get-resolved-symbol.js";
+import { collectPropertySymbolWrites } from "./collect-property-symbol-writes.js";
 import { isPlatformDeclarationSymbol } from "./is-platform-declaration-symbol.js";
 
 const getImmutableInitializer = (
@@ -50,6 +51,39 @@ export const areImmutableExpressionsIdentical = (
   const unwrappedRight = unwrapTypescriptExpression(rightExpression);
   if (unwrappedLeft === unwrappedRight) return true;
   if (areLiteralExpressionsEqual(unwrappedLeft, unwrappedRight)) return true;
+  if (
+    unwrappedLeft.kind === ts.SyntaxKind.ThisKeyword &&
+    unwrappedRight.kind === ts.SyntaxKind.ThisKeyword
+  ) {
+    return true;
+  }
+  if (
+    ts.isPropertyAccessExpression(unwrappedLeft) &&
+    ts.isPropertyAccessExpression(unwrappedRight)
+  ) {
+    const leftPropertySymbol = getResolvedSymbol(unwrappedLeft.name, typeChecker);
+    const rightPropertySymbol = getResolvedSymbol(unwrappedRight.name, typeChecker);
+    const isStableProperty = Boolean(
+      leftPropertySymbol &&
+      leftPropertySymbol === rightPropertySymbol &&
+      (isPlatformDeclarationSymbol(leftPropertySymbol) ||
+        (leftPropertySymbol.declarations?.every(ts.isMethodDeclaration) &&
+          collectPropertySymbolWrites(
+            leftPropertySymbol,
+            unwrappedLeft.getSourceFile(),
+            typeChecker,
+          ).length === 0)),
+    );
+    return (
+      isStableProperty &&
+      areImmutableExpressionsIdentical(
+        unwrappedLeft.expression,
+        unwrappedRight.expression,
+        typeChecker,
+        visitedSymbols,
+      )
+    );
+  }
   if (!ts.isIdentifier(unwrappedLeft) || !ts.isIdentifier(unwrappedRight)) return false;
   const leftSymbol = getResolvedSymbol(unwrappedLeft, typeChecker);
   const rightSymbol = getResolvedSymbol(unwrappedRight, typeChecker);

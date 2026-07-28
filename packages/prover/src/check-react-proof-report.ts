@@ -49,7 +49,7 @@ const expectedAsyncOwnershipStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
 ): ReactObligationStatus => {
-  if (unit.kind === ReactUnitKind.ClassComponent || unit.kind === ReactUnitKind.InvalidHookOwner) {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
     return ReactObligationStatus.Unknown;
   }
   const tasks = report.graph.asyncTasks.filter((task) => task.ownerId === unit.id);
@@ -66,7 +66,7 @@ const expectedCallableRefFreshnessStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
 ): ReactObligationStatus => {
-  if (unit.kind === ReactUnitKind.ClassComponent || unit.kind === ReactUnitKind.InvalidHookOwner) {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
     return ReactObligationStatus.Unknown;
   }
   return report.graph.callableRefs
@@ -80,7 +80,7 @@ const expectedScheduledCallbackLifetimeStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
 ): ReactObligationStatus => {
-  if (unit.kind === ReactUnitKind.ClassComponent || unit.kind === ReactUnitKind.InvalidHookOwner) {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
     return ReactObligationStatus.Unknown;
   }
   const schedulers = report.graph.schedulers.filter((scheduler) => scheduler.ownerId === unit.id);
@@ -91,6 +91,12 @@ const expectedScheduledCallbackLifetimeStatus = (
   ) {
     return ReactObligationStatus.Violated;
   }
+  if (
+    unit.kind === ReactUnitKind.ClassComponent &&
+    !report.graph.classLifecycles.find((lifecycle) => lifecycle.ownerId === unit.id)?.sourceComplete
+  ) {
+    return ReactObligationStatus.Unknown;
+  }
   return schedulers.some((scheduler) => !scheduler.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
@@ -100,7 +106,7 @@ const expectedEffectCleanupStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
 ): ReactObligationStatus => {
-  if (unit.kind === ReactUnitKind.ClassComponent || unit.kind === ReactUnitKind.InvalidHookOwner) {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
     return ReactObligationStatus.Unknown;
   }
   const resources = report.graph.resources.filter((resource) => resource.ownerId === unit.id);
@@ -110,6 +116,12 @@ const expectedEffectCleanupStatus = (
     )
   ) {
     return ReactObligationStatus.Violated;
+  }
+  if (
+    unit.kind === ReactUnitKind.ClassComponent &&
+    !report.graph.classLifecycles.find((lifecycle) => lifecycle.ownerId === unit.id)?.sourceComplete
+  ) {
+    return ReactObligationStatus.Unknown;
   }
   if (
     report.graph.effects.some((effect) => effect.ownerId === unit.id && !effect.callbackResolved)
@@ -198,6 +210,7 @@ const checkGraphReferences = (
   failures: ReactProofCertificateFailure[],
 ): void => {
   const unitIds = new Set(report.graph.units.map((unit) => unit.id));
+  const unitsById = new Map(report.graph.units.map((unit) => [unit.id, unit]));
   const effectIds = new Set(report.graph.effects.map((effect) => effect.id));
   const effectsById = new Map(report.graph.effects.map((effect) => [effect.id, effect]));
   const callbackIds = new Set(report.graph.callbacks.map((callback) => callback.id));
@@ -467,15 +480,28 @@ const checkGraphReferences = (
     if (!unitIds.has(scheduler.ownerId)) {
       addFailure(failures, scheduler.id, "A scheduler has an unknown owner unit");
     }
-    const effect = effectsById.get(scheduler.effectId);
-    if (!effect || effect.ownerId !== scheduler.ownerId) {
-      addFailure(failures, scheduler.id, "A scheduler has an unknown or cross-owner Effect");
-    } else if (effect.setupCallbackId !== scheduler.registrationCallbackId) {
-      addFailure(
-        failures,
-        scheduler.id,
-        "A scheduler registration is not linked to its Effect setup callback",
-      );
+    if (scheduler.effectId) {
+      const effect = effectsById.get(scheduler.effectId);
+      if (!effect || effect.ownerId !== scheduler.ownerId) {
+        addFailure(failures, scheduler.id, "A scheduler has an unknown or cross-owner Effect");
+      } else if (effect.setupCallbackId !== scheduler.registrationCallbackId) {
+        addFailure(
+          failures,
+          scheduler.id,
+          "A scheduler registration is not linked to its Effect setup callback",
+        );
+      }
+    } else {
+      const owner = unitsById.get(scheduler.ownerId);
+      const registrationCallback = callbacksById.get(scheduler.registrationCallbackId);
+      if (
+        owner?.kind !== ReactUnitKind.ClassComponent ||
+        registrationCallback?.ownerId !== scheduler.ownerId ||
+        registrationCallback.kind !== ReactSemanticCallbackKind.ClassMount ||
+        registrationCallback.phase !== ReactExecutionPhase.ClassMount
+      ) {
+        addFailure(failures, scheduler.id, "A class scheduler is not linked to its mount callback");
+      }
     }
     for (const callbackId of scheduler.callbackIds) {
       const callback = callbacksById.get(callbackId);
@@ -514,15 +540,36 @@ const checkGraphReferences = (
     if (!unitIds.has(resource.ownerId)) {
       addFailure(failures, resource.id, "An Effect resource has an unknown owner unit");
     }
-    const effect = effectsById.get(resource.effectId);
-    if (!effect || effect.ownerId !== resource.ownerId) {
-      addFailure(failures, resource.id, "An Effect resource has an unknown or cross-owner Effect");
-    } else if (effect.setupCallbackId !== resource.acquisitionCallbackId) {
-      addFailure(
-        failures,
-        resource.id,
-        "An Effect resource acquisition is not linked to its setup callback",
-      );
+    if (resource.effectId) {
+      const effect = effectsById.get(resource.effectId);
+      if (!effect || effect.ownerId !== resource.ownerId) {
+        addFailure(
+          failures,
+          resource.id,
+          "A lifecycle resource has an unknown or cross-owner Effect",
+        );
+      } else if (effect.setupCallbackId !== resource.acquisitionCallbackId) {
+        addFailure(
+          failures,
+          resource.id,
+          "A lifecycle resource acquisition is not linked to its setup callback",
+        );
+      }
+    } else {
+      const owner = unitsById.get(resource.ownerId);
+      const acquisitionCallback = callbacksById.get(resource.acquisitionCallbackId);
+      if (
+        owner?.kind !== ReactUnitKind.ClassComponent ||
+        acquisitionCallback?.ownerId !== resource.ownerId ||
+        acquisitionCallback.kind !== ReactSemanticCallbackKind.ClassMount ||
+        acquisitionCallback.phase !== ReactExecutionPhase.ClassMount
+      ) {
+        addFailure(
+          failures,
+          resource.id,
+          "A class resource acquisition is not linked to its mount callback",
+        );
+      }
     }
     for (const callbackId of resource.callbackIds) {
       const callback = callbacksById.get(callbackId);
@@ -603,6 +650,105 @@ const checkGraphReferences = (
     }
     if (resource.callbackComplete && resource.callbackIds.length === 0) {
       addFailure(failures, resource.id, "A complete Effect resource callback set is empty");
+    }
+  }
+  const schedulersById = new Map(
+    report.graph.schedulers.map((scheduler) => [scheduler.id, scheduler]),
+  );
+  const resourcesById = new Map(report.graph.resources.map((resource) => [resource.id, resource]));
+  const lifecycleOwnerIds = new Set<string>();
+  for (const lifecycle of report.graph.classLifecycles) {
+    const owner = unitsById.get(lifecycle.ownerId);
+    if (owner?.kind !== ReactUnitKind.ClassComponent) {
+      addFailure(failures, lifecycle.id, "A class lifecycle has an unknown or non-class owner");
+    }
+    if (lifecycleOwnerIds.has(lifecycle.ownerId)) {
+      addFailure(failures, lifecycle.id, "A class component has multiple lifecycle certificates");
+    }
+    lifecycleOwnerIds.add(lifecycle.ownerId);
+    const mountCallback = lifecycle.mountCallbackId
+      ? callbacksById.get(lifecycle.mountCallbackId)
+      : null;
+    if (
+      lifecycle.mountCallbackId &&
+      (mountCallback?.ownerId !== lifecycle.ownerId ||
+        mountCallback.kind !== ReactSemanticCallbackKind.ClassMount ||
+        mountCallback.phase !== ReactExecutionPhase.ClassMount)
+    ) {
+      addFailure(failures, lifecycle.id, "A class lifecycle has an invalid mount callback");
+    }
+    const unmountCallback = lifecycle.unmountCallbackId
+      ? callbacksById.get(lifecycle.unmountCallbackId)
+      : null;
+    if (
+      lifecycle.unmountCallbackId &&
+      (unmountCallback?.ownerId !== lifecycle.ownerId ||
+        unmountCallback.kind !== ReactSemanticCallbackKind.ClassUnmount ||
+        unmountCallback.phase !== ReactExecutionPhase.ClassUnmount)
+    ) {
+      addFailure(failures, lifecycle.id, "A class lifecycle has an invalid unmount callback");
+    }
+    const lifecycleResources = lifecycle.resourceIds.flatMap((resourceId) => {
+      const resource = resourcesById.get(resourceId);
+      if (!resource || resource.ownerId !== lifecycle.ownerId || resource.effectId !== null) {
+        addFailure(failures, lifecycle.id, "A class lifecycle has an invalid resource link");
+        return [];
+      }
+      return [resource];
+    });
+    if (new Set(lifecycle.resourceIds).size !== lifecycle.resourceIds.length) {
+      addFailure(failures, lifecycle.id, "A class lifecycle repeats a resource link");
+    }
+    const lifecycleSchedulers = lifecycle.schedulerIds.flatMap((schedulerId) => {
+      const scheduler = schedulersById.get(schedulerId);
+      if (!scheduler || scheduler.ownerId !== lifecycle.ownerId || scheduler.effectId !== null) {
+        addFailure(failures, lifecycle.id, "A class lifecycle has an invalid scheduler link");
+        return [];
+      }
+      return [scheduler];
+    });
+    if (new Set(lifecycle.schedulerIds).size !== lifecycle.schedulerIds.length) {
+      addFailure(failures, lifecycle.id, "A class lifecycle repeats a scheduler link");
+    }
+    const expectedComplete =
+      lifecycle.sourceComplete &&
+      lifecycleResources.length === lifecycle.resourceIds.length &&
+      lifecycleResources.every((resource) => resource.complete) &&
+      lifecycleSchedulers.length === lifecycle.schedulerIds.length &&
+      lifecycleSchedulers.every((scheduler) => scheduler.complete);
+    if (lifecycle.complete !== expectedComplete) {
+      addFailure(
+        failures,
+        lifecycle.id,
+        "A class lifecycle completeness flag does not match its ownership certificates",
+      );
+    }
+  }
+  for (const unit of report.graph.units) {
+    if (unit.kind === ReactUnitKind.ClassComponent && !lifecycleOwnerIds.has(unit.id)) {
+      addFailure(failures, unit.id, "A class component has no lifecycle certificate");
+    }
+  }
+  for (const scheduler of report.graph.schedulers) {
+    if (
+      scheduler.effectId === null &&
+      !report.graph.classLifecycles.some(
+        (lifecycle) =>
+          lifecycle.ownerId === scheduler.ownerId && lifecycle.schedulerIds.includes(scheduler.id),
+      )
+    ) {
+      addFailure(failures, scheduler.id, "A class scheduler has no lifecycle certificate");
+    }
+  }
+  for (const resource of report.graph.resources) {
+    if (
+      resource.effectId === null &&
+      !report.graph.classLifecycles.some(
+        (lifecycle) =>
+          lifecycle.ownerId === resource.ownerId && lifecycle.resourceIds.includes(resource.id),
+      )
+    ) {
+      addFailure(failures, resource.id, "A class resource has no lifecycle certificate");
     }
   }
   for (const reachableFunction of report.graph.reachableFunctions) {
@@ -923,6 +1069,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Effect resources",
     report.graph.resources.map((resource) => resource.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Class lifecycles",
+    report.graph.classLifecycles.map((lifecycle) => lifecycle.id),
   );
   checkUniqueIds(
     failures,

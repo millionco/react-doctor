@@ -98,6 +98,21 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
     evidencePattern: /same resource identity/,
   },
   {
+    fixtureName: "class-listener-leak",
+    claim: ReactProofClaim.EffectCleanup,
+    evidencePattern: /same resource identity/,
+  },
+  {
+    fixtureName: "class-listener-capture-mismatch",
+    claim: ReactProofClaim.EffectCleanup,
+    evidencePattern: /same resource identity/,
+  },
+  {
+    fixtureName: "class-timeout-leak",
+    claim: ReactProofClaim.ScheduledCallbackLifetime,
+    evidencePattern: /remain active after its lifecycle loses ownership/,
+  },
+  {
     fixtureName: "nested-component",
     claim: ReactProofClaim.ComponentIdentity,
     evidencePattern: /recreated as a component type/,
@@ -396,6 +411,10 @@ describe("proveReactApp", () => {
     "proved-for-of-nested-binding-handler",
     "proved-helper-local-rebinding",
     "proved-branch-effect-cleanup",
+    "class-component",
+    "proved-pure-class-render",
+    "proved-class-listener",
+    "proved-class-timeout",
   ])("proves the complete %s application graph", (fixtureName) => {
     const report = proveFixture(fixtureName);
 
@@ -454,7 +473,7 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.graph.schemaVersion).toBe(17);
+    expect(report.graph.schemaVersion).toBe(19);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -2325,14 +2344,174 @@ describe("proveReactApp", () => {
     expect(cleanupProof?.evidence[0]?.description).toMatch(/path-dependent/);
   });
 
-  it("fails closed for class component lifecycle semantics", () => {
+  it("proves a render-only class through symbol-resolved React inheritance", () => {
     const report = proveFixture("class-component");
+    const renderCallback = report.graph.callbacks.find(
+      (callback) => callback.kind === ReactSemanticCallbackKind.ComponentRender,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(report.graph.units[0]?.kind).toBe("class-component");
+    expect(report.graph.units[0]?.sourceComplete).toBe(true);
+    expect(renderCallback?.phase).toBe(ReactExecutionPhase.Render);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("certifies a class mount-listener-unmount lifecycle with exact method identity", () => {
+    const report = proveFixture("proved-class-listener");
+    const lifecycle = report.graph.classLifecycles[0];
+    const resource = report.graph.resources[0];
+    const mountCallback = report.graph.callbacks.find(
+      (callback) => callback.id === lifecycle?.mountCallbackId,
+    );
+    const unmountCallback = report.graph.callbacks.find(
+      (callback) => callback.id === lifecycle?.unmountCallbackId,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(lifecycle?.sourceComplete).toBe(true);
+    expect(lifecycle?.complete).toBe(true);
+    expect(lifecycle?.resourceIds).toEqual([resource?.id]);
+    expect(mountCallback?.kind).toBe(ReactSemanticCallbackKind.ClassMount);
+    expect(mountCallback?.phase).toBe(ReactExecutionPhase.ClassMount);
+    expect(unmountCallback?.kind).toBe(ReactSemanticCallbackKind.ClassUnmount);
+    expect(unmountCallback?.phase).toBe(ReactExecutionPhase.ClassUnmount);
+    expect(resource?.effectId).toBeNull();
+    expect(resource?.acquisitionCallbackId).toBe(mountCallback?.id);
+    expect(resource?.disposalStatus).toBe(ReactEffectResourceDisposalStatus.Guaranteed);
+    expect(resource?.complete).toBe(true);
+  });
+
+  it("fails closed on mutable class-method identity and unmodeled lifecycle helpers", () => {
+    const mutableMethodReport = proveFixture("incomplete-class-listener-method-reassigned");
+    const helperReport = proveFixture("incomplete-class-helper-lifecycle");
+
+    expect(mutableMethodReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(mutableMethodReport.graph.resources[0]?.complete).toBe(false);
+    expect(mutableMethodReport.graph.classLifecycles[0]?.sourceComplete).toBe(false);
+    expect(helperReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(helperReport.graph.resources[0]?.complete).toBe(true);
+    expect(helperReport.graph.classLifecycles[0]?.sourceComplete).toBe(false);
+  });
+
+  it("rejects a class lifecycle certificate with a forged resource link", () => {
+    const report = proveFixture("proved-class-listener");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        classLifecycles: report.graph.classLifecycles.map((lifecycle) => ({
+          ...lifecycle,
+          resourceIds: ["forged-resource"],
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("invalid resource link")),
+    ).toBe(true);
+  });
+
+  it("certifies a class mount-timeout-unmount lifecycle with an exact handle", () => {
+    const report = proveFixture("proved-class-timeout");
+    const lifecycle = report.graph.classLifecycles[0];
+    const scheduler = report.graph.schedulers[0];
+    const mountCallback = report.graph.callbacks.find(
+      (callback) => callback.id === lifecycle?.mountCallbackId,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(lifecycle?.sourceComplete).toBe(true);
+    expect(lifecycle?.complete).toBe(true);
+    expect(lifecycle?.schedulerIds).toEqual([scheduler?.id]);
+    expect(scheduler?.effectId).toBeNull();
+    expect(scheduler?.registrationCallbackId).toBe(mountCallback?.id);
+    expect(scheduler?.kind).toBe(ReactSchedulerKind.Timeout);
+    expect(scheduler?.cancellationStatus).toBe(ReactSchedulerCancellationStatus.Guaranteed);
+    expect(scheduler?.complete).toBe(true);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("fails closed when a class scheduler handle is reassigned", () => {
+    const report = proveFixture("incomplete-class-timeout-reassigned");
 
     expect(report.status).toBe(ReactAppProofStatus.Incomplete);
-    expect(report.summary.unknown).toBeGreaterThan(0);
-    expect(report.units[0]?.obligations[0]?.evidence[0]?.description).toMatch(
-      /Class component lifecycle/,
+    expect(report.graph.schedulers[0]?.complete).toBe(false);
+    expect(report.graph.schedulers[0]?.cancellationStatus).toBe(
+      ReactSchedulerCancellationStatus.Unknown,
     );
+    expect(report.graph.classLifecycles[0]?.sourceComplete).toBe(false);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a class lifecycle certificate with a forged scheduler link", () => {
+    const report = proveFixture("proved-class-timeout");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        classLifecycles: report.graph.classLifecycles.map((lifecycle) => ({
+          ...lifecycle,
+          schedulerIds: ["forged-scheduler"],
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("invalid scheduler link"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a class unit with its lifecycle certificate removed", () => {
+    const report = proveFixture("class-component");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        classLifecycles: [],
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("no lifecycle certificate"),
+      ),
+    ).toBe(true);
+  });
+
+  it("refutes an impure class render instead of trusting the class boundary", () => {
+    const report = proveFixture("class-render-impurity");
+    const renderProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.RenderPurity,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(renderProof?.status).toBe(ReactObligationStatus.Violated);
+    expect(renderProof?.evidence[0]?.description).toMatch(/not pure during render/);
+  });
+
+  it("fails closed for class fields and lifecycle methods until their phases are certified", () => {
+    const fieldReport = proveFixture("incomplete-class-field");
+    const lifecycleReport = proveFixture("incomplete-class-lifecycle");
+
+    expect(fieldReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(fieldReport.graph.units[0]?.sourceComplete).toBe(false);
+    expect(lifecycleReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(lifecycleReport.graph.units[0]?.sourceComplete).toBe(false);
+    expect(lifecycleReport.units[0]?.obligations[0]?.evidence[0]?.description).toMatch(
+      /constructor, field, lifecycle, ref, or custom method/,
+    );
+  });
+
+  it("does not mistake a shadowed Component base for React inheritance", () => {
+    const report = proveFixture("shadowed-component-class");
+
+    expect(report.graph.units).toEqual([]);
   });
 
   it("fails closed when TypeScript assertions can forge proof facts", () => {

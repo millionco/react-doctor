@@ -554,6 +554,10 @@ Proved:
 - `proved-animation-frame`
 - `proved-aliased-window-timeout`
 - `proved-shadowed-timeout`
+- `class-component`
+- `proved-pure-class-render`
+- `proved-class-listener`
+- `proved-class-timeout`
 
 Refuted:
 
@@ -614,6 +618,10 @@ Refuted:
 - `for-of-destructured-render-impurity`
 - `refuted-layout-ref-missing-dependency`
 - `refuted-timer-partial-cleanup`
+- `class-render-impurity`
+- `class-listener-leak`
+- `class-listener-capture-mismatch`
+- `class-timeout-leak`
 
 Incomplete:
 
@@ -621,7 +629,6 @@ Incomplete:
 - `effect-state-update`
 - `unsafe-types`
 - `path-dependent-cleanup`
-- `class-component`
 - `conditional-use`
 - `index-list-key`
 - `datepicker-loop-index-key`
@@ -709,7 +716,8 @@ Known regions that must force `incomplete` until modeled:
 - Reconciliation outside direct arrays, map callbacks, and imperative `for`-loop list construction
 - Component tree position and state preservation outside represented list identities
 - Server Components, client boundaries, hydration, and serialization
-- Class component lifecycle methods
+- Class constructors, derived state, update lifecycles, snapshots, error boundaries, refs, and
+  state-transition fixpoints outside direct render and mount/unmount ownership
 - Effect transition fixpoints beyond mount-bounded writes and unconditional boolean/fresh-reference
   self-cycles
 - Library hooks without semantic summaries
@@ -736,7 +744,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 205 TypeScript fixture projects, 382 static tests, and 26 Chromium runtime
+Current checkpoint: 210 TypeScript fixture projects, 399 static tests, and 30 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -766,6 +774,9 @@ oracles.
   keeps the post-unmount hit count at zero, while the uncanceled control fires once after unmount.
 - The observer-lifetime oracle mutates the document after unmount. `disconnect()` suppresses
   delivery, while the intentionally leaked observer still receives the mutation.
+- Class lifecycle oracles run under root Strict Mode. Exact listener removal survives the synthetic
+  mount/unmount/remount sequence, while omitted teardown remains observable after final unmount.
+  Exact timeout cancellation suppresses both timer generations; omitted cancellation fires both.
 
 ## Effect resource lifetime certificates
 
@@ -842,3 +853,49 @@ Added corpus:
   `incomplete-accessor-listener-capture`, `incomplete-async-listener-callback`,
   `incomplete-ref-event-target`, and `incomplete-structural-event-target`
 - declaration guard: `shadowed-event-target`
+
+## Class render and mount/unmount certificates
+
+### React semantics
+
+- The official [`Component` reference](https://react.dev/reference/react/Component) requires
+  `componentDidMount` setup to be mirrored by `componentWillUnmount` cleanup. It also defines
+  `render` as pure and warns that unguarded `componentDidUpdate` state changes can loop.
+- [`StrictMode`](https://react.dev/reference/react/StrictMode) performs an extra development
+  setup/cleanup cycle when enabled at the root. The runtime oracles therefore test two lifecycle
+  generations rather than treating one production mount as sufficient evidence.
+- `render` may be called and discarded, so class render uses the same render-phase purity and
+  callback-reachability obligations as a function component. Lifecycle methods are separate
+  commit-phase callback roots.
+
+### Proof boundary
+
+React inheritance is resolved through TypeScript symbols and only canonical React `Component` or
+`PureComponent` declarations create class units. A complete class certificate currently permits a
+pure ordinary `render`, direct ordinary `componentDidMount` and `componentWillUnmount` methods,
+stable callback methods, and primitive scheduler-handle properties whose sole write is the
+certified registration assignment.
+
+Mount/unmount listener facts reuse the DOM identity certificate. Timer facts require an exact
+property symbol, one registration write, an entry-dominating matching cancellation, a synchronous
+deferred callback, and reciprocal links among the class lifecycle, mount callback, scheduler, and
+unmount evidence. Missing disposal or cancellation is a concrete refutation. Reassignment, helper
+indirection not represented by the lifecycle summary, and unsupported members force
+`incomplete`.
+
+The React Bench checkout contained no checked-in `componentDidMount`,
+`componentWillUnmount`, or `componentDidUpdate` TypeScript/JavaScript sources at this checkpoint;
+it is evidence that modern hook code dominates that corpus, not evidence that class behavior can
+be ignored. Adversarial class shapes were instead seeded from React Doctor's existing class
+lifecycle rule corpus and checked against the official React semantics above.
+
+Added corpus:
+
+- proved: `class-component`, `proved-pure-class-render`, `proved-class-listener`, and
+  `proved-class-timeout`
+- refuted: `class-render-impurity`, `class-listener-leak`,
+  `class-listener-capture-mismatch`, and `class-timeout-leak`
+- incomplete: `incomplete-class-field`, `incomplete-class-lifecycle`,
+  `incomplete-class-helper-lifecycle`, `incomplete-class-listener-method-reassigned`, and
+  `incomplete-class-timeout-reassigned`
+- declaration guard: `shadowed-component-class`

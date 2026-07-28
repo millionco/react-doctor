@@ -46,6 +46,7 @@ export type {
   ReactSemanticCallbackPropAlternative,
   ReactSemanticCallbackPropFlow,
   ReactSemanticCallableRef,
+  ReactSemanticClassLifecycle,
   ReactSemanticExternalStore,
   ReactSemanticCallback,
   ReactSemanticAsyncTask,

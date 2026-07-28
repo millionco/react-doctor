@@ -23,6 +23,7 @@ declare module "react" {
   export const use: Use;
   export const createContext: <Value>(defaultValue: Value) => Context<Value>;
   export const memo: <Component>(component: Component) => Component;
+  export const StrictMode: (properties: { children?: unknown }) => unknown;
   export const useEffect: (
     setup: () => void | (() => void),
     dependencies?: ReadonlyArray<unknown>,

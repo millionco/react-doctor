@@ -22,15 +22,18 @@ import { isPlatformDeclarationSymbol } from "./utils/is-platform-declaration-sym
 import { isPlatformResourceValue } from "./utils/is-platform-resource-value.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 
-export interface EffectResourceProtocolDescriptor {
+export interface LifecycleResourceProtocolDescriptor {
   acquisitionNode: ts.Node;
   acquisitionNodes: ReadonlyArray<ts.Node>;
   callbackExpression: ts.Expression | null;
   disposalCalls: ReadonlyArray<ts.CallExpression>;
   disposalStatus: ReactEffectResourceDisposalStatus;
-  effectCall: ts.CallExpression;
   isSourceComplete: boolean;
   kind: ReactEffectResourceKind;
+}
+
+export interface EffectResourceProtocolDescriptor extends LifecycleResourceProtocolDescriptor {
+  effectCall: ts.CallExpression;
 }
 
 interface EventListenerDescriptor {
@@ -368,14 +371,14 @@ const isGuaranteedCleanupCall = (
 };
 
 const getDisposalStatus = (
-  effectCallback: ts.FunctionLikeDeclaration,
+  cleanupFunctions: ReadonlyArray<ts.FunctionLikeDeclaration>,
+  hasGuaranteedCleanup: boolean,
   isAcquisitionConditional: boolean,
   isMatchingDisposal: (callExpression: ts.CallExpression) => boolean,
   isDefinitelyMismatchedDisposal: (callExpression: ts.CallExpression) => boolean,
   typeChecker: ts.TypeChecker,
 ): EffectResourceDisposal => {
-  const cleanupFunctions = collectEffectCleanupFunctions(effectCallback, typeChecker);
-  if (cleanupFunctions.length === 0 || !hasGuaranteedEffectCleanup(effectCallback, typeChecker)) {
+  if (cleanupFunctions.length === 0 || !hasGuaranteedCleanup) {
     return {
       calls: [],
       status: isAcquisitionConditional
@@ -412,6 +415,99 @@ const getDisposalStatus = (
   };
 };
 
+export const collectLifecycleResourceProtocols = (
+  setupFunction: ts.FunctionLikeDeclaration,
+  cleanupFunctions: ReadonlyArray<ts.FunctionLikeDeclaration>,
+  hasGuaranteedCleanup: boolean,
+  context: ReactAnalysisContext,
+): ReadonlyArray<LifecycleResourceProtocolDescriptor> => {
+  const protocols: LifecycleResourceProtocolDescriptor[] = [];
+  const reachableFunctions = collectReachableFunctions(setupFunction, context.typeChecker);
+  for (const registrationCall of collectReachableCallExpressions(
+    setupFunction,
+    context.typeChecker,
+  )) {
+    const listener = getEventListenerDescriptor(registrationCall, context.typeChecker);
+    if (!listener) continue;
+    const ownerFunction = getEnclosingFunction(registrationCall);
+    const reachableOwner = ownerFunction
+      ? reachableFunctions.find(
+          (reachableFunction) => reachableFunction.functionNode === ownerFunction,
+        )
+      : null;
+    const isAcquisitionConditional = Boolean(
+      !ownerFunction ||
+      reachableOwner?.isConditionallyReached ||
+      hasConditionalAncestor(registrationCall, ownerFunction),
+    );
+    const disposal = getDisposalStatus(
+      cleanupFunctions,
+      hasGuaranteedCleanup,
+      isAcquisitionConditional,
+      (cleanupCall) =>
+        isMatchingEventRemoval(cleanupCall, listener, context.typeChecker) ||
+        isMatchingAbort(cleanupCall, listener, context.typeChecker),
+      (cleanupCall) =>
+        isDefinitelyMismatchedEventRemoval(cleanupCall, listener, context.typeChecker),
+      context.typeChecker,
+    );
+    protocols.push({
+      acquisitionNode: registrationCall,
+      acquisitionNodes: [registrationCall],
+      callbackExpression: listener.handlerExpression,
+      disposalCalls: disposal.calls,
+      disposalStatus: disposal.status,
+      isSourceComplete:
+        listener.capture !== null &&
+        disposal.status === ReactEffectResourceDisposalStatus.Guaranteed,
+      kind: ReactEffectResourceKind.EventListener,
+    });
+  }
+  for (const observer of collectObservers(setupFunction, context.typeChecker)) {
+    const observerActivation = observer.activationCalls[0];
+    if (!observerActivation) continue;
+    const ownerFunction = getEnclosingFunction(observerActivation);
+    const reachableOwner = ownerFunction
+      ? reachableFunctions.find(
+          (reachableFunction) => reachableFunction.functionNode === ownerFunction,
+        )
+      : null;
+    const isAcquisitionConditional = Boolean(
+      !ownerFunction ||
+      reachableOwner?.isConditionallyReached ||
+      hasConditionalAncestor(observerActivation, ownerFunction),
+    );
+    const disposal = getDisposalStatus(
+      cleanupFunctions,
+      hasGuaranteedCleanup,
+      isAcquisitionConditional,
+      (cleanupCall) =>
+        ts.isPropertyAccessExpression(cleanupCall.expression) &&
+        cleanupCall.expression.name.text === "disconnect" &&
+        isPlatformMember(cleanupCall.expression.name, "disconnect", context.typeChecker) &&
+        areImmutableExpressionsIdentical(
+          cleanupCall.expression.expression,
+          observer.resourceExpression,
+          context.typeChecker,
+        ),
+      () => false,
+      context.typeChecker,
+    );
+    protocols.push({
+      acquisitionNode: observerActivation,
+      acquisitionNodes: observer.activationCalls,
+      callbackExpression: observer.callbackExpression,
+      disposalCalls: disposal.calls,
+      disposalStatus: disposal.status,
+      isSourceComplete:
+        Boolean(observer.callbackExpression) &&
+        disposal.status === ReactEffectResourceDisposalStatus.Guaranteed,
+      kind: observer.kind,
+    });
+  }
+  return protocols;
+};
+
 export const collectEffectResourceProtocols = (
   functionNode: ts.FunctionLikeDeclaration,
   context: ReactAnalysisContext,
@@ -420,89 +516,15 @@ export const collectEffectResourceProtocols = (
   for (const effectCall of collectEffectCalls(functionNode, context.typeChecker)) {
     const effectCallback = getEffectCallback(effectCall, context.typeChecker);
     if (!effectCallback) continue;
-    const reachableFunctions = collectReachableFunctions(effectCallback, context.typeChecker);
-    for (const registrationCall of collectReachableCallExpressions(
-      effectCallback,
-      context.typeChecker,
-    )) {
-      const listener = getEventListenerDescriptor(registrationCall, context.typeChecker);
-      if (!listener) continue;
-      const ownerFunction = getEnclosingFunction(registrationCall);
-      const reachableOwner = ownerFunction
-        ? reachableFunctions.find(
-            (reachableFunction) => reachableFunction.functionNode === ownerFunction,
-          )
-        : null;
-      const isAcquisitionConditional = Boolean(
-        !ownerFunction ||
-        reachableOwner?.isConditionallyReached ||
-        hasConditionalAncestor(registrationCall, ownerFunction),
-      );
-      const disposal = getDisposalStatus(
+    const cleanupFunctions = collectEffectCleanupFunctions(effectCallback, context.typeChecker);
+    protocols.push(
+      ...collectLifecycleResourceProtocols(
         effectCallback,
-        isAcquisitionConditional,
-        (cleanupCall) =>
-          isMatchingEventRemoval(cleanupCall, listener, context.typeChecker) ||
-          isMatchingAbort(cleanupCall, listener, context.typeChecker),
-        (cleanupCall) =>
-          isDefinitelyMismatchedEventRemoval(cleanupCall, listener, context.typeChecker),
-        context.typeChecker,
-      );
-      const hasCompleteIdentity = listener.capture !== null;
-      protocols.push({
-        acquisitionNode: registrationCall,
-        acquisitionNodes: [registrationCall],
-        callbackExpression: listener.handlerExpression,
-        disposalCalls: disposal.calls,
-        disposalStatus: disposal.status,
-        effectCall,
-        isSourceComplete:
-          hasCompleteIdentity && disposal.status === ReactEffectResourceDisposalStatus.Guaranteed,
-        kind: ReactEffectResourceKind.EventListener,
-      });
-    }
-    for (const observer of collectObservers(effectCallback, context.typeChecker)) {
-      const observerActivation = observer.activationCalls[0];
-      if (!observerActivation) continue;
-      const ownerFunction = getEnclosingFunction(observerActivation);
-      const reachableOwner = ownerFunction
-        ? reachableFunctions.find(
-            (reachableFunction) => reachableFunction.functionNode === ownerFunction,
-          )
-        : null;
-      const isAcquisitionConditional = Boolean(
-        !ownerFunction ||
-        reachableOwner?.isConditionallyReached ||
-        hasConditionalAncestor(observerActivation, ownerFunction),
-      );
-      const disposal = getDisposalStatus(
-        effectCallback,
-        isAcquisitionConditional,
-        (cleanupCall) =>
-          ts.isPropertyAccessExpression(cleanupCall.expression) &&
-          cleanupCall.expression.name.text === "disconnect" &&
-          isPlatformMember(cleanupCall.expression.name, "disconnect", context.typeChecker) &&
-          areImmutableExpressionsIdentical(
-            cleanupCall.expression.expression,
-            observer.resourceExpression,
-            context.typeChecker,
-          ),
-        () => false,
-        context.typeChecker,
-      );
-      protocols.push({
-        acquisitionNode: observerActivation,
-        acquisitionNodes: observer.activationCalls,
-        callbackExpression: observer.callbackExpression,
-        disposalCalls: disposal.calls,
-        disposalStatus: disposal.status,
-        effectCall,
-        isSourceComplete:
-          Boolean(observer.callbackExpression) &&
-          disposal.status === ReactEffectResourceDisposalStatus.Guaranteed,
-        kind: observer.kind,
-      });
-    }
+        cleanupFunctions,
+        hasGuaranteedEffectCleanup(effectCallback, context.typeChecker),
+        context,
+      ).map((protocol) => ({ ...protocol, effectCall })),
+    );
   }
   return protocols;
 };

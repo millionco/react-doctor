@@ -208,12 +208,17 @@ export const analyzeBoundaryCoverage = (
     }
   }
 
-  const executionRoots = new Set<ts.FunctionLikeDeclaration>([functionNode]);
+  const unitExecutionRoots = unit.classNode
+    ? unit.classNode.members.filter(ts.isMethodDeclaration)
+    : [functionNode];
+  const executionRoots = new Set<ts.FunctionLikeDeclaration>(unitExecutionRoots);
   const collectExecutionRoots = (node: ts.Node): void => {
     if (isFunctionBoundary(node)) executionRoots.add(node);
     node.forEachChild(collectExecutionRoots);
   };
-  functionNode.forEachChild(collectExecutionRoots);
+  for (const executionRoot of unitExecutionRoots) {
+    executionRoot.forEachChild(collectExecutionRoots);
+  }
   const unmodeledCallableUseLocations = new Set<string>();
   for (const executionRoot of executionRoots) {
     const reachabilityGraph = collectReachableFunctionGraph(executionRoot, context.typeChecker);
@@ -460,7 +465,23 @@ export const analyzeBoundaryCoverage = (
     }
     node.forEachChild(visit);
   };
-  functionNode.forEachChild(visit);
+  for (const executionRoot of unitExecutionRoots) {
+    executionRoot.forEachChild(visit);
+  }
+  const semanticUnit = findSemanticUnit(unit, context);
+  const classLifecycle = semanticUnit
+    ? context.graph?.classLifecycles.find((lifecycle) => lifecycle.ownerId === semanticUnit.id)
+    : null;
+  if (unit.kind === ReactUnitKind.ClassComponent && !classLifecycle?.sourceComplete) {
+    unknownEvidence.push(
+      createEvidence(
+        unit.classNode ?? unit.node,
+        context.rootDirectory,
+        "The class lifecycle contains an unmodeled method or ownership transition",
+        ["class lifecycle", "unmodeled execution", "unknown phase or lifetime"],
+      ),
+    );
+  }
 
   if (unknownEvidence.length > 0) {
     return createObligation(

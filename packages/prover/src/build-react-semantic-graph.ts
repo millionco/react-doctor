@@ -11,8 +11,14 @@ import { collectDirectHookCalls } from "./collect-direct-hook-calls.js";
 import { collectEffectEventBindings } from "./collect-effect-event-bindings.js";
 import { collectEffectCleanupFunctions } from "./collect-effect-cleanup-functions.js";
 import { collectEffectCalls } from "./collect-effect-calls.js";
-import { collectEffectSchedulerProtocols } from "./collect-effect-scheduler-protocols.js";
-import { collectEffectResourceProtocols } from "./collect-effect-resource-protocols.js";
+import {
+  collectEffectSchedulerProtocols,
+  collectLifecycleSchedulerProtocols,
+} from "./collect-effect-scheduler-protocols.js";
+import {
+  collectEffectResourceProtocols,
+  collectLifecycleResourceProtocols,
+} from "./collect-effect-resource-protocols.js";
 import { collectHookBindings } from "./collect-hook-bindings.js";
 import { collectHookCalls } from "./collect-hook-calls.js";
 import { collectReactiveCaptures } from "./collect-reactive-captures.js";
@@ -58,6 +64,7 @@ import type {
   ReactSemanticCallbackPropAlternative,
   ReactSemanticCallbackPropFlow,
   ReactSemanticCallableRef,
+  ReactSemanticClassLifecycle,
   ReactSemanticExternalStore,
   ReactSemanticFunctionCall,
   ReactSemanticGraph,
@@ -70,6 +77,8 @@ import type {
   ReactUnitDescriptor,
 } from "./types.js";
 import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
+import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
+import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 
 interface UnitGraphIdentity {
@@ -79,6 +88,15 @@ interface UnitGraphIdentity {
 
 interface EffectGraphFacts {
   effects: ReadonlyArray<ReactSemanticEffect>;
+  schedulers: ReadonlyArray<ReactSemanticScheduler>;
+  resources: ReadonlyArray<ReactSemanticEffectResource>;
+  callbacks: ReadonlyArray<ReactSemanticCallback>;
+  reachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>;
+  functionCalls: ReadonlyArray<ReactSemanticFunctionCall>;
+}
+
+interface ClassLifecycleGraphFacts {
+  lifecycle: ReactSemanticClassLifecycle | null;
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
   resources: ReadonlyArray<ReactSemanticEffectResource>;
   callbacks: ReadonlyArray<ReactSemanticCallback>;
@@ -235,6 +253,7 @@ const createSemanticId = (
 };
 
 const getDeclarationNameNode = (descriptor: ReactUnitDescriptor): ts.Node | null => {
+  if (descriptor.classNode) return descriptor.classNode.name ?? descriptor.classNode;
   const functionNode = descriptor.functionNode;
   if (!functionNode) return descriptor.node;
   if (functionNode.name) return functionNode.name;
@@ -988,6 +1007,280 @@ const collectEffectGraph = (
   return { effects, schedulers, resources, callbacks, reachableFunctions, functionCalls };
 };
 
+const collectClassLifecycleGraph = (
+  identity: UnitGraphIdentity,
+  context: ReactAnalysisContext,
+): ClassLifecycleGraphFacts => {
+  const classNode = identity.descriptor.classNode;
+  const renderMethod = classNode ? getClassMethodDeclaration(classNode, "render") : null;
+  if (identity.descriptor.kind !== ReactUnitKind.ClassComponent || !classNode || !renderMethod) {
+    return {
+      lifecycle: null,
+      schedulers: [],
+      resources: [],
+      callbacks: [],
+      reachableFunctions: [],
+      functionCalls: [],
+    };
+  }
+  const mountMethod = getClassMethodDeclaration(classNode, "componentDidMount");
+  const unmountMethod = getClassMethodDeclaration(classNode, "componentWillUnmount");
+  const callbacks: ReactSemanticCallback[] = [];
+  const reachableFunctions: ReactSemanticReachableFunction[] = [];
+  const functionCalls: ReactSemanticFunctionCall[] = [];
+  const createLifecycleCallback = (
+    method: ts.MethodDeclaration | null,
+    kind: ReactSemanticCallbackKind,
+    phase: ReactExecutionPhase,
+    name: string,
+  ): ReactSemanticCallback | null => {
+    if (!method) return null;
+    const callback = createCallbackFact(
+      identity,
+      method,
+      method,
+      new Set(),
+      kind,
+      phase,
+      name,
+      context,
+    );
+    callbacks.push(callback);
+    const reachabilityFacts = collectReachabilityGraphFacts(identity, method, callback, context);
+    reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+    functionCalls.push(...reachabilityFacts.functionCalls);
+    return callback;
+  };
+  const mountCallback = createLifecycleCallback(
+    mountMethod,
+    ReactSemanticCallbackKind.ClassMount,
+    ReactExecutionPhase.ClassMount,
+    "componentDidMount",
+  );
+  const unmountCallback = createLifecycleCallback(
+    unmountMethod,
+    ReactSemanticCallbackKind.ClassUnmount,
+    ReactExecutionPhase.ClassUnmount,
+    "componentWillUnmount",
+  );
+  const resourceProtocols = mountMethod
+    ? collectLifecycleResourceProtocols(
+        mountMethod,
+        unmountMethod ? [unmountMethod] : [],
+        Boolean(unmountMethod),
+        context,
+      )
+    : [];
+  const schedulerProtocols = mountMethod
+    ? collectLifecycleSchedulerProtocols(
+        mountMethod,
+        unmountMethod ? [unmountMethod] : [],
+        Boolean(unmountMethod),
+        context,
+      )
+    : [];
+  const resources: ReactSemanticEffectResource[] = [];
+  const resourceCallbackFunctions = new Set<ts.FunctionLikeDeclaration>();
+  for (const protocol of resourceProtocols) {
+    const resourceId = createSemanticId(
+      "class-resource",
+      protocol.kind,
+      protocol.acquisitionNode,
+      context,
+    );
+    const callbackFunction = protocol.callbackExpression
+      ? resolveFunction(protocol.callbackExpression, context.typeChecker)
+      : null;
+    if (callbackFunction) resourceCallbackFunctions.add(callbackFunction);
+    const resourceCallback = callbackFunction
+      ? createCallbackFact(
+          identity,
+          callbackFunction,
+          callbackFunction,
+          new Set(),
+          ReactSemanticCallbackKind.ResourceCallback,
+          ReactExecutionPhase.Deferred,
+          protocol.kind,
+          context,
+        )
+      : null;
+    const identifiedResourceCallback =
+      resourceCallback && callbackFunction
+        ? {
+            ...resourceCallback,
+            id: createSemanticId(
+              `resource-callback:${resourceId}`,
+              protocol.kind,
+              callbackFunction,
+              context,
+            ),
+          }
+        : null;
+    if (identifiedResourceCallback && callbackFunction) {
+      callbacks.push(identifiedResourceCallback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        identity,
+        callbackFunction,
+        identifiedResourceCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    const callbackComplete = Boolean(
+      callbackFunction &&
+      identifiedResourceCallback &&
+      isDeferredCallbackSynchronous(callbackFunction, context),
+    );
+    resources.push({
+      id: resourceId,
+      ownerId: identity.semanticUnit.id,
+      effectId: null,
+      acquisitionCallbackId: mountCallback?.id ?? "",
+      kind: protocol.kind,
+      phase: ReactExecutionPhase.Deferred,
+      location: getNodeLocation(protocol.acquisitionNode, context.rootDirectory),
+      activationLocations: protocol.acquisitionNodes.map((acquisitionNode) =>
+        getNodeLocation(acquisitionNode, context.rootDirectory),
+      ),
+      callbackIds: identifiedResourceCallback ? [identifiedResourceCallback.id] : [],
+      callbackComplete,
+      disposalStatus: protocol.disposalStatus,
+      disposalLocations: protocol.disposalCalls.map((disposalCall) =>
+        getNodeLocation(disposalCall, context.rootDirectory),
+      ),
+      sourceComplete: protocol.isSourceComplete,
+      complete: protocol.isSourceComplete && callbackComplete && Boolean(mountCallback),
+    });
+  }
+  const schedulers: ReactSemanticScheduler[] = [];
+  const schedulerCallbackFunctions = new Set<ts.FunctionLikeDeclaration>();
+  for (const protocol of schedulerProtocols) {
+    const schedulerId = createSemanticId(
+      "class-scheduler",
+      protocol.kind,
+      protocol.registrationCall,
+      context,
+    );
+    const callbackFunction = protocol.callbackExpression
+      ? resolveFunction(protocol.callbackExpression, context.typeChecker)
+      : null;
+    if (callbackFunction) schedulerCallbackFunctions.add(callbackFunction);
+    const schedulerCallback = callbackFunction
+      ? createCallbackFact(
+          identity,
+          callbackFunction,
+          callbackFunction,
+          new Set(),
+          ReactSemanticCallbackKind.ScheduledCallback,
+          ReactExecutionPhase.Deferred,
+          protocol.kind,
+          context,
+        )
+      : null;
+    const identifiedSchedulerCallback =
+      schedulerCallback && callbackFunction
+        ? {
+            ...schedulerCallback,
+            id: createSemanticId(
+              `scheduler-callback:${schedulerId}`,
+              protocol.kind,
+              callbackFunction,
+              context,
+            ),
+          }
+        : null;
+    if (identifiedSchedulerCallback && callbackFunction) {
+      callbacks.push(identifiedSchedulerCallback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        identity,
+        callbackFunction,
+        identifiedSchedulerCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    const callbackComplete = Boolean(
+      callbackFunction &&
+      identifiedSchedulerCallback &&
+      isDeferredCallbackSynchronous(callbackFunction, context),
+    );
+    schedulers.push({
+      id: schedulerId,
+      ownerId: identity.semanticUnit.id,
+      effectId: null,
+      registrationCallbackId: mountCallback?.id ?? "",
+      kind: protocol.kind,
+      phase: ReactExecutionPhase.Deferred,
+      location: getNodeLocation(protocol.registrationCall, context.rootDirectory),
+      callbackIds: identifiedSchedulerCallback ? [identifiedSchedulerCallback.id] : [],
+      callbackComplete,
+      cancellationStatus: protocol.cancellationStatus,
+      cancellationLocations: protocol.cancellationCalls.map((cancellationCall) =>
+        getNodeLocation(cancellationCall, context.rootDirectory),
+      ),
+      sourceComplete: protocol.isSourceComplete,
+      complete: protocol.isSourceComplete && callbackComplete && Boolean(mountCallback),
+    });
+  }
+  const representedLifecycleCalls = new Set<ts.CallExpression>([
+    ...resourceProtocols.flatMap((protocol) => [
+      ...protocol.acquisitionNodes.filter(ts.isCallExpression),
+      ...protocol.disposalCalls,
+    ]),
+    ...schedulerProtocols.flatMap((protocol) => [
+      protocol.registrationCall,
+      ...protocol.cancellationCalls,
+    ]),
+  ]);
+  const lifecycleCalls = [
+    ...(mountMethod ? collectReachableCallExpressions(mountMethod, context.typeChecker) : []),
+    ...(unmountMethod ? collectReachableCallExpressions(unmountMethod, context.typeChecker) : []),
+  ];
+  const representedClassMembers = new Set<ts.ClassElement>([
+    renderMethod,
+    ...(mountMethod ? [mountMethod] : []),
+    ...(unmountMethod ? [unmountMethod] : []),
+    ...[...resourceCallbackFunctions].filter(ts.isMethodDeclaration),
+    ...[...schedulerCallbackFunctions].filter(ts.isMethodDeclaration),
+    ...schedulerProtocols.flatMap((protocol) =>
+      protocol.handleDeclaration ? [protocol.handleDeclaration] : [],
+    ),
+  ]);
+  const sourceComplete =
+    identity.descriptor.sourceComplete &&
+    classNode.members.every((member) => representedClassMembers.has(member)) &&
+    lifecycleCalls.every((callExpression) => representedLifecycleCalls.has(callExpression));
+  const lifecycleId = createSemanticId(
+    "class-lifecycle",
+    identity.descriptor.name,
+    classNode,
+    context,
+  );
+  return {
+    lifecycle: {
+      id: lifecycleId,
+      ownerId: identity.semanticUnit.id,
+      location: getNodeLocation(classNode, context.rootDirectory),
+      mountCallbackId: mountCallback?.id ?? null,
+      unmountCallbackId: unmountCallback?.id ?? null,
+      resourceIds: resources.map((resource) => resource.id),
+      schedulerIds: schedulers.map((scheduler) => scheduler.id),
+      sourceComplete,
+      complete:
+        sourceComplete &&
+        resources.every((resource) => resource.complete) &&
+        schedulers.every((scheduler) => scheduler.complete),
+    },
+    schedulers,
+    resources,
+    callbacks,
+    reachableFunctions,
+    functionCalls,
+  };
+};
+
 const collectAsyncTaskGraph = (
   identity: UnitGraphIdentity,
   context: ReactAnalysisContext,
@@ -1661,6 +1954,7 @@ export const buildReactSemanticGraph = (
         name: descriptor.name,
         kind: descriptor.kind,
         location: getNodeLocation(descriptor.node, context.rootDirectory),
+        sourceComplete: descriptor.sourceComplete,
       },
     }),
   );
@@ -1681,6 +1975,7 @@ export const buildReactSemanticGraph = (
   const effects: ReactSemanticEffect[] = [];
   const schedulers: ReactSemanticScheduler[] = [];
   const resources: ReactSemanticEffectResource[] = [];
+  const classLifecycles: ReactSemanticClassLifecycle[] = [];
   const effectEvents: ReactSemanticEffectEvent[] = [];
   const externalStores: ReactSemanticExternalStore[] = [];
   const asyncTasks: ReactSemanticAsyncTask[] = [];
@@ -1706,6 +2001,7 @@ export const buildReactSemanticGraph = (
     if (
       functionNode &&
       (identity.descriptor.kind === ReactUnitKind.Component ||
+        identity.descriptor.kind === ReactUnitKind.ClassComponent ||
         identity.descriptor.kind === ReactUnitKind.Hook)
     ) {
       const renderCallback = createCallbackFact(
@@ -1728,6 +2024,15 @@ export const buildReactSemanticGraph = (
       reachableFunctions.push(...reachabilityFacts.reachableFunctions);
       functionCalls.push(...reachabilityFacts.functionCalls);
     }
+    const classLifecycleGraph = collectClassLifecycleGraph(identity, context);
+    if (classLifecycleGraph.lifecycle) {
+      classLifecycles.push(classLifecycleGraph.lifecycle);
+    }
+    schedulers.push(...classLifecycleGraph.schedulers);
+    resources.push(...classLifecycleGraph.resources);
+    callbacks.push(...classLifecycleGraph.callbacks);
+    reachableFunctions.push(...classLifecycleGraph.reachableFunctions);
+    functionCalls.push(...classLifecycleGraph.functionCalls);
     const hookGraph = collectHookGraph(identity, unitIdsBySymbol, context);
     edges.push(...hookGraph.edges);
     hookCalls.push(...hookGraph.hookCalls);
@@ -1810,6 +2115,7 @@ export const buildReactSemanticGraph = (
     callableRefs,
     schedulers,
     resources,
+    classLifecycles,
     compiler: extractReactCompilerGraph(sourceFiles, context.rootDirectory),
   };
 };

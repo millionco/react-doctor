@@ -79,13 +79,19 @@ export const analyzeReactUnit = (
       ),
     };
   }
-  if (unit.kind === ReactUnitKind.ClassComponent || !unit.functionNode) {
+  if (!unit.functionNode || !unit.sourceComplete) {
     const evidence = [
       createEvidence(
         unit.node,
         context.rootDirectory,
-        "Class component lifecycle semantics are not modeled yet",
-        ["class component", "React lifecycle", "unsupported proof model"],
+        unit.kind === ReactUnitKind.ClassComponent
+          ? "The class contains constructor, field, lifecycle, ref, or custom method semantics that are not modeled yet"
+          : "The React unit has no analyzable execution root",
+        [
+          unit.kind === ReactUnitKind.ClassComponent ? "class component" : "React unit",
+          "unmodeled execution surface",
+          "unsupported proof model",
+        ],
       ),
     ];
     return {
@@ -96,7 +102,9 @@ export const analyzeReactUnit = (
         createObligation(
           claim,
           ReactObligationStatus.Unknown,
-          "Class component proof is incomplete",
+          unit.kind === ReactUnitKind.ClassComponent
+            ? "Class component execution coverage is incomplete"
+            : "React unit proof is incomplete",
           evidence,
         ),
       ),

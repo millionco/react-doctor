@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 11;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 17;
+export const REACT_PROOF_SCHEMA_VERSION = 13;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 19;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;

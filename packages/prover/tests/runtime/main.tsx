@@ -1,4 +1,6 @@
 import {
+  Component,
+  StrictMode,
   createContext,
   memo,
   useCallback,
@@ -27,6 +29,10 @@ import {
 declare global {
   interface Window {
     effectEventSetupRuns: number;
+    classListenerHits: number;
+    classMounts: number;
+    classSchedulerHits: number;
+    classUnmounts: number;
     listenerHits: number;
     observerHits: number;
     schedulerHits: number;
@@ -34,6 +40,10 @@ declare global {
 }
 
 window.effectEventSetupRuns = 0;
+window.classListenerHits = 0;
+window.classMounts = 0;
+window.classSchedulerHits = 0;
+window.classUnmounts = 0;
 window.listenerHits = 0;
 window.observerHits = 0;
 window.schedulerHits = 0;
@@ -77,6 +87,119 @@ const ListenerOracle = () => {
       </button>
       <output data-testid="listener-hits">{window.listenerHits}</output>
       {isMounted ? <Listener /> : null}
+    </main>
+  );
+};
+
+class SafeClassListener extends Component {
+  handleResize() {
+    window.classListenerHits += 1;
+  }
+
+  componentDidMount() {
+    window.classMounts += 1;
+    window.addEventListener("prover-class-resize", this.handleResize);
+  }
+
+  componentWillUnmount() {
+    window.classUnmounts += 1;
+    window.removeEventListener("prover-class-resize", this.handleResize);
+  }
+
+  render() {
+    return null;
+  }
+}
+
+class LeakyClassListener extends Component {
+  handleResize() {
+    window.classListenerHits += 1;
+  }
+
+  componentDidMount() {
+    window.classMounts += 1;
+    window.addEventListener("prover-class-resize", this.handleResize);
+  }
+
+  componentWillUnmount() {
+    window.classUnmounts += 1;
+  }
+
+  render() {
+    return null;
+  }
+}
+
+const ClassListenerOracle = () => {
+  const [isMounted, setIsMounted] = useState(true);
+  const isSafeMode = new URLSearchParams(window.location.search).get("mode") === "safe";
+  const Listener = isSafeMode ? SafeClassListener : LeakyClassListener;
+  return (
+    <main>
+      <button type="button" onClick={() => setIsMounted(false)}>
+        unmount class listener
+      </button>
+      <button type="button" onClick={() => window.dispatchEvent(new Event("prover-class-resize"))}>
+        dispatch class event
+      </button>
+      {isMounted ? <Listener /> : null}
+    </main>
+  );
+};
+
+class SafeClassScheduler extends Component {
+  timeoutId = 0;
+
+  handleTimeout() {
+    window.classSchedulerHits += 1;
+  }
+
+  componentDidMount() {
+    window.classMounts += 1;
+    this.timeoutId = window.setTimeout(this.handleTimeout, SCHEDULER_CALLBACK_DELAY_MS);
+  }
+
+  componentWillUnmount() {
+    window.classUnmounts += 1;
+    window.clearTimeout(this.timeoutId);
+  }
+
+  render() {
+    return null;
+  }
+}
+
+class LeakyClassScheduler extends Component {
+  timeoutId = 0;
+
+  handleTimeout() {
+    window.classSchedulerHits += 1;
+  }
+
+  componentDidMount() {
+    window.classMounts += 1;
+    this.timeoutId = window.setTimeout(this.handleTimeout, SCHEDULER_CALLBACK_DELAY_MS);
+  }
+
+  componentWillUnmount() {
+    window.classUnmounts += 1;
+  }
+
+  render() {
+    return null;
+  }
+}
+
+const ClassSchedulerOracle = () => {
+  const [isMounted, setIsMounted] = useState(true);
+  const isSafeMode = new URLSearchParams(window.location.search).get("mode") === "safe";
+  const Scheduler = isSafeMode ? SafeClassScheduler : LeakyClassScheduler;
+  return (
+    <main>
+      <button type="button" onClick={() => setIsMounted(false)}>
+        unmount class scheduler
+      </button>
+      {isMounted ? <Scheduler /> : null}
     </main>
   );
 };
@@ -597,9 +720,25 @@ const RuntimeOracle = () => {
   if (oracle === "observer-lifetime") {
     return <ObserverLifetimeOracle />;
   }
+  if (oracle === "class-listener") {
+    return <ClassListenerOracle />;
+  }
+  if (oracle === "class-scheduler") {
+    return <ClassSchedulerOracle />;
+  }
   return <ListenerOracle />;
 };
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing runtime oracle root");
-createRoot(rootElement).render(<RuntimeOracle />);
+const oracle = new URLSearchParams(window.location.search).get("oracle");
+const isClassLifecycleOracle = oracle === "class-listener" || oracle === "class-scheduler";
+createRoot(rootElement).render(
+  isClassLifecycleOracle ? (
+    <StrictMode>
+      <RuntimeOracle />
+    </StrictMode>
+  ) : (
+    <RuntimeOracle />
+  ),
+);

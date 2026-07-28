@@ -58,6 +58,8 @@ export enum ReactCompilerFactStatus {
 }
 
 export enum ReactExecutionPhase {
+  ClassMount = "class-mount",
+  ClassUnmount = "class-unmount",
   Deferred = "deferred",
   EffectCleanup = "effect-cleanup",
   EffectEvent = "effect-event",
@@ -70,6 +72,8 @@ export enum ReactExecutionPhase {
 }
 
 export enum ReactSemanticCallbackKind {
+  ClassMount = "class-mount",
+  ClassUnmount = "class-unmount",
   ComponentRender = "component-render",
   EffectCleanup = "effect-cleanup",
   EffectEvent = "effect-event",
@@ -125,6 +129,7 @@ export interface ReactSemanticUnit {
   name: string;
   kind: ReactUnitKind;
   location: ReactProofLocation;
+  sourceComplete: boolean;
 }
 
 export interface ReactSemanticEdge {
@@ -379,7 +384,7 @@ export interface ReactSemanticCallableRef {
 export interface ReactSemanticScheduler {
   id: string;
   ownerId: string;
-  effectId: string;
+  effectId: string | null;
   registrationCallbackId: string;
   kind: ReactSchedulerKind;
   phase: ReactExecutionPhase;
@@ -395,7 +400,7 @@ export interface ReactSemanticScheduler {
 export interface ReactSemanticEffectResource {
   id: string;
   ownerId: string;
-  effectId: string;
+  effectId: string | null;
   acquisitionCallbackId: string;
   kind: ReactEffectResourceKind;
   phase: ReactExecutionPhase;
@@ -405,6 +410,18 @@ export interface ReactSemanticEffectResource {
   callbackComplete: boolean;
   disposalStatus: ReactEffectResourceDisposalStatus;
   disposalLocations: ReadonlyArray<ReactProofLocation>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticClassLifecycle {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  mountCallbackId: string | null;
+  unmountCallbackId: string | null;
+  resourceIds: ReadonlyArray<string>;
+  schedulerIds: ReadonlyArray<string>;
   sourceComplete: boolean;
   complete: boolean;
 }
@@ -469,6 +486,7 @@ export interface ReactSemanticGraph {
   callableRefs: ReadonlyArray<ReactSemanticCallableRef>;
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
   resources: ReadonlyArray<ReactSemanticEffectResource>;
+  classLifecycles: ReadonlyArray<ReactSemanticClassLifecycle>;
   compiler: ReactCompilerGraph;
 }
 
@@ -499,8 +517,10 @@ export interface ReactUnitDescriptor {
   name: string;
   kind: ReactUnitKind;
   node: ts.Node;
+  classNode?: ts.ClassDeclaration;
   functionNode?: ts.FunctionLikeDeclaration;
   invalidHookCalls?: ReadonlyArray<ts.CallExpression>;
+  sourceComplete: boolean;
 }
 
 export interface ReactAnalysisContext {

@@ -45,13 +45,16 @@ The report includes:
   layout-synchronized, non-escaping refs used only by modeled events can be proved, while passive,
   multiply written, escaping, and unresolved protocols fail closed;
 - scheduler lifetime facts that tie a platform timer, animation frame, idle callback, immediate,
-  or microtask registration to its owning Effect, deferred callback set, exact handle, and cleanup
-  cancellation paths; only source-resolved synchronous callbacks with entry-dominating cleanup
-  cancellation are complete;
-- Effect resource lifetime facts for platform event listeners and activated mutation, resize, and
-  intersection observers; listener disposal follows the DOM's type/callback/capture identity rule
-  or an exact `AbortController`, observers record every `observe()` activation, and every returned
-  cleanup alternative must reach exact-object disposal;
+  or microtask registration to its owning Effect or class mount, deferred callback set, exact
+  handle, and cleanup or unmount cancellation paths; only source-resolved synchronous callbacks
+  with entry-dominating cancellation are complete;
+- lifecycle resource facts for platform event listeners and activated mutation, resize, and
+  intersection observers owned by Effects or class mount/unmount pairs; listener disposal follows
+  the DOM's type/callback/capture identity rule or an exact `AbortController`, observers record
+  every `observe()` activation, and every cleanup alternative must reach exact-object disposal;
+- class lifecycle facts that certify symbol-resolved `Component` and `PureComponent` inheritance,
+  pure render callbacks, direct `componentDidMount`/`componentWillUnmount` ownership transitions,
+  exact stable method identities, and immutable primitive scheduler-handle fields;
 - normalized React Compiler CFG, instruction-effect, and reactive-place facts;
 - per-unit proof obligations with `proved`, `violated`, or `unknown` results;
 - project evidence for type unsoundness, compiler diagnostics, and opaque boundaries.
@@ -69,11 +72,14 @@ proof certificate today. Callback-prop channels are also checked for known owner
 source callbacks, complete channels with actual sources, and internally consistent guarded
 alternatives. Callable refs additionally require a source-complete `useLayoutEffect` update, a
 concrete event callback, and a `ref.current` call edge. Scheduler certificates require a real
-Effect setup callback, deferred callback facts, exact cancellation evidence, and internally
-consistent completeness. Source-derived block invariants and broader lifecycle transition
-certificates remain future work. Resource certificates additionally require a real Effect setup,
-platform-declaration identity, deferred or Effect Event callback facts, nonempty activation and
-disposal evidence, and a completeness flag derived exactly from those facts.
+Effect setup or class mount callback, deferred callback facts, exact cancellation evidence, and
+internally consistent completeness. Class lifecycle certificates additionally require one class
+owner, phase-correct mount and unmount callbacks, reciprocal resource and scheduler links, and a
+completeness flag derived exactly from every owned lifetime fact. Source-derived block invariants
+and broader lifecycle transition certificates remain future work. Resource certificates
+additionally require a real Effect setup or class mount, platform-declaration identity, deferred
+or Effect Event callback facts, nonempty activation and disposal evidence, and a completeness flag
+derived exactly from those facts.
 
 ## Verification
 

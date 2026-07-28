@@ -42,6 +42,7 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
       callbackPropFlows: [],
       callableRefs: [],
       schedulers: [],
+      resources: [],
       compiler: {
         version: REACT_COMPILER_VERSION,
         phase: REACT_COMPILER_FACT_PHASE,

@@ -3,13 +3,16 @@ import { collectEffectCleanupFunctions } from "./collect-effect-cleanup-function
 import { collectEffectCalls } from "./collect-effect-calls.js";
 import { collectReachableFunctions } from "./collect-reachable-functions.js";
 import { getEffectCallback } from "./get-effect-callback.js";
-import { getRootIdentifier } from "./get-root-identifier.js";
 import { ReactSchedulerCancellationStatus, ReactSchedulerKind } from "./types.js";
 import type { ReactAnalysisContext } from "./types.js";
 import { collectSymbolWrites } from "./utils/collect-symbol-writes.js";
 import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
 import { getEnclosingFunction } from "./utils/get-enclosing-function.js";
+import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
+import { hasConditionalAncestor } from "./utils/has-conditional-ancestor.js";
 import { hasGuaranteedEffectCleanup } from "./utils/has-guaranteed-effect-cleanup.js";
+import { isEntryDominatingNode } from "./utils/is-entry-dominating-node.js";
+import { isPlatformDeclarationSymbol } from "./utils/is-platform-declaration-symbol.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 
 export interface EffectSchedulerProtocolDescriptor {
@@ -72,26 +75,6 @@ const SCHEDULER_APIS = new Map<string, SchedulerApiDescriptor>([
   ],
 ]);
 
-const PLATFORM_GLOBAL_NAMES = new Set(["globalThis", "self", "window"]);
-
-const getResolvedSymbol = (node: ts.Node, typeChecker: ts.TypeChecker): ts.Symbol | null => {
-  const symbol = typeChecker.getSymbolAtLocation(node);
-  if (!symbol) return null;
-  return symbol.flags & ts.SymbolFlags.Alias ? typeChecker.getAliasedSymbol(symbol) : symbol;
-};
-
-const isPlatformDeclaration = (symbol: ts.Symbol | null): boolean =>
-  Boolean(
-    symbol?.declarations?.length &&
-    symbol.declarations.every((declaration) => {
-      const sourceFileName = declaration.getSourceFile().fileName.replaceAll("\\", "/");
-      return (
-        sourceFileName.includes("/typescript/lib/lib.") ||
-        sourceFileName.includes("/node_modules/@types/node/")
-      );
-    }),
-  );
-
 const getPlatformExpressionName = (
   expression: ts.Expression,
   typeChecker: ts.TypeChecker,
@@ -104,7 +87,7 @@ const getPlatformExpressionName = (
     const unwrappedExpression = unwrapTypescriptExpression(pendingExpression);
     if (ts.isIdentifier(unwrappedExpression)) {
       const symbol = getResolvedSymbol(unwrappedExpression, typeChecker);
-      if (isPlatformDeclaration(symbol)) return symbol?.getName() ?? null;
+      if (isPlatformDeclarationSymbol(symbol)) return symbol?.getName() ?? null;
       if (!symbol || visitedSymbols.has(symbol)) continue;
       visitedSymbols.add(symbol);
       for (const declaration of symbol.declarations ?? []) {
@@ -120,12 +103,9 @@ const getPlatformExpressionName = (
       }
       continue;
     }
-    if (!ts.isPropertyAccessExpression(unwrappedExpression)) continue;
-    const rootIdentifier = getRootIdentifier(unwrappedExpression.expression);
     if (
-      rootIdentifier &&
-      PLATFORM_GLOBAL_NAMES.has(rootIdentifier.text) &&
-      isPlatformDeclaration(getResolvedSymbol(rootIdentifier, typeChecker))
+      ts.isPropertyAccessExpression(unwrappedExpression) &&
+      isPlatformDeclarationSymbol(getResolvedSymbol(unwrappedExpression.name, typeChecker))
     ) {
       return unwrappedExpression.name.text;
     }
@@ -165,57 +145,6 @@ const getImmutableHandle = (registrationCall: ts.CallExpression): ts.Identifier 
     return null;
   }
   return declaration.name;
-};
-
-const hasConditionalAncestor = (
-  node: ts.Node,
-  ownerFunction: ts.FunctionLikeDeclaration,
-): boolean => {
-  let currentNode = node;
-  while (currentNode !== ownerFunction) {
-    const parentNode = currentNode.parent;
-    if (!parentNode) return true;
-    if (
-      ts.isIfStatement(parentNode) ||
-      ts.isConditionalExpression(parentNode) ||
-      ts.isSwitchStatement(parentNode) ||
-      ts.isForStatement(parentNode) ||
-      ts.isForInStatement(parentNode) ||
-      ts.isForOfStatement(parentNode) ||
-      ts.isWhileStatement(parentNode) ||
-      ts.isDoStatement(parentNode) ||
-      ts.isTryStatement(parentNode) ||
-      (ts.isBinaryExpression(parentNode) &&
-        (parentNode.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-          parentNode.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-          parentNode.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken))
-    ) {
-      return true;
-    }
-    currentNode = parentNode;
-  }
-  return false;
-};
-
-const isEntryCancellation = (
-  callExpression: ts.CallExpression,
-  cleanupFunction: ts.FunctionLikeDeclaration,
-): boolean => {
-  if (
-    getEnclosingFunction(callExpression) !== cleanupFunction ||
-    hasConditionalAncestor(callExpression, cleanupFunction)
-  ) {
-    return false;
-  }
-  const functionBody = cleanupFunction.body;
-  if (!functionBody) return false;
-  if (!ts.isBlock(functionBody)) return functionBody === callExpression;
-  const firstStatement = functionBody.statements[0];
-  return Boolean(
-    firstStatement &&
-    ((ts.isExpressionStatement(firstStatement) && firstStatement.expression === callExpression) ||
-      (ts.isReturnStatement(firstStatement) && firstStatement.expression === callExpression)),
-  );
 };
 
 const isMatchingCancellation = (
@@ -295,7 +224,7 @@ const collectCancellation = (
       };
     }
     const entryCancellation = cleanupMatchingCalls.find((cleanupCall) =>
-      isEntryCancellation(cleanupCall, cleanupFunction),
+      isEntryDominatingNode(cleanupCall, cleanupFunction),
     );
     if (!entryCancellation) {
       return {

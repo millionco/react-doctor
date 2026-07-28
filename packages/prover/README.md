@@ -48,6 +48,10 @@ The report includes:
   or microtask registration to its owning Effect, deferred callback set, exact handle, and cleanup
   cancellation paths; only source-resolved synchronous callbacks with entry-dominating cleanup
   cancellation are complete;
+- Effect resource lifetime facts for platform event listeners and activated mutation, resize, and
+  intersection observers; listener disposal follows the DOM's type/callback/capture identity rule
+  or an exact `AbortController`, observers record every `observe()` activation, and every returned
+  cleanup alternative must reach exact-object disposal;
 - normalized React Compiler CFG, instruction-effect, and reactive-place facts;
 - per-unit proof obligations with `proved`, `violated`, or `unknown` results;
 - project evidence for type unsoundness, compiler diagnostics, and opaque boundaries.
@@ -67,7 +71,9 @@ alternatives. Callable refs additionally require a source-complete `useLayoutEff
 concrete event callback, and a `ref.current` call edge. Scheduler certificates require a real
 Effect setup callback, deferred callback facts, exact cancellation evidence, and internally
 consistent completeness. Source-derived block invariants and broader lifecycle transition
-certificates remain future work.
+certificates remain future work. Resource certificates additionally require a real Effect setup,
+platform-declaration identity, deferred or Effect Event callback facts, nonempty activation and
+disposal evidence, and a completeness flag derived exactly from those facts.
 
 ## Verification
 

@@ -3,6 +3,8 @@ import {
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
   ReactCallableRefFreshness,
+  ReactEffectResourceDisposalStatus,
+  ReactEffectResourceKind,
   ReactExecutionPhase,
   ReactObligationStatus,
   ReactProofCertificateStatus,
@@ -94,6 +96,31 @@ const expectedScheduledCallbackLifetimeStatus = (
     : ReactObligationStatus.Proved;
 };
 
+const expectedEffectCleanupStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (unit.kind === ReactUnitKind.ClassComponent || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const resources = report.graph.resources.filter((resource) => resource.ownerId === unit.id);
+  if (
+    resources.some(
+      (resource) => resource.disposalStatus === ReactEffectResourceDisposalStatus.Missing,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  if (
+    report.graph.effects.some((effect) => effect.ownerId === unit.id && !effect.callbackResolved)
+  ) {
+    return ReactObligationStatus.Unknown;
+  }
+  return resources.some((resource) => !resource.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
 const checkClaimCoverage = (
   report: ReactAppProofReport,
   failures: ReactProofCertificateFailure[],
@@ -150,6 +177,17 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `Scheduler facts require ${expectedSchedulerStatus}, not ${scheduledCallbackLifetime.status}`,
+      );
+    }
+    const effectCleanup = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.EffectCleanup,
+    );
+    const expectedCleanupStatus = expectedEffectCleanupStatus(semanticUnit, report);
+    if (effectCleanup && effectCleanup.status !== expectedCleanupStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Effect resource facts require ${expectedCleanupStatus}, not ${effectCleanup.status}`,
       );
     }
   }
@@ -472,6 +510,101 @@ const checkGraphReferences = (
       addFailure(failures, scheduler.id, "A complete scheduler callback set is empty");
     }
   }
+  for (const resource of report.graph.resources) {
+    if (!unitIds.has(resource.ownerId)) {
+      addFailure(failures, resource.id, "An Effect resource has an unknown owner unit");
+    }
+    const effect = effectsById.get(resource.effectId);
+    if (!effect || effect.ownerId !== resource.ownerId) {
+      addFailure(failures, resource.id, "An Effect resource has an unknown or cross-owner Effect");
+    } else if (effect.setupCallbackId !== resource.acquisitionCallbackId) {
+      addFailure(
+        failures,
+        resource.id,
+        "An Effect resource acquisition is not linked to its setup callback",
+      );
+    }
+    for (const callbackId of resource.callbackIds) {
+      const callback = callbacksById.get(callbackId);
+      if (!callback) {
+        addFailure(failures, resource.id, "An Effect resource has an unknown deferred callback");
+      } else if (
+        !(
+          (callback.kind === ReactSemanticCallbackKind.ResourceCallback &&
+            callback.phase === ReactExecutionPhase.Deferred) ||
+          (callback.kind === ReactSemanticCallbackKind.EffectEvent &&
+            callback.phase === ReactExecutionPhase.EffectEvent)
+        )
+      ) {
+        addFailure(
+          failures,
+          resource.id,
+          "An Effect resource callback has the wrong kind or execution phase",
+        );
+      }
+      if (
+        callback &&
+        callback.ownerId !== resource.ownerId &&
+        !report.graph.callbackPropFlows.some(
+          (propFlow) =>
+            propFlow.targetOwnerId === resource.ownerId &&
+            propFlow.phase === ReactExecutionPhase.Deferred &&
+            propFlow.complete &&
+            propFlow.callbackIds.includes(callbackId),
+        )
+      ) {
+        addFailure(
+          failures,
+          resource.id,
+          "An Effect resource callback has no certified owner channel",
+        );
+      }
+    }
+    if (
+      resource.activationLocations.length === 0 ||
+      !resource.activationLocations.some((activationLocation) =>
+        areProofLocationsEqual(activationLocation, resource.location),
+      )
+    ) {
+      addFailure(
+        failures,
+        resource.id,
+        "An Effect resource has no activation location matching its primary location",
+      );
+    }
+    const activationLocationKeys = resource.activationLocations.map(
+      (location) => `${location.filePath}:${location.line}:${location.column}`,
+    );
+    if (new Set(activationLocationKeys).size !== activationLocationKeys.length) {
+      addFailure(failures, resource.id, "An Effect resource repeats an activation location");
+    }
+    if (resource.kind === ReactEffectResourceKind.Observer) {
+      addFailure(failures, resource.id, "An Effect resource has an ambiguous observer kind");
+    }
+    if (
+      resource.disposalStatus === ReactEffectResourceDisposalStatus.Guaranteed &&
+      resource.disposalLocations.length === 0
+    ) {
+      addFailure(failures, resource.id, "A guaranteed Effect resource disposal has no evidence");
+    }
+    const expectedComplete =
+      resource.sourceComplete &&
+      resource.callbackComplete &&
+      resource.disposalStatus === ReactEffectResourceDisposalStatus.Guaranteed &&
+      resource.disposalLocations.length > 0 &&
+      resource.callbackIds.length > 0 &&
+      resource.phase === ReactExecutionPhase.Deferred;
+    if (resource.complete !== expectedComplete) {
+      addFailure(
+        failures,
+        resource.id,
+        "An Effect resource completeness flag does not match its lifetime certificate",
+      );
+    }
+    if (resource.callbackComplete && resource.callbackIds.length === 0) {
+      addFailure(failures, resource.id, "A complete Effect resource callback set is empty");
+    }
+  }
   for (const reachableFunction of report.graph.reachableFunctions) {
     if (!unitIds.has(reachableFunction.ownerId)) {
       addFailure(failures, reachableFunction.id, "A reachable function has an unknown owner unit");
@@ -690,6 +823,9 @@ const checkGraphReferences = (
       .flatMap((propFlow) => propFlow.callbackIds),
   ]);
   for (const callback of report.graph.callbacks) {
+    if (!unitIds.has(callback.ownerId)) {
+      addFailure(failures, callback.id, "A callback has an unknown owner unit");
+    }
     if (
       callback.kind === ReactSemanticCallbackKind.EventHandler &&
       !eventChannelCallbackIds.has(callback.id)
@@ -782,6 +918,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "schedulers",
     report.graph.schedulers.map((scheduler) => scheduler.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Effect resources",
+    report.graph.resources.map((resource) => resource.id),
   );
   checkUniqueIds(
     failures,

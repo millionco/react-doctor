@@ -517,6 +517,7 @@ Proved:
 - `proved-effect-event`
 - `event-handler-boundary`
 - `proved-helper-effect-cleanup`
+- `proved-conditional-helper-effect-cleanup`
 - `proved-shared-event-handler`
 - `proved-event-callback-parameter`
 - `proved-event-prop-flow`
@@ -633,7 +634,6 @@ Incomplete:
 - `async-effect-post-await-mutation`
 - `async-effect-path-dependent-invalidation`
 - `helper-effect-state-update`
-- `conditional-helper-effect-cleanup`
 - `external-store-helper-boundary`
 - `incomplete-external-store-callback-prop-conditional-join`
 - `incomplete-external-store-conditional-factory`
@@ -736,6 +736,9 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
+Current checkpoint: 205 TypeScript fixture projects, 382 static tests, and 26 Chromium runtime
+oracles.
+
 - Vite Plus supplies package build and Vitest-compatible static tests.
 - TypeScript fixture projects exercise real project construction and cross-file symbols.
 - Playwright runs selected lifecycle counterexamples in Chromium.
@@ -761,3 +764,81 @@ components and hooks, including hooks hidden in incorrectly named helper functio
   before its Effect runs.
 - The scheduler-lifetime oracle unmounts before a timeout expires. Exact cleanup cancellation
   keeps the post-unmount hit count at zero, while the uncanceled control fires once after unmount.
+- The observer-lifetime oracle mutates the document after unmount. `disconnect()` suppresses
+  delivery, while the intentionally leaked observer still receives the mutation.
+
+## Effect resource lifetime certificates
+
+### Product brief
+
+Job: A React maintainer wants a deterministic answer that an Effect cannot retain a browser
+resource or receive callbacks after replacement/unmount; text matching and ordinary lint cannot
+establish identity or path coverage.
+
+Change: Add internal, versioned resource facts to the private proof graph. Each fact links one
+platform acquisition to its Effect setup, deferred callback graph, exact disposal calls, and a
+fail-closed completeness bit.
+
+Reuse: The implementation extends the existing Effect, callback reachability, scheduler lifetime,
+and report-checker machinery. Broad `truffler` searches for resource lifetime, listener identity,
+observer disposal, and guaranteed cleanup found no equivalent symbol.
+
+Compat: The package remains private at `0.0.0`; graph schema 17 and report schema 11 make stale
+certificates explicitly unsupported. No React Doctor JSON surface, telemetry, action input, score,
+or published package changes.
+
+Kill: Remove a protocol if realistic-corpus review finds any false `proved` result. Precision may
+stay incomplete, but a certificate may never rely on spelling alone.
+
+### Platform semantics
+
+- The [DOM Standard](https://dom.spec.whatwg.org/) defines listener identity for registration and
+  removal by event type, callback, and capture. `passive`, `once`, and `signal` are not part of the
+  removal match, so comparing complete option-object text is both unsound and imprecise.
+- An Effect still owns a `once` listener until it fires. `once: true` therefore does not discharge
+  unmount cleanup.
+- `MutationObserver`, `ResizeObserver`, and `IntersectionObserver` become active through
+  `observe()`, not construction alone. A lifetime fact is emitted only for an activated observer,
+  and exact-object `disconnect()` is its modeled disposal.
+- The [WebSocket Standard](https://websockets.spec.whatwg.org/) makes `close()` initiate a closing
+  handshake rather than synchronously erase every possible callback. WebSocket certification
+  remains unsupported instead of treating a `.close()` spelling as proof.
+- The [server-sent events specification](https://html.spec.whatwg.org/dev/server-sent-events.html)
+  similarly requires a dedicated EventSource protocol before `close()` can become proof evidence.
+
+### Realistic corpus evidence
+
+React Bench cases motivating the listener protocol include:
+
+- `fix-react-coreui-coreui-react-470`: stable targets, capture symmetry, resize and visibility
+  listeners, and transition cancellation.
+- `fix-react-rdh-catho-quantum-autocomplete`: window click and keydown listener ownership.
+- `fix-react-jumperexchange-jumper-exchange-2917`: multiple video event registrations.
+- `write-react-trycompai-comp-3248`: document mousemove and mouseup pairs.
+- `write-react-azouaoui-med-react-pro-sidebar-267`: media-query change listeners.
+
+Observer cases include `write-react-cloudscape-design-components-4631` for `MutationObserver` and
+`write-react-treely-boemly-277` for `ResizeObserver`. The Victory animation case uses a custom
+`timer.subscribe`; it is evidence that a generic `.subscribe()` name must not be granted browser
+resource semantics without a checked library contract.
+
+### Current proof boundary
+
+The certificate recognizes TypeScript declarations from the platform libraries, immutable
+callback/target identity, static event type and capture, exact `AbortController` signal ownership,
+platform-value provenance, every returned cleanup alternative, and entry-dominating direct or
+helper disposal. Dynamic or accessor-backed capture, ref/prop/structural targets, mutable targets,
+opaque disposer helpers, async or thenable callbacks, and path-correlated acquisition/cleanup
+remain incomplete. Conditional acquisition is proved when exact disposal is unconditional on
+every cleanup alternative.
+
+Added corpus:
+
+- proved: `proved-listener-capture-semantics`, `proved-abort-signal-listener`,
+  `proved-mutation-observer`, `proved-observer-constructor-only`, and
+  `proved-conditional-helper-effect-cleanup`
+- refuted: `abort-signal-listener-leak` and `mutation-observer-leak`
+- incomplete: `incomplete-dynamic-listener-capture`,
+  `incomplete-accessor-listener-capture`, `incomplete-async-listener-callback`,
+  `incomplete-ref-event-target`, and `incomplete-structural-event-target`
+- declaration guard: `shadowed-event-target`

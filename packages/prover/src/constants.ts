@@ -1,5 +1,7 @@
-export const REACT_PROOF_SCHEMA_VERSION = 10;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 16;
+import { ReactEffectResourceKind } from "./types.js";
+
+export const REACT_PROOF_SCHEMA_VERSION = 11;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 17;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -12,6 +14,12 @@ export const REACT_EFFECT_HOOK_NAMES = new Set([
   "useEffect",
   "useInsertionEffect",
   "useLayoutEffect",
+]);
+
+export const PLATFORM_OBSERVER_KINDS = new Map<string, ReactEffectResourceKind>([
+  ["IntersectionObserver", ReactEffectResourceKind.IntersectionObserver],
+  ["MutationObserver", ReactEffectResourceKind.MutationObserver],
+  ["ResizeObserver", ReactEffectResourceKind.ResizeObserver],
 ]);
 
 export const REACT_MEMO_HOOK_NAMES = new Set(["useCallback", "useMemo"]);

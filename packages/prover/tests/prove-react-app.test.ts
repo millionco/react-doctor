@@ -9,6 +9,8 @@ import {
   ReactCallableRefFreshness,
   ReactCompilerFactStatus,
   ReactEffectDependencyMode,
+  ReactEffectResourceDisposalStatus,
+  ReactEffectResourceKind,
   ReactExecutionPhase,
   ReactIdentityStability,
   ReactObligationStatus,
@@ -62,6 +64,36 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
   },
   {
     fixtureName: "cleanup-mismatch",
+    claim: ReactProofClaim.EffectCleanup,
+    evidencePattern: /same resource identity/,
+  },
+  {
+    fixtureName: "quoted-capture-cleanup-mismatch",
+    claim: ReactProofClaim.EffectCleanup,
+    evidencePattern: /same resource identity/,
+  },
+  {
+    fixtureName: "mutation-observer-leak",
+    claim: ReactProofClaim.EffectCleanup,
+    evidencePattern: /same resource identity/,
+  },
+  {
+    fixtureName: "abort-signal-listener-leak",
+    claim: ReactProofClaim.EffectCleanup,
+    evidencePattern: /same resource identity/,
+  },
+  {
+    fixtureName: "listener-partial-cleanup",
+    claim: ReactProofClaim.EffectCleanup,
+    evidencePattern: /same resource identity/,
+  },
+  {
+    fixtureName: "listener-conditional-disposal",
+    claim: ReactProofClaim.EffectCleanup,
+    evidencePattern: /same resource identity/,
+  },
+  {
+    fixtureName: "mixed-opaque-effect-and-listener-leak",
     claim: ReactProofClaim.EffectCleanup,
     evidencePattern: /same resource identity/,
   },
@@ -334,6 +366,14 @@ describe("proveReactApp", () => {
     "proved-external-store",
     "proved-effect-event",
     "proved-helper-effect-cleanup",
+    "proved-conditional-helper-effect-cleanup",
+    "proved-listener-capture-semantics",
+    "proved-mutation-observer",
+    "proved-observer-constructor-only",
+    "proved-abort-signal-listener",
+    "proved-resize-observer",
+    "proved-intersection-observer",
+    "proved-multi-target-mutation-observer",
     "proved-shared-event-handler",
     "proved-event-callback-parameter",
     "proved-event-prop-flow",
@@ -414,7 +454,7 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.graph.schemaVersion).toBe(16);
+    expect(report.graph.schemaVersion).toBe(17);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -428,6 +468,99 @@ describe("proveReactApp", () => {
       report.graph.callbacks.find((callback) => callback.id === effect?.cleanupCallbackIds[0])
         ?.phase,
     ).toBe(ReactExecutionPhase.EffectCleanup);
+  });
+
+  it("certifies DOM listener identity using callback, event type, and capture", () => {
+    const report = proveFixture("proved-listener-capture-semantics");
+    const resource = report.graph.resources[0];
+    const callback = report.graph.callbacks.find(
+      (candidate) => candidate.id === resource?.callbackIds[0],
+    );
+
+    expect(resource?.kind).toBe(ReactEffectResourceKind.EventListener);
+    expect(resource?.disposalStatus).toBe(ReactEffectResourceDisposalStatus.Guaranteed);
+    expect(resource?.disposalLocations).toHaveLength(1);
+    expect(resource?.callbackComplete).toBe(true);
+    expect(resource?.complete).toBe(true);
+    expect(callback?.kind).toBe(ReactSemanticCallbackKind.ResourceCallback);
+    expect(callback?.phase).toBe(ReactExecutionPhase.Deferred);
+  });
+
+  it("certifies AbortSignal listener disposal through the exact controller", () => {
+    const report = proveFixture("proved-abort-signal-listener");
+    const resource = report.graph.resources[0];
+
+    expect(resource?.kind).toBe(ReactEffectResourceKind.EventListener);
+    expect(resource?.disposalStatus).toBe(ReactEffectResourceDisposalStatus.Guaranteed);
+    expect(resource?.disposalLocations).toHaveLength(1);
+    expect(resource?.complete).toBe(true);
+  });
+
+  it("certifies an activated observer and ignores an unactivated constructor", () => {
+    const activeReport = proveFixture("proved-mutation-observer");
+    const resizeReport = proveFixture("proved-resize-observer");
+    const intersectionReport = proveFixture("proved-intersection-observer");
+    const multiTargetReport = proveFixture("proved-multi-target-mutation-observer");
+    const dormantReport = proveFixture("proved-observer-constructor-only");
+    const resource = activeReport.graph.resources[0];
+
+    expect(resource?.kind).toBe(ReactEffectResourceKind.MutationObserver);
+    expect(resource?.disposalStatus).toBe(ReactEffectResourceDisposalStatus.Guaranteed);
+    expect(resource?.complete).toBe(true);
+    expect(resizeReport.graph.resources[0]?.kind).toBe(ReactEffectResourceKind.ResizeObserver);
+    expect(intersectionReport.graph.resources[0]?.kind).toBe(
+      ReactEffectResourceKind.IntersectionObserver,
+    );
+    expect(multiTargetReport.graph.resources).toHaveLength(1);
+    expect(multiTargetReport.graph.resources[0]?.activationLocations).toHaveLength(2);
+    expect(dormantReport.graph.resources).toHaveLength(0);
+  });
+
+  it("fails closed for dynamic listener capture and async resource callbacks", () => {
+    const dynamicCaptureReport = proveFixture("incomplete-dynamic-listener-capture");
+    const accessorCaptureReport = proveFixture("incomplete-accessor-listener-capture");
+    const asyncCallbackReport = proveFixture("incomplete-async-listener-callback");
+    const dynamicResource = dynamicCaptureReport.graph.resources[0];
+    const accessorResource = accessorCaptureReport.graph.resources[0];
+    const asyncResource = asyncCallbackReport.graph.resources[0];
+
+    expect(dynamicResource?.disposalStatus).toBe(ReactEffectResourceDisposalStatus.Unknown);
+    expect(dynamicResource?.complete).toBe(false);
+    expect(accessorResource?.disposalStatus).toBe(ReactEffectResourceDisposalStatus.Unknown);
+    expect(accessorResource?.complete).toBe(false);
+    expect(asyncResource?.disposalStatus).toBe(ReactEffectResourceDisposalStatus.Guaranteed);
+    expect(asyncResource?.callbackComplete).toBe(false);
+    expect(asyncResource?.complete).toBe(false);
+  });
+
+  it("rejects user-defined EventTarget lookalikes as platform resource evidence", () => {
+    const report = proveFixture("shadowed-event-target");
+    const structuralReport = proveFixture("incomplete-structural-event-target");
+    const refReport = proveFixture("incomplete-ref-event-target");
+    const cleanupProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find((obligation) => obligation.claim === ReactProofClaim.EffectCleanup);
+    const structuralBoundaryProof = structuralReport.units
+      .flatMap((unit) => unit.obligations)
+      .find((obligation) => obligation.claim === ReactProofClaim.BoundaryCoverage);
+
+    expect(report.graph.resources).toHaveLength(0);
+    expect(cleanupProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(structuralReport.graph.resources).toHaveLength(0);
+    expect(structuralBoundaryProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(refReport.graph.resources).toHaveLength(0);
+  });
+
+  it("fails closed on a platform resource registration outside an Effect", () => {
+    const report = proveFixture("incomplete-render-resource-registration");
+    const boundaryProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find((obligation) => obligation.claim === ReactProofClaim.BoundaryCoverage);
+
+    expect(report.graph.resources).toHaveLength(0);
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(boundaryProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(boundaryProof?.evidence[0]?.description).toMatch(/unproved callback or disposal/);
   });
 
   it("certifies an interval callback in the deferred phase with guaranteed cancellation", () => {
@@ -547,6 +680,59 @@ describe("proveReactApp", () => {
     expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
     expect(
       certificate.failures.some((failure) => failure.description.includes("completeness flag")),
+    ).toBe(true);
+  });
+
+  it("rejects an Effect resource certificate with contradictory disposal facts", () => {
+    const report = proveFixture("proved-mutation-observer");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        resources: report.graph.resources.map((resource) => ({
+          ...resource,
+          disposalStatus: ReactEffectResourceDisposalStatus.Missing,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some(
+        (failure) =>
+          failure.description.includes("lifetime certificate") ||
+          failure.description.includes("Effect resource facts require"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects an Effect resource callback without a certified owner channel", () => {
+    const report = proveFixture("proved-mutation-observer");
+    const resourceCallbackIds = new Set(
+      report.graph.resources.flatMap((resource) => resource.callbackIds),
+    );
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        callbacks: report.graph.callbacks.map((callback) =>
+          resourceCallbackIds.has(callback.id)
+            ? {
+                ...callback,
+                ownerId: "unknown-resource-owner",
+              }
+            : callback,
+        ),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some(
+        (failure) =>
+          failure.description.includes("no certified owner channel") ||
+          failure.description.includes("unknown owner unit"),
+      ),
     ).toBe(true);
   });
 
@@ -977,8 +1163,8 @@ describe("proveReactApp", () => {
     ).toBe(true);
   });
 
-  it("records conditional reachability through an Effect helper call", () => {
-    const report = proveFixture("conditional-helper-effect-cleanup");
+  it("proves unconditional disposal for a conditional Effect acquisition", () => {
+    const report = proveFixture("proved-conditional-helper-effect-cleanup");
     const setupHelper = report.graph.reachableFunctions.find(
       (reachableFunction) => reachableFunction.name === "installResizeListener",
     );
@@ -986,9 +1172,9 @@ describe("proveReactApp", () => {
       .flatMap((unit) => unit.obligations)
       .find((obligation) => obligation.claim === ReactProofClaim.EffectCleanup);
 
-    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
     expect(setupHelper?.isConditionallyReached).toBe(true);
-    expect(cleanupProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(cleanupProof?.status).toBe(ReactObligationStatus.Proved);
   });
 
   it("keeps the strongest reachability fact when a helper has multiple paths", () => {
@@ -1261,7 +1447,13 @@ describe("proveReactApp", () => {
     "async-effect-post-await-mutation",
     "async-effect-path-dependent-invalidation",
     "helper-effect-state-update",
-    "conditional-helper-effect-cleanup",
+    "incomplete-dynamic-listener-capture",
+    "incomplete-accessor-listener-capture",
+    "incomplete-async-listener-callback",
+    "incomplete-render-resource-registration",
+    "incomplete-structural-event-target",
+    "incomplete-ref-event-target",
+    "incomplete-ambiguous-observer-kind",
     "invalid-hook-helper",
     "class-component",
     "named-memo-impure-helper",

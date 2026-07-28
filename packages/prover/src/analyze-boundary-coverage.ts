@@ -30,6 +30,7 @@ import { collectJsxSpreadProperties } from "./utils/collect-jsx-spread-propertie
 import { isEffectiveJsxPropertySource } from "./utils/is-effective-jsx-property-source.js";
 import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
 import { isJsxSpreadSourceComplete } from "./utils/is-jsx-spread-source-complete.js";
+import { getPlatformEffectResourceKind } from "./utils/get-platform-effect-resource-kind.js";
 import type {
   ReactAnalysisContext,
   ReactProofEvidence,
@@ -260,6 +261,27 @@ export const analyzeBoundaryCoverage = (
               context.rootDirectory,
               `${schedulerKind} crosses an unproved deferred callback or cancellation boundary`,
               [schedulerKind, "deferred callback", "unknown phase or lifetime"],
+            ),
+          );
+        }
+      }
+      const effectResourceKind = getPlatformEffectResourceKind(node, context.typeChecker);
+      if (effectResourceKind) {
+        const resourceLocation = getNodeLocation(node, context.rootDirectory);
+        const isModeledResource = context.graph?.resources.some(
+          (resource) =>
+            resource.complete &&
+            resource.activationLocations.some((activationLocation) =>
+              areProofLocationsEqual(activationLocation, resourceLocation),
+            ),
+        );
+        if (!isModeledResource) {
+          unknownEvidence.push(
+            createEvidence(
+              node,
+              context.rootDirectory,
+              `${effectResourceKind} crosses an unproved callback or disposal boundary`,
+              [effectResourceKind, "deferred callback", "unknown phase or lifetime"],
             ),
           );
         }

@@ -28,12 +28,14 @@ declare global {
   interface Window {
     effectEventSetupRuns: number;
     listenerHits: number;
+    observerHits: number;
     schedulerHits: number;
   }
 }
 
 window.effectEventSetupRuns = 0;
 window.listenerHits = 0;
+window.observerHits = 0;
 window.schedulerHits = 0;
 
 const LeakyListener = () => {
@@ -103,6 +105,35 @@ const SchedulerLifetimeOracle = () => {
         unmount scheduler
       </button>
       {isMounted ? <SchedulerProbe shouldCancel={shouldCancel} /> : null}
+    </main>
+  );
+};
+
+interface ObserverProbeProperties {
+  shouldDisconnect: boolean;
+}
+
+const ObserverProbe = ({ shouldDisconnect }: ObserverProbeProperties) => {
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      window.observerHits += 1;
+    });
+    observer.observe(document.body, { childList: true });
+    if (shouldDisconnect) return () => observer.disconnect();
+    return undefined;
+  }, [shouldDisconnect]);
+  return null;
+};
+
+const ObserverLifetimeOracle = () => {
+  const [isMounted, setIsMounted] = useState(true);
+  const shouldDisconnect = new URLSearchParams(window.location.search).get("mode") === "disconnect";
+  return (
+    <main>
+      <button type="button" onClick={() => setIsMounted(false)}>
+        unmount observer
+      </button>
+      {isMounted ? <ObserverProbe shouldDisconnect={shouldDisconnect} /> : null}
     </main>
   );
 };
@@ -562,6 +593,9 @@ const RuntimeOracle = () => {
   }
   if (oracle === "scheduler-lifetime") {
     return <SchedulerLifetimeOracle />;
+  }
+  if (oracle === "observer-lifetime") {
+    return <ObserverLifetimeOracle />;
   }
   return <ListenerOracle />;
 };

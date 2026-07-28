@@ -81,6 +81,7 @@ export enum ReactSemanticCallbackKind {
   MemoizedCallback = "memoized-callback",
   Reducer = "reducer",
   ReducerInitializer = "reducer-initializer",
+  ResourceCallback = "resource-callback",
   ScheduledCallback = "scheduled-callback",
   ServerSnapshot = "server-snapshot",
 }
@@ -177,6 +178,20 @@ export enum ReactSchedulerKind {
 }
 
 export enum ReactSchedulerCancellationStatus {
+  Guaranteed = "guaranteed",
+  Missing = "missing",
+  Unknown = "unknown",
+}
+
+export enum ReactEffectResourceKind {
+  EventListener = "event-listener",
+  IntersectionObserver = "intersection-observer",
+  MutationObserver = "mutation-observer",
+  Observer = "observer",
+  ResizeObserver = "resize-observer",
+}
+
+export enum ReactEffectResourceDisposalStatus {
   Guaranteed = "guaranteed",
   Missing = "missing",
   Unknown = "unknown",
@@ -377,6 +392,23 @@ export interface ReactSemanticScheduler {
   complete: boolean;
 }
 
+export interface ReactSemanticEffectResource {
+  id: string;
+  ownerId: string;
+  effectId: string;
+  acquisitionCallbackId: string;
+  kind: ReactEffectResourceKind;
+  phase: ReactExecutionPhase;
+  location: ReactProofLocation;
+  activationLocations: ReadonlyArray<ReactProofLocation>;
+  callbackIds: ReadonlyArray<string>;
+  callbackComplete: boolean;
+  disposalStatus: ReactEffectResourceDisposalStatus;
+  disposalLocations: ReadonlyArray<ReactProofLocation>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export interface ReactCompilerInstructionFact {
   id: string;
   valueKind: string;
@@ -436,6 +468,7 @@ export interface ReactSemanticGraph {
   callbackPropFlows: ReadonlyArray<ReactSemanticCallbackPropFlow>;
   callableRefs: ReadonlyArray<ReactSemanticCallableRef>;
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
+  resources: ReadonlyArray<ReactSemanticEffectResource>;
   compiler: ReactCompilerGraph;
 }
 

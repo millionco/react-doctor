@@ -15,6 +15,7 @@ import {
 } from "./resolve-callable-expression.js";
 import { resolveFunction } from "./resolve-function.js";
 import { ReactSemanticFunctionCallKind } from "./types.js";
+import { hasConditionalAncestor } from "./utils/has-conditional-ancestor.js";
 import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
 
 export interface ReachableFunctionDescriptor {
@@ -44,36 +45,6 @@ export interface UnmodeledCallableUseDescriptor {
   node: ts.Node;
   parameterIndex: number | null;
 }
-
-const isConditionallyExecuted = (
-  node: ts.Node,
-  ownerFunction: ts.FunctionLikeDeclaration,
-): boolean => {
-  let currentNode = node;
-  while (currentNode !== ownerFunction) {
-    const parentNode = currentNode.parent;
-    if (!parentNode) return true;
-    if (
-      ts.isIfStatement(parentNode) ||
-      ts.isConditionalExpression(parentNode) ||
-      ts.isSwitchStatement(parentNode) ||
-      ts.isForStatement(parentNode) ||
-      ts.isForInStatement(parentNode) ||
-      ts.isForOfStatement(parentNode) ||
-      ts.isWhileStatement(parentNode) ||
-      ts.isDoStatement(parentNode) ||
-      ts.isTryStatement(parentNode) ||
-      (ts.isBinaryExpression(parentNode) &&
-        (parentNode.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-          parentNode.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-          parentNode.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken))
-    ) {
-      return true;
-    }
-    currentNode = parentNode;
-  }
-  return false;
-};
 
 const getParameterSymbol = (
   functionNode: ts.FunctionLikeDeclaration,
@@ -355,7 +326,7 @@ export const collectReachableFunctionGraph = (
       }
       if (ts.isCallExpression(node)) {
         const callIsConditional =
-          currentIsConditional || isConditionallyExecuted(node, currentFunction);
+          currentIsConditional || hasConditionalAncestor(node, currentFunction);
         const directTarget = resolveFunction(node.expression, typeChecker);
         if (directTarget) {
           const argumentBindings = resolveCallableArgumentBindings(

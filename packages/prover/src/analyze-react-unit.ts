@@ -114,7 +114,7 @@ export const analyzeReactUnit = (
       analyzeComponentIdentity(unit.functionNode, context),
       analyzeComponentInvocation(unit.functionNode, context),
       analyzeContextTopology(unit, context),
-      analyzeEffectCleanup(unit.functionNode, context),
+      analyzeEffectCleanup(unit, context),
       analyzeEffectDependencies(unit.functionNode, context),
       analyzeEffectEventUsage(unit.functionNode, context),
       analyzeEffectStateUpdates(unit, context),

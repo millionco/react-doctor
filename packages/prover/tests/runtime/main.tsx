@@ -3,6 +3,7 @@ import {
   StrictMode,
   createContext,
   memo,
+  useActionState,
   useCallback,
   useContext,
   useEffect,
@@ -17,6 +18,8 @@ import {
 import type { ChangeEvent } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  ACTION_STATE_DELAY_MS,
+  ACTION_STATE_INITIAL_RUNS,
   FAST_QUERY_DELAY_MS,
   HOOK_STATE_INCREMENT,
   HOOK_STATE_INITIAL_COUNT,
@@ -42,6 +45,7 @@ import {
 declare global {
   interface Window {
     effectEventSetupRuns: number;
+    actionStateRuns: number;
     classListenerHits: number;
     classMounts: number;
     classSchedulerHits: number;
@@ -61,6 +65,7 @@ declare global {
 }
 
 window.effectEventSetupRuns = 0;
+window.actionStateRuns = ACTION_STATE_INITIAL_RUNS;
 window.classListenerHits = 0;
 window.classMounts = 0;
 window.classSchedulerHits = 0;
@@ -81,6 +86,30 @@ interface OptimisticTodo {
   label: string;
   isPending: boolean;
 }
+
+const ActionStateOracle = () => {
+  const [submittedItems, submitItem, isPending] = useActionState(
+    async (previousItems: ReadonlyArray<string>, formData: FormData) => {
+      window.actionStateRuns += 1;
+      const item = String(formData.get("item"));
+      await new Promise((resolve) => {
+        setTimeout(resolve, ACTION_STATE_DELAY_MS);
+      });
+      return [...previousItems, item];
+    },
+    [],
+  );
+  return (
+    <main>
+      <form action={submitItem}>
+        <input name="item" />
+        <button type="submit">submit item</button>
+      </form>
+      <output data-testid="action-state-items">{submittedItems.join("|")}</output>
+      <output data-testid="action-state-pending">{String(isPending)}</output>
+    </main>
+  );
+};
 
 const OptimisticFormActionOracle = () => {
   const [confirmedTodos, setConfirmedTodos] = useState<ReadonlyArray<OptimisticTodo>>([
@@ -993,6 +1022,9 @@ const RuntimeOracle = () => {
   if (oracle === "optimistic-form-action") {
     return <OptimisticFormActionOracle />;
   }
+  if (oracle === "action-state") {
+    return <ActionStateOracle />;
+  }
   return <ListenerOracle />;
 };
 
@@ -1007,7 +1039,8 @@ const isStrictModeOracle =
   oracle === "class-state-transition" ||
   oracle === "hook-state-transition" ||
   oracle === "transition-action" ||
-  oracle === "optimistic-form-action";
+  oracle === "optimistic-form-action" ||
+  oracle === "action-state";
 createRoot(rootElement).render(
   isStrictModeOracle ? (
     <StrictMode>

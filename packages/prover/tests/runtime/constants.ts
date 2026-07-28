@@ -1,3 +1,6 @@
+export const ACTION_STATE_DELAY_MS = 120;
+export const ACTION_STATE_EXPECTED_RUNS = 2;
+export const ACTION_STATE_INITIAL_RUNS = 0;
 export const FAST_QUERY_DELAY_MS = 20;
 export const HOOK_STATE_INCREMENT = 1;
 export const HOOK_STATE_INITIAL_COUNT = 0;

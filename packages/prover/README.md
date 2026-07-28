@@ -70,6 +70,10 @@ The report includes:
   synchronous pure updaters are certified, observable effects are refuted, and opaque updater
   bodies or escaped setters fail closed without confusing `useReducer` dispatch or similarly named
   functions with state setters;
+- Action State facts that identify canonical `useActionState` tuples, resolve each reducer Action
+  without imposing reducer purity, and classify every dispatcher call or escape; a dispatch is
+  certified only when every represented root is a Form Action, an Action State reducer, or a
+  complete Transition Action, while render and ordinary callback roots are refuted;
 - Transition Action facts that identify imported or namespace `startTransition` and the second
   tuple binding from a canonical `useTransition`, connect each source-resolved Action to its
   invoking callback and a dedicated `transition-action` phase, and distinguish synchronous Actions
@@ -125,7 +129,11 @@ starter, a phase-correct Action callback, coherent controlled-state evidence, an
 source/completeness equations. The checker rejects forged synchronous, controlled-input,
 starter-escape, callback, owner, and execution-phase combinations.
 Form Action certificates require phase-correct callback facts, a coherent intrinsic prop/control
-kind, nonempty complete callback resolution, and exact source/completeness equations. Optimistic
+kind, nonempty complete callback resolution, and exact source/completeness equations. Direct
+Action State dispatchers link the form fact to their reducer-Action callback. Action State
+certificates independently validate tuple ownership, reducer callback phase, dispatch kind,
+Action-prop association, execution roots, linked state, and exact source/completeness equations.
+Optimistic
 certificates independently validate tuple ownership, reducer and updater callback phases, derive
 Action ownership from every execution root, and reject forged purity, render/event origin, state
 binding, escape, and completeness combinations.

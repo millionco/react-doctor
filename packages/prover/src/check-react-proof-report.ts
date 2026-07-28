@@ -1,5 +1,8 @@
 import { REACT_PROOF_SCHEMA_VERSION, REACT_SEMANTIC_GRAPH_SCHEMA_VERSION } from "./constants.js";
 import {
+  ReactActionStateDispatchKind,
+  ReactActionStateDispatchStatus,
+  ReactActionStateReducerStatus,
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
   ReactCallableRefFreshness,
@@ -41,6 +44,9 @@ import type {
 } from "./types.js";
 
 const HOOK_STATE_UPDATER_STATUSES = new Set(Object.values(ReactHookStateUpdaterStatus));
+const ACTION_STATE_DISPATCH_STATUSES = new Set(Object.values(ReactActionStateDispatchStatus));
+const ACTION_STATE_DISPATCH_KINDS = new Set(Object.values(ReactActionStateDispatchKind));
+const ACTION_STATE_REDUCER_STATUSES = new Set(Object.values(ReactActionStateReducerStatus));
 const FORM_ACTION_KINDS = new Set(Object.values(ReactFormActionKind));
 const FORM_ACTION_STATUSES = new Set(Object.values(ReactFormActionStatus));
 const OPTIMISTIC_ACTION_STATUSES = new Set(Object.values(ReactOptimisticActionStatus));
@@ -48,6 +54,7 @@ const OPTIMISTIC_REDUCER_STATUSES = new Set(Object.values(ReactOptimisticReducer
 const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionStatus));
 const TRANSITION_STARTER_KINDS = new Set(Object.values(ReactTransitionStarterKind));
 const TRANSITION_ACTION_ORIGIN_PHASES = new Set([
+  ReactExecutionPhase.ActionStateReducer,
   ReactExecutionPhase.ClassMount,
   ReactExecutionPhase.ClassUpdate,
   ReactExecutionPhase.Deferred,
@@ -213,6 +220,32 @@ const expectedTransitionActionStatus = (
     : ReactObligationStatus.Proved;
 };
 
+const expectedActionStateStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const states = report.graph.actionStates.filter((state) => state.ownerId === unit.id);
+  const dispatches = report.graph.actionStateDispatches.filter(
+    (dispatch) => dispatch.ownerId === unit.id,
+  );
+  if (
+    dispatches.some(
+      (dispatch) =>
+        dispatch.status === ReactActionStateDispatchStatus.OutsideAction ||
+        dispatch.status === ReactActionStateDispatchStatus.Render,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return states.some((state) => !state.complete) ||
+    dispatches.some((dispatch) => !dispatch.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
 const expectedFormActionStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
@@ -335,6 +368,17 @@ const checkClaimCoverage = (
       if (matchingObligations.length !== 1) {
         addFailure(failures, semanticUnit.id, `${claim} must have exactly one proof obligation`);
       }
+    }
+    const actionState = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ActionState,
+    );
+    const expectedActionStatus = expectedActionStateStatus(semanticUnit, report);
+    if (actionState && actionState.status !== expectedActionStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Action State facts require ${expectedActionStatus}, not ${actionState.status}`,
+      );
     }
     const asyncOwnership = unitProof.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.AsyncEffectOwnership,
@@ -915,6 +959,138 @@ const checkGraphReferences = (
   const transitionsById = new Map(
     report.graph.classStateTransitions.map((transition) => [transition.id, transition]),
   );
+  const actionStatesById = new Map(report.graph.actionStates.map((state) => [state.id, state]));
+  for (const state of report.graph.actionStates) {
+    const owner = unitsById.get(state.ownerId);
+    if (
+      !owner ||
+      owner.kind === ReactUnitKind.ClassComponent ||
+      owner.kind === ReactUnitKind.InvalidHookOwner
+    ) {
+      addFailure(failures, state.id, "An Action State hook has an unknown or invalid owner");
+    }
+    if (!state.stateName || !state.dispatcherName) {
+      addFailure(failures, state.id, "An Action State hook has an unnamed tuple binding");
+    }
+    if (!ACTION_STATE_REDUCER_STATUSES.has(state.reducerStatus)) {
+      addFailure(failures, state.id, "An Action State hook has an invalid reducer status");
+    }
+    const reducerCallback = state.reducerCallbackId
+      ? callbacksById.get(state.reducerCallbackId)
+      : null;
+    if (
+      (state.reducerStatus === ReactActionStateReducerStatus.Resolved &&
+        !state.reducerCallbackId) ||
+      (state.reducerStatus === ReactActionStateReducerStatus.Opaque && state.reducerCallbackId) ||
+      (state.reducerCallbackId &&
+        (reducerCallback?.ownerId !== state.ownerId ||
+          reducerCallback.kind !== ReactSemanticCallbackKind.ActionStateReducer ||
+          reducerCallback.phase !== ReactExecutionPhase.ActionStateReducer))
+    ) {
+      addFailure(failures, state.id, "An Action State hook has an invalid reducer Action");
+    }
+    const expectedSourceComplete =
+      state.reducerStatus === ReactActionStateReducerStatus.Resolved && Boolean(reducerCallback);
+    if (state.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, state.id, "An Action State source flag is inconsistent");
+    }
+    if (state.complete !== expectedSourceComplete) {
+      addFailure(failures, state.id, "An Action State completeness flag is inconsistent");
+    }
+  }
+  const completeTransitionCallbackIdsForActionState = new Set(
+    report.graph.transitionActions.flatMap((action) =>
+      action.complete && action.actionCallbackId ? [action.actionCallbackId] : [],
+    ),
+  );
+  for (const dispatch of report.graph.actionStateDispatches) {
+    const owner = unitsById.get(dispatch.ownerId);
+    const actionState = actionStatesById.get(dispatch.actionStateId);
+    if (
+      !owner ||
+      owner.kind === ReactUnitKind.ClassComponent ||
+      owner.kind === ReactUnitKind.InvalidHookOwner
+    ) {
+      addFailure(failures, dispatch.id, "An Action State dispatch has an invalid owner");
+    }
+    if (!actionState || actionState.ownerId !== dispatch.ownerId) {
+      addFailure(failures, dispatch.id, "An Action State dispatch has an invalid state binding");
+    }
+    if (!ACTION_STATE_DISPATCH_KINDS.has(dispatch.kind)) {
+      addFailure(failures, dispatch.id, "An Action State dispatch has an invalid kind");
+    }
+    if (!ACTION_STATE_DISPATCH_STATUSES.has(dispatch.status)) {
+      addFailure(failures, dispatch.id, "An Action State dispatch has an invalid status");
+    }
+    if (new Set(dispatch.executionCallbackIds).size !== dispatch.executionCallbackIds.length) {
+      addFailure(failures, dispatch.id, "An Action State dispatch repeats an execution callback");
+    }
+    const executionCallbacks = dispatch.executionCallbackIds.flatMap((callbackId) => {
+      const callback = callbacksById.get(callbackId);
+      if (!callback || callback.ownerId !== dispatch.ownerId) {
+        addFailure(failures, dispatch.id, "An Action State dispatch has an invalid callback");
+        return [];
+      }
+      return [callback];
+    });
+    let expectedDispatchStatus = ReactActionStateDispatchStatus.Unknown;
+    if (dispatch.kind === ReactActionStateDispatchKind.Escape) {
+      expectedDispatchStatus = ReactActionStateDispatchStatus.SetterEscape;
+    } else if (dispatch.kind === ReactActionStateDispatchKind.ActionProp) {
+      const matchingFormAction = report.graph.formActions.find(
+        (formAction) =>
+          formAction.ownerId === dispatch.ownerId &&
+          formAction.complete &&
+          areProofLocationsEqual(formAction.location, dispatch.location),
+      );
+      if (
+        matchingFormAction &&
+        actionState?.reducerCallbackId &&
+        matchingFormAction.actionCallbackIds.includes(actionState.reducerCallbackId)
+      ) {
+        expectedDispatchStatus = ReactActionStateDispatchStatus.Action;
+      }
+    } else if (
+      executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.Render)
+    ) {
+      expectedDispatchStatus = ReactActionStateDispatchStatus.Render;
+    } else if (
+      executionCallbacks.length > 0 &&
+      executionCallbacks.every(
+        (callback) =>
+          callback.phase === ReactExecutionPhase.FormAction ||
+          callback.phase === ReactExecutionPhase.ActionStateReducer ||
+          (callback.phase === ReactExecutionPhase.TransitionAction &&
+            completeTransitionCallbackIdsForActionState.has(callback.id)),
+      )
+    ) {
+      expectedDispatchStatus = ReactActionStateDispatchStatus.Action;
+    } else if (
+      executionCallbacks.some(
+        (callback) =>
+          callback.phase !== ReactExecutionPhase.FormAction &&
+          callback.phase !== ReactExecutionPhase.ActionStateReducer &&
+          callback.phase !== ReactExecutionPhase.TransitionAction,
+      )
+    ) {
+      expectedDispatchStatus = ReactActionStateDispatchStatus.OutsideAction;
+    }
+    if (dispatch.status !== expectedDispatchStatus) {
+      addFailure(failures, dispatch.id, "An Action State dispatch status is inconsistent");
+    }
+    const expectedSourceComplete =
+      Boolean(actionState?.complete) &&
+      expectedDispatchStatus !== ReactActionStateDispatchStatus.SetterEscape &&
+      expectedDispatchStatus !== ReactActionStateDispatchStatus.Unknown;
+    if (dispatch.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, dispatch.id, "An Action State dispatch source flag is inconsistent");
+    }
+    const expectedComplete =
+      expectedSourceComplete && expectedDispatchStatus === ReactActionStateDispatchStatus.Action;
+    if (dispatch.complete !== expectedComplete) {
+      addFailure(failures, dispatch.id, "An Action State dispatch completeness is inconsistent");
+    }
+  }
   for (const transition of report.graph.hookStateTransitions) {
     const owner = unitsById.get(transition.ownerId);
     if (
@@ -1020,8 +1196,10 @@ const checkGraphReferences = (
       const callback = callbacksById.get(callbackId);
       return Boolean(
         callback &&
-        callback.kind === ReactSemanticCallbackKind.FormAction &&
-        callback.phase === ReactExecutionPhase.FormAction,
+        ((callback.kind === ReactSemanticCallbackKind.FormAction &&
+          callback.phase === ReactExecutionPhase.FormAction) ||
+          (callback.kind === ReactSemanticCallbackKind.ActionStateReducer &&
+            callback.phase === ReactExecutionPhase.ActionStateReducer)),
       );
     });
     if (!hasValidCallbacks) {
@@ -1134,6 +1312,7 @@ const checkGraphReferences = (
       executionCallbacks.every(
         (callback) =>
           callback.phase === ReactExecutionPhase.FormAction ||
+          callback.phase === ReactExecutionPhase.ActionStateReducer ||
           (callback.phase === ReactExecutionPhase.TransitionAction &&
             completeTransitionCallbackIds.has(callback.id)),
       )
@@ -1143,6 +1322,7 @@ const checkGraphReferences = (
       executionCallbacks.some(
         (callback) =>
           callback.phase !== ReactExecutionPhase.FormAction &&
+          callback.phase !== ReactExecutionPhase.ActionStateReducer &&
           callback.phase !== ReactExecutionPhase.TransitionAction,
       )
     ) {
@@ -2077,6 +2257,16 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "units",
     report.graph.units.map((unit) => unit.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Action states",
+    report.graph.actionStates.map((state) => state.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Action State dispatches",
+    report.graph.actionStateDispatches.map((dispatch) => dispatch.id),
   );
   checkUniqueIds(
     failures,

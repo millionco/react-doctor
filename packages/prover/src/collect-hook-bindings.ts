@@ -1,6 +1,10 @@
 import ts from "typescript";
 import { collectEffectEventBindings } from "./collect-effect-event-bindings.js";
 import {
+  REACT_ACTION_STATE_DISPATCHER_INDEX,
+  REACT_ACTION_STATE_REDUCER_INDEX,
+  REACT_ACTION_STATE_STATE_INDEX,
+  REACT_ACTION_STATE_TUPLE_LENGTH,
   REACT_OPTIMISTIC_REDUCER_INDEX,
   REACT_OPTIMISTIC_SETTER_INDEX,
   REACT_OPTIMISTIC_STATE_INDEX,
@@ -21,7 +25,19 @@ export interface BoundOptimisticHookBinding extends OptimisticHookBinding {
   setterSymbol: ts.Symbol;
 }
 
+export interface ActionStateHookBinding {
+  callExpression: ts.CallExpression;
+  dispatcherSymbol: ts.Symbol | null;
+  reducerExpression: ts.Expression | null;
+  stateSymbol: ts.Symbol | null;
+}
+
+export interface BoundActionStateHookBinding extends ActionStateHookBinding {
+  dispatcherSymbol: ts.Symbol;
+}
+
 export interface HookBindings {
+  actionStateBindings: ReadonlyArray<ActionStateHookBinding>;
   effectEvents: ReadonlySet<ts.Symbol>;
   optimisticBindings: ReadonlyArray<OptimisticHookBinding>;
   refs: ReadonlySet<ts.Symbol>;
@@ -46,6 +62,7 @@ export const collectHookBindings = (
   const effectEvents = new Set(
     collectEffectEventBindings(functionNode, typeChecker).map((binding) => binding.symbol),
   );
+  const actionStateBindings: ActionStateHookBinding[] = [];
   const refs = new Set<ts.Symbol>();
   const optimisticBindings: OptimisticHookBinding[] = [];
   const stateSetters = new Set<ts.Symbol>();
@@ -83,6 +100,37 @@ export const collectHookBindings = (
       if (callName === "useRef" && ts.isIdentifier(node.name)) {
         const refSymbol = getBindingSymbol(node.name, typeChecker);
         if (refSymbol) refs.add(refSymbol);
+      }
+      if (
+        callName === "useActionState" &&
+        ts.isArrayBindingPattern(node.name) &&
+        node.name.elements.length > 0 &&
+        node.name.elements.length <= REACT_ACTION_STATE_TUPLE_LENGTH
+      ) {
+        const stateBinding = node.name.elements[REACT_ACTION_STATE_STATE_INDEX];
+        const dispatcherBinding = node.name.elements[REACT_ACTION_STATE_DISPATCHER_INDEX];
+        const stateBindingName =
+          stateBinding && ts.isBindingElement(stateBinding) && !stateBinding.dotDotDotToken
+            ? stateBinding.name
+            : undefined;
+        const dispatcherBindingName =
+          dispatcherBinding &&
+          ts.isBindingElement(dispatcherBinding) &&
+          !dispatcherBinding.dotDotDotToken
+            ? dispatcherBinding.name
+            : undefined;
+        const stateSymbol = getBindingSymbol(stateBindingName, typeChecker);
+        const dispatcherSymbol = getBindingSymbol(dispatcherBindingName, typeChecker);
+        if (stateSymbol || dispatcherSymbol) {
+          actionStateBindings.push({
+            callExpression: node.initializer,
+            dispatcherSymbol,
+            reducerExpression: node.initializer.arguments[REACT_ACTION_STATE_REDUCER_INDEX] ?? null,
+            stateSymbol,
+          });
+          if (dispatcherSymbol) stateSetters.add(dispatcherSymbol);
+          if (stateSymbol) stateValues.add(stateSymbol);
+        }
       }
       if (
         callName === "useOptimistic" &&
@@ -125,6 +173,7 @@ export const collectHookBindings = (
   };
   functionNode.forEachChild(visit);
   return {
+    actionStateBindings,
     effectEvents,
     optimisticBindings,
     refs,

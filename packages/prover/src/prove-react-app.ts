@@ -24,6 +24,8 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
     rootDirectory,
     graph: {
       schemaVersion: REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
+      actionStates: [],
+      actionStateDispatches: [],
       units: [],
       edges: [],
       hookCalls: [],

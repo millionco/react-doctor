@@ -13,6 +13,7 @@ export enum ReactObligationStatus {
 }
 
 export enum ReactProofClaim {
+  ActionState = "action-state",
   BoundaryCoverage = "boundary-coverage",
   CallableRefFreshness = "callable-ref-freshness",
   ClassConstruction = "class-construction",
@@ -69,6 +70,7 @@ export enum ReactCompilerFactStatus {
 }
 
 export enum ReactExecutionPhase {
+  ActionStateReducer = "action-state-reducer",
   ClassConstruction = "class-construction",
   ClassMount = "class-mount",
   ClassUnmount = "class-unmount",
@@ -89,6 +91,7 @@ export enum ReactExecutionPhase {
 }
 
 export enum ReactSemanticCallbackKind {
+  ActionStateReducer = "action-state-reducer",
   ClassMount = "class-mount",
   ClassStateUpdater = "class-state-updater",
   ClassUnmount = "class-unmount",
@@ -592,6 +595,49 @@ export interface ReactSemanticHookStateTransition {
   complete: boolean;
 }
 
+export enum ReactActionStateReducerStatus {
+  Opaque = "opaque",
+  Resolved = "resolved",
+}
+
+export enum ReactActionStateDispatchStatus {
+  Action = "action",
+  OutsideAction = "outside-action",
+  Render = "render",
+  SetterEscape = "setter-escape",
+  Unknown = "unknown",
+}
+
+export enum ReactActionStateDispatchKind {
+  ActionProp = "action-prop",
+  Call = "call",
+  Escape = "escape",
+}
+
+export interface ReactSemanticActionState {
+  id: string;
+  ownerId: string;
+  stateName: string;
+  dispatcherName: string;
+  location: ReactProofLocation;
+  reducerCallbackId: string | null;
+  reducerStatus: ReactActionStateReducerStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticActionStateDispatch {
+  id: string;
+  ownerId: string;
+  actionStateId: string;
+  kind: ReactActionStateDispatchKind;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  status: ReactActionStateDispatchStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export enum ReactFormActionKind {
   Form = "form",
   Submitter = "submitter",
@@ -724,6 +770,8 @@ export interface ReactCompilerGraph {
 
 export interface ReactSemanticGraph {
   schemaVersion: number;
+  actionStates: ReadonlyArray<ReactSemanticActionState>;
+  actionStateDispatches: ReadonlyArray<ReactSemanticActionStateDispatch>;
   units: ReadonlyArray<ReactSemanticUnit>;
   edges: ReadonlyArray<ReactSemanticEdge>;
   hookCalls: ReadonlyArray<ReactSemanticHookCall>;

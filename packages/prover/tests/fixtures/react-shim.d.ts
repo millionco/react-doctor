@@ -21,6 +21,18 @@ declare module "react" {
   }
 
   export const use: Use;
+  export const useActionState: {
+    <State>(
+      reducerAction: (previousState: State) => State | Promise<State>,
+      initialState: State,
+      permalink?: string,
+    ): [State, () => void, boolean];
+    <State, ActionPayload>(
+      reducerAction: (previousState: State, actionPayload: ActionPayload) => State | Promise<State>,
+      initialState: State,
+      permalink?: string,
+    ): [State, (actionPayload: ActionPayload) => void, boolean];
+  };
   export const createContext: <Value>(defaultValue: Value) => Context<Value>;
   export const memo: <Component>(component: Component) => Component;
   export const StrictMode: (properties: { children?: unknown }) => unknown;

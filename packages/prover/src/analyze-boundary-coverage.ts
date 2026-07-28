@@ -164,6 +164,15 @@ export const analyzeBoundaryCoverage = (
       ),
     );
   };
+  const isModeledActionStateCall = (callExpression: ts.CallExpression): boolean => {
+    const location = getNodeLocation(callExpression, context.rootDirectory);
+    return Boolean(
+      context.graph?.actionStates.some(
+        (state) =>
+          state.ownerId === semanticOwnerId && areProofLocationsEqual(state.location, location),
+      ),
+    );
+  };
   const isModeledFormActionCallableUse = (node: ts.Node): boolean => {
     let currentNode = node;
     while (currentNode !== functionNode && currentNode.parent) {
@@ -207,6 +216,31 @@ export const analyzeBoundaryCoverage = (
               update.ownerId === semanticOwnerId &&
               update.sourceComplete &&
               areProofLocationsEqual(update.location, location),
+          )
+        ) {
+          return true;
+        }
+      }
+      if (isFunctionBoundary(parentNode)) return false;
+      currentNode = parentNode;
+    }
+    return false;
+  };
+  const isModeledActionStateCallableUse = (node: ts.Node): boolean => {
+    let currentNode = node;
+    while (currentNode !== functionNode && currentNode.parent) {
+      const parentNode = currentNode.parent;
+      if (
+        ts.isCallExpression(parentNode) &&
+        parentNode.arguments.some((argument) => argument === currentNode)
+      ) {
+        const location = getNodeLocation(parentNode, context.rootDirectory);
+        if (
+          context.graph?.actionStates.some(
+            (state) =>
+              state.ownerId === semanticOwnerId &&
+              state.sourceComplete &&
+              areProofLocationsEqual(state.location, location),
           )
         ) {
           return true;
@@ -347,6 +381,7 @@ export const analyzeBoundaryCoverage = (
     for (const unmodeledUse of reachabilityGraph.unmodeledCallableUses) {
       if (getModeledTransitionAction(unmodeledUse.node)?.sourceComplete) continue;
       if (isModeledFormActionCallableUse(unmodeledUse.node)) continue;
+      if (isModeledActionStateCallableUse(unmodeledUse.node)) continue;
       if (isModeledOptimisticCallableUse(unmodeledUse.node)) continue;
       const location = unmodeledUse.node.getStart();
       const locationKey = `${unmodeledUse.node.getSourceFile().fileName}:${location}`;
@@ -426,6 +461,7 @@ export const analyzeBoundaryCoverage = (
         canonicalReactApiName &&
         REACT_UNMODELED_HOOK_NAMES.has(canonicalReactApiName) &&
         !isModeledContextRead &&
+        !(canonicalReactApiName === "useActionState" && isModeledActionStateCall(node)) &&
         !(canonicalReactApiName === "useTransition" && isModeledUseTransitionCall(node)) &&
         !(canonicalReactApiName === "useOptimistic" && isModeledOptimisticCall(node))
       ) {

@@ -1,6 +1,9 @@
 export { proveReactApp } from "./prove-react-app.js";
 export { checkReactProofReport } from "./check-react-proof-report.js";
 export {
+  ReactActionStateDispatchKind,
+  ReactActionStateDispatchStatus,
+  ReactActionStateReducerStatus,
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
   ReactCallableRefFreshness,
@@ -52,6 +55,8 @@ export type {
   ReactProofObligation,
   ReactProofSummary,
   ReactSemanticEdge,
+  ReactSemanticActionState,
+  ReactSemanticActionStateDispatch,
   ReactSemanticContext,
   ReactSemanticContextConsumer,
   ReactSemanticContextProvider,

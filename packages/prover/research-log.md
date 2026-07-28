@@ -475,6 +475,7 @@ Each discovered unit receives these obligations:
 | `effect-state-updates`        | Transitive writes, mount bounds, local-rerender stability, and unknown fixpoints            |
 | `effect-event-usage`          | Local Effect ownership, non-escape, dependency exclusion, intentionally unstable identity   |
 | `external-store-consistency`  | Stable snapshots, symmetric subscriptions, write notification, hydration agreement          |
+| `action-state`                | Reducer Action identity, dispatcher ownership, Form/Transition Action execution roots       |
 | `form-actions`                | Intrinsic form/submitter semantics, callback identity, form association, Action phase       |
 | `memo-dependencies`           | `useMemo` and `useCallback` captures versus inline dependency tuples                        |
 | `optimistic-state`            | Reducer/updater purity, setter identity, render exclusion, Form/Transition Action ownership |
@@ -753,7 +754,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 281 TypeScript fixture projects, 491 static tests, and 37 Chromium runtime
+Current checkpoint: 297 TypeScript fixture projects, 499 static tests, and 38 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -1273,9 +1274,10 @@ Async or scheduled Actions, opaque callback values, escaped starters, indirect `
 tuple access, invalid origin phases, and transitive control flow fail closed. A nested synchronous
 Action after `await` can be individually complete while the enclosing async Action and application
 remain incomplete. The current fact proves Action ownership and the direct local urgency subset,
-not request ordering, async context, `useDeferredValue`, `useActionState`, Server Actions, Suspense
+not request ordering, async context, `useDeferredValue`, Server Actions, Suspense
 fallback preservation, or whole-application transition state machines. Form Actions and
-`useOptimistic` now have the separate certificates below.
+`useOptimistic` have separate certificates below, and `useActionState` has the Action State
+certificate after them.
 
 The independent checker re-derives the obligation verdict, validates starter and Action statuses,
 owner and callback phases, unique execution roots, callback/status coherence, controlled and
@@ -1445,3 +1447,90 @@ Changeset is warranted before publication.
 Kill: If form association or Action-root composition produces a false `proved` result across two
 proof-schema releases, remove the affected complete status and keep that surface incomplete until
 the lifecycle graph can represent the missing topology.
+
+## Action State certificates
+
+### React semantics
+
+- The official [`useActionState` reference](https://react.dev/reference/react/useActionState)
+  defines a three-value tuple containing current state, a stable dispatcher, and pending state.
+- The reducer Action receives previous state before its payload, may be async, may perform side
+  effects, and is not double-invoked by Strict Mode. Multiple dispatches are queued in order.
+- React requires the dispatcher to run inside an Action. A direct function-valued `action` or
+  `formAction` prop supplies that context; manual dispatch requires `startTransition`. Render
+  dispatch is forbidden, and ordinary callback dispatch loses pending Action semantics.
+
+### Proof boundary
+
+The `action-state` obligation recognizes only a canonical React `useActionState` call assigned to
+a direct tuple pattern. It identifies the state and dispatcher by TypeScript symbol and resolves a
+project reducer Action from the first Hook argument. The reducer gets a dedicated
+`action-state-reducer` callback and execution phase. Unlike `useReducer` and `useOptimistic`
+reducers, it is intentionally not checked for purity because React defines side effects as valid
+Action State behavior.
+
+Every direct dispatcher call, direct intrinsic `action` or `formAction` reference, and other
+dispatcher reference becomes a versioned dispatch fact. Direct Action props reuse the existing
+intrinsic form-control proof and link its Form Action callback set to the Action State reducer.
+Manual calls collect every represented execution root. A dispatch is complete only when its
+linked reducer is source-resolved and its origin is exclusively a Form Action, an Action State
+reducer, or a complete synchronous Transition Action.
+
+Render dispatch and an ordinary event, Effect, scheduler, or other non-Action root are concrete
+violations. An escaped dispatcher, unresolved reducer prop, custom Action component, missing
+execution root, or dispatch inside an incomplete async Transition remains unknown. This first
+certificate proves reducer identity and dispatch Action ownership. It does not yet prove reducer
+return-type semantics beyond TypeScript, progressive-enhancement permalink identity, Server
+Function serialization, error-boundary behavior, cancellation, or queue-level application
+invariants.
+
+The independent checker recomputes the obligation verdict, validates linked state and reducer
+callbacks, derives direct Action-prop ownership from the matching Form Action fact, derives manual
+dispatch status from callback phases and complete Transition certificates, and checks exact
+source/completeness equations. Form and optimistic certificates also accept the dedicated Action
+State reducer phase as a real Action root. Report schema 20 and graph schema 26 reject stale or
+forged certificates.
+
+React Bench did not contain broad native React 19 Action State usage, so the realistic corpus is
+grounded in the official checkout, ordered-cart, form, optimistic-update, and manual-Transition
+shapes rather than fabricating prevalence. The benchmark’s existing form and interaction tasks
+still informed the multi-button form and collection-state payloads.
+
+Added corpus:
+
+- proved: `proved-action-state-form` and `proved-action-state-transition`
+- refuted: `refuted-action-state-outside-action` and
+  `refuted-action-state-render-dispatch`
+- incomplete: `incomplete-action-state-dispatcher-escape`,
+  `incomplete-action-state-reducer-prop`, and `incomplete-action-state-async-transition`
+- runtime: `action-state-oracle.spec.ts`
+
+The Chromium oracle runs under root Strict Mode, submits two values while the first async reducer
+Action is pending, observes the pending state, confirms exactly two reducer invocations, and
+observes the ordered `first|second` result. It calibrates React's queue and Strict Mode behavior
+without upgrading any static proof.
+
+### Product brief: internal Action State facts
+
+Job: Prover consumers need to distinguish a dispatcher that participates in React's ordered
+Action State queue from the same stable function invoked during render or an ordinary event.
+
+Change: Add one private claim, one reducer execution phase, versioned state and dispatch facts,
+direct Form Action integration, and independent checker equations.
+
+Reuse: Truffler searches for Action State dispatch, Hook dispatcher bindings, Action execution
+roots, and reducer Actions found no existing certificate. The implementation reuses canonical
+React symbol resolution, Hook tuple collection, Form and Transition Action facts, callback
+reachability, execution-root matching, source locations, and the independent checker.
+
+Metric: The deterministic acceptance metric separates direct Form Action, nested Form Action,
+synchronous Transition, ordinary event, render, escaped, opaque-reducer, and async-Transition
+cases, plus a Chromium oracle for pending state, ordered queuing, and Strict Mode invocation count.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 20 and its semantic graph to schema 26. No
+Changeset is warranted before publication.
+
+Kill: If dispatcher origin or direct Action-prop association produces a false `proved` result
+across two proof-schema releases, remove the complete dispatch status and keep Action State
+incomplete until callback SSA or the lifecycle machine carries the missing evidence.

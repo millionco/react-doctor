@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { collectActionState } from "./collect-action-state.js";
 import { collectAsyncEffectTaskDescriptors } from "./collect-async-effect-task-descriptors.js";
 import { collectClassConstruction } from "./collect-class-construction.js";
 import { collectClassStateTransitions } from "./collect-class-state-transitions.js";
@@ -51,6 +52,9 @@ import { resolveFunction } from "./resolve-function.js";
 import { mergeCallableBindings } from "./resolve-callable-expression.js";
 import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
 import {
+  ReactActionStateDispatchKind,
+  ReactActionStateDispatchStatus,
+  ReactActionStateReducerStatus,
   ReactCallableRefFreshness,
   ReactClassConstructionIssueStatus,
   ReactClassConstructionStatus,
@@ -71,6 +75,8 @@ import {
 } from "./types.js";
 import type {
   ReactAnalysisContext,
+  ReactSemanticActionState,
+  ReactSemanticActionStateDispatch,
   ReactSemanticCallback,
   ReactSemanticAsyncTask,
   ReactSemanticContext,
@@ -108,6 +114,8 @@ import { collectReachableCallExpressions } from "./utils/collect-reachable-call-
 import { collectExecutionCallbackIds } from "./utils/collect-execution-callback-ids.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
+import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
+import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 
 interface UnitGraphIdentity {
   descriptor: ReactUnitDescriptor;
@@ -176,6 +184,15 @@ interface CallbackPropGraphFacts extends CallbackGraphFacts {
 
 interface FormActionGraphFacts extends CallbackGraphFacts {
   actions: ReadonlyArray<ReactSemanticFormAction>;
+}
+
+interface ActionStateDefinitionGraphFacts extends CallbackGraphFacts {
+  callbacksByDispatcher: ReadonlyMap<ts.Symbol, ReactSemanticCallback>;
+  states: ReadonlyArray<ReactSemanticActionState>;
+}
+
+interface ActionStateDispatchGraphFacts {
+  dispatches: ReadonlyArray<ReactSemanticActionStateDispatch>;
 }
 
 interface HookStateTransitionGraphFacts extends CallbackGraphFacts {
@@ -1898,10 +1915,103 @@ const collectReducerCallbacks = (
   return { callbacks, reachableFunctions, functionCalls };
 };
 
+const collectActionStateDefinitionGraph = (
+  identity: UnitGraphIdentity,
+  context: ReactAnalysisContext,
+): ActionStateDefinitionGraphFacts => {
+  const functionNode = identity.descriptor.functionNode;
+  if (
+    !functionNode ||
+    identity.descriptor.kind === ReactUnitKind.ClassComponent ||
+    identity.descriptor.kind === ReactUnitKind.InvalidHookOwner
+  ) {
+    return {
+      states: [],
+      callbacksByDispatcher: new Map(),
+      callbacks: [],
+      reachableFunctions: [],
+      functionCalls: [],
+    };
+  }
+  const collection = collectActionState(functionNode, context);
+  const callbacks: ReactSemanticCallback[] = [];
+  const callbacksByDispatcher = new Map<ts.Symbol, ReactSemanticCallback>();
+  const reachableFunctions: ReactSemanticReachableFunction[] = [];
+  const functionCalls: ReactSemanticFunctionCall[] = [];
+  const hookBindings = collectHookBindings(functionNode, context.typeChecker);
+  const stableSymbols = new Set([
+    ...hookBindings.refs,
+    ...hookBindings.stateSetters,
+    ...hookBindings.transitionStarters,
+  ]);
+  const states = collection.states.map((descriptor): ReactSemanticActionState => {
+    const stateId = createSemanticId(
+      "action-state",
+      descriptor.binding.dispatcherSymbol?.getName() ??
+        descriptor.binding.stateSymbol?.getName() ??
+        "useActionState",
+      descriptor.binding.callExpression,
+      context,
+    );
+    const reducerCallback = descriptor.reducerFunction
+      ? {
+          ...createCallbackFact(
+            identity,
+            descriptor.reducerFunction,
+            functionNode,
+            stableSymbols,
+            ReactSemanticCallbackKind.ActionStateReducer,
+            ReactExecutionPhase.ActionStateReducer,
+            "action-state-reducer",
+            context,
+          ),
+          id: createSemanticId(
+            `action-state-reducer:${stateId}`,
+            "reducer",
+            descriptor.reducerFunction,
+            context,
+          ),
+        }
+      : null;
+    if (reducerCallback && descriptor.reducerFunction) {
+      callbacks.push(reducerCallback);
+      if (descriptor.binding.dispatcherSymbol) {
+        callbacksByDispatcher.set(descriptor.binding.dispatcherSymbol, reducerCallback);
+      }
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        identity,
+        descriptor.reducerFunction,
+        reducerCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    const reducerStatus = reducerCallback
+      ? ReactActionStateReducerStatus.Resolved
+      : ReactActionStateReducerStatus.Opaque;
+    const sourceComplete = Boolean(reducerCallback);
+    return {
+      id: stateId,
+      ownerId: identity.semanticUnit.id,
+      stateName: descriptor.binding.stateSymbol?.getName() ?? "unused Action State",
+      dispatcherName:
+        descriptor.binding.dispatcherSymbol?.getName() ?? "unused Action State dispatcher",
+      location: getNodeLocation(descriptor.binding.callExpression, context.rootDirectory),
+      reducerCallbackId: reducerCallback?.id ?? null,
+      reducerStatus,
+      sourceComplete,
+      complete: sourceComplete,
+    };
+  });
+  return { states, callbacksByDispatcher, callbacks, reachableFunctions, functionCalls };
+};
+
 const collectFormActionGraph = (
   identities: ReadonlyArray<UnitGraphIdentity>,
   context: ReactAnalysisContext,
   componentFlow: ComponentCallbackFlowDescriptor,
+  actionStateCallbacksByDispatcher: ReadonlyMap<ts.Symbol, ReactSemanticCallback>,
 ): FormActionGraphFacts => {
   const identitiesByFunction = new Map(
     identities.flatMap(
@@ -1935,7 +2045,16 @@ const collectFormActionGraph = (
             functionNode,
             ReactExecutionPhase.FormAction,
           );
-      const actionCallbackIds: string[] = [];
+      const dispatcherSymbol = descriptor.isSpread
+        ? null
+        : getResolvedSymbol(
+            unwrapTypescriptExpression(descriptor.actionExpression),
+            context.typeChecker,
+          );
+      const actionStateCallback = dispatcherSymbol
+        ? actionStateCallbacksByDispatcher.get(dispatcherSymbol)
+        : undefined;
+      const actionCallbackIds: string[] = actionStateCallback ? [actionStateCallback.id] : [];
       for (const callbackDescriptor of resolution.callbacks) {
         const callbackIdentity = identitiesByFunction.get(callbackDescriptor.ownerFunction);
         if (!callbackIdentity) continue;
@@ -1978,9 +2097,10 @@ const collectFormActionGraph = (
         functionCalls.push(...reachabilityFacts.functionCalls);
       }
       const callbackComplete =
-        resolution.isComplete &&
-        actionCallbackIds.length > 0 &&
-        actionCallbackIds.length === resolution.callbacks.length;
+        Boolean(actionStateCallback) ||
+        (resolution.isComplete &&
+          actionCallbackIds.length > 0 &&
+          actionCallbackIds.length === resolution.callbacks.length);
       let status = descriptor.status;
       if (status === ReactFormActionStatus.Resolved && !callbackComplete) {
         status = ReactFormActionStatus.Opaque;
@@ -2069,6 +2189,7 @@ const collectTransitionActionGraph = (
   const allReachableFunctions = [...existingReachableFunctions, ...reachableFunctions];
   const callbacksById = new Map(allCallbacks.map((callback) => [callback.id, callback]));
   const validOriginPhases = new Set([
+    ReactExecutionPhase.ActionStateReducer,
     ReactExecutionPhase.ClassMount,
     ReactExecutionPhase.ClassUpdate,
     ReactExecutionPhase.Deferred,
@@ -2120,6 +2241,136 @@ const collectTransitionActionGraph = (
     },
   );
   return { actions, callbacks, reachableFunctions, functionCalls };
+};
+
+const collectActionStateDispatchGraph = (
+  identity: UnitGraphIdentity,
+  existingStates: ReadonlyArray<ReactSemanticActionState>,
+  existingFormActions: ReadonlyArray<ReactSemanticFormAction>,
+  existingTransitionActions: ReadonlyArray<ReactSemanticTransitionAction>,
+  existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
+  existingReachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>,
+  context: ReactAnalysisContext,
+): ActionStateDispatchGraphFacts => {
+  const functionNode = identity.descriptor.functionNode;
+  if (
+    !functionNode ||
+    identity.descriptor.kind === ReactUnitKind.ClassComponent ||
+    identity.descriptor.kind === ReactUnitKind.InvalidHookOwner
+  ) {
+    return { dispatches: [] };
+  }
+  const collection = collectActionState(functionNode, context);
+  const callbacksById = new Map(existingCallbacks.map((callback) => [callback.id, callback]));
+  const statesByDispatcher = new Map(
+    collection.states.flatMap(
+      (descriptor): ReadonlyArray<[ts.Symbol, ReactSemanticActionState]> => {
+        const dispatcherSymbol = descriptor.binding.dispatcherSymbol;
+        if (!dispatcherSymbol) return [];
+        const stateId = createSemanticId(
+          "action-state",
+          dispatcherSymbol.getName(),
+          descriptor.binding.callExpression,
+          context,
+        );
+        const state = existingStates.find((candidate) => candidate.id === stateId);
+        return state ? [[dispatcherSymbol, state]] : [];
+      },
+    ),
+  );
+  const completeTransitionCallbackIds = new Set(
+    existingTransitionActions.flatMap((action) =>
+      action.complete && action.actionCallbackId ? [action.actionCallbackId] : [],
+    ),
+  );
+  return {
+    dispatches: collection.dispatches.map((descriptor): ReactSemanticActionStateDispatch => {
+      const actionState = statesByDispatcher.get(descriptor.binding.dispatcherSymbol);
+      const dispatchId = createSemanticId(
+        "action-state-dispatch",
+        descriptor.binding.dispatcherSymbol.getName(),
+        descriptor.evidenceNode,
+        context,
+      );
+      const executionCallbackIds = descriptor.callExpression
+        ? collectExecutionCallbackIds({
+            callbacks: existingCallbacks,
+            evidenceNode: descriptor.callExpression,
+            ownerId: identity.semanticUnit.id,
+            reachableFunctions: existingReachableFunctions,
+            rootDirectory: context.rootDirectory,
+          })
+        : [];
+      const executionCallbacks = executionCallbackIds.flatMap((callbackId) => {
+        const callback = callbacksById.get(callbackId);
+        return callback ? [callback] : [];
+      });
+      let status = ReactActionStateDispatchStatus.Unknown;
+      if (!descriptor.callExpression && !descriptor.isActionPropReference) {
+        status = ReactActionStateDispatchStatus.SetterEscape;
+      } else if (descriptor.isActionPropReference) {
+        const location = getNodeLocation(descriptor.evidenceNode, context.rootDirectory);
+        const formAction = existingFormActions.find(
+          (action) =>
+            action.ownerId === identity.semanticUnit.id &&
+            action.complete &&
+            areProofLocationsEqual(action.location, location),
+        );
+        if (
+          formAction &&
+          actionState?.reducerCallbackId &&
+          formAction.actionCallbackIds.includes(actionState.reducerCallbackId)
+        ) {
+          status = ReactActionStateDispatchStatus.Action;
+        }
+      } else if (
+        executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.Render)
+      ) {
+        status = ReactActionStateDispatchStatus.Render;
+      } else if (
+        executionCallbacks.length > 0 &&
+        executionCallbacks.every(
+          (callback) =>
+            callback.phase === ReactExecutionPhase.FormAction ||
+            callback.phase === ReactExecutionPhase.ActionStateReducer ||
+            (callback.phase === ReactExecutionPhase.TransitionAction &&
+              completeTransitionCallbackIds.has(callback.id)),
+        )
+      ) {
+        status = ReactActionStateDispatchStatus.Action;
+      } else if (
+        executionCallbacks.some(
+          (callback) =>
+            callback.phase !== ReactExecutionPhase.FormAction &&
+            callback.phase !== ReactExecutionPhase.ActionStateReducer &&
+            callback.phase !== ReactExecutionPhase.TransitionAction,
+        )
+      ) {
+        status = ReactActionStateDispatchStatus.OutsideAction;
+      }
+      const sourceComplete =
+        Boolean(actionState?.complete) &&
+        status !== ReactActionStateDispatchStatus.SetterEscape &&
+        status !== ReactActionStateDispatchStatus.Unknown;
+      let kind = ReactActionStateDispatchKind.Escape;
+      if (descriptor.callExpression) {
+        kind = ReactActionStateDispatchKind.Call;
+      } else if (descriptor.isActionPropReference) {
+        kind = ReactActionStateDispatchKind.ActionProp;
+      }
+      return {
+        id: dispatchId,
+        ownerId: identity.semanticUnit.id,
+        actionStateId: actionState?.id ?? "",
+        kind,
+        location: getNodeLocation(descriptor.evidenceNode, context.rootDirectory),
+        executionCallbackIds,
+        status,
+        sourceComplete,
+        complete: sourceComplete && status === ReactActionStateDispatchStatus.Action,
+      };
+    }),
+  };
 };
 
 const collectHookStateTransitionGraph = (
@@ -2351,6 +2602,7 @@ const collectOptimisticStateGraph = (
       executionCallbacks.every(
         (callback) =>
           callback.phase === ReactExecutionPhase.FormAction ||
+          callback.phase === ReactExecutionPhase.ActionStateReducer ||
           (callback.phase === ReactExecutionPhase.TransitionAction &&
             completeTransitionCallbackIds.has(callback.id)),
       )
@@ -2360,6 +2612,7 @@ const collectOptimisticStateGraph = (
       executionCallbacks.some(
         (callback) =>
           callback.phase !== ReactExecutionPhase.FormAction &&
+          callback.phase !== ReactExecutionPhase.ActionStateReducer &&
           callback.phase !== ReactExecutionPhase.TransitionAction,
       )
     ) {
@@ -2757,6 +3010,8 @@ export const buildReactSemanticGraph = (
   const classLifecycles: ReactSemanticClassLifecycle[] = [];
   const classStateWrites: ReactSemanticClassStateWrite[] = [];
   const classStateTransitions: ReactSemanticClassStateTransition[] = [];
+  const actionStates: ReactSemanticActionState[] = [];
+  const actionStateDispatches: ReactSemanticActionStateDispatch[] = [];
   const formActions: ReactSemanticFormAction[] = [];
   const hookStateTransitions: ReactSemanticHookStateTransition[] = [];
   const optimisticStates: ReactSemanticOptimisticState[] = [];
@@ -2782,18 +3037,35 @@ export const buildReactSemanticGraph = (
   callbacks.push(...eventGraph.callbacks);
   reachableFunctions.push(...eventGraph.reachableFunctions);
   functionCalls.push(...eventGraph.functionCalls);
-  const formActionGraph = collectFormActionGraph(identities, context, componentFlow);
+  const actionStateCallbacksByDispatcher = new Map<ts.Symbol, ReactSemanticCallback>();
+  for (const identity of identities) {
+    const actionStateDefinitionGraph = collectActionStateDefinitionGraph(identity, context);
+    actionStates.push(...actionStateDefinitionGraph.states);
+    callbacks.push(...actionStateDefinitionGraph.callbacks);
+    reachableFunctions.push(...actionStateDefinitionGraph.reachableFunctions);
+    functionCalls.push(...actionStateDefinitionGraph.functionCalls);
+    for (const [dispatcherSymbol, callback] of actionStateDefinitionGraph.callbacksByDispatcher) {
+      actionStateCallbacksByDispatcher.set(dispatcherSymbol, callback);
+    }
+  }
+  const formActionGraph = collectFormActionGraph(
+    identities,
+    context,
+    componentFlow,
+    actionStateCallbacksByDispatcher,
+  );
   formActions.push(...formActionGraph.actions);
   callbacks.push(...formActionGraph.callbacks);
   reachableFunctions.push(...formActionGraph.reachableFunctions);
   functionCalls.push(...formActionGraph.functionCalls);
   for (const identity of identities) {
     const functionNode = identity.descriptor.functionNode;
+    const unitKind = identity.descriptor.kind;
     if (
       functionNode &&
-      (identity.descriptor.kind === ReactUnitKind.Component ||
-        identity.descriptor.kind === ReactUnitKind.ClassComponent ||
-        identity.descriptor.kind === ReactUnitKind.Hook)
+      (unitKind === ReactUnitKind.Component ||
+        unitKind === ReactUnitKind.ClassComponent ||
+        unitKind === ReactUnitKind.Hook)
     ) {
       const renderCallback = createCallbackFact(
         identity,
@@ -2894,6 +3166,18 @@ export const buildReactSemanticGraph = (
   reachableFunctions.push(...callbackPropGraph.reachableFunctions);
   functionCalls.push(...callbackPropGraph.functionCalls);
   for (const identity of identities) {
+    const actionStateDispatchGraph = collectActionStateDispatchGraph(
+      identity,
+      actionStates,
+      formActions,
+      transitionActions,
+      callbacks,
+      reachableFunctions,
+      context,
+    );
+    actionStateDispatches.push(...actionStateDispatchGraph.dispatches);
+  }
+  for (const identity of identities) {
     const hookStateTransitionGraph = collectHookStateTransitionGraph(
       identity,
       callbacks,
@@ -2930,6 +3214,8 @@ export const buildReactSemanticGraph = (
   const callableRefs = collectCallableRefGraph(identities, callbacks, functionCalls, context);
   return {
     schemaVersion: REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
+    actionStates,
+    actionStateDispatches,
     units: identities.map((identity) => identity.semanticUnit),
     edges,
     hookCalls,

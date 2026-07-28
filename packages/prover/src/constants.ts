@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 19;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 25;
+export const REACT_PROOF_SCHEMA_VERSION = 20;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 26;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -9,6 +9,10 @@ export const FIRST_SOURCE_COLUMN = 1;
 export const PROVER_RUNTIME_ORACLE_PORT = 4178;
 export const PROVER_RUNTIME_ORACLE_TIMEOUT_MS = 30_000;
 export const REACT_CONTEXT_DEFAULT_SOURCE_ID = "react:context-default";
+export const REACT_ACTION_STATE_DISPATCHER_INDEX = 1;
+export const REACT_ACTION_STATE_REDUCER_INDEX = 0;
+export const REACT_ACTION_STATE_STATE_INDEX = 0;
+export const REACT_ACTION_STATE_TUPLE_LENGTH = 3;
 export const REACT_OPTIMISTIC_REDUCER_INDEX = 1;
 export const REACT_OPTIMISTIC_SETTER_INDEX = 1;
 export const REACT_OPTIMISTIC_STATE_INDEX = 0;
@@ -45,6 +49,7 @@ export const EFFECT_EVENT_REGISTRATION_CALL_NAMES = new Set([
 export const PROMISE_CONTINUATION_METHOD_NAMES = new Set(["catch", "finally", "then"]);
 
 export const REACT_MODELED_HOOK_NAMES = new Set([
+  "useActionState",
   "useCallback",
   "useContext",
   "useEffect",
@@ -61,7 +66,6 @@ export const REACT_MODELED_HOOK_NAMES = new Set([
 
 export const REACT_UNMODELED_HOOK_NAMES = new Set([
   "use",
-  "useActionState",
   "useDeferredValue",
   "useImperativeHandle",
   "useOptimistic",

@@ -1,3 +1,4 @@
+import { analyzeActionState } from "./analyze-action-state.js";
 import { analyzeAsyncEffectOwnership } from "./analyze-async-effect-ownership.js";
 import { analyzeBoundaryCoverage } from "./analyze-boundary-coverage.js";
 import { analyzeCallableRefFreshness } from "./analyze-callable-ref-freshness.js";
@@ -30,6 +31,7 @@ import { ReactObligationStatus, ReactProofClaim, ReactUnitKind } from "./types.j
 import type { ReactAnalysisContext, ReactUnitDescriptor, ReactUnitProof } from "./types.js";
 
 const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
+  ReactProofClaim.ActionState,
   ReactProofClaim.AsyncEffectOwnership,
   ReactProofClaim.BoundaryCoverage,
   ReactProofClaim.CallableRefFreshness,
@@ -128,6 +130,7 @@ export const analyzeReactUnit = (
     kind: unit.kind,
     location: getNodeLocation(unit.node, context.rootDirectory),
     obligations: [
+      analyzeActionState(unit, context),
       analyzeAsyncEffectOwnership(unit.functionNode, context),
       analyzeBoundaryCoverage(unit, context),
       analyzeCallableRefFreshness(unit, context),

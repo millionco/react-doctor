@@ -4,6 +4,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   checkReactProofReport,
   proveReactApp,
+  ReactActionStateDispatchKind,
+  ReactActionStateDispatchStatus,
+  ReactActionStateReducerStatus,
   ReactAppProofStatus,
   ReactAsyncOwnershipStatus,
   ReactCallableRefFreshness,
@@ -57,6 +60,16 @@ const proveFixture = (fixtureName: string) =>
   });
 
 const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
+  {
+    fixtureName: "refuted-action-state-outside-action",
+    claim: ReactProofClaim.ActionState,
+    evidencePattern: /outside an Action/,
+  },
+  {
+    fixtureName: "refuted-action-state-render-dispatch",
+    claim: ReactProofClaim.ActionState,
+    evidencePattern: /during render/,
+  },
   {
     fixtureName: "refuted-unsupported-form-action-control",
     claim: ReactProofClaim.FormActions,
@@ -624,8 +637,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(19);
-    expect(report.graph.schemaVersion).toBe(25);
+    expect(report.schemaVersion).toBe(20);
+    expect(report.graph.schemaVersion).toBe(26);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -3193,6 +3206,113 @@ describe("proveReactApp", () => {
     expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
     expect(
       certificate.failures.some((failure) => failure.description.includes("Transition Action")),
+    ).toBe(true);
+  });
+
+  it("certifies Action State through direct Form Action and nested Form Action roots", () => {
+    const report = proveFixture("proved-action-state-form");
+    const actionState = report.graph.actionStates[0];
+    const reducerCallback = report.graph.callbacks.find(
+      (callback) => callback.id === actionState?.reducerCallbackId,
+    );
+    const actionStateProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ActionState,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(actionState?.reducerStatus).toBe(ReactActionStateReducerStatus.Resolved);
+    expect(actionState?.complete).toBe(true);
+    expect(reducerCallback?.kind).toBe(ReactSemanticCallbackKind.ActionStateReducer);
+    expect(reducerCallback?.phase).toBe(ReactExecutionPhase.ActionStateReducer);
+    expect(report.graph.actionStateDispatches).toHaveLength(2);
+    expect(
+      report.graph.actionStateDispatches.every(
+        (dispatch) =>
+          dispatch.status === ReactActionStateDispatchStatus.Action && dispatch.complete,
+      ),
+    ).toBe(true);
+    expect(
+      report.graph.actionStateDispatches.some(
+        (dispatch) => dispatch.kind === ReactActionStateDispatchKind.ActionProp,
+      ),
+    ).toBe(true);
+    expect(
+      report.graph.formActions.some(
+        (formAction) =>
+          formAction.complete &&
+          Boolean(
+            actionState?.reducerCallbackId &&
+            formAction.actionCallbackIds.includes(actionState.reducerCallbackId),
+          ),
+      ),
+    ).toBe(true);
+    expect(actionStateProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("certifies a direct Action State dispatch inside a synchronous Transition Action", () => {
+    const report = proveFixture("proved-action-state-transition");
+    const dispatch = report.graph.actionStateDispatches[0];
+    const transitionAction = report.graph.transitionActions[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(transitionAction?.complete).toBe(true);
+    expect(dispatch?.kind).toBe(ReactActionStateDispatchKind.Call);
+    expect(dispatch?.status).toBe(ReactActionStateDispatchStatus.Action);
+    expect(dispatch?.executionCallbackIds).toContain(transitionAction?.actionCallbackId);
+    expect(dispatch?.complete).toBe(true);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it.each([
+    ["incomplete-action-state-dispatcher-escape", ReactActionStateDispatchStatus.SetterEscape],
+    ["incomplete-action-state-async-transition", ReactActionStateDispatchStatus.Unknown],
+  ])("fails closed for incomplete Action State dispatch ownership in %s", (fixtureName, status) => {
+    const report = proveFixture(fixtureName);
+    const dispatch = report.graph.actionStateDispatches[0];
+    const actionStateProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ActionState,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(dispatch?.status).toBe(status);
+    expect(dispatch?.complete).toBe(false);
+    expect(actionStateProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("fails closed when the Action State reducer comes from an unresolved prop", () => {
+    const report = proveFixture("incomplete-action-state-reducer-prop");
+    const actionState = report.graph.actionStates[0];
+    const actionStateProof = report.units[0]?.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ActionState,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(actionState?.reducerStatus).toBe(ReactActionStateReducerStatus.Opaque);
+    expect(actionState?.complete).toBe(false);
+    expect(actionStateProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged Action State ownership certificate", () => {
+    const report = proveFixture("refuted-action-state-outside-action");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        actionStateDispatches: report.graph.actionStateDispatches.map((dispatch) => ({
+          ...dispatch,
+          status: ReactActionStateDispatchStatus.Action,
+          sourceComplete: true,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("Action State")),
     ).toBe(true);
   });
 

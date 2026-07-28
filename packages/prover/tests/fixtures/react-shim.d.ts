@@ -1,4 +1,12 @@
 declare module "react" {
+  export type Key = string | number | bigint;
+  export type ReactNode = unknown;
+
+  export interface ReactPortal {
+    children: ReactNode;
+    key: Key | null;
+  }
+
   export interface ChangeEvent<Target> {
     currentTarget: Target;
   }

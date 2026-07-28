@@ -477,6 +477,7 @@ Each discovered unit receives these obligations:
 | `external-store-consistency`  | Stable snapshots, symmetric subscriptions, write notification, hydration agreement          |
 | `action-state`                | Reducer Action identity, dispatcher ownership, Form/Transition Action execution roots       |
 | `form-actions`                | Intrinsic form/submitter semantics, callback identity, form association, Action phase       |
+| `form-status`                 | Parent-form ancestry, same-component exclusion, mixed render paths, composed uncertainty    |
 | `memo-dependencies`           | `useMemo` and `useCallback` captures versus inline dependency tuples                        |
 | `optimistic-state`            | Reducer/updater purity, setter identity, render exclusion, Form/Transition Action ownership |
 | `reconciliation-identity`     | Missing, duplicate, index-derived, and unconstrained dynamic list keys                      |
@@ -754,7 +755,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 297 TypeScript fixture projects, 499 static tests, and 38 Chromium runtime
+Current checkpoint: 306 TypeScript fixture projects, 509 static tests, and 39 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -1534,3 +1535,109 @@ Changeset is warranted before publication.
 Kill: If dispatcher origin or direct Action-prop association produces a false `proved` result
 across two proof-schema releases, remove the complete dispatch status and keep Action State
 incomplete until callback SSA or the lifecycle machine carries the missing evidence.
+
+## Form Status topology certificates
+
+### React semantics
+
+- The official [`useFormStatus` reference](https://react.dev/reference/react-dom/hooks/useFormStatus)
+  requires the Hook to run in a component rendered inside a parent `<form>`.
+- A form returned by the same component is not a parent form. In that documented pitfall,
+  `pending` never becomes true. A component that can render both below and outside a form therefore
+  has a concrete invalid execution path rather than an merely opaque one.
+- The pending status carries the parent form's `FormData`, declared method, and callable Action.
+  With no active submission or no parent form, the idle status has null data and Action.
+- React DOM implements the Hook through the host-transition status dispatcher. Its source identity
+  is therefore `react-dom` `useFormStatus`, not an arbitrary custom Hook with the same spelling.
+
+### Real-project evidence
+
+React Bench did not contain native React DOM `useFormStatus` usage. A broader source search found
+the canonical production shape in Next.js:
+
+- [`examples/next-forms/app/add-form.tsx`](https://github.com/vercel/next.js/blob/cf1e001f40b311f5a4f19775ec9ea4f1d8bdece9/examples/next-forms/app/add-form.tsx)
+  and
+  [`delete-form.tsx`](https://github.com/vercel/next.js/blob/cf1e001f40b311f5a4f19775ec9ea4f1d8bdece9/examples/next-forms/app/delete-form.tsx)
+  put a dedicated pending button below an Action State form.
+- [`examples/with-turso/app/form.tsx`](https://github.com/vercel/next.js/blob/cf1e001f40b311f5a4f19775ec9ea4f1d8bdece9/examples/with-turso/app/form.tsx)
+  uses the same separate-submit-component topology around a database mutation.
+- Next's forms guide explicitly says the loading indicator must be a separate component. Next also
+  rejects `useFormStatus` in a Server Component module, evidence that future framework proofs need
+  a client/server module-boundary fact in addition to the parent-form theorem.
+
+The fixture corpus uses those separate submit-control and Action form shapes, plus component and
+custom-Hook propagation, a shared button under two forms, the official same-component pitfall, a
+detached consumer, mixed valid/invalid render sites, and a composed form shell whose `children`
+placement is not yet modeled.
+
+### Proof boundary
+
+The `form-status` obligation recognizes only a symbol-resolved `useFormStatus` imported from the
+React DOM runtime. Every intrinsic form receives a semantic identity. Every project component
+render records the lexically active intrinsic form stack and whether an intervening component can
+change the nearest-form topology.
+
+Form sources propagate to rendered components and called custom Hooks until a fixed point:
+
+- a direct intrinsic form ancestor supplies its nearest form identity;
+- a render with no local form inherits the caller's parent form;
+- a component-composed child with no guaranteed outer form supplies an unknown source rather than
+  an outside-form counterexample;
+- every exported closed component root starts outside a form, while an unreferenced local
+  component remains unknown because an unmodeled render callback may own its placement;
+- multiple render sites join every possible source form;
+- one known outside-form path is enough to refute the obligation.
+
+This proves parent-form presence and identity for the supported closed render subset. It does not
+yet model arbitrary `children`/slot ReactNode flow, portals that create another root, framework
+Server/Client Component boundaries, JSX returned from synchronous render callbacks or helpers,
+renderer-specific host-transition providers, or form association outside the React parent tree.
+Those cases remain incomplete rather than borrowing DOM ancestry or source nesting as proof.
+
+The independent checker separately recomputes the fixed point from semantic render and custom-Hook
+edges. It requires exactly one topology fact for every canonical Hook call, validates every active
+and source form identity and owner, and re-derives the outside-form flag, source completeness,
+topology status, claim verdict, and final completeness. Report schema 21 and graph schema 27 reject
+stale certificates.
+
+Added corpus:
+
+- proved: `proved-form-status-direct`, `proved-form-status-transitive`, and
+  `proved-form-status-multiple-forms`
+- refuted: `refuted-form-status-outside-form`, `refuted-form-status-same-component`,
+  `refuted-form-status-mixed-placement`, and `refuted-form-status-exported-child`
+- incomplete: `incomplete-form-status-composed-form` and
+  `incomplete-form-status-render-callback`
+- runtime: `form-status-oracle.spec.ts`
+
+The Chromium oracle runs under root Strict Mode, starts an async function-valued Form Action, and
+observes that the descendant status exposes pending state, submitted data, the Action identity,
+and the default method while the same-component status remains idle. React 19.2.5 reports the
+default declared method as `get` in the pending status even though function-valued form Actions use
+POST submission semantics. That calibrated distinction is retained in the oracle instead of
+conflating the status field with transport behavior.
+
+### Product brief: internal Form Status facts
+
+Job: Prover consumers need to know that a pending indicator is attached to the form it claims to
+observe, including every render path, rather than merely seeing a `useFormStatus` call.
+
+Change: Add one private claim, intrinsic form identities, render-path form ancestry, versioned Form
+Status facts, and independent checker equations.
+
+Reuse: Truffler searches for form ancestry, render topology, and nearest-provider propagation found
+no existing Form Status certificate. The implementation extends the existing component-render and
+custom-Hook graph and deliberately mirrors the proven context-topology fixed-point shape without
+sharing producer equations with the checker.
+
+Metric: The deterministic acceptance metric separates direct, transitive, multi-form, detached,
+same-component, exported-child, mixed-placement, and composed-child cases, plus a Chromium oracle
+for pending, data, method, Action identity, and Strict Mode invocation count.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 21 and its semantic graph to schema 27. No
+Changeset is warranted before publication.
+
+Kill: If lexical render topology produces a false `proved` result in a component-composed or
+renderer-specific form tree, remove the complete source status and keep Form Status incomplete
+until ReactNode slot flow or a renderer contract carries the missing ancestry.

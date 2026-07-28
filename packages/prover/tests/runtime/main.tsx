@@ -16,11 +16,14 @@ import {
   useTransition,
 } from "react";
 import type { ChangeEvent } from "react";
+import { useFormStatus } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   ACTION_STATE_DELAY_MS,
   ACTION_STATE_INITIAL_RUNS,
   FAST_QUERY_DELAY_MS,
+  FORM_STATUS_ACTION_DELAY_MS,
+  FORM_STATUS_ACTION_INITIAL_RUNS,
   HOOK_STATE_INCREMENT,
   HOOK_STATE_INITIAL_COUNT,
   HOOK_STATE_UPDATER_INITIAL_RUNS,
@@ -45,6 +48,7 @@ import {
 declare global {
   interface Window {
     effectEventSetupRuns: number;
+    formStatusActionRuns: number;
     actionStateRuns: number;
     classListenerHits: number;
     classMounts: number;
@@ -65,6 +69,7 @@ declare global {
 }
 
 window.effectEventSetupRuns = 0;
+window.formStatusActionRuns = FORM_STATUS_ACTION_INITIAL_RUNS;
 window.actionStateRuns = ACTION_STATE_INITIAL_RUNS;
 window.classListenerHits = 0;
 window.classMounts = 0;
@@ -86,6 +91,49 @@ interface OptimisticTodo {
   label: string;
   isPending: boolean;
 }
+
+const submitFormStatus = async (formData: FormData) => {
+  window.formStatusActionRuns += 1;
+  String(formData.get("username"));
+  await new Promise((resolve) => {
+    setTimeout(resolve, FORM_STATUS_ACTION_DELAY_MS);
+  });
+};
+
+const FormStatusDetails = () => {
+  const status = useFormStatus();
+  return (
+    <>
+      <button type="submit" disabled={status.pending}>
+        {status.pending ? "requesting username" : "request username"}
+      </button>
+      <output data-testid="form-status-pending">{String(status.pending)}</output>
+      <output data-testid="form-status-data">
+        {status.data ? String(status.data.get("username")) : "none"}
+      </output>
+      <output data-testid="form-status-method">{status.method}</output>
+      <output data-testid="form-status-action">{String(status.action === submitFormStatus)}</output>
+    </>
+  );
+};
+
+const FormStatusOracle = () => {
+  const sameComponentStatus = useFormStatus();
+  return (
+    <main>
+      <form action={submitFormStatus}>
+        <label>
+          Username
+          <input name="username" />
+        </label>
+        <FormStatusDetails />
+      </form>
+      <output data-testid="same-component-form-status">
+        {String(sameComponentStatus.pending)}
+      </output>
+    </main>
+  );
+};
 
 const ActionStateOracle = () => {
   const [submittedItems, submitItem, isPending] = useActionState(
@@ -1025,6 +1073,9 @@ const RuntimeOracle = () => {
   if (oracle === "action-state") {
     return <ActionStateOracle />;
   }
+  if (oracle === "form-status") {
+    return <FormStatusOracle />;
+  }
   return <ListenerOracle />;
 };
 
@@ -1040,7 +1091,8 @@ const isStrictModeOracle =
   oracle === "hook-state-transition" ||
   oracle === "transition-action" ||
   oracle === "optimistic-form-action" ||
-  oracle === "action-state";
+  oracle === "action-state" ||
+  oracle === "form-status";
 createRoot(rootElement).render(
   isStrictModeOracle ? (
     <StrictMode>

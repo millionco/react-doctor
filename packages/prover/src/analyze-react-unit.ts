@@ -13,6 +13,7 @@ import { analyzeEffectEventUsage } from "./analyze-effect-event-usage.js";
 import { analyzeEffectStateUpdates } from "./analyze-effect-state-updates.js";
 import { analyzeExternalStoreConsistency } from "./analyze-external-store-consistency.js";
 import { analyzeFormActions } from "./analyze-form-actions.js";
+import { analyzeFormStatus } from "./analyze-form-status.js";
 import { analyzeHookOrder } from "./analyze-hook-order.js";
 import { analyzeHookOwnership } from "./analyze-hook-ownership.js";
 import { analyzeHookStateTransitions } from "./analyze-hook-state-transitions.js";
@@ -46,6 +47,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.EffectStateUpdates,
   ReactProofClaim.ExternalStoreConsistency,
   ReactProofClaim.FormActions,
+  ReactProofClaim.FormStatus,
   ReactProofClaim.HookOrder,
   ReactProofClaim.HookOwnership,
   ReactProofClaim.HookStateTransitions,
@@ -145,6 +147,7 @@ export const analyzeReactUnit = (
       analyzeEffectStateUpdates(unit, context),
       analyzeExternalStoreConsistency(unit, context),
       analyzeFormActions(unit, context),
+      analyzeFormStatus(unit, context),
       analyzeHookOrder(unit.functionNode, context),
       analyzeHookOwnership(unit.functionNode),
       analyzeHookStateTransitions(unit, context),

@@ -28,6 +28,7 @@ export enum ReactProofClaim {
   EffectStateUpdates = "effect-state-updates",
   ExternalStoreConsistency = "external-store-consistency",
   FormActions = "form-actions",
+  FormStatus = "form-status",
   HookOrder = "hook-order",
   HookOwnership = "hook-ownership",
   HookStateTransitions = "hook-state-transitions",
@@ -157,6 +158,7 @@ export interface ReactSemanticUnit {
   kind: ReactUnitKind;
   location: ReactProofLocation;
   classComponentBase: ReactClassComponentBase | null;
+  canBeRenderRoot: boolean;
   sourceComplete: boolean;
 }
 
@@ -324,6 +326,8 @@ export interface ReactSemanticRender {
   targetId: string;
   location: ReactProofLocation;
   activeContextProviderIds: ReadonlyArray<string>;
+  activeFormIds: ReadonlyArray<string>;
+  formTopologyComplete: boolean;
 }
 
 export interface ReactSemanticCallback {
@@ -662,6 +666,29 @@ export interface ReactSemanticFormAction {
   complete: boolean;
 }
 
+export enum ReactFormStatusTopologyStatus {
+  OutsideForm = "outside-form",
+  Resolved = "resolved",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticForm {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactSemanticFormStatus {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  sourceFormIds: ReadonlyArray<string>;
+  outsideForm: boolean;
+  status: ReactFormStatusTopologyStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export enum ReactOptimisticReducerStatus {
   Absent = "absent",
   Impure = "impure",
@@ -796,6 +823,8 @@ export interface ReactSemanticGraph {
   classStateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
   classStateTransitions: ReadonlyArray<ReactSemanticClassStateTransition>;
   formActions: ReadonlyArray<ReactSemanticFormAction>;
+  forms: ReadonlyArray<ReactSemanticForm>;
+  formStatuses: ReadonlyArray<ReactSemanticFormStatus>;
   hookStateTransitions: ReadonlyArray<ReactSemanticHookStateTransition>;
   optimisticStates: ReadonlyArray<ReactSemanticOptimisticState>;
   optimisticUpdates: ReadonlyArray<ReactSemanticOptimisticUpdate>;

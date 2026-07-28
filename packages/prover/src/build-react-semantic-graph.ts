@@ -38,6 +38,8 @@ import {
   REACT_MEMO_HOOK_NAMES,
   REACT_REDUCER_HOOK_NAMES,
   REACT_CONTEXT_DEFAULT_SOURCE_ID,
+  REACT_FORM_OUTSIDE_SOURCE_ID,
+  REACT_FORM_UNKNOWN_SOURCE_ID,
   REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
 } from "./constants.js";
 import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
@@ -64,6 +66,7 @@ import {
   ReactEffectDependencyMode,
   ReactExecutionPhase,
   ReactFormActionStatus,
+  ReactFormStatusTopologyStatus,
   ReactHookStateUpdaterStatus,
   ReactIdentityStability,
   ReactOptimisticActionStatus,
@@ -95,6 +98,8 @@ import type {
   ReactSemanticClassStateTransition,
   ReactSemanticExternalStore,
   ReactSemanticFormAction,
+  ReactSemanticForm,
+  ReactSemanticFormStatus,
   ReactSemanticFunctionCall,
   ReactSemanticGraph,
   ReactSemanticHookCall,
@@ -115,6 +120,7 @@ import { collectExecutionCallbackIds } from "./utils/collect-execution-callback-
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
+import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 
 interface UnitGraphIdentity {
@@ -249,6 +255,12 @@ interface ContextGraphFacts {
   contextIdsBySymbol: ReadonlyMap<ts.Symbol, string>;
 }
 
+interface FormTopologyGraphFacts {
+  forms: ReadonlyArray<ReactSemanticForm>;
+  formStatuses: ReadonlyArray<ReactSemanticFormStatus>;
+  formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>;
+}
+
 const collectCallableRefGraph = (
   identities: ReadonlyArray<UnitGraphIdentity>,
   callbacks: ReadonlyArray<ReactSemanticCallback>,
@@ -335,6 +347,38 @@ const getDeclarationNameNode = (descriptor: ReactUnitDescriptor): ts.Node | null
 
 const resolveAliasedSymbol = (symbol: ts.Symbol, typeChecker: ts.TypeChecker): ts.Symbol =>
   symbol.flags & ts.SymbolFlags.Alias ? typeChecker.getAliasedSymbol(symbol) : symbol;
+
+const isDescriptorExported = (
+  descriptor: ReactUnitDescriptor,
+  typeChecker: ts.TypeChecker,
+): boolean => {
+  let currentNode: ts.Node | undefined = descriptor.node;
+  while (currentNode && !ts.isSourceFile(currentNode)) {
+    if (ts.isExportAssignment(currentNode) && !currentNode.isExportEquals) return true;
+    if (
+      ts.canHaveModifiers(currentNode) &&
+      ts
+        .getModifiers(currentNode)
+        ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      return true;
+    }
+    currentNode = currentNode.parent;
+  }
+  const declarationName = getDeclarationNameNode(descriptor);
+  const declarationSymbol = declarationName
+    ? typeChecker.getSymbolAtLocation(declarationName)
+    : undefined;
+  const moduleSymbol = typeChecker.getSymbolAtLocation(descriptor.node.getSourceFile());
+  if (!declarationSymbol || !moduleSymbol) return false;
+  const resolvedDeclarationSymbol = resolveAliasedSymbol(declarationSymbol, typeChecker);
+  return typeChecker
+    .getExportsOfModule(moduleSymbol)
+    .some(
+      (exportSymbol) =>
+        resolveAliasedSymbol(exportSymbol, typeChecker) === resolvedDeclarationSymbol,
+    );
+};
 
 const getExpressionSymbol = (
   expression: ts.Expression | ts.JsxTagNameExpression,
@@ -515,6 +559,81 @@ const collectActiveContextProviderIds = (
   return providerIds;
 };
 
+const collectFormTopologyGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  context: ReactAnalysisContext,
+): FormTopologyGraphFacts => {
+  const forms: ReactSemanticForm[] = [];
+  const formStatuses: ReactSemanticFormStatus[] = [];
+  const formsByOpeningNode = new Map<ts.JsxOpeningLikeElement, ReactSemanticForm>();
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const visit = (node: ts.Node): void => {
+      if (node !== functionNode && isFunctionBoundary(node)) return;
+      if (
+        (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+        ts.isIdentifier(node.tagName) &&
+        node.tagName.text === "form"
+      ) {
+        const form: ReactSemanticForm = {
+          id: createSemanticId("form", "form", node.tagName, context),
+          ownerId: identity.semanticUnit.id,
+          location: getNodeLocation(node.tagName, context.rootDirectory),
+        };
+        forms.push(form);
+        formsByOpeningNode.set(node, form);
+      }
+      if (
+        ts.isCallExpression(node) &&
+        getCanonicalReactApiName(node.expression, context.typeChecker) === "useFormStatus"
+      ) {
+        formStatuses.push({
+          id: createSemanticId("form-status", "useFormStatus", node, context),
+          ownerId: identity.semanticUnit.id,
+          location: getNodeLocation(node, context.rootDirectory),
+          sourceFormIds: [],
+          outsideForm: false,
+          status: ReactFormStatusTopologyStatus.Unknown,
+          sourceComplete: false,
+          complete: false,
+        });
+      }
+      node.forEachChild(visit);
+    };
+    functionNode.forEachChild(visit);
+  }
+  return { forms, formStatuses, formsByOpeningNode };
+};
+
+const collectActiveFormTopology = (
+  tagName: ts.JsxTagNameExpression,
+  formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>,
+): { activeFormIds: ReadonlyArray<string>; complete: boolean } => {
+  const activeFormIds: string[] = [];
+  let foundNearestForm = false;
+  let complete = true;
+  const openingElement = tagName.parent;
+  let currentNode: ts.Node | undefined =
+    ts.isJsxOpeningElement(openingElement) && ts.isJsxElement(openingElement.parent)
+      ? openingElement.parent.parent
+      : openingElement.parent;
+  while (currentNode && !isFunctionBoundary(currentNode)) {
+    if (ts.isJsxElement(currentNode)) {
+      const openingElement = currentNode.openingElement;
+      const form = formsByOpeningNode.get(openingElement);
+      if (form) {
+        activeFormIds.unshift(form.id);
+        foundNearestForm = true;
+      } else if (!foundNearestForm && !isIntrinsicJsxElement(openingElement)) {
+        complete = false;
+      }
+    }
+    currentNode = currentNode.parent;
+  }
+  return { activeFormIds, complete };
+};
+
 const collectUnitIdentitiesBySymbol = (
   identities: ReadonlyArray<UnitGraphIdentity>,
   context: ReactAnalysisContext,
@@ -543,6 +662,7 @@ const collectRenderEdges = (
   identity: UnitGraphIdentity,
   unitIdsBySymbol: ReadonlyMap<ts.Symbol, string>,
   providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
+  formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>,
   context: ReactAnalysisContext,
 ): RenderGraphFacts => {
   const functionNode = identity.descriptor.functionNode;
@@ -562,6 +682,7 @@ const collectRenderEdges = (
       const targetId = resolveUnitTarget(tagName, unitIdsBySymbol, context.typeChecker);
       if (targetId) {
         const location = getNodeLocation(tagName, context.rootDirectory);
+        const formTopology = collectActiveFormTopology(tagName, formsByOpeningNode);
         edges.push({
           kind: ReactSemanticEdgeKind.RendersComponent,
           sourceId: identity.semanticUnit.id,
@@ -577,6 +698,8 @@ const collectRenderEdges = (
             tagName,
             providersByOpeningNode,
           ),
+          activeFormIds: formTopology.activeFormIds,
+          formTopologyComplete: formTopology.complete,
         });
       }
     }
@@ -2971,6 +3094,95 @@ const resolveContextConsumers = (
   });
 };
 
+const addFormSource = (
+  sourcesByUnit: Map<string, Set<string>>,
+  unitId: string,
+  sourceId: string,
+): boolean => {
+  let sources = sourcesByUnit.get(unitId);
+  if (!sources) {
+    sources = new Set();
+    sourcesByUnit.set(unitId, sources);
+  }
+  const previousSize = sources.size;
+  sources.add(sourceId);
+  return sources.size !== previousSize;
+};
+
+const resolveFormStatuses = (
+  units: ReadonlyArray<ReactSemanticUnit>,
+  edges: ReadonlyArray<ReactSemanticEdge>,
+  renders: ReadonlyArray<ReactSemanticRender>,
+  formStatuses: ReadonlyArray<ReactSemanticFormStatus>,
+): ReadonlyArray<ReactSemanticFormStatus> => {
+  const localUnitIds = new Set(units.map((unit) => unit.id));
+  const customHookEdges = edges.filter(
+    (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && localUnitIds.has(edge.targetId),
+  );
+  const rootUnitIds = units.filter((unit) => unit.canBeRenderRoot).map((unit) => unit.id);
+  const sourcesByUnit = new Map<string, Set<string>>();
+  for (const rootUnitId of rootUnitIds) {
+    addFormSource(sourcesByUnit, rootUnitId, REACT_FORM_OUTSIDE_SOURCE_ID);
+  }
+
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const render of renders) {
+      const nearestFormId = render.activeFormIds.at(-1);
+      if (nearestFormId) {
+        didSourcesChange =
+          addFormSource(sourcesByUnit, render.targetId, nearestFormId) || didSourcesChange;
+      } else {
+        const ownerSources = sourcesByUnit.get(render.ownerId) ?? [];
+        for (const sourceId of ownerSources) {
+          if (!render.formTopologyComplete && sourceId === REACT_FORM_OUTSIDE_SOURCE_ID) {
+            continue;
+          }
+          didSourcesChange =
+            addFormSource(sourcesByUnit, render.targetId, sourceId) || didSourcesChange;
+        }
+      }
+      if (!render.formTopologyComplete) {
+        didSourcesChange =
+          addFormSource(sourcesByUnit, render.targetId, REACT_FORM_UNKNOWN_SOURCE_ID) ||
+          didSourcesChange;
+      }
+    }
+    for (const hookEdge of customHookEdges) {
+      const ownerSources = sourcesByUnit.get(hookEdge.sourceId) ?? [];
+      for (const sourceId of ownerSources) {
+        didSourcesChange =
+          addFormSource(sourcesByUnit, hookEdge.targetId, sourceId) || didSourcesChange;
+      }
+    }
+  }
+
+  return formStatuses.map((formStatus) => {
+    const sources = [...(sourcesByUnit.get(formStatus.ownerId) ?? [])];
+    const sourceFormIds = sources.filter(
+      (sourceId) =>
+        sourceId !== REACT_FORM_OUTSIDE_SOURCE_ID && sourceId !== REACT_FORM_UNKNOWN_SOURCE_ID,
+    );
+    const outsideForm = sources.includes(REACT_FORM_OUTSIDE_SOURCE_ID);
+    const sourceComplete = sources.length > 0 && !sources.includes(REACT_FORM_UNKNOWN_SOURCE_ID);
+    let status = ReactFormStatusTopologyStatus.Unknown;
+    if (outsideForm) {
+      status = ReactFormStatusTopologyStatus.OutsideForm;
+    } else if (sourceComplete && sourceFormIds.length > 0) {
+      status = ReactFormStatusTopologyStatus.Resolved;
+    }
+    return {
+      ...formStatus,
+      sourceFormIds,
+      outsideForm,
+      status,
+      sourceComplete,
+      complete: status === ReactFormStatusTopologyStatus.Resolved,
+    };
+  });
+};
+
 export const buildReactSemanticGraph = (
   descriptors: ReadonlyArray<ReactUnitDescriptor>,
   sourceFiles: ReadonlyArray<ts.SourceFile>,
@@ -2984,6 +3196,10 @@ export const buildReactSemanticGraph = (
         name: descriptor.name,
         kind: descriptor.kind,
         classComponentBase: descriptor.classComponentBase ?? null,
+        canBeRenderRoot:
+          (descriptor.kind === ReactUnitKind.Component ||
+            descriptor.kind === ReactUnitKind.ClassComponent) &&
+          isDescriptorExported(descriptor, context.typeChecker),
         location: getNodeLocation(descriptor.node, context.rootDirectory),
         sourceComplete: descriptor.sourceComplete,
       },
@@ -3000,6 +3216,7 @@ export const buildReactSemanticGraph = (
     ),
   );
   const contextGraph = collectContextGraph(identities, sourceFiles, context);
+  const formTopologyGraph = collectFormTopologyGraph(identities, context);
   const edges: ReactSemanticEdge[] = [];
   const renders: ReactSemanticRender[] = [];
   const hookCalls: ReactSemanticHookCall[] = [];
@@ -3108,6 +3325,7 @@ export const buildReactSemanticGraph = (
       identity,
       unitIdsBySymbol,
       contextGraph.providersByOpeningNode,
+      formTopologyGraph.formsByOpeningNode,
       context,
     );
     edges.push(...renderGraph.edges);
@@ -3211,6 +3429,12 @@ export const buildReactSemanticGraph = (
     contextGraph.contextProviders,
     contextGraph.contextConsumers,
   );
+  const formStatuses = resolveFormStatuses(
+    identities.map((identity) => identity.semanticUnit),
+    edges,
+    renders,
+    formTopologyGraph.formStatuses,
+  );
   const callableRefs = collectCallableRefGraph(identities, callbacks, functionCalls, context);
   return {
     schemaVersion: REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
@@ -3240,6 +3464,8 @@ export const buildReactSemanticGraph = (
     classStateWrites,
     classStateTransitions,
     formActions,
+    forms: formTopologyGraph.forms,
+    formStatuses,
     hookStateTransitions,
     optimisticStates,
     optimisticUpdates,

@@ -84,6 +84,11 @@ The report includes:
   submit buttons and inputs; direct and immutable-spread callback sources follow JSX precedence
   through reachable helpers, while dynamic control types, composed form association, custom
   components, and opaque callback props fail closed;
+- Form Status facts that identify canonical `react-dom` `useFormStatus` calls and propagate the
+  nearest intrinsic parent form through closed component-render and custom-Hook paths; a detached,
+  same-component, exported consumer, or mixed outside-form path is refuted, while
+  component-composed `children` placement and JSX returned from unmodeled render callbacks remain
+  unknown;
 - optimistic state facts that identify canonical `useOptimistic` tuples, give reducers and
   no-reducer functional updaters dedicated execution phases, reuse the updater-purity proof, and
   require every setter call to be owned exclusively by Form or Transition Actions; render calls,
@@ -133,6 +138,9 @@ kind, nonempty complete callback resolution, and exact source/completeness equat
 Action State dispatchers link the form fact to their reducer-Action callback. Action State
 certificates independently validate tuple ownership, reducer callback phase, dispatch kind,
 Action-prop association, execution roots, linked state, and exact source/completeness equations.
+Form Status certificates independently recompute parent-form sources from render and custom-Hook
+edges, require one fact for every canonical Hook call, validate active-form ownership, and reject
+forged outside-form, source, topology-status, and completeness fields.
 Optimistic
 certificates independently validate tuple ownership, reducer and updater callback phases, derive
 Action ownership from every execution root, and reject forged purity, render/event origin, state

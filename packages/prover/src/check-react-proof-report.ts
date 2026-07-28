@@ -1,4 +1,9 @@
-import { REACT_PROOF_SCHEMA_VERSION, REACT_SEMANTIC_GRAPH_SCHEMA_VERSION } from "./constants.js";
+import {
+  REACT_FORM_OUTSIDE_SOURCE_ID,
+  REACT_FORM_UNKNOWN_SOURCE_ID,
+  REACT_PROOF_SCHEMA_VERSION,
+  REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
+} from "./constants.js";
 import {
   ReactActionStateDispatchKind,
   ReactActionStateDispatchStatus,
@@ -21,6 +26,7 @@ import {
   ReactExecutionPhase,
   ReactFormActionKind,
   ReactFormActionStatus,
+  ReactFormStatusTopologyStatus,
   ReactHookStateUpdaterStatus,
   ReactObligationStatus,
   ReactOptimisticActionStatus,
@@ -262,6 +268,28 @@ const expectedFormActionStatus = (
     : ReactObligationStatus.Proved;
 };
 
+const expectedFormStatusStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const formStatuses = report.graph.formStatuses.filter(
+    (formStatus) => formStatus.ownerId === unit.id,
+  );
+  if (
+    formStatuses.some(
+      (formStatus) => formStatus.status === ReactFormStatusTopologyStatus.OutsideForm,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return formStatuses.some((formStatus) => !formStatus.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
 const expectedOptimisticStateStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
@@ -457,6 +485,17 @@ const checkClaimCoverage = (
         `Form Action facts require ${expectedFormStatus}, not ${formActions.status}`,
       );
     }
+    const formStatus = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.FormStatus,
+    );
+    const expectedFormTopologyStatus = expectedFormStatusStatus(semanticUnit, report);
+    if (formStatus && formStatus.status !== expectedFormTopologyStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Form Status facts require ${expectedFormTopologyStatus}, not ${formStatus.status}`,
+      );
+    }
     const optimisticState = unitProof.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.OptimisticState,
     );
@@ -493,6 +532,59 @@ const checkClaimCoverage = (
   }
 };
 
+const deriveFormSourcesByUnit = (
+  report: ReactAppProofReport,
+): ReadonlyMap<string, ReadonlySet<string>> => {
+  const unitIds = new Set(report.graph.units.map((unit) => unit.id));
+  const customHookEdges = report.graph.edges.filter(
+    (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && unitIds.has(edge.targetId),
+  );
+  const sourcesByUnit = new Map<string, Set<string>>();
+  const addSource = (unitId: string, sourceId: string): boolean => {
+    let sources = sourcesByUnit.get(unitId);
+    if (!sources) {
+      sources = new Set();
+      sourcesByUnit.set(unitId, sources);
+    }
+    const previousSize = sources.size;
+    sources.add(sourceId);
+    return sources.size !== previousSize;
+  };
+  for (const unit of report.graph.units) {
+    if (unit.canBeRenderRoot) {
+      addSource(unit.id, REACT_FORM_OUTSIDE_SOURCE_ID);
+    }
+  }
+
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const render of report.graph.renders) {
+      const nearestFormId = render.activeFormIds.at(-1);
+      if (nearestFormId) {
+        didSourcesChange = addSource(render.targetId, nearestFormId) || didSourcesChange;
+      } else {
+        for (const sourceId of sourcesByUnit.get(render.ownerId) ?? []) {
+          if (!render.formTopologyComplete && sourceId === REACT_FORM_OUTSIDE_SOURCE_ID) {
+            continue;
+          }
+          didSourcesChange = addSource(render.targetId, sourceId) || didSourcesChange;
+        }
+      }
+      if (!render.formTopologyComplete) {
+        didSourcesChange =
+          addSource(render.targetId, REACT_FORM_UNKNOWN_SOURCE_ID) || didSourcesChange;
+      }
+    }
+    for (const hookEdge of customHookEdges) {
+      for (const sourceId of sourcesByUnit.get(hookEdge.sourceId) ?? []) {
+        didSourcesChange = addSource(hookEdge.targetId, sourceId) || didSourcesChange;
+      }
+    }
+  }
+  return sourcesByUnit;
+};
+
 const checkGraphReferences = (
   report: ReactAppProofReport,
   failures: ReactProofCertificateFailure[],
@@ -515,7 +607,16 @@ const checkGraphReferences = (
   );
   const contextIds = new Set(report.graph.contexts.map((context) => context.id));
   const providerIds = new Set(report.graph.contextProviders.map((provider) => provider.id));
+  const formsById = new Map(report.graph.forms.map((form) => [form.id, form]));
+  const formSourcesByUnit = deriveFormSourcesByUnit(report);
   for (const unit of report.graph.units) {
+    if (
+      unit.canBeRenderRoot &&
+      unit.kind !== ReactUnitKind.Component &&
+      unit.kind !== ReactUnitKind.ClassComponent
+    ) {
+      addFailure(failures, unit.id, "A non-component unit is marked as a render root");
+    }
     if (
       unit.kind === ReactUnitKind.ClassComponent &&
       unit.classComponentBase !== ReactClassComponentBase.Component &&
@@ -539,6 +640,17 @@ const checkGraphReferences = (
   for (const render of report.graph.renders) {
     if (!unitIds.has(render.ownerId) || !unitIds.has(render.targetId)) {
       addFailure(failures, render.id, "A render has an unknown semantic unit");
+    }
+    if (new Set(render.activeFormIds).size !== render.activeFormIds.length) {
+      addFailure(failures, render.id, "A render repeats an active form");
+    }
+    for (const formId of render.activeFormIds) {
+      const form = formsById.get(formId);
+      if (!form) {
+        addFailure(failures, render.id, "A render has an unknown active form");
+      } else if (form.ownerId !== render.ownerId) {
+        addFailure(failures, render.id, "A render has an active form owned by another unit");
+      }
     }
   }
   for (const effect of report.graph.effects) {
@@ -2206,6 +2318,87 @@ const checkGraphReferences = (
       );
     }
   }
+  for (const form of report.graph.forms) {
+    if (!unitIds.has(form.ownerId)) {
+      addFailure(failures, form.id, "A form has an unknown owner unit");
+    }
+  }
+  const formStatusHookCalls = report.graph.hookCalls.filter(
+    (hookCall) => hookCall.name === "useFormStatus" && hookCall.targetId === "react:useFormStatus",
+  );
+  for (const formStatus of report.graph.formStatuses) {
+    if (!unitIds.has(formStatus.ownerId)) {
+      addFailure(failures, formStatus.id, "A Form Status consumer has an unknown owner unit");
+    }
+    const matchingHookCalls = formStatusHookCalls.filter(
+      (hookCall) =>
+        hookCall.ownerId === formStatus.ownerId &&
+        areProofLocationsEqual(hookCall.location, formStatus.location),
+    );
+    if (matchingHookCalls.length !== 1) {
+      addFailure(
+        failures,
+        formStatus.id,
+        "A Form Status consumer does not match exactly one canonical Hook call",
+      );
+    }
+    if (new Set(formStatus.sourceFormIds).size !== formStatus.sourceFormIds.length) {
+      addFailure(failures, formStatus.id, "A Form Status consumer repeats a source form");
+    }
+    if (formStatus.sourceFormIds.some((formId) => !formsById.has(formId))) {
+      addFailure(failures, formStatus.id, "A Form Status consumer has an unknown source form");
+    }
+    const expectedSources = formSourcesByUnit.get(formStatus.ownerId) ?? new Set();
+    const expectedSourceFormIds = [...expectedSources].filter(
+      (sourceId) =>
+        sourceId !== REACT_FORM_OUTSIDE_SOURCE_ID && sourceId !== REACT_FORM_UNKNOWN_SOURCE_ID,
+    );
+    if (
+      formStatus.sourceFormIds.length !== expectedSourceFormIds.length ||
+      expectedSourceFormIds.some((formId) => !formStatus.sourceFormIds.includes(formId))
+    ) {
+      addFailure(
+        failures,
+        formStatus.id,
+        "A Form Status consumer has an inconsistent parent-form source set",
+      );
+    }
+    const expectedOutsideForm = expectedSources.has(REACT_FORM_OUTSIDE_SOURCE_ID);
+    const expectedSourceComplete =
+      expectedSources.size > 0 && !expectedSources.has(REACT_FORM_UNKNOWN_SOURCE_ID);
+    let expectedStatus = ReactFormStatusTopologyStatus.Unknown;
+    if (expectedOutsideForm) {
+      expectedStatus = ReactFormStatusTopologyStatus.OutsideForm;
+    } else if (expectedSourceComplete && expectedSourceFormIds.length > 0) {
+      expectedStatus = ReactFormStatusTopologyStatus.Resolved;
+    }
+    if (formStatus.outsideForm !== expectedOutsideForm) {
+      addFailure(failures, formStatus.id, "A Form Status outside-form flag is inconsistent");
+    }
+    if (formStatus.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, formStatus.id, "A Form Status source certificate is inconsistent");
+    }
+    if (formStatus.status !== expectedStatus) {
+      addFailure(failures, formStatus.id, "A Form Status topology status is inconsistent");
+    }
+    if (formStatus.complete !== (expectedStatus === ReactFormStatusTopologyStatus.Resolved)) {
+      addFailure(failures, formStatus.id, "A Form Status completeness flag is inconsistent");
+    }
+  }
+  for (const hookCall of formStatusHookCalls) {
+    const matchingFormStatuses = report.graph.formStatuses.filter(
+      (formStatus) =>
+        formStatus.ownerId === hookCall.ownerId &&
+        areProofLocationsEqual(formStatus.location, hookCall.location),
+    );
+    if (matchingFormStatuses.length !== 1) {
+      addFailure(
+        failures,
+        hookCall.id,
+        "A canonical useFormStatus call has no unique topology certificate",
+      );
+    }
+  }
 };
 
 const checkSummaryAndVerdict = (
@@ -2302,6 +2495,16 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Form Actions",
     report.graph.formActions.map((action) => action.id),
+  );
+  checkUniqueIds(
+    failures,
+    "forms",
+    report.graph.forms.map((form) => form.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Form Status consumers",
+    report.graph.formStatuses.map((formStatus) => formStatus.id),
   );
   checkUniqueIds(
     failures,

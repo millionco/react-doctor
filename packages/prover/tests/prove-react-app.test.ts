@@ -25,6 +25,7 @@ import {
   ReactEffectResourceKind,
   ReactExecutionPhase,
   ReactFormActionStatus,
+  ReactFormStatusTopologyStatus,
   ReactHookStateUpdaterStatus,
   ReactIdentityStability,
   ReactObligationStatus,
@@ -74,6 +75,26 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
     fixtureName: "refuted-unsupported-form-action-control",
     claim: ReactProofClaim.FormActions,
     evidencePattern: /cannot invoke/,
+  },
+  {
+    fixtureName: "refuted-form-status-outside-form",
+    claim: ReactProofClaim.FormStatus,
+    evidencePattern: /without a parent <form>/,
+  },
+  {
+    fixtureName: "refuted-form-status-same-component",
+    claim: ReactProofClaim.FormStatus,
+    evidencePattern: /without a parent <form>/,
+  },
+  {
+    fixtureName: "refuted-form-status-mixed-placement",
+    claim: ReactProofClaim.FormStatus,
+    evidencePattern: /without a parent <form>/,
+  },
+  {
+    fixtureName: "refuted-form-status-exported-child",
+    claim: ReactProofClaim.FormStatus,
+    evidencePattern: /without a parent <form>/,
   },
   {
     fixtureName: "refuted-optimistic-outside-action",
@@ -637,8 +658,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(20);
-    expect(report.graph.schemaVersion).toBe(26);
+    expect(report.schemaVersion).toBe(21);
+    expect(report.graph.schemaVersion).toBe(27);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -3313,6 +3334,108 @@ describe("proveReactApp", () => {
     expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
     expect(
       certificate.failures.some((failure) => failure.description.includes("Action State")),
+    ).toBe(true);
+  });
+
+  it("certifies a direct Form Status consumer below its parent form", () => {
+    const report = proveFixture("proved-form-status-direct");
+    const formStatus = report.graph.formStatuses[0];
+    const formStatusProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find(
+        (obligation) =>
+          obligation.claim === ReactProofClaim.FormStatus &&
+          obligation.status === ReactObligationStatus.Proved,
+      );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(report.graph.forms).toHaveLength(1);
+    expect(formStatus?.sourceFormIds).toEqual([report.graph.forms[0]?.id]);
+    expect(formStatus?.outsideForm).toBe(false);
+    expect(formStatus?.status).toBe(ReactFormStatusTopologyStatus.Resolved);
+    expect(formStatus?.sourceComplete).toBe(true);
+    expect(formStatus?.complete).toBe(true);
+    expect(formStatusProof).toBeDefined();
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("propagates Form Status ancestry through a component and custom Hook", () => {
+    const report = proveFixture("proved-form-status-transitive");
+    const formStatus = report.graph.formStatuses[0];
+    const owner = report.graph.units.find((unit) => unit.id === formStatus?.ownerId);
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(owner?.name).toBe("useCheckoutFormStatus");
+    expect(formStatus?.sourceFormIds).toEqual([report.graph.forms[0]?.id]);
+    expect(formStatus?.status).toBe(ReactFormStatusTopologyStatus.Resolved);
+    expect(formStatus?.complete).toBe(true);
+  });
+
+  it("certifies every closed parent form for a shared Form Status consumer", () => {
+    const report = proveFixture("proved-form-status-multiple-forms");
+    const formStatus = report.graph.formStatuses[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(report.graph.forms).toHaveLength(2);
+    expect(new Set(formStatus?.sourceFormIds)).toEqual(
+      new Set(report.graph.forms.map((form) => form.id)),
+    );
+    expect(formStatus?.outsideForm).toBe(false);
+    expect(formStatus?.complete).toBe(true);
+  });
+
+  it("fails closed when a component wrapper owns the possible parent form", () => {
+    const report = proveFixture("incomplete-form-status-composed-form");
+    const formStatus = report.graph.formStatuses[0];
+    const formStatusProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find(
+        (obligation) =>
+          obligation.claim === ReactProofClaim.FormStatus &&
+          obligation.status === ReactObligationStatus.Unknown,
+      );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(formStatus?.sourceFormIds).toEqual([]);
+    expect(formStatus?.outsideForm).toBe(false);
+    expect(formStatus?.status).toBe(ReactFormStatusTopologyStatus.Unknown);
+    expect(formStatus?.sourceComplete).toBe(false);
+    expect(formStatus?.complete).toBe(false);
+    expect(formStatusProof?.evidence[0]?.description).toMatch(/cannot be resolved/);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("fails closed when a synchronous render callback has unmodeled form ancestry", () => {
+    const report = proveFixture("incomplete-form-status-render-callback");
+    const formStatus = report.graph.formStatuses[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(formStatus?.sourceFormIds).toEqual([]);
+    expect(formStatus?.outsideForm).toBe(false);
+    expect(formStatus?.status).toBe(ReactFormStatusTopologyStatus.Unknown);
+    expect(formStatus?.complete).toBe(false);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged Form Status topology certificate", () => {
+    const report = proveFixture("refuted-form-status-outside-form");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        formStatuses: report.graph.formStatuses.map((formStatus) => ({
+          ...formStatus,
+          outsideForm: false,
+          status: ReactFormStatusTopologyStatus.Resolved,
+          sourceComplete: true,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("Form Status")),
     ).toBe(true);
   });
 

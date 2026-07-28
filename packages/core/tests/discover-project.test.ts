@@ -2574,6 +2574,87 @@ describe("discoverProject", () => {
     expect(projectInfo.hasReactCompiler).toBe(true);
   });
 
+  it("detects the Vite 6 React Compiler preset with defineConfig wrapper (issue #1468)", () => {
+    const projectDirectory = path.join(tempDirectory, "vite-react-compiler-preset-defineconfig");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "vite-react-compiler-preset-defineconfig",
+        dependencies: { react: "19.2.3" },
+        devDependencies: {
+          "vite": "^8.1.0",
+          "@vitejs/plugin-react": "^6.0.1",
+          "@rolldown/plugin-babel": "^0.2.3",
+          "babel-plugin-react-compiler": "^1.0.0",
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "import babel from '@rolldown/plugin-babel';\nimport react, { reactCompilerPreset } from '@vitejs/plugin-react';\nimport { defineConfig } from 'vite';\n\nexport default defineConfig({\n  plugins: [\n    react(),\n    babel({\n      presets: [reactCompilerPreset()],\n    }),\n  ],\n});\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(true);
+  });
+
+  it("detects the Vite 6 React Compiler preset with various file extensions", () => {
+    [".js", ".mjs", ".ts"].forEach((extension) => {
+      const projectDirectory = path.join(
+        tempDirectory,
+        `vite-react-compiler-preset-${extension.slice(1)}`,
+      );
+      fs.mkdirSync(projectDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `vite-react-compiler-preset-${extension.slice(1)}`,
+          dependencies: { react: "^19.0.0" },
+          devDependencies: {
+            "vite": "^8.1.0",
+            "@vitejs/plugin-react": "^6.0.1",
+            "@rolldown/plugin-babel": "^0.2.3",
+          },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(projectDirectory, `vite.config${extension}`),
+        "import babel from '@rolldown/plugin-babel';\nimport react, { reactCompilerPreset } from '@vitejs/plugin-react';\nimport { defineConfig } from 'vite';\n\nexport default defineConfig({\n  plugins: [\n    react(),\n    babel({\n      presets: [reactCompilerPreset()],\n    }),\n  ],\n});\n",
+      );
+
+      const projectInfo = discoverProject(projectDirectory);
+      expect(projectInfo.hasReactCompiler).toBe(true);
+    });
+  });
+
+  it("detects the Vite 6 React Compiler preset without babel-plugin-react-compiler listed", () => {
+    const projectDirectory = path.join(
+      tempDirectory,
+      "vite-react-compiler-preset-no-babel-plugin",
+    );
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "vite-react-compiler-preset-no-babel-plugin",
+        dependencies: { react: "19.2.3" },
+        devDependencies: {
+          "vite": "^8.1.0",
+          "@vitejs/plugin-react": "^6.0.1",
+          "@rolldown/plugin-babel": "^0.2.3",
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "vite.config.ts"),
+      "import babel from '@rolldown/plugin-babel';\nimport react, { reactCompilerPreset } from '@vitejs/plugin-react';\nimport { defineConfig } from 'vite';\n\nexport default defineConfig({\n  plugins: [\n    react(),\n    babel({\n      presets: [reactCompilerPreset()],\n    }),\n  ],\n});\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasReactCompiler).toBe(true);
+  });
+
   it("detects the Rsbuild React Compiler transform", () => {
     const projectDirectory = path.join(tempDirectory, "rsbuild-react-compiler");
     fs.mkdirSync(projectDirectory, { recursive: true });

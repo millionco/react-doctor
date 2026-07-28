@@ -25,6 +25,10 @@ import {
   ReactProofClaim,
   ReactUnitKind,
 } from "./types.js";
+import { collectJsxSpreadProperties } from "./utils/collect-jsx-spread-properties.js";
+import { isEffectiveJsxPropertySource } from "./utils/is-effective-jsx-property-source.js";
+import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
+import { isJsxSpreadSourceComplete } from "./utils/is-jsx-spread-source-complete.js";
 import type {
   ReactAnalysisContext,
   ReactProofEvidence,
@@ -118,13 +122,14 @@ export const analyzeBoundaryCoverage = (
         ),
     );
   };
-  const isCompleteEventFlow = (attribute: ts.JsxAttribute): boolean => {
+  const isCompleteEventFlow = (attribute: ts.JsxAttributeLike, eventName: string): boolean => {
     const location = getNodeLocation(attribute, context.rootDirectory);
     return Boolean(
       context.graph &&
       (context.graph.eventBindings.some(
         (eventBinding) =>
           eventBinding.ownerId === semanticOwnerId &&
+          eventBinding.eventName === eventName &&
           eventBinding.complete &&
           eventBinding.location.filePath === location.filePath &&
           eventBinding.location.line === location.line &&
@@ -133,6 +138,7 @@ export const analyzeBoundaryCoverage = (
         context.graph.callbackPropFlows.some(
           (propFlow) =>
             propFlow.renderOwnerId === semanticOwnerId &&
+            propFlow.propName === eventName &&
             propFlow.phase === ReactExecutionPhase.Event &&
             propFlow.complete &&
             propFlow.location.filePath === location.filePath &&
@@ -364,15 +370,54 @@ export const analyzeBoundaryCoverage = (
     if (
       ts.isJsxAttribute(node) &&
       REACT_EVENT_PROP_PATTERN.test(node.name.getText()) &&
-      node.initializer
+      node.initializer &&
+      isEffectiveJsxPropertySource(node, node.name.getText(), context.typeChecker)
     ) {
-      if (!isCompleteEventFlow(node)) {
+      if (!isCompleteEventFlow(node, node.name.getText())) {
         unknownEvidence.push(
           createEvidence(
             node,
             context.rootDirectory,
             `${node.name.getText()} does not resolve to a project event callback`,
             ["committed tree", node.name.getText(), "opaque event callback"],
+          ),
+        );
+      }
+    }
+    if (ts.isJsxSpreadAttribute(node)) {
+      const spreadProperties = collectJsxSpreadProperties(node.expression, context.typeChecker);
+      const openingElement = node.parent.parent;
+      if (!isJsxSpreadSourceComplete(node.expression, functionNode, context.typeChecker)) {
+        unknownEvidence.push(
+          createEvidence(
+            node,
+            context.rootDirectory,
+            "A JSX spread source does not have an immutable finite object proof",
+            ["JSX props", node.getText(), "unknown object evaluation or mutation"],
+          ),
+        );
+      }
+      if (spreadProperties.hasUnknownProperties && isIntrinsicJsxElement(openingElement)) {
+        unknownEvidence.push(
+          createEvidence(
+            node,
+            context.rootDirectory,
+            "A JSX spread has an open-ended property set that can override callback props",
+            ["JSX props", node.getText(), "unknown callback property or precedence"],
+          ),
+        );
+      }
+      for (const eventName of spreadProperties.callablePropertyNames.filter((propertyName) =>
+        REACT_EVENT_PROP_PATTERN.test(propertyName),
+      )) {
+        if (!isEffectiveJsxPropertySource(node, eventName, context.typeChecker)) continue;
+        if (isCompleteEventFlow(node, eventName)) continue;
+        unknownEvidence.push(
+          createEvidence(
+            node,
+            context.rootDirectory,
+            `${eventName} from a JSX spread does not resolve to a project event callback`,
+            ["committed tree", eventName, "opaque spread event callback"],
           ),
         );
       }

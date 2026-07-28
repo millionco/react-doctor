@@ -8,6 +8,9 @@ export const collectSymbolWrites = (
   const writes: ts.Node[] = [];
   const isSymbolWriteTarget = (node: ts.Node): boolean => {
     if (ts.isIdentifier(node)) return typeChecker.getSymbolAtLocation(node) === symbol;
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      return isSymbolWriteTarget(node.expression);
+    }
     if (
       ts.isParenthesizedExpression(node) ||
       ts.isAsExpression(node) ||
@@ -55,6 +58,9 @@ export const collectSymbolWrites = (
         node.operator === ts.SyntaxKind.MinusMinusToken) &&
       isSymbolWriteTarget(node.operand)
     ) {
+      writes.push(node);
+    }
+    if (ts.isDeleteExpression(node) && isSymbolWriteTarget(node.expression)) {
       writes.push(node);
     }
     if (

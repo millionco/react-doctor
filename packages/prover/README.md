@@ -34,10 +34,12 @@ The report includes:
   bindings, captured factory parameters, local object properties, and object arguments;
 - component-prop flow from source callbacks through project render edges into event handlers,
   Effect setup, Effect cleanup, and all three `useSyncExternalStore` callback channels, including
-  local and transitive wrappers, with each use tied to its exact execution phase and JSX render
-  site; finite symbol-identified path guards preserve correlated ternary alternatives without
-  relying on source order, including immutable identifier guards substituted through source
-  callback factories;
+  local and transitive wrappers plus finite JSX spreads of whole props, parameter rest props, and
+  non-escaping local `const` callback objects, with each use tied to its exact execution phase and
+  JSX render site; JSX sources are resolved in order so later spreads or explicit attributes
+  replace earlier callbacks, while finite symbol-identified path guards preserve correlated
+  ternary alternatives without relying on source order, including immutable identifier guards
+  substituted through source callback factories;
 - normalized React Compiler CFG, instruction-effect, and reactive-place facts;
 - per-unit proof obligations with `proved`, `violated`, or `unknown` results;
 - project evidence for type unsoundness, compiler diagnostics, and opaque boundaries.

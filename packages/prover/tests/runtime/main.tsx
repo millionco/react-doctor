@@ -394,6 +394,34 @@ const AsyncEffectOwnershipOracle = () => {
   );
 };
 
+interface JsxSpreadOrderProperties {
+  onClick?: () => void;
+}
+
+const JsxSpreadOrderOracle = () => {
+  const [lastHandler, setLastHandler] = useState("none");
+  const isExplicitLast =
+    new URLSearchParams(window.location.search).get("mode") === "explicit-last";
+  const spreadProperties: JsxSpreadOrderProperties = {
+    onClick: () => setLastHandler("spread"),
+  };
+  const handleExplicitClick = () => setLastHandler("explicit");
+  return (
+    <main>
+      {isExplicitLast ? (
+        <button type="button" {...spreadProperties} onClick={handleExplicitClick}>
+          activate
+        </button>
+      ) : (
+        <button type="button" onClick={handleExplicitClick} {...spreadProperties}>
+          activate
+        </button>
+      )}
+      <output data-testid="last-handler">{lastHandler}</output>
+    </main>
+  );
+};
+
 const RuntimeOracle = () => {
   const oracle = new URLSearchParams(window.location.search).get("oracle");
   if (oracle === "keys") {
@@ -425,6 +453,9 @@ const RuntimeOracle = () => {
   }
   if (oracle === "async-effect-ownership") {
     return <AsyncEffectOwnershipOracle />;
+  }
+  if (oracle === "jsx-spread-order") {
+    return <JsxSpreadOrderOracle />;
   }
   return <ListenerOracle />;
 };

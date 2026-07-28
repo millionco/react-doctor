@@ -8,6 +8,11 @@ import { isIdentifierReference } from "./is-identifier-reference.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { mergeCallableBindings, resolveCallableExpression } from "./resolve-callable-expression.js";
 import { ReactExecutionPhase } from "./types.js";
+import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
+import { collectJsxSpreadProperties } from "./utils/collect-jsx-spread-properties.js";
+import { isDirectComponentPropertiesObject } from "./utils/is-direct-component-properties-object.js";
+import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
+import { isJsxSpreadSourceComplete } from "./utils/is-jsx-spread-source-complete.js";
 import type {
   ResolvedCallableGuardDescriptor,
   ResolvedCallableValueDescriptor,
@@ -24,14 +29,14 @@ export interface ComponentEventBindingDescriptor {
   callbacks: ReadonlyArray<ComponentCallbackDescriptor>;
   eventName: string;
   isComplete: boolean;
-  node: ts.JsxAttribute;
+  node: ts.JsxAttributeLike;
   ownerFunction: ts.FunctionLikeDeclaration;
 }
 
 export interface ComponentCallbackPropFlowDescriptor {
   callbacks: ReadonlyArray<ComponentCallbackDescriptor>;
   isComplete: boolean;
-  node: ts.JsxAttribute;
+  node: ts.JsxAttributeLike;
   phase: ReactExecutionPhase;
   propName: string;
   renderNode: ts.JsxOpeningLikeElement;
@@ -71,7 +76,7 @@ interface ComponentPropChannel {
 interface ComponentPropBinding {
   callbacks: ReadonlyArray<ComponentCallbackDescriptor>;
   isComplete: boolean;
-  node: ts.JsxAttribute;
+  node: ts.JsxAttributeLike;
   renderNode: ts.JsxOpeningLikeElement;
   renderOwnerFunction: ts.FunctionLikeDeclaration;
   sourceChannel: ComponentPropChannel | null;
@@ -83,6 +88,13 @@ interface CallbackSource {
   callbacks: ReadonlyArray<ComponentCallbackDescriptor>;
   channel: ComponentPropChannel | null;
   isComplete: boolean;
+}
+
+interface ComponentEventSource {
+  eventName: string;
+  node: ts.JsxAttributeLike;
+  ownerFunction: ts.FunctionLikeDeclaration;
+  source: CallbackSource;
 }
 
 interface ResolvedCallbackSource {
@@ -142,9 +154,6 @@ const getTargetFunction = (
       : directSymbol;
   return unitFunctionsBySymbol.get(targetSymbol) ?? null;
 };
-
-const isIntrinsicElement = (openingElement: ts.JsxOpeningLikeElement): boolean =>
-  ts.isIdentifier(openingElement.tagName) && /^[a-z]/.test(openingElement.tagName.text);
 
 const deduplicateCallbacks = (
   callbacks: ReadonlyArray<ComponentCallbackDescriptor>,
@@ -258,18 +267,44 @@ const createExpressionCallbackSource = (
   };
 };
 
+const createSpreadPropertyCallbackSource = (
+  propertyName: string,
+  ownerFunction: ts.FunctionLikeDeclaration,
+  isDirectPropertiesObject: boolean,
+  objectValue: ResolvedCallableValueDescriptor | null,
+): CallbackSource => {
+  if (isDirectPropertiesObject) {
+    return {
+      callbacks: [],
+      channel: { functionNode: ownerFunction, propName: propertyName },
+      isComplete: true,
+    };
+  }
+  if (!objectValue) return { callbacks: [], channel: null, isComplete: false };
+  const propertyValue = objectValue.properties.get(propertyName);
+  if (!propertyValue) return { callbacks: [], channel: null, isComplete: false };
+  const callbacks = propertyValue.targets.map(
+    (target): ComponentCallbackDescriptor => ({
+      bindings: target.bindings,
+      callbackFunction: target.functionNode,
+      guards: target.guards,
+      ownerFunction,
+    }),
+  );
+  return {
+    callbacks,
+    channel: null,
+    isComplete: objectValue.isComplete && propertyValue.isComplete && callbacks.length > 0,
+  };
+};
+
 export const createComponentCallbackFlow = (
   componentFunctions: ReadonlyArray<ts.FunctionLikeDeclaration>,
   unitFunctionsBySymbol: ReadonlyMap<ts.Symbol, ts.FunctionLikeDeclaration>,
   typeChecker: ts.TypeChecker,
 ): ComponentCallbackFlowDescriptor => {
   const propBindingsByChannel = new Map<string, ComponentPropBinding[]>();
-  const eventSources: Array<{
-    eventName: string;
-    node: ts.JsxAttribute;
-    ownerFunction: ts.FunctionLikeDeclaration;
-    source: CallbackSource;
-  }> = [];
+  const eventSources: ComponentEventSource[] = [];
   const componentPropReferencesByCallback = new Map<
     string,
     ReadonlyArray<ComponentPropReference>
@@ -300,36 +335,107 @@ export const createComponentCallbackFlow = (
           unitFunctionsBySymbol,
           typeChecker,
         );
-        for (const attribute of openingElement.attributes.properties) {
-          if (!ts.isJsxAttribute(attribute)) continue;
-          const expression = getJsxAttributeExpression(attribute);
-          if (!expression) continue;
-          const source = createExpressionCallbackSource(expression, ownerFunction, typeChecker);
-          const propName = attribute.name.getText();
-          if (isIntrinsicElement(openingElement) && REACT_EVENT_PROP_PATTERN.test(propName)) {
-            eventSources.push({
+        const eventSourcesByName = new Map<string, ComponentEventSource>();
+        const propBindingsByName = new Map<string, ComponentPropBinding>();
+        const assignSource = (
+          propName: string,
+          source: CallbackSource,
+          sourceNode: ts.JsxAttributeLike,
+        ): void => {
+          if (isIntrinsicJsxElement(openingElement) && REACT_EVENT_PROP_PATTERN.test(propName)) {
+            eventSourcesByName.set(propName, {
               eventName: propName,
-              node: attribute,
+              node: sourceNode,
               ownerFunction,
               source,
             });
           }
-          if (targetFunction) {
-            const targetChannel = { functionNode: targetFunction, propName };
-            const channelIdentity = getChannelIdentity(targetChannel);
-            const bindings = propBindingsByChannel.get(channelIdentity) ?? [];
-            bindings.push({
-              callbacks: source.callbacks,
-              isComplete: source.isComplete,
-              node: attribute,
-              renderNode: openingElement,
-              renderOwnerFunction: ownerFunction,
-              sourceChannel: source.channel,
-              targetChannel,
-              targetFunction,
+          if (!targetFunction) return;
+          propBindingsByName.set(propName, {
+            callbacks: source.callbacks,
+            isComplete: source.isComplete,
+            node: sourceNode,
+            renderNode: openingElement,
+            renderOwnerFunction: ownerFunction,
+            sourceChannel: source.channel,
+            targetChannel: { functionNode: targetFunction, propName },
+            targetFunction,
+          });
+        };
+        const invalidateExistingSources = (spreadAttribute: ts.JsxSpreadAttribute): void => {
+          for (const eventName of eventSourcesByName.keys()) {
+            eventSourcesByName.set(eventName, {
+              eventName,
+              node: spreadAttribute,
+              ownerFunction,
+              source: { callbacks: [], channel: null, isComplete: false },
             });
-            propBindingsByChannel.set(channelIdentity, bindings);
           }
+          for (const [propName, binding] of propBindingsByName) {
+            propBindingsByName.set(propName, {
+              ...binding,
+              callbacks: [],
+              isComplete: false,
+              node: spreadAttribute,
+              sourceChannel: null,
+            });
+          }
+        };
+        for (const attribute of openingElement.attributes.properties) {
+          if (ts.isJsxAttribute(attribute)) {
+            const expression = getJsxAttributeExpression(attribute);
+            if (!expression) continue;
+            assignSource(
+              attribute.name.getText(),
+              createExpressionCallbackSource(expression, ownerFunction, typeChecker),
+              attribute,
+            );
+            continue;
+          }
+          const spreadProperties = collectJsxSpreadProperties(attribute.expression, typeChecker);
+          if (spreadProperties.hasUnknownProperties) invalidateExistingSources(attribute);
+          const callablePropertyNames = new Set(spreadProperties.callablePropertyNames);
+          const unwrappedExpression = unwrapTypescriptExpression(attribute.expression);
+          const isDirectPropertiesObject = isDirectComponentPropertiesObject(
+            unwrappedExpression,
+            ownerFunction,
+            typeChecker,
+          );
+          const objectValue =
+            !isDirectPropertiesObject &&
+            isJsxSpreadSourceComplete(attribute.expression, ownerFunction, typeChecker)
+              ? resolveCallableExpression(attribute.expression, typeChecker)
+              : null;
+          for (const propertyName of spreadProperties.propertyNames) {
+            if (!callablePropertyNames.has(propertyName)) {
+              eventSourcesByName.delete(propertyName);
+              if (targetFunction) {
+                assignSource(
+                  propertyName,
+                  { callbacks: [], channel: null, isComplete: false },
+                  attribute,
+                );
+              }
+              continue;
+            }
+            assignSource(
+              propertyName,
+              createSpreadPropertyCallbackSource(
+                propertyName,
+                ownerFunction,
+                isDirectPropertiesObject,
+                objectValue,
+              ),
+              attribute,
+            );
+          }
+        }
+        eventSources.push(...eventSourcesByName.values());
+        for (const binding of propBindingsByName.values()) {
+          const channelIdentity = getChannelIdentity(binding.targetChannel);
+          const bindings = propBindingsByChannel.get(channelIdentity) ?? [];
+          bindings.push(binding);
+          propBindingsByChannel.set(channelIdentity, bindings);
         }
         openingElement.forEachChild(visit);
       };

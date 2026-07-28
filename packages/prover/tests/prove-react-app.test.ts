@@ -537,13 +537,14 @@ describe("proveReactApp", () => {
     ).toBe(true);
   });
 
-  it("fails closed when external-store callback props cross a JSX spread", () => {
-    const report = proveFixture("incomplete-external-store-callback-prop-spread");
+  it("proves external-store callback props forwarded through a finite JSX spread", () => {
+    const report = proveFixture("proved-external-store-callback-prop-spread");
     const externalStore = report.graph.externalStores[0];
 
-    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
-    expect(externalStore?.subscribeComplete).toBe(false);
-    expect(externalStore?.snapshotComplete).toBe(false);
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(externalStore?.subscribeComplete).toBe(true);
+    expect(externalStore?.snapshotComplete).toBe(true);
+    expect(report.graph.callbackPropFlows.every((propFlow) => propFlow.complete)).toBe(true);
   });
 
   it("fails closed when intra-attribute external-store callbacks use different guards", () => {
@@ -1137,7 +1138,7 @@ describe("proveReactApp", () => {
     "mismatched-external-store-callback-prop-server-snapshot",
     "mismatched-external-store-conditional-props",
     "mismatched-external-store-conditional-factory",
-    "incomplete-external-store-callback-prop-spread",
+    "proved-external-store-callback-prop-spread",
     "incomplete-external-store-callback-prop-conditional-join",
     "incomplete-external-store-conditional-factory",
     "incomplete-external-store-mutated-conditional-props",
@@ -1150,7 +1151,14 @@ describe("proveReactApp", () => {
     "callback-parameter-opaque-registration",
     "proved-event-prop-flow",
     "proved-forwarded-event-prop",
-    "incomplete-event-prop-spread",
+    "proved-event-prop-spread",
+    "proved-rest-event-prop-spread",
+    "proved-intrinsic-event-prop-spread",
+    "proved-jsx-spread-trailing-explicit-event",
+    "proved-jsx-spread-trailing-spread-event",
+    "incomplete-jsx-spread-leading-explicit-event",
+    "incomplete-jsx-spread-open-ended-event",
+    "incomplete-jsx-spread-mutated-object",
     "proved-effect-callback-prop",
     "proved-mixed-phase-callback-prop",
     "proved-cleanup-callback-prop",
@@ -1617,8 +1625,41 @@ describe("proveReactApp", () => {
     expect(boundaryProof?.evidence[0]?.description).toMatch(/callable-value boundary/);
   });
 
-  it("fails closed when a callback prop crosses an object spread", () => {
-    const report = proveFixture("incomplete-event-prop-spread");
+  it.each([
+    "proved-event-prop-spread",
+    "proved-rest-event-prop-spread",
+    "proved-intrinsic-event-prop-spread",
+  ])("proves finite callback forwarding through JSX spreads in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(report.graph.eventBindings[0]?.complete).toBe(true);
+    expect(report.graph.eventBindings[0]?.callbackIds).toHaveLength(1);
+  });
+
+  it("applies later JSX attributes as callback-prop overrides", () => {
+    const trailingExplicitReport = proveFixture("proved-jsx-spread-trailing-explicit-event");
+    const trailingSpreadReport = proveFixture("proved-jsx-spread-trailing-spread-event");
+    const unresolvedSpreadReport = proveFixture("incomplete-jsx-spread-leading-explicit-event");
+    const boundaryProof = unresolvedSpreadReport.units
+      .flatMap((unit) => unit.obligations)
+      .find(
+        (obligation) =>
+          obligation.claim === ReactProofClaim.BoundaryCoverage &&
+          obligation.status === ReactObligationStatus.Unknown,
+      );
+
+    expect(trailingExplicitReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(trailingExplicitReport.graph.eventBindings[0]?.complete).toBe(true);
+    expect(trailingSpreadReport.status).toBe(ReactAppProofStatus.Proved);
+    expect(trailingSpreadReport.graph.eventBindings[0]?.complete).toBe(true);
+    expect(unresolvedSpreadReport.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(unresolvedSpreadReport.graph.eventBindings[0]?.complete).toBe(false);
+    expect(boundaryProof?.evidence[0]?.description).toMatch(/JSX spread/);
+  });
+
+  it("fails closed for an open-ended intrinsic JSX spread", () => {
+    const report = proveFixture("incomplete-jsx-spread-open-ended-event");
     const boundaryProof = report.units
       .flatMap((unit) => unit.obligations)
       .find(
@@ -1629,7 +1670,30 @@ describe("proveReactApp", () => {
 
     expect(report.status).toBe(ReactAppProofStatus.Incomplete);
     expect(report.graph.eventBindings[0]?.complete).toBe(false);
-    expect(boundaryProof?.evidence[0]?.description).toMatch(/does not resolve/);
+    expect(
+      boundaryProof?.evidence.some((evidence) =>
+        evidence.description.includes("open-ended property set"),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails closed when a source-resolved JSX spread object is mutated", () => {
+    const report = proveFixture("incomplete-jsx-spread-mutated-object");
+    const boundaryProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find(
+        (obligation) =>
+          obligation.claim === ReactProofClaim.BoundaryCoverage &&
+          obligation.status === ReactObligationStatus.Unknown,
+      );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.eventBindings[0]?.complete).toBe(false);
+    expect(
+      boundaryProof?.evidence.some((evidence) =>
+        evidence.description.includes("immutable finite object proof"),
+      ),
+    ).toBe(true);
   });
 
   it.each([

@@ -342,9 +342,12 @@ const resolveObjectLiteral = (
       continue;
     }
     if (ts.isShorthandPropertyAssignment(property)) {
+      const valueSymbol = typeChecker.getShorthandAssignmentValueSymbol(property);
       properties.set(
         property.name.text,
-        resolveCallableExpressionWithState(property.name, typeChecker, bindings, state),
+        valueSymbol
+          ? resolveSymbolValue(valueSymbol, typeChecker, bindings, state)
+          : createEmptyCallableValue(false),
       );
       continue;
     }

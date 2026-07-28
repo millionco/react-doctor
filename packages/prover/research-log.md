@@ -219,6 +219,22 @@ model and must not become the whole-app proof substrate.
   through inline closures. A direct prop edge is therefore insufficient. Event proof now resolves
   callback props captured by local and transitively called wrapper handlers back through every
   project render site, then records the eventual source callback call in the event phase.
+- React's [passing props](https://react.dev/learn/passing-props-to-a-component) guide explicitly
+  teaches whole-object forwarding with `<Avatar {...props} />`. TypeScript's
+  [JSX handbook](https://www.typescriptlang.org/docs/handbook/jsx) type-checks spread operands
+  against the target attribute type. The React Bench Radix context-menu task repeatedly removes a
+  scope prop into a parameter rest binding and forwards the remaining object into a primitive.
+  Those are proof-relevant edges, not decorative syntax.
+- JSX property sources are ordered. A later explicit callback replaces a callback from an earlier
+  spread, while a later spread can replace an explicit callback. The callback graph now computes
+  one effective source per property and render site. Whole component-props parameters, parameter
+  rest bindings, finite non-escaping local `const` object literals, and intrinsic event spreads are
+  modeled. Shorthand object properties resolve through TypeScript's shorthand value symbol rather
+  than the property declaration symbol. The shared write collector treats direct assignment,
+  property/element assignment, increments, loop targets, and `delete` as writes. String/number
+  index signatures, unconstrained type parameters, getters, mutated or escaping objects,
+  unresolved nested prop objects, and object-literal spread merges still fail closed. A Playwright
+  oracle confirms both precedence directions in React 19.2.5.
 
 ### Current proof model
 
@@ -289,11 +305,13 @@ destructured props, renamed bindings, object-parameter property reads, prop-name
 several components, and local or transitive wrappers are resolved backward to every source
 callback. Captured prop bindings are injected into the wrapper's callable environment, so
 subsequent calls retain the requesting phase. The graph records each intrinsic event binding,
-every required component prop edge with its phase, and the wrapper-to-source call. A spread,
-computed expression, missing render site, imported component, or cycle leaves the channel
-incomplete. The independent checker rejects complete channels without a source callback in the
-same phase. A callback prop invocation is discharged only when a complete prop channel and a call
-fact in that phase agree at the exact source location.
+every required component prop edge with its phase, and the wrapper-to-source call. A computed
+expression, missing render site, imported component, or cycle leaves the channel incomplete.
+Finite typed spreads are accepted only for source-resolved whole-props, parameter-rest, or
+non-escaping local `const` object values. JSX sources are folded left to right, and only the last
+source of each property contributes callbacks. The independent checker rejects complete channels
+without a source callback in the same phase. A callback prop invocation is discharged only when a
+complete prop channel and a call fact in that phase agree at the exact source location.
 
 Effect callback props require an additional transition guard. A source callback that writes its
 own component state can rerender that source component, create a fresh callback identity, change
@@ -318,9 +336,9 @@ identity, survive aliases and component-prop forwarding, and are serialized as g
 alternatives. The external-store proof correlates channels only when every guarded channel exposes
 the same finite assignment partition; a singleton unguarded callback may act as a
 variant-independent source. Different condition symbols, mixed guarded and unguarded joins,
-duplicate assignments, JSX spreads, and opaque conditions remain incomplete. Reversing callback
-choices under the same guard does not hide a defect: it creates the real crossed protocol variants,
-which are checked and refuted when snapshot writes notify the wrong registry.
+duplicate assignments within one expression, and opaque conditions remain incomplete. Reversing
+callback choices under the same guard does not hide a defect: it creates the real crossed protocol
+variants, which are checked and refuted when snapshot writes notify the wrong registry.
 At ordinary call-return boundaries, callee-local guards are removed. Identifier arguments are
 instead substituted into scalar parameter guards, including composed `!` polarity through nested
 source calls. The substitution requires a declaration-backed symbol with no assignment,
@@ -431,6 +449,7 @@ Proved:
 - `proved-mount-state-update`
 - `proved-external-store`
 - `proved-external-store-callback-props`
+- `proved-external-store-callback-prop-spread`
 - `proved-external-store-conditional-props`
 - `proved-external-store-conditional-factory`
 - `proved-external-store-render-branch-props`
@@ -441,6 +460,11 @@ Proved:
 - `proved-event-callback-parameter`
 - `proved-event-prop-flow`
 - `proved-forwarded-event-prop`
+- `proved-event-prop-spread`
+- `proved-rest-event-prop-spread`
+- `proved-intrinsic-event-prop-spread`
+- `proved-jsx-spread-trailing-explicit-event`
+- `proved-jsx-spread-trailing-spread-event`
 - `proved-effect-callback-prop`
 - `proved-cleanup-callback-prop`
 - `proved-mixed-phase-callback-prop`
@@ -542,13 +566,14 @@ Incomplete:
 - `helper-effect-state-update`
 - `conditional-helper-effect-cleanup`
 - `external-store-helper-boundary`
-- `incomplete-external-store-callback-prop-spread`
 - `incomplete-external-store-callback-prop-conditional-join`
 - `incomplete-external-store-conditional-factory`
 - `incomplete-external-store-mutated-conditional-props`
 - `mapped-event-handler`
 - `callback-parameter-opaque-registration`
-- `incomplete-event-prop-spread`
+- `incomplete-jsx-spread-leading-explicit-event`
+- `incomplete-jsx-spread-open-ended-event`
+- `incomplete-jsx-spread-mutated-object`
 - `incomplete-effect-callback-prop-state-cycle`
 - `incomplete-defaulted-event-prop-wrapper`
 - `incomplete-computed-event-prop-wrapper`
@@ -581,8 +606,9 @@ Known regions that must force `incomplete` until modeled:
 - Async work outside directly invoked Effect-local async functions and direct
   `.then`/`.catch`/`.finally` continuations
 - Async ownership of non-state external side effects without a checked function summary
-- Callback flow through JSX spreads, computed/defaulted prop expressions, mutated/computed object
-  fields, logical aliases crossing opaque registries, grouped switch cases, fallthrough clauses,
+- Callback flow through open-ended, nested, escaping, module-owned, mutated, getter-backed, or
+  unresolved JSX spread objects; computed/defaulted prop expressions; mutated/computed object
+  fields; logical aliases crossing opaque registries; grouped switch cases; fallthrough clauses;
   or non-finite switch discriminants
 - Callable factories with unranked repeating loops, `break`/`continue`, iterable spreads, or
   iterator values that lack a checked finiteness and mutation contract; mutable, defaulted, rest,
@@ -614,9 +640,9 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 ### Next architecture
 
 1. Add callable SSA joins for ranked loops, mutable/defaulted/rest/computed iteration bindings,
-   switch fallthrough and grouped cases, property writes, JSX spreads, and checked library
-   contracts, including synchronous throw summaries, Promise continuations, and user-defined
-   registration APIs.
+   switch fallthrough and grouped cases, property writes, open-ended/nested JSX and object spreads,
+   and checked library contracts, including synchronous throw summaries, Promise continuations,
+   and user-defined registration APIs.
 2. Replace syntax-level hook and path checks with SSA CFG obligations and checked function
    summaries.
 3. Introduce a formal lifecycle machine for render, commit, effect setup, cleanup, event,
@@ -647,3 +673,6 @@ components and hooks, including hooks hidden in incorrectly named helper functio
   inheritance, and nearest nested-provider isolation.
 - The async ownership oracle races a slow superseded request against a fast current request. The
   unguarded completion overwrites current state; cleanup invalidation preserves the current owner.
+- The JSX spread oracle confirms React's ordered property-copy semantics in both directions:
+  trailing explicit callbacks replace spread callbacks, and trailing spread callbacks replace
+  explicit callbacks.

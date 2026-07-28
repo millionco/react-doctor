@@ -108,6 +108,31 @@ describe("package graph", () => {
     expect(graph.getCapabilitiesForFile(path.join(FIXTURES_DIRECTORY, "outside.ts"))).toBeNull();
   });
 
+  it("keeps workspace package order stable across filesystem enumeration order", () => {
+    const graph = buildTemporaryGraph({
+      rootPackageJson: {
+        name: "stable-order",
+        workspaces: ["packages/*"],
+      },
+      workspacePackages: [
+        {
+          relativeDirectory: "packages/z-last",
+          packageJson: { name: "z-last" },
+        },
+        {
+          relativeDirectory: "packages/a-first",
+          packageJson: { name: "a-first" },
+        },
+      ],
+    });
+
+    expect(graph.packages.map((packageNode) => packageNode.name)).toEqual([
+      "stable-order",
+      "a-first",
+      "z-last",
+    ]);
+  });
+
   it("does not invent version capabilities for unresolved catalog or workspace declarations", () => {
     const graph = buildTemporaryGraph({
       rootPackageJson: {

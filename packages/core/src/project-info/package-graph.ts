@@ -191,7 +191,10 @@ export const buildPackageGraph = (
   const visitedDirectories = new Set<string>([normalizedRootDirectory]);
 
   for (const pattern of workspacePatterns) {
-    const workspaceDirectories = resolveWorkspaceDirectories(normalizedRootDirectory, pattern);
+    const workspaceDirectories = resolveWorkspaceDirectories(
+      normalizedRootDirectory,
+      pattern,
+    ).toSorted();
     for (const workspaceDirectory of workspaceDirectories) {
       const normalizedWorkspaceDirectory = path.normalize(workspaceDirectory);
       if (visitedDirectories.has(normalizedWorkspaceDirectory)) continue;

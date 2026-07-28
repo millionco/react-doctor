@@ -44,6 +44,7 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
       schedulers: [],
       resources: [],
       classLifecycles: [],
+      classStateWrites: [],
       classStateTransitions: [],
       compiler: {
         version: REACT_COMPILER_VERSION,

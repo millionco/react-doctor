@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { getResolvedSymbol } from "./get-resolved-symbol.js";
+import { isAssignmentOperator } from "./is-assignment-operator.js";
 
 export const collectPropertySymbolWrites = (
   symbol: ts.Symbol,
@@ -28,8 +29,7 @@ export const collectPropertySymbolWrites = (
   const visit = (node: ts.Node): void => {
     if (
       ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      isAssignmentOperator(node.operatorToken.kind) &&
       isPropertyTarget(node.left)
     ) {
       writes.push(node);

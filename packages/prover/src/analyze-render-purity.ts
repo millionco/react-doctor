@@ -20,6 +20,7 @@ import { isFunctionBoundary } from "./is-function-boundary.js";
 import { resolveFunction } from "./resolve-function.js";
 import { ReactObligationStatus, ReactProofClaim } from "./types.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
+import { isAssignmentOperator } from "./utils/is-assignment-operator.js";
 import type { ReactAnalysisContext, ReactProofEvidence, ReactProofObligation } from "./types.js";
 
 const KNOWN_RENDER_SIDE_EFFECT_CALLS = new Set([
@@ -110,11 +111,7 @@ export const analyzeRenderPurity = (
       if (node !== currentFunction && isFunctionBoundary(node)) {
         return;
       }
-      if (
-        ts.isBinaryExpression(node) &&
-        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-      ) {
+      if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind)) {
         if (isProtectedMutation(node.left, currentFunction, context, protectedSymbols)) {
           violations.push(
             createEvidence(

@@ -1,6 +1,8 @@
 import ts from "typescript";
 import { collectAsyncEffectTaskDescriptors } from "./collect-async-effect-task-descriptors.js";
 import { collectClassStateTransitions } from "./collect-class-state-transitions.js";
+import { collectClassStateWrites } from "./collect-class-state-writes.js";
+import type { ClassStateWriteRootDescriptor } from "./collect-class-state-writes.js";
 import { collectCallableRefProtocols } from "./collect-callable-ref-protocols.js";
 import { collectCallbackStateWrites } from "./collect-callback-state-writes.js";
 import { createComponentCallbackFlow } from "./create-component-callback-flow.js";
@@ -45,6 +47,7 @@ import type { ResolvedCallableValueDescriptor } from "./resolve-callable-express
 import {
   ReactCallableRefFreshness,
   ReactClassStateUpdaterStatus,
+  ReactClassStateWriteStatus,
   ReactClassUpdateCycleStatus,
   ReactEffectDependencyMode,
   ReactExecutionPhase,
@@ -68,6 +71,7 @@ import type {
   ReactSemanticCallbackPropFlow,
   ReactSemanticCallableRef,
   ReactSemanticClassLifecycle,
+  ReactSemanticClassStateWrite,
   ReactSemanticClassStateTransition,
   ReactSemanticExternalStore,
   ReactSemanticFunctionCall,
@@ -101,6 +105,7 @@ interface EffectGraphFacts {
 
 interface ClassLifecycleGraphFacts {
   lifecycle: ReactSemanticClassLifecycle | null;
+  stateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
   transitions: ReadonlyArray<ReactSemanticClassStateTransition>;
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
   resources: ReadonlyArray<ReactSemanticEffectResource>;
@@ -1021,6 +1026,7 @@ const collectClassLifecycleGraph = (
   if (identity.descriptor.kind !== ReactUnitKind.ClassComponent || !classNode || !renderMethod) {
     return {
       lifecycle: null,
+      stateWrites: [],
       transitions: [],
       schedulers: [],
       resources: [],
@@ -1076,6 +1082,28 @@ const collectClassLifecycleGraph = (
     ReactExecutionPhase.ClassUpdate,
     "componentDidUpdate",
   );
+  const stateWriteRoots: ClassStateWriteRootDescriptor[] = [];
+  if (mountMethod && mountCallback) {
+    stateWriteRoots.push({
+      callbackId: mountCallback.id,
+      functionNode: mountMethod,
+      phase: ReactExecutionPhase.ClassMount,
+    });
+  }
+  if (unmountMethod && unmountCallback) {
+    stateWriteRoots.push({
+      callbackId: unmountCallback.id,
+      functionNode: unmountMethod,
+      phase: ReactExecutionPhase.ClassUnmount,
+    });
+  }
+  if (updateMethod && updateCallback) {
+    stateWriteRoots.push({
+      callbackId: updateCallback.id,
+      functionNode: updateMethod,
+      phase: ReactExecutionPhase.ClassUpdate,
+    });
+  }
   const resourceProtocols = mountMethod
     ? collectLifecycleResourceProtocols(
         mountMethod,
@@ -1134,6 +1162,11 @@ const collectClassLifecycleGraph = (
           }
         : null;
     if (identifiedUpdaterCallback && descriptor.updaterFunction) {
+      stateWriteRoots.push({
+        callbackId: identifiedUpdaterCallback.id,
+        functionNode: descriptor.updaterFunction,
+        phase: ReactExecutionPhase.StateTransition,
+      });
       transitionUpdaterFunctions.add(descriptor.updaterFunction);
       callbacks.push(identifiedUpdaterCallback);
       const reachabilityFacts = collectReachabilityGraphFacts(
@@ -1209,6 +1242,11 @@ const collectClassLifecycleGraph = (
           }
         : null;
     if (identifiedResourceCallback && callbackFunction) {
+      stateWriteRoots.push({
+        callbackId: identifiedResourceCallback.id,
+        functionNode: callbackFunction,
+        phase: ReactExecutionPhase.Deferred,
+      });
       callbacks.push(identifiedResourceCallback);
       const reachabilityFacts = collectReachabilityGraphFacts(
         identity,
@@ -1283,6 +1321,11 @@ const collectClassLifecycleGraph = (
           }
         : null;
     if (identifiedSchedulerCallback && callbackFunction) {
+      stateWriteRoots.push({
+        callbackId: identifiedSchedulerCallback.id,
+        functionNode: callbackFunction,
+        phase: ReactExecutionPhase.Deferred,
+      });
       callbacks.push(identifiedSchedulerCallback);
       const reachabilityFacts = collectReachabilityGraphFacts(
         identity,
@@ -1316,6 +1359,25 @@ const collectClassLifecycleGraph = (
       complete: protocol.isSourceComplete && callbackComplete && Boolean(mountCallback),
     });
   }
+  const stateWrites: ReactSemanticClassStateWrite[] = collectClassStateWrites(
+    stateWriteRoots,
+    context,
+  ).map((descriptor) => ({
+    id: createSemanticId(
+      `class-state-write:${descriptor.callbackId}`,
+      descriptor.kind,
+      descriptor.node,
+      context,
+    ),
+    ownerId: identity.semanticUnit.id,
+    callbackId: descriptor.callbackId,
+    phase: descriptor.phase,
+    location: getNodeLocation(descriptor.node, context.rootDirectory),
+    kind: descriptor.kind,
+    status: descriptor.status,
+    sourceComplete: descriptor.status !== ReactClassStateWriteStatus.Unknown,
+    complete: false,
+  }));
   const representedLifecycleCalls = new Set<ts.CallExpression>([
     ...resourceProtocols.flatMap((protocol) => [
       ...protocol.acquisitionNodes.filter(ts.isCallExpression),
@@ -1364,14 +1426,17 @@ const collectClassLifecycleGraph = (
       updateCallbackId: updateCallback?.id ?? null,
       resourceIds: resources.map((resource) => resource.id),
       schedulerIds: schedulers.map((scheduler) => scheduler.id),
+      stateWriteIds: stateWrites.map((stateWrite) => stateWrite.id),
       transitionIds: transitions.map((transition) => transition.id),
       sourceComplete,
       complete:
         sourceComplete &&
         resources.every((resource) => resource.complete) &&
         schedulers.every((scheduler) => scheduler.complete) &&
+        stateWrites.every((stateWrite) => stateWrite.complete) &&
         transitions.every((transition) => transition.complete),
     },
+    stateWrites,
     transitions,
     schedulers,
     resources,
@@ -2077,6 +2142,7 @@ export const buildReactSemanticGraph = (
   const schedulers: ReactSemanticScheduler[] = [];
   const resources: ReactSemanticEffectResource[] = [];
   const classLifecycles: ReactSemanticClassLifecycle[] = [];
+  const classStateWrites: ReactSemanticClassStateWrite[] = [];
   const classStateTransitions: ReactSemanticClassStateTransition[] = [];
   const effectEvents: ReactSemanticEffectEvent[] = [];
   const externalStores: ReactSemanticExternalStore[] = [];
@@ -2130,6 +2196,7 @@ export const buildReactSemanticGraph = (
     if (classLifecycleGraph.lifecycle) {
       classLifecycles.push(classLifecycleGraph.lifecycle);
     }
+    classStateWrites.push(...classLifecycleGraph.stateWrites);
     classStateTransitions.push(...classLifecycleGraph.transitions);
     schedulers.push(...classLifecycleGraph.schedulers);
     resources.push(...classLifecycleGraph.resources);
@@ -2219,6 +2286,7 @@ export const buildReactSemanticGraph = (
     schedulers,
     resources,
     classLifecycles,
+    classStateWrites,
     classStateTransitions,
     compiler: extractReactCompilerGraph(sourceFiles, context.rootDirectory),
   };

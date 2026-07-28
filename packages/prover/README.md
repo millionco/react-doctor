@@ -55,8 +55,10 @@ The report includes:
 - class lifecycle facts that certify symbol-resolved `Component` and `PureComponent` inheritance,
   pure render callbacks, direct `componentDidMount`/`componentDidUpdate`/
   `componentWillUnmount` ownership transitions, exact stable method identities, immutable
-  primitive scheduler-handle fields, pure `setState` updaters, and bounded prop-history update
-  guards;
+  primitive scheduler-handle fields, React-owned class state, pure `setState` updaters, and
+  bounded prop-history update guards; direct state assignments, updates, deletes, and
+  platform-resolved mutator calls are explicit forbidden graph facts, while object-valued state
+  references that escape the modeled boundary fail closed;
 - normalized React Compiler CFG, instruction-effect, and reactive-place facts;
 - per-unit proof obligations with `proved`, `violated`, or `unknown` results;
 - project evidence for type unsoundness, compiler diagnostics, and opaque boundaries.
@@ -77,10 +79,11 @@ concrete event callback, and a `ref.current` call edge. Scheduler certificates r
 Effect setup or class mount callback, deferred callback facts, exact cancellation evidence, and
 internally consistent completeness. Class lifecycle certificates additionally require one class
 owner, phase-correct mount, update, and unmount callbacks, reciprocal resource, scheduler, and
-state-transition links, and a completeness flag derived exactly from every owned fact. State
-transition certificates independently check updater callback phase, guard evidence, convergence
-classification, and exact completeness. Broader source-derived block invariants remain future
-work. Resource certificates
+state-write and state-transition links, and a completeness flag derived exactly from every owned
+fact. State ownership certificates independently check lifecycle phase, forbidden/unknown
+classification, and exact completeness. State transition certificates independently check updater
+callback phase, guard evidence, convergence classification, and exact completeness. Broader
+source-derived block invariants remain future work. Resource certificates
 additionally require a real Effect setup or class mount, platform-declaration identity, deferred
 or Effect Event callback facts, nonempty activation and disposal evidence, and a completeness flag
 derived exactly from those facts.

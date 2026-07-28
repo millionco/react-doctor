@@ -29,6 +29,7 @@ import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import { collectJsxSpreadProperties } from "./utils/collect-jsx-spread-properties.js";
 import { isEffectiveJsxPropertySource } from "./utils/is-effective-jsx-property-source.js";
 import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
+import { isAssignmentOperator } from "./utils/is-assignment-operator.js";
 import { isJsxSpreadSourceComplete } from "./utils/is-jsx-spread-source-complete.js";
 import { getPlatformEffectResourceKind } from "./utils/get-platform-effect-resource-kind.js";
 import type {
@@ -393,8 +394,7 @@ export const analyzeBoundaryCoverage = (
     }
     if (
       ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      isAssignmentOperator(node.operatorToken.kind) &&
       ts.isPropertyAccessExpression(node.left) &&
       !isCompleteCallableRefAccess(node.left) &&
       doesTypeContainCallable(context.typeChecker.getTypeAtLocation(node.left), context.typeChecker)

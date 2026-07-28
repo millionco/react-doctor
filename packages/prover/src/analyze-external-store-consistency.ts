@@ -12,6 +12,7 @@ import { resolveFunction } from "./resolve-function.js";
 import { ReactObligationStatus, ReactProofClaim } from "./types.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import { collectSymbolWrites } from "./utils/collect-symbol-writes.js";
+import { isAssignmentOperator } from "./utils/is-assignment-operator.js";
 import type {
   ReactAnalysisContext,
   ReactProofEvidence,
@@ -212,10 +213,7 @@ const isStablePrimitiveExpression = (
     return isStablePrimitiveExpression(unwrappedExpression.operand, typeChecker);
   }
   if (ts.isBinaryExpression(unwrappedExpression)) {
-    if (
-      unwrappedExpression.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      unwrappedExpression.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-    ) {
+    if (isAssignmentOperator(unwrappedExpression.operatorToken.kind)) {
       return false;
     }
     return (

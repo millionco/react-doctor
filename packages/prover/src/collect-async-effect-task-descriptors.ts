@@ -10,6 +10,7 @@ import { ReactAsyncOwnershipStatus } from "./types.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import { containsAwaitOutsideNestedFunction } from "./utils/contains-await-outside-nested-function.js";
 import { hasGuaranteedEffectCleanup } from "./utils/has-guaranteed-effect-cleanup.js";
+import { isAssignmentOperator } from "./utils/is-assignment-operator.js";
 import type { ReactAnalysisContext, ReactAsyncEffectTaskDescriptor } from "./types.js";
 
 interface AsyncStateWrite {
@@ -314,8 +315,7 @@ const collectAsyncTaskOperations = (
     if (
       !unknownOperation &&
       ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      isAssignmentOperator(node.operatorToken.kind) &&
       (startsAfterSuspension || hasSequentialAwaitBefore(node, taskFunction))
     ) {
       unknownOperation = node;

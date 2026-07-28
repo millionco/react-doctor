@@ -36,6 +36,7 @@ declare global {
     classSchedulerHits: number;
     classStateUpdates: number;
     classStateWrites: number;
+    classDirectStateValue: number;
     classUnmounts: number;
     listenerHits: number;
     observerHits: number;
@@ -49,6 +50,7 @@ window.classMounts = 0;
 window.classSchedulerHits = 0;
 window.classStateUpdates = 0;
 window.classStateWrites = 0;
+window.classDirectStateValue = CLASS_UPDATE_INITIAL_REVISION;
 window.classUnmounts = 0;
 window.listenerHits = 0;
 window.observerHits = 0;
@@ -278,6 +280,32 @@ const ClassStateTransitionOracle = () => {
     </main>
   );
 };
+
+interface DirectStateMutationState {
+  count: number;
+}
+
+class DirectStateMutation extends Component<Record<string, never>, DirectStateMutationState> {
+  state = { count: CLASS_UPDATE_INITIAL_REVISION };
+
+  mutateState = () => {
+    this.state.count = CLASS_UPDATE_NEXT_REVISION;
+    window.classDirectStateValue = this.state.count;
+  };
+
+  render() {
+    return (
+      <main>
+        <button type="button" onClick={this.mutateState}>
+          mutate class state directly
+        </button>
+        <output data-testid="direct-class-state">{this.state.count}</output>
+      </main>
+    );
+  }
+}
+
+const ClassStateOwnershipOracle = () => <DirectStateMutation />;
 
 interface SchedulerProbeProperties {
   shouldCancel: boolean;
@@ -804,6 +832,9 @@ const RuntimeOracle = () => {
   if (oracle === "class-state-transition") {
     return <ClassStateTransitionOracle />;
   }
+  if (oracle === "class-state-ownership") {
+    return <ClassStateOwnershipOracle />;
+  }
   return <ListenerOracle />;
 };
 
@@ -813,6 +844,7 @@ const oracle = new URLSearchParams(window.location.search).get("oracle");
 const isClassLifecycleOracle =
   oracle === "class-listener" ||
   oracle === "class-scheduler" ||
+  oracle === "class-state-ownership" ||
   oracle === "class-state-transition";
 createRoot(rootElement).render(
   isClassLifecycleOracle ? (

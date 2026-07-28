@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { isAssignmentOperator } from "./is-assignment-operator.js";
 
 export const collectSymbolWrites = (
   symbol: ts.Symbol,
@@ -46,8 +47,7 @@ export const collectSymbolWrites = (
   const visit = (node: ts.Node): void => {
     if (
       ts.isBinaryExpression(node) &&
-      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      isAssignmentOperator(node.operatorToken.kind) &&
       isSymbolWriteTarget(node.left)
     ) {
       writes.push(node);

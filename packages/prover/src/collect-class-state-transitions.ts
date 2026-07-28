@@ -13,6 +13,7 @@ import {
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 import type { ReactAnalysisContext } from "./types.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
+import { getStaticAccessMemberName } from "./utils/get-static-access-member-name.js";
 import { isEntryDominatingNode } from "./utils/is-entry-dominating-node.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 
@@ -67,16 +68,6 @@ const isReactSetStateCall = (
   );
 };
 
-const getAccessMemberName = (
-  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
-): string | null => {
-  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
-  const argument = expression.argumentExpression;
-  return argument && (ts.isStringLiteralLike(argument) || ts.isNumericLiteral(argument))
-    ? argument.text
-    : null;
-};
-
 const getStateSourcePath = (
   expression: ts.Expression,
   previousPropsSymbol: ts.Symbol,
@@ -88,7 +79,7 @@ const getStateSourcePath = (
     ts.isPropertyAccessExpression(currentExpression) ||
     ts.isElementAccessExpression(currentExpression)
   ) {
-    const memberName = getAccessMemberName(currentExpression);
+    const memberName = getStaticAccessMemberName(currentExpression);
     if (!memberName) return null;
     members.unshift(memberName);
     currentExpression = unwrapTypescriptExpression(currentExpression.expression);

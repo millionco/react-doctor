@@ -2,6 +2,7 @@ import { createObligation } from "./create-obligation.js";
 import { findSemanticUnit } from "./find-semantic-unit.js";
 import {
   ReactClassStateUpdaterStatus,
+  ReactClassStateWriteStatus,
   ReactClassUpdateCycleStatus,
   ReactObligationStatus,
   ReactProofClaim,
@@ -39,8 +40,27 @@ export const analyzeClassStateTransitions = (
   const transitions = context.graph.classStateTransitions.filter(
     (transition) => transition.ownerId === semanticOwnerId,
   );
+  const stateWrites = context.graph.classStateWrites.filter(
+    (stateWrite) => stateWrite.ownerId === semanticOwnerId,
+  );
   const violations: ReactProofEvidence[] = [];
   const unknownEvidence: ReactProofEvidence[] = [];
+  for (const stateWrite of stateWrites) {
+    const trace = [stateWrite.phase, "this.state", stateWrite.kind, stateWrite.status];
+    if (stateWrite.status === ReactClassStateWriteStatus.Forbidden) {
+      violations.push({
+        description: "Class state is mutated directly outside construction",
+        location: stateWrite.location,
+        trace,
+      });
+    } else {
+      unknownEvidence.push({
+        description: "A class state reference escapes the modeled ownership boundary",
+        location: stateWrite.location,
+        trace,
+      });
+    }
+  }
   for (const transition of transitions) {
     const trace = [
       transition.phase,
@@ -86,7 +106,7 @@ export const analyzeClassStateTransitions = (
     return createObligation(
       ReactProofClaim.ClassStateTransitions,
       ReactObligationStatus.Violated,
-      "A class state transition violates updater purity or update convergence",
+      "Class state ownership, updater purity, or update convergence is violated",
       violations,
     );
   }
@@ -94,13 +114,13 @@ export const analyzeClassStateTransitions = (
     return createObligation(
       ReactProofClaim.ClassStateTransitions,
       ReactObligationStatus.Unknown,
-      "Class state transition purity or convergence could not be proved",
+      "Class state ownership, transition purity, or convergence could not be proved",
       unknownEvidence,
     );
   }
   return createObligation(
     ReactProofClaim.ClassStateTransitions,
     ReactObligationStatus.Proved,
-    "Every modeled class state updater is pure and every update transition is bounded",
+    "Class state is React-owned, every updater is pure, and every update transition is bounded",
   );
 };

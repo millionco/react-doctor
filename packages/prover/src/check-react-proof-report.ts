@@ -5,6 +5,8 @@ import {
   ReactCallableRefFreshness,
   ReactClassComponentBase,
   ReactClassStateUpdaterStatus,
+  ReactClassStateWriteKind,
+  ReactClassStateWriteStatus,
   ReactClassUpdateCycleStatus,
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
@@ -92,6 +94,14 @@ const expectedClassStateTransitionStatus = (
   const transitions = report.graph.classStateTransitions.filter(
     (transition) => transition.ownerId === unit.id,
   );
+  const stateWrites = report.graph.classStateWrites.filter(
+    (stateWrite) => stateWrite.ownerId === unit.id,
+  );
+  if (
+    stateWrites.some((stateWrite) => stateWrite.status === ReactClassStateWriteStatus.Forbidden)
+  ) {
+    return ReactObligationStatus.Violated;
+  }
   if (
     transitions.some(
       (transition) =>
@@ -102,7 +112,9 @@ const expectedClassStateTransitionStatus = (
     return ReactObligationStatus.Violated;
   }
   const lifecycle = report.graph.classLifecycles.find((candidate) => candidate.ownerId === unit.id);
-  return !lifecycle?.sourceComplete || transitions.some((transition) => !transition.complete)
+  return !lifecycle?.sourceComplete ||
+    stateWrites.some((stateWrite) => !stateWrite.complete) ||
+    transitions.some((transition) => !transition.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -713,6 +725,97 @@ const checkGraphReferences = (
   const transitionsById = new Map(
     report.graph.classStateTransitions.map((transition) => [transition.id, transition]),
   );
+  const stateWritesById = new Map(
+    report.graph.classStateWrites.map((stateWrite) => [stateWrite.id, stateWrite]),
+  );
+  for (const stateWrite of report.graph.classStateWrites) {
+    if (!Object.values(ReactClassStateWriteKind).includes(stateWrite.kind)) {
+      addFailure(failures, stateWrite.id, "A class state write has an invalid write kind");
+    }
+    if (!Object.values(ReactClassStateWriteStatus).includes(stateWrite.status)) {
+      addFailure(failures, stateWrite.id, "A class state write has an invalid ownership status");
+    }
+    if (
+      stateWrite.phase !== ReactExecutionPhase.ClassMount &&
+      stateWrite.phase !== ReactExecutionPhase.ClassUnmount &&
+      stateWrite.phase !== ReactExecutionPhase.ClassUpdate &&
+      stateWrite.phase !== ReactExecutionPhase.Deferred &&
+      stateWrite.phase !== ReactExecutionPhase.StateTransition
+    ) {
+      addFailure(failures, stateWrite.id, "A class state write has an invalid execution phase");
+    }
+    const owner = unitsById.get(stateWrite.ownerId);
+    if (owner?.kind !== ReactUnitKind.ClassComponent) {
+      addFailure(failures, stateWrite.id, "A class state write has an unknown or non-class owner");
+    }
+    const callback = callbacksById.get(stateWrite.callbackId);
+    let hasExpectedCallbackKind = false;
+    if (stateWrite.phase === ReactExecutionPhase.ClassMount) {
+      hasExpectedCallbackKind = callback?.kind === ReactSemanticCallbackKind.ClassMount;
+    } else if (stateWrite.phase === ReactExecutionPhase.ClassUnmount) {
+      hasExpectedCallbackKind = callback?.kind === ReactSemanticCallbackKind.ClassUnmount;
+    } else if (stateWrite.phase === ReactExecutionPhase.ClassUpdate) {
+      hasExpectedCallbackKind = callback?.kind === ReactSemanticCallbackKind.ClassUpdate;
+    } else if (stateWrite.phase === ReactExecutionPhase.StateTransition) {
+      hasExpectedCallbackKind = callback?.kind === ReactSemanticCallbackKind.ClassStateUpdater;
+    } else {
+      hasExpectedCallbackKind =
+        callback?.kind === ReactSemanticCallbackKind.ResourceCallback ||
+        callback?.kind === ReactSemanticCallbackKind.ScheduledCallback;
+    }
+    if (
+      callback?.ownerId !== stateWrite.ownerId ||
+      !hasExpectedCallbackKind ||
+      callback.phase !== stateWrite.phase
+    ) {
+      addFailure(failures, stateWrite.id, "A class state write has an invalid callback");
+    }
+    const lifecycle = report.graph.classLifecycles.find(
+      (candidate) => candidate.ownerId === stateWrite.ownerId,
+    );
+    let hasOwnershipLink = false;
+    if (stateWrite.phase === ReactExecutionPhase.ClassMount) {
+      hasOwnershipLink = lifecycle?.mountCallbackId === stateWrite.callbackId;
+    } else if (stateWrite.phase === ReactExecutionPhase.ClassUnmount) {
+      hasOwnershipLink = lifecycle?.unmountCallbackId === stateWrite.callbackId;
+    } else if (stateWrite.phase === ReactExecutionPhase.ClassUpdate) {
+      hasOwnershipLink = lifecycle?.updateCallbackId === stateWrite.callbackId;
+    } else if (stateWrite.phase === ReactExecutionPhase.StateTransition) {
+      hasOwnershipLink = Boolean(
+        lifecycle?.transitionIds.some(
+          (transitionId) =>
+            transitionsById.get(transitionId)?.updaterCallbackId === stateWrite.callbackId,
+        ),
+      );
+    } else {
+      hasOwnershipLink = Boolean(
+        lifecycle?.resourceIds.some((resourceId) =>
+          resourcesById.get(resourceId)?.callbackIds.includes(stateWrite.callbackId),
+        ) ||
+        lifecycle?.schedulerIds.some((schedulerId) =>
+          schedulersById.get(schedulerId)?.callbackIds.includes(stateWrite.callbackId),
+        ),
+      );
+    }
+    if (!hasOwnershipLink) {
+      addFailure(
+        failures,
+        stateWrite.id,
+        "A class state write is not linked to its owner callback",
+      );
+    }
+    const expectedSourceComplete = stateWrite.status !== ReactClassStateWriteStatus.Unknown;
+    if (stateWrite.sourceComplete !== expectedSourceComplete) {
+      addFailure(
+        failures,
+        stateWrite.id,
+        "A class state write source flag does not match its ownership status",
+      );
+    }
+    if (stateWrite.complete) {
+      addFailure(failures, stateWrite.id, "A forbidden or unknown class state write is complete");
+    }
+  }
   for (const transition of report.graph.classStateTransitions) {
     const owner = unitsById.get(transition.ownerId);
     if (owner?.kind !== ReactUnitKind.ClassComponent) {
@@ -864,12 +967,25 @@ const checkGraphReferences = (
     if (new Set(lifecycle.transitionIds).size !== lifecycle.transitionIds.length) {
       addFailure(failures, lifecycle.id, "A class lifecycle repeats a state transition link");
     }
+    const lifecycleStateWrites = lifecycle.stateWriteIds.flatMap((stateWriteId) => {
+      const stateWrite = stateWritesById.get(stateWriteId);
+      if (!stateWrite || stateWrite.ownerId !== lifecycle.ownerId) {
+        addFailure(failures, lifecycle.id, "A class lifecycle has an invalid state write link");
+        return [];
+      }
+      return [stateWrite];
+    });
+    if (new Set(lifecycle.stateWriteIds).size !== lifecycle.stateWriteIds.length) {
+      addFailure(failures, lifecycle.id, "A class lifecycle repeats a state write link");
+    }
     const expectedComplete =
       lifecycle.sourceComplete &&
       lifecycleResources.length === lifecycle.resourceIds.length &&
       lifecycleResources.every((resource) => resource.complete) &&
       lifecycleSchedulers.length === lifecycle.schedulerIds.length &&
       lifecycleSchedulers.every((scheduler) => scheduler.complete) &&
+      lifecycleStateWrites.length === lifecycle.stateWriteIds.length &&
+      lifecycleStateWrites.every((stateWrite) => stateWrite.complete) &&
       lifecycleTransitions.length === lifecycle.transitionIds.length &&
       lifecycleTransitions.every((transition) => transition.complete);
     if (lifecycle.complete !== expectedComplete) {
@@ -916,6 +1032,17 @@ const checkGraphReferences = (
       )
     ) {
       addFailure(failures, transition.id, "A class state transition has no lifecycle certificate");
+    }
+  }
+  for (const stateWrite of report.graph.classStateWrites) {
+    if (
+      !report.graph.classLifecycles.some(
+        (lifecycle) =>
+          lifecycle.ownerId === stateWrite.ownerId &&
+          lifecycle.stateWriteIds.includes(stateWrite.id),
+      )
+    ) {
+      addFailure(failures, stateWrite.id, "A class state write has no lifecycle certificate");
     }
   }
   for (const reachableFunction of report.graph.reachableFunctions) {
@@ -1246,6 +1373,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Class state transitions",
     report.graph.classStateTransitions.map((transition) => transition.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Class state writes",
+    report.graph.classStateWrites.map((stateWrite) => stateWrite.id),
   );
   checkUniqueIds(
     failures,

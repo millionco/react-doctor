@@ -9,6 +9,8 @@ import {
   ReactCallableRefFreshness,
   ReactClassComponentBase,
   ReactClassStateUpdaterStatus,
+  ReactClassStateWriteKind,
+  ReactClassStateWriteStatus,
   ReactClassUpdateCycleStatus,
   ReactCompilerFactStatus,
   ReactEffectDependencyMode,
@@ -40,6 +42,21 @@ const proveFixture = (fixtureName: string) =>
   });
 
 const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
+  {
+    fixtureName: "class-direct-state-mutation",
+    claim: ReactProofClaim.ClassStateTransitions,
+    evidencePattern: /mutated directly outside construction/,
+  },
+  {
+    fixtureName: "class-state-mutating-call",
+    claim: ReactProofClaim.ClassStateTransitions,
+    evidencePattern: /mutated directly outside construction/,
+  },
+  {
+    fixtureName: "class-unmount-state-mutation",
+    claim: ReactProofClaim.ClassStateTransitions,
+    evidencePattern: /mutated directly outside construction/,
+  },
   {
     fixtureName: "class-update-loop",
     claim: ReactProofClaim.ClassStateTransitions,
@@ -430,6 +447,8 @@ describe("proveReactApp", () => {
     "proved-class-timeout",
     "proved-class-prop-transition",
     "proved-class-pure-state-updater",
+    "proved-class-primitive-state-read",
+    "proved-class-state-computed-key-read",
     "proved-class-compound-prop-transition",
     "proved-class-number-literal-prop-transition",
   ])("proves the complete %s application graph", (fixtureName) => {
@@ -490,8 +509,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(14);
-    expect(report.graph.schemaVersion).toBe(20);
+    expect(report.schemaVersion).toBe(15);
+    expect(report.graph.schemaVersion).toBe(21);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -2414,6 +2433,113 @@ describe("proveReactApp", () => {
     expect(updaterCallback?.kind).toBe(ReactSemanticCallbackKind.ClassStateUpdater);
     expect(updaterCallback?.phase).toBe(ReactExecutionPhase.StateTransition);
     expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("refutes direct class state mutation in every commit lifecycle phase", () => {
+    const mountReport = proveFixture("class-direct-state-mutation");
+    const updateReport = proveFixture("class-state-mutating-call");
+    const unmountReport = proveFixture("class-unmount-state-mutation");
+    const mountWrite = mountReport.graph.classStateWrites[0];
+    const updateWrite = updateReport.graph.classStateWrites[0];
+    const unmountWrite = unmountReport.graph.classStateWrites[0];
+
+    expect(mountWrite?.phase).toBe(ReactExecutionPhase.ClassMount);
+    expect(mountWrite?.kind).toBe(ReactClassStateWriteKind.Assignment);
+    expect(updateWrite?.phase).toBe(ReactExecutionPhase.ClassUpdate);
+    expect(updateWrite?.kind).toBe(ReactClassStateWriteKind.MutatingCall);
+    expect(unmountWrite?.phase).toBe(ReactExecutionPhase.ClassUnmount);
+    expect(unmountWrite?.kind).toBe(ReactClassStateWriteKind.Assignment);
+    for (const [report, stateWrite] of [
+      [mountReport, mountWrite],
+      [updateReport, updateWrite],
+      [unmountReport, unmountWrite],
+    ] as const) {
+      expect(report.status).toBe(ReactAppProofStatus.Refuted);
+      expect(stateWrite?.status).toBe(ReactClassStateWriteStatus.Forbidden);
+      expect(stateWrite?.sourceComplete).toBe(true);
+      expect(stateWrite?.complete).toBe(false);
+      expect(report.graph.classLifecycles[0]?.stateWriteIds).toEqual([stateWrite?.id]);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    }
+  });
+
+  it.each(["incomplete-class-state-alias", "incomplete-class-conditional-state-alias"])(
+    "fails closed when an object-valued class state reference escapes in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const stateWrite = report.graph.classStateWrites[0];
+      const transitionProof = report.units[0]?.obligations.find(
+        (obligation) => obligation.claim === ReactProofClaim.ClassStateTransitions,
+      );
+
+      expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+      expect(stateWrite?.kind).toBe(ReactClassStateWriteKind.ReferenceEscape);
+      expect(stateWrite?.status).toBe(ReactClassStateWriteStatus.Unknown);
+      expect(stateWrite?.sourceComplete).toBe(false);
+      expect(transitionProof?.status).toBe(ReactObligationStatus.Unknown);
+      expect(transitionProof?.evidence[0]?.description).toMatch(/ownership boundary/);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("classifies assignment, update, delete, and platform mutator state writes", () => {
+    const report = proveFixture("class-state-mutation-forms");
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(report.graph.classStateWrites.map((stateWrite) => stateWrite.kind)).toEqual([
+      ReactClassStateWriteKind.Assignment,
+      ReactClassStateWriteKind.Update,
+      ReactClassStateWriteKind.Delete,
+      ReactClassStateWriteKind.MutatingCall,
+      ReactClassStateWriteKind.MutatingCall,
+      ReactClassStateWriteKind.MutatingCall,
+    ]);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("refutes a direct state write reached through a certified deferred class callback", () => {
+    const report = proveFixture("class-deferred-state-mutation");
+    const stateWrite = report.graph.classStateWrites[0];
+    const callback = report.graph.callbacks.find(
+      (candidate) => candidate.id === stateWrite?.callbackId,
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(stateWrite?.phase).toBe(ReactExecutionPhase.Deferred);
+    expect(stateWrite?.kind).toBe(ReactClassStateWriteKind.Assignment);
+    expect(callback?.kind).toBe(ReactSemanticCallbackKind.ResourceCallback);
+    expect(report.graph.classLifecycles[0]?.stateWriteIds).toEqual([stateWrite?.id]);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("does not call a user-defined persistent push method a direct mutation", () => {
+    const report = proveFixture("incomplete-class-custom-push");
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.classStateWrites).toEqual([]);
+    expect(report.graph.classLifecycles[0]?.sourceComplete).toBe(false);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a class state ownership certificate that marks a forbidden write complete", () => {
+    const report = proveFixture("class-direct-state-mutation");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        classStateWrites: report.graph.classStateWrites.map((stateWrite) => ({
+          ...stateWrite,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("class state write is complete"),
+      ),
+    ).toBe(true);
   });
 
   it("fails closed on PureComponent convergence, commit callbacks, and destructured guards", () => {

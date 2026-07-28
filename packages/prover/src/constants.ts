@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 14;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 20;
+export const REACT_PROOF_SCHEMA_VERSION = 15;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 21;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -129,6 +129,14 @@ export const MUTATING_METHOD_NAMES = new Set([
   "sort",
   "splice",
   "unshift",
+]);
+
+export const CLASS_STATE_MUTATING_METHOD_NAMES = new Set([
+  ...MUTATING_METHOD_NAMES,
+  "add",
+  "clear",
+  "delete",
+  "set",
 ]);
 
 export const REACT_RUNTIME_MODULE_NAMES = new Set([

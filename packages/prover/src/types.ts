@@ -433,6 +433,7 @@ export interface ReactSemanticClassLifecycle {
   updateCallbackId: string | null;
   resourceIds: ReadonlyArray<string>;
   schedulerIds: ReadonlyArray<string>;
+  stateWriteIds: ReadonlyArray<string>;
   transitionIds: ReadonlyArray<string>;
   sourceComplete: boolean;
   complete: boolean;
@@ -451,6 +452,36 @@ export enum ReactClassUpdateCycleStatus {
   Guaranteed = "guaranteed",
   None = "none",
   Unknown = "unknown",
+}
+
+export enum ReactClassStateWriteKind {
+  Assignment = "assignment",
+  Delete = "delete",
+  MutatingCall = "mutating-call",
+  ReferenceEscape = "reference-escape",
+  Update = "update",
+}
+
+export enum ReactClassStateWriteStatus {
+  Forbidden = "forbidden",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticClassStateWrite {
+  id: string;
+  ownerId: string;
+  callbackId: string;
+  phase:
+    | ReactExecutionPhase.ClassMount
+    | ReactExecutionPhase.ClassUnmount
+    | ReactExecutionPhase.ClassUpdate
+    | ReactExecutionPhase.Deferred
+    | ReactExecutionPhase.StateTransition;
+  location: ReactProofLocation;
+  kind: ReactClassStateWriteKind;
+  status: ReactClassStateWriteStatus;
+  sourceComplete: boolean;
+  complete: boolean;
 }
 
 export interface ReactSemanticClassStateTransition {
@@ -529,6 +560,7 @@ export interface ReactSemanticGraph {
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
   resources: ReadonlyArray<ReactSemanticEffectResource>;
   classLifecycles: ReadonlyArray<ReactSemanticClassLifecycle>;
+  classStateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
   classStateTransitions: ReadonlyArray<ReactSemanticClassStateTransition>;
   compiler: ReactCompilerGraph;
 }

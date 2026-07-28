@@ -745,7 +745,7 @@ components and hooks, including hooks hidden in incorrectly named helper functio
 
 ### Test stack
 
-Current checkpoint: 222 TypeScript fixture projects, 411 static tests, and 32 Chromium runtime
+Current checkpoint: 232 TypeScript fixture projects, 423 static tests, and 33 Chromium runtime
 oracles.
 
 - Vite Plus supplies package build and Vitest-compatible static tests.
@@ -950,3 +950,80 @@ Added corpus:
   `incomplete-class-destructured-prop-transition`,
   `incomplete-class-nested-prop-transition`, `incomplete-class-number-prop-transition`, and
   `incomplete-class-opaque-state-updater`
+
+## Class state-ownership certificates
+
+### React semantics
+
+- The official [`Component` reference](https://react.dev/reference/react/Component) states that
+  class state must be an object and must not be mutated directly. State changes after
+  construction go through `setState`.
+- The same reference makes the construction boundary exact: a constructor is the only method
+  where assigning `this.state` directly is valid, and a public `state = { ... }` field is the
+  modern equivalent.
+- The browser oracle demonstrates the observable failure mode: assigning
+  `this.state.count = nextCount` changes the owned object but does not schedule a render, so the
+  committed DOM remains stale.
+
+### Proof boundary
+
+The earlier state-transition certificate modeled `setState` calls but could incorrectly prove a
+lifecycle containing only `this.state.value = nextValue`, because no React transition call existed
+to add to the graph. Class lifecycle collection now emits a state-write fact for assignments,
+compound assignments, updates, deletes, `Object.assign`, array mutators, and `Map`/`Set` mutators
+in mount, update, unmount, deferred resource/scheduler callback, and state-updater phases.
+
+Mutator calls require both a state-rooted receiver and a TypeScript symbol declared by the
+platform collection type. A user-defined persistent method named `push` is not refuted as a
+mutation; its unmodeled call keeps the lifecycle incomplete. A state read used only as a primitive
+value or computed key remains provable. An object-valued `this.state` path copied into an alias,
+argument, return, property, array, or spread is recorded as an unknown reference escape instead of
+assuming later writes cannot reach React-owned state.
+
+Each write fact is linked reciprocally to its exact lifecycle callback and records phase, write
+kind, ownership status, source completeness, and certificate completeness. The independent
+checker derives a forbidden write as a violation, an escaped reference as unknown, rejects forged
+phase/owner/completeness facts, and includes every write in the lifecycle completeness equation.
+Report schema 15 and graph schema 21 reject stale certificates.
+
+Constructor initialization and public object-valued `state` fields remain unmodeled at this
+checkpoint, so they still make the class unit incomplete rather than being confused with
+post-construction mutation. Alias writes beyond the proved direct receiver are likewise unknown
+until the graph carries a complete state-reference flow.
+
+Added corpus:
+
+- proved: `proved-class-primitive-state-read` and
+  `proved-class-state-computed-key-read`
+- refuted: `class-direct-state-mutation`, `class-state-mutating-call`,
+  `class-state-mutation-forms`, `class-unmount-state-mutation`, and
+  `class-deferred-state-mutation`
+- incomplete: `incomplete-class-state-alias`, `incomplete-class-conditional-state-alias`, and
+  `incomplete-class-custom-push`
+- runtime: `class-state-ownership-oracle.spec.ts`
+
+### Product brief: internal class state-ownership facts
+
+Job: Prover consumers need a trustworthy answer when class code bypasses React's state scheduler;
+previously they received a false proof or had to inspect lifecycle code manually.
+
+Change: Extend the existing class lifecycle and `class-state-transitions` obligation with the
+smallest certificate fact that distinguishes forbidden direct writes from unresolved state
+reference escape.
+
+Reuse: Truffler searches for class state mutation, initialization, assignment, and symbol helpers
+found no duplicate prover implementation. The change reuses the existing lifecycle callbacks,
+TypeScript symbol resolution, platform declaration identity, transition obligation, and
+independent checker rather than adding another public claim.
+
+Metric: This is a private `0.0.0` proof-kernel package with no CLI telemetry path. Its deterministic
+acceptance metric is 100% separation of the direct-mutation fixtures from the primitive-read,
+computed-key, and user-defined persistent-method controls.
+
+Compat: No React Doctor CLI, score, config, Action, or JSON report changes. The private prover
+report moves to schema 15 and its semantic graph to schema 21; no Changeset is warranted before
+the package has a published contract.
+
+Kill: If `classStateWrites` produces no verdict distinct from generic lifecycle incompleteness in
+the real-world evaluation corpus across two proof-schema releases, fold the facts back into the
+transition representation while retaining the direct-mutation refutations.

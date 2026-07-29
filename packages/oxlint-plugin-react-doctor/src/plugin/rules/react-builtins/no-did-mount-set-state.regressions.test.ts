@@ -519,6 +519,34 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it.each([
+    `instance.monthContainer = element ?? undefined;`,
+    `Object.assign(instance, { monthContainer: element });`,
+    `Reflect.set(instance, "monthContainer", element);`,
+  ])("stays silent when a callback ref writes through a this alias: %s", (refWrite) => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          const instance = this;
+          ${refWrite}
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when the payload reads a static bracket callback-ref field", () => {
     const result = runRule(
       noDidMountSetState,
@@ -717,6 +745,60 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a destructured callback-ref handler invoked with a prop value", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          const { setMonthContainerRef } = this;
+          setMonthContainerRef(this.props.monthContainer);
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a destructured callback-ref handler is only used as a ref", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          const { setMonthContainerRef } = this;
+          return (
+            <>
+              <div ref={this.setMonthContainerRef} />
+              <div ref={setMonthContainerRef} />
+            </>
+          );
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it.each([

@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { collectMutationReceiverKinds } from "../../utils/collect-mutation-receiver-kinds.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
@@ -632,7 +633,60 @@ const getWriterMemberName = (writerFunction: EsTreeNode): string | null => {
   return getStaticPropertyKeyName(parent, { allowComputedString: true });
 };
 
-const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: string): boolean => {
+const isInsideNode = (node: EsTreeNode, ancestorNode: EsTreeNode): boolean => {
+  let ancestor: EsTreeNode | null | undefined = node;
+  while (ancestor) {
+    if (ancestor === ancestorNode) return true;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const getDestructuredThisMemberSymbols = (
+  classNode: EsTreeNode,
+  memberName: string,
+  thisAliasNames: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
+): readonly SymbolDescriptor[] => {
+  const symbols: SymbolDescriptor[] = [];
+  walkAst(classNode, (node) => {
+    if (
+      node !== classNode &&
+      (isNodeOfType(node, "ClassDeclaration") || isNodeOfType(node, "ClassExpression"))
+    ) {
+      return false;
+    }
+    if (
+      !isNodeOfType(node, "VariableDeclarator") ||
+      !isNodeOfType(node.id, "ObjectPattern") ||
+      !node.init ||
+      !isThisOrAlias(node.init, thisAliasNames)
+    ) {
+      return;
+    }
+    for (const property of node.id.properties) {
+      if (
+        !isNodeOfType(property, "Property") ||
+        getStaticPropertyKeyName(property, { allowComputedString: true }) !== memberName
+      ) {
+        continue;
+      }
+      const bindingIdentifier = isNodeOfType(property.value, "AssignmentPattern")
+        ? property.value.left
+        : property.value;
+      if (!isNodeOfType(bindingIdentifier, "Identifier")) continue;
+      const symbol = scopes.symbolFor(bindingIdentifier);
+      if (symbol) symbols.push(symbol);
+    }
+  });
+  return symbols;
+};
+
+const hasExclusiveCallbackRefFieldWrite = (
+  classNode: EsTreeNode,
+  fieldName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (fieldName.startsWith("#")) return false;
   const receiverKinds = collectMutationReceiverKinds(classNode);
   const thisAliasNames = collectThisAliasNames(classNode);
@@ -714,7 +768,25 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
       return false;
     }
   });
-  return !didFindNonRefUsage;
+  if (didFindNonRefUsage) return false;
+  const destructuredHandlerSymbols = getDestructuredThisMemberSymbols(
+    classNode,
+    writerMemberName,
+    thisAliasNames,
+    scopes,
+  );
+  if (
+    destructuredHandlerSymbols.some((symbol) =>
+      symbol.references.some(
+        (reference) =>
+          !isInsideNode(reference.identifier, symbol.declarationNode) &&
+          !isInsideRefAttribute(reference.identifier),
+      ),
+    )
+  ) {
+    return false;
+  }
+  return true;
 };
 
 // A setState after an `await` in an async componentDidMount is the
@@ -800,7 +872,7 @@ export const noDidMountSetState = defineRule({
           const exclusivelyRefOwnedFieldNames = enclosingClass
             ? new Set(
                 [...callbackRefFieldNames].filter((fieldName) =>
-                  hasExclusiveCallbackRefFieldWrite(enclosingClass, fieldName),
+                  hasExclusiveCallbackRefFieldWrite(enclosingClass, fieldName, context.scopes),
                 ),
               )
             : new Set<string>();

@@ -333,6 +333,57 @@ const getCallbackRefAssignedFields = (
   const body = (callback as { body?: EsTreeNode }).body;
   if (!body) return new Set();
   const receiverKinds = collectMutationReceiverKinds(callback);
+  const thisAliasNames = new Set<string>();
+  let didAddThisAlias = true;
+  while (didAddThisAlias) {
+    didAddThisAlias = false;
+    walkAst(body, (node) => {
+      if (
+        node !== body &&
+        ((FUNCTION_NODE_TYPES.has(node.type) && !isImmediatelyInvokedFunction(node)) ||
+          CLASS_NODE_TYPES.has(node.type))
+      ) {
+        return false;
+      }
+      if (
+        !isNodeOfType(node, "VariableDeclarator") ||
+        !isNodeOfType(node.id, "Identifier") ||
+        !node.init
+      ) {
+        return;
+      }
+      const initializer = stripParenExpression(node.init);
+      if (
+        !isNodeOfType(initializer, "ThisExpression") &&
+        (!isNodeOfType(initializer, "Identifier") || !thisAliasNames.has(initializer.name))
+      ) {
+        return;
+      }
+      if (thisAliasNames.has(node.id.name)) return;
+      thisAliasNames.add(node.id.name);
+      didAddThisAlias = true;
+    });
+  }
+  const isThisOrAlias = (node: EsTreeNode): boolean => {
+    const candidate = stripParenExpression(node);
+    return (
+      isNodeOfType(candidate, "ThisExpression") ||
+      (isNodeOfType(candidate, "Identifier") && thisAliasNames.has(candidate.name))
+    );
+  };
+  const getThisOrAliasFieldName = (node: EsTreeNode): string | null => {
+    const candidate = stripParenExpression(node);
+    if (
+      !isNodeOfType(candidate, "MemberExpression") ||
+      !isThisOrAlias(candidate.object as EsTreeNode)
+    ) {
+      return null;
+    }
+    if (isNodeOfType(candidate.property, "PrivateIdentifier")) {
+      return `#${candidate.property.name}`;
+    }
+    return getStaticPropertyKeyName(candidate, { allowComputedString: true });
+  };
   const assignedFieldNames = new Set<string>();
   walkAst(body, (node) => {
     if (
@@ -350,7 +401,7 @@ const getCallbackRefAssignedFields = (
         (node.argument as EsTreeNode)) ||
       null;
     if (assignmentTarget) {
-      const fieldName = getThisFieldName(assignmentTarget);
+      const fieldName = getThisOrAliasFieldName(assignmentTarget);
       if (!fieldName) return;
       if (
         isNodeOfType(node, "AssignmentExpression") &&
@@ -372,11 +423,7 @@ const getCallbackRefAssignedFields = (
     if (!receiverKind) return;
     const methodName = getStaticPropertyKeyName(callee, { allowComputedString: true });
     const [target, propertyOrSource, assignedValue, ...remainingArguments] = node.arguments;
-    if (
-      !target ||
-      isNodeOfType(target, "SpreadElement") ||
-      !isNodeOfType(stripParenExpression(target as EsTreeNode), "ThisExpression")
-    ) {
+    if (!target || isNodeOfType(target, "SpreadElement") || !isThisOrAlias(target as EsTreeNode)) {
       return;
     }
     if (receiverKind === "object" && methodName === "assign") {

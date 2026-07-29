@@ -506,6 +506,82 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  it("traces a React HoC component through a CommonJS named export", () => {
+    expectPass(
+      `const { memo } = require("react");
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       exports.Feature = memo(FeatureImpl);`,
+    );
+  });
+
+  it("traces a React HoC component through CommonJS default exports", () => {
+    const sources = [
+      `const { memo } = require("react");
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       module.exports = memo(FeatureImpl);`,
+      `const { memo } = require("react");
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       module.exports = { Feature: memo(FeatureImpl) };`,
+      `function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       module.exports.Feature = FeatureImpl;`,
+    ];
+    for (const source of sources) expectPass(source);
+  });
+
+  it("counts a direct CommonJS component assignment as the public feature surface", () => {
+    expectPass(
+      `function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       exports.Feature = () => <><PrivateHeader /><PrivateBody /></>;`,
+    );
+  });
+
+  it("does not count shadowed CommonJS namespace assignments as components", () => {
+    const sources = [
+      `const exports = {};
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function Gamma() { return <div />; }
+       exports.Feature = () => <main />;`,
+      `const module = { exports: {} };
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function Gamma() { return <div />; }
+       module.exports.Feature = () => <main />;`,
+    ];
+    for (const source of sources) {
+      const result = runRule(noMultiComp, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(2);
+    }
+  });
+
+  it("does not infer a public surface from a shadowed CommonJS namespace", () => {
+    const sources = [
+      `const { memo } = require("react");
+       const exports = {};
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       exports.Feature = memo(FeatureImpl);`,
+      `const { memo } = require("react");
+       const module = { exports: {} };
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       module.exports = memo(FeatureImpl);`,
+    ];
+    for (const source of sources) expectFail(source);
+  });
+
   it("detects components wrapped by a TypeScript import-equals React namespace", () => {
     expectFail(
       `import React = require("react");

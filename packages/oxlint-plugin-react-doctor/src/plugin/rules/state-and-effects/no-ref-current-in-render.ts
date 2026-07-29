@@ -4,6 +4,7 @@ import { containsNonDeterministicSource } from "../../utils/contains-non-determi
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -424,6 +425,7 @@ const hasNoCoExecutableCompetingWrite = (
       deferredExecutionBoundary !== null &&
       deferredExecutionBoundary !== renderOwner &&
       !synchronouslyInvokedFunctions.has(deferredExecutionBoundary) &&
+      !executesDuringRender(deferredExecutionBoundary, scopes) &&
       deferredWriteValue !== null &&
       !isNodeOfType(deferredWriteValue, "CallExpression") &&
       isProvablyTruthyInitializationValue(deferredWriteValue, scopes);

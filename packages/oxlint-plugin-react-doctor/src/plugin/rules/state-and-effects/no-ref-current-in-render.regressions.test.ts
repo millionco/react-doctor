@@ -531,4 +531,37 @@ describe("no-ref-current-in-render — predictable initialization proofs", () =>
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it.each([
+    [
+      "useMemo",
+      `import { useMemo, useRef } from "react";
+       const Panel = () => {
+         const mapRef = useRef<Map<string, string> | null>(null);
+         if (mapRef.current === null) mapRef.current = new Map();
+         useMemo(() => {
+           mapRef.current = new Map([["ready", "yes"]]);
+           return mapRef.current;
+         }, []);
+         return null;
+       };`,
+    ],
+    [
+      "a lazy useState initializer",
+      `import React from "react";
+       const Panel = () => {
+         const mapRef = React.useRef<Map<string, string> | null>(null);
+         if (mapRef.current === null) mapRef.current = new Map();
+         React.useState(() => {
+           mapRef.current = new Map([["ready", "yes"]]);
+           return mapRef.current;
+         });
+         return null;
+       };`,
+    ],
+  ])("reports both co-executable writes for %s", (_name, code) => {
+    const result = run(code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
 });

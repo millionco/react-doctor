@@ -12,6 +12,7 @@ import {
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -348,8 +349,10 @@ const getReactHocWrappedIdentifierName = (
   let current = unwrapTsCast(expression);
   if (isNodeOfType(current, "Identifier")) {
     const symbol = scopes.symbolFor(current);
-    if (!symbol?.initializer) return null;
-    current = unwrapTsCast(symbol.initializer);
+    if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) return null;
+    const initializer = getDirectConstInitializer(symbol);
+    if (!initializer) return null;
+    current = unwrapTsCast(initializer);
   }
   if (!isNodeOfType(current, "CallExpression") || !isHocCall(current, scopes)) return null;
   const wrappedArgument = current.arguments[0];

@@ -137,6 +137,30 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  it("does not trace an overwritten mutable React HoC alias", () => {
+    expectFail(
+      `import { memo } from "react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       let Feature = memo(FeatureImpl);
+       Feature = 42;
+       export default Feature;`,
+    );
+  });
+
+  it("does not trace a later React HoC assignment to a mutable alias", () => {
+    expectFail(
+      `import { memo } from "react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       let Feature = FeatureImpl;
+       Feature = memo(FeatureImpl);
+       export default Feature;`,
+    );
+  });
+
   it("does not treat a shadowed memo function as a React export wrapper", () => {
     expectFail(
       `const memo = (_component) => 0;

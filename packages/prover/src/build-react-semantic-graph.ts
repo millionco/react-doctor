@@ -32,6 +32,7 @@ import { collectHookBindings } from "./collect-hook-bindings.js";
 import { collectHookCalls } from "./collect-hook-calls.js";
 import { collectHostControlProtocols } from "./collect-host-control-protocols.js";
 import { collectHookStateTransitions } from "./collect-hook-state-transitions.js";
+import { collectHydrationEquivalence } from "./collect-hydration-equivalence.js";
 import { collectImperativeHandles, ImperativeHandleRefKind } from "./collect-imperative-handles.js";
 import type {
   ImperativeHandleDescriptor,
@@ -78,6 +79,9 @@ import { mergeCallableBindings } from "./resolve-callable-expression.js";
 import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
 import { collectPropertySymbolWrites } from "./utils/collect-property-symbol-writes.js";
 import { collectSymbolWrites } from "./utils/collect-symbol-writes.js";
+import { createSemanticId } from "./utils/create-semantic-id.js";
+import { getExpressionSymbol } from "./utils/get-expression-symbol.js";
+import { resolveAliasedSymbol } from "./utils/resolve-aliased-symbol.js";
 import {
   ReactActionStateDispatchKind,
   ReactActionStateDispatchStatus,
@@ -481,16 +485,6 @@ interface LazyGraphFacts {
   renders: ReadonlyArray<ReactSemanticLazyRender>;
 }
 
-const createSemanticId = (
-  kind: string,
-  name: string,
-  node: ts.Node,
-  context: ReactAnalysisContext,
-): string => {
-  const location = getNodeLocation(node, context.rootDirectory);
-  return `${location.filePath}:${location.line}:${location.column}:${kind}:${name}`;
-};
-
 const getDeclarationNameNode = (descriptor: ReactUnitDescriptor): ts.Node | null => {
   if (descriptor.classNode) return descriptor.classNode.name ?? descriptor.classNode;
   const functionNode = descriptor.functionNode;
@@ -506,9 +500,6 @@ const getDeclarationNameNode = (descriptor: ReactUnitDescriptor): ts.Node | null
   }
   return functionNode;
 };
-
-const resolveAliasedSymbol = (symbol: ts.Symbol, typeChecker: ts.TypeChecker): ts.Symbol =>
-  symbol.flags & ts.SymbolFlags.Alias ? typeChecker.getAliasedSymbol(symbol) : symbol;
 
 const isDeclarationExported = (
   declaration: ts.Node,
@@ -548,14 +539,6 @@ const isDescriptorExported = (
     ? (typeChecker.getSymbolAtLocation(declarationName) ?? null)
     : null;
   return isDeclarationExported(descriptor.node, declarationSymbol, typeChecker);
-};
-
-const getExpressionSymbol = (
-  expression: ts.Expression | ts.JsxTagNameExpression,
-  typeChecker: ts.TypeChecker,
-): ts.Symbol | null => {
-  const symbol = typeChecker.getSymbolAtLocation(expression);
-  return symbol ? resolveAliasedSymbol(symbol, typeChecker) : null;
 };
 
 const collectContextDefinitions = (
@@ -6154,6 +6137,16 @@ export const buildReactSemanticGraph = (
     renderIds: renderIdsBySuspenseBoundaryId.get(boundary.id) ?? [],
   }));
   const callableRefs = collectCallableRefGraph(identities, callbacks, functionCalls, context);
+  const hydrationGraph = collectHydrationEquivalence(
+    identities.map((identity) => identity.descriptor),
+    identities.map((identity) => identity.semanticUnit),
+    sourceFiles,
+    unitIdsBySymbol,
+    edges,
+    slotGraph.renders,
+    slotGraph.slotFlows,
+    context,
+  );
   return {
     schemaVersion: REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
     actionStates,
@@ -6172,6 +6165,9 @@ export const buildReactSemanticGraph = (
     errorBoundaries,
     renderFailures: renderErrorGraph.failures,
     useResources: useResourceGraph.resources,
+    hydrationRoots: hydrationGraph.roots,
+    hydrationHazards: hydrationGraph.hazards,
+    hydrations: hydrationGraph.hydrations,
     hostControls,
     suspenseBoundaries,
     lazyComponents: lazyGraph.components,

@@ -82,6 +82,7 @@ declare module "react" {
     createHandle: () => Handle,
     dependencies?: ReadonlyArray<unknown>,
   ) => void;
+  export const useId: () => string;
   export const useMemo: <Value>(
     factory: () => Value,
     dependencies: ReadonlyArray<unknown>,
@@ -144,6 +145,38 @@ declare module "react/jsx-runtime" {
   export const Fragment: unknown;
   export const jsx: (...argumentsList: ReadonlyArray<unknown>) => unknown;
   export const jsxs: (...argumentsList: ReadonlyArray<unknown>) => unknown;
+}
+
+declare module "react-dom/client" {
+  export interface Root {
+    render(children: unknown): void;
+  }
+
+  export interface RootOptions {
+    identifierPrefix?: string;
+    onRecoverableError?: (error: unknown) => void;
+  }
+
+  export const createRoot: (container: Element | DocumentFragment, options?: RootOptions) => Root;
+  export const hydrateRoot: (
+    container: Element | Document,
+    children: unknown,
+    options?: RootOptions,
+  ) => Root;
+}
+
+declare module "react-dom/server" {
+  export interface ServerOptions {
+    identifierPrefix?: string;
+  }
+
+  export const renderToPipeableStream: (children: unknown, options?: ServerOptions) => unknown;
+  export const renderToReadableStream: (
+    children: unknown,
+    options?: ServerOptions,
+  ) => Promise<ReadableStream>;
+  export const renderToStaticMarkup: (children: unknown, options?: ServerOptions) => string;
+  export const renderToString: (children: unknown, options?: ServerOptions) => string;
 }
 
 declare namespace JSX {

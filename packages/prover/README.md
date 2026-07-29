@@ -108,6 +108,16 @@ The report includes:
   conflicting controlled/default props, known ownership switches, missing writes, deferred writes,
   conditional writes, and transformed values are refuted, while prop contracts, overriding
   spreads, dynamic input kinds, file values, and multiple-select transforms fail closed;
+- hydration-equivalence facts that identify module-executed, source-resolved `hydrateRoot`,
+  `renderToString`, `renderToPipeableStream`, `renderToReadableStream`, and
+  `renderToStaticMarkup` calls, resolve their root component and `identifierPrefix`, and propagate
+  each root through effective project renders, ReactNode slots, and custom Hooks; an exact
+  interactive server/client pair is certified only when its prefix agrees and every modeled
+  first-render value is environment-independent, while browser-global output, `typeof window`
+  render branches, host-default locale formatting, static-markup hydration, and prefix mismatch
+  are refuted; dynamic roots, options, multiple candidate roots, and open slot topology fail
+  closed; function-owned and framework-generated entrypoints require adapters, while CSR-only
+  `createRoot` trees remain outside the theorem;
 - Action State facts that identify canonical `useActionState` tuples, resolve each reducer Action
   without imposing reducer purity, and classify every dispatcher call or escape; a dispatch is
   certified only when every represented root is a Form Action, an Action State reducer, or a
@@ -196,6 +206,12 @@ callbacks, reciprocal direct-value state transitions, and exact status, source, 
 claim-verdict equations. An exact update must have a complete event callback and state-transition
 link; the checker rejects forged ownership, mutability, update, callback, transition, and verdict
 facts.
+Hydration certificates additionally require canonical root API/kind agreement, known unit
+targets, coherent prefix facts, one certificate per semantic unit, owner-qualified environment
+hazards, and exact root sources independently propagated through render, slot, and custom-Hook
+edges. The checker recomputes the server/client/static root partitions, topology uncertainty,
+hazard ownership, equivalence status, source completeness, and per-unit claim verdict, rejecting
+forged root, hazard, source, prefix, status, and completeness combinations.
 Transition Action certificates require a valid non-render execution root, a symbol-identified
 starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
 source/completeness equations. The checker rejects forged synchronous, controlled-input,

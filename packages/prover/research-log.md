@@ -2379,3 +2379,127 @@ telemetry or Changeset is warranted before publication.
 Kill: If a complete host-control protocol produces a false `proved` ownership or update result in
 two proof-schema releases, remove exact host-control certification and retain only explicit
 counterexamples until component contracts or compiler-backed value SSA closes the missing flow.
+
+## Whole-tree hydration-equivalence certificates
+
+### React contract and realistic evidence
+
+React's [`hydrateRoot`](https://react.dev/reference/react-dom/client/hydrateRoot) contract requires
+the first client render to produce output identical to the server HTML. React documents mismatches
+as application bugs, not a reconciliation strategy: development warns, recovery may regenerate
+the tree, and mismatched event handlers can attach to the wrong elements. The documented common
+causes include `typeof window !== "undefined"`, browser-only APIs such as `window.matchMedia`, and
+different server/client data. `suppressHydrationWarning` is a one-level escape hatch which does not
+patch mismatched text, so it cannot discharge an equivalence proof.
+
+[`renderToString`](https://react.dev/reference/react-dom/server/renderToString) and the streaming
+server APIs produce HTML intended for `hydrateRoot`; their `identifierPrefix` must match the
+client option so `useId` identities agree.
+[`renderToStaticMarkup`](https://react.dev/reference/react-dom/server/renderToStaticMarkup)
+explicitly produces output that cannot be hydrated.
+[`createRoot`](https://react.dev/reference/react-dom/client/createRoot) is a client-render root,
+not evidence that a component has an SSR first-render obligation.
+
+React Bench's `/home/aidenybai/Developer/react-bench-internal/docs/RD_FN_FP.md` records two
+concrete misses which motivated the theorem: `RD-FN-009`, server/client branching through
+browser-global availability, and `RD-FN-062`,
+host-locale or time-zone formatting during SSR. The latter is especially important because
+`toLocaleString()` can be pure and deterministic within one process while still differing across
+the server and browser environments. A render-purity theorem alone cannot prove hydration. The
+source-verified `fix-react-rdh-rad-ui-ui-theme` trials place `window.matchMedia` in a `useState`
+initializer; the `fix-react-cloudscape-design-components-4461` trials return different JSX behind
+`typeof window`; and `fix-react-rdh-sofn-xyz-mailing-settings` moves
+`new Date(apiKey.createdAt).toLocaleString()` from a client Effect into rendered memo output.
+The fixtures preserve each of those value-flow shapes.
+
+### Closed subset and fail-closed boundary
+
+The collector accepts only module-executed canonical imports or aliases from `react-dom/client`
+and `react-dom/server`. Calls nested in request handlers or other functions are recorded but remain
+unknown until an entrypoint adapter proves that execution root. It records interactive server roots from `renderToString`,
+`renderToPipeableStream`, and `renderToReadableStream`, non-hydratable roots from
+`renderToStaticMarkup`, and client roots from `hydrateRoot`. A root expression resolves through a
+direct project component, a single transparent React wrapper or Fragment child, `createElement`,
+or an immutable local alias. Dynamic ReactNode selection remains unresolved.
+
+Object-literal `identifierPrefix` options are interpreted in source order. A static string, or the
+absence of the option, is known; a dynamic options value or overriding spread is unknown. An
+equivalence certificate requires one interactive server root and one client root on the
+represented path, equal known prefixes, closed render/slot topology, and no modeled environment
+hazard. Pairing `hydrateRoot` with `renderToStaticMarkup` or a different prefix is a source-level
+counterexample. Multiple candidates and a client root without a source-visible server pair remain
+unknown because file co-location does not prove deployment pairing.
+
+Root reachability begins at the resolved component and is propagated through every effective
+direct or ReactNode-slot render and project custom-Hook edge. Incomplete slot placement adds an
+unknown source rather than silently dropping the child. Browser globals count only when they flow
+into a returned render value or a return-controlling condition; nested event handlers are not
+server-render execution. Local immutable values, synchronous render helpers, `useState`
+initializers, and output-affecting `if` and `switch` conditions are followed. Source-resolved
+zero-argument `toLocaleString`, `toLocaleDateString`, and `toLocaleTimeString`, plus host-default
+`Intl` formatter construction, are environment-dependent.
+
+The current proof does not summarize framework-generated or function-owned server/client entrypoints, dynamic root
+registries, multiple deployed root pairs, locale methods with partially explicit options, or
+arbitrary library-returned environment data. Those need framework root adapters and a broader
+abstract environment domain. A source tree with no canonical `hydrateRoot` is not judged by this
+claim; the rest of the prover still applies.
+
+### Certificate checker, corpus, and runtime calibration
+
+The semantic graph records canonical root API/kind, target, prefix, location, and completeness;
+owner-qualified environment hazards; and exactly one hydration certificate per semantic unit.
+The independent checker re-propagates root identities through render, slot, and custom-Hook edges,
+repartitions client, interactive-server, and static-server roots, recomputes topology uncertainty,
+requires exact hazard ownership, and derives equivalence, mismatch, unknown, and not-hydrated
+verdicts without trusting the analyzer's final status. Report schema 29 and graph schema 35 reject
+stale certificates.
+
+Added corpus:
+
+- proved: equal `renderToString`/`hydrateRoot` roots and prefixes, namespace-imported roots through
+  immutable `StrictMode` tree aliases, plus a CSR-only browser-global component which receives no
+  hydration obligation and same-named user functions which are rejected by symbol provenance;
+- refuted: `typeof window` output branching, direct `navigator` output, host-default
+  `toLocaleString`, a `matchMedia`-derived `useState` initializer, unequal prefixes, static-markup
+  hydration, a browser-global child reached through a transitive ReactNode slot, a browser branch
+  reached through a custom Hook, and a mismatch hidden by `suppressHydrationWarning`;
+- incomplete: dynamic ReactNode root selection, function-owned entrypoints, and a non-literal
+  client options object;
+- forged: a known hazard removed while the unit is rewritten as equivalent, rejected by the
+  checker;
+- runtime: `hydration-equivalence-oracle.spec.ts`.
+
+The React 19.2.5 Chromium oracle hydrates matching server markup without recovery, then hydrates a
+different first client render and observes both DOM regeneration and `onRecoverableError`. This
+calibrates the mismatch classification against React itself without treating browser observation
+as a proof. The complete gate now contains 635 static tests and 52 Chromium runtime oracles across
+399 checked-in fixture project configurations.
+
+### Product brief: internal hydration facts
+
+Job: Prover consumers need evidence that every source-visible SSR tree produces the same first
+client render and preserves React identity during hydration.
+
+Change: Add one private `hydration-equivalence` claim, versioned root, environment-hazard, and
+per-unit reachability facts, an independently recomputed certificate, realistic fixtures, and a
+real React hydration oracle.
+
+Reuse: Truffler searches for hydration roots, server render topology, environment-dependent render
+values, and root component resolution found no existing theorem. The implementation reuses
+canonical React import identity, semantic render and ReactNode-slot edges, custom-Hook edges,
+TypeScript default-library symbols, reachable render helpers, return summaries, immutable symbol
+writes, and proof locations.
+
+Metric: The deterministic acceptance metric separates interactive/static/CSR roots, matching and
+mismatching prefixes, browser values and branches, locale formatting, transitive slots, custom
+Hooks, dynamic roots/options, forged certificates, and equivalent/recovering Chromium hydration.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 29 and its semantic graph to schema 35. No
+telemetry or Changeset is warranted before publication.
+
+Kill: If a complete hydration protocol produces a false `proved` environment or root-pair result
+in two proof-schema releases, remove equivalence certification and retain only explicit mismatch
+counterexamples until framework root adapters or a broader environment abstract domain closes the
+missing semantics.

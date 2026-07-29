@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 28;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 34;
+export const REACT_PROOF_SCHEMA_VERSION = 29;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 35;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -177,9 +177,18 @@ export const REACT_RUNTIME_MODULE_NAMES = new Set([
   "react",
   "react-dom",
   "react-dom/client",
+  "react-dom/server",
   "react/jsx-dev-runtime",
   "react/jsx-runtime",
 ]);
+
+export const REACT_HYDRATABLE_SERVER_API_NAMES = new Set([
+  "renderToPipeableStream",
+  "renderToReadableStream",
+  "renderToString",
+]);
+
+export const REACT_STATIC_SERVER_API_NAMES = new Set(["renderToStaticMarkup"]);
 
 export const REACT_EVENT_PROP_PATTERN = /^on[A-Z]/;
 

@@ -34,6 +34,7 @@ export enum ReactProofClaim {
   HookOrder = "hook-order",
   HookOwnership = "hook-ownership",
   HookStateTransitions = "hook-state-transitions",
+  HydrationEquivalence = "hydration-equivalence",
   ImperativeHandle = "imperative-handle",
   LazySuspense = "lazy-suspense",
   MemoDependencies = "memo-dependencies",
@@ -482,6 +483,68 @@ export interface ReactSemanticUseResource {
   outsideErrorBoundary: boolean;
   errorTopologyComplete: boolean;
   errorCoverageStatus: ReactErrorBoundaryCoverageStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactHydrationRootKind {
+  Client = "client",
+  ServerInteractive = "server-interactive",
+  ServerStatic = "server-static",
+}
+
+export enum ReactHydrationPrefixStatus {
+  Known = "known",
+  Unknown = "unknown",
+}
+
+export enum ReactHydrationRootExecutionStatus {
+  Module = "module",
+  Unknown = "unknown",
+}
+
+export enum ReactHydrationHazardKind {
+  BrowserGlobal = "browser-global",
+  EnvironmentBranch = "environment-branch",
+  LocaleFormatting = "locale-formatting",
+}
+
+export enum ReactHydrationStatus {
+  Equivalent = "equivalent",
+  Mismatched = "mismatched",
+  NotHydrated = "not-hydrated",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticHydrationRoot {
+  id: string;
+  apiName: string;
+  kind: ReactHydrationRootKind;
+  targetId: string | null;
+  identifierPrefix: string | null;
+  prefixStatus: ReactHydrationPrefixStatus;
+  executionStatus: ReactHydrationRootExecutionStatus;
+  location: ReactProofLocation;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticHydrationHazard {
+  id: string;
+  ownerId: string;
+  kind: ReactHydrationHazardKind;
+  description: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactSemanticHydration {
+  id: string;
+  ownerId: string;
+  clientRootIds: ReadonlyArray<string>;
+  interactiveServerRootIds: ReadonlyArray<string>;
+  staticServerRootIds: ReadonlyArray<string>;
+  hazardIds: ReadonlyArray<string>;
+  status: ReactHydrationStatus;
   sourceComplete: boolean;
   complete: boolean;
 }
@@ -1167,6 +1230,9 @@ export interface ReactSemanticGraph {
   errorBoundaries: ReadonlyArray<ReactSemanticErrorBoundary>;
   renderFailures: ReadonlyArray<ReactSemanticRenderFailure>;
   useResources: ReadonlyArray<ReactSemanticUseResource>;
+  hydrationRoots: ReadonlyArray<ReactSemanticHydrationRoot>;
+  hydrationHazards: ReadonlyArray<ReactSemanticHydrationHazard>;
+  hydrations: ReadonlyArray<ReactSemanticHydration>;
   hostControls: ReadonlyArray<ReactSemanticHostControl>;
   suspenseBoundaries: ReadonlyArray<ReactSemanticSuspenseBoundary>;
   lazyComponents: ReadonlyArray<ReactSemanticLazyComponent>;

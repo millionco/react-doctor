@@ -22,7 +22,7 @@ import {
 } from "react";
 import type { ChangeEvent, ReactNode, Ref } from "react";
 import { useFormStatus } from "react-dom";
-import { createRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import {
   ACTION_STATE_DELAY_MS,
   ACTION_STATE_INITIAL_RUNS,
@@ -1367,28 +1367,46 @@ const RuntimeOracle = () => {
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing runtime oracle root");
 const oracle = new URLSearchParams(window.location.search).get("oracle");
-const isStrictModeOracle =
-  oracle === "class-listener" ||
-  oracle === "class-scheduler" ||
-  oracle === "class-construction" ||
-  oracle === "class-state-ownership" ||
-  oracle === "class-state-transition" ||
-  oracle === "hook-state-transition" ||
-  oracle === "lazy-suspense" ||
-  oracle === "error-boundary" ||
-  oracle === "use-resource" ||
-  oracle === "reducer-transition" ||
-  oracle === "transition-action" ||
-  oracle === "optimistic-form-action" ||
-  oracle === "action-state" ||
-  oracle === "form-status" ||
-  oracle === "form-status-slot";
-createRoot(rootElement).render(
-  isStrictModeOracle ? (
-    <StrictMode>
+const oracleMode = new URLSearchParams(window.location.search).get("mode");
+if (oracle === "hydration-equivalence") {
+  const hydrationRootElement = document.getElementById("hydration-root");
+  if (!hydrationRootElement) throw new Error("Missing hydration oracle root");
+  hydrationRootElement.hidden = false;
+  hydrateRoot(
+    hydrationRootElement,
+    <main data-testid="hydration-content">
+      {oracleMode === "mismatch" ? "Browser account" : "Server account"}
+    </main>,
+    {
+      onRecoverableError: () => {
+        document.body.dataset.hydrationMismatch = "true";
+      },
+    },
+  );
+} else {
+  const isStrictModeOracle =
+    oracle === "class-listener" ||
+    oracle === "class-scheduler" ||
+    oracle === "class-construction" ||
+    oracle === "class-state-ownership" ||
+    oracle === "class-state-transition" ||
+    oracle === "hook-state-transition" ||
+    oracle === "lazy-suspense" ||
+    oracle === "error-boundary" ||
+    oracle === "use-resource" ||
+    oracle === "reducer-transition" ||
+    oracle === "transition-action" ||
+    oracle === "optimistic-form-action" ||
+    oracle === "action-state" ||
+    oracle === "form-status" ||
+    oracle === "form-status-slot";
+  createRoot(rootElement).render(
+    isStrictModeOracle ? (
+      <StrictMode>
+        <RuntimeOracle />
+      </StrictMode>
+    ) : (
       <RuntimeOracle />
-    </StrictMode>
-  ) : (
-    <RuntimeOracle />
-  ),
-);
+    ),
+  );
+}

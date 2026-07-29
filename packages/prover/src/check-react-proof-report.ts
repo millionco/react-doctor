@@ -5,8 +5,10 @@ import {
   REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID,
   REACT_FORM_OUTSIDE_SOURCE_ID,
   REACT_FORM_UNKNOWN_SOURCE_ID,
+  REACT_HYDRATABLE_SERVER_API_NAMES,
   REACT_PROOF_SCHEMA_VERSION,
   REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
+  REACT_STATIC_SERVER_API_NAMES,
   REACT_SUSPENSE_OUTSIDE_SOURCE_ID,
   REACT_SUSPENSE_UNKNOWN_SOURCE_ID,
 } from "./constants.js";
@@ -42,6 +44,11 @@ import {
   ReactHostControlUpdateStatus,
   ReactHostControlValueStatus,
   ReactHookStateUpdaterStatus,
+  ReactHydrationHazardKind,
+  ReactHydrationPrefixStatus,
+  ReactHydrationRootKind,
+  ReactHydrationRootExecutionStatus,
+  ReactHydrationStatus,
   ReactImperativeHandleRefKind,
   ReactImperativeHandleStatus,
   ReactLazyDeclarationStatus,
@@ -88,6 +95,11 @@ const HOST_CONTROL_MUTABILITY_STATUSES = new Set(Object.values(ReactHostControlM
 const HOST_CONTROL_STATUSES = new Set(Object.values(ReactHostControlStatus));
 const HOST_CONTROL_UPDATE_STATUSES = new Set(Object.values(ReactHostControlUpdateStatus));
 const HOST_CONTROL_VALUE_STATUSES = new Set(Object.values(ReactHostControlValueStatus));
+const HYDRATION_HAZARD_KINDS = new Set(Object.values(ReactHydrationHazardKind));
+const HYDRATION_PREFIX_STATUSES = new Set(Object.values(ReactHydrationPrefixStatus));
+const HYDRATION_ROOT_KINDS = new Set(Object.values(ReactHydrationRootKind));
+const HYDRATION_ROOT_EXECUTION_STATUSES = new Set(Object.values(ReactHydrationRootExecutionStatus));
+const HYDRATION_STATUSES = new Set(Object.values(ReactHydrationStatus));
 const OPTIMISTIC_ACTION_STATUSES = new Set(Object.values(ReactOptimisticActionStatus));
 const OPTIMISTIC_REDUCER_STATUSES = new Set(Object.values(ReactOptimisticReducerStatus));
 const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionStatus));
@@ -127,6 +139,167 @@ const addFailure = (
   description: string,
 ): void => {
   failures.push({ description, subjectId });
+};
+
+interface CheckedHydrationSourceSet {
+  rootIds: Set<string>;
+  hasUnknownSource: boolean;
+}
+
+interface ExpectedHydrationProtocol {
+  clientRootIds: ReadonlyArray<string>;
+  interactiveServerRootIds: ReadonlyArray<string>;
+  staticServerRootIds: ReadonlyArray<string>;
+  hazardIds: ReadonlyArray<string>;
+  status: ReactHydrationStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+const addCheckedHydrationSource = (
+  sourcesByUnit: Map<string, CheckedHydrationSourceSet>,
+  unitId: string,
+  rootId: string,
+): boolean => {
+  let sources = sourcesByUnit.get(unitId);
+  if (!sources) {
+    sources = { rootIds: new Set(), hasUnknownSource: false };
+    sourcesByUnit.set(unitId, sources);
+  }
+  const previousSize = sources.rootIds.size;
+  sources.rootIds.add(rootId);
+  return sources.rootIds.size !== previousSize;
+};
+
+const addCheckedUnknownHydrationSource = (
+  sourcesByUnit: Map<string, CheckedHydrationSourceSet>,
+  unitId: string,
+): boolean => {
+  let sources = sourcesByUnit.get(unitId);
+  if (!sources) {
+    sources = { rootIds: new Set(), hasUnknownSource: false };
+    sourcesByUnit.set(unitId, sources);
+  }
+  if (sources.hasUnknownSource) return false;
+  sources.hasUnknownSource = true;
+  return true;
+};
+
+const deriveHydrationSourcesByUnit = (
+  report: ReactAppProofReport,
+): ReadonlyMap<string, CheckedHydrationSourceSet> => {
+  const unitIds = new Set(report.graph.units.map((unit) => unit.id));
+  const rendersById = new Map(report.graph.renders.map((render) => [render.id, render]));
+  const sourcesByUnit = new Map<string, CheckedHydrationSourceSet>();
+  for (const root of report.graph.hydrationRoots) {
+    if (root.targetId) addCheckedHydrationSource(sourcesByUnit, root.targetId, root.id);
+  }
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const render of report.graph.renders) {
+      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
+      const ownerSources = sourcesByUnit.get(render.ownerId);
+      if (!ownerSources) continue;
+      for (const rootId of ownerSources.rootIds) {
+        didSourcesChange =
+          addCheckedHydrationSource(sourcesByUnit, render.targetId, rootId) || didSourcesChange;
+      }
+      if (ownerSources.hasUnknownSource) {
+        didSourcesChange =
+          addCheckedUnknownHydrationSource(sourcesByUnit, render.targetId) || didSourcesChange;
+      }
+    }
+    for (const edge of report.graph.edges) {
+      if (edge.kind !== ReactSemanticEdgeKind.CallsHook || !unitIds.has(edge.targetId)) continue;
+      const ownerSources = sourcesByUnit.get(edge.sourceId);
+      if (!ownerSources) continue;
+      for (const rootId of ownerSources.rootIds) {
+        didSourcesChange =
+          addCheckedHydrationSource(sourcesByUnit, edge.targetId, rootId) || didSourcesChange;
+      }
+      if (ownerSources.hasUnknownSource) {
+        didSourcesChange =
+          addCheckedUnknownHydrationSource(sourcesByUnit, edge.targetId) || didSourcesChange;
+      }
+    }
+    for (const slotFlow of report.graph.slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (!sourceRender || !sourcesByUnit.has(sourceRender.ownerId)) continue;
+      didSourcesChange =
+        addCheckedUnknownHydrationSource(sourcesByUnit, sourceRender.targetId) || didSourcesChange;
+    }
+  }
+  return sourcesByUnit;
+};
+
+const expectedHydrationProtocol = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+  hydrationSourcesByUnit: ReadonlyMap<string, CheckedHydrationSourceSet>,
+): ExpectedHydrationProtocol => {
+  const rootsById = new Map(report.graph.hydrationRoots.map((root) => [root.id, root]));
+  const sources = hydrationSourcesByUnit.get(unit.id);
+  const sourceRoots = [...(sources?.rootIds ?? [])]
+    .map((rootId) => rootsById.get(rootId))
+    .filter((root): root is (typeof report.graph.hydrationRoots)[number] => Boolean(root));
+  const clientRoots = sourceRoots.filter((root) => root.kind === ReactHydrationRootKind.Client);
+  const interactiveServerRoots = sourceRoots.filter(
+    (root) => root.kind === ReactHydrationRootKind.ServerInteractive,
+  );
+  const staticServerRoots = sourceRoots.filter(
+    (root) => root.kind === ReactHydrationRootKind.ServerStatic,
+  );
+  const hazardIds = report.graph.hydrationHazards.flatMap((hazard) =>
+    hazard.ownerId === unit.id ? [hazard.id] : [],
+  );
+  const hasIncompleteRoot = report.graph.hydrationRoots.some((root) => !root.sourceComplete);
+  const hasClientRoot = report.graph.hydrationRoots.some(
+    (root) => root.kind === ReactHydrationRootKind.Client,
+  );
+  let status = ReactHydrationStatus.Unknown;
+  if (!hasClientRoot) {
+    status = ReactHydrationStatus.NotHydrated;
+  } else if (hasIncompleteRoot) {
+    status = ReactHydrationStatus.Unknown;
+  } else if (sourceRoots.length === 0) {
+    status = ReactHydrationStatus.NotHydrated;
+  } else if (
+    !hasIncompleteRoot &&
+    !sources?.hasUnknownSource &&
+    clientRoots.length === 1 &&
+    interactiveServerRoots.length === 1 &&
+    staticServerRoots.length === 0
+  ) {
+    status =
+      clientRoots[0]?.identifierPrefix === interactiveServerRoots[0]?.identifierPrefix &&
+      hazardIds.length === 0
+        ? ReactHydrationStatus.Equivalent
+        : ReactHydrationStatus.Mismatched;
+  } else if (
+    !hasIncompleteRoot &&
+    !sources?.hasUnknownSource &&
+    clientRoots.length === 1 &&
+    interactiveServerRoots.length === 0 &&
+    staticServerRoots.length === 1
+  ) {
+    status = ReactHydrationStatus.Mismatched;
+  }
+  const sourceComplete =
+    status === ReactHydrationStatus.NotHydrated ||
+    (!hasIncompleteRoot && !sources?.hasUnknownSource && status !== ReactHydrationStatus.Unknown);
+  return {
+    clientRootIds: clientRoots.map((root) => root.id),
+    interactiveServerRootIds: interactiveServerRoots.map((root) => root.id),
+    staticServerRootIds: staticServerRoots.map((root) => root.id),
+    hazardIds,
+    status,
+    sourceComplete,
+    complete:
+      sourceComplete &&
+      (status === ReactHydrationStatus.Equivalent || status === ReactHydrationStatus.NotHydrated),
+  };
 };
 
 const checkUniqueIds = (
@@ -399,6 +572,22 @@ const expectedHostControlStatus = (
   }
   return controls.some((control) => !control.complete)
     ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedHydrationStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const hydration = report.graph.hydrations.find((candidate) => candidate.ownerId === unit.id);
+  if (!hydration || hydration.status === ReactHydrationStatus.Unknown) {
+    return ReactObligationStatus.Unknown;
+  }
+  return hydration.status === ReactHydrationStatus.Mismatched
+    ? ReactObligationStatus.Violated
     : ReactObligationStatus.Proved;
 };
 
@@ -835,6 +1024,20 @@ const checkClaimCoverage = (
         `Host control facts require ${expectedControlStatus}, not ${hostControl.status}`,
       );
     }
+    const hydrationEquivalence = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.HydrationEquivalence,
+    );
+    const expectedHydrationEquivalenceStatus = expectedHydrationStatus(semanticUnit, report);
+    if (
+      hydrationEquivalence &&
+      hydrationEquivalence.status !== expectedHydrationEquivalenceStatus
+    ) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Hydration facts require ${expectedHydrationEquivalenceStatus}, not ${hydrationEquivalence.status}`,
+      );
+    }
     const transitionActions = unitProof.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.TransitionActions,
     );
@@ -1248,6 +1451,11 @@ const checkGraphReferences = (
   const formSourcesByUnit = deriveFormSourcesByUnit(report);
   const suspenseSourcesByUnit = deriveSuspenseSourcesByUnit(report);
   const errorBoundarySourcesByUnit = deriveErrorBoundarySourcesByUnit(report);
+  const hydrationSourcesByUnit = deriveHydrationSourcesByUnit(report);
+  const hydrationRootsById = new Map(report.graph.hydrationRoots.map((root) => [root.id, root]));
+  const hydrationHazardsById = new Map(
+    report.graph.hydrationHazards.map((hazard) => [hazard.id, hazard]),
+  );
   const errorBoundaryDefinitionsById = new Map(
     report.graph.errorBoundaryDefinitions.map((definition) => [definition.id, definition]),
   );
@@ -1964,6 +2172,131 @@ const checkGraphReferences = (
     }
     if (unit.kind !== ReactUnitKind.ClassComponent && unit.classComponentBase !== null) {
       addFailure(failures, unit.id, "A non-class unit declares a React class base");
+    }
+  }
+
+  for (const root of report.graph.hydrationRoots) {
+    if (!HYDRATION_ROOT_KINDS.has(root.kind)) {
+      addFailure(failures, root.id, "A hydration root has an unknown kind");
+    }
+    if (!HYDRATION_PREFIX_STATUSES.has(root.prefixStatus)) {
+      addFailure(failures, root.id, "A hydration root has an unknown prefix status");
+    }
+    if (!HYDRATION_ROOT_EXECUTION_STATUSES.has(root.executionStatus)) {
+      addFailure(failures, root.id, "A hydration root has an unknown execution status");
+    }
+    let expectedKind: ReactHydrationRootKind | null = null;
+    if (root.apiName === "hydrateRoot") {
+      expectedKind = ReactHydrationRootKind.Client;
+    } else if (REACT_HYDRATABLE_SERVER_API_NAMES.has(root.apiName)) {
+      expectedKind = ReactHydrationRootKind.ServerInteractive;
+    } else if (REACT_STATIC_SERVER_API_NAMES.has(root.apiName)) {
+      expectedKind = ReactHydrationRootKind.ServerStatic;
+    }
+    if (root.kind !== expectedKind) {
+      addFailure(failures, root.id, "A hydration root API and kind are inconsistent");
+    }
+    if (root.targetId !== null && !unitIds.has(root.targetId)) {
+      addFailure(failures, root.id, "A hydration root has an unknown target unit");
+    }
+    if (
+      (root.prefixStatus === ReactHydrationPrefixStatus.Known && root.identifierPrefix === null) ||
+      (root.prefixStatus === ReactHydrationPrefixStatus.Unknown && root.identifierPrefix !== null)
+    ) {
+      addFailure(failures, root.id, "A hydration root prefix certificate is inconsistent");
+    }
+    const expectedSourceComplete =
+      root.targetId !== null &&
+      root.prefixStatus === ReactHydrationPrefixStatus.Known &&
+      root.executionStatus === ReactHydrationRootExecutionStatus.Module;
+    if (
+      root.sourceComplete !== expectedSourceComplete ||
+      root.complete !== expectedSourceComplete
+    ) {
+      addFailure(failures, root.id, "A hydration root completeness flag is inconsistent");
+    }
+  }
+  for (const hazard of report.graph.hydrationHazards) {
+    if (!unitIds.has(hazard.ownerId)) {
+      addFailure(failures, hazard.id, "A hydration hazard has an unknown owner unit");
+    }
+    if (!HYDRATION_HAZARD_KINDS.has(hazard.kind)) {
+      addFailure(failures, hazard.id, "A hydration hazard has an unknown kind");
+    }
+  }
+  const hydrationFactsByOwnerId = new Map<string, typeof report.graph.hydrations>();
+  for (const hydration of report.graph.hydrations) {
+    const owner = unitsById.get(hydration.ownerId);
+    if (!owner) {
+      addFailure(failures, hydration.id, "A hydration certificate has an unknown owner unit");
+      continue;
+    }
+    if (!HYDRATION_STATUSES.has(hydration.status)) {
+      addFailure(failures, hydration.id, "A hydration certificate has an unknown status");
+    }
+    const rootCollections = [
+      {
+        ids: hydration.clientRootIds,
+        kind: ReactHydrationRootKind.Client,
+      },
+      {
+        ids: hydration.interactiveServerRootIds,
+        kind: ReactHydrationRootKind.ServerInteractive,
+      },
+      {
+        ids: hydration.staticServerRootIds,
+        kind: ReactHydrationRootKind.ServerStatic,
+      },
+    ];
+    for (const rootCollection of rootCollections) {
+      if (new Set(rootCollection.ids).size !== rootCollection.ids.length) {
+        addFailure(failures, hydration.id, "A hydration certificate repeats a root");
+      }
+      for (const rootId of rootCollection.ids) {
+        if (hydrationRootsById.get(rootId)?.kind !== rootCollection.kind) {
+          addFailure(failures, hydration.id, "A hydration certificate has an invalid root kind");
+        }
+      }
+    }
+    if (new Set(hydration.hazardIds).size !== hydration.hazardIds.length) {
+      addFailure(failures, hydration.id, "A hydration certificate repeats a hazard");
+    }
+    if (
+      hydration.hazardIds.some(
+        (hazardId) => hydrationHazardsById.get(hazardId)?.ownerId !== hydration.ownerId,
+      )
+    ) {
+      addFailure(failures, hydration.id, "A hydration certificate has an invalid hazard");
+    }
+    const expected = expectedHydrationProtocol(owner, report, hydrationSourcesByUnit);
+    const actualCollections = [
+      [hydration.clientRootIds, expected.clientRootIds],
+      [hydration.interactiveServerRootIds, expected.interactiveServerRootIds],
+      [hydration.staticServerRootIds, expected.staticServerRootIds],
+      [hydration.hazardIds, expected.hazardIds],
+    ];
+    if (
+      actualCollections.some(
+        ([actual, expectedIds]) =>
+          actual.length !== expectedIds.length ||
+          expectedIds.some((expectedId) => !actual.includes(expectedId)),
+      )
+    ) {
+      addFailure(failures, hydration.id, "A hydration certificate has inconsistent sources");
+    }
+    if (
+      hydration.status !== expected.status ||
+      hydration.sourceComplete !== expected.sourceComplete ||
+      hydration.complete !== expected.complete
+    ) {
+      addFailure(failures, hydration.id, "A hydration certificate has inconsistent verdict facts");
+    }
+    const ownerHydrations = hydrationFactsByOwnerId.get(hydration.ownerId) ?? [];
+    hydrationFactsByOwnerId.set(hydration.ownerId, [...ownerHydrations, hydration]);
+  }
+  for (const unit of report.graph.units) {
+    if (hydrationFactsByOwnerId.get(unit.id)?.length !== 1) {
+      addFailure(failures, unit.id, "A semantic unit has no unique hydration certificate");
     }
   }
 
@@ -4273,6 +4606,21 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "host controls",
     report.graph.hostControls.map((control) => control.id),
+  );
+  checkUniqueIds(
+    failures,
+    "hydration roots",
+    report.graph.hydrationRoots.map((root) => root.id),
+  );
+  checkUniqueIds(
+    failures,
+    "hydration hazards",
+    report.graph.hydrationHazards.map((hazard) => hazard.id),
+  );
+  checkUniqueIds(
+    failures,
+    "hydration certificates",
+    report.graph.hydrations.map((hydration) => hydration.id),
   );
   checkUniqueIds(
     failures,

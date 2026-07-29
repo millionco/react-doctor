@@ -33,6 +33,8 @@ import {
   ReactHostControlUpdateStatus,
   ReactHostControlValueStatus,
   ReactHookStateUpdaterStatus,
+  ReactHydrationRootKind,
+  ReactHydrationStatus,
   ReactIdentityStability,
   ReactImperativeHandleRefKind,
   ReactImperativeHandleStatus,
@@ -554,6 +556,51 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
     claim: ReactProofClaim.RenderPurity,
     evidencePattern: /not pure during render/,
   },
+  {
+    fixtureName: "refuted-hydration-browser-branch",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /select different server and client output/,
+  },
+  {
+    fixtureName: "refuted-hydration-browser-global",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /unavailable or different/,
+  },
+  {
+    fixtureName: "refuted-hydration-locale",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /host locale or time zone/,
+  },
+  {
+    fixtureName: "refuted-hydration-prefix",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /different hydration root contract/,
+  },
+  {
+    fixtureName: "refuted-hydration-static-markup",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /cannot hydrate/,
+  },
+  {
+    fixtureName: "refuted-hydration-state-initializer",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /unavailable or different/,
+  },
+  {
+    fixtureName: "refuted-hydration-suppressed",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /select different server and client output/,
+  },
+  {
+    fixtureName: "refuted-hydration-transitive",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /unavailable or different/,
+  },
+  {
+    fixtureName: "refuted-hydration-custom-hook",
+    claim: ReactProofClaim.HydrationEquivalence,
+    evidencePattern: /select different server and client output/,
+  },
 ];
 
 describe("proveReactApp", () => {
@@ -710,8 +757,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(28);
-    expect(report.graph.schemaVersion).toBe(34);
+    expect(report.schemaVersion).toBe(29);
+    expect(report.graph.schemaVersion).toBe(35);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -4620,6 +4667,99 @@ describe("proveReactApp", () => {
       certificate.failures.some((failure) =>
         failure.description.includes("lazy render coverage status"),
       ),
+    ).toBe(true);
+  });
+
+  it.each(["proved-hydration-equivalence", "proved-hydration-wrapper-alias"])(
+    "proves matching source-resolved server and hydration roots in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const hydrationProof = report.units
+        .find((unit) => unit.name === "App")
+        ?.obligations.find(
+          (obligation) => obligation.claim === ReactProofClaim.HydrationEquivalence,
+        );
+
+      expect(report.graph.hydrationRoots.map((root) => root.kind)).toEqual([
+        ReactHydrationRootKind.ServerInteractive,
+        ReactHydrationRootKind.Client,
+      ]);
+      expect(report.graph.hydrations[0]?.status).toBe(ReactHydrationStatus.Equivalent);
+      expect(hydrationProof?.status).toBe(ReactObligationStatus.Proved);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("does not impose hydration obligations on a browser-only createRoot tree", () => {
+    const report = proveFixture("proved-csr-browser-global");
+    const hydration = report.graph.hydrations.find(
+      (candidate) => candidate.ownerId === report.graph.units[0]?.id,
+    );
+
+    expect(report.graph.hydrationRoots).toEqual([]);
+    expect(report.graph.hydrationHazards).toEqual([]);
+    expect(hydration?.status).toBe(ReactHydrationStatus.NotHydrated);
+    expect(hydration?.complete).toBe(true);
+  });
+
+  it("rejects same-named user functions as hydration roots", () => {
+    const report = proveFixture("proved-hydration-userland-lookalike");
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(report.graph.hydrationRoots).toEqual([]);
+    expect(report.graph.hydrations[0]?.status).toBe(ReactHydrationStatus.NotHydrated);
+  });
+
+  it.each([
+    "incomplete-hydration-dynamic-root",
+    "incomplete-hydration-function-root",
+    "incomplete-hydration-prefix",
+  ])("fails closed for an unresolved hydration contract in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const hydrationProof = report.units
+      .find((unit) => unit.name === "App")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.HydrationEquivalence);
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.hydrationRoots.some((root) => !root.complete)).toBe(true);
+    expect(hydrationProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("propagates hydration reachability through slots and custom Hooks", () => {
+    const slotReport = proveFixture("refuted-hydration-transitive");
+    const hookReport = proveFixture("refuted-hydration-custom-hook");
+    const localeUnit = slotReport.graph.units.find((unit) => unit.name === "AccountLocale");
+    const hookUnit = hookReport.graph.units.find((unit) => unit.name === "useBrowserEnvironment");
+    const localeHydration = slotReport.graph.hydrations.find(
+      (hydration) => hydration.ownerId === localeUnit?.id,
+    );
+    const hookHydration = hookReport.graph.hydrations.find(
+      (hydration) => hydration.ownerId === hookUnit?.id,
+    );
+
+    expect(localeHydration?.status).toBe(ReactHydrationStatus.Mismatched);
+    expect(hookHydration?.status).toBe(ReactHydrationStatus.Mismatched);
+  });
+
+  it("rejects a forged hydration-equivalence certificate", () => {
+    const report = proveFixture("refuted-hydration-browser-branch");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        hydrations: report.graph.hydrations.map((hydration) => ({
+          ...hydration,
+          hazardIds: [],
+          status: ReactHydrationStatus.Equivalent,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("hydration certificate")),
     ).toBe(true);
   });
 

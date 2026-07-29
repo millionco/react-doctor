@@ -810,6 +810,61 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts terminal block catches that return known non-thenable values", () => {
+    const validSources = [
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return undefined;
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return null;
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        const fallback = null;
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return fallback;
+          });
+        }, [source]);
+      };`,
+    ];
+    for (const source of validSources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        0,
+      );
+    }
+  });
+
+  it("continues to flag terminal block catches that may return a thenable", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        const fallback = source.fallback;
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.value);
+            return fallback;
+          });
+        }, [source]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts rejection handlers with simple non-throwing arguments", () => {
     const validSources = [
       `const C = () => {

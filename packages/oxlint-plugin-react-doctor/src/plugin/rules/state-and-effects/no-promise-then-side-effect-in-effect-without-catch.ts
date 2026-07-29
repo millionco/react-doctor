@@ -196,7 +196,7 @@ const hasRejectionHandler = (
     if (
       isNodeOfType(child, "ReturnStatement") &&
       child.argument &&
-      !isDefinitelyNonThenableValue(child.argument)
+      !isKnownNonThenableHandlerReturn(child.argument, context)
     ) {
       doesExplicitlyReject = true;
       return false;

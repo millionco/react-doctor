@@ -37,6 +37,18 @@ const getEnclosingLifecycleFunction = (setStateCall: EsTreeNode): EsTreeNode | n
   return null;
 };
 
+const isInsideNestedLifecycleFunction = (
+  setStateCall: EsTreeNode,
+  lifecycleFunction: EsTreeNode,
+): boolean => {
+  let ancestor: EsTreeNode | null | undefined = setStateCall.parent;
+  while (ancestor && ancestor !== lifecycleFunction) {
+    if (isFunctionLike(ancestor)) return true;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 // `this.setState({ hasMounted: true })` — flipping a boolean flag to `true`
 // right after mount is the deliberate two-pass render pattern (hydration
 // gates, enter animations): the second render IS the point, and no initial
@@ -215,8 +227,6 @@ const argumentDerivesFromPostMountSource = (
 ): boolean => {
   const argumentNode = setStateCall.arguments[0];
   if (!argumentNode || isNodeOfType(argumentNode, "SpreadElement")) return false;
-  if (containsPostMountSource(argumentNode)) return true;
-  if (containsCallbackRefField(argumentNode, callbackRefFieldNames)) return true;
 
   const localInitializers = new Map<string, EsTreeNode>();
   const localFunctions = new Map<string, EsTreeNode>();
@@ -250,36 +260,53 @@ const argumentDerivesFromPostMountSource = (
     }
     if (descendant !== lifecycleFunction && isFunctionLike(descendant)) return false;
   });
-  if (expressionCallsPostMountHelper(argumentNode, localFunctions, callbackRefFieldNames)) {
-    return true;
-  }
-  if (localInitializers.size === 0) return false;
-
-  const reachedNames = new Set<string>();
-  collectReferencedNames(argumentNode, reachedNames);
-  const pendingNames = [...reachedNames];
-  while (pendingNames.length > 0) {
-    const name = pendingNames.pop();
-    if (name === undefined) break;
-    const initializer = localInitializers.get(name);
-    if (!initializer) continue;
-    if (isFunctionLike(stripParenExpression(initializer))) continue;
+  const doesExpressionDeriveFromPostMountSource = (expression: EsTreeNode): boolean => {
     if (
-      containsPostMountSource(initializer) ||
-      containsCallbackRefField(initializer, callbackRefFieldNames) ||
-      expressionCallsPostMountHelper(initializer, localFunctions, callbackRefFieldNames)
+      containsPostMountSource(expression) ||
+      containsCallbackRefField(expression, callbackRefFieldNames) ||
+      expressionCallsPostMountHelper(expression, localFunctions, callbackRefFieldNames)
     ) {
       return true;
     }
-    const referencedNames = new Set<string>();
-    collectReferencedNames(initializer, referencedNames);
-    for (const referencedName of referencedNames) {
-      if (reachedNames.has(referencedName)) continue;
-      reachedNames.add(referencedName);
-      pendingNames.push(referencedName);
+    if (localInitializers.size === 0) return false;
+    const reachedNames = new Set<string>();
+    collectReferencedNames(expression, reachedNames);
+    const pendingNames = [...reachedNames];
+    while (pendingNames.length > 0) {
+      const name = pendingNames.pop();
+      if (name === undefined) break;
+      const initializer = localInitializers.get(name);
+      if (!initializer) continue;
+      if (isFunctionLike(stripParenExpression(initializer))) continue;
+      if (
+        containsPostMountSource(initializer) ||
+        containsCallbackRefField(initializer, callbackRefFieldNames) ||
+        expressionCallsPostMountHelper(initializer, localFunctions, callbackRefFieldNames)
+      ) {
+        return true;
+      }
+      const referencedNames = new Set<string>();
+      collectReferencedNames(initializer, referencedNames);
+      for (const referencedName of referencedNames) {
+        if (reachedNames.has(referencedName)) continue;
+        reachedNames.add(referencedName);
+        pendingNames.push(referencedName);
+      }
     }
+    return false;
+  };
+
+  const statePayload = stripParenExpression(argumentNode as EsTreeNode);
+  if (!isNodeOfType(statePayload, "ObjectExpression")) {
+    return doesExpressionDeriveFromPostMountSource(statePayload);
   }
-  return false;
+  if (statePayload.properties.length === 0) return false;
+  return statePayload.properties.every(
+    (property) =>
+      isNodeOfType(property, "Property") &&
+      property.kind === "init" &&
+      doesExpressionDeriveFromPostMountSource(property.value as EsTreeNode),
+  );
 };
 
 const isUndefinedOrNull = (node: EsTreeNode | null | undefined): boolean => {
@@ -503,8 +530,16 @@ export const noDidMountSetState = defineRule({
           disallowInNestedFunctions: mode === "disallow-in-func",
         });
         if (!shouldFlag) return;
-        if (isMountFlagArgument(node.arguments?.[0])) return;
         const lifecycleFunction = getEnclosingLifecycleFunction(node);
+        if (
+          lifecycleFunction &&
+          mode === "disallow-in-func" &&
+          isInsideNestedLifecycleFunction(node, lifecycleFunction)
+        ) {
+          context.report({ node: node.callee, message: MESSAGE });
+          return;
+        }
+        if (isMountFlagArgument(node.arguments?.[0])) return;
         if (lifecycleFunction) {
           if (isAfterAwaitInAsyncLifecycle(node, lifecycleFunction)) return;
           const enclosingClass = findEnclosingClass(lifecycleFunction);

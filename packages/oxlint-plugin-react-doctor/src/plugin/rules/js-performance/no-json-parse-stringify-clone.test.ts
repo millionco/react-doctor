@@ -352,6 +352,46 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags a clone passed through an opaque directly returned props value", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        return {
+          props: {
+            state: consume(JSON.parse(JSON.stringify(state))),
+          },
+        };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a mutated IIFE clone inside directly returned props", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        return {
+          props: {
+            state: (() => {
+              const workingCopy = JSON.parse(JSON.stringify(state));
+              mutate(workingCopy);
+              return workingCopy;
+            })(),
+          },
+        };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a nested IIFE clone binding that is mutated before page serialization", () => {
     const result = runRule(
       noJsonParseStringifyClone,

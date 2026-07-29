@@ -191,11 +191,7 @@ const isReturnedPageDataResultBinding = (
 const isSameShorthandPropertyValue = (
   node: EsTreeNode,
   property: EsTreeNodeOfType<"Property">,
-): boolean =>
-  property.shorthand &&
-  isNodeOfType(node, "Identifier") &&
-  isNodeOfType(property.value, "Identifier") &&
-  node.name === property.value.name;
+): boolean => property.shorthand && (node === property.key || node === property.value);
 
 const isValueForwardedThroughLiteralStructure = (
   node: EsTreeNode,

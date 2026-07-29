@@ -370,6 +370,26 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags a props binding that also escapes through an opaque sibling value", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const serializedState = JSON.parse(JSON.stringify(state));
+        return {
+          props: {
+            serializedState,
+            escaped: consume(serializedState),
+          },
+        };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a mutated IIFE clone inside directly returned props", () => {
     const result = runRule(
       noJsonParseStringifyClone,

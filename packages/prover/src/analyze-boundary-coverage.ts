@@ -16,6 +16,7 @@ import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { getCallName } from "./get-call-name.js";
 import { getComponentPropName } from "./get-component-prop-name.js";
 import { getNodeLocation } from "./get-node-location.js";
+import { getRootIdentifier } from "./get-root-identifier.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isComponentPropExpression } from "./is-component-prop-expression.js";
 import { isReactContextExpression } from "./is-react-context-expression.js";
@@ -171,6 +172,51 @@ export const analyzeBoundaryCoverage = (
         (state) =>
           state.ownerId === semanticOwnerId && areProofLocationsEqual(state.location, location),
       ),
+    );
+  };
+  const isModeledImperativeHandleCall = (callExpression: ts.CallExpression): boolean => {
+    const location = getNodeLocation(callExpression, context.rootDirectory);
+    return Boolean(
+      context.graph?.imperativeHandles.some(
+        (handle) =>
+          handle.ownerId === semanticOwnerId && areProofLocationsEqual(handle.location, location),
+      ),
+    );
+  };
+  const getContainingImperativeHandleCall = (node: ts.Node): ts.CallExpression | null => {
+    let currentNode = node;
+    while (currentNode !== functionNode && currentNode.parent) {
+      const parentNode = currentNode.parent;
+      if (ts.isCallExpression(parentNode)) {
+        return getCanonicalReactApiName(parentNode.expression, context.typeChecker) ===
+          "useImperativeHandle"
+          ? parentNode
+          : null;
+      }
+      if (isFunctionBoundary(parentNode)) return null;
+      currentNode = parentNode;
+    }
+    return null;
+  };
+  const isModeledImperativeHandleUse = (node: ts.Node): boolean => {
+    const callExpression = getContainingImperativeHandleCall(node);
+    return Boolean(callExpression && isModeledImperativeHandleCall(callExpression));
+  };
+  const getImperativeHandleBinding = (callExpression: ts.CallExpression) => {
+    if (!context.graph || !semanticOwnerId) return null;
+    const rootIdentifier = getRootIdentifier(callExpression.expression);
+    const rootSymbol = rootIdentifier
+      ? context.typeChecker.getSymbolAtLocation(rootIdentifier)
+      : null;
+    const refDeclaration = rootSymbol?.declarations?.find(ts.isVariableDeclaration);
+    if (!refDeclaration) return null;
+    const refLocation = getNodeLocation(refDeclaration, context.rootDirectory);
+    return (
+      context.graph.imperativeHandleBindings.find(
+        (binding) =>
+          binding.ownerId === semanticOwnerId &&
+          areProofLocationsEqual(binding.refLocation, refLocation),
+      ) ?? null
     );
   };
   const isModeledFormActionCallableUse = (node: ts.Node): boolean => {
@@ -379,6 +425,7 @@ export const analyzeBoundaryCoverage = (
   for (const executionRoot of executionRoots) {
     const reachabilityGraph = collectReachableFunctionGraph(executionRoot, context.typeChecker);
     for (const unmodeledUse of reachabilityGraph.unmodeledCallableUses) {
+      if (isModeledImperativeHandleUse(unmodeledUse.node)) continue;
       if (getModeledTransitionAction(unmodeledUse.node)?.sourceComplete) continue;
       if (isModeledFormActionCallableUse(unmodeledUse.node)) continue;
       if (isModeledActionStateCallableUse(unmodeledUse.node)) continue;
@@ -463,7 +510,8 @@ export const analyzeBoundaryCoverage = (
         !isModeledContextRead &&
         !(canonicalReactApiName === "useActionState" && isModeledActionStateCall(node)) &&
         !(canonicalReactApiName === "useTransition" && isModeledUseTransitionCall(node)) &&
-        !(canonicalReactApiName === "useOptimistic" && isModeledOptimisticCall(node))
+        !(canonicalReactApiName === "useOptimistic" && isModeledOptimisticCall(node)) &&
+        !(canonicalReactApiName === "useImperativeHandle" && isModeledImperativeHandleCall(node))
       ) {
         unknownEvidence.push(
           createEvidence(
@@ -509,6 +557,28 @@ export const analyzeBoundaryCoverage = (
           ),
         );
       }
+      const imperativeHandleBinding = getImperativeHandleBinding(node);
+      if (
+        imperativeHandleBinding &&
+        !context.graph?.imperativeHandleInvocations.some(
+          (invocation) =>
+            invocation.bindingId === imperativeHandleBinding.id &&
+            invocation.complete &&
+            areProofLocationsEqual(
+              invocation.location,
+              getNodeLocation(node, context.rootDirectory),
+            ),
+        )
+      ) {
+        unknownEvidence.push(
+          createEvidence(
+            node,
+            context.rootDirectory,
+            "An imperative handle method is invoked without a closed ref and execution-phase protocol",
+            ["imperative ref", node.getText(), "unknown handle method or lifetime"],
+          ),
+        );
+      }
       const callbackPropName = isComponentUnit
         ? getComponentPropName(node.expression, functionNode, context.typeChecker)
         : null;
@@ -540,6 +610,7 @@ export const analyzeBoundaryCoverage = (
         );
       }
       for (const argument of node.arguments) {
+        if (isModeledImperativeHandleUse(argument)) continue;
         const forwardedCallbackPropName = isComponentUnit
           ? getComponentPropName(argument, functionNode, context.typeChecker)
           : null;

@@ -6,6 +6,7 @@ import { createEvidence } from "./create-evidence.js";
 import { createObligation } from "./create-obligation.js";
 import { getEffectCallback } from "./get-effect-callback.js";
 import { ReactObligationStatus, ReactProofClaim } from "./types.js";
+import { isReactiveCaptureDeclared } from "./utils/is-reactive-capture-declared.js";
 import type { ReactAnalysisContext, ReactProofEvidence, ReactProofObligation } from "./types.js";
 
 export const analyzeEffectDependencies = (
@@ -47,8 +48,8 @@ export const analyzeEffectDependencies = (
       );
       continue;
     }
-    const declaredDependencies = new Set(
-      dependenciesExpression.elements.map((dependency) => dependency.getText()),
+    const declaredDependencies = dependenciesExpression.elements.map((dependency) =>
+      dependency.getText(),
     );
     const captures = collectReactiveCaptures(
       effectCallback,
@@ -57,13 +58,7 @@ export const analyzeEffectDependencies = (
       stableSymbols,
     );
     for (const { key: captureKey, node: captureNode } of captures) {
-      const isDeclared = [...declaredDependencies].some(
-        (dependency) =>
-          dependency === captureKey ||
-          captureKey.startsWith(`${dependency}.`) ||
-          dependency.startsWith(`${captureKey}.`),
-      );
-      if (isDeclared) continue;
+      if (isReactiveCaptureDeclared(captureKey, declaredDependencies)) continue;
       violations.push(
         createEvidence(
           captureNode,

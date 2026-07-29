@@ -32,6 +32,7 @@ export enum ReactProofClaim {
   HookOrder = "hook-order",
   HookOwnership = "hook-ownership",
   HookStateTransitions = "hook-state-transitions",
+  ImperativeHandle = "imperative-handle",
   MemoDependencies = "memo-dependencies",
   OptimisticState = "optimistic-state",
   ReactNodeFlow = "react-node-flow",
@@ -84,6 +85,7 @@ export enum ReactExecutionPhase {
   Event = "event",
   ExternalStoreSubscription = "external-store-subscription",
   FormAction = "form-action",
+  ImperativeHandle = "imperative-handle",
   OptimisticReducer = "optimistic-reducer",
   OptimisticUpdater = "optimistic-updater",
   Render = "render",
@@ -107,6 +109,8 @@ export enum ReactSemanticCallbackKind {
   ExternalStoreSubscribe = "external-store-subscribe",
   FormAction = "form-action",
   HookStateUpdater = "hook-state-updater",
+  ImperativeHandleFactory = "imperative-handle-factory",
+  ImperativeHandleMethod = "imperative-handle-method",
   MemoFactory = "memo-factory",
   MemoizedCallback = "memoized-callback",
   OptimisticReducer = "optimistic-reducer",
@@ -435,6 +439,75 @@ export interface ReactSemanticCallableRef {
   invocationCallbackIds: ReadonlyArray<string>;
   invocationLocations: ReadonlyArray<ReactProofLocation>;
   freshness: ReactCallableRefFreshness;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactImperativeHandleRefKind {
+  ForwardedRef = "forwarded-ref",
+  RefProp = "ref-prop",
+}
+
+export enum ReactImperativeHandleStatus {
+  ImpureFactory = "impure-factory",
+  MissingDependency = "missing-dependency",
+  Opaque = "opaque",
+  Resolved = "resolved",
+}
+
+export interface ReactSemanticImperativeHandle {
+  id: string;
+  ownerId: string;
+  refKind: ReactImperativeHandleRefKind | null;
+  refName: string | null;
+  location: ReactProofLocation;
+  factoryCallbackId: string | null;
+  dependencyMode: ReactEffectDependencyMode;
+  dependencies: ReadonlyArray<string>;
+  captures: ReadonlyArray<string>;
+  factoryPurity: ReactObligationStatus;
+  methodIds: ReadonlyArray<string>;
+  bindingIds: ReadonlyArray<string>;
+  factoryComplete: boolean;
+  shapeComplete: boolean;
+  targetComplete: boolean;
+  bindingComplete: boolean;
+  status: ReactImperativeHandleStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticImperativeHandleMethod {
+  id: string;
+  ownerId: string;
+  handleId: string;
+  name: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactSemanticImperativeHandleBinding {
+  id: string;
+  ownerId: string;
+  handleId: string;
+  renderId: string;
+  refName: string;
+  refLocation: ReactProofLocation;
+  location: ReactProofLocation;
+  invocationIds: ReadonlyArray<string>;
+  referenceComplete: boolean;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticImperativeHandleInvocation {
+  id: string;
+  ownerId: string;
+  handleId: string;
+  methodId: string;
+  bindingId: string;
+  location: ReactProofLocation;
+  callerCallbackIds: ReadonlyArray<string>;
+  methodCallbackIds: ReadonlyArray<string>;
   sourceComplete: boolean;
   complete: boolean;
 }
@@ -843,6 +916,10 @@ export interface ReactSemanticGraph {
   eventBindings: ReadonlyArray<ReactSemanticEventBinding>;
   callbackPropFlows: ReadonlyArray<ReactSemanticCallbackPropFlow>;
   callableRefs: ReadonlyArray<ReactSemanticCallableRef>;
+  imperativeHandles: ReadonlyArray<ReactSemanticImperativeHandle>;
+  imperativeHandleMethods: ReadonlyArray<ReactSemanticImperativeHandleMethod>;
+  imperativeHandleBindings: ReadonlyArray<ReactSemanticImperativeHandleBinding>;
+  imperativeHandleInvocations: ReadonlyArray<ReactSemanticImperativeHandleInvocation>;
   schedulers: ReadonlyArray<ReactSemanticScheduler>;
   resources: ReadonlyArray<ReactSemanticEffectResource>;
   classConstructions: ReadonlyArray<ReactSemanticClassConstruction>;

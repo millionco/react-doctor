@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useImperativeHandle,
   useLayoutEffect,
   useOptimistic,
   useRef,
@@ -15,7 +16,7 @@ import {
   useSyncExternalStore,
   useTransition,
 } from "react";
-import type { ChangeEvent, ReactNode } from "react";
+import type { ChangeEvent, ReactNode, Ref } from "react";
 import { useFormStatus } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
@@ -1024,6 +1025,48 @@ const CallableRefPhaseOracle = () => {
   );
 };
 
+interface ImperativeHandle {
+  readLabel: () => string;
+}
+
+interface ImperativeHandleProbeProperties {
+  label: string;
+  ref: Ref<ImperativeHandle>;
+}
+
+const SafeImperativeHandleProbe = ({ label, ref }: ImperativeHandleProbeProperties) => {
+  useImperativeHandle(ref, () => ({ readLabel: () => label }), [label]);
+  return null;
+};
+
+const StaleImperativeHandleProbe = ({ label, ref }: ImperativeHandleProbeProperties) => {
+  useImperativeHandle(ref, () => ({ readLabel: () => label }), []);
+  return null;
+};
+
+const ImperativeHandleOracle = () => {
+  const [label, setLabel] = useState("alpha");
+  const [observedLabel, setObservedLabel] = useState("unobserved");
+  const handleRef = useRef<ImperativeHandle | null>(null);
+  const isSafeMode = new URLSearchParams(window.location.search).get("mode") === "safe";
+  const Probe = isSafeMode ? SafeImperativeHandleProbe : StaleImperativeHandleProbe;
+  return (
+    <main>
+      <button type="button" onClick={() => setLabel("beta")}>
+        advance label
+      </button>
+      <button
+        type="button"
+        onClick={() => setObservedLabel(handleRef.current?.readLabel() ?? "missing")}
+      >
+        read handle
+      </button>
+      <Probe ref={handleRef} label={label} />
+      <output data-testid="observed-handle-label">{observedLabel}</output>
+    </main>
+  );
+};
+
 const RuntimeOracle = () => {
   const oracle = new URLSearchParams(window.location.search).get("oracle");
   if (oracle === "keys") {
@@ -1061,6 +1104,9 @@ const RuntimeOracle = () => {
   }
   if (oracle === "callable-ref-phase") {
     return <CallableRefPhaseOracle />;
+  }
+  if (oracle === "imperative-handle") {
+    return <ImperativeHandleOracle />;
   }
   if (oracle === "scheduler-lifetime") {
     return <SchedulerLifetimeOracle />;

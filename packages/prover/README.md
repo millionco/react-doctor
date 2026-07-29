@@ -44,6 +44,11 @@ The report includes:
   write's commit phase, and every concrete invocation channel to the resolved source callback;
   layout-synchronized, non-escaping refs used only by modeled events can be proved, while passive,
   multiply written, escaping, and unresolved protocols fail closed;
+- imperative-handle protocol facts that tie a canonical `useImperativeHandle` factory to a React
+  19 `ref` prop or `forwardRef` parameter, every static method in its closed object result, an exact
+  project-local `useRef` binding, and each `ref.current.method()` invocation phase; stale reactive
+  captures and impure factories are refuted, while spreads, computed methods, opaque handle
+  objects, callback refs, shared refs, exports, and unresolved consumers fail closed;
 - scheduler lifetime facts that tie a platform timer, animation frame, idle callback, immediate,
   or microtask registration to its owning Effect or class mount, deferred callback set, exact
   handle, and cleanup or unmount cancellation paths; only source-resolved synchronous callbacks
@@ -148,6 +153,10 @@ validate active-form ownership, and reject forged outside-form, source, topology
 completeness fields. ReactNode certificates require exactly one slot-flow fact per slot input,
 separate source-expression and placement completeness, reciprocal effective-render links,
 path-owned provider/form facts, unique semantic IDs, and the exact completeness conjunction.
+Imperative-handle certificates independently validate factory dependency captures and purity,
+closed method sets, exact ref-to-render bindings, ref exclusivity and escape evidence, reciprocal
+method and invocation links, caller-owned execution phases, and the final source/completeness
+equations.
 Optimistic
 certificates independently validate tuple ownership, reducer and updater callback phases, derive
 Action ownership from every execution root, and reject forged purity, render/event origin, state

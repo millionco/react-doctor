@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 22;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 28;
+export const REACT_PROOF_SCHEMA_VERSION = 23;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 29;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -37,6 +37,7 @@ export const PLATFORM_OBSERVER_KINDS = new Map<string, ReactEffectResourceKind>(
 ]);
 
 export const REACT_MEMO_HOOK_NAMES = new Set(["useCallback", "useMemo"]);
+export const REACT_IMPERATIVE_HANDLE_HOOK_NAMES = new Set(["useImperativeHandle"]);
 export const REACT_REDUCER_HOOK_NAMES = new Set(["useReducer"]);
 export const REACT_EXTERNAL_STORE_HOOK_NAMES = new Set(["useSyncExternalStore"]);
 export const EFFECT_EVENT_REGISTRATION_CALL_NAMES = new Set([
@@ -59,6 +60,7 @@ export const REACT_MODELED_HOOK_NAMES = new Set([
   "useEffectEvent",
   "useFormStatus",
   "useId",
+  "useImperativeHandle",
   "useInsertionEffect",
   "useLayoutEffect",
   "useMemo",
@@ -71,7 +73,6 @@ export const REACT_MODELED_HOOK_NAMES = new Set([
 export const REACT_UNMODELED_HOOK_NAMES = new Set([
   "use",
   "useDeferredValue",
-  "useImperativeHandle",
   "useOptimistic",
   "useTransition",
 ]);

@@ -25,11 +25,14 @@ import {
   ReactClassUpdateCycleStatus,
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
+  ReactEffectDependencyMode,
   ReactExecutionPhase,
   ReactFormActionKind,
   ReactFormActionStatus,
   ReactFormStatusTopologyStatus,
   ReactHookStateUpdaterStatus,
+  ReactImperativeHandleRefKind,
+  ReactImperativeHandleStatus,
   ReactObligationStatus,
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
@@ -62,6 +65,9 @@ const OPTIMISTIC_ACTION_STATUSES = new Set(Object.values(ReactOptimisticActionSt
 const OPTIMISTIC_REDUCER_STATUSES = new Set(Object.values(ReactOptimisticReducerStatus));
 const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionStatus));
 const TRANSITION_STARTER_KINDS = new Set(Object.values(ReactTransitionStarterKind));
+const IMPERATIVE_HANDLE_REF_KINDS = new Set(Object.values(ReactImperativeHandleRefKind));
+const IMPERATIVE_HANDLE_STATUSES = new Set(Object.values(ReactImperativeHandleStatus));
+const OBLIGATION_STATUSES = new Set(Object.values(ReactObligationStatus));
 const TRANSITION_ACTION_ORIGIN_PHASES = new Set([
   ReactExecutionPhase.ActionStateReducer,
   ReactExecutionPhase.ClassMount,
@@ -209,6 +215,28 @@ const expectedHookStateTransitionStatus = (
     return ReactObligationStatus.Violated;
   }
   return transitions.some((transition) => !transition.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedImperativeHandleStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const handles = report.graph.imperativeHandles.filter((handle) => handle.ownerId === unit.id);
+  if (
+    handles.some(
+      (handle) =>
+        handle.status === ReactImperativeHandleStatus.ImpureFactory ||
+        handle.status === ReactImperativeHandleStatus.MissingDependency,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return handles.some((handle) => !handle.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -478,6 +506,17 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `Hook state transition facts require ${expectedHookStateStatus}, not ${hookStateTransitions.status}`,
+      );
+    }
+    const imperativeHandle = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ImperativeHandle,
+    );
+    const expectedHandleStatus = expectedImperativeHandleStatus(semanticUnit, report);
+    if (imperativeHandle && imperativeHandle.status !== expectedHandleStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Imperative handle facts require ${expectedHandleStatus}, not ${imperativeHandle.status}`,
       );
     }
     const transitionActions = unitProof.obligations.find(
@@ -751,6 +790,283 @@ const checkGraphReferences = (
   const formsById = new Map(report.graph.forms.map((form) => [form.id, form]));
   const contextSourcesByUnit = deriveContextSourcesByUnit(report);
   const formSourcesByUnit = deriveFormSourcesByUnit(report);
+  const imperativeHandlesById = new Map(
+    report.graph.imperativeHandles.map((handle) => [handle.id, handle]),
+  );
+  const imperativeMethodsById = new Map(
+    report.graph.imperativeHandleMethods.map((method) => [method.id, method]),
+  );
+  const imperativeBindingsById = new Map(
+    report.graph.imperativeHandleBindings.map((binding) => [binding.id, binding]),
+  );
+  const imperativeInvocationsById = new Map(
+    report.graph.imperativeHandleInvocations.map((invocation) => [invocation.id, invocation]),
+  );
+  const imperativeMethodIdsByHandleId = new Map(
+    report.graph.imperativeHandles.map((handle) => [handle.id, new Set(handle.methodIds)]),
+  );
+  const imperativeBindingIdsByHandleId = new Map(
+    report.graph.imperativeHandles.map((handle) => [handle.id, new Set(handle.bindingIds)]),
+  );
+  const imperativeInvocationIdsByBindingId = new Map(
+    report.graph.imperativeHandleBindings.map((binding) => [
+      binding.id,
+      new Set(binding.invocationIds),
+    ]),
+  );
+  for (const method of report.graph.imperativeHandleMethods) {
+    const handle = imperativeHandlesById.get(method.handleId);
+    if (
+      !handle ||
+      handle.ownerId !== method.ownerId ||
+      !imperativeMethodIdsByHandleId.get(handle.id)?.has(method.id) ||
+      !method.name
+    ) {
+      addFailure(
+        failures,
+        method.id,
+        "An imperative handle method has an invalid owner or reciprocal handle link",
+      );
+    }
+  }
+  for (const binding of report.graph.imperativeHandleBindings) {
+    const handle = imperativeHandlesById.get(binding.handleId);
+    const render = rendersById.get(binding.renderId);
+    const bindingInvocations = binding.invocationIds.flatMap((invocationId) => {
+      const invocation = imperativeInvocationsById.get(invocationId);
+      if (
+        !invocation ||
+        invocation.bindingId !== binding.id ||
+        invocation.handleId !== binding.handleId
+      ) {
+        addFailure(
+          failures,
+          binding.id,
+          "An imperative handle binding has an invalid invocation link",
+        );
+        return [];
+      }
+      return [invocation];
+    });
+    if (
+      !handle ||
+      !imperativeBindingIdsByHandleId.get(handle.id)?.has(binding.id) ||
+      !render ||
+      render.kind !== ReactSemanticRenderKind.Direct ||
+      render.ownerId !== binding.ownerId ||
+      render.targetId !== handle.ownerId ||
+      !binding.refName
+    ) {
+      addFailure(
+        failures,
+        binding.id,
+        "An imperative handle binding has an invalid owner, render, or ref identity",
+      );
+    }
+    if (new Set(binding.invocationIds).size !== binding.invocationIds.length) {
+      addFailure(failures, binding.id, "An imperative handle binding repeats an invocation");
+    }
+    const expectedSourceComplete =
+      binding.referenceComplete &&
+      Boolean(render) &&
+      bindingInvocations.length === binding.invocationIds.length &&
+      bindingInvocations.every((invocation) => invocation.sourceComplete);
+    if (binding.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, binding.id, "An imperative handle binding source flag is inconsistent");
+    }
+    const expectedComplete =
+      expectedSourceComplete && bindingInvocations.every((invocation) => invocation.complete);
+    if (binding.complete !== expectedComplete) {
+      addFailure(
+        failures,
+        binding.id,
+        "An imperative handle binding completeness flag is inconsistent",
+      );
+    }
+  }
+  for (const invocation of report.graph.imperativeHandleInvocations) {
+    const handle = imperativeHandlesById.get(invocation.handleId);
+    const method = imperativeMethodsById.get(invocation.methodId);
+    const binding = imperativeBindingsById.get(invocation.bindingId);
+    const callerCallbacks = invocation.callerCallbackIds.flatMap((callbackId) => {
+      const callback = callbacksById.get(callbackId);
+      if (
+        !callback ||
+        callback.ownerId !== invocation.ownerId ||
+        callback.phase === ReactExecutionPhase.Render
+      ) {
+        addFailure(
+          failures,
+          invocation.id,
+          "An imperative handle invocation has an invalid caller callback",
+        );
+        return [];
+      }
+      return [callback];
+    });
+    const methodCallbacks = invocation.methodCallbackIds.flatMap((callbackId) => {
+      const callback = callbacksById.get(callbackId);
+      if (
+        !callback ||
+        callback.ownerId !== handle?.ownerId ||
+        callback.kind !== ReactSemanticCallbackKind.ImperativeHandleMethod ||
+        !method ||
+        !areProofLocationsEqual(callback.location, method.location)
+      ) {
+        addFailure(
+          failures,
+          invocation.id,
+          "An imperative handle invocation has an invalid method callback",
+        );
+        return [];
+      }
+      return [callback];
+    });
+    if (
+      !handle ||
+      !method ||
+      method.handleId !== handle.id ||
+      !binding ||
+      binding.handleId !== handle.id ||
+      binding.ownerId !== invocation.ownerId ||
+      !imperativeInvocationIdsByBindingId.get(binding.id)?.has(invocation.id)
+    ) {
+      addFailure(
+        failures,
+        invocation.id,
+        "An imperative handle invocation has an invalid handle, method, or binding",
+      );
+    }
+    if (
+      new Set(invocation.callerCallbackIds).size !== invocation.callerCallbackIds.length ||
+      new Set(invocation.methodCallbackIds).size !== invocation.methodCallbackIds.length
+    ) {
+      addFailure(failures, invocation.id, "An imperative handle invocation repeats a callback");
+    }
+    const callerPhases = new Set(callerCallbacks.map((callback) => callback.phase));
+    const methodPhases = new Set(methodCallbacks.map((callback) => callback.phase));
+    const phasesMatch =
+      callerPhases.size === methodPhases.size &&
+      [...callerPhases].every((phase) => methodPhases.has(phase));
+    const expectedSourceComplete =
+      Boolean(handle && method && binding) &&
+      Boolean(binding?.referenceComplete) &&
+      callerCallbacks.length === invocation.callerCallbackIds.length &&
+      callerCallbacks.length > 0;
+    if (invocation.sourceComplete !== expectedSourceComplete) {
+      addFailure(
+        failures,
+        invocation.id,
+        "An imperative handle invocation source flag is inconsistent",
+      );
+    }
+    const expectedComplete =
+      expectedSourceComplete &&
+      methodCallbacks.length === invocation.methodCallbackIds.length &&
+      methodCallbacks.length > 0 &&
+      phasesMatch;
+    if (invocation.complete !== expectedComplete) {
+      addFailure(
+        failures,
+        invocation.id,
+        "An imperative handle invocation completeness flag is inconsistent",
+      );
+    }
+  }
+  for (const handle of report.graph.imperativeHandles) {
+    const owner = unitsById.get(handle.ownerId);
+    const factoryCallback = handle.factoryCallbackId
+      ? callbacksById.get(handle.factoryCallbackId)
+      : null;
+    const methods = handle.methodIds.flatMap((methodId) => {
+      const method = imperativeMethodsById.get(methodId);
+      return method?.handleId === handle.id ? [method] : [];
+    });
+    const bindings = handle.bindingIds.flatMap((bindingId) => {
+      const binding = imperativeBindingsById.get(bindingId);
+      return binding?.handleId === handle.id ? [binding] : [];
+    });
+    if (
+      owner?.kind !== ReactUnitKind.Component ||
+      (handle.refKind !== null && !IMPERATIVE_HANDLE_REF_KINDS.has(handle.refKind)) ||
+      !IMPERATIVE_HANDLE_STATUSES.has(handle.status) ||
+      !OBLIGATION_STATUSES.has(handle.factoryPurity)
+    ) {
+      addFailure(failures, handle.id, "An imperative handle has an invalid owner or status");
+    }
+    if (
+      factoryCallback?.ownerId !== handle.ownerId ||
+      factoryCallback.kind !== ReactSemanticCallbackKind.ImperativeHandleFactory ||
+      factoryCallback.phase !== ReactExecutionPhase.ImperativeHandle
+    ) {
+      addFailure(failures, handle.id, "An imperative handle has an invalid factory callback");
+    }
+    if (
+      new Set(handle.methodIds).size !== handle.methodIds.length ||
+      methods.length !== handle.methodIds.length
+    ) {
+      addFailure(failures, handle.id, "An imperative handle has invalid method links");
+    }
+    if (
+      new Set(handle.bindingIds).size !== handle.bindingIds.length ||
+      bindings.length !== handle.bindingIds.length
+    ) {
+      addFailure(failures, handle.id, "An imperative handle has invalid binding links");
+    }
+    const hasMissingDependency =
+      handle.dependencyMode === ReactEffectDependencyMode.Inline &&
+      handle.captures.some(
+        (capture) =>
+          !handle.dependencies.some(
+            (dependency) =>
+              dependency === capture ||
+              capture.startsWith(`${dependency}.`) ||
+              dependency.startsWith(`${capture}.`),
+          ),
+      );
+    if (
+      (handle.status === ReactImperativeHandleStatus.ImpureFactory &&
+        handle.factoryPurity !== ReactObligationStatus.Violated) ||
+      (handle.factoryPurity === ReactObligationStatus.Violated &&
+        handle.status !== ReactImperativeHandleStatus.ImpureFactory)
+    ) {
+      addFailure(failures, handle.id, "An imperative handle factory purity is inconsistent");
+    }
+    if (
+      (handle.status === ReactImperativeHandleStatus.MissingDependency && !hasMissingDependency) ||
+      (handle.status !== ReactImperativeHandleStatus.ImpureFactory && hasMissingDependency) !==
+        (handle.status === ReactImperativeHandleStatus.MissingDependency)
+    ) {
+      addFailure(failures, handle.id, "An imperative handle dependency status is inconsistent");
+    }
+    if (
+      handle.status === ReactImperativeHandleStatus.Resolved &&
+      handle.dependencyMode === ReactEffectDependencyMode.Opaque
+    ) {
+      addFailure(failures, handle.id, "A resolved imperative handle has an opaque dependency list");
+    }
+    const expectedFactoryComplete =
+      Boolean(factoryCallback) &&
+      handle.dependencyMode !== ReactEffectDependencyMode.Opaque &&
+      handle.factoryPurity !== ReactObligationStatus.Unknown;
+    if (handle.factoryComplete !== expectedFactoryComplete) {
+      addFailure(failures, handle.id, "An imperative handle factory flag is inconsistent");
+    }
+    const expectedSourceComplete =
+      handle.factoryComplete &&
+      handle.shapeComplete &&
+      handle.targetComplete &&
+      handle.bindingComplete &&
+      !owner?.canBeRenderRoot;
+    if (handle.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, handle.id, "An imperative handle source flag is inconsistent");
+    }
+    const expectedComplete =
+      expectedSourceComplete && handle.status === ReactImperativeHandleStatus.Resolved;
+    if (handle.complete !== expectedComplete) {
+      addFailure(failures, handle.id, "An imperative handle completeness flag is inconsistent");
+    }
+  }
   for (const unit of report.graph.units) {
     if (
       unit.canBeRenderRoot &&
@@ -2862,6 +3178,26 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "callable refs",
     report.graph.callableRefs.map((callableRef) => callableRef.id),
+  );
+  checkUniqueIds(
+    failures,
+    "imperative handles",
+    report.graph.imperativeHandles.map((handle) => handle.id),
+  );
+  checkUniqueIds(
+    failures,
+    "imperative handle methods",
+    report.graph.imperativeHandleMethods.map((method) => method.id),
+  );
+  checkUniqueIds(
+    failures,
+    "imperative handle bindings",
+    report.graph.imperativeHandleBindings.map((binding) => binding.id),
+  );
+  checkUniqueIds(
+    failures,
+    "imperative handle invocations",
+    report.graph.imperativeHandleInvocations.map((invocation) => invocation.id),
   );
   checkUniqueIds(
     failures,

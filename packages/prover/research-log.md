@@ -1760,3 +1760,106 @@ Changeset is warranted before publication.
 Kill: If a complete slot channel produces a false `proved` topology in two proof-schema releases,
 remove complete slot propagation and keep ReactNode inputs unknown until value-level SSA or a
 library proof contract carries the missing semantics.
+
+## Imperative-handle protocol certificates
+
+### React contract and realistic evidence
+
+[`useImperativeHandle`](https://react.dev/reference/react/useImperativeHandle) is a commit-phase
+escape hatch with three coupled requirements: the exposed ref, a zero-argument handle factory, and
+the reactive dependency list for that factory. React compares dependencies with `Object.is`;
+omitting the list recreates the handle after every render, while an incomplete list can preserve
+methods that close over stale props or state. React 19 also makes `ref` available as a component
+prop, while older component APIs use the second parameter of
+[`forwardRef`](https://react.dev/reference/react/forwardRef).
+
+The React Compiler fixture
+[`useImperativeHandle-ref-mutate.expect.md`](https://github.com/facebook/react/blob/main/compiler/packages/babel-plugin-react-compiler/src/__tests__/fixtures/compiler/useImperativeHandle-ref-mutate.expect.md)
+preserves the ref, factory, and dependency tuple rather than erasing the protocol. The prover uses
+the same source-level boundary and does not infer correctness merely because compiler
+transformation succeeded.
+
+React Bench supplied two materially different application shapes:
+
+- Ant Design Mobile's `src/components/swipe-action/swipe-action.tsx` exposes inline `show` and
+  `close` methods from an object-literal factory with an omitted dependency list.
+- Mantine's `packages/@mantine/core/src/components/Splitter/Splitter.tsx` exposes an opaque
+  `splitter` object returned by a custom Hook and lists `[splitter]`.
+
+The first shape motivates method-level capture analysis. The second is intentionally incomplete:
+the dependency list may be correct, but certifying an arbitrary object requires a summary for the
+custom Hook's returned protocol rather than trusting its type.
+
+### Closed subset and fail-closed boundary
+
+The certificate recognizes canonical React imports and namespace calls in a function component.
+Its ref target must be either a React 19 `ref` prop or the exact second parameter of an inline
+`forwardRef` callback. The factory must resolve to one function with one object-literal return.
+Every callable property must be a source-resolved static method, property callback, or shorthand
+callback; spreads, computed names, duplicates, accessors, opaque callable values, multiple returns,
+and fallthrough keep the shape incomplete.
+
+Reactive factory captures reuse the existing dependency and purity analyses. A missing dependency
+is a source counterexample because the exposed handle can stay stale. An observable factory side
+effect is a source counterexample because React owns factory execution and may repeat it. Handle
+methods become their own `imperative-handle-method` callback roots, so their effects and call
+phases are not conflated with factory execution.
+
+For whole-project ownership, the caller must pass one non-escaping local `const` ref created by
+canonical `useRef` through a direct project render. Every use of that ref is classified, and every
+static `ref.current.method()` call is linked to the exact exposed method and the caller callback
+phase. Callback refs, reused refs, ref aliases, mutations, prop forwarding, computed method calls,
+external consumers, exported owners, unresolved invocation roots, and unknown ref uses remain
+incomplete. A known local call does not close an otherwise open protocol.
+
+### Certificate checker, corpus, and runtime calibration
+
+The independent checker validates one handle fact per canonical Hook call; factory capture,
+dependency, purity, and status equations; unique static method identities; exact local ref
+bindings; render/ref agreement; escape and exclusivity evidence; caller-owned invocation phases;
+reciprocal handle, binding, method, callback, and invocation links; and the final completeness
+conjunction. Report schema 23 and graph schema 29 reject stale certificates.
+
+Added corpus:
+
+- proved: React 19 direct-ref and inline-`forwardRef` handles with closed local callers;
+- refuted: a method with a missing reactive dependency and an observably impure factory;
+- incomplete: exported owners, opaque returned handle objects, callback refs, computed method
+  names, escaped caller refs, reused child ref targets, and one ref shared by multiple child
+  handles;
+- forged: a mutated ref-binding completeness field rejected by the checker;
+- runtime: `imperative-handle-oracle.spec.ts`.
+
+The complete package gates now cover 335 TypeScript fixture projects, 543 static tests, and 42
+Chromium runtime oracles. The new browser pair updates a child label from `alpha` to `beta`, then
+observes `beta` through a handle declared with `[label]` and stale `alpha` through the otherwise
+identical handle declared with `[]`. Runtime evidence calibrates the stale-closure theorem but
+does not upgrade an incomplete static protocol.
+
+### Product brief: internal imperative-handle facts
+
+Job: Prover consumers need to know that an imperative API exposes current values, does not perform
+observable work while React creates it, and is invoked only through a completely owned ref
+protocol.
+
+Change: Add one private `imperative-handle` claim, versioned handle/method/binding/invocation facts,
+factory dependency and purity evidence, execution-phase callbacks, and independent checker
+equations.
+
+Reuse: Truffler searches for imperative handles, ref-handle lifecycles, dependency captures, and
+forwarded ref props found no existing protocol certificate. The implementation reuses canonical
+React API resolution, Hook collection, function-return summaries, component-prop identity,
+reactive capture analysis, project render edges, callback-root discovery, and ref-use
+classification.
+
+Metric: The deterministic acceptance metric separates direct-ref, `forwardRef`, stale,
+side-effecting, exported, opaque, callback-ref, computed-method, escaped-ref, reused-target,
+shared-ref, and forged-certificate cases, plus a Chromium stale-vs-current oracle.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 23 and its semantic graph to schema 29. No
+Changeset is warranted before publication.
+
+Kill: If a complete handle protocol produces a false `proved` result in two proof-schema releases,
+remove complete invocation coverage and keep handles unknown until interprocedural ref SSA or an
+explicit component proof contract carries the missing ownership.

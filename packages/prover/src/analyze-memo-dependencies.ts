@@ -8,6 +8,7 @@ import { createObligation } from "./create-obligation.js";
 import { getCanonicalHookName } from "./get-canonical-hook-name.js";
 import { resolveFunction } from "./resolve-function.js";
 import { ReactObligationStatus, ReactProofClaim } from "./types.js";
+import { isReactiveCaptureDeclared } from "./utils/is-reactive-capture-declared.js";
 import type { ReactAnalysisContext, ReactProofEvidence, ReactProofObligation } from "./types.js";
 
 export const analyzeMemoDependencies = (
@@ -51,8 +52,8 @@ export const analyzeMemoDependencies = (
       );
       continue;
     }
-    const declaredDependencies = new Set(
-      dependencyExpression.elements.map((dependency) => dependency.getText()),
+    const declaredDependencies = dependencyExpression.elements.map((dependency) =>
+      dependency.getText(),
     );
     const captures = collectReactiveCaptures(
       callback,
@@ -61,13 +62,7 @@ export const analyzeMemoDependencies = (
       stableSymbols,
     );
     for (const capture of captures) {
-      const isDeclared = [...declaredDependencies].some(
-        (dependency) =>
-          dependency === capture.key ||
-          capture.key.startsWith(`${dependency}.`) ||
-          dependency.startsWith(`${capture.key}.`),
-      );
-      if (isDeclared) continue;
+      if (isReactiveCaptureDeclared(capture.key, declaredDependencies)) continue;
       violations.push(
         createEvidence(
           capture.node,

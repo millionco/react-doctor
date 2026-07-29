@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { collectActionState } from "./collect-action-state.js";
+import { analyzeRenderPurity } from "./analyze-render-purity.js";
 import { collectAsyncEffectTaskDescriptors } from "./collect-async-effect-task-descriptors.js";
 import { collectClassConstruction } from "./collect-class-construction.js";
 import { collectClassStateTransitions } from "./collect-class-state-transitions.js";
@@ -29,6 +30,11 @@ import {
 import { collectHookBindings } from "./collect-hook-bindings.js";
 import { collectHookCalls } from "./collect-hook-calls.js";
 import { collectHookStateTransitions } from "./collect-hook-state-transitions.js";
+import { collectImperativeHandles, ImperativeHandleRefKind } from "./collect-imperative-handles.js";
+import type {
+  ImperativeHandleDescriptor,
+  ImperativeHandleMethodDescriptor,
+} from "./collect-imperative-handles.js";
 import { collectFormActions } from "./collect-form-actions.js";
 import { collectOptimisticState } from "./collect-optimistic-state.js";
 import { collectTransitionActions } from "./collect-transition-actions.js";
@@ -48,11 +54,13 @@ import {
 } from "./constants.js";
 import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
 import { getCanonicalHookName } from "./get-canonical-hook-name.js";
+import { getComponentPropName } from "./get-component-prop-name.js";
 import { getEffectCallback } from "./get-effect-callback.js";
 import { getFunctionName } from "./get-function-name.js";
 import { getNodeLocation } from "./get-node-location.js";
 import { extractReactCompilerGraph } from "./extract-react-compiler-graph.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
+import { isIdentifierReference } from "./is-identifier-reference.js";
 import { isReactContextExpression } from "./is-react-context-expression.js";
 import { resolveFunction } from "./resolve-function.js";
 import { mergeCallableBindings } from "./resolve-callable-expression.js";
@@ -73,8 +81,11 @@ import {
   ReactFormStatusTopologyStatus,
   ReactHookStateUpdaterStatus,
   ReactIdentityStability,
+  ReactImperativeHandleRefKind,
+  ReactImperativeHandleStatus,
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
+  ReactObligationStatus,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
   ReactSemanticRenderKind,
@@ -109,6 +120,10 @@ import type {
   ReactSemanticGraph,
   ReactSemanticHookCall,
   ReactSemanticHookStateTransition,
+  ReactSemanticImperativeHandle,
+  ReactSemanticImperativeHandleBinding,
+  ReactSemanticImperativeHandleInvocation,
+  ReactSemanticImperativeHandleMethod,
   ReactSemanticOptimisticState,
   ReactSemanticOptimisticUpdate,
   ReactSemanticTransitionAction,
@@ -125,9 +140,11 @@ import { collectReachableCallExpressions } from "./utils/collect-reachable-call-
 import { collectExecutionCallbackIds } from "./utils/collect-execution-callback-ids.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
 import { getJsxOpeningElementForAttribute } from "./utils/get-jsx-opening-element-for-attribute.js";
+import { getJsxComponentTargetFunction } from "./utils/get-jsx-component-target-function.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
 import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
+import { isReactiveCaptureDeclared } from "./utils/is-reactive-capture-declared.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
 
 interface UnitGraphIdentity {
@@ -210,6 +227,45 @@ interface ActionStateDispatchGraphFacts {
 
 interface HookStateTransitionGraphFacts extends CallbackGraphFacts {
   transitions: ReadonlyArray<ReactSemanticHookStateTransition>;
+}
+
+interface ImperativeHandleGraphFacts extends CallbackGraphFacts {
+  handles: ReadonlyArray<ReactSemanticImperativeHandle>;
+  methods: ReadonlyArray<ReactSemanticImperativeHandleMethod>;
+  bindings: ReadonlyArray<ReactSemanticImperativeHandleBinding>;
+  invocations: ReadonlyArray<ReactSemanticImperativeHandleInvocation>;
+}
+
+interface ImperativeHandleIdentity {
+  descriptor: ImperativeHandleDescriptor;
+  handleId: string;
+  identity: UnitGraphIdentity;
+  methods: ReadonlyArray<ImperativeHandleMethodIdentity>;
+  methodsByName: ReadonlyMap<string, ImperativeHandleMethodIdentity>;
+}
+
+interface ImperativeHandleMethodIdentity {
+  descriptor: ImperativeHandleMethodDescriptor;
+  methodId: string;
+}
+
+interface ImperativeHandleBindingDescriptor {
+  handleIdentity: ImperativeHandleIdentity;
+  identity: UnitGraphIdentity;
+  refAttribute: ts.JsxAttribute;
+  refDeclaration: ts.VariableDeclaration;
+  refName: string;
+  refSymbol: ts.Symbol;
+  render: ReactSemanticRender | null;
+  sourceComplete: boolean;
+}
+
+interface ImperativeHandleInvocationDescriptor {
+  binding: ImperativeHandleBindingDescriptor;
+  callExpression: ts.CallExpression;
+  method: ImperativeHandleMethodIdentity | null;
+  callerCallbackIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
 }
 
 interface OptimisticStateGraphFacts extends CallbackGraphFacts {
@@ -361,6 +417,12 @@ const getDeclarationNameNode = (descriptor: ReactUnitDescriptor): ts.Node | null
   if (functionNode.name) return functionNode.name;
   if (ts.isVariableDeclaration(functionNode.parent)) return functionNode.parent.name;
   if (ts.isPropertyAssignment(functionNode.parent)) return functionNode.parent.name;
+  if (
+    ts.isCallExpression(functionNode.parent) &&
+    ts.isVariableDeclaration(functionNode.parent.parent)
+  ) {
+    return functionNode.parent.parent.name;
+  }
   return functionNode;
 };
 
@@ -999,10 +1061,11 @@ const collectHookGraph = (
   return { hookCalls, edges };
 };
 
-const getEffectDependencyFacts = (
-  effectCall: ts.CallExpression,
+const getHookDependencyFacts = (
+  hookCall: ts.CallExpression,
+  argumentIndex: number,
 ): { mode: ReactEffectDependencyMode; dependencies: ReadonlyArray<string> } => {
-  const dependencyExpression = effectCall.arguments[1];
+  const dependencyExpression = hookCall.arguments[argumentIndex];
   if (!dependencyExpression) {
     return { mode: ReactEffectDependencyMode.Missing, dependencies: [] };
   }
@@ -1151,7 +1214,7 @@ const collectEffectGraph = (
   for (const effectCall of collectEffectCalls(functionNode, context.typeChecker)) {
     const hookName = getCanonicalHookName(effectCall, context.typeChecker) ?? "unknown-effect";
     const effectCallback = getEffectCallback(effectCall, context.typeChecker);
-    const dependencyFacts = getEffectDependencyFacts(effectCall);
+    const dependencyFacts = getHookDependencyFacts(effectCall, 1);
     const captures = effectCallback
       ? collectReactiveCaptures(
           effectCallback,
@@ -3246,6 +3309,617 @@ const collectEffectEventGraph = (
   return { effectEvents, callbacks, reachableFunctions, functionCalls };
 };
 
+const getImperativeHandleRefKind = (
+  refKind: ImperativeHandleRefKind | null,
+): ReactImperativeHandleRefKind | null => {
+  if (refKind === ImperativeHandleRefKind.ForwardedRef) {
+    return ReactImperativeHandleRefKind.ForwardedRef;
+  }
+  if (refKind === ImperativeHandleRefKind.RefProp) {
+    return ReactImperativeHandleRefKind.RefProp;
+  }
+  return null;
+};
+
+const getLocalRefDeclarations = (
+  functionNode: ts.FunctionLikeDeclaration,
+  typeChecker: ts.TypeChecker,
+): ReadonlyMap<ts.Symbol, ts.VariableDeclaration> => {
+  const declarations = new Map<ts.Symbol, ts.VariableDeclaration>();
+  const visit = (node: ts.Node): void => {
+    if (node !== functionNode && isFunctionBoundary(node)) return;
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer) &&
+      getCanonicalReactApiName(node.initializer.expression, typeChecker) === "useRef"
+    ) {
+      const symbol = typeChecker.getSymbolAtLocation(node.name);
+      if (symbol) declarations.set(symbol, node);
+    }
+    node.forEachChild(visit);
+  };
+  functionNode.forEachChild(visit);
+  return declarations;
+};
+
+const getJsxRefExpression = (attribute: ts.JsxAttribute): ts.Expression | null =>
+  attribute.initializer &&
+  ts.isJsxExpression(attribute.initializer) &&
+  attribute.initializer.expression
+    ? unwrapTypescriptExpression(attribute.initializer.expression)
+    : null;
+
+const getImperativeMethodCall = (
+  currentAccess: ts.PropertyAccessExpression,
+): {
+  callExpression: ts.CallExpression;
+  methodName: string;
+} | null => {
+  const methodAccess = currentAccess.parent;
+  if (!ts.isPropertyAccessExpression(methodAccess) || methodAccess.expression !== currentAccess) {
+    return null;
+  }
+  const callExpression = methodAccess.parent;
+  return ts.isCallExpression(callExpression) && callExpression.expression === methodAccess
+    ? { callExpression, methodName: methodAccess.name.text }
+    : null;
+};
+
+const isConstVariableDeclaration = (declaration: ts.VariableDeclaration): boolean =>
+  ts.isVariableDeclarationList(declaration.parent) &&
+  (declaration.parent.flags & ts.NodeFlags.Const) !== 0;
+
+const isHandleTargetReference = (
+  node: ts.Node,
+  descriptor: ImperativeHandleDescriptor,
+  functionNode: ts.FunctionLikeDeclaration,
+  typeChecker: ts.TypeChecker,
+): boolean => {
+  const refExpression = descriptor.refExpression;
+  if (!refExpression) return false;
+  if (descriptor.refKind === ImperativeHandleRefKind.RefProp) {
+    if (ts.isIdentifier(refExpression)) {
+      return (
+        ts.isIdentifier(node) &&
+        isIdentifierReference(node) &&
+        typeChecker.getSymbolAtLocation(node) === typeChecker.getSymbolAtLocation(refExpression)
+      );
+    }
+    return (
+      (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      getComponentPropName(node, functionNode, typeChecker) === "ref"
+    );
+  }
+  return (
+    ts.isIdentifier(refExpression) &&
+    ts.isIdentifier(node) &&
+    isIdentifierReference(node) &&
+    typeChecker.getSymbolAtLocation(node) === typeChecker.getSymbolAtLocation(refExpression)
+  );
+};
+
+const isHandleTargetExclusive = (
+  handleIdentity: ImperativeHandleIdentity,
+  siblingHandles: ReadonlyArray<ImperativeHandleIdentity>,
+  typeChecker: ts.TypeChecker,
+): boolean => {
+  const functionNode = handleIdentity.identity.descriptor.functionNode;
+  if (!functionNode || !handleIdentity.descriptor.refExpression) return false;
+  const allowedCalls = new Set<ts.CallExpression>();
+  for (const candidate of siblingHandles) {
+    if (
+      candidate.descriptor.refName === handleIdentity.descriptor.refName &&
+      candidate.descriptor.refKind === handleIdentity.descriptor.refKind
+    ) {
+      allowedCalls.add(candidate.descriptor.callExpression);
+    }
+  }
+  let isExclusive = allowedCalls.size === 1;
+  const visit = (node: ts.Node): void => {
+    if (!isExclusive) return;
+    if (isHandleTargetReference(node, handleIdentity.descriptor, functionNode, typeChecker)) {
+      let currentNode: ts.Node = node;
+      while (
+        currentNode.parent &&
+        (ts.isPropertyAccessExpression(currentNode.parent) ||
+          ts.isElementAccessExpression(currentNode.parent) ||
+          ts.isParenthesizedExpression(currentNode.parent) ||
+          ts.isAsExpression(currentNode.parent) ||
+          ts.isSatisfiesExpression(currentNode.parent) ||
+          ts.isNonNullExpression(currentNode.parent))
+      ) {
+        currentNode = currentNode.parent;
+      }
+      const callExpression = ts.isCallExpression(currentNode.parent) ? currentNode.parent : null;
+      if (
+        !callExpression ||
+        callExpression.arguments[0] !== currentNode ||
+        !allowedCalls.has(callExpression)
+      ) {
+        isExclusive = false;
+        return;
+      }
+    }
+    node.forEachChild(visit);
+  };
+  functionNode.forEachChild(visit);
+  return isExclusive;
+};
+
+const collectImperativeHandleGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
+  unitFunctionsBySymbol: ReadonlyMap<ts.Symbol, ts.FunctionLikeDeclaration>,
+  renders: ReadonlyArray<ReactSemanticRender>,
+  existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
+  existingReachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>,
+  context: ReactAnalysisContext,
+): ImperativeHandleGraphFacts => {
+  const handleIdentities: ImperativeHandleIdentity[] = identities.flatMap((identity) => {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode || identity.descriptor.kind !== ReactUnitKind.Component) return [];
+    return collectImperativeHandles(functionNode, context.typeChecker).map((descriptor) => {
+      const handleId = createSemanticId(
+        "imperative-handle",
+        descriptor.refName ?? "unknown",
+        descriptor.callExpression,
+        context,
+      );
+      const methods = descriptor.methods.map((method) => ({
+        descriptor: method,
+        methodId: createSemanticId(
+          `imperative-handle-method:${handleId}`,
+          method.name,
+          method.functionNode,
+          context,
+        ),
+      }));
+      return {
+        descriptor,
+        handleId,
+        identity,
+        methods,
+        methodsByName: new Map(methods.map((method) => [method.descriptor.name, method])),
+      };
+    });
+  });
+  const existingCallbacksById = new Map(
+    existingCallbacks.map((callback) => [callback.id, callback]),
+  );
+  const handlesByFunction = new Map<
+    ts.FunctionLikeDeclaration,
+    ReadonlyArray<ImperativeHandleIdentity>
+  >();
+  for (const handleIdentity of handleIdentities) {
+    const functionNode = handleIdentity.identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    handlesByFunction.set(functionNode, [
+      ...(handlesByFunction.get(functionNode) ?? []),
+      handleIdentity,
+    ]);
+  }
+  const bindings: ImperativeHandleBindingDescriptor[] = [];
+  const unsupportedHandleIds = new Set<string>();
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const localRefDeclarations = getLocalRefDeclarations(functionNode, context.typeChecker);
+    const visit = (node: ts.Node): void => {
+      if (node !== functionNode && isFunctionBoundary(node)) return;
+      if (!ts.isJsxOpeningElement(node) && !ts.isJsxSelfClosingElement(node)) {
+        node.forEachChild(visit);
+        return;
+      }
+      const targetFunction = getJsxComponentTargetFunction(
+        node,
+        unitFunctionsBySymbol,
+        context.typeChecker,
+      );
+      const targetHandles = targetFunction ? (handlesByFunction.get(targetFunction) ?? []) : [];
+      const refAttributes = node.attributes.properties.filter(
+        (attribute): attribute is ts.JsxAttribute =>
+          ts.isJsxAttribute(attribute) && attribute.name.getText() === "ref",
+      );
+      if (targetHandles.length === 0) {
+        node.forEachChild(visit);
+        return;
+      }
+      if (refAttributes.length !== 1) {
+        if (node.attributes.properties.some(ts.isJsxSpreadAttribute)) {
+          for (const targetHandle of targetHandles) unsupportedHandleIds.add(targetHandle.handleId);
+        }
+        node.forEachChild(visit);
+        return;
+      }
+      const refAttribute = refAttributes[0];
+      const refExpression = getJsxRefExpression(refAttribute);
+      const refSymbol =
+        refExpression && ts.isIdentifier(refExpression)
+          ? context.typeChecker.getSymbolAtLocation(refExpression)
+          : null;
+      const refDeclaration = refSymbol ? localRefDeclarations.get(refSymbol) : null;
+      const targetIdentity = targetFunction ? identitiesByFunction.get(targetFunction) : null;
+      const tagLocation = getNodeLocation(node.tagName, context.rootDirectory);
+      const render =
+        targetIdentity &&
+        renders.find(
+          (candidate) =>
+            candidate.ownerId === identity.semanticUnit.id &&
+            candidate.targetId === targetIdentity.semanticUnit.id &&
+            areProofLocationsEqual(candidate.location, tagLocation),
+        );
+      if (
+        !refExpression ||
+        !ts.isIdentifier(refExpression) ||
+        !refSymbol ||
+        !refDeclaration ||
+        !targetIdentity ||
+        targetHandles.length !== 1
+      ) {
+        for (const targetHandle of targetHandles) unsupportedHandleIds.add(targetHandle.handleId);
+        node.forEachChild(visit);
+        return;
+      }
+      bindings.push({
+        handleIdentity: targetHandles[0],
+        identity,
+        refAttribute,
+        refDeclaration,
+        refName: refExpression.text,
+        refSymbol,
+        render: render ?? null,
+        sourceComplete: Boolean(
+          render?.kind === ReactSemanticRenderKind.Direct &&
+          isConstVariableDeclaration(refDeclaration),
+        ),
+      });
+      node.forEachChild(visit);
+    };
+    functionNode.forEachChild(visit);
+  }
+  const bindingsByRefSymbol = new Map<ts.Symbol, ImperativeHandleBindingDescriptor[]>();
+  for (const binding of bindings) {
+    bindingsByRefSymbol.set(binding.refSymbol, [
+      ...(bindingsByRefSymbol.get(binding.refSymbol) ?? []),
+      binding,
+    ]);
+  }
+  for (const refBindings of bindingsByRefSymbol.values()) {
+    if (refBindings.length === 1) continue;
+    for (const binding of refBindings) binding.sourceComplete = false;
+  }
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const visit = (node: ts.Node): void => {
+      if (ts.isIdentifier(node) && isIdentifierReference(node)) {
+        const refSymbol = context.typeChecker.getSymbolAtLocation(node);
+        const refBindings = refSymbol ? (bindingsByRefSymbol.get(refSymbol) ?? []) : [];
+        if (refBindings.length > 0) {
+          const isBindingUse = refBindings.some(
+            (binding) => getJsxRefExpression(binding.refAttribute) === node,
+          );
+          const currentAccess =
+            ts.isPropertyAccessExpression(node.parent) &&
+            node.parent.expression === node &&
+            node.parent.name.text === "current"
+              ? node.parent
+              : null;
+          if (!isBindingUse && (!currentAccess || !getImperativeMethodCall(currentAccess))) {
+            for (const binding of refBindings) binding.sourceComplete = false;
+          }
+        }
+      }
+      node.forEachChild(visit);
+    };
+    functionNode.forEachChild(visit);
+  }
+  const invocationDescriptors: ImperativeHandleInvocationDescriptor[] = [];
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === "current" &&
+        ts.isIdentifier(unwrapTypescriptExpression(node.expression))
+      ) {
+        const refIdentifier = unwrapTypescriptExpression(node.expression);
+        if (!ts.isIdentifier(refIdentifier)) {
+          node.forEachChild(visit);
+          return;
+        }
+        const refSymbol = context.typeChecker.getSymbolAtLocation(refIdentifier);
+        const refBindings = refSymbol ? (bindingsByRefSymbol.get(refSymbol) ?? []) : [];
+        if (refBindings.length !== 1) {
+          node.forEachChild(visit);
+          return;
+        }
+        const binding = refBindings[0];
+        const methodCall = getImperativeMethodCall(node);
+        if (!methodCall) {
+          binding.sourceComplete = false;
+          node.forEachChild(visit);
+          return;
+        }
+        const method = binding.handleIdentity.methodsByName.get(methodCall.methodName) ?? null;
+        const callerCallbackIds = collectExecutionCallbackIds({
+          callbacks: existingCallbacks,
+          evidenceNode: methodCall.callExpression,
+          ownerId: identity.semanticUnit.id,
+          reachableFunctions: existingReachableFunctions,
+          rootDirectory: context.rootDirectory,
+        });
+        const callerCallbacks = callerCallbackIds.flatMap((callbackId) => {
+          const callback = existingCallbacksById.get(callbackId);
+          return callback ? [callback] : [];
+        });
+        const sourceComplete = Boolean(
+          method &&
+          binding.sourceComplete &&
+          callerCallbacks.length === callerCallbackIds.length &&
+          callerCallbacks.length > 0 &&
+          callerCallbacks.every((callback) => callback.phase !== ReactExecutionPhase.Render),
+        );
+        if (!sourceComplete) binding.sourceComplete = false;
+        invocationDescriptors.push({
+          binding,
+          callExpression: methodCall.callExpression,
+          method,
+          callerCallbackIds,
+          sourceComplete,
+        });
+      }
+      node.forEachChild(visit);
+    };
+    functionNode.forEachChild(visit);
+  }
+  const callbacks: ReactSemanticCallback[] = [];
+  const reachableFunctions: ReactSemanticReachableFunction[] = [];
+  const functionCalls: ReactSemanticFunctionCall[] = [];
+  const methodCallbacksByIdentity = new Map<string, ReactSemanticCallback>();
+  const getMethodCallbacks = (
+    invocation: ImperativeHandleInvocationDescriptor,
+  ): ReadonlyArray<ReactSemanticCallback> => {
+    const method = invocation.method;
+    if (!method) return [];
+    const ownerFunction = invocation.binding.handleIdentity.identity.descriptor.functionNode;
+    if (!ownerFunction) return [];
+    const hookBindings = collectHookBindings(ownerFunction, context.typeChecker);
+    const stableSymbols = new Set([...hookBindings.refs, ...hookBindings.stateSetters]);
+    const phases = [
+      ...new Set(
+        invocation.callerCallbackIds.flatMap((callbackId) => {
+          const callback = existingCallbacksById.get(callbackId);
+          return callback ? [callback.phase] : [];
+        }),
+      ),
+    ];
+    return phases.map((phase) => {
+      const callbackIdentity = `${method.methodId}:${phase}`;
+      const existingCallback = methodCallbacksByIdentity.get(callbackIdentity);
+      if (existingCallback) return existingCallback;
+      const callback = createCallbackFact(
+        invocation.binding.handleIdentity.identity,
+        method.descriptor.functionNode,
+        ownerFunction,
+        stableSymbols,
+        ReactSemanticCallbackKind.ImperativeHandleMethod,
+        phase,
+        `${method.descriptor.name}@${phase}`,
+        context,
+      );
+      methodCallbacksByIdentity.set(callbackIdentity, callback);
+      callbacks.push(callback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        invocation.binding.handleIdentity.identity,
+        method.descriptor.functionNode,
+        callback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+      return callback;
+    });
+  };
+  const semanticInvocations: ReactSemanticImperativeHandleInvocation[] =
+    invocationDescriptors.flatMap((invocation) => {
+      if (!invocation.method) return [];
+      const bindingId = createSemanticId(
+        `imperative-handle-binding:${invocation.binding.handleIdentity.handleId}`,
+        invocation.binding.refName,
+        invocation.binding.refAttribute,
+        context,
+      );
+      const methodCallbacks = invocation.sourceComplete ? getMethodCallbacks(invocation) : [];
+      return [
+        {
+          id: createSemanticId(
+            `imperative-handle-invocation:${bindingId}`,
+            invocation.method.descriptor.name,
+            invocation.callExpression,
+            context,
+          ),
+          ownerId: invocation.binding.identity.semanticUnit.id,
+          handleId: invocation.binding.handleIdentity.handleId,
+          methodId: invocation.method.methodId,
+          bindingId,
+          location: getNodeLocation(invocation.callExpression, context.rootDirectory),
+          callerCallbackIds: invocation.callerCallbackIds,
+          methodCallbackIds: methodCallbacks.map((callback) => callback.id),
+          sourceComplete: invocation.sourceComplete,
+          complete:
+            invocation.sourceComplete &&
+            methodCallbacks.length > 0 &&
+            methodCallbacks.length ===
+              new Set(methodCallbacks.map((callback) => callback.phase)).size,
+        },
+      ];
+    });
+  const semanticBindings: ReactSemanticImperativeHandleBinding[] = bindings.map((binding) => {
+    const bindingId = createSemanticId(
+      `imperative-handle-binding:${binding.handleIdentity.handleId}`,
+      binding.refName,
+      binding.refAttribute,
+      context,
+    );
+    const bindingInvocations = semanticInvocations.filter(
+      (invocation) => invocation.bindingId === bindingId,
+    );
+    return {
+      id: bindingId,
+      ownerId: binding.identity.semanticUnit.id,
+      handleId: binding.handleIdentity.handleId,
+      renderId: binding.render?.id ?? "unknown",
+      refName: binding.refName,
+      refLocation: getNodeLocation(binding.refDeclaration, context.rootDirectory),
+      location: getNodeLocation(binding.refAttribute, context.rootDirectory),
+      invocationIds: bindingInvocations.map((invocation) => invocation.id),
+      referenceComplete: binding.sourceComplete,
+      sourceComplete:
+        binding.sourceComplete &&
+        Boolean(binding.render) &&
+        bindingInvocations.every((invocation) => invocation.sourceComplete),
+      complete:
+        binding.sourceComplete &&
+        Boolean(binding.render) &&
+        bindingInvocations.every((invocation) => invocation.complete),
+    };
+  });
+  const semanticMethods: ReactSemanticImperativeHandleMethod[] = handleIdentities.flatMap(
+    (handleIdentity) =>
+      handleIdentity.methods.map((method) => ({
+        id: method.methodId,
+        ownerId: handleIdentity.identity.semanticUnit.id,
+        handleId: handleIdentity.handleId,
+        name: method.descriptor.name,
+        location: getNodeLocation(method.descriptor.functionNode, context.rootDirectory),
+      })),
+  );
+  const factoryCallbacks: ReactSemanticCallback[] = [];
+  const handles: ReactSemanticImperativeHandle[] = handleIdentities.map((handleIdentity) => {
+    const functionNode = handleIdentity.identity.descriptor.functionNode;
+    const descriptor = handleIdentity.descriptor;
+    const factoryFunction = descriptor.factoryFunction;
+    const hookBindings = functionNode
+      ? collectHookBindings(functionNode, context.typeChecker)
+      : null;
+    const stableSymbols = new Set([
+      ...(hookBindings?.refs ?? []),
+      ...(hookBindings?.stateSetters ?? []),
+    ]);
+    const factoryCallback =
+      factoryFunction && functionNode
+        ? createCallbackFact(
+            handleIdentity.identity,
+            factoryFunction,
+            functionNode,
+            stableSymbols,
+            ReactSemanticCallbackKind.ImperativeHandleFactory,
+            ReactExecutionPhase.ImperativeHandle,
+            "createHandle",
+            context,
+          )
+        : null;
+    if (factoryCallback && factoryFunction) {
+      factoryCallbacks.push(factoryCallback);
+      const reachabilityFacts = collectReachabilityGraphFacts(
+        handleIdentity.identity,
+        factoryFunction,
+        factoryCallback,
+        context,
+      );
+      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+      functionCalls.push(...reachabilityFacts.functionCalls);
+    }
+    const dependencyFacts = getHookDependencyFacts(descriptor.callExpression, 2);
+    const captures = factoryCallback?.captures ?? [];
+    const missingDependencies =
+      dependencyFacts.mode === ReactEffectDependencyMode.Inline
+        ? captures.filter(
+            (capture) => !isReactiveCaptureDeclared(capture, dependencyFacts.dependencies),
+          )
+        : [];
+    const factoryPurity = factoryFunction
+      ? analyzeRenderPurity(factoryFunction, context).status
+      : ReactObligationStatus.Unknown;
+    const handleBindings = semanticBindings.filter(
+      (binding) => binding.handleId === handleIdentity.handleId,
+    );
+    const targetExclusive = isHandleTargetExclusive(
+      handleIdentity,
+      functionNode ? (handlesByFunction.get(functionNode) ?? []) : [],
+      context.typeChecker,
+    );
+    let status = ReactImperativeHandleStatus.Resolved;
+    if (factoryPurity === ReactObligationStatus.Violated) {
+      status = ReactImperativeHandleStatus.ImpureFactory;
+    } else if (missingDependencies.length > 0) {
+      status = ReactImperativeHandleStatus.MissingDependency;
+    } else if (
+      factoryPurity === ReactObligationStatus.Unknown ||
+      dependencyFacts.mode === ReactEffectDependencyMode.Opaque ||
+      !descriptor.shapeComplete ||
+      !descriptor.targetComplete ||
+      !targetExclusive ||
+      unsupportedHandleIds.has(handleIdentity.handleId)
+    ) {
+      status = ReactImperativeHandleStatus.Opaque;
+    }
+    const sourceComplete =
+      Boolean(factoryCallback) &&
+      descriptor.shapeComplete &&
+      descriptor.targetComplete &&
+      targetExclusive &&
+      handleBindings.length > 0 &&
+      handleBindings.every((binding) => binding.sourceComplete) &&
+      !unsupportedHandleIds.has(handleIdentity.handleId) &&
+      !handleIdentity.identity.semanticUnit.canBeRenderRoot &&
+      dependencyFacts.mode !== ReactEffectDependencyMode.Opaque &&
+      factoryPurity !== ReactObligationStatus.Unknown;
+    const bindingComplete =
+      handleBindings.length > 0 &&
+      handleBindings.every((binding) => binding.sourceComplete) &&
+      !unsupportedHandleIds.has(handleIdentity.handleId);
+    return {
+      id: handleIdentity.handleId,
+      ownerId: handleIdentity.identity.semanticUnit.id,
+      refKind: getImperativeHandleRefKind(descriptor.refKind),
+      refName: descriptor.refName,
+      location: getNodeLocation(descriptor.callExpression, context.rootDirectory),
+      factoryCallbackId: factoryCallback?.id ?? null,
+      dependencyMode: dependencyFacts.mode,
+      dependencies: dependencyFacts.dependencies,
+      captures,
+      factoryPurity,
+      methodIds: handleIdentity.methods.map((method) => method.methodId),
+      bindingIds: handleBindings.map((binding) => binding.id),
+      factoryComplete:
+        Boolean(factoryCallback) &&
+        dependencyFacts.mode !== ReactEffectDependencyMode.Opaque &&
+        factoryPurity !== ReactObligationStatus.Unknown,
+      shapeComplete: descriptor.shapeComplete,
+      targetComplete: descriptor.targetComplete && targetExclusive,
+      bindingComplete,
+      status,
+      sourceComplete,
+      complete: sourceComplete && status === ReactImperativeHandleStatus.Resolved,
+    };
+  });
+  callbacks.unshift(...factoryCallbacks);
+  return {
+    handles,
+    methods: semanticMethods,
+    bindings: semanticBindings,
+    invocations: semanticInvocations,
+    callbacks,
+    reachableFunctions,
+    functionCalls,
+  };
+};
+
 const addContextSource = (
   sourcesByUnit: Map<string, Map<string, Set<string>>>,
   unitId: string,
@@ -3669,6 +4343,18 @@ export const buildReactSemanticGraph = (
     reachableFunctions.push(...externalStoreGraph.reachableFunctions);
     functionCalls.push(...externalStoreGraph.functionCalls);
   }
+  const imperativeHandleGraph = collectImperativeHandleGraph(
+    identities,
+    unitIdentitiesByFunction,
+    unitFunctionsBySymbol,
+    renders,
+    callbacks,
+    reachableFunctions,
+    context,
+  );
+  callbacks.push(...imperativeHandleGraph.callbacks);
+  reachableFunctions.push(...imperativeHandleGraph.reachableFunctions);
+  functionCalls.push(...imperativeHandleGraph.functionCalls);
   for (const identity of identities) {
     const transitionActionGraph = collectTransitionActionGraph(
       identity,
@@ -3770,6 +4456,10 @@ export const buildReactSemanticGraph = (
     eventBindings: eventGraph.eventBindings,
     callbackPropFlows: callbackPropGraph.callbackPropFlows,
     callableRefs,
+    imperativeHandles: imperativeHandleGraph.handles,
+    imperativeHandleMethods: imperativeHandleGraph.methods,
+    imperativeHandleBindings: imperativeHandleGraph.bindings,
+    imperativeHandleInvocations: imperativeHandleGraph.invocations,
     schedulers,
     resources,
     classConstructions,

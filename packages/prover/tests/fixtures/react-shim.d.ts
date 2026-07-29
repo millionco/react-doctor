@@ -20,6 +20,12 @@ declare module "react" {
     current: Value;
   }
 
+  export interface RefCallback<Value> {
+    (value: Value | null): void;
+  }
+
+  export type Ref<Value> = MutableRefObject<Value | null> | RefCallback<Value> | null;
+
   export const useCallback: <Value extends (...argumentsList: ReadonlyArray<never>) => unknown>(
     callback: Value,
     dependencies: ReadonlyArray<unknown>,
@@ -50,6 +56,9 @@ declare module "react" {
     ) => ReadonlyArray<Result>;
   };
   export const memo: <Component>(component: Component) => Component;
+  export const forwardRef: <Handle, Properties>(
+    render: (properties: Properties, ref: Ref<Handle>) => unknown,
+  ) => (properties: Properties & { ref?: Ref<Handle> }) => unknown;
   export const StrictMode: (properties: { children?: unknown }) => unknown;
   export const startTransition: (action: () => void | Promise<void>) => void;
   export const useEffect: (
@@ -60,6 +69,11 @@ declare module "react" {
     callback: Callback,
   ) => Callback;
   export const useLayoutEffect: typeof useEffect;
+  export const useImperativeHandle: <Handle>(
+    ref: Ref<Handle> | undefined,
+    createHandle: () => Handle,
+    dependencies?: ReadonlyArray<unknown>,
+  ) => void;
   export const useMemo: <Value>(
     factory: () => Value,
     dependencies: ReadonlyArray<unknown>,

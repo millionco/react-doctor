@@ -28,6 +28,8 @@ import {
   ReactFormStatusTopologyStatus,
   ReactHookStateUpdaterStatus,
   ReactIdentityStability,
+  ReactImperativeHandleRefKind,
+  ReactImperativeHandleStatus,
   ReactObligationStatus,
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
@@ -62,6 +64,16 @@ const proveFixture = (fixtureName: string) =>
   });
 
 const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
+  {
+    fixtureName: "refuted-stale-imperative-handle",
+    claim: ReactProofClaim.ImperativeHandle,
+    evidencePattern: /stale reactive values/,
+  },
+  {
+    fixtureName: "refuted-impure-imperative-handle-factory",
+    claim: ReactProofClaim.ImperativeHandle,
+    evidencePattern: /observable side effect/,
+  },
   {
     fixtureName: "refuted-action-state-outside-action",
     claim: ReactProofClaim.ActionState,
@@ -552,6 +564,8 @@ describe("proveReactApp", () => {
     "proved-hook-direct-state-value",
     "proved-effect-functional-updater",
     "proved-state-setter-lookalikes",
+    "proved-imperative-handle",
+    "proved-forward-ref-imperative-handle",
     "proved-transition-tabs",
     "proved-use-transition-action",
     "proved-transition-lookalike",
@@ -664,8 +678,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(22);
-    expect(report.graph.schemaVersion).toBe(28);
+    expect(report.schemaVersion).toBe(23);
+    expect(report.graph.schemaVersion).toBe(29);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -679,6 +693,141 @@ describe("proveReactApp", () => {
       report.graph.callbacks.find((callback) => callback.id === effect?.cleanupCallbackIds[0])
         ?.phase,
     ).toBe(ReactExecutionPhase.EffectCleanup);
+  });
+
+  it("certifies a React 19 ref-prop handle through its exact event invocation", () => {
+    const report = proveFixture("proved-imperative-handle");
+    const handle = report.graph.imperativeHandles[0];
+    const binding = report.graph.imperativeHandleBindings[0];
+    const invocation = report.graph.imperativeHandleInvocations[0];
+    const methodCallback = report.graph.callbacks.find(
+      (callback) => callback.id === invocation?.methodCallbackIds[0],
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(handle?.refKind).toBe(ReactImperativeHandleRefKind.RefProp);
+    expect(handle?.status).toBe(ReactImperativeHandleStatus.Resolved);
+    expect(handle?.methodIds).toHaveLength(2);
+    expect(handle?.bindingIds).toEqual([binding?.id]);
+    expect(handle?.sourceComplete).toBe(true);
+    expect(handle?.complete).toBe(true);
+    expect(binding?.invocationIds).toEqual([invocation?.id]);
+    expect(binding?.complete).toBe(true);
+    expect(invocation?.callerCallbackIds).toHaveLength(1);
+    expect(invocation?.methodCallbackIds).toHaveLength(1);
+    expect(invocation?.complete).toBe(true);
+    expect(methodCallback?.kind).toBe(ReactSemanticCallbackKind.ImperativeHandleMethod);
+    expect(methodCallback?.phase).toBe(ReactExecutionPhase.Event);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("preserves the caller Effect phase through a forwardRef handle method", () => {
+    const report = proveFixture("proved-forward-ref-imperative-handle");
+    const handle = report.graph.imperativeHandles[0];
+    const invocation = report.graph.imperativeHandleInvocations[0];
+    const methodCallback = report.graph.callbacks.find(
+      (callback) => callback.id === invocation?.methodCallbackIds[0],
+    );
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(handle?.refKind).toBe(ReactImperativeHandleRefKind.ForwardedRef);
+    expect(handle?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
+    expect(handle?.complete).toBe(true);
+    expect(methodCallback?.phase).toBe(ReactExecutionPhase.EffectSetup);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it.each([
+    "incomplete-exported-imperative-handle",
+    "incomplete-opaque-imperative-handle",
+    "incomplete-callback-ref-imperative-handle",
+    "incomplete-computed-imperative-handle-method",
+    "incomplete-escaped-imperative-handle-ref",
+    "incomplete-reused-imperative-handle-target",
+    "incomplete-shared-imperative-handle-ref",
+  ])("fails closed for an open imperative handle protocol in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const handle = report.graph.imperativeHandles[0];
+    const handleProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find(
+        (obligation) =>
+          obligation.claim === ReactProofClaim.ImperativeHandle &&
+          obligation.status === ReactObligationStatus.Unknown,
+      );
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(handle?.complete).toBe(false);
+    expect(handleProof).toBeDefined();
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged imperative handle completeness certificate", () => {
+    const report = proveFixture("proved-imperative-handle");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        imperativeHandles: report.graph.imperativeHandles.map((handle) => ({
+          ...handle,
+          complete: false,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("imperative handle completeness"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a forged imperative handle factory-purity status", () => {
+    const report = proveFixture("refuted-impure-imperative-handle-factory");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        imperativeHandles: report.graph.imperativeHandles.map((handle) => ({
+          ...handle,
+          status: ReactImperativeHandleStatus.Resolved,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) => failure.description.includes("factory purity")),
+    ).toBe(true);
+  });
+
+  it("rejects a handle invocation linked to a different method body", () => {
+    const report = proveFixture("proved-imperative-handle");
+    const invocation = report.graph.imperativeHandleInvocations[0];
+    const methodCallbackId = invocation?.methodCallbackIds[0];
+    const otherMethod = report.graph.imperativeHandleMethods.find(
+      (method) => method.id !== invocation?.methodId,
+    );
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        callbacks: report.graph.callbacks.map((callback) =>
+          callback.id === methodCallbackId && otherMethod
+            ? { ...callback, location: otherMethod.location }
+            : callback,
+        ),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("invalid method callback"),
+      ),
+    ).toBe(true);
   });
 
   it("certifies DOM listener identity using callback, event type, and capture", () => {

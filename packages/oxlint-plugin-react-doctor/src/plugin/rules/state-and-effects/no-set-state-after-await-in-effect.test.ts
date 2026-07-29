@@ -831,6 +831,104 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not stop before cancellation actions after cleanup try statements", () => {
+    const guardedState = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            await load(id);
+            if (cancelled) return;
+            setValue(id);
+          };
+          run();
+          return () => {
+            try {
+              logCleanup(id);
+            } catch {}
+            cancelled = true;
+          };
+        }, [id]);
+      };`,
+    );
+    const abortedRequest = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ url }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          const controller = new AbortController();
+          const run = async () => {
+            const value = await load(url, { signal: controller.signal });
+            setValue(value);
+          };
+          run();
+          return () => {
+            try {
+              logCleanup(url);
+            } finally {
+              recordCleanup(url);
+            }
+            controller.abort();
+          };
+        }, [url]);
+      };`,
+    );
+    expect(guardedState.diagnostics).toHaveLength(0);
+    expect(abortedRequest.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat cleanup actions after abrupt try exits as unconditional", () => {
+    const returned = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ id, skip }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            await load(id);
+            if (cancelled) return;
+            setValue(id);
+          };
+          run();
+          return () => {
+            try {
+              if (skip) return;
+            } finally {
+              recordCleanup(id);
+            }
+            cancelled = true;
+          };
+        }, [id, skip]);
+      };`,
+    );
+    const thrown = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ url, fail }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          const controller = new AbortController();
+          const run = async () => {
+            const value = await load(url, { signal: controller.signal });
+            setValue(value);
+          };
+          run();
+          return () => {
+            try {
+              if (fail) throw new Error("cleanup failed");
+            } finally {
+              recordCleanup(url);
+            }
+            controller.abort();
+          };
+        }, [fail, url]);
+      };`,
+    );
+    expect(returned.diagnostics).toHaveLength(1);
+    expect(thrown.diagnostics).toHaveLength(1);
+  });
+
   it("flags when only one possible cleanup aborts the request", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,

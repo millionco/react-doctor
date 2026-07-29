@@ -205,6 +205,44 @@ const getUnconditionalCleanupFunction = (
   return cleanupReturn.cleanupFunctions[0] ?? null;
 };
 
+const collectUnconditionalCleanupActions = (
+  statements: EsTreeNode[],
+  recordAction: (candidate: EsTreeNode) => void,
+): boolean => {
+  for (const statement of statements) {
+    if (isNodeOfType(statement, "ExpressionStatement")) {
+      recordAction(statement);
+      continue;
+    }
+    if (isNodeOfType(statement, "BlockStatement")) {
+      if (!collectUnconditionalCleanupActions(statement.body as EsTreeNode[], recordAction)) {
+        return false;
+      }
+      continue;
+    }
+    if (isNodeOfType(statement, "TryStatement")) {
+      if (statement.finalizer) {
+        collectUnconditionalCleanupActions(statement.finalizer.body as EsTreeNode[], recordAction);
+      }
+      let hasAbruptExit = false;
+      walkAst(statement, (candidate: EsTreeNode) => {
+        if (candidate !== statement && isFunctionLike(candidate)) return false;
+        if (
+          isNodeOfType(candidate, "ReturnStatement") ||
+          isNodeOfType(candidate, "ThrowStatement")
+        ) {
+          hasAbruptExit = true;
+        }
+        return undefined;
+      });
+      if (hasAbruptExit) return false;
+      continue;
+    }
+    return false;
+  }
+  return true;
+};
+
 const collectCleanupGuardWrites = (
   effectCallback: EsTreeNode,
   context: RuleContext,
@@ -228,26 +266,11 @@ const collectCleanupGuardWrites = (
     const targetKey = serializeReferenceKey({ node: expression.left, scopes: context.scopes });
     if (targetKey) writes.set(targetKey, assignedValue.value);
   };
-  const collectUnconditionalWrites = (statements: EsTreeNode[]): boolean => {
-    for (const statement of statements) {
-      if (isNodeOfType(statement, "ExpressionStatement")) {
-        recordAssignment(statement);
-      } else if (isNodeOfType(statement, "BlockStatement")) {
-        if (!collectUnconditionalWrites(statement.body as EsTreeNode[])) return false;
-      } else if (isNodeOfType(statement, "TryStatement") && statement.finalizer) {
-        collectUnconditionalWrites(statement.finalizer.body as EsTreeNode[]);
-        return false;
-      } else {
-        return false;
-      }
-    }
-    return true;
-  };
   const cleanupFunction = getUnconditionalCleanupFunction(effectCallback, context);
   if (cleanupFunction && isFunctionLike(cleanupFunction)) {
     const body = cleanupFunction.body;
     if (isNodeOfType(body, "BlockStatement")) {
-      collectUnconditionalWrites(body.body as EsTreeNode[]);
+      collectUnconditionalCleanupActions(body.body as EsTreeNode[], recordAssignment);
     } else if (body) {
       recordAssignment(body);
     }
@@ -273,26 +296,11 @@ const collectCleanupAbortedControllers = (
     const receiverKey = serializeReferenceKey({ node: receiver, scopes: context.scopes });
     if (receiverKey) controllerKeys.add(receiverKey);
   };
-  const collectUnconditionalAborts = (statements: EsTreeNode[]): boolean => {
-    for (const statement of statements) {
-      if (isNodeOfType(statement, "ExpressionStatement")) {
-        recordAbort(statement);
-      } else if (isNodeOfType(statement, "BlockStatement")) {
-        if (!collectUnconditionalAborts(statement.body as EsTreeNode[])) return false;
-      } else if (isNodeOfType(statement, "TryStatement") && statement.finalizer) {
-        collectUnconditionalAborts(statement.finalizer.body as EsTreeNode[]);
-        return false;
-      } else {
-        return false;
-      }
-    }
-    return true;
-  };
   const cleanupFunction = getUnconditionalCleanupFunction(effectCallback, context);
   if (cleanupFunction && isFunctionLike(cleanupFunction)) {
     const body = cleanupFunction.body;
     if (isNodeOfType(body, "BlockStatement")) {
-      collectUnconditionalAborts(body.body as EsTreeNode[]);
+      collectUnconditionalCleanupActions(body.body as EsTreeNode[], recordAbort);
     } else if (body) {
       recordAbort(body);
     }

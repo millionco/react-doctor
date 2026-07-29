@@ -1,4 +1,5 @@
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
+import { REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -14,6 +15,7 @@ import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-e
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
+import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -23,7 +25,8 @@ import { readInitialStateBoolean } from "../../utils/read-initial-state-boolean.
 import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -50,6 +53,163 @@ interface HydrationStatementResult {
   readonly didReturn: boolean;
   readonly value: boolean | null;
 }
+
+const findGuardingIfStatements = (
+  node: EsTreeNode,
+  functionBoundary: EsTreeNode,
+): ReadonlyArray<EsTreeNodeOfType<"IfStatement">> => {
+  const guardingIfStatements: Array<EsTreeNodeOfType<"IfStatement">> = [];
+  let currentNode = node.parent;
+  while (currentNode && currentNode !== functionBoundary) {
+    if (isNodeOfType(currentNode, "IfStatement")) guardingIfStatements.push(currentNode);
+    currentNode = currentNode.parent;
+  }
+  return guardingIfStatements;
+};
+
+const doesNodeReadSymbol = (node: EsTreeNode, symbol: SymbolDescriptor): boolean => {
+  let doesReadSymbol = false;
+  walkAst(node, (childNode) => {
+    if (
+      isNodeOfType(childNode, "Identifier") &&
+      symbol.references.some(
+        (reference) => reference.identifier === childNode && reference.flag !== "write",
+      )
+    ) {
+      doesReadSymbol = true;
+      return false;
+    }
+  });
+  return doesReadSymbol;
+};
+
+const collectWrittenSymbols = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlySet<SymbolDescriptor> => {
+  const writtenSymbols = new Set<SymbolDescriptor>();
+  walkAst(node, (childNode) => {
+    if (!isNodeOfType(childNode, "Identifier")) return;
+    const reference = scopes.referenceFor(childNode);
+    if (!reference || reference.flag === "read" || !reference.resolvedSymbol) return;
+    writtenSymbols.add(reference.resolvedSymbol);
+  });
+  return writtenSymbols;
+};
+
+const isDescendantOf = (node: EsTreeNode, ancestorNode: EsTreeNode): boolean => {
+  let currentNode = node.parent;
+  while (currentNode) {
+    if (currentNode === ancestorNode) return true;
+    currentNode = currentNode.parent;
+  }
+  return false;
+};
+
+const getAssignedValue = (identifier: EsTreeNode): EsTreeNode | null => {
+  const assignmentExpression = identifier.parent;
+  return isNodeOfType(assignmentExpression, "AssignmentExpression") &&
+    assignmentExpression.operator === "=" &&
+    assignmentExpression.left === identifier
+    ? assignmentExpression.right
+    : null;
+};
+
+const doesGuardPreserveInitialSymbolValue = (
+  symbol: SymbolDescriptor,
+  guardingIfStatement: EsTreeNodeOfType<"IfStatement">,
+): boolean => {
+  if (!symbol.initializer) return false;
+  const guardedWrites = symbol.references.filter(
+    (reference) =>
+      reference.flag !== "read" && isDescendantOf(reference.identifier, guardingIfStatement),
+  );
+  return (
+    guardedWrites.length > 0 &&
+    guardedWrites.every((reference) => {
+      const assignedValue = getAssignedValue(reference.identifier);
+      return Boolean(
+        assignedValue && areExpressionsStructurallyEqual(symbol.initializer, assignedValue),
+      );
+    })
+  );
+};
+
+const isWriteOverwrittenBefore = (
+  symbol: SymbolDescriptor,
+  writeIdentifier: EsTreeNode,
+  guardingIfStatement: EsTreeNodeOfType<"IfStatement">,
+  readIdentifier: EsTreeNode,
+): boolean =>
+  symbol.references.some(
+    (reference) =>
+      reference.flag !== "read" &&
+      reference.identifier !== writeIdentifier &&
+      !isDescendantOf(reference.identifier, guardingIfStatement) &&
+      getNodeStartIndex(reference.identifier) > getNodeStartIndex(writeIdentifier) &&
+      getNodeStartIndex(reference.identifier) < getNodeStartIndex(readIdentifier),
+  );
+
+const containsExplicitReactRuntimeReference = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let hasRuntimeReference = false;
+  walkAst(node, (childNode) => {
+    if (
+      isNodeOfType(childNode, "ImportDeclaration") &&
+      typeof childNode.source.value === "string" &&
+      REACT_RUNTIME_MODULE_SOURCES.has(childNode.source.value)
+    ) {
+      hasRuntimeReference = true;
+      return false;
+    }
+    if (!isNodeOfType(childNode, "CallExpression")) return;
+    const callArguments = childNode.arguments ?? [];
+    const sourceArgument = callArguments[0];
+    if (
+      !isNodeOfType(childNode.callee, "Identifier") ||
+      childNode.callee.name !== "require" ||
+      !scopes.isGlobalReference(childNode.callee) ||
+      !isNodeOfType(sourceArgument, "Literal") ||
+      typeof sourceArgument.value !== "string" ||
+      !REACT_RUNTIME_MODULE_SOURCES.has(sourceArgument.value)
+    ) {
+      return;
+    }
+    hasRuntimeReference = true;
+    return false;
+  });
+  return hasRuntimeReference;
+};
+
+const findComponentRenderingLocalFunctionResult = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  const bindingIdentifier = isNodeOfType(functionNode, "FunctionDeclaration")
+    ? functionNode.id
+    : isNodeOfType(functionNode.parent, "VariableDeclarator")
+      ? functionNode.parent.id
+      : null;
+  if (!isNodeOfType(bindingIdentifier, "Identifier")) return null;
+  const functionSymbol = scopes.symbolFor(bindingIdentifier);
+  if (!functionSymbol) return null;
+  for (const reference of functionSymbol.references) {
+    const callExpression = reference.identifier.parent;
+    if (
+      !isNodeOfType(callExpression, "CallExpression") ||
+      callExpression.callee !== reference.identifier
+    ) {
+      continue;
+    }
+    const componentOrHookNode = findRenderPhaseComponentOrHook(callExpression, scopes);
+    if (componentOrHookNode && isInRenderedOutput(callExpression, componentOrHookNode, scopes)) {
+      return componentOrHookNode;
+    }
+  }
+  return null;
+};
 
 const evaluateEquality = (operator: string, left: string, right: string): boolean | null => {
   if (operator === "===" || operator === "==") return left === right;
@@ -410,6 +570,45 @@ const matchHydrationConditionInternal = (
       return match;
     }
     if (
+      symbol &&
+      (symbol.kind === "let" || symbol.kind === "var") &&
+      !state.visitedSymbolIds.has(symbol.id)
+    ) {
+      state.visitedSymbolIds.add(symbol.id);
+      if (symbol.initializer && symbol.references.every((reference) => reference.flag === "read")) {
+        const match = matchHydrationConditionInternal(symbol.initializer, context, state);
+        state.visitedSymbolIds.delete(symbol.id);
+        return match;
+      }
+      for (const reference of symbol.references) {
+        if (reference.flag === "read") continue;
+        const enclosingFunction = findEnclosingFunction(reference.identifier);
+        if (!enclosingFunction) continue;
+        for (const guardingIfStatement of findGuardingIfStatements(
+          reference.identifier,
+          enclosingFunction,
+        )) {
+          if (
+            doesGuardPreserveInitialSymbolValue(symbol, guardingIfStatement) ||
+            isWriteOverwrittenBefore(
+              symbol,
+              reference.identifier,
+              guardingIfStatement,
+              unwrappedExpression,
+            )
+          ) {
+            continue;
+          }
+          const match = matchHydrationConditionInternal(guardingIfStatement.test, context, state);
+          if (match) {
+            state.visitedSymbolIds.delete(symbol.id);
+            return match;
+          }
+        }
+      }
+      state.visitedSymbolIds.delete(symbol.id);
+    }
+    if (
       !symbol ||
       symbol.kind !== "const" ||
       !symbol.initializer ||
@@ -425,6 +624,19 @@ const matchHydrationConditionInternal = (
   }
   if (isNodeOfType(unwrappedExpression, "CallExpression")) {
     const callArguments = unwrappedExpression.arguments ?? [];
+    if (
+      isReactApiCall(unwrappedExpression, "useState", context.scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      })
+    ) {
+      const initialState = callArguments[0];
+      if (!initialState || isNodeOfType(initialState, "SpreadElement")) return null;
+      const lazyInitializer = resolveExactLocalFunction(initialState, context.scopes);
+      return isFunctionLike(lazyInitializer) && lazyInitializer.params.length === 0
+        ? matchHydrationFunctionResult(lazyInitializer, context, state)
+        : matchHydrationConditionInternal(initialState, context, state);
+    }
     if (
       isReactApiCall(unwrappedExpression, "useMemo", context.scopes, {
         allowGlobalReactNamespace: true,
@@ -478,6 +690,18 @@ const matchHydrationConditionInternal = (
   ) {
     return matchHydrationConditionInternal(unwrappedExpression.argument, context, state);
   }
+  if (isNodeOfType(unwrappedExpression, "ConditionalExpression")) {
+    return (
+      matchHydrationConditionInternal(unwrappedExpression.consequent, context, state) ??
+      matchHydrationConditionInternal(unwrappedExpression.alternate, context, state)
+    );
+  }
+  if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
+    return (
+      matchHydrationConditionInternal(unwrappedExpression.left, context, state) ??
+      matchHydrationConditionInternal(unwrappedExpression.right, context, state)
+    );
+  }
   if (
     !isNodeOfType(unwrappedExpression, "LogicalExpression") ||
     (unwrappedExpression.operator !== "&&" && unwrappedExpression.operator !== "||")
@@ -519,10 +743,35 @@ const matchHydrationReturningStatement = (
     ) {
       return conditionMatch;
     }
+    if (conditionMatch) {
+      const followingReturnedValues = findFollowingReturnedValues(statement);
+      const writtenSymbols = new Set([
+        ...collectWrittenSymbols(statement.consequent, context.scopes),
+        ...(statement.alternate ? collectWrittenSymbols(statement.alternate, context.scopes) : []),
+      ]);
+      if (
+        [...writtenSymbols].some((symbol) =>
+          followingReturnedValues.some((value) => doesNodeReadSymbol(value, symbol)),
+        )
+      ) {
+        return conditionMatch;
+      }
+    }
     return (
       matchHydrationReturningStatement(statement.consequent, context, state) ??
       (statement.alternate
         ? matchHydrationReturningStatement(statement.alternate, context, state)
+        : null)
+    );
+  }
+  if (isNodeOfType(statement, "TryStatement")) {
+    return (
+      matchHydrationReturningStatement(statement.block, context, state) ??
+      (statement.handler
+        ? matchHydrationReturningStatement(statement.handler.body, context, state)
+        : null) ??
+      (statement.finalizer
+        ? matchHydrationReturningStatement(statement.finalizer, context, state)
         : null)
     );
   }
@@ -622,7 +871,43 @@ const areRenderedBranchesEquivalent = (
   return false;
 };
 
-const isRenderedValue = (node: EsTreeNode): boolean => {
+const isProvenReactCreateElementCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (
+    isReactApiCall(node, "createElement", scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return true;
+  }
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripParenExpression(node.callee);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    callee.property.name !== "createElement"
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(callee.object);
+  const namespaceIdentifier =
+    isNodeOfType(receiver, "MemberExpression") &&
+    !receiver.computed &&
+    isNodeOfType(receiver.property, "Identifier") &&
+    receiver.property.name === "default"
+      ? stripParenExpression(receiver.object)
+      : receiver;
+  if (!isNodeOfType(namespaceIdentifier, "Identifier")) return false;
+  const namespaceSymbol = scopes.symbolFor(namespaceIdentifier);
+  return Boolean(
+    namespaceSymbol?.initializer &&
+    namespaceSymbol.references.every((reference) => reference.flag === "read") &&
+    containsExplicitReactRuntimeReference(namespaceSymbol.initializer, scopes),
+  );
+};
+
+const isRenderedValue = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const unwrappedNode = stripParenExpression(node);
   if (isNodeOfType(unwrappedNode, "Literal")) {
     return (
@@ -635,16 +920,21 @@ const isRenderedValue = (node: EsTreeNode): boolean => {
   if (isNodeOfType(unwrappedNode, "TemplateLiteral")) {
     return unwrappedNode.expressions.length > 0 || unwrappedNode.quasis[0]?.value.cooked !== "";
   }
+  if (isNodeOfType(unwrappedNode, "CallExpression"))
+    return isProvenReactCreateElementCall(unwrappedNode, scopes);
   return isNodeOfType(unwrappedNode, "JSXElement") || isNodeOfType(unwrappedNode, "JSXFragment");
 };
 
-const findRenderedValueInAndBranch = (node: EsTreeNode): EsTreeNode | null => {
+const findRenderedValueInAndBranch = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
   const unwrappedNode = stripParenExpression(node);
-  if (isRenderedValue(unwrappedNode)) return unwrappedNode;
+  if (isRenderedValue(unwrappedNode, scopes)) return unwrappedNode;
   if (!isNodeOfType(unwrappedNode, "LogicalExpression") || unwrappedNode.operator !== "&&") {
     return null;
   }
-  return findRenderedValueInAndBranch(unwrappedNode.right);
+  return findRenderedValueInAndBranch(unwrappedNode.right, scopes);
 };
 
 const findEnclosingJsxAttribute = (node: EsTreeNode): EsTreeNodeOfType<"JSXAttribute"> | null => {
@@ -693,6 +983,47 @@ const isInRenderedOutput = (
   return false;
 };
 
+const isReturnedUseStateInitializer = (
+  node: EsTreeNode,
+  componentOrHookNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  let currentNode = node.parent;
+  while (currentNode && currentNode !== componentOrHookNode) {
+    if (
+      isNodeOfType(currentNode, "CallExpression") &&
+      isReactApiCall(currentNode, "useState", scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      }) &&
+      isNodeOfType(currentNode.parent, "VariableDeclarator") &&
+      isNodeOfType(currentNode.parent.id, "ArrayPattern")
+    ) {
+      const stateBinding = currentNode.parent.id.elements?.[0];
+      if (!isNodeOfType(stateBinding, "Identifier")) return false;
+      const stateSymbol = scopes.symbolFor(stateBinding);
+      if (!stateSymbol) return false;
+      return stateSymbol.references.some((reference) => {
+        let referenceParent = reference.identifier.parent;
+        while (referenceParent && referenceParent !== componentOrHookNode) {
+          if (
+            isNodeOfType(referenceParent, "ReturnStatement") &&
+            findEnclosingFunction(referenceParent) === componentOrHookNode
+          ) {
+            return true;
+          }
+          if (isFunctionLike(referenceParent)) return false;
+          referenceParent = referenceParent.parent;
+        }
+        return false;
+      });
+    }
+    if (isFunctionLike(currentNode)) return false;
+    currentNode = currentNode.parent;
+  }
+  return false;
+};
+
 const getReturnedValues = (statement: EsTreeNode | null | undefined): ReadonlyArray<EsTreeNode> => {
   if (!statement) return [];
   if (isNodeOfType(statement, "ReturnStatement")) {
@@ -700,6 +1031,13 @@ const getReturnedValues = (statement: EsTreeNode | null | undefined): ReadonlyAr
   }
   if (isNodeOfType(statement, "IfStatement")) {
     return [...getReturnedValues(statement.consequent), ...getReturnedValues(statement.alternate)];
+  }
+  if (isNodeOfType(statement, "TryStatement")) {
+    return [
+      ...getReturnedValues(statement.block),
+      ...getReturnedValues(statement.handler?.body),
+      ...getReturnedValues(statement.finalizer),
+    ];
   }
   if (!isNodeOfType(statement, "BlockStatement")) return [];
   const returnedValues: Array<EsTreeNode> = [];
@@ -828,6 +1166,7 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
     if (isTestlikeFilename(context.filename)) return {};
     if (classifyReactNativeFileTarget(context) === "react-native") return {};
     let fileHasUseClientDirective = false;
+    let fileHasExplicitReactRuntimeReference = false;
     let fileIsEmailTemplate = false;
     const reportedNodes = new Set<EsTreeNode>();
 
@@ -836,21 +1175,36 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       leftBranch: EsTreeNode,
       rightBranch: EsTreeNode | null,
       requiresRenderedContext: boolean,
+      allowsReturnedStateInitializer = false,
     ): void => {
       const conditionMatch = matchHydrationCondition(conditionNode, context);
       if (!conditionMatch) return;
       const { predicateMatch, predicateNode } = conditionMatch;
       if (reportedNodes.has(predicateNode)) return;
       if (rightBranch && areRenderedBranchesEquivalent(leftBranch, rightBranch)) return;
-      const componentOrHookNode = findRenderPhaseComponentOrHook(conditionNode, context.scopes);
+      const enclosingFunction = findEnclosingFunction(conditionNode);
+      const componentOrHookNode =
+        findRenderPhaseComponentOrHook(conditionNode, context.scopes) ??
+        (enclosingFunction
+          ? findComponentRenderingLocalFunctionResult(enclosingFunction, context.scopes)
+          : null);
       if (!componentOrHookNode) return;
-      if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;
+      if (
+        !hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective) &&
+        !fileHasExplicitReactRuntimeReference
+      ) {
+        return;
+      }
       if (
         requiresRenderedContext &&
         !isInRenderedOutput(conditionNode, componentOrHookNode, context.scopes)
       )
         return;
-      if (!isRenderedValue(leftBranch) && (!rightBranch || !isRenderedValue(rightBranch))) {
+      if (
+        !allowsReturnedStateInitializer &&
+        !isRenderedValue(leftBranch, context.scopes) &&
+        (!rightBranch || !isRenderedValue(rightBranch, context.scopes))
+      ) {
         const attribute = findEnclosingJsxAttribute(conditionNode);
         if (!attribute || isEventHandlerAttribute(attribute)) return;
       }
@@ -880,17 +1234,28 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         fileHasUseClientDirective = hasDirective(node, "use client");
+        fileHasExplicitReactRuntimeReference = containsExplicitReactRuntimeReference(
+          node,
+          context.scopes,
+        );
         fileIsEmailTemplate = hasEmailTemplateImport(node);
       },
       ConditionalExpression(node: EsTreeNodeOfType<"ConditionalExpression">) {
         reportHydrationBranch(node.test, node.consequent, node.alternate, true);
+        const componentOrHookNode = findRenderPhaseComponentOrHook(node, context.scopes);
+        if (
+          componentOrHookNode &&
+          isReturnedUseStateInitializer(node, componentOrHookNode, context.scopes)
+        ) {
+          reportHydrationBranch(node.test, node.consequent, node.alternate, false, true);
+        }
       },
       LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
         if (node.operator !== "&&" && node.operator !== "||") return;
         const renderedValue =
           node.operator === "&&"
-            ? findRenderedValueInAndBranch(node.right)
-            : isRenderedValue(node.right)
+            ? findRenderedValueInAndBranch(node.right, context.scopes)
+            : isRenderedValue(node.right, context.scopes)
               ? node.right
               : null;
         if (!renderedValue) return;
@@ -903,19 +1268,28 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
           ? getReturnedValues(node.alternate)
           : findFollowingReturnedValues(node);
         if (consequentValues.length === 0 || alternateValues.length === 0) return;
-        const componentOrHookNode = findRenderPhaseComponentOrHook(node.test, context.scopes);
-        if (!componentOrHookNode) return;
         const enclosingFunction = findEnclosingFunction(node);
+        const componentOrHookNode =
+          findRenderPhaseComponentOrHook(node.test, context.scopes) ??
+          (enclosingFunction
+            ? findComponentRenderingLocalFunctionResult(enclosingFunction, context.scopes)
+            : null);
+        if (!componentOrHookNode) return;
         if (
           enclosingFunction !== componentOrHookNode &&
           (!enclosingFunction ||
-            !isInRenderedOutput(enclosingFunction, componentOrHookNode, context.scopes))
+            (!isInRenderedOutput(enclosingFunction, componentOrHookNode, context.scopes) &&
+              findComponentRenderingLocalFunctionResult(enclosingFunction, context.scopes) !==
+                componentOrHookNode))
         ) {
           return;
         }
         for (const consequentValue of consequentValues) {
           for (const alternateValue of alternateValues) {
-            if (!isRenderedValue(consequentValue) && !isRenderedValue(alternateValue)) {
+            if (
+              !isRenderedValue(consequentValue, context.scopes) &&
+              !isRenderedValue(alternateValue, context.scopes)
+            ) {
               continue;
             }
             reportHydrationBranch(node.test, consequentValue, alternateValue, false);

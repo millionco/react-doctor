@@ -37,6 +37,12 @@ export const materializeSourceTree = (input: {
   readonly files: ReadonlyArray<string>;
   readonly tempDirectory: string;
   readonly readContent: (relativePath: string) => Effect.Effect<string | null, ReactDoctorError>;
+  /**
+   * Tree-relative subdirectories that are themselves project roots (a
+   * monorepo's packages). Their config files are copied too, so each one
+   * resolves its own React version, tsconfig, and lint config.
+   */
+  readonly configSubdirectories?: ReadonlyArray<string>;
 }): Effect.Effect<MaterializedTree, ReactDoctorError> =>
   Effect.gen(function* () {
     const materializedFiles: string[] = [];
@@ -60,11 +66,15 @@ export const materializeSourceTree = (input: {
       materializedFiles.push(relativePath);
     }
     yield* Effect.sync(() => {
-      for (const configFilename of STAGED_FILES_PROJECT_CONFIG_FILENAMES) {
-        const sourcePath = path.join(input.directory, configFilename);
-        const targetPath = path.join(resolvedTempDirectory, configFilename);
-        if (fs.existsSync(sourcePath) && !fs.existsSync(targetPath)) {
-          fs.cpSync(sourcePath, targetPath);
+      for (const subdirectory of ["", ...(input.configSubdirectories ?? [])]) {
+        for (const configFilename of STAGED_FILES_PROJECT_CONFIG_FILENAMES) {
+          const sourcePath = path.join(input.directory, subdirectory, configFilename);
+          const targetPath = path.resolve(resolvedTempDirectory, subdirectory, configFilename);
+          if (!isPathInsideDirectory(targetPath, resolvedTempDirectory)) continue;
+          if (fs.existsSync(sourcePath) && !fs.existsSync(targetPath)) {
+            fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+            fs.cpSync(sourcePath, targetPath);
+          }
         }
       }
     });

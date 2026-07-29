@@ -30,6 +30,7 @@ import { analyzeReconciliationIdentity } from "./analyze-reconciliation-identity
 import { analyzeRenderPurity } from "./analyze-render-purity.js";
 import { analyzeScheduledCallbackLifetime } from "./analyze-scheduled-callback-lifetime.js";
 import { analyzeTransitionActions } from "./analyze-transition-actions.js";
+import { analyzeUseResource } from "./analyze-use-resource.js";
 import { createEvidence } from "./create-evidence.js";
 import { createObligation } from "./create-obligation.js";
 import { getNodeLocation } from "./get-node-location.js";
@@ -69,6 +70,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.RenderPurity,
   ReactProofClaim.ScheduledCallbackLifetime,
   ReactProofClaim.TransitionActions,
+  ReactProofClaim.UseResource,
 ];
 
 export const analyzeReactUnit = (
@@ -174,6 +176,7 @@ export const analyzeReactUnit = (
       analyzeRenderPurity(unit.functionNode, context),
       analyzeScheduledCallbackLifetime(unit, context),
       analyzeTransitionActions(unit, context),
+      analyzeUseResource(unit, context),
     ],
   };
 };

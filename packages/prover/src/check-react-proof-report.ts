@@ -60,6 +60,8 @@ import {
   ReactTransitionActionStatus,
   ReactTransitionStarterKind,
   ReactUnitKind,
+  ReactUseResourceIdentityStatus,
+  ReactUseResourceKind,
 } from "./types.js";
 import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import type {
@@ -91,6 +93,8 @@ const REDUCER_DISPATCH_STATUSES = new Set(Object.values(ReactReducerDispatchStat
 const REDUCER_PURITY_STATUSES = new Set(Object.values(ReactReducerPurityStatus));
 const REDUCER_RETURN_STATUSES = new Set(Object.values(ReactReducerReturnStatus));
 const SUSPENSE_COVERAGE_STATUSES = new Set(Object.values(ReactSuspenseCoverageStatus));
+const USE_RESOURCE_IDENTITY_STATUSES = new Set(Object.values(ReactUseResourceIdentityStatus));
+const USE_RESOURCE_KINDS = new Set(Object.values(ReactUseResourceKind));
 const OBLIGATION_STATUSES = new Set(Object.values(ReactObligationStatus));
 const TRANSITION_ACTION_ORIGIN_PHASES = new Set([
   ReactExecutionPhase.ActionStateReducer,
@@ -303,6 +307,30 @@ const expectedErrorBoundaryStatus = (
   }
   return definitions.some((definition) => !definition.complete) ||
     failures.some((failure) => failure.coverageStatus === ReactErrorBoundaryCoverageStatus.Unknown)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedUseResourceStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const resources = report.graph.useResources.filter((resource) => resource.ownerId === unit.id);
+  if (
+    resources.some(
+      (resource) =>
+        resource.kind === ReactUseResourceKind.Invalid ||
+        resource.identityStatus === ReactUseResourceIdentityStatus.Unstable ||
+        resource.suspenseCoverageStatus === ReactSuspenseCoverageStatus.OutsideBoundary ||
+        resource.errorCoverageStatus === ReactErrorBoundaryCoverageStatus.OutsideBoundary,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return resources.some((resource) => !resource.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -718,6 +746,17 @@ const checkClaimCoverage = (
         `Error Boundary facts require ${expectedErrorStatus}, not ${errorBoundary.status}`,
       );
     }
+    const useResource = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.UseResource,
+    );
+    const expectedResourceStatus = expectedUseResourceStatus(semanticUnit, report);
+    if (useResource && useResource.status !== expectedResourceStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `use resource facts require ${expectedResourceStatus}, not ${useResource.status}`,
+      );
+    }
     const transitionActions = unitProof.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.TransitionActions,
     );
@@ -966,7 +1005,14 @@ const deriveSuspenseSourcesByUnit = (
 ): ReadonlyMap<string, ReadonlySet<string>> => {
   const sourcesByUnit = new Map<string, Set<string>>();
   const rendersById = new Map(report.graph.renders.map((render) => [render.id, render]));
+  const slotFlowsBySourceRenderId = new Map(
+    report.graph.slotFlows.map((slotFlow) => [slotFlow.sourceRenderId, slotFlow]),
+  );
   const boundaryIdsByRenderId = new Map<string, Set<string>>();
+  const unitIds = new Set(report.graph.units.map((unit) => unit.id));
+  const customHookEdges = report.graph.edges.filter(
+    (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && unitIds.has(edge.targetId),
+  );
   const addSource = (unitId: string, sourceId: string): boolean => {
     let sources = sourcesByUnit.get(unitId);
     if (!sources) {
@@ -991,8 +1037,14 @@ const deriveSuspenseSourcesByUnit = (
   while (didSourcesChange) {
     didSourcesChange = false;
     for (const render of report.graph.renders) {
-      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
       const boundaryIds = boundaryIdsByRenderId.get(render.id);
+      if (
+        render.kind === ReactSemanticRenderKind.SlotInput &&
+        (!boundaryIds || boundaryIds.size === 0)
+      ) {
+        const slotFlow = slotFlowsBySourceRenderId.get(render.id);
+        if (!slotFlow?.complete || slotFlow.renderIds.length > 0) continue;
+      }
       if (boundaryIds && boundaryIds.size > 0) {
         for (const boundaryId of boundaryIds) {
           didSourcesChange = addSource(render.targetId, boundaryId) || didSourcesChange;
@@ -1011,6 +1063,11 @@ const deriveSuspenseSourcesByUnit = (
           addSource(sourceRender.targetId, REACT_SUSPENSE_UNKNOWN_SOURCE_ID) || didSourcesChange;
       }
     }
+    for (const hookEdge of customHookEdges) {
+      for (const sourceId of sourcesByUnit.get(hookEdge.sourceId) ?? []) {
+        didSourcesChange = addSource(hookEdge.targetId, sourceId) || didSourcesChange;
+      }
+    }
   }
   return sourcesByUnit;
 };
@@ -1021,6 +1078,10 @@ const deriveErrorBoundarySourcesByUnit = (
   const sourcesByUnit = new Map<string, Set<string>>();
   const rendersById = new Map(report.graph.renders.map((render) => [render.id, render]));
   const boundaryIdsByRenderId = new Map<string, Set<string>>();
+  const unitIds = new Set(report.graph.units.map((unit) => unit.id));
+  const customHookEdges = report.graph.edges.filter(
+    (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && unitIds.has(edge.targetId),
+  );
   const addSource = (unitId: string, sourceId: string): boolean => {
     const sources = sourcesByUnit.get(unitId) ?? new Set<string>();
     const previousSize = sources.size;
@@ -1068,6 +1129,11 @@ const deriveErrorBoundarySourcesByUnit = (
         didSourcesChange =
           addSource(sourceRender.targetId, REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID) ||
           didSourcesChange;
+      }
+    }
+    for (const hookEdge of customHookEdges) {
+      for (const sourceId of sourcesByUnit.get(hookEdge.sourceId) ?? []) {
+        didSourcesChange = addSource(hookEdge.targetId, sourceId) || didSourcesChange;
       }
     }
   }
@@ -1293,6 +1359,137 @@ const checkGraphReferences = (
       (expectedCoverageStatus === ReactErrorBoundaryCoverageStatus.Covered)
     ) {
       addFailure(failures, renderFailure.id, "A render failure completeness flag is inconsistent");
+    }
+  }
+  for (const resource of report.graph.useResources) {
+    if (!unitIds.has(resource.ownerId)) {
+      addFailure(failures, resource.id, "A use resource has an unknown owner unit");
+    }
+    if (!USE_RESOURCE_KINDS.has(resource.kind)) {
+      addFailure(failures, resource.id, "A use resource has an invalid type kind");
+    }
+    if (!USE_RESOURCE_IDENTITY_STATUSES.has(resource.identityStatus)) {
+      addFailure(failures, resource.id, "A use resource has an invalid identity status");
+    }
+    if (!SUSPENSE_COVERAGE_STATUSES.has(resource.suspenseCoverageStatus)) {
+      addFailure(failures, resource.id, "A use resource has an invalid Suspense status");
+    }
+    if (!ERROR_BOUNDARY_COVERAGE_STATUSES.has(resource.errorCoverageStatus)) {
+      addFailure(failures, resource.id, "A use resource has an invalid Error Boundary status");
+    }
+    if (
+      new Set(resource.sourceSuspenseBoundaryIds).size !==
+        resource.sourceSuspenseBoundaryIds.length ||
+      resource.sourceSuspenseBoundaryIds.some(
+        (boundaryId) => !suspenseBoundariesById.has(boundaryId),
+      )
+    ) {
+      addFailure(failures, resource.id, "A use resource has invalid Suspense sources");
+    }
+    if (
+      new Set(resource.sourceErrorBoundaryIds).size !== resource.sourceErrorBoundaryIds.length ||
+      resource.sourceErrorBoundaryIds.some((boundaryId) => !errorBoundariesById.has(boundaryId))
+    ) {
+      addFailure(failures, resource.id, "A use resource has invalid Error Boundary sources");
+    }
+    const expectedSuspenseSources =
+      suspenseSourcesByUnit.get(resource.ownerId) ?? new Set<string>();
+    const expectedSuspenseBoundaryIds = [...expectedSuspenseSources].filter(
+      (sourceId) =>
+        sourceId !== REACT_SUSPENSE_OUTSIDE_SOURCE_ID &&
+        sourceId !== REACT_SUSPENSE_UNKNOWN_SOURCE_ID,
+    );
+    if (
+      expectedSuspenseBoundaryIds.length !== resource.sourceSuspenseBoundaryIds.length ||
+      expectedSuspenseBoundaryIds.some(
+        (boundaryId) => !resource.sourceSuspenseBoundaryIds.includes(boundaryId),
+      )
+    ) {
+      addFailure(failures, resource.id, "A use resource has inconsistent Suspense sources");
+    }
+    const expectedOutsideSuspenseBoundary = expectedSuspenseSources.has(
+      REACT_SUSPENSE_OUTSIDE_SOURCE_ID,
+    );
+    const expectedSuspenseTopologyComplete =
+      expectedSuspenseSources.size > 0 &&
+      !expectedSuspenseSources.has(REACT_SUSPENSE_UNKNOWN_SOURCE_ID);
+    let expectedSuspenseCoverageStatus = ReactSuspenseCoverageStatus.Unknown;
+    if (expectedOutsideSuspenseBoundary) {
+      expectedSuspenseCoverageStatus = ReactSuspenseCoverageStatus.OutsideBoundary;
+    } else if (expectedSuspenseTopologyComplete && expectedSuspenseBoundaryIds.length > 0) {
+      expectedSuspenseCoverageStatus = ReactSuspenseCoverageStatus.Covered;
+    }
+
+    const expectedErrorSources =
+      errorBoundarySourcesByUnit.get(resource.ownerId) ?? new Set<string>();
+    const expectedErrorBoundaryIds = [...expectedErrorSources].filter(
+      (sourceId) =>
+        sourceId !== REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID &&
+        sourceId !== REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID,
+    );
+    if (
+      expectedErrorBoundaryIds.length !== resource.sourceErrorBoundaryIds.length ||
+      expectedErrorBoundaryIds.some(
+        (boundaryId) => !resource.sourceErrorBoundaryIds.includes(boundaryId),
+      )
+    ) {
+      addFailure(failures, resource.id, "A use resource has inconsistent Error Boundary sources");
+    }
+    const sourceDefinitions = expectedErrorBoundaryIds.flatMap((boundaryId) => {
+      const boundary = errorBoundariesById.get(boundaryId);
+      const definition = boundary ? errorBoundaryDefinitionsById.get(boundary.definitionId) : null;
+      return definition ? [definition] : [];
+    });
+    const expectedOutsideErrorBoundary = expectedErrorSources.has(
+      REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID,
+    );
+    const expectedErrorTopologyComplete =
+      expectedErrorSources.size > 0 &&
+      !expectedErrorSources.has(REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID) &&
+      sourceDefinitions.length === expectedErrorBoundaryIds.length &&
+      sourceDefinitions.every((definition) => definition.sourceComplete);
+    const hasValidErrorBoundary =
+      sourceDefinitions.length > 0 && sourceDefinitions.every((definition) => definition.complete);
+    let expectedErrorCoverageStatus = ReactErrorBoundaryCoverageStatus.Unknown;
+    if (expectedOutsideErrorBoundary || (expectedErrorTopologyComplete && !hasValidErrorBoundary)) {
+      expectedErrorCoverageStatus = ReactErrorBoundaryCoverageStatus.OutsideBoundary;
+    } else if (expectedErrorTopologyComplete && hasValidErrorBoundary) {
+      expectedErrorCoverageStatus = ReactErrorBoundaryCoverageStatus.Covered;
+    }
+    const expectedSourceComplete =
+      resource.kind !== ReactUseResourceKind.Unknown &&
+      resource.identityStatus !== ReactUseResourceIdentityStatus.Unknown &&
+      expectedSuspenseTopologyComplete &&
+      expectedErrorTopologyComplete;
+    const expectedComplete =
+      expectedSourceComplete &&
+      resource.kind === ReactUseResourceKind.Thenable &&
+      resource.identityStatus === ReactUseResourceIdentityStatus.Stable &&
+      expectedSuspenseCoverageStatus === ReactSuspenseCoverageStatus.Covered &&
+      expectedErrorCoverageStatus === ReactErrorBoundaryCoverageStatus.Covered;
+    if (
+      resource.outsideSuspenseBoundary !== expectedOutsideSuspenseBoundary ||
+      resource.suspenseTopologyComplete !== expectedSuspenseTopologyComplete ||
+      resource.suspenseCoverageStatus !== expectedSuspenseCoverageStatus
+    ) {
+      addFailure(failures, resource.id, "A use resource Suspense certificate is inconsistent");
+    }
+    if (
+      resource.outsideErrorBoundary !== expectedOutsideErrorBoundary ||
+      resource.errorTopologyComplete !== expectedErrorTopologyComplete ||
+      resource.errorCoverageStatus !== expectedErrorCoverageStatus
+    ) {
+      addFailure(
+        failures,
+        resource.id,
+        "A use resource Error Boundary certificate is inconsistent",
+      );
+    }
+    if (resource.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, resource.id, "A use resource source certificate is inconsistent");
+    }
+    if (resource.complete !== expectedComplete) {
+      addFailure(failures, resource.id, "A use resource completeness flag is inconsistent");
     }
   }
   for (const boundary of report.graph.suspenseBoundaries) {
@@ -3884,6 +4081,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "render failures",
     report.graph.renderFailures.map((renderFailure) => renderFailure.id),
+  );
+  checkUniqueIds(
+    failures,
+    "use resources",
+    report.graph.useResources.map((resource) => resource.id),
   );
   checkUniqueIds(
     failures,

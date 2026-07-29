@@ -45,6 +45,7 @@ export enum ReactProofClaim {
   RenderPurity = "render-purity",
   ScheduledCallbackLifetime = "scheduled-callback-lifetime",
   TransitionActions = "transition-actions",
+  UseResource = "use-resource",
 }
 
 export enum ReactUnitKind {
@@ -383,6 +384,18 @@ export enum ReactRenderFailureKind {
   ExplicitThrow = "explicit-throw",
 }
 
+export enum ReactUseResourceKind {
+  Invalid = "invalid",
+  Thenable = "thenable",
+  Unknown = "unknown",
+}
+
+export enum ReactUseResourceIdentityStatus {
+  Stable = "stable",
+  Unstable = "unstable",
+  Unknown = "unknown",
+}
+
 export interface ReactSemanticSuspenseBoundary {
   id: string;
   ownerId: string;
@@ -451,6 +464,24 @@ export interface ReactSemanticRenderFailure {
   topologyComplete: boolean;
   sourceComplete: boolean;
   coverageStatus: ReactErrorBoundaryCoverageStatus;
+  complete: boolean;
+}
+
+export interface ReactSemanticUseResource {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  kind: ReactUseResourceKind;
+  identityStatus: ReactUseResourceIdentityStatus;
+  sourceSuspenseBoundaryIds: ReadonlyArray<string>;
+  outsideSuspenseBoundary: boolean;
+  suspenseTopologyComplete: boolean;
+  suspenseCoverageStatus: ReactSuspenseCoverageStatus;
+  sourceErrorBoundaryIds: ReadonlyArray<string>;
+  outsideErrorBoundary: boolean;
+  errorTopologyComplete: boolean;
+  errorCoverageStatus: ReactErrorBoundaryCoverageStatus;
+  sourceComplete: boolean;
   complete: boolean;
 }
 
@@ -1073,6 +1104,7 @@ export interface ReactSemanticGraph {
   errorBoundaryDefinitions: ReadonlyArray<ReactSemanticErrorBoundaryDefinition>;
   errorBoundaries: ReadonlyArray<ReactSemanticErrorBoundary>;
   renderFailures: ReadonlyArray<ReactSemanticRenderFailure>;
+  useResources: ReadonlyArray<ReactSemanticUseResource>;
   suspenseBoundaries: ReadonlyArray<ReactSemanticSuspenseBoundary>;
   lazyComponents: ReadonlyArray<ReactSemanticLazyComponent>;
   lazyRenders: ReadonlyArray<ReactSemanticLazyRender>;

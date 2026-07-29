@@ -504,10 +504,22 @@ export const analyzeBoundaryCoverage = (
         Boolean(
           node.arguments[0] && isReactContextExpression(node.arguments[0], context.typeChecker),
         );
+      const nodeLocation = getNodeLocation(node, context.rootDirectory);
+      const isModeledUseResource =
+        canonicalReactApiName === "use" &&
+        Boolean(
+          context.graph?.useResources.some(
+            (resource) =>
+              resource.ownerId === semanticOwnerId &&
+              resource.complete &&
+              areProofLocationsEqual(resource.location, nodeLocation),
+          ),
+        );
       if (
         canonicalReactApiName &&
         REACT_UNMODELED_HOOK_NAMES.has(canonicalReactApiName) &&
         !isModeledContextRead &&
+        !isModeledUseResource &&
         !(canonicalReactApiName === "useActionState" && isModeledActionStateCall(node)) &&
         !(canonicalReactApiName === "useTransition" && isModeledUseTransitionCall(node)) &&
         !(canonicalReactApiName === "useOptimistic" && isModeledOptimisticCall(node)) &&

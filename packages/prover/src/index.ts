@@ -53,6 +53,8 @@ export {
   ReactTransitionActionStatus,
   ReactTransitionStarterKind,
   ReactUnitKind,
+  ReactUseResourceIdentityStatus,
+  ReactUseResourceKind,
 } from "./types.js";
 export type {
   ProveReactAppInput,
@@ -117,6 +119,7 @@ export type {
   ReactSemanticScheduler,
   ReactSemanticSuspenseBoundary,
   ReactSemanticUnit,
+  ReactSemanticUseResource,
   ReactAsyncEffectTaskDescriptor,
   ReactUnitProof,
 } from "./types.js";

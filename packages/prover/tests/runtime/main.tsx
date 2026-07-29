@@ -5,6 +5,7 @@ import {
   createContext,
   lazy,
   memo,
+  use,
   useActionState,
   useCallback,
   useContext,
@@ -149,6 +150,35 @@ class ErrorBoundary extends Component<ErrorBoundaryProperties, ErrorBoundaryStat
     return this.state.hasError ? this.props.fallback : this.props.children;
   }
 }
+
+let resolveUseResource: (value: string) => void = () => {};
+let rejectUseResource: (reason: Error) => void = () => {};
+const useResourcePromise = new Promise<string>((resolve, reject) => {
+  resolveUseResource = resolve;
+  rejectUseResource = reject;
+});
+
+const UseResourceContent = () => (
+  <output data-testid="use-resource-content">{use(useResourcePromise)}</output>
+);
+
+const UseResourceOracle = () => (
+  <main>
+    <button type="button" onClick={() => resolveUseResource("resource ready")}>
+      resolve resource
+    </button>
+    <button type="button" onClick={() => rejectUseResource(new Error("resource failed"))}>
+      reject resource
+    </button>
+    <ErrorBoundary
+      fallback={<output data-testid="use-resource-error">resource unavailable</output>}
+    >
+      <Suspense fallback={<output data-testid="use-resource-pending">resource pending</output>}>
+        <UseResourceContent />
+      </Suspense>
+    </ErrorBoundary>
+  </main>
+);
 
 const ThrowingRenderFailure = () => {
   throw new Error("descendant render failed");
@@ -1267,6 +1297,9 @@ const RuntimeOracle = () => {
   if (oracle === "error-boundary") {
     return <ErrorBoundaryOracle />;
   }
+  if (oracle === "use-resource") {
+    return <UseResourceOracle />;
+  }
   if (oracle === "transition-action") {
     return <TransitionActionOracle />;
   }
@@ -1297,6 +1330,7 @@ const isStrictModeOracle =
   oracle === "hook-state-transition" ||
   oracle === "lazy-suspense" ||
   oracle === "error-boundary" ||
+  oracle === "use-resource" ||
   oracle === "reducer-transition" ||
   oracle === "transition-action" ||
   oracle === "optimistic-form-action" ||

@@ -2171,3 +2171,105 @@ Kill: If a complete Error Boundary protocol produces a false `proved` containmen
 proof-schema releases, remove transitive containment certification and keep non-lexical paths
 unknown until exception effects or an explicit component proof contract carry the missing
 semantics.
+
+## `use` resource identity and dual-boundary certificates
+
+### React contract and realistic evidence
+
+React's [`use` reference](https://react.dev/reference/react/use) defines two distinct protocols
+behind one API. `use(Context)` reads context and may be conditional. `use(Promise)` suspends at the
+nearest parent Suspense boundary while pending and throws to the nearest Error Boundary when
+rejected. React explicitly warns that Promises created in Client Component render are recreated on
+every render and should instead come from a Suspense-compatible library or Server Component. The
+[`error-boundaries` lint](https://react.dev/reference/eslint-plugin-react-hooks/lints/error-boundaries)
+also establishes that `try`/`catch` cannot replace a React Error Boundary around child rendering.
+
+TypeScript provides the proof discriminator React's shared API does not: a usable resource must
+have a callable `then`, including every member of a union or a closed type-parameter constraint.
+`any`, `unknown`, mixed unions, and unconstrained generics cannot establish this theorem. Context
+symbols remain in the existing context-topology theorem and are not double-counted as Promise
+resources.
+
+React Bench's OpenCode port contains the matching application shapes: class Error Boundaries,
+Suspense-delimited asynchronous UI, and realistic `try`/`catch` around storage and JSON operations.
+Those catches are ordinary synchronous exception scopes; they do not contain React suspension or
+descendant render rejection. This distinction is why the resource theorem uses React topology
+rather than generic lexical exception syntax.
+
+### Closed subset and fail-closed boundary
+
+The certificate recognizes canonical imported, aliased, or namespace `use` calls after excluding
+symbol-resolved React Context values. TypeScript classifies the argument as `thenable`, `invalid`,
+or `unknown`. Identity is stable for a module-scope `const` Promise, a canonical `useState` value
+whose initializer traces to a stable Promise, and closed local aliases of those origins. Direct
+`fetch`, `Promise.*`, `new Promise`, source-resolved async calls, Promise-producing `useMemo`
+calls, and lazy state initializers which create a Promise during React execution are unstable. An
+arbitrary prop, member access, reducer state, or factory remains unknown instead of being assumed
+cached.
+
+Each resource owns two independent topology equations. Suspense sources start every exported
+render root outside a boundary and propagate the nearest known boundary through effective render
+edges, transparent closed slots, and custom-Hook call edges. Error Boundary sources use the same
+whole-project fixed point but additionally require every referenced boundary definition to have a
+source-complete and valid recovery protocol. A resource is complete only when its type is thenable,
+its identity is stable, both topology sets are closed, the pending path is covered by Suspense, and
+every represented rejection path is covered by valid Error Boundary recovery.
+
+A fresh resource, invalid input, known outside-Suspense path, or known outside-Error-Boundary path
+is a counterexample. Opaque type, cache origin, component placement, slot placement, custom-Hook
+reachability, or recovery definition remains unknown. The theorem does not claim that a Promise
+will settle, that its value meets an application refinement, that fallback UI meets product
+requirements, or that an external caching library is correct without a future proof summary.
+
+### Certificate checker, corpus, and runtime calibration
+
+The independent checker recomputes Suspense and Error Boundary sources from units, effective
+renders, slots, boundary/render links, and custom-Hook edges. It validates unique resource IDs;
+owner, kind, and identity domains; exact non-sentinel boundary sets; valid Error Boundary
+definitions; outside and topology flags; both coverage statuses; the source-completeness
+conjunction; final completeness; and the per-unit `use-resource` verdict. Report schema 27 and
+graph schema 33 reject stale or forged certificates.
+
+Added corpus:
+
+- proved: a module-cached Promise, the same protocol inside a custom Hook, and a module-cached
+  Promise retained in React state;
+- refuted: a direct render-created Promise, a Promise created by a lazy state initializer, missing
+  Suspense, missing Error Boundary, mixed valid/invalid Error Boundary paths, and a typed
+  non-thenable input;
+- incomplete: a typed Promise supplied through an opaque component prop;
+- regression: conditional `use(Promise)` remains Hook-order-valid while missing boundaries are now
+  a source-level counterexample rather than an unmodeled lifecycle;
+- forged: outside-Suspense facts rewritten as covered and rejected by the checker;
+- runtime: `use-resource-oracle.spec.ts`.
+
+The React 19.2.5 Chromium oracle observes a pending resource reveal Suspense fallback before its
+resolved value and observes a rejected resource reveal Error Boundary fallback. Runtime evidence
+calibrates the two channels but never upgrades a static unknown. The complete gate contains 603
+static tests and 48 Chromium runtime oracles across 371 checked-in fixture project configurations.
+
+### Product brief: internal `use` resource facts
+
+Job: Prover consumers need to know that a React resource has cache-stable thenable identity and
+that every known pending and rejection path has React-owned recovery UI.
+
+Change: Add one private `use-resource` claim, versioned resource facts, dual whole-project topology
+propagation, and independent checker equations.
+
+Reuse: Truffler searches for Promise resource identity, exception effects, thenable classification,
+and `use` topology found no existing complete protocol. The implementation reuses canonical React
+API and Context resolution, TypeScript types, stable Hook bindings, effective render and ReactNode
+slot facts, custom-Hook edges, Suspense identities, and Error Boundary recovery definitions.
+
+Metric: The deterministic acceptance metric separates module, Hook, state, fresh-Promise,
+invalid-type, missing-Suspense, missing-Error-Boundary, opaque-prop, conditional, and forged
+certificate cases, plus resolved and rejected Chromium channels.
+
+Compat: This is an internal-only private package surface, so the product-thinking pass requires no
+CLI telemetry, published JSON migration, or Changeset. `@react-doctor/prover@0.0.0` moves to report
+schema 27 and graph schema 33 so stale internal certificates fail closed.
+
+Kill: If a complete `use` resource protocol produces a false `proved` identity or topology result
+in two proof-schema releases, remove stable resource certification and keep `use(Promise)`
+incomplete until an explicit caching or component-placement proof contract carries the missing
+semantics.

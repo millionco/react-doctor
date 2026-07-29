@@ -52,6 +52,8 @@ import {
   ReactSuspenseCoverageStatus,
   ReactTransitionActionStatus,
   ReactTransitionStarterKind,
+  ReactUseResourceIdentityStatus,
+  ReactUseResourceKind,
 } from "../src/index.js";
 
 interface RefutedFixtureExpectation {
@@ -704,8 +706,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(26);
-    expect(report.graph.schemaVersion).toBe(32);
+    expect(report.schemaVersion).toBe(27);
+    expect(report.graph.schemaVersion).toBe(33);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -2762,14 +2764,18 @@ describe("proveReactApp", () => {
     expect(consistencyProof?.status).toBe(ReactObligationStatus.Unknown);
   });
 
-  it("allows conditional use while keeping its lifecycle model incomplete", () => {
+  it("allows conditional use while refuting missing pending and rejection containment", () => {
     const report = proveFixture("conditional-use");
     const hookOrderProof = report.units
       .flatMap((unit) => unit.obligations)
       .find((obligation) => obligation.claim === ReactProofClaim.HookOrder);
+    const resourceProof = report.units
+      .flatMap((unit) => unit.obligations)
+      .find((obligation) => obligation.claim === ReactProofClaim.UseResource);
 
-    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
     expect(hookOrderProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(resourceProof?.status).toBe(ReactObligationStatus.Violated);
   });
 
   it("fails closed when an index key cannot preserve state across reordering", () => {
@@ -4196,6 +4202,131 @@ describe("proveReactApp", () => {
     expect(
       certificate.failures.some((failure) =>
         failure.description.includes("render failure coverage status"),
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["proved-use-resource", "proved-use-resource-hook", "proved-use-resource-state"])(
+    "proves a stable use resource with pending and rejection containment in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const resource = report.graph.useResources[0];
+      const resourceProof = report.units
+        .find(
+          (unit) => unit.name === (fixtureName.endsWith("-hook") ? "useMessage" : "ResourcePanel"),
+        )
+        ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.UseResource);
+
+      expect(resource?.kind).toBe(ReactUseResourceKind.Thenable);
+      expect(resource?.identityStatus).toBe(ReactUseResourceIdentityStatus.Stable);
+      expect(resource?.suspenseCoverageStatus).toBe(ReactSuspenseCoverageStatus.Covered);
+      expect(resource?.errorCoverageStatus).toBe(ReactErrorBoundaryCoverageStatus.Covered);
+      expect(resource?.sourceSuspenseBoundaryIds).toHaveLength(1);
+      expect(resource?.sourceErrorBoundaryIds).toHaveLength(1);
+      expect(resource?.complete).toBe(true);
+      expect(resourceProof?.status).toBe(ReactObligationStatus.Proved);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it.each(["refuted-use-resource-fresh-promise", "refuted-use-resource-state-fresh"])(
+    "refutes a Promise created during React execution even when boundaries are present in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const resource = report.graph.useResources[0];
+      const resourceProof = report.units
+        .find((unit) => unit.name === "ResourcePanel")
+        ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.UseResource);
+
+      expect(report.status).toBe(ReactAppProofStatus.Refuted);
+      expect(resource?.identityStatus).toBe(ReactUseResourceIdentityStatus.Unstable);
+      expect(resourceProof?.status).toBe(ReactObligationStatus.Violated);
+      expect(
+        resourceProof?.evidence.some((evidence) => evidence.description.includes("created")),
+      ).toBe(true);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it.each([
+    [
+      "refuted-use-resource-outside-suspense",
+      ReactSuspenseCoverageStatus.OutsideBoundary,
+      ReactErrorBoundaryCoverageStatus.Covered,
+    ],
+    [
+      "refuted-use-resource-outside-error-boundary",
+      ReactSuspenseCoverageStatus.Covered,
+      ReactErrorBoundaryCoverageStatus.OutsideBoundary,
+    ],
+  ])(
+    "refutes missing pending or rejection containment in %s",
+    (fixtureName, suspenseStatus, errorStatus) => {
+      const report = proveFixture(fixtureName);
+      const resource = report.graph.useResources[0];
+
+      expect(report.status).toBe(ReactAppProofStatus.Refuted);
+      expect(resource?.suspenseCoverageStatus).toBe(suspenseStatus);
+      expect(resource?.errorCoverageStatus).toBe(errorStatus);
+      expect(resource?.complete).toBe(false);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("refutes mixed valid and invalid Error Boundary resource paths", () => {
+    const report = proveFixture("refuted-use-resource-mixed-error-boundaries");
+    const resource = report.graph.useResources[0];
+    const resourceProof = report.units
+      .find((unit) => unit.name === "ResourcePanel")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.UseResource);
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(resource?.sourceErrorBoundaryIds).toHaveLength(2);
+    expect(resource?.errorTopologyComplete).toBe(true);
+    expect(resource?.errorCoverageStatus).toBe(ReactErrorBoundaryCoverageStatus.OutsideBoundary);
+    expect(resourceProof?.status).toBe(ReactObligationStatus.Violated);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("fails closed when a Promise resource has opaque cache identity", () => {
+    const report = proveFixture("incomplete-use-resource-prop");
+    const resource = report.graph.useResources[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(resource?.kind).toBe(ReactUseResourceKind.Thenable);
+    expect(resource?.identityStatus).toBe(ReactUseResourceIdentityStatus.Unknown);
+    expect(resource?.complete).toBe(false);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("refutes a non-thenable passed to use", () => {
+    const report = proveFixture("refuted-use-resource-invalid");
+    const resource = report.graph.useResources[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(resource?.kind).toBe(ReactUseResourceKind.Invalid);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged use resource containment certificate", () => {
+    const report = proveFixture("refuted-use-resource-outside-suspense");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        useResources: report.graph.useResources.map((resource) => ({
+          ...resource,
+          outsideSuspenseBoundary: false,
+          suspenseCoverageStatus: ReactSuspenseCoverageStatus.Covered,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("use resource Suspense certificate"),
       ),
     ).toBe(true);
   });

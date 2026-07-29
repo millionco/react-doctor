@@ -41,6 +41,7 @@ import { collectOptimisticState } from "./collect-optimistic-state.js";
 import { collectReducerTransitions } from "./collect-reducer-transitions.js";
 import { collectTransitionActions } from "./collect-transition-actions.js";
 import type { TransitionActionDescriptor } from "./collect-transition-actions.js";
+import { collectUseResourceProtocols } from "./collect-use-resource-protocols.js";
 import { collectReactiveCaptures } from "./collect-reactive-captures.js";
 import { collectReachableFunctionGraph } from "./collect-reachable-functions.js";
 import type { ReachableFunctionGraphDescriptor } from "./collect-reachable-functions.js";
@@ -112,6 +113,8 @@ import {
   ReactSuspenseCoverageStatus,
   ReactTransitionActionStatus,
   ReactUnitKind,
+  ReactUseResourceIdentityStatus,
+  ReactUseResourceKind,
 } from "./types.js";
 import type {
   ReactAnalysisContext,
@@ -154,6 +157,7 @@ import type {
   ReactSemanticReducer,
   ReactSemanticReducerDispatch,
   ReactSemanticTransitionAction,
+  ReactSemanticUseResource,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
   ReactSemanticRenderFailure,
@@ -457,6 +461,10 @@ interface ErrorBoundaryGraphFacts {
 
 interface RenderErrorGraphFacts {
   failures: ReadonlyArray<ReactSemanticRenderFailure>;
+}
+
+interface UseResourceGraphFacts {
+  resources: ReadonlyArray<ReactSemanticUseResource>;
 }
 
 interface LazyComponentIdentity {
@@ -4865,12 +4873,20 @@ const addSuspenseSource = (
 
 const deriveSuspenseSourcesByUnit = (
   units: ReadonlyArray<ReactSemanticUnit>,
+  edges: ReadonlyArray<ReactSemanticEdge>,
   renders: ReadonlyArray<ReactSemanticRender>,
   slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
   suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
 ): ReadonlyMap<string, ReadonlySet<string>> => {
   const sourcesByUnit = new Map<string, Set<string>>();
+  const localUnitIds = new Set(units.map((unit) => unit.id));
+  const customHookEdges = edges.filter(
+    (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && localUnitIds.has(edge.targetId),
+  );
   const rendersById = new Map(renders.map((render) => [render.id, render]));
+  const slotFlowsBySourceRenderId = new Map(
+    slotFlows.map((slotFlow) => [slotFlow.sourceRenderId, slotFlow]),
+  );
   for (const unit of units) {
     if (unit.canBeRenderRoot) {
       addSuspenseSource(sourcesByUnit, unit.id, REACT_SUSPENSE_OUTSIDE_SOURCE_ID);
@@ -4880,8 +4896,11 @@ const deriveSuspenseSourcesByUnit = (
   while (didSourcesChange) {
     didSourcesChange = false;
     for (const render of renders) {
-      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
       const boundaryIds = suspenseBoundaryIdsByRenderId.get(render.id) ?? [];
+      if (render.kind === ReactSemanticRenderKind.SlotInput && boundaryIds.length === 0) {
+        const slotFlow = slotFlowsBySourceRenderId.get(render.id);
+        if (!slotFlow?.complete || slotFlow.renderIds.length > 0) continue;
+      }
       if (boundaryIds.length > 0) {
         for (const boundaryId of boundaryIds) {
           didSourcesChange =
@@ -4906,6 +4925,12 @@ const deriveSuspenseSourcesByUnit = (
           ) || didSourcesChange;
       }
     }
+    for (const hookEdge of customHookEdges) {
+      for (const sourceId of sourcesByUnit.get(hookEdge.sourceId) ?? []) {
+        didSourcesChange =
+          addSuspenseSource(sourcesByUnit, hookEdge.targetId, sourceId) || didSourcesChange;
+      }
+    }
   }
   return sourcesByUnit;
 };
@@ -4924,11 +4949,16 @@ const addErrorBoundarySource = (
 
 const deriveErrorBoundarySourcesByUnit = (
   units: ReadonlyArray<ReactSemanticUnit>,
+  edges: ReadonlyArray<ReactSemanticEdge>,
   renders: ReadonlyArray<ReactSemanticRender>,
   slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
   errorBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
 ): ReadonlyMap<string, ReadonlySet<string>> => {
   const sourcesByUnit = new Map<string, Set<string>>();
+  const localUnitIds = new Set(units.map((unit) => unit.id));
+  const customHookEdges = edges.filter(
+    (edge) => edge.kind === ReactSemanticEdgeKind.CallsHook && localUnitIds.has(edge.targetId),
+  );
   const rendersById = new Map(renders.map((render) => [render.id, render]));
   for (const unit of units) {
     if (unit.canBeRenderRoot) {
@@ -4967,6 +4997,12 @@ const deriveErrorBoundarySourcesByUnit = (
           ) || didSourcesChange;
       }
     }
+    for (const hookEdge of customHookEdges) {
+      for (const sourceId of sourcesByUnit.get(hookEdge.sourceId) ?? []) {
+        didSourcesChange =
+          addErrorBoundarySource(sourcesByUnit, hookEdge.targetId, sourceId) || didSourcesChange;
+      }
+    }
   }
   return sourcesByUnit;
 };
@@ -4989,6 +5025,7 @@ const findFirstThrowStatement = (
 
 const collectRenderErrorGraph = (
   identities: ReadonlyArray<UnitGraphIdentity>,
+  edges: ReadonlyArray<ReactSemanticEdge>,
   renders: ReadonlyArray<ReactSemanticRender>,
   slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
   errorBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
@@ -4998,6 +5035,7 @@ const collectRenderErrorGraph = (
 ): RenderErrorGraphFacts => {
   const sourcesByUnit = deriveErrorBoundarySourcesByUnit(
     identities.map((identity) => identity.semanticUnit),
+    edges,
     renders,
     slotFlows,
     errorBoundaryIdsByRenderId,
@@ -5065,6 +5103,116 @@ const collectRenderErrorGraph = (
     }
   }
   return { failures };
+};
+
+const collectUseResourceGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  edges: ReadonlyArray<ReactSemanticEdge>,
+  renders: ReadonlyArray<ReactSemanticRender>,
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
+  suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
+  errorBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
+  errorBoundaries: ReadonlyArray<ReactSemanticErrorBoundary>,
+  errorBoundaryDefinitions: ReadonlyArray<ReactSemanticErrorBoundaryDefinition>,
+  context: ReactAnalysisContext,
+): UseResourceGraphFacts => {
+  const units = identities.map((identity) => identity.semanticUnit);
+  const suspenseSourcesByUnit = deriveSuspenseSourcesByUnit(
+    units,
+    edges,
+    renders,
+    slotFlows,
+    suspenseBoundaryIdsByRenderId,
+  );
+  const errorSourcesByUnit = deriveErrorBoundarySourcesByUnit(
+    units,
+    edges,
+    renders,
+    slotFlows,
+    errorBoundaryIdsByRenderId,
+  );
+  const boundariesById = new Map(errorBoundaries.map((boundary) => [boundary.id, boundary]));
+  const definitionsById = new Map(
+    errorBoundaryDefinitions.map((definition) => [definition.id, definition]),
+  );
+  const resources: ReactSemanticUseResource[] = [];
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const ownerId = identity.semanticUnit.id;
+    for (const protocol of collectUseResourceProtocols(functionNode, context.typeChecker)) {
+      const suspenseSources = suspenseSourcesByUnit.get(ownerId) ?? new Set<string>();
+      const sourceSuspenseBoundaryIds = [...suspenseSources].filter(
+        (sourceId) =>
+          sourceId !== REACT_SUSPENSE_OUTSIDE_SOURCE_ID &&
+          sourceId !== REACT_SUSPENSE_UNKNOWN_SOURCE_ID,
+      );
+      const outsideSuspenseBoundary = suspenseSources.has(REACT_SUSPENSE_OUTSIDE_SOURCE_ID);
+      const suspenseTopologyComplete =
+        suspenseSources.size > 0 && !suspenseSources.has(REACT_SUSPENSE_UNKNOWN_SOURCE_ID);
+      let suspenseCoverageStatus = ReactSuspenseCoverageStatus.Unknown;
+      if (outsideSuspenseBoundary) {
+        suspenseCoverageStatus = ReactSuspenseCoverageStatus.OutsideBoundary;
+      } else if (suspenseTopologyComplete && sourceSuspenseBoundaryIds.length > 0) {
+        suspenseCoverageStatus = ReactSuspenseCoverageStatus.Covered;
+      }
+
+      const errorSources = errorSourcesByUnit.get(ownerId) ?? new Set<string>();
+      const sourceErrorBoundaryIds = [...errorSources].filter(
+        (sourceId) =>
+          sourceId !== REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID &&
+          sourceId !== REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID,
+      );
+      const outsideErrorBoundary = errorSources.has(REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID);
+      const sourceDefinitions = sourceErrorBoundaryIds.flatMap((boundaryId) => {
+        const boundary = boundariesById.get(boundaryId);
+        const definition = boundary ? definitionsById.get(boundary.definitionId) : null;
+        return definition ? [definition] : [];
+      });
+      const errorTopologyComplete =
+        errorSources.size > 0 &&
+        !errorSources.has(REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID) &&
+        sourceDefinitions.length === sourceErrorBoundaryIds.length &&
+        sourceDefinitions.every((definition) => definition.sourceComplete);
+      const hasValidErrorBoundary =
+        sourceDefinitions.length > 0 &&
+        sourceDefinitions.every((definition) => definition.complete);
+      let errorCoverageStatus = ReactErrorBoundaryCoverageStatus.Unknown;
+      if (outsideErrorBoundary || (errorTopologyComplete && !hasValidErrorBoundary)) {
+        errorCoverageStatus = ReactErrorBoundaryCoverageStatus.OutsideBoundary;
+      } else if (errorTopologyComplete && hasValidErrorBoundary) {
+        errorCoverageStatus = ReactErrorBoundaryCoverageStatus.Covered;
+      }
+      const sourceComplete =
+        protocol.kind !== ReactUseResourceKind.Unknown &&
+        protocol.identityStatus !== ReactUseResourceIdentityStatus.Unknown &&
+        suspenseTopologyComplete &&
+        errorTopologyComplete;
+      resources.push({
+        id: createSemanticId("use-resource", ownerId, protocol.callExpression, context),
+        ownerId,
+        location: getNodeLocation(protocol.callExpression, context.rootDirectory),
+        kind: protocol.kind,
+        identityStatus: protocol.identityStatus,
+        sourceSuspenseBoundaryIds,
+        outsideSuspenseBoundary,
+        suspenseTopologyComplete,
+        suspenseCoverageStatus,
+        sourceErrorBoundaryIds,
+        outsideErrorBoundary,
+        errorTopologyComplete,
+        errorCoverageStatus,
+        sourceComplete,
+        complete:
+          sourceComplete &&
+          protocol.kind === ReactUseResourceKind.Thenable &&
+          protocol.identityStatus === ReactUseResourceIdentityStatus.Stable &&
+          suspenseCoverageStatus === ReactSuspenseCoverageStatus.Covered &&
+          errorCoverageStatus === ReactErrorBoundaryCoverageStatus.Covered,
+      });
+    }
+  }
+  return { resources };
 };
 
 const resolveLazyComponentIdentity = (
@@ -5328,6 +5476,7 @@ const deriveReachableFunctionSuspenseSources = (
 
 const collectLazyGraph = (
   identities: ReadonlyArray<UnitGraphIdentity>,
+  edges: ReadonlyArray<ReactSemanticEdge>,
   sourceFiles: ReadonlyArray<ts.SourceFile>,
   identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
   unitIdsBySymbol: ReadonlyMap<ts.Symbol, string>,
@@ -5509,6 +5658,7 @@ const collectLazyGraph = (
   }
   const suspenseSourcesByUnit = deriveSuspenseSourcesByUnit(
     identities.map((identity) => identity.semanticUnit),
+    edges,
     renders,
     slotFlows,
     suspenseBoundaryIdsByRenderId,
@@ -5883,6 +6033,7 @@ export const buildReactSemanticGraph = (
   );
   const lazyGraph = collectLazyGraph(
     identities,
+    edges,
     sourceFiles,
     unitIdentitiesByFunction,
     unitIdsBySymbol,
@@ -5908,8 +6059,20 @@ export const buildReactSemanticGraph = (
   }));
   const renderErrorGraph = collectRenderErrorGraph(
     identities,
+    edges,
     slotGraph.renders,
     slotGraph.slotFlows,
+    slotGraph.errorBoundaryIdsByRenderId,
+    errorBoundaries,
+    errorBoundaryGraph.definitions,
+    context,
+  );
+  const useResourceGraph = collectUseResourceGraph(
+    identities,
+    edges,
+    slotGraph.renders,
+    slotGraph.slotFlows,
+    slotGraph.suspenseBoundaryIdsByRenderId,
     slotGraph.errorBoundaryIdsByRenderId,
     errorBoundaries,
     errorBoundaryGraph.definitions,
@@ -5945,6 +6108,7 @@ export const buildReactSemanticGraph = (
     errorBoundaryDefinitions: errorBoundaryGraph.definitions,
     errorBoundaries,
     renderFailures: renderErrorGraph.failures,
+    useResources: useResourceGraph.resources,
     suspenseBoundaries,
     lazyComponents: lazyGraph.components,
     lazyRenders: lazyGraph.renders,

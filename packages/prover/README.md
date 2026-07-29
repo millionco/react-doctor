@@ -93,6 +93,12 @@ The report includes:
   closed ReactNode-slot paths; uncovered failures and invalid recovery protocols are refuted,
   opaque state or topology remains unknown, and event handlers, server rendering, ordinary async
   callbacks, and errors thrown by a boundary itself stay outside this theorem;
+- `use` resource facts that use TypeScript to distinguish thenables from Context values and invalid
+  inputs, prove cached identity from module constants or React state with a stable initializer, and
+  propagate both pending and rejection paths through direct renders, closed ReactNode slots, and
+  custom Hooks; fresh
+  render-created Promises, missing Suspense, and missing valid Error Boundaries are refuted, while
+  opaque factories, props, and topology fail closed;
 - Action State facts that identify canonical `useActionState` tuples, resolve each reducer Action
   without imposing reducer purity, and classify every dispatcher call or escape; a dispatch is
   certified only when every represented root is a Form Action, an Action State reducer, or a
@@ -170,6 +176,11 @@ phase-correct class ownership, exact recovery-protocol equations, and boundary s
 independently propagated from every exported render root through effective component and
 ReactNode-slot renders. The checker rejects forged protocol, topology, outside-boundary, source,
 completeness, and claim-verdict combinations.
+`use` resource certificates additionally require a canonical non-Context `use` call, a
+TypeScript-derived thenable kind, a closed cache-identity origin, independently propagated
+Suspense and Error Boundary sources, valid recovery definitions, and the exact conjunction of
+type, identity, topology, coverage, and completeness fields. The checker rejects forged resource
+kind, identity, source, boundary, status, completeness, and claim-verdict combinations.
 Transition Action certificates require a valid non-render execution root, a symbol-identified
 starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
 source/completeness equations. The checker rejects forged synchronous, controlled-input,

@@ -160,6 +160,51 @@ const handlerHasPotentiallyThrowingMemberRead = (
   return hasPotentiallyThrowingMemberRead;
 };
 
+const hasRejectionHandler = (
+  chain: EsTreeNode,
+  argument: EsTreeNode | undefined,
+  context: RuleContext,
+  allowTerminalCatchBlock: boolean,
+): boolean => {
+  if (!argument) return false;
+  if (
+    !handlerHasPotentiallyThrowingMemberRead(argument, context) &&
+    (chainCarriesRejectionHandler(chain, context.scopes) ||
+      isKnownNonRejectingHandler(argument, context))
+  ) {
+    return true;
+  }
+  if (!allowTerminalCatchBlock) return false;
+  const candidate = stripParenExpression(argument);
+  const handler = isNodeOfType(candidate, "Identifier")
+    ? resolveExactLocalFunction(candidate, context.scopes)
+    : candidate;
+  if (!handler || !isFunctionLike(handler)) {
+    return (
+      isNodeOfType(candidate, "MemberExpression") ||
+      (isNodeOfType(candidate, "Identifier") && candidate.name !== "undefined")
+    );
+  }
+  if (!isNodeOfType(handler.body, "BlockStatement")) return false;
+  let doesExplicitlyReject = false;
+  walkOwnFunctionScope(handler, (child: EsTreeNode) => {
+    if (doesExplicitlyReject) return false;
+    if (isNodeOfType(child, "ThrowStatement") || isNodeOfType(child, "AwaitExpression")) {
+      doesExplicitlyReject = true;
+      return false;
+    }
+    if (
+      isNodeOfType(child, "ReturnStatement") &&
+      child.argument &&
+      !isDefinitelyNonThenableValue(child.argument)
+    ) {
+      doesExplicitlyReject = true;
+      return false;
+    }
+  });
+  return !doesExplicitlyReject;
+};
+
 const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): PromiseChainWalk => {
   let cursor = stripParenExpression(chainExpression);
   let hasCatch = false;
@@ -179,15 +224,18 @@ const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): Pr
       methodName === "catch"
         ? (cursor.arguments[0] as EsTreeNode | undefined)
         : (cursor.arguments[1] as EsTreeNode | undefined);
-    const hasAbsorbingRejectionHandler =
-      !handlerHasPotentiallyThrowingMemberRead(rejectionHandlerArgument, context) &&
-      (chainCarriesRejectionHandler(cursor, context.scopes) ||
-        isKnownNonRejectingHandler(rejectionHandlerArgument, context));
-    if (!didReachTerminalThen && methodName === "catch" && hasAbsorbingRejectionHandler) {
+    if (
+      !didReachTerminalThen &&
+      methodName === "catch" &&
+      hasRejectionHandler(cursor, rejectionHandlerArgument, context, true)
+    ) {
       hasCatch = true;
     }
     if (methodName === "then") {
-      if (!didReachTerminalThen && hasAbsorbingRejectionHandler) {
+      if (
+        !didReachTerminalThen &&
+        hasRejectionHandler(cursor, rejectionHandlerArgument, context, false)
+      ) {
         hasRejectionHandlerArgument = true;
       }
       didReachTerminalThen = true;

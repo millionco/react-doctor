@@ -221,6 +221,46 @@ describe("no-promise-then-side-effect-in-effect-without-catch", () => {
     }
   });
 
+  it("does not flag the ReactBench task refresh chain with a terminal catch", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
+      `const C = () => {
+        const [tasks, setTasks] = useState([]);
+        const [, setApiKeys] = useState([]);
+        const latestSuccessfulRefreshIdRef = useRef(0);
+        const updateAlert = (id, isError) => {};
+        useEffect(() => {
+          const refreshId = 1;
+          const triggerIds = [1];
+          fetch("/api/apiKeys")
+            .then((response) => {
+              if (!response.ok) throw new Error("not ok");
+              return response.json();
+            })
+            .then((json) => {
+              setTasks((previous) =>
+                previous.map((task) => ({ ...task, status: "success" })),
+              );
+              if (refreshId > latestSuccessfulRefreshIdRef.current) {
+                latestSuccessfulRefreshIdRef.current = refreshId;
+                setApiKeys(json.apiKeys);
+              }
+              updateAlert(Math.max(...triggerIds), false);
+            })
+            .catch(() => {
+              setTasks((previous) =>
+                previous.map((task) => ({ ...task, status: "error" })),
+              );
+              updateAlert(Math.max(...triggerIds), true);
+            });
+        }, [tasks, updateAlert]);
+      };`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a catch handler that returns a fulfilled promise", () => {
     const result = runRule(
       noPromiseThenSideEffectInEffectWithoutCatch,
@@ -744,26 +784,30 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("requires rejection handlers to avoid potentially throwing member reads", () => {
-    const invalidSources = [
+  it("still requires a then rejection handler to avoid potentially throwing member reads", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
       `const C = ({ source }) => {
         const [, setValue] = useState();
         useEffect(() => {
           fetch("/x").then(setValue, () => console.log(source.throwingGetter));
         }, [source]);
       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a terminal block catch that performs state recovery from a member value", () => {
+    const result = runRule(
+      noPromiseThenSideEffectInEffectWithoutCatch,
       `const C = ({ source }) => {
         const [, setValue] = useState();
         useEffect(() => {
           fetch("/x").then(setValue).catch(() => { setValue(source.throwingGetter); });
         }, [source]);
       };`,
-    ];
-    for (const source of invalidSources) {
-      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
-        1,
-      );
-    }
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("accepts rejection handlers with simple non-throwing arguments", () => {
@@ -834,7 +878,7 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
     }
   });
 
-  it("requires a callable, non-rethrowing rejection handler", () => {
+  it("requires a callable rejection handler that does not explicitly rethrow", () => {
     const invalidSources = [
       `const C = () => { const [, setValue] = useState(); useEffect(() => { fetch("/x").then(setValue).catch(); }, []); };`,
       `const C = () => { const [, setValue] = useState(); useEffect(() => { fetch("/x").then(setValue).catch(undefined); }, []); };`,

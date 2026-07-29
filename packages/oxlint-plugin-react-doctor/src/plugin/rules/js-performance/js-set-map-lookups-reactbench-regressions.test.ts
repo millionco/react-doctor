@@ -48,6 +48,21 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
     `);
   });
 
+  it("stays silent for an empty transpiled rest omission list", () => {
+    expectNoDiagnostics(`
+      var __rest = (this && this.__rest) || function (source, excluded) {
+        var target = {};
+        for (var property in source) {
+          if (Object.prototype.hasOwnProperty.call(source, property) && excluded.indexOf(property) < 0) {
+            target[property] = source[property];
+          }
+        }
+        return target;
+      };
+      const rest = __rest(props, []);
+    `);
+  });
+
   it("reports a transpiled rest helper with an unproven omission list", () => {
     expectDiagnostic(`
       var __rest = (this && this.__rest) || function (source, excluded) {
@@ -73,6 +88,16 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
     `);
   });
 
+  it("stays silent through transparent wrappers on proven fresh arrays", () => {
+    expectNoDiagnostics(`
+      const selectedValues: string[] = [];
+      const rows: Array<{ value: string }> = [];
+      const matchingRows = rows.filter((row) =>
+        (selectedValues as string[]).filter(Boolean).includes(row.value)
+      );
+    `);
+  });
+
   it("reports an unproven userland transform method that can return a cached large array", () => {
     expectDiagnostic(`
       const cachedValues = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
@@ -86,6 +111,16 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
       const matchingRows = rows.filter((row) =>
         text.slice(row.offset).includes(row.query) ||
         (row.title || "").includes(row.query)
+      );
+    `);
+  });
+
+  it("stays silent through transparent wrappers on proven strings", () => {
+    expectNoDiagnostics(`
+      const rows: Array<{ offset: number; query: string }> = [];
+      const text: string | null = "content";
+      const matchingRows = rows.filter((row) =>
+        text!.slice(row.offset).includes(row.query)
       );
     `);
   });

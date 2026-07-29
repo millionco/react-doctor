@@ -254,6 +254,8 @@ const FRESH_ARRAY_METHOD_NAMES: ReadonlySet<string> = new Set([
 // is obviously a string, so the Set rewrite suggestion doesn't apply.
 const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
   if (!receiver) return false;
+  const unwrappedReceiver = stripParenExpression(receiver);
+  if (unwrappedReceiver !== receiver) return isLikelyStringReceiver(unwrappedReceiver);
   if (isNodeOfType(receiver, "Literal") && typeof receiver.value === "string") return true;
   if (isNodeOfType(receiver, "TemplateLiteral")) return true;
   if (
@@ -333,6 +335,8 @@ const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolea
 };
 
 const isFreshArrayReceiver = (receiver: EsTreeNode): boolean => {
+  const unwrappedReceiver = stripParenExpression(receiver);
+  if (unwrappedReceiver !== receiver) return isFreshArrayReceiver(unwrappedReceiver);
   if (
     !isNodeOfType(receiver, "CallExpression") ||
     !isNodeOfType(receiver.callee, "MemberExpression") ||
@@ -344,9 +348,18 @@ const isFreshArrayReceiver = (receiver: EsTreeNode): boolean => {
   if (receiver.callee.property.name === "split") {
     return isLikelyStringReceiver(receiver.callee.object);
   }
+  const sourceReceiver = stripParenExpression(receiver.callee.object);
+  return isKnownNativeArrayReceiver(sourceReceiver) || isFreshArrayReceiver(sourceReceiver);
+};
+
+const isSmallRestHelperOmissionList = (node: EsTreeNode | undefined): boolean => {
+  if (!node) return false;
+  const candidate = stripParenExpression(node);
+  if (!isNodeOfType(candidate, "ArrayExpression")) return false;
+  const elements = candidate.elements ?? [];
   return (
-    isKnownNativeArrayReceiver(receiver.callee.object) ||
-    isFreshArrayReceiver(receiver.callee.object)
+    elements.length <= SMALL_LITERAL_ARRAY_MAX_ELEMENTS &&
+    elements.every((element) => element === null || !isNodeOfType(element, "SpreadElement"))
   );
 };
 
@@ -385,7 +398,7 @@ const isTypeScriptRestHelperLookup = (
     return (
       isNodeOfType(callExpression, "CallExpression") &&
       callExpression.callee === reference.identifier &&
-      isSmallInlineLiteralArray(callExpression.arguments?.[1])
+      isSmallRestHelperOmissionList(callExpression.arguments?.[1])
     );
   });
 };

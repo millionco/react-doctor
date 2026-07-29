@@ -346,6 +346,30 @@ describe("no-ref-current-in-render — predictable initialization proofs", () =>
          return null;
        };`,
     ],
+    [
+      "a later write in an event handler",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const mapRef = useRef<Map<string, string> | null>(null);
+         if (mapRef.current === null) mapRef.current = new Map();
+         const reset = () => {
+           mapRef.current = new Map([["ready", "yes"]]);
+         };
+         return <button onClick={reset}>Replace</button>;
+       };`,
+    ],
+    [
+      "a later write in an effect",
+      `import { useEffect, useRef } from "react";
+       const Panel = () => {
+         const mapRef = useRef<Map<string, string> | null>(null);
+         if (mapRef.current === null) mapRef.current = new Map();
+         useEffect(() => {
+           mapRef.current = new Map([["ready", "yes"]]);
+         }, []);
+         return null;
+       };`,
+    ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -420,6 +444,31 @@ describe("no-ref-current-in-render — predictable initialization proofs", () =>
          const mapRef = useRef<Map<string, string> | null>(null);
          if (mapRef.current === null) mapRef.current = new Map();
          if (shouldReset) mapRef.current = null;
+         return null;
+       };`,
+    ],
+    [
+      "a later co-executable reset in a synchronous callback",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const mapRef = useRef<Map<string, string> | null>(null);
+         if (mapRef.current === null) mapRef.current = new Map();
+         [1].forEach(() => {
+           mapRef.current = null;
+         });
+         return null;
+       };`,
+    ],
+    [
+      "a later co-executable reset in a called local function",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const mapRef = useRef<Map<string, string> | null>(null);
+         if (mapRef.current === null) mapRef.current = new Map();
+         const reset = () => {
+           mapRef.current = null;
+         };
+         reset();
          return null;
        };`,
     ],

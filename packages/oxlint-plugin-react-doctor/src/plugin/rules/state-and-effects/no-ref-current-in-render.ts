@@ -1,7 +1,9 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
@@ -392,6 +394,10 @@ const hasNoCoExecutableCompetingWrite = (
   scopes: ScopeAnalysis,
 ): boolean => {
   const assignmentConstraints = getBranchConstraints(assignmentExpression, renderOwner);
+  const synchronouslyInvokedFunctions = collectSynchronouslyEffectInvokedFunctions(
+    renderOwner,
+    scopes,
+  );
   let hasCompetingWrite = false;
   walkAst(renderOwner, (child: EsTreeNode): boolean | void => {
     if (hasCompetingWrite) return false;
@@ -407,8 +413,21 @@ const hasNoCoExecutableCompetingWrite = (
     } else if (isNodeOfType(child, "ForInStatement") || isNodeOfType(child, "ForOfStatement")) {
       writtenExpression = child.left;
     }
+    const deferredExecutionBoundary = findDeferredExecutionBoundary(child);
+    const deferredWriteValue =
+      isNodeOfType(child, "AssignmentExpression") && child.operator === "="
+        ? resolveImmutableInitializationValue(child.right, scopes)
+        : null;
+    const isDeferredTruthyWrite =
+      deferredExecutionBoundary !== null &&
+      deferredExecutionBoundary !== renderOwner &&
+      !synchronouslyInvokedFunctions.has(deferredExecutionBoundary) &&
+      deferredWriteValue !== null &&
+      !isNodeOfType(deferredWriteValue, "CallExpression") &&
+      isProvablyTruthyInitializationValue(deferredWriteValue, scopes);
     if (
       !writtenExpression ||
+      isDeferredTruthyWrite ||
       !expressionContainsRefCurrent(writtenExpression, refSymbol, scopes) ||
       !canExecuteTogether(assignmentConstraints, getBranchConstraints(child, renderOwner))
     ) {

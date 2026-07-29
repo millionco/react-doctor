@@ -85,6 +85,58 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  it("traces a component through a direct default React HoC call", () => {
+    expectPass(
+      `import { memo } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       export default memo(FeatureImpl);`,
+    );
+  });
+
+  it("traces a component through a default-exported React HoC alias", () => {
+    expectPass(
+      `import { memo } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = memo(FeatureImpl);
+       export default Feature;`,
+    );
+  });
+
+  it("does not treat a default call to a shadowed memo function as a React export", () => {
+    expectFail(
+      `const memo = (value) => value;
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       export default memo(FeatureImpl);`,
+    );
+  });
+
+  it("does not treat a default call to non-React memo as a React export", () => {
+    expectFail(
+      `import { memo } from "./not-react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       export default memo(FeatureImpl);`,
+    );
+  });
+
+  it("does not treat a non-component wrapped by React memo as an exported component", () => {
+    expectFail(
+      `import { memo } from "react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function Gamma() { return <div />; }
+       const notAComponent = 42;
+       export default memo(notAComponent);`,
+    );
+  });
+
   it("does not treat a shadowed memo function as a React export wrapper", () => {
     expectFail(
       `const memo = (_component) => 0;

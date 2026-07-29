@@ -341,6 +341,21 @@ const unwrapTsCast = (expression: EsTreeNode): EsTreeNode => {
   return current;
 };
 
+const getReactHocWrappedIdentifierName = (
+  expression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): string | null => {
+  let current = unwrapTsCast(expression);
+  if (isNodeOfType(current, "Identifier")) {
+    const symbol = scopes.symbolFor(current);
+    if (!symbol?.initializer) return null;
+    current = unwrapTsCast(symbol.initializer);
+  }
+  if (!isNodeOfType(current, "CallExpression") || !isHocCall(current, scopes)) return null;
+  const wrappedArgument = current.arguments[0];
+  return isNodeOfType(wrappedArgument, "Identifier") ? wrappedArgument.name : null;
+};
+
 const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set<string> => {
   const names = new Set<string>();
   if (!isNodeOfType(program, "Program")) return names;
@@ -356,6 +371,8 @@ const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set
       if (isNodeOfType(defaultExpression, "Identifier")) {
         names.add(defaultExpression.name);
       }
+      const wrappedComponentName = getReactHocWrappedIdentifierName(defaultExpression, scopes);
+      if (wrappedComponentName) names.add(wrappedComponentName);
       continue;
     }
     if (!isNodeOfType(statement, "ExportNamedDeclaration")) continue;
@@ -380,10 +397,8 @@ const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set
       // declaration IS the public surface, just re-exported through a
       // HoC wrapper under a (possibly different) name.
       if (isNodeOfType(init, "CallExpression")) {
-        if (isHocCall(init, scopes)) {
-          const wrappedArg = init.arguments[0] as EsTreeNode | undefined;
-          if (wrappedArg && isNodeOfType(wrappedArg, "Identifier")) names.add(wrappedArg.name);
-        }
+        const wrappedComponentName = getReactHocWrappedIdentifierName(init, scopes);
+        if (wrappedComponentName) names.add(wrappedComponentName);
         continue;
       }
       if (!isNodeOfType(init, "ObjectExpression")) continue;

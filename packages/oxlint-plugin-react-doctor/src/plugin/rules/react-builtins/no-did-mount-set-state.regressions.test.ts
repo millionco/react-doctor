@@ -275,6 +275,7 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     `this["monthContainer"] = value;`,
     `this[this.props.fieldName] = value;`,
     `Object.assign(this, { monthContainer: value });`,
+    `const MutationObject = Object; MutationObject.assign(this, { monthContainer: value });`,
     `Object.defineProperty(this, "monthContainer", { value });`,
     `Object.defineProperties(this, { monthContainer: { value } });`,
     `Reflect.set(this, "monthContainer", value);`,
@@ -475,6 +476,33 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
         setMonthContainerRef = (element) => {
           this.monthContainer = element ?? undefined;
           Object.assign(this, { monthContainer: element });
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `this["monthContainer"] = element ?? undefined;`,
+    `Object.assign(this, { monthContainer: element });`,
+    `Reflect.set(this, "monthContainer", element);`,
+  ])("stays silent when the callback ref writes its field through %s", (refWrite) => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          ${refWrite}
         };
         componentDidMount() {
           this.setState({ monthContainer: this.monthContainer });

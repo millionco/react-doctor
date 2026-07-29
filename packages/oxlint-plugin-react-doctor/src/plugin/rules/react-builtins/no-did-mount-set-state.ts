@@ -307,14 +307,46 @@ const objectExpressionMayDefineField = (node: EsTreeNode, fieldName: string): bo
   });
 };
 
+const collectMutationReceiverKinds = (
+  classNode: EsTreeNode,
+): ReadonlyMap<string, "object" | "reflect"> => {
+  const receiverKinds = new Map<string, "object" | "reflect">([
+    ["Object", "object"],
+    ["Reflect", "reflect"],
+  ]);
+  let didAddReceiver = true;
+  while (didAddReceiver) {
+    didAddReceiver = false;
+    walkAst(classNode, (node) => {
+      if (
+        !isNodeOfType(node, "VariableDeclarator") ||
+        !isNodeOfType(node.id, "Identifier") ||
+        !node.init
+      ) {
+        return;
+      }
+      const initializer = stripParenExpression(node.init);
+      if (!isNodeOfType(initializer, "Identifier")) return;
+      const receiverKind = receiverKinds.get(initializer.name);
+      if (!receiverKind || receiverKinds.has(node.id.name)) return;
+      receiverKinds.set(node.id.name, receiverKind);
+      didAddReceiver = true;
+    });
+  }
+  return receiverKinds;
+};
+
 const callMayWriteThisField = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   fieldName: string,
+  receiverKinds: ReadonlyMap<string, "object" | "reflect">,
 ): boolean => {
   const callee = stripParenExpression(callExpression.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const receiver = stripParenExpression(callee.object as EsTreeNode);
   if (!isNodeOfType(receiver, "Identifier")) return false;
+  const receiverKind = receiverKinds.get(receiver.name);
+  if (!receiverKind) return false;
   const methodName = getStaticPropertyKeyName(callee, { allowComputedString: true });
   const [target, propertyOrSource, ...remainingArguments] = callExpression.arguments;
   if (
@@ -324,7 +356,7 @@ const callMayWriteThisField = (
   ) {
     return false;
   }
-  if (receiver.name === "Object" && methodName === "assign") {
+  if (receiverKind === "object" && methodName === "assign") {
     const sources = [propertyOrSource, ...remainingArguments];
     return sources.some(
       (source) =>
@@ -333,7 +365,7 @@ const callMayWriteThisField = (
         objectExpressionMayDefineField(source as EsTreeNode, fieldName),
     );
   }
-  if (receiver.name === "Object" && methodName === "defineProperties") {
+  if (receiverKind === "object" && methodName === "defineProperties") {
     return (
       !propertyOrSource ||
       isNodeOfType(propertyOrSource, "SpreadElement") ||
@@ -341,8 +373,8 @@ const callMayWriteThisField = (
     );
   }
   if (
-    (receiver.name === "Object" && methodName === "defineProperty") ||
-    (receiver.name === "Reflect" &&
+    (receiverKind === "object" && methodName === "defineProperty") ||
+    (receiverKind === "reflect" &&
       (methodName === "defineProperty" || methodName === "deleteProperty" || methodName === "set"))
   ) {
     if (!propertyOrSource || isNodeOfType(propertyOrSource, "SpreadElement")) return true;
@@ -366,6 +398,7 @@ const getEnclosingWriterFunction = (node: EsTreeNode, classNode: EsTreeNode): Es
 
 const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: string): boolean => {
   if (fieldName.startsWith("#")) return false;
+  const receiverKinds = collectMutationReceiverKinds(classNode);
   const writerFunctions = new Set<EsTreeNode>();
   let didFindUnsafeWrite = false;
   walkAst(classNode, (node) => {
@@ -384,7 +417,10 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
       didFindUnsafeWrite = true;
       return false;
     }
-    if (isNodeOfType(node, "CallExpression") && callMayWriteThisField(node, fieldName)) {
+    if (
+      isNodeOfType(node, "CallExpression") &&
+      callMayWriteThisField(node, fieldName, receiverKinds)
+    ) {
       const writerFunction = getEnclosingWriterFunction(node, classNode);
       if (!writerFunction) {
         didFindUnsafeWrite = true;

@@ -281,12 +281,14 @@ export const getThisFieldName = (node: EsTreeNode): string | null => {
   const unwrappedNode = stripParenExpression(node);
   if (
     !isNodeOfType(unwrappedNode, "MemberExpression") ||
-    unwrappedNode.computed === true ||
     !isNodeOfType(stripParenExpression(unwrappedNode.object as EsTreeNode), "ThisExpression")
   ) {
     return null;
   }
-  return getMemberIdentity(unwrappedNode.property);
+  if (isNodeOfType(unwrappedNode.property, "PrivateIdentifier")) {
+    return `#${unwrappedNode.property.name}`;
+  }
+  return getStaticPropertyKeyName(unwrappedNode, { allowComputedString: true });
 };
 
 const isUndefinedIdentifier = (node: EsTreeNode): boolean => {
@@ -345,18 +347,70 @@ const getCallbackRefAssignedFields = (
         node.operator === "delete" &&
         (node.argument as EsTreeNode)) ||
       null;
-    if (!assignmentTarget) return;
-    const fieldName = getThisFieldName(assignmentTarget);
-    if (!fieldName) return;
-    if (
-      isNodeOfType(node, "AssignmentExpression") &&
-      node.operator === "=" &&
-      isDirectRefParameterValue(node.right as EsTreeNode, parameterSymbolId, scopes)
-    ) {
-      assignedFieldNames.add(fieldName);
+    if (assignmentTarget) {
+      const fieldName = getThisFieldName(assignmentTarget);
+      if (!fieldName) return;
+      if (
+        isNodeOfType(node, "AssignmentExpression") &&
+        node.operator === "=" &&
+        isDirectRefParameterValue(node.right as EsTreeNode, parameterSymbolId, scopes)
+      ) {
+        assignedFieldNames.add(fieldName);
+        return;
+      }
+      assignedFieldNames.delete(fieldName);
       return;
     }
-    assignedFieldNames.delete(fieldName);
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return;
+    const receiver = stripParenExpression(callee.object as EsTreeNode);
+    if (!isNodeOfType(receiver, "Identifier")) return;
+    const methodName = getStaticPropertyKeyName(callee, { allowComputedString: true });
+    const [target, propertyOrSource, assignedValue, ...remainingArguments] = node.arguments;
+    if (
+      !target ||
+      isNodeOfType(target, "SpreadElement") ||
+      !isNodeOfType(stripParenExpression(target as EsTreeNode), "ThisExpression")
+    ) {
+      return;
+    }
+    if (receiver.name === "Object" && methodName === "assign") {
+      for (const source of [propertyOrSource, assignedValue, ...remainingArguments]) {
+        if (!source || isNodeOfType(source, "SpreadElement")) continue;
+        const objectExpression = stripParenExpression(source as EsTreeNode);
+        if (!isNodeOfType(objectExpression, "ObjectExpression")) continue;
+        for (const property of objectExpression.properties) {
+          if (!isNodeOfType(property, "Property")) continue;
+          const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+          if (!propertyName) continue;
+          if (isDirectRefParameterValue(property.value as EsTreeNode, parameterSymbolId, scopes)) {
+            assignedFieldNames.add(propertyName);
+          } else {
+            assignedFieldNames.delete(propertyName);
+          }
+        }
+      }
+      return;
+    }
+    if (
+      receiver.name === "Reflect" &&
+      methodName === "set" &&
+      propertyOrSource &&
+      !isNodeOfType(propertyOrSource, "SpreadElement")
+    ) {
+      const propertyNameNode = stripParenExpression(propertyOrSource as EsTreeNode);
+      const propertyName =
+        isNodeOfType(propertyNameNode, "Literal") && typeof propertyNameNode.value === "string"
+          ? propertyNameNode.value
+          : null;
+      if (!propertyName || !assignedValue || isNodeOfType(assignedValue, "SpreadElement")) return;
+      if (isDirectRefParameterValue(assignedValue as EsTreeNode, parameterSymbolId, scopes)) {
+        assignedFieldNames.add(propertyName);
+      } else {
+        assignedFieldNames.delete(propertyName);
+      }
+    }
   });
   return assignedFieldNames;
 };

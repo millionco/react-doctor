@@ -419,7 +419,7 @@ const isSideEffectFreeGuardExpression = (
   }
   if (
     isNodeOfType(candidate, "BinaryExpression") &&
-    (candidate.operator === "===" || candidate.operator === "!==")
+    ["==", "===", "!=", "!=="].includes(candidate.operator)
   ) {
     return (
       isSideEffectFreeGuardExpression(candidate.left, context, visitedPredicates) &&

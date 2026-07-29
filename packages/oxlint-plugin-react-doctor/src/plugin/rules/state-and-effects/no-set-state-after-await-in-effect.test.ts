@@ -689,6 +689,44 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag compound sequence guards that use loose equality", () => {
+    const mismatchResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `let sequence = 0;
+       const C = ({ id }) => {
+         const [, setValue] = useState();
+         const isClosedRef = useRef(false);
+         useEffect(() => {
+           const requestSequence = ++sequence;
+           const run = async () => {
+             const value = await load(id);
+             if (requestSequence != sequence || isClosedRef.current) return;
+             setValue(value);
+           };
+           run();
+         }, [id]);
+       };`,
+    );
+    const currentResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `let sequence = 0;
+       const C = ({ id }) => {
+         const [, setValue] = useState();
+         const isOpenRef = useRef(true);
+         useEffect(() => {
+           const requestSequence = ++sequence;
+           const run = async () => {
+             const value = await load(id);
+             if (isOpenRef.current && requestSequence == sequence) setValue(value);
+           };
+           run();
+         }, [id]);
+       };`,
+    );
+    expect(mismatchResult.diagnostics).toHaveLength(0);
+    expect(currentResult.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a setter that is not bound to useState/useReducer", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,

@@ -1,5 +1,6 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
+import { collectMutationReceiverKinds } from "../../utils/collect-mutation-receiver-kinds.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -331,6 +332,7 @@ const getCallbackRefAssignedFields = (
   if (parameterSymbolId === undefined) return new Set();
   const body = (callback as { body?: EsTreeNode }).body;
   if (!body) return new Set();
+  const receiverKinds = collectMutationReceiverKinds(callback);
   const assignedFieldNames = new Set<string>();
   walkAst(body, (node) => {
     if (
@@ -366,6 +368,8 @@ const getCallbackRefAssignedFields = (
     if (!isNodeOfType(callee, "MemberExpression")) return;
     const receiver = stripParenExpression(callee.object as EsTreeNode);
     if (!isNodeOfType(receiver, "Identifier")) return;
+    const receiverKind = receiverKinds.get(receiver.name);
+    if (!receiverKind) return;
     const methodName = getStaticPropertyKeyName(callee, { allowComputedString: true });
     const [target, propertyOrSource, assignedValue, ...remainingArguments] = node.arguments;
     if (
@@ -375,7 +379,7 @@ const getCallbackRefAssignedFields = (
     ) {
       return;
     }
-    if (receiver.name === "Object" && methodName === "assign") {
+    if (receiverKind === "object" && methodName === "assign") {
       for (const source of [propertyOrSource, assignedValue, ...remainingArguments]) {
         if (!source || isNodeOfType(source, "SpreadElement")) continue;
         const objectExpression = stripParenExpression(source as EsTreeNode);
@@ -394,7 +398,7 @@ const getCallbackRefAssignedFields = (
       return;
     }
     if (
-      receiver.name === "Reflect" &&
+      receiverKind === "reflect" &&
       methodName === "set" &&
       propertyOrSource &&
       !isNodeOfType(propertyOrSource, "SpreadElement")

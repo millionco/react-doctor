@@ -494,6 +494,8 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     `this["monthContainer"] = element ?? undefined;`,
     `Object.assign(this, { monthContainer: element });`,
     `Reflect.set(this, "monthContainer", element);`,
+    `const MutationObject = Object; MutationObject.assign(this, { monthContainer: element });`,
+    `const MutationReflect = Reflect; MutationReflect.set(this, "monthContainer", element);`,
   ])("stays silent when the callback ref writes its field through %s", (refWrite) => {
     const result = runRule(
       noDidMountSetState,

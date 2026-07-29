@@ -59,7 +59,18 @@ declare module "react" {
       transform: (child: Child) => Result,
     ) => ReadonlyArray<Result>;
   };
-  export const memo: <Component>(component: Component) => Component;
+  export interface Memo {
+    <Properties>(
+      component: ComponentType<Properties>,
+      comparator?: (
+        previousProperties: Readonly<Properties>,
+        nextProperties: Readonly<Properties>,
+      ) => boolean,
+    ): ComponentType<Properties>;
+    <Component>(component: Component): Component;
+  }
+
+  export const memo: Memo;
   export const lazy: <Module extends { default: unknown }>(
     load: () => PromiseLike<Module>,
   ) => ComponentType<Record<string, unknown>>;

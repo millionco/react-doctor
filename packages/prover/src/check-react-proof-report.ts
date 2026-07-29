@@ -53,6 +53,8 @@ import {
   ReactImperativeHandleStatus,
   ReactLazyDeclarationStatus,
   ReactLazyLoaderStatus,
+  ReactMemoComparatorKind,
+  ReactMemoComparatorStatus,
   ReactObligationStatus,
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
@@ -100,6 +102,8 @@ const HYDRATION_PREFIX_STATUSES = new Set(Object.values(ReactHydrationPrefixStat
 const HYDRATION_ROOT_KINDS = new Set(Object.values(ReactHydrationRootKind));
 const HYDRATION_ROOT_EXECUTION_STATUSES = new Set(Object.values(ReactHydrationRootExecutionStatus));
 const HYDRATION_STATUSES = new Set(Object.values(ReactHydrationStatus));
+const MEMO_COMPARATOR_KINDS = new Set(Object.values(ReactMemoComparatorKind));
+const MEMO_COMPARATOR_STATUSES = new Set(Object.values(ReactMemoComparatorStatus));
 const OPTIMISTIC_ACTION_STATUSES = new Set(Object.values(ReactOptimisticActionStatus));
 const OPTIMISTIC_REDUCER_STATUSES = new Set(Object.values(ReactOptimisticReducerStatus));
 const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionStatus));
@@ -591,6 +595,70 @@ const expectedHydrationStatus = (
     : ReactObligationStatus.Proved;
 };
 
+const isMemoObservationCovered = (
+  observationPath: string,
+  equalPropPaths: ReadonlyArray<string>,
+): boolean =>
+  equalPropPaths.some(
+    (equalPropPath) =>
+      equalPropPath.length === 0 ||
+      equalPropPath === observationPath ||
+      (observationPath !== "*" && observationPath.startsWith(`${equalPropPath}.`)),
+  );
+
+const expectedMemoComparatorStatus = (
+  comparator: ReactAppProofReport["graph"]["memoComparators"][number],
+): ReactMemoComparatorStatus => {
+  if (!comparator.ownerId) return ReactMemoComparatorStatus.Unknown;
+  if (comparator.kind === ReactMemoComparatorKind.DefaultShallow) {
+    return ReactMemoComparatorStatus.Equivalent;
+  }
+  for (const truePath of comparator.truePaths) {
+    if (!truePath.sourceComplete) continue;
+    if (
+      comparator.observations.some(
+        (observation) =>
+          observation.valueCanVary &&
+          !isMemoObservationCovered(observation.path, truePath.equalPropPaths),
+      )
+    ) {
+      return ReactMemoComparatorStatus.OmittedObservedProp;
+    }
+  }
+  const hasUniversalTruePaths =
+    comparator.truePaths.length > 0 &&
+    comparator.truePaths.every(
+      (truePath) => truePath.sourceComplete && truePath.equalPropPaths.includes(""),
+    );
+  return comparator.analysisComplete &&
+    comparator.truePaths.every((truePath) => truePath.sourceComplete) &&
+    (comparator.observationComplete || hasUniversalTruePaths)
+    ? ReactMemoComparatorStatus.Equivalent
+    : ReactMemoComparatorStatus.Unknown;
+};
+
+const expectedMemoEquivalenceStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const comparators = report.graph.memoComparators.filter(
+    (comparator) => comparator.ownerId === unit.id,
+  );
+  if (
+    comparators.some(
+      (comparator) => comparator.status === ReactMemoComparatorStatus.OmittedObservedProp,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return comparators.some((comparator) => !comparator.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
 const expectedReducerPurityStatus = (
   unit: ReactSemanticUnit,
   report: ReactAppProofReport,
@@ -1036,6 +1104,17 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `Hydration facts require ${expectedHydrationEquivalenceStatus}, not ${hydrationEquivalence.status}`,
+      );
+    }
+    const memoEquivalence = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.MemoEquivalence,
+    );
+    const expectedMemoStatus = expectedMemoEquivalenceStatus(semanticUnit, report);
+    if (memoEquivalence && memoEquivalence.status !== expectedMemoStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Memo comparator facts require ${expectedMemoStatus}, not ${memoEquivalence.status}`,
       );
     }
     const transitionActions = unitProof.obligations.find(
@@ -3074,6 +3153,102 @@ const checkGraphReferences = (
   const hookStateTransitionsById = new Map(
     report.graph.hookStateTransitions.map((transition) => [transition.id, transition]),
   );
+  for (const comparator of report.graph.memoComparators) {
+    const owner = comparator.ownerId ? unitsById.get(comparator.ownerId) : null;
+    if (
+      !comparator.ownerId &&
+      !report.projectEvidence.some(
+        (evidence) =>
+          evidence.description === "React.memo has an unresolved component target" &&
+          areProofLocationsEqual(evidence.location, comparator.location),
+      )
+    ) {
+      addFailure(
+        failures,
+        comparator.id,
+        "An unresolved memo comparator lacks project-level evidence",
+      );
+    }
+    if (
+      comparator.ownerId &&
+      (!owner ||
+        owner.kind === ReactUnitKind.ClassComponent ||
+        owner.kind === ReactUnitKind.InvalidHookOwner)
+    ) {
+      addFailure(failures, comparator.id, "A memo comparator has an invalid owner unit");
+    }
+    if (
+      !MEMO_COMPARATOR_KINDS.has(comparator.kind) ||
+      !MEMO_COMPARATOR_STATUSES.has(comparator.status)
+    ) {
+      addFailure(failures, comparator.id, "A memo comparator has an invalid protocol domain");
+    }
+    if (
+      (comparator.kind === ReactMemoComparatorKind.DefaultShallow &&
+        comparator.comparatorLocation !== null) ||
+      (comparator.kind === ReactMemoComparatorKind.Custom && comparator.comparatorLocation === null)
+    ) {
+      addFailure(failures, comparator.id, "A memo comparator has an inconsistent source kind");
+    }
+    const observationPaths = comparator.observations.map((observation) => observation.path);
+    if (
+      observationPaths.some((observationPath) => observationPath.length === 0) ||
+      new Set(observationPaths).size !== observationPaths.length
+    ) {
+      addFailure(failures, comparator.id, "A memo comparator has invalid prop observations");
+    }
+    const truePathIdentities = comparator.truePaths.map((truePath) => {
+      if (
+        truePath.equalPropPaths.some((propPath) => propPath === "*") ||
+        new Set(truePath.equalPropPaths).size !== truePath.equalPropPaths.length
+      ) {
+        addFailure(failures, comparator.id, "A memo true path has invalid prop equalities");
+      }
+      return `${String(truePath.sourceComplete)}:${truePath.equalPropPaths.toSorted().join(",")}`;
+    });
+    if (new Set(truePathIdentities).size !== truePathIdentities.length) {
+      addFailure(failures, comparator.id, "A memo comparator repeats a true return path");
+    }
+    if (
+      comparator.analysisComplete &&
+      comparator.truePaths.some((truePath) => !truePath.sourceComplete)
+    ) {
+      addFailure(failures, comparator.id, "A memo comparator analysis flag is inconsistent");
+    }
+    if (
+      comparator.kind === ReactMemoComparatorKind.DefaultShallow &&
+      (comparator.truePaths.length !== 1 ||
+        comparator.truePaths[0]?.sourceComplete !== true ||
+        comparator.truePaths[0]?.equalPropPaths.length !== 1 ||
+        comparator.truePaths[0]?.equalPropPaths[0] !== "")
+    ) {
+      addFailure(failures, comparator.id, "A default memo comparator lacks shallow equality");
+    }
+    const expectedStatus = expectedMemoComparatorStatus(comparator);
+    if (comparator.status !== expectedStatus) {
+      addFailure(failures, comparator.id, "A memo comparator status is inconsistent");
+    }
+    const hasUniversalTruePaths =
+      comparator.truePaths.length > 0 &&
+      comparator.truePaths.every(
+        (truePath) => truePath.sourceComplete && truePath.equalPropPaths.includes(""),
+      );
+    const expectedSourceComplete =
+      comparator.ownerId !== null &&
+      comparator.analysisComplete &&
+      comparator.truePaths.every((truePath) => truePath.sourceComplete) &&
+      (comparator.kind === ReactMemoComparatorKind.DefaultShallow ||
+        comparator.observationComplete ||
+        hasUniversalTruePaths);
+    if (comparator.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, comparator.id, "A memo comparator source flag is inconsistent");
+    }
+    const expectedComplete =
+      expectedSourceComplete && expectedStatus === ReactMemoComparatorStatus.Equivalent;
+    if (comparator.complete !== expectedComplete) {
+      addFailure(failures, comparator.id, "A memo comparator completeness flag is inconsistent");
+    }
+  }
   for (const control of report.graph.hostControls) {
     const owner = unitsById.get(control.ownerId);
     if (!owner || owner.kind === ReactUnitKind.InvalidHookOwner) {
@@ -4706,6 +4881,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "callable refs",
     report.graph.callableRefs.map((callableRef) => callableRef.id),
+  );
+  checkUniqueIds(
+    failures,
+    "memo comparators",
+    report.graph.memoComparators.map((comparator) => comparator.id),
   );
   checkUniqueIds(
     failures,

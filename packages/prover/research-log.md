@@ -2503,3 +2503,111 @@ Kill: If a complete hydration protocol produces a false `proved` environment or 
 in two proof-schema releases, remove equivalence certification and retain only explicit mismatch
 counterexamples until framework root adapters or a broader environment abstract domain closes the
 missing semantics.
+
+## `React.memo` bailout-equivalence certificates
+
+### React contract and realistic evidence
+
+React's [`memo`](https://react.dev/reference/react/memo) contract makes a custom comparator a
+semantic assertion: it may return `true` only when the next props produce the same output and
+behavior as the previous props. React explicitly warns that every prop must be compared, including
+functions, because an omitted callback can preserve a stale closure. The default comparator checks
+every prop with `Object.is`. This is stronger than referential-stability advice: a stable reference
+can justify an optimization, but the custom comparator still bears the proof that suppressing a
+render is observationally equivalent.
+
+Jovi De Croock's
+[`Stable<T>` exploration](https://www.jovidecroock.com/blog/referential-stability-types/) treats
+referential stability as proof-carrying type information and separates that optimization property
+from correctness. This theorem applies the same useful separation at the React bailout boundary:
+TypeScript supplies the possible-value domain and symbol identity, while control-flow facts must
+show that each `true` return path preserves the component's observations.
+
+React Bench's
+`/home/aidenybai/Developer/react-bench-internal/docs/RD_FN_FP.md` records `RD-FN-042`, a
+source-verified custom comparator which omitted the rendered `menuGroups` prop and left stale
+output. The broader sample review found the realistic shapes this proof must distinguish:
+guard-chain comparators with early `false` returns, projected comparisons over a subset of props,
+whole-object identity, helper-based comparators, and generic `Object.values` or userland equality
+helpers. A name-based missing-prop rule cannot decide those cases; the proof must model the
+comparator's boolean paths and the component's actual prop observations.
+
+### Closed subset and fail-closed boundary
+
+The collector accepts canonical imported, aliased, or namespace `React.memo` calls and rejects
+same-named user functions by symbol provenance. It resolves direct project function components and
+one canonical `forwardRef` wrapper. The component observation pass follows destructured
+parameters, static property and element access, nested prop paths, local destructuring, callbacks,
+and rest usage. TypeScript literal domains mark singleton values as unable to vary; other observed
+values remain proof obligations.
+
+The comparator pass binds previous and next prop symbols, then symbolically enumerates the paths
+on which its result is `true`. It supports `===`, `!==`, canonical default-library `Object.is`,
+`&&`, `||`, `!`, conditionals, immutable boolean aliases, block returns, and early `if`/return
+guards. Each `true` path must imply equality of every varying observed prop path. Equality of
+`user` covers an observation of `user.name`; equality of `user.id` does not. Whole-props strict
+identity covers every static or open observation. A comparator with no `true` path is safe because
+it never suppresses a render.
+
+A complete path that omits an observed value is a counterexample, even when other paths are safe.
+An unresolved helper body, dynamic property access, rest comparator binding, unsupported boolean
+operation, mutable alias, unresolved wrapped component, or more than 64 symbolic paths remains
+unknown. The theorem proves bailout equivalence only. It does not claim that memoization is
+profitable, that prop identities are stable, that a comparator is faster than rendering, or that
+the component is correct under props which both renders receive.
+
+### Certificate checker, corpus, and runtime calibration
+
+The semantic graph records comparator kind and source, owner identity, observed prop paths and
+TypeScript variability, symbolic equality sets for every `true` path, analysis completeness, and
+the final equivalence classification. The independent checker validates owner and enum domains,
+unique observation and path identities, exact default-shallow facts, path completeness, universal
+whole-props equality, omitted-observation classification, source/completeness equations, and the
+per-unit memo-equivalence verdict. Report schema 30 and graph schema 36 reject stale or forged
+certificates.
+
+Added corpus:
+
+- proved: default shallow comparison, complete custom equality, guard-chain early returns, a
+  comparator which never skips, whole-props identity over a rest observation, namespace imports,
+  and rejection of a same-named userland helper;
+- refuted: omitted rendered arrays, omitted callbacks, an always-`true` comparator, independently
+  unsafe `a || b` paths, a nested `user.id`/`user.name` mismatch, shared prototype-method identity,
+  and omitted rest props;
+- incomplete: an unavailable comparator helper body, dynamic prop access, and a dynamically
+  selected wrapped component;
+- forged: an omitted-prop fact rewritten as equivalent and complete, rejected by the checker;
+- runtime: `memo-equivalence-oracle.spec.ts`.
+
+The React 19.2.5 Chromium oracle observes a complete comparator expose the next rendered label and
+an incomplete comparator preserve the stale label after the parent commits new state. Browser
+evidence calibrates the static counterexample but never upgrades an unknown. The complete gate now
+contains 660 static tests and 54 Chromium runtime oracles across 416 checked-in fixture project
+configurations.
+
+### Product brief: internal memo-equivalence facts
+
+Job: Prover consumers need evidence that every source-visible `React.memo` bailout preserves the
+component's output and behavior for all prop values admitted by TypeScript.
+
+Change: Add one private `memo-equivalence` claim, versioned observation and symbolic comparator
+facts, an independently recomputed certificate, adversarial fixtures, and a real React stale-output
+oracle.
+
+Reuse: Truffler searches for comparator equivalence, component prop reads, previous/next prop
+comparison, memo owner resolution, and property-access parameters found no existing theorem. The
+implementation reuses canonical React symbol identity, function resolution, semantic unit IDs,
+TypeScript types and default-library symbols, source locations, and proof obligations.
+
+Metric: The deterministic acceptance metric separates default, exact, early-return, never-skip,
+whole-props, namespace, userland lookalike, omitted output, omitted callback, disjunction, nested
+path, shared method identity, rest, opaque helper, dynamic read, dynamic owner, and
+forged-certificate cases, plus matching and stale Chromium renders.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 30 and its semantic graph to schema 36. No
+telemetry or Changeset is warranted before publication.
+
+Kill: If a complete memo-equivalence protocol produces a false `proved` bailout in two proof-schema
+releases, remove custom-comparator certification and retain only concrete omitted-prop refutations
+until general interprocedural boolean summaries or component contracts close the missing flow.

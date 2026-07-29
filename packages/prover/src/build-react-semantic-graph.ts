@@ -34,6 +34,7 @@ import { collectHostControlProtocols } from "./collect-host-control-protocols.js
 import { collectHookStateTransitions } from "./collect-hook-state-transitions.js";
 import { collectHydrationEquivalence } from "./collect-hydration-equivalence.js";
 import { collectImperativeHandles, ImperativeHandleRefKind } from "./collect-imperative-handles.js";
+import { collectMemoEquivalence } from "./collect-memo-equivalence.js";
 import type {
   ImperativeHandleDescriptor,
   ImperativeHandleMethodDescriptor,
@@ -6137,6 +6138,12 @@ export const buildReactSemanticGraph = (
     renderIds: renderIdsBySuspenseBoundaryId.get(boundary.id) ?? [],
   }));
   const callableRefs = collectCallableRefGraph(identities, callbacks, functionCalls, context);
+  const memoComparators = collectMemoEquivalence(
+    identities.map((identity) => identity.descriptor),
+    identities.map((identity) => identity.semanticUnit),
+    sourceFiles,
+    context,
+  );
   const hydrationGraph = collectHydrationEquivalence(
     identities.map((identity) => identity.descriptor),
     identities.map((identity) => identity.semanticUnit),
@@ -6180,6 +6187,7 @@ export const buildReactSemanticGraph = (
     eventBindings: eventGraph.eventBindings,
     callbackPropFlows: callbackPropGraph.callbackPropFlows,
     callableRefs,
+    memoComparators,
     imperativeHandles: imperativeHandleGraph.handles,
     imperativeHandleMethods: imperativeHandleGraph.methods,
     imperativeHandleBindings: imperativeHandleGraph.bindings,

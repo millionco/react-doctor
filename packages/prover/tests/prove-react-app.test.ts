@@ -40,6 +40,8 @@ import {
   ReactImperativeHandleStatus,
   ReactLazyDeclarationStatus,
   ReactLazyLoaderStatus,
+  ReactMemoComparatorKind,
+  ReactMemoComparatorStatus,
   ReactObligationStatus,
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
@@ -757,8 +759,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(29);
-    expect(report.graph.schemaVersion).toBe(35);
+    expect(report.schemaVersion).toBe(30);
+    expect(report.graph.schemaVersion).toBe(36);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -4760,6 +4762,194 @@ describe("proveReactApp", () => {
     expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
     expect(
       certificate.failures.some((failure) => failure.description.includes("hydration certificate")),
+    ).toBe(true);
+  });
+
+  it.each([
+    "proved-memo-default",
+    "proved-memo-comparator",
+    "proved-memo-early-return",
+    "proved-memo-never-skip",
+    "proved-memo-whole-props",
+    "proved-memo-namespace-alias",
+  ])("proves every custom memo bailout path in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const comparator = report.graph.memoComparators[0];
+    const ownerName = report.graph.units.find((unit) => unit.id === comparator?.ownerId)?.name;
+    const memoProof = report.units
+      .find((unit) => unit.name === ownerName)
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.MemoEquivalence);
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(comparator?.status).toBe(ReactMemoComparatorStatus.Equivalent);
+    expect(comparator?.complete).toBe(true);
+    expect(memoProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("models default memo as Object.is equality over every prop", () => {
+    const report = proveFixture("proved-memo-default");
+    const comparator = report.graph.memoComparators[0];
+
+    expect(comparator?.kind).toBe(ReactMemoComparatorKind.DefaultShallow);
+    expect(comparator?.truePaths).toEqual([
+      {
+        equalPropPaths: [""],
+        sourceComplete: true,
+      },
+    ]);
+  });
+
+  it("intersects the equalities established by early comparator returns", () => {
+    const report = proveFixture("proved-memo-early-return");
+
+    expect(report.graph.memoComparators[0]?.truePaths).toEqual([
+      {
+        equalPropPaths: ["label", "revision"],
+        sourceComplete: true,
+      },
+    ]);
+  });
+
+  it("accepts whole-props identity as a universal proof for rest observations", () => {
+    const report = proveFixture("proved-memo-whole-props");
+    const comparator = report.graph.memoComparators[0];
+
+    expect(comparator?.observationComplete).toBe(false);
+    expect(comparator?.truePaths[0]?.equalPropPaths).toEqual([""]);
+    expect(comparator?.status).toBe(ReactMemoComparatorStatus.Equivalent);
+    expect(comparator?.sourceComplete).toBe(true);
+  });
+
+  it("rejects a same-named userland memo helper", () => {
+    const report = proveFixture("proved-memo-userland-lookalike");
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(report.graph.memoComparators).toEqual([]);
+  });
+
+  it.each([
+    "refuted-memo-omitted-render-prop",
+    "refuted-memo-omitted-callback",
+    "refuted-memo-always-equal",
+    "refuted-memo-disjunctive-comparator",
+    "refuted-memo-method-identity",
+    "refuted-memo-nested-prop",
+    "refuted-memo-rest-props",
+  ])("refutes a memo comparator with a stale render path in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const comparator = report.graph.memoComparators[0];
+    const ownerName = report.graph.units.find((unit) => unit.id === comparator?.ownerId)?.name;
+    const memoProof = report.units
+      .find((unit) => unit.name === ownerName)
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.MemoEquivalence);
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(comparator?.status).toBe(ReactMemoComparatorStatus.OmittedObservedProp);
+    expect(memoProof?.status).toBe(ReactObligationStatus.Violated);
+    expect(memoProof?.evidence[0]?.description).toMatch(/skip a render while/);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects each unsafe disjunctive comparator path independently", () => {
+    const report = proveFixture("refuted-memo-disjunctive-comparator");
+
+    expect(report.graph.memoComparators[0]?.truePaths).toEqual([
+      {
+        equalPropPaths: ["label"],
+        sourceComplete: true,
+      },
+      {
+        equalPropPaths: ["score"],
+        sourceComplete: true,
+      },
+    ]);
+  });
+
+  it("tracks nested observed paths instead of treating object identity as output equality", () => {
+    const report = proveFixture("refuted-memo-nested-prop");
+    const comparator = report.graph.memoComparators[0];
+
+    expect(comparator?.observations.map((observation) => observation.path)).toContain("user.name");
+    expect(comparator?.truePaths[0]?.equalPropPaths).toEqual(["user.id"]);
+  });
+
+  it("tracks a called method's prop receiver instead of only its shared prototype method", () => {
+    const report = proveFixture("refuted-memo-method-identity");
+    const comparator = report.graph.memoComparators[0];
+
+    expect(comparator?.observations.map((observation) => observation.path)).toContain("menuGroups");
+    expect(comparator?.truePaths[0]?.equalPropPaths).toEqual(["menuGroups.join"]);
+    expect(comparator?.status).toBe(ReactMemoComparatorStatus.OmittedObservedProp);
+  });
+
+  it.each(["incomplete-memo-helper-comparator", "incomplete-memo-dynamic-prop"])(
+    "fails closed when memo equivalence is not source-resolved in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const comparator = report.graph.memoComparators[0];
+      const ownerName = report.graph.units.find((unit) => unit.id === comparator?.ownerId)?.name;
+      const memoProof = report.units
+        .find((unit) => unit.name === ownerName)
+        ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.MemoEquivalence);
+
+      expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+      expect(comparator?.status).toBe(ReactMemoComparatorStatus.Unknown);
+      expect(comparator?.complete).toBe(false);
+      expect(memoProof?.status).toBe(ReactObligationStatus.Unknown);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("keeps a dynamically selected memo component as an open project obligation", () => {
+    const report = proveFixture("incomplete-memo-dynamic-component");
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.memoComparators[0]?.ownerId).toBeNull();
+    expect(
+      report.projectEvidence.some((evidence) =>
+        /unresolved component target/.test(evidence.description),
+      ),
+    ).toBe(true);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects removal of an unresolved memo project obligation", () => {
+    const report = proveFixture("incomplete-memo-dynamic-component");
+    const certificate = checkReactProofReport({
+      ...report,
+      status: ReactAppProofStatus.Proved,
+      projectEvidence: [],
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("project-level evidence"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a forged memo-equivalence certificate", () => {
+    const report = proveFixture("refuted-memo-omitted-render-prop");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        memoComparators: report.graph.memoComparators.map((comparator) => ({
+          ...comparator,
+          status: ReactMemoComparatorStatus.Equivalent,
+          sourceComplete: true,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("memo comparator status"),
+      ),
     ).toBe(true);
   });
 

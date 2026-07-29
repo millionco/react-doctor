@@ -108,6 +108,12 @@ The report includes:
   conflicting controlled/default props, known ownership switches, missing writes, deferred writes,
   conditional writes, and transformed values are refuted, while prop contracts, overriding
   spreads, dynamic input kinds, file values, and multiple-select transforms fail closed;
+- memo-equivalence facts that identify canonical `React.memo` calls, resolve the wrapped component
+  and custom comparator, collect every statically observed prop path with its TypeScript value
+  domain, and symbolically enumerate every path on which the comparator returns `true`; default
+  shallow comparison, a comparator that never skips, and complete equality over every observed
+  path are certified, while an omitted render value or callback is refuted; opaque boolean helpers,
+  dynamic prop access, unresolved component targets, and path explosion fail closed;
 - hydration-equivalence facts that identify module-executed, source-resolved `hydrateRoot`,
   `renderToString`, `renderToPipeableStream`, `renderToReadableStream`, and
   `renderToStaticMarkup` calls, resolve their root component and `identifierPrefix`, and propagate
@@ -212,6 +218,11 @@ hazards, and exact root sources independently propagated through render, slot, a
 edges. The checker recomputes the server/client/static root partitions, topology uncertainty,
 hazard ownership, equivalence status, source completeness, and per-unit claim verdict, rejecting
 forged root, hazard, source, prefix, status, and completeness combinations.
+Memo-equivalence certificates additionally require canonical comparator kinds, valid owner units,
+unique observed and equality paths, exact default-shallow facts, complete symbolic true paths, and
+status, source, completeness, and per-unit verdict equations independently recomputed from the
+observed paths. The checker rejects forged omitted-prop, universal-equality, path-completeness, and
+claim-verdict combinations.
 Transition Action certificates require a valid non-render execution root, a symbol-identified
 starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
 source/completeness equations. The checker rejects forged synchronous, controlled-input,

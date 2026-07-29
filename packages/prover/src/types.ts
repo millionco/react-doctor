@@ -38,6 +38,7 @@ export enum ReactProofClaim {
   ImperativeHandle = "imperative-handle",
   LazySuspense = "lazy-suspense",
   MemoDependencies = "memo-dependencies",
+  MemoEquivalence = "memo-equivalence",
   OptimisticState = "optimistic-state",
   ReactNodeFlow = "react-node-flow",
   ReconciliationIdentity = "reconciliation-identity",
@@ -706,6 +707,43 @@ export interface ReactSemanticCallableRef {
   complete: boolean;
 }
 
+export enum ReactMemoComparatorKind {
+  Custom = "custom",
+  DefaultShallow = "default-shallow",
+}
+
+export enum ReactMemoComparatorStatus {
+  Equivalent = "equivalent",
+  OmittedObservedProp = "omitted-observed-prop",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticMemoPropObservation {
+  path: string;
+  location: ReactProofLocation;
+  valueCanVary: boolean;
+}
+
+export interface ReactSemanticMemoComparatorTruePath {
+  equalPropPaths: ReadonlyArray<string>;
+  sourceComplete: boolean;
+}
+
+export interface ReactSemanticMemoComparator {
+  id: string;
+  ownerId: string | null;
+  kind: ReactMemoComparatorKind;
+  location: ReactProofLocation;
+  comparatorLocation: ReactProofLocation | null;
+  observations: ReadonlyArray<ReactSemanticMemoPropObservation>;
+  truePaths: ReadonlyArray<ReactSemanticMemoComparatorTruePath>;
+  observationComplete: boolean;
+  analysisComplete: boolean;
+  status: ReactMemoComparatorStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export enum ReactImperativeHandleRefKind {
   ForwardedRef = "forwarded-ref",
   RefProp = "ref-prop",
@@ -1245,6 +1283,7 @@ export interface ReactSemanticGraph {
   eventBindings: ReadonlyArray<ReactSemanticEventBinding>;
   callbackPropFlows: ReadonlyArray<ReactSemanticCallbackPropFlow>;
   callableRefs: ReadonlyArray<ReactSemanticCallableRef>;
+  memoComparators: ReadonlyArray<ReactSemanticMemoComparator>;
   imperativeHandles: ReadonlyArray<ReactSemanticImperativeHandle>;
   imperativeHandleMethods: ReadonlyArray<ReactSemanticImperativeHandleMethod>;
   imperativeHandleBindings: ReadonlyArray<ReactSemanticImperativeHandleBinding>;

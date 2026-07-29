@@ -132,6 +132,21 @@ export const proveReactProgram = (
       });
     }
   }
+  const unresolvedMemoEvidence: ReactProofEvidence[] = graph.memoComparators.flatMap((comparator) =>
+    comparator.ownerId
+      ? []
+      : [
+          {
+            description: "React.memo has an unresolved component target",
+            location: comparator.location,
+            trace: [
+              "React.memo",
+              "unresolved component identity",
+              "incomplete bailout equivalence",
+            ],
+          },
+        ],
+  );
   const projectEvidence = [
     ...initialEvidence,
     ...collectProjectSoundnessEvidence(program, sourceFiles, rootDirectory),
@@ -139,6 +154,7 @@ export const proveReactProgram = (
     ...compilerEvidence,
     ...lazyIdentityEvidence,
     ...exportedLazyEvidence,
+    ...unresolvedMemoEvidence,
   ];
   if (units.length === 0) {
     projectEvidence.push({

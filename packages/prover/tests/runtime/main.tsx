@@ -1266,6 +1266,40 @@ const HostControlOracle = () =>
     <ExactHostControlOracle />
   );
 
+interface MemoOracleChildProperties {
+  cacheKey: string;
+  label: string;
+}
+
+const ExactMemoChild = memo(
+  ({ label }: MemoOracleChildProperties) => <output data-testid="memo-value">{label}</output>,
+  (previousProperties, nextProperties) =>
+    previousProperties.cacheKey === nextProperties.cacheKey &&
+    previousProperties.label === nextProperties.label,
+);
+
+const OmittedMemoChild = memo(
+  ({ label }: MemoOracleChildProperties) => <output data-testid="memo-value">{label}</output>,
+  (previousProperties, nextProperties) => previousProperties.cacheKey === nextProperties.cacheKey,
+);
+
+const MemoEquivalenceOracle = () => {
+  const [label, setLabel] = useState("Before");
+  const isStaleComparator = new URLSearchParams(window.location.search).get("mode") === "omitted";
+  return (
+    <main>
+      <button type="button" onClick={() => setLabel("After")}>
+        update label
+      </button>
+      {isStaleComparator ? (
+        <OmittedMemoChild cacheKey="stable" label={label} />
+      ) : (
+        <ExactMemoChild cacheKey="stable" label={label} />
+      )}
+    </main>
+  );
+};
+
 const RuntimeOracle = () => {
   const oracle = new URLSearchParams(window.location.search).get("oracle");
   if (oracle === "keys") {
@@ -1345,6 +1379,9 @@ const RuntimeOracle = () => {
   }
   if (oracle === "host-control") {
     return <HostControlOracle />;
+  }
+  if (oracle === "memo-equivalence") {
+    return <MemoEquivalenceOracle />;
   }
   if (oracle === "transition-action") {
     return <TransitionActionOracle />;

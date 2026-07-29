@@ -23,6 +23,7 @@ import { analyzeHydrationEquivalence } from "./analyze-hydration-equivalence.js"
 import { analyzeImperativeHandle } from "./analyze-imperative-handle.js";
 import { analyzeLazySuspense } from "./analyze-lazy-suspense.js";
 import { analyzeMemoDependencies } from "./analyze-memo-dependencies.js";
+import { analyzeMemoEquivalence } from "./analyze-memo-equivalence.js";
 import { analyzeOptimisticState } from "./analyze-optimistic-state.js";
 import { analyzeRefAccess } from "./analyze-ref-access.js";
 import { analyzeReactNodeFlow } from "./analyze-react-node-flow.js";
@@ -65,6 +66,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.ImperativeHandle,
   ReactProofClaim.LazySuspense,
   ReactProofClaim.MemoDependencies,
+  ReactProofClaim.MemoEquivalence,
   ReactProofClaim.OptimisticState,
   ReactProofClaim.ReactNodeFlow,
   ReactProofClaim.ReconciliationIdentity,
@@ -173,6 +175,7 @@ export const analyzeReactUnit = (
       analyzeImperativeHandle(unit, context),
       analyzeLazySuspense(unit, context),
       analyzeMemoDependencies(unit.functionNode, context),
+      analyzeMemoEquivalence(unit, context),
       analyzeOptimisticState(unit, context),
       analyzeReactNodeFlow(unit, context),
       analyzeReconciliationIdentity(unit.functionNode, context),

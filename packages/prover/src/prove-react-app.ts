@@ -55,6 +55,7 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
       eventBindings: [],
       callbackPropFlows: [],
       callableRefs: [],
+      memoComparators: [],
       imperativeHandles: [],
       imperativeHandleMethods: [],
       imperativeHandleBindings: [],

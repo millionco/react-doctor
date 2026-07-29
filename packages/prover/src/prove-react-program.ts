@@ -114,11 +114,31 @@ export const proveReactProgram = (
     location: failure.location,
     trace: ["React source", graph.compiler.phase, "incomplete semantic graph"],
   }));
+  const lazyIdentityEvidence: ReactProofEvidence[] = [];
+  const exportedLazyEvidence: ReactProofEvidence[] = [];
+  for (const component of graph.lazyComponents) {
+    if (!component.identityResolved && !component.declarationOwnerId) {
+      lazyIdentityEvidence.push({
+        description: `React.lazy declaration has no stable symbol identity: ${component.name}`,
+        location: component.location,
+        trace: ["React.lazy", "unsupported module declaration", "incomplete lazy render graph"],
+      });
+    }
+    if (component.canBeRenderRoot) {
+      exportedLazyEvidence.push({
+        description: `Exported lazy component has an open Suspense topology: ${component.name}`,
+        location: component.location,
+        trace: ["exported React.lazy", "external render root", "unknown Suspense boundary"],
+      });
+    }
+  }
   const projectEvidence = [
     ...initialEvidence,
     ...collectProjectSoundnessEvidence(program, sourceFiles, rootDirectory),
     ...diagnosticEvidence,
     ...compilerEvidence,
+    ...lazyIdentityEvidence,
+    ...exportedLazyEvidence,
   ];
   if (units.length === 0) {
     projectEvidence.push({

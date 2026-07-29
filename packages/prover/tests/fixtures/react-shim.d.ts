@@ -26,6 +26,10 @@ declare module "react" {
 
   export type Ref<Value> = MutableRefObject<Value | null> | RefCallback<Value> | null;
 
+  export interface ComponentType<Properties = Record<string, unknown>> {
+    (properties: Properties): unknown;
+  }
+
   export const useCallback: <Value extends (...argumentsList: ReadonlyArray<never>) => unknown>(
     callback: Value,
     dependencies: ReadonlyArray<unknown>,
@@ -56,6 +60,10 @@ declare module "react" {
     ) => ReadonlyArray<Result>;
   };
   export const memo: <Component>(component: Component) => Component;
+  export const lazy: <Module extends { default: unknown }>(
+    load: () => PromiseLike<Module>,
+  ) => ComponentType<Record<string, unknown>>;
+  export const Suspense: ComponentType<{ fallback?: ReactNode; children?: ReactNode }>;
   export const forwardRef: <Handle, Properties>(
     render: (properties: Properties, ref: Ref<Handle>) => unknown,
   ) => (properties: Properties & { ref?: Ref<Handle> }) => unknown;

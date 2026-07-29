@@ -80,6 +80,13 @@ The report includes:
   classify every dispatcher reference by its React callback phase; pure total transitions and
   owned non-render calls are certified, fallthrough, throw, impurity, and render/reducer dispatches
   are refuted, while wrappers, unsupported control flow, and escaped dispatchers fail closed;
+- lazy-component facts that identify canonical `lazy()` declarations by symbol, require
+  module-stable identity and a total thenable loader whose resolved default has a component call or
+  construction signature, and trace each JSX use through direct, transitive component, reachable
+  render-helper, synchronous-callback, and closed ReactNode-slot paths to symbol-resolved
+  `<Suspense>` boundaries; malformed loaders, render-local declarations, and known root paths
+  outside Suspense are refuted, while external components, exported lazy aliases, and unresolved
+  slots fail closed;
 - Action State facts that identify canonical `useActionState` tuples, resolve each reducer Action
   without imposing reducer purity, and classify every dispatcher call or escape; a dispatch is
   certified only when every represented root is a Form Action, an Action State reducer, or a
@@ -147,6 +154,11 @@ Reducer certificates additionally require phase-correct reducer and initializer 
 type-aware total-return evidence, a symbol-linked state/dispatcher tuple, owned execution roots for
 every direct dispatch, non-escape, and exact source/completeness equations. The checker rejects
 forged callback, purity, totality, phase, reducer-link, and verdict combinations.
+Lazy-component certificates additionally require reciprocal declaration/render links, known
+Suspense boundary and render identities, stable declaration and loader-status equations, and
+boundary sources independently propagated from every exported render root through effective
+component and ReactNode-slot renders. The checker rejects forged loader, topology, outside-boundary,
+source, completeness, and claim-verdict combinations.
 Transition Action certificates require a valid non-render execution root, a symbol-identified
 starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
 source/completeness equations. The checker rejects forged synchronous, controlled-input,

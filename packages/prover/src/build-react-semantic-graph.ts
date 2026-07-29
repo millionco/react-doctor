@@ -42,6 +42,7 @@ import { collectTransitionActions } from "./collect-transition-actions.js";
 import type { TransitionActionDescriptor } from "./collect-transition-actions.js";
 import { collectReactiveCaptures } from "./collect-reactive-captures.js";
 import { collectReachableFunctionGraph } from "./collect-reachable-functions.js";
+import type { ReachableFunctionGraphDescriptor } from "./collect-reachable-functions.js";
 import {
   REACT_EXTERNAL_STORE_HOOK_NAMES,
   REACT_MEMO_HOOK_NAMES,
@@ -50,6 +51,9 @@ import {
   REACT_FORM_OUTSIDE_SOURCE_ID,
   REACT_FORM_UNKNOWN_SOURCE_ID,
   REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
+  REACT_SUSPENSE_OWNER_SOURCE_ID,
+  REACT_SUSPENSE_OUTSIDE_SOURCE_ID,
+  REACT_SUSPENSE_UNKNOWN_SOURCE_ID,
   REACT_TRANSPARENT_COMPONENT_NAMES,
 } from "./constants.js";
 import { getCanonicalReactApiName } from "./get-canonical-react-api-name.js";
@@ -61,11 +65,14 @@ import { getNodeLocation } from "./get-node-location.js";
 import { extractReactCompilerGraph } from "./extract-react-compiler-graph.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isIdentifierReference } from "./is-identifier-reference.js";
+import { isNodeWithin } from "./is-node-within.js";
 import { isReactContextExpression } from "./is-react-context-expression.js";
 import { resolveFunction } from "./resolve-function.js";
 import { summarizeFunctionReturns } from "./summarize-function-returns.js";
 import { mergeCallableBindings } from "./resolve-callable-expression.js";
 import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
+import { collectPropertySymbolWrites } from "./utils/collect-property-symbol-writes.js";
+import { collectSymbolWrites } from "./utils/collect-symbol-writes.js";
 import {
   ReactActionStateDispatchKind,
   ReactActionStateDispatchStatus,
@@ -84,6 +91,8 @@ import {
   ReactIdentityStability,
   ReactImperativeHandleRefKind,
   ReactImperativeHandleStatus,
+  ReactLazyDeclarationStatus,
+  ReactLazyLoaderStatus,
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
   ReactObligationStatus,
@@ -94,6 +103,7 @@ import {
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
   ReactSemanticRenderKind,
+  ReactSuspenseCoverageStatus,
   ReactTransitionActionStatus,
   ReactUnitKind,
 } from "./types.js";
@@ -129,6 +139,8 @@ import type {
   ReactSemanticImperativeHandleBinding,
   ReactSemanticImperativeHandleInvocation,
   ReactSemanticImperativeHandleMethod,
+  ReactSemanticLazyComponent,
+  ReactSemanticLazyRender,
   ReactSemanticOptimisticState,
   ReactSemanticOptimisticUpdate,
   ReactSemanticReducer,
@@ -139,6 +151,7 @@ import type {
   ReactSemanticSlotFlow,
   ReactSemanticEffectResource,
   ReactSemanticScheduler,
+  ReactSemanticSuspenseBoundary,
   ReactSemanticUnit,
   ReactUnitDescriptor,
 } from "./types.js";
@@ -146,10 +159,12 @@ import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
 import { collectExecutionCallbackIds } from "./utils/collect-execution-callback-ids.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
+import { getContainingFunction } from "./utils/get-containing-function.js";
 import { getJsxOpeningElementForAttribute } from "./utils/get-jsx-opening-element-for-attribute.js";
 import { getJsxComponentTargetFunction } from "./utils/get-jsx-component-target-function.js";
 import { isDeferredCallbackSynchronous } from "./utils/is-deferred-callback-synchronous.js";
 import { getResolvedSymbol } from "./utils/get-resolved-symbol.js";
+import { getStaticPropertyName } from "./utils/get-static-property-name.js";
 import { isIntrinsicJsxElement } from "./utils/is-intrinsic-jsx-element.js";
 import { isReactiveCaptureDeclared } from "./utils/is-reactive-capture-declared.js";
 import { unwrapTypescriptExpression } from "./unwrap-typescript-expression.js";
@@ -395,6 +410,7 @@ const collectCallableRefGraph = (
 interface RenderGraphFacts {
   edges: ReadonlyArray<ReactSemanticEdge>;
   renders: ReadonlyArray<ReactSemanticRender>;
+  suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>;
 }
 
 interface RenderSlotBoundary {
@@ -407,6 +423,23 @@ interface RenderSlotBoundary {
 interface SlotGraphFacts {
   renders: ReadonlyArray<ReactSemanticRender>;
   slotFlows: ReadonlyArray<ReactSemanticSlotFlow>;
+  suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>;
+}
+
+interface SuspenseGraphFacts {
+  boundaries: ReadonlyArray<ReactSemanticSuspenseBoundary>;
+  boundariesByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticSuspenseBoundary>;
+}
+
+interface LazyComponentIdentity {
+  component: ReactSemanticLazyComponent;
+  declaration: ts.Node;
+  symbol: ts.Symbol | null;
+}
+
+interface LazyGraphFacts {
+  components: ReadonlyArray<ReactSemanticLazyComponent>;
+  renders: ReadonlyArray<ReactSemanticLazyRender>;
 }
 
 const createSemanticId = (
@@ -438,11 +471,12 @@ const getDeclarationNameNode = (descriptor: ReactUnitDescriptor): ts.Node | null
 const resolveAliasedSymbol = (symbol: ts.Symbol, typeChecker: ts.TypeChecker): ts.Symbol =>
   symbol.flags & ts.SymbolFlags.Alias ? typeChecker.getAliasedSymbol(symbol) : symbol;
 
-const isDescriptorExported = (
-  descriptor: ReactUnitDescriptor,
+const isDeclarationExported = (
+  declaration: ts.Node,
+  declarationSymbol: ts.Symbol | null,
   typeChecker: ts.TypeChecker,
 ): boolean => {
-  let currentNode: ts.Node | undefined = descriptor.node;
+  let currentNode: ts.Node | undefined = declaration;
   while (currentNode && !ts.isSourceFile(currentNode)) {
     if (ts.isExportAssignment(currentNode) && !currentNode.isExportEquals) return true;
     if (
@@ -455,11 +489,7 @@ const isDescriptorExported = (
     }
     currentNode = currentNode.parent;
   }
-  const declarationName = getDeclarationNameNode(descriptor);
-  const declarationSymbol = declarationName
-    ? typeChecker.getSymbolAtLocation(declarationName)
-    : undefined;
-  const moduleSymbol = typeChecker.getSymbolAtLocation(descriptor.node.getSourceFile());
+  const moduleSymbol = typeChecker.getSymbolAtLocation(declaration.getSourceFile());
   if (!declarationSymbol || !moduleSymbol) return false;
   const resolvedDeclarationSymbol = resolveAliasedSymbol(declarationSymbol, typeChecker);
   return typeChecker
@@ -468,6 +498,17 @@ const isDescriptorExported = (
       (exportSymbol) =>
         resolveAliasedSymbol(exportSymbol, typeChecker) === resolvedDeclarationSymbol,
     );
+};
+
+const isDescriptorExported = (
+  descriptor: ReactUnitDescriptor,
+  typeChecker: ts.TypeChecker,
+): boolean => {
+  const declarationName = getDeclarationNameNode(descriptor);
+  const declarationSymbol = declarationName
+    ? (typeChecker.getSymbolAtLocation(declarationName) ?? null)
+    : null;
+  return isDeclarationExported(descriptor.node, declarationSymbol, typeChecker);
 };
 
 const getExpressionSymbol = (
@@ -714,6 +755,88 @@ const collectActiveFormIds = (
   return activeFormIds;
 };
 
+const collectSuspenseGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  context: ReactAnalysisContext,
+): SuspenseGraphFacts => {
+  const boundaries: ReactSemanticSuspenseBoundary[] = [];
+  const boundariesByOpeningNode = new Map<
+    ts.JsxOpeningLikeElement,
+    ReactSemanticSuspenseBoundary
+  >();
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const visit = (node: ts.Node): void => {
+      if (node !== functionNode && isFunctionBoundary(node)) return;
+      const openingElement =
+        ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node) ? node : null;
+      if (
+        openingElement &&
+        !ts.isJsxNamespacedName(openingElement.tagName) &&
+        getCanonicalReactApiName(openingElement.tagName, context.typeChecker) === "Suspense"
+      ) {
+        const boundary: ReactSemanticSuspenseBoundary = {
+          id: createSemanticId("suspense-boundary", "Suspense", openingElement.tagName, context),
+          ownerId: identity.semanticUnit.id,
+          location: getNodeLocation(openingElement.tagName, context.rootDirectory),
+          renderIds: [],
+        };
+        boundaries.push(boundary);
+        boundariesByOpeningNode.set(openingElement, boundary);
+      }
+      node.forEachChild(visit);
+    };
+    functionNode.forEachChild(visit);
+  }
+  return { boundaries, boundariesByOpeningNode };
+};
+
+const collectActiveSuspenseBoundaryIds = (
+  node: ts.Node,
+  boundariesByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticSuspenseBoundary>,
+  stopNode: ts.Node | null = null,
+): ReadonlyArray<string> => {
+  const boundaryIds: string[] = [];
+  let currentNode: ts.Node | undefined = node.parent;
+  while (currentNode && currentNode !== stopNode && !isFunctionBoundary(currentNode)) {
+    if (ts.isJsxElement(currentNode)) {
+      const boundary = boundariesByOpeningNode.get(currentNode.openingElement);
+      const fallbackAttribute = currentNode.openingElement.attributes.properties.find(
+        (attribute): attribute is ts.JsxAttribute =>
+          ts.isJsxAttribute(attribute) && attribute.name.getText() === "fallback",
+      );
+      if (boundary && !(fallbackAttribute && isNodeWithin(node, fallbackAttribute))) {
+        boundaryIds.unshift(boundary.id);
+      }
+    }
+    currentNode = currentNode.parent;
+  }
+  return boundaryIds;
+};
+
+const getContainingSuspenseFallbackElement = (
+  node: ts.Node,
+  boundariesByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticSuspenseBoundary>,
+): ts.JsxElement | null => {
+  let currentNode: ts.Node | undefined = node.parent;
+  while (currentNode && !isFunctionBoundary(currentNode)) {
+    if (ts.isJsxAttribute(currentNode) && currentNode.name.getText() === "fallback") {
+      const openingElement = getJsxOpeningElementForAttribute(currentNode);
+      if (
+        openingElement &&
+        boundariesByOpeningNode.has(openingElement) &&
+        ts.isJsxOpeningElement(openingElement) &&
+        ts.isJsxElement(openingElement.parent)
+      ) {
+        return openingElement.parent;
+      }
+    }
+    currentNode = currentNode.parent;
+  }
+  return null;
+};
+
 const collectUnitIdentitiesBySymbol = (
   identities: ReadonlyArray<UnitGraphIdentity>,
   context: ReactAnalysisContext,
@@ -861,12 +984,19 @@ const collectRenderEdges = (
   unitIdsBySymbol: ReadonlyMap<ts.Symbol, string>,
   providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
   formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>,
+  suspenseBoundariesByOpeningNode: ReadonlyMap<
+    ts.JsxOpeningLikeElement,
+    ReactSemanticSuspenseBoundary
+  >,
   context: ReactAnalysisContext,
 ): RenderGraphFacts => {
   const functionNode = identity.descriptor.functionNode;
-  if (!functionNode) return { edges: [], renders: [] };
+  if (!functionNode) {
+    return { edges: [], renders: [], suspenseBoundaryIdsByRenderId: new Map() };
+  }
   const edges: ReactSemanticEdge[] = [];
   const renders: ReactSemanticRender[] = [];
+  const suspenseBoundaryIdsByRenderId = new Map<string, ReadonlyArray<string>>();
   const visit = (node: ts.Node): void => {
     if (node !== functionNode && isFunctionBoundary(node)) {
       return;
@@ -893,8 +1023,9 @@ const collectRenderEdges = (
           targetId,
           location,
         });
+        const renderId = createSemanticId("render", targetId, tagName, context);
         renders.push({
-          id: createSemanticId("render", targetId, tagName, context),
+          id: renderId,
           ownerId: identity.semanticUnit.id,
           targetId,
           location,
@@ -916,20 +1047,33 @@ const collectRenderEdges = (
           ),
           formTopologyComplete: slotBoundary?.complete ?? true,
         });
+        suspenseBoundaryIdsByRenderId.set(
+          renderId,
+          collectActiveSuspenseBoundaryIds(
+            tagName,
+            suspenseBoundariesByOpeningNode,
+            slotBoundary?.node ?? null,
+          ),
+        );
       }
     }
     node.forEachChild(visit);
   };
   functionNode.forEachChild(visit);
-  return { edges, renders };
+  return { edges, renders, suspenseBoundaryIdsByRenderId };
 };
 
 const collectSlotGraph = (
   renders: ReadonlyArray<ReactSemanticRender>,
+  suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
   identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
   slotFlow: ComponentSlotFlowDescriptor,
   providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
   formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>,
+  suspenseBoundariesByOpeningNode: ReadonlyMap<
+    ts.JsxOpeningLikeElement,
+    ReactSemanticSuspenseBoundary
+  >,
   context: ReactAnalysisContext,
 ): SlotGraphFacts => {
   const rendersById = new Map(renders.map((render) => [render.id, render]));
@@ -939,6 +1083,7 @@ const collectSlotGraph = (
   const resolvedRenders: ReactSemanticRender[] = [];
   const slotRenders: ReactSemanticRender[] = [];
   const slotFlows: ReactSemanticSlotFlow[] = [];
+  const resolvedSuspenseBoundaryIdsByRenderId = new Map(suspenseBoundaryIdsByRenderId);
   for (const render of renders) {
     if (render.kind !== ReactSemanticRenderKind.SlotInput) {
       resolvedRenders.push(render);
@@ -1017,6 +1162,14 @@ const collectSlotGraph = (
       };
       slotRenders.push(slotRender);
       renderIds.push(slotRender.id);
+      resolvedSuspenseBoundaryIdsByRenderId.set(slotRender.id, [
+        ...new Set([
+          ...(suspenseBoundaryIdsByRenderId.get(render.id) ?? []),
+          ...placement.topologyFrames.flatMap((topologyFrame) =>
+            collectActiveSuspenseBoundaryIds(topologyFrame.node, suspenseBoundariesByOpeningNode),
+          ),
+        ]),
+      ]);
     }
     resolvedRenders.push({
       ...render,
@@ -1036,7 +1189,11 @@ const collectSlotGraph = (
       complete,
     });
   }
-  return { renders: [...resolvedRenders, ...slotRenders], slotFlows };
+  return {
+    renders: [...resolvedRenders, ...slotRenders],
+    slotFlows,
+    suspenseBoundaryIdsByRenderId: resolvedSuspenseBoundaryIdsByRenderId,
+  };
 };
 
 const collectHookGraph = (
@@ -4348,6 +4505,730 @@ const resolveFormStatuses = (
   });
 };
 
+const isValidLazyLoaderReturn = (
+  expression: ts.Expression,
+  isAsyncLoader: boolean,
+  typeChecker: ts.TypeChecker,
+): boolean => {
+  const returnType = typeChecker.getTypeAtLocation(expression);
+  if (!isAsyncLoader && !returnType.getProperty("then")) return false;
+  const resolvedType = typeChecker.getAwaitedType(returnType);
+  if (!resolvedType) return false;
+  const defaultSymbol = resolvedType.getProperty("default");
+  if (!defaultSymbol) return false;
+  const defaultType = typeChecker.getTypeOfSymbolAtLocation(defaultSymbol, expression);
+  return (
+    defaultType.getCallSignatures().length > 0 || defaultType.getConstructSignatures().length > 0
+  );
+};
+
+const getLazyLoaderStatus = (
+  callExpression: ts.CallExpression,
+  context: ReactAnalysisContext,
+): { sourceComplete: boolean; status: ReactLazyLoaderStatus } => {
+  const loaderExpression = callExpression.arguments[0];
+  if (!loaderExpression || !ts.isExpression(loaderExpression)) {
+    return { sourceComplete: true, status: ReactLazyLoaderStatus.Invalid };
+  }
+  const loaderFunction = resolveFunction(loaderExpression, context.typeChecker);
+  if (!loaderFunction) {
+    return { sourceComplete: false, status: ReactLazyLoaderStatus.Opaque };
+  }
+  const returnSummary = summarizeFunctionReturns(loaderFunction, context.typeChecker);
+  if (!returnSummary.isComplete) {
+    return { sourceComplete: false, status: ReactLazyLoaderStatus.Opaque };
+  }
+  const isAsyncLoader = Boolean(
+    ts.canHaveModifiers(loaderFunction) &&
+    ts
+      .getModifiers(loaderFunction)
+      ?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword),
+  );
+  const isValid =
+    loaderFunction.parameters.every(
+      (parameter) =>
+        Boolean(parameter.dotDotDotToken || parameter.questionToken || parameter.initializer) ||
+        (ts.isIdentifier(parameter.name) && parameter.name.text === "this"),
+    ) &&
+    !returnSummary.canFallThrough &&
+    (!returnSummary.canThrow || isAsyncLoader) &&
+    returnSummary.expressions.length > 0 &&
+    returnSummary.expressions.every((descriptor) =>
+      isValidLazyLoaderReturn(descriptor.expression, isAsyncLoader, context.typeChecker),
+    );
+  return {
+    sourceComplete: true,
+    status: isValid ? ReactLazyLoaderStatus.Valid : ReactLazyLoaderStatus.Invalid,
+  };
+};
+
+const collectLazyComponentIdentities = (
+  sourceFiles: ReadonlyArray<ts.SourceFile>,
+  identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
+  context: ReactAnalysisContext,
+): ReadonlyArray<LazyComponentIdentity> => {
+  const lazyComponents: LazyComponentIdentity[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      getCanonicalReactApiName(node.expression, context.typeChecker) === "lazy"
+    ) {
+      const declarationExpression =
+        ts.isCallExpression(node.parent) &&
+        node.parent.arguments[0] === node &&
+        getCanonicalReactApiName(node.parent.expression, context.typeChecker) === "memo"
+          ? node.parent
+          : node;
+      let declaration: ts.Node = node;
+      let componentName = "anonymous lazy component";
+      let componentSymbol: ts.Symbol | null = null;
+      if (
+        ts.isVariableDeclaration(declarationExpression.parent) &&
+        declarationExpression.parent.initializer === declarationExpression &&
+        ts.isIdentifier(declarationExpression.parent.name)
+      ) {
+        declaration = declarationExpression.parent;
+        componentName = declarationExpression.parent.name.text;
+        const declarationSymbol = context.typeChecker.getSymbolAtLocation(
+          declarationExpression.parent.name,
+        );
+        componentSymbol = declarationSymbol
+          ? resolveAliasedSymbol(declarationSymbol, context.typeChecker)
+          : null;
+      } else if (
+        ts.isPropertyAssignment(declarationExpression.parent) &&
+        declarationExpression.parent.initializer === declarationExpression
+      ) {
+        declaration = declarationExpression.parent;
+        componentName = getStaticPropertyName(declarationExpression.parent.name) ?? componentName;
+        const propertySymbol = context.typeChecker.getSymbolAtLocation(
+          declarationExpression.parent.name,
+        );
+        componentSymbol = propertySymbol
+          ? resolveAliasedSymbol(propertySymbol, context.typeChecker)
+          : null;
+      } else if (
+        ts.isExportAssignment(declarationExpression.parent) &&
+        declarationExpression.parent.expression === declarationExpression &&
+        !declarationExpression.parent.isExportEquals
+      ) {
+        declaration = declarationExpression.parent;
+        componentName = "default lazy component";
+        const moduleSymbol = context.typeChecker.getSymbolAtLocation(node.getSourceFile());
+        const defaultSymbol = moduleSymbol
+          ? context.typeChecker
+              .getExportsOfModule(moduleSymbol)
+              .find((exportSymbol) => exportSymbol.name === "default")
+          : null;
+        componentSymbol = defaultSymbol
+          ? resolveAliasedSymbol(defaultSymbol, context.typeChecker)
+          : null;
+      }
+      const containingFunction = getContainingFunction(declaration);
+      const ownerIdentity = containingFunction
+        ? identitiesByFunction.get(containingFunction)
+        : null;
+      const loader = getLazyLoaderStatus(node, context);
+      const identityResolved = Boolean(componentSymbol);
+      const resolvedComponentSymbol = componentSymbol
+        ? resolveAliasedSymbol(componentSymbol, context.typeChecker)
+        : null;
+      lazyComponents.push({
+        declaration,
+        symbol: resolvedComponentSymbol,
+        component: {
+          id: createSemanticId("lazy-component", componentName, declaration, context),
+          name: componentName,
+          location: getNodeLocation(declaration, context.rootDirectory),
+          declarationOwnerId: ownerIdentity?.semanticUnit.id ?? null,
+          canBeRenderRoot: isDeclarationExported(
+            declaration,
+            resolvedComponentSymbol,
+            context.typeChecker,
+          ),
+          identityResolved,
+          declarationStatus: containingFunction
+            ? ReactLazyDeclarationStatus.RenderUnstable
+            : ReactLazyDeclarationStatus.ModuleStable,
+          loaderStatus: loader.status,
+          renderIds: [],
+          sourceComplete: identityResolved && loader.sourceComplete,
+          complete: false,
+        },
+      });
+    }
+    node.forEachChild(visit);
+  };
+  for (const sourceFile of sourceFiles) sourceFile.forEachChild(visit);
+  return lazyComponents;
+};
+
+const addSuspenseSource = (
+  sourcesByUnit: Map<string, Set<string>>,
+  unitId: string,
+  sourceId: string,
+): boolean => {
+  let sources = sourcesByUnit.get(unitId);
+  if (!sources) {
+    sources = new Set();
+    sourcesByUnit.set(unitId, sources);
+  }
+  const previousSize = sources.size;
+  sources.add(sourceId);
+  return sources.size !== previousSize;
+};
+
+const deriveSuspenseSourcesByUnit = (
+  units: ReadonlyArray<ReactSemanticUnit>,
+  renders: ReadonlyArray<ReactSemanticRender>,
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
+  suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
+): ReadonlyMap<string, ReadonlySet<string>> => {
+  const sourcesByUnit = new Map<string, Set<string>>();
+  const rendersById = new Map(renders.map((render) => [render.id, render]));
+  for (const unit of units) {
+    if (unit.canBeRenderRoot) {
+      addSuspenseSource(sourcesByUnit, unit.id, REACT_SUSPENSE_OUTSIDE_SOURCE_ID);
+    }
+  }
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const render of renders) {
+      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
+      const boundaryIds = suspenseBoundaryIdsByRenderId.get(render.id) ?? [];
+      if (boundaryIds.length > 0) {
+        for (const boundaryId of boundaryIds) {
+          didSourcesChange =
+            addSuspenseSource(sourcesByUnit, render.targetId, boundaryId) || didSourcesChange;
+        }
+      } else {
+        for (const sourceId of sourcesByUnit.get(render.ownerId) ?? []) {
+          didSourcesChange =
+            addSuspenseSource(sourcesByUnit, render.targetId, sourceId) || didSourcesChange;
+        }
+      }
+    }
+    for (const slotFlow of slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (sourceRender) {
+        didSourcesChange =
+          addSuspenseSource(
+            sourcesByUnit,
+            sourceRender.targetId,
+            REACT_SUSPENSE_UNKNOWN_SOURCE_ID,
+          ) || didSourcesChange;
+      }
+    }
+  }
+  return sourcesByUnit;
+};
+
+const resolveLazyComponentIdentity = (
+  expression: ts.Expression | ts.JsxTagNameExpression,
+  componentsBySymbol: ReadonlyMap<ts.Symbol, LazyComponentIdentity>,
+  typeChecker: ts.TypeChecker,
+  visitedSymbols: Set<ts.Symbol> = new Set(),
+): LazyComponentIdentity | null => {
+  if (ts.isJsxNamespacedName(expression)) return null;
+  const unwrappedExpression = unwrapTypescriptExpression(expression);
+  if (
+    ts.isCallExpression(unwrappedExpression) &&
+    getCanonicalReactApiName(unwrappedExpression.expression, typeChecker) === "memo"
+  ) {
+    const memoTarget = unwrappedExpression.arguments[0];
+    if (memoTarget && ts.isExpression(memoTarget)) {
+      return resolveLazyComponentIdentity(
+        memoTarget,
+        componentsBySymbol,
+        typeChecker,
+        visitedSymbols,
+      );
+    }
+  }
+  const expressionSymbol = getExpressionSymbol(unwrappedExpression, typeChecker);
+  if (!expressionSymbol || visitedSymbols.has(expressionSymbol)) return null;
+  const directComponent = componentsBySymbol.get(expressionSymbol);
+  if (directComponent) return directComponent;
+  visitedSymbols.add(expressionSymbol);
+  for (const declaration of expressionSymbol.declarations ?? []) {
+    const initializer =
+      (ts.isVariableDeclaration(declaration) || ts.isPropertyAssignment(declaration)) &&
+      declaration.initializer &&
+      ts.isExpression(declaration.initializer)
+        ? unwrapTypescriptExpression(declaration.initializer)
+        : null;
+    if (initializer) {
+      if (
+        ts.isCallExpression(initializer) &&
+        getCanonicalReactApiName(initializer.expression, typeChecker) === "memo"
+      ) {
+        const memoTarget = initializer.arguments[0];
+        if (memoTarget && ts.isExpression(memoTarget)) {
+          const memoComponent = resolveLazyComponentIdentity(
+            memoTarget,
+            componentsBySymbol,
+            typeChecker,
+            visitedSymbols,
+          );
+          if (memoComponent) return memoComponent;
+        }
+      }
+      const aliasedComponent = resolveLazyComponentIdentity(
+        initializer,
+        componentsBySymbol,
+        typeChecker,
+        visitedSymbols,
+      );
+      if (aliasedComponent) return aliasedComponent;
+    }
+    if (ts.isShorthandPropertyAssignment(declaration)) {
+      const shorthandSymbol = typeChecker.getShorthandAssignmentValueSymbol(declaration);
+      if (!shorthandSymbol) continue;
+      const resolvedShorthandSymbol = resolveAliasedSymbol(shorthandSymbol, typeChecker);
+      const shorthandComponent = componentsBySymbol.get(resolvedShorthandSymbol);
+      if (shorthandComponent) return shorthandComponent;
+    }
+  }
+  return null;
+};
+
+const collectReferencedLazyComponents = (
+  expression: ts.Expression | ts.JsxTagNameExpression,
+  componentsBySymbol: ReadonlyMap<ts.Symbol, LazyComponentIdentity>,
+  typeChecker: ts.TypeChecker,
+): ReadonlyArray<LazyComponentIdentity> => {
+  const componentsById = new Map<string, LazyComponentIdentity>();
+  const visitedSymbols = new Set<ts.Symbol>();
+  const visitSymbol = (symbol: ts.Symbol): void => {
+    const resolvedSymbol = resolveAliasedSymbol(symbol, typeChecker);
+    const component = componentsBySymbol.get(resolvedSymbol);
+    if (component) {
+      componentsById.set(component.component.id, component);
+      return;
+    }
+    if (visitedSymbols.has(resolvedSymbol)) return;
+    visitedSymbols.add(resolvedSymbol);
+    for (const declaration of resolvedSymbol.declarations ?? []) {
+      if (
+        (ts.isVariableDeclaration(declaration) || ts.isPropertyAssignment(declaration)) &&
+        declaration.initializer
+      ) {
+        visitNode(declaration.initializer);
+      } else if (ts.isShorthandPropertyAssignment(declaration)) {
+        const shorthandSymbol = typeChecker.getShorthandAssignmentValueSymbol(declaration);
+        if (shorthandSymbol) visitSymbol(shorthandSymbol);
+      } else if (ts.isBindingElement(declaration)) {
+        const variableDeclaration = declaration.parent.parent;
+        if (ts.isVariableDeclaration(variableDeclaration) && variableDeclaration.initializer) {
+          visitNode(variableDeclaration.initializer);
+        }
+      } else if (isFunctionBoundary(declaration) && declaration.body) {
+        const visitReturn = (returnNode: ts.Node): void => {
+          if (returnNode !== declaration && isFunctionBoundary(returnNode)) return;
+          if (ts.isReturnStatement(returnNode) && returnNode.expression) {
+            visitNode(returnNode.expression);
+            return;
+          }
+          returnNode.forEachChild(visitReturn);
+        };
+        declaration.body.forEachChild(visitReturn);
+      }
+    }
+    for (const sourceFile of new Set(
+      (resolvedSymbol.declarations ?? []).map((declaration) => declaration.getSourceFile()),
+    )) {
+      const writes = [
+        ...collectSymbolWrites(resolvedSymbol, sourceFile, typeChecker),
+        ...collectPropertySymbolWrites(resolvedSymbol, sourceFile, typeChecker),
+      ];
+      for (const write of writes) {
+        if (ts.isBinaryExpression(write)) visitNode(write.right);
+      }
+    }
+  };
+  const visitNode = (node: ts.Node): void => {
+    if (
+      isFunctionBoundary(node) ||
+      ts.isJsxElement(node) ||
+      ts.isJsxSelfClosingElement(node) ||
+      ts.isJsxFragment(node)
+    ) {
+      return;
+    }
+    if (
+      (ts.isExpression(node) || ts.isJsxTagNameExpression(node)) &&
+      !ts.isJsxNamespacedName(node)
+    ) {
+      const symbol = getExpressionSymbol(node, typeChecker);
+      if (symbol) visitSymbol(symbol);
+    }
+    node.forEachChild(visitNode);
+  };
+  visitNode(expression);
+  return [...componentsById.values()];
+};
+
+const collectExportedLazyComponentIds = (
+  sourceFiles: ReadonlyArray<ts.SourceFile>,
+  componentsBySymbol: ReadonlyMap<ts.Symbol, LazyComponentIdentity>,
+  typeChecker: ts.TypeChecker,
+): ReadonlySet<string> => {
+  const componentIds = new Set<string>();
+  const collectExposedComponentIds = (node: ts.Node): void => {
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) {
+      return;
+    }
+    if (isFunctionBoundary(node)) {
+      if (ts.isArrowFunction(node) && !ts.isBlock(node.body)) {
+        collectExposedComponentIds(node.body);
+        return;
+      }
+      const visitReturn = (returnNode: ts.Node): void => {
+        if (returnNode !== node && isFunctionBoundary(returnNode)) return;
+        if (ts.isReturnStatement(returnNode) && returnNode.expression) {
+          collectExposedComponentIds(returnNode.expression);
+          return;
+        }
+        returnNode.forEachChild(visitReturn);
+      };
+      node.forEachChild(visitReturn);
+      return;
+    }
+    if (ts.isExpression(node) && !ts.isJsxNamespacedName(node)) {
+      const component = resolveLazyComponentIdentity(node, componentsBySymbol, typeChecker);
+      if (component) componentIds.add(component.component.id);
+    }
+    node.forEachChild(collectExposedComponentIds);
+  };
+  for (const sourceFile of sourceFiles) {
+    const moduleSymbol = typeChecker.getSymbolAtLocation(sourceFile);
+    if (!moduleSymbol) continue;
+    for (const exportSymbol of typeChecker.getExportsOfModule(moduleSymbol)) {
+      const resolvedExportSymbol = resolveAliasedSymbol(exportSymbol, typeChecker);
+      const directComponent = componentsBySymbol.get(resolvedExportSymbol);
+      if (directComponent) {
+        componentIds.add(directComponent.component.id);
+        continue;
+      }
+      for (const declaration of resolvedExportSymbol.declarations ?? []) {
+        let exportExpression: ts.Expression | null = null;
+        if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+          exportExpression = declaration.initializer;
+        } else if (ts.isExportAssignment(declaration) && ts.isExpression(declaration.expression)) {
+          exportExpression = declaration.expression;
+        }
+        if (!exportExpression) continue;
+        collectExposedComponentIds(exportExpression);
+        const component = resolveLazyComponentIdentity(
+          exportExpression,
+          componentsBySymbol,
+          typeChecker,
+        );
+        if (component) componentIds.add(component.component.id);
+      }
+    }
+  }
+  return componentIds;
+};
+
+const deriveReachableFunctionSuspenseSources = (
+  rootFunction: ts.FunctionLikeDeclaration,
+  reachabilityGraph: ReachableFunctionGraphDescriptor,
+  suspenseBoundariesByOpeningNode: ReadonlyMap<
+    ts.JsxOpeningLikeElement,
+    ReactSemanticSuspenseBoundary
+  >,
+  typeChecker: ts.TypeChecker,
+): ReadonlyMap<ts.FunctionLikeDeclaration, ReadonlySet<string>> => {
+  const sourcesByFunction = new Map<ts.FunctionLikeDeclaration, Set<string>>([
+    [rootFunction, new Set([REACT_SUSPENSE_OWNER_SOURCE_ID])],
+  ]);
+  const addSource = (functionNode: ts.FunctionLikeDeclaration, sourceId: string): boolean => {
+    const sources = sourcesByFunction.get(functionNode) ?? new Set<string>();
+    const previousSize = sources.size;
+    sources.add(sourceId);
+    sourcesByFunction.set(functionNode, sources);
+    return sources.size !== previousSize;
+  };
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const call of reachabilityGraph.calls) {
+      const directBoundaryIds = collectActiveSuspenseBoundaryIds(
+        call.callExpression,
+        suspenseBoundariesByOpeningNode,
+      );
+      const sourceIds =
+        directBoundaryIds.length > 0
+          ? directBoundaryIds
+          : [...(sourcesByFunction.get(call.sourceFunctionNode) ?? [])];
+      for (const sourceId of sourceIds) {
+        didSourcesChange = addSource(call.targetFunctionNode, sourceId) || didSourcesChange;
+      }
+    }
+  }
+  for (const unmodeledUse of reachabilityGraph.unmodeledCallableUses) {
+    if (!ts.isExpression(unmodeledUse.node)) continue;
+    const targetFunction = resolveFunction(unmodeledUse.node, typeChecker);
+    if (targetFunction && sourcesByFunction.has(targetFunction)) {
+      addSource(targetFunction, REACT_SUSPENSE_UNKNOWN_SOURCE_ID);
+    }
+  }
+  for (const descriptor of reachabilityGraph.functions) {
+    if (!sourcesByFunction.has(descriptor.functionNode)) {
+      addSource(descriptor.functionNode, REACT_SUSPENSE_UNKNOWN_SOURCE_ID);
+    }
+  }
+  return sourcesByFunction;
+};
+
+const collectLazyGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  sourceFiles: ReadonlyArray<ts.SourceFile>,
+  identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
+  unitIdsBySymbol: ReadonlyMap<ts.Symbol, string>,
+  renders: ReadonlyArray<ReactSemanticRender>,
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
+  slotFlow: ComponentSlotFlowDescriptor,
+  providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
+  suspenseBoundariesByOpeningNode: ReadonlyMap<
+    ts.JsxOpeningLikeElement,
+    ReactSemanticSuspenseBoundary
+  >,
+  suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
+  context: ReactAnalysisContext,
+): LazyGraphFacts => {
+  const componentIdentities = collectLazyComponentIdentities(
+    sourceFiles,
+    identitiesByFunction,
+    context,
+  );
+  const componentsBySymbol = new Map(
+    componentIdentities.flatMap(
+      (identity): ReadonlyArray<[ts.Symbol, LazyComponentIdentity]> =>
+        identity.symbol ? [[identity.symbol, identity]] : [],
+    ),
+  );
+  const identitiesByUnitId = new Map(
+    identities.map((identity) => [identity.semanticUnit.id, identity]),
+  );
+  const exportedLazyComponentIds = collectExportedLazyComponentIds(
+    sourceFiles,
+    componentsBySymbol,
+    context.typeChecker,
+  );
+  const rendersById = new Map(renders.map((render) => [render.id, render]));
+  const lazyRenders: ReactSemanticLazyRender[] = [];
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const reachabilityGraph = collectReachableFunctionGraph(functionNode, context.typeChecker);
+    const reachableRenderFunctions = reachabilityGraph.functions.map(
+      (descriptor) => descriptor.functionNode,
+    );
+    const suspenseSourcesByRenderFunction = deriveReachableFunctionSuspenseSources(
+      functionNode,
+      reachabilityGraph,
+      suspenseBoundariesByOpeningNode,
+      context.typeChecker,
+    );
+    const visit = (node: ts.Node, renderFunction: ts.FunctionLikeDeclaration): void => {
+      if (node !== functionNode && isFunctionBoundary(node)) return;
+      const isNestedRenderFunction = renderFunction !== functionNode;
+      const openingElement =
+        ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node) ? node : null;
+      if (!openingElement || ts.isJsxNamespacedName(openingElement.tagName)) {
+        node.forEachChild((childNode) => visit(childNode, renderFunction));
+        return;
+      }
+      const resolvedLazyComponent = resolveLazyComponentIdentity(
+        openingElement.tagName,
+        componentsBySymbol,
+        context.typeChecker,
+      );
+      const referencedLazyComponents = resolvedLazyComponent
+        ? [resolvedLazyComponent]
+        : collectReferencedLazyComponents(
+            openingElement.tagName,
+            componentsBySymbol,
+            context.typeChecker,
+          );
+      if (referencedLazyComponents.length === 0) {
+        node.forEachChild((childNode) => visit(childNode, renderFunction));
+        return;
+      }
+      let slotBoundary = getContainingRenderSlotBoundary(
+        openingElement.tagName,
+        unitIdsBySymbol,
+        providersByOpeningNode,
+        context,
+      );
+      const suspenseFallbackElement = getContainingSuspenseFallbackElement(
+        openingElement.tagName,
+        suspenseBoundariesByOpeningNode,
+      );
+      if (
+        slotBoundary &&
+        suspenseFallbackElement &&
+        isNodeWithin(suspenseFallbackElement, slotBoundary.node)
+      ) {
+        slotBoundary = null;
+      }
+      const topologyBoundaryIds = new Set(
+        collectActiveSuspenseBoundaryIds(
+          openingElement.tagName,
+          suspenseBoundariesByOpeningNode,
+          slotBoundary?.node ?? null,
+        ),
+      );
+      let inheritsOwnerBoundary = topologyBoundaryIds.size === 0;
+      let topologyComplete = Boolean(resolvedLazyComponent) && (slotBoundary?.complete ?? true);
+      if (isNestedRenderFunction && topologyBoundaryIds.size === 0) {
+        inheritsOwnerBoundary = false;
+        const functionSources = suspenseSourcesByRenderFunction.get(renderFunction);
+        for (const sourceId of functionSources ?? []) {
+          if (sourceId === REACT_SUSPENSE_OWNER_SOURCE_ID) {
+            inheritsOwnerBoundary = true;
+          } else if (sourceId === REACT_SUSPENSE_UNKNOWN_SOURCE_ID) {
+            topologyComplete = false;
+          } else {
+            topologyBoundaryIds.add(sourceId);
+          }
+        }
+        if (!functionSources || functionSources.size === 0) topologyComplete = false;
+      }
+      if (slotBoundary) {
+        inheritsOwnerBoundary = false;
+        const containerRender = slotBoundary.containerRenderId
+          ? rendersById.get(slotBoundary.containerRenderId)
+          : null;
+        const containerIdentity = containerRender
+          ? identitiesByUnitId.get(containerRender.targetId)
+          : null;
+        const containerFunction = containerIdentity?.descriptor.functionNode ?? null;
+        const resolution =
+          containerFunction && slotBoundary.propName
+            ? slotFlow.resolveSlot(containerFunction, slotBoundary.propName)
+            : { complete: false, placements: [] };
+        topologyComplete =
+          topologyComplete && resolution.complete && resolution.placements.length > 0;
+        for (const placement of resolution.placements) {
+          const placementIdentities = placement.topologyFrames.map((topologyFrame) =>
+            identitiesByFunction.get(topologyFrame.ownerFunction),
+          );
+          if (placementIdentities.some((placementIdentity) => !placementIdentity)) {
+            topologyComplete = false;
+            continue;
+          }
+          const placementBoundaryIds = new Set([
+            ...topologyBoundaryIds,
+            ...placement.topologyFrames.flatMap((topologyFrame) =>
+              collectActiveSuspenseBoundaryIds(topologyFrame.node, suspenseBoundariesByOpeningNode),
+            ),
+          ]);
+          if (placementBoundaryIds.size === 0) inheritsOwnerBoundary = true;
+          for (const boundaryId of placementBoundaryIds) {
+            topologyBoundaryIds.add(boundaryId);
+          }
+        }
+      }
+      for (const lazyComponent of referencedLazyComponents) {
+        lazyRenders.push({
+          id: createSemanticId(
+            "lazy-render",
+            `${identity.semanticUnit.id}:${lazyComponent.component.id}`,
+            openingElement.tagName,
+            context,
+          ),
+          ownerId: identity.semanticUnit.id,
+          lazyComponentId: lazyComponent.component.id,
+          location: getNodeLocation(openingElement.tagName, context.rootDirectory),
+          topologyBoundaryIds: [...topologyBoundaryIds],
+          sourceBoundaryIds: [],
+          inheritsOwnerBoundary,
+          outsideBoundary: false,
+          topologyComplete,
+          sourceComplete: false,
+          coverageStatus: ReactSuspenseCoverageStatus.Unknown,
+          complete: false,
+        });
+      }
+      node.forEachChild((childNode) => visit(childNode, renderFunction));
+    };
+    functionNode.forEachChild((childNode) => visit(childNode, functionNode));
+    for (const reachableRenderFunction of reachableRenderFunctions) {
+      if (reachableRenderFunction === functionNode) continue;
+      reachableRenderFunction.forEachChild((childNode) =>
+        visit(childNode, reachableRenderFunction),
+      );
+    }
+  }
+  const suspenseSourcesByUnit = deriveSuspenseSourcesByUnit(
+    identities.map((identity) => identity.semanticUnit),
+    renders,
+    slotFlows,
+    suspenseBoundaryIdsByRenderId,
+  );
+  const resolvedRenders = lazyRenders.map((render): ReactSemanticLazyRender => {
+    const sources = new Set(render.topologyBoundaryIds);
+    if (render.inheritsOwnerBoundary) {
+      for (const sourceId of suspenseSourcesByUnit.get(render.ownerId) ?? []) {
+        sources.add(sourceId);
+      }
+    }
+    if (!render.topologyComplete) sources.add(REACT_SUSPENSE_UNKNOWN_SOURCE_ID);
+    const outsideBoundary = sources.has(REACT_SUSPENSE_OUTSIDE_SOURCE_ID);
+    const sourceComplete = sources.size > 0 && !sources.has(REACT_SUSPENSE_UNKNOWN_SOURCE_ID);
+    const sourceBoundaryIds = [...sources].filter(
+      (sourceId) =>
+        sourceId !== REACT_SUSPENSE_OUTSIDE_SOURCE_ID &&
+        sourceId !== REACT_SUSPENSE_UNKNOWN_SOURCE_ID,
+    );
+    let coverageStatus = ReactSuspenseCoverageStatus.Unknown;
+    if (outsideBoundary) {
+      coverageStatus = ReactSuspenseCoverageStatus.OutsideBoundary;
+    } else if (sourceComplete && sourceBoundaryIds.length > 0) {
+      coverageStatus = ReactSuspenseCoverageStatus.Covered;
+    }
+    return {
+      ...render,
+      sourceBoundaryIds,
+      outsideBoundary,
+      sourceComplete,
+      coverageStatus,
+      complete: coverageStatus === ReactSuspenseCoverageStatus.Covered,
+    };
+  });
+  const rendersByComponentId = new Map<string, ReactSemanticLazyRender[]>();
+  for (const render of resolvedRenders) {
+    const componentRenders = rendersByComponentId.get(render.lazyComponentId) ?? [];
+    componentRenders.push(render);
+    rendersByComponentId.set(render.lazyComponentId, componentRenders);
+  }
+  return {
+    components: componentIdentities.map(({ component }) => {
+      const componentRenders = rendersByComponentId.get(component.id) ?? [];
+      const canBeRenderRoot =
+        component.canBeRenderRoot || exportedLazyComponentIds.has(component.id);
+      const complete =
+        component.identityResolved &&
+        !canBeRenderRoot &&
+        component.declarationStatus === ReactLazyDeclarationStatus.ModuleStable &&
+        component.loaderStatus === ReactLazyLoaderStatus.Valid &&
+        componentRenders.every((render) => render.complete);
+      return {
+        ...component,
+        canBeRenderRoot,
+        renderIds: componentRenders.map((render) => render.id),
+        complete,
+      };
+    }),
+    renders: resolvedRenders,
+  };
+};
+
 export const buildReactSemanticGraph = (
   descriptors: ReadonlyArray<ReactUnitDescriptor>,
   sourceFiles: ReadonlyArray<ts.SourceFile>,
@@ -4388,8 +5269,10 @@ export const buildReactSemanticGraph = (
   );
   const contextGraph = collectContextGraph(identities, sourceFiles, context);
   const formTopologyGraph = collectFormTopologyGraph(identities, context);
+  const suspenseGraph = collectSuspenseGraph(identities, context);
   const edges: ReactSemanticEdge[] = [];
   const renders: ReactSemanticRender[] = [];
+  const suspenseBoundaryIdsByRenderId = new Map<string, ReadonlyArray<string>>();
   const hookCalls: ReactSemanticHookCall[] = [];
   const effects: ReactSemanticEffect[] = [];
   const schedulers: ReactSemanticScheduler[] = [];
@@ -4500,10 +5383,14 @@ export const buildReactSemanticGraph = (
       unitIdsBySymbol,
       contextGraph.providersByOpeningNode,
       formTopologyGraph.formsByOpeningNode,
+      suspenseGraph.boundariesByOpeningNode,
       context,
     );
     edges.push(...renderGraph.edges);
     renders.push(...renderGraph.renders);
+    for (const [renderId, boundaryIds] of renderGraph.suspenseBoundaryIdsByRenderId) {
+      suspenseBoundaryIdsByRenderId.set(renderId, boundaryIds);
+    }
     const effectGraph = collectEffectGraph(
       identity,
       unitIdentitiesByFunction,
@@ -4620,10 +5507,12 @@ export const buildReactSemanticGraph = (
   }
   const slotGraph = collectSlotGraph(
     renders,
+    suspenseBoundaryIdsByRenderId,
     unitIdentitiesByFunction,
     slotFlow,
     contextGraph.providersByOpeningNode,
     formTopologyGraph.formsByOpeningNode,
+    suspenseGraph.boundariesByOpeningNode,
     context,
   );
   const contextConsumers = resolveContextConsumers(
@@ -4642,6 +5531,31 @@ export const buildReactSemanticGraph = (
     slotGraph.slotFlows,
     formTopologyGraph.formStatuses,
   );
+  const lazyGraph = collectLazyGraph(
+    identities,
+    sourceFiles,
+    unitIdentitiesByFunction,
+    unitIdsBySymbol,
+    slotGraph.renders,
+    slotGraph.slotFlows,
+    slotFlow,
+    contextGraph.providersByOpeningNode,
+    suspenseGraph.boundariesByOpeningNode,
+    slotGraph.suspenseBoundaryIdsByRenderId,
+    context,
+  );
+  const renderIdsBySuspenseBoundaryId = new Map<string, string[]>();
+  for (const render of slotGraph.renders) {
+    for (const boundaryId of slotGraph.suspenseBoundaryIdsByRenderId.get(render.id) ?? []) {
+      const renderIds = renderIdsBySuspenseBoundaryId.get(boundaryId) ?? [];
+      renderIds.push(render.id);
+      renderIdsBySuspenseBoundaryId.set(boundaryId, renderIds);
+    }
+  }
+  const suspenseBoundaries = suspenseGraph.boundaries.map((boundary) => ({
+    ...boundary,
+    renderIds: renderIdsBySuspenseBoundaryId.get(boundary.id) ?? [],
+  }));
   const callableRefs = collectCallableRefGraph(identities, callbacks, functionCalls, context);
   return {
     schemaVersion: REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
@@ -4657,6 +5571,9 @@ export const buildReactSemanticGraph = (
     contexts: contextGraph.contexts,
     contextProviders: contextGraph.contextProviders,
     contextConsumers,
+    suspenseBoundaries,
+    lazyComponents: lazyGraph.components,
+    lazyRenders: lazyGraph.renders,
     renders: slotGraph.renders,
     slotFlows: slotGraph.slotFlows,
     callbacks,

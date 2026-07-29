@@ -18,6 +18,7 @@ import { analyzeHookOrder } from "./analyze-hook-order.js";
 import { analyzeHookOwnership } from "./analyze-hook-ownership.js";
 import { analyzeHookStateTransitions } from "./analyze-hook-state-transitions.js";
 import { analyzeImperativeHandle } from "./analyze-imperative-handle.js";
+import { analyzeLazySuspense } from "./analyze-lazy-suspense.js";
 import { analyzeMemoDependencies } from "./analyze-memo-dependencies.js";
 import { analyzeOptimisticState } from "./analyze-optimistic-state.js";
 import { analyzeRefAccess } from "./analyze-ref-access.js";
@@ -55,6 +56,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.HookOwnership,
   ReactProofClaim.HookStateTransitions,
   ReactProofClaim.ImperativeHandle,
+  ReactProofClaim.LazySuspense,
   ReactProofClaim.MemoDependencies,
   ReactProofClaim.OptimisticState,
   ReactProofClaim.ReactNodeFlow,
@@ -158,6 +160,7 @@ export const analyzeReactUnit = (
       analyzeHookOwnership(unit.functionNode),
       analyzeHookStateTransitions(unit, context),
       analyzeImperativeHandle(unit, context),
+      analyzeLazySuspense(unit, context),
       analyzeMemoDependencies(unit.functionNode, context),
       analyzeOptimisticState(unit, context),
       analyzeReactNodeFlow(unit, context),

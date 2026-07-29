@@ -30,6 +30,8 @@ import {
   ReactIdentityStability,
   ReactImperativeHandleRefKind,
   ReactImperativeHandleStatus,
+  ReactLazyDeclarationStatus,
+  ReactLazyLoaderStatus,
   ReactObligationStatus,
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
@@ -45,6 +47,7 @@ import {
   ReactSemanticCallbackKind,
   ReactSemanticFunctionCallKind,
   ReactSemanticRenderKind,
+  ReactSuspenseCoverageStatus,
   ReactTransitionActionStatus,
   ReactTransitionStarterKind,
 } from "../src/index.js";
@@ -699,8 +702,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(24);
-    expect(report.graph.schemaVersion).toBe(30);
+    expect(report.schemaVersion).toBe(25);
+    expect(report.graph.schemaVersion).toBe(31);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -4096,6 +4099,153 @@ describe("proveReactApp", () => {
     const report = proveFixture("shadowed-component-class");
 
     expect(report.graph.units).toEqual([]);
+  });
+
+  it.each([
+    "proved-lazy-suspense",
+    "proved-lazy-suspense-wrapper",
+    "proved-lazy-suspense-slot",
+    "proved-lazy-namespace-memo",
+    "proved-lazy-render-helper",
+    "proved-lazy-map-render",
+    "proved-class-lazy-suspense",
+    "proved-nested-suspense-fallback",
+    "proved-async-lazy-loader",
+    "proved-lazy-object-alias",
+  ])("proves stable lazy loading and every Suspense path in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const lazyProofs = report.units
+      .flatMap((unit) => unit.obligations)
+      .filter((obligation) => obligation.claim === ReactProofClaim.LazySuspense);
+
+    expect(report.graph.lazyComponents).toHaveLength(1);
+    expect(report.graph.lazyComponents[0]?.declarationStatus).toBe(
+      ReactLazyDeclarationStatus.ModuleStable,
+    );
+    expect(report.graph.lazyComponents[0]?.loaderStatus).toBe(ReactLazyLoaderStatus.Valid);
+    expect(report.graph.lazyComponents[0]?.complete).toBe(true);
+    expect(report.graph.lazyRenders).toHaveLength(1);
+    expect(report.graph.lazyRenders[0]?.coverageStatus).toBe(ReactSuspenseCoverageStatus.Covered);
+    expect(report.graph.lazyRenders[0]?.sourceBoundaryIds).toHaveLength(1);
+    expect(
+      lazyProofs.every((obligation) => obligation.status === ReactObligationStatus.Proved),
+    ).toBe(true);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it.each(["refuted-lazy-outside-suspense", "refuted-lazy-suspense-fallback"])(
+    "refutes a root-reachable lazy render outside a catching boundary in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const render = report.graph.lazyRenders[0];
+      const owningUnitName = fixtureName === "refuted-lazy-outside-suspense" ? "PanelRoute" : "App";
+      const routeProof = report.units
+        .find((unit) => unit.name === owningUnitName)
+        ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.LazySuspense);
+
+      expect(report.status).toBe(ReactAppProofStatus.Refuted);
+      expect(render?.outsideBoundary).toBe(true);
+      expect(render?.coverageStatus).toBe(ReactSuspenseCoverageStatus.OutsideBoundary);
+      expect(routeProof?.status).toBe(ReactObligationStatus.Violated);
+      expect(routeProof?.evidence[0]?.description).toMatch(/outside Suspense/);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("refutes lazy component identity recreated during render", () => {
+    const report = proveFixture("refuted-render-lazy-declaration");
+    const component = report.graph.lazyComponents[0];
+    const lazyProof = report.units
+      .find((unit) => unit.name === "App")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.LazySuspense);
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(component?.declarationStatus).toBe(ReactLazyDeclarationStatus.RenderUnstable);
+    expect(component?.complete).toBe(false);
+    expect(lazyProof?.status).toBe(ReactObligationStatus.Violated);
+    expect(lazyProof?.evidence[0]?.description).toMatch(/redeclared/);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it.each([
+    "incomplete-exported-lazy-root",
+    "incomplete-exported-lazy-alias",
+    "incomplete-exported-lazy-opaque-alias",
+  ])(
+    "keeps an exported lazy component root open while proving its internal render in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const component = report.graph.lazyComponents[0];
+      const appProof = report.units
+        .find((unit) => unit.name === "App")
+        ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.LazySuspense);
+
+      expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+      expect(component?.canBeRenderRoot).toBe(true);
+      expect(component?.complete).toBe(false);
+      expect(appProof?.status).toBe(ReactObligationStatus.Proved);
+      expect(report.projectEvidence[0]?.description).toMatch(/open Suspense topology/);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it.each(["refuted-invalid-lazy-loader", "refuted-union-lazy-loader"])(
+    "refutes a lazy loader that cannot always resolve a default component in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const component = report.graph.lazyComponents[0];
+      const lazyProof = report.units
+        .find((unit) => unit.name === "App")
+        ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.LazySuspense);
+
+      expect(report.status).toBe(ReactAppProofStatus.Refuted);
+      expect(component?.loaderStatus).toBe(ReactLazyLoaderStatus.Invalid);
+      expect(component?.sourceComplete).toBe(true);
+      expect(lazyProof?.status).toBe(ReactObligationStatus.Violated);
+      expect(lazyProof?.evidence[0]?.description).toMatch(/callable default export/);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it.each([
+    ["incomplete-opaque-lazy-loader", 1],
+    ["incomplete-lazy-external-slot", 1],
+    ["incomplete-lazy-opaque-wrapper", 0],
+    ["incomplete-lazy-opaque-alias", 1],
+  ])("fails closed for unresolved lazy semantics in %s", (fixtureName, expectedRenderCount) => {
+    const report = proveFixture(fixtureName);
+    const lazyProof = report.units
+      .find((unit) => unit.name === "App")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.LazySuspense);
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.lazyRenders).toHaveLength(expectedRenderCount);
+    expect(lazyProof?.status).toBe(ReactObligationStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged lazy Suspense coverage certificate", () => {
+    const report = proveFixture("refuted-lazy-outside-suspense");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        lazyRenders: report.graph.lazyRenders.map((render) => ({
+          ...render,
+          outsideBoundary: false,
+          sourceComplete: true,
+          coverageStatus: ReactSuspenseCoverageStatus.Covered,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("lazy render coverage status"),
+      ),
+    ).toBe(true);
   });
 
   it("fails closed when TypeScript assertions can forge proof facts", () => {

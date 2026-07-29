@@ -1,7 +1,9 @@
 import {
   Component,
+  Suspense,
   StrictMode,
   createContext,
+  lazy,
   memo,
   useActionState,
   useCallback,
@@ -32,6 +34,9 @@ import {
   CLASS_UPDATE_INITIAL_REVISION,
   CLASS_UPDATE_NEXT_REVISION,
   INITIAL_CALLBACK_REVISION,
+  LAZY_COMPONENT_DELAY_MS,
+  LAZY_INITIAL_REVISION,
+  LAZY_REVISION_INCREMENT,
   NEXT_CALLBACK_REVISION,
   OPTIMISTIC_ACTION_DELAY_MS,
   OPTIMISTIC_ACTION_INITIAL_RUNS,
@@ -66,6 +71,7 @@ declare global {
     classFieldInitializerRuns: number;
     classUnmounts: number;
     listenerHits: number;
+    lazyLoaderRuns: number;
     observerHits: number;
     schedulerHits: number;
     hookStateUpdaterRuns: number;
@@ -89,6 +95,7 @@ window.classConstructorRuns = CLASS_UPDATE_INITIAL_REVISION;
 window.classFieldInitializerRuns = CLASS_UPDATE_INITIAL_REVISION;
 window.classUnmounts = 0;
 window.listenerHits = 0;
+window.lazyLoaderRuns = 0;
 window.observerHits = 0;
 window.schedulerHits = 0;
 window.hookStateUpdaterRuns = HOOK_STATE_UPDATER_INITIAL_RUNS;
@@ -96,6 +103,31 @@ window.optimisticActionRuns = OPTIMISTIC_ACTION_INITIAL_RUNS;
 window.reducerInitializerRuns = REDUCER_INITIAL_RUNS;
 window.reducerRuns = REDUCER_INITIAL_RUNS;
 window.transitionActionRuns = TRANSITION_ACTION_INITIAL_RUNS;
+
+const LazySuspenseContent = lazy(async () => {
+  window.lazyLoaderRuns += 1;
+  await new Promise((resolve) => {
+    setTimeout(resolve, LAZY_COMPONENT_DELAY_MS);
+  });
+  return import("./lazy-suspense-content.js");
+});
+
+const LazySuspenseOracle = () => {
+  const [revision, setRevision] = useState(LAZY_INITIAL_REVISION);
+  return (
+    <main>
+      <button
+        type="button"
+        onClick={() => setRevision((currentRevision) => currentRevision + LAZY_REVISION_INCREMENT)}
+      >
+        rerender lazy parent
+      </button>
+      <Suspense fallback={<output data-testid="lazy-fallback">loading lazy content</output>}>
+        <LazySuspenseContent revision={revision} />
+      </Suspense>
+    </main>
+  );
+};
 
 interface ReducerOracleState {
   count: number;
@@ -1181,6 +1213,9 @@ const RuntimeOracle = () => {
   if (oracle === "reducer-transition") {
     return <ReducerTransitionOracle />;
   }
+  if (oracle === "lazy-suspense") {
+    return <LazySuspenseOracle />;
+  }
   if (oracle === "transition-action") {
     return <TransitionActionOracle />;
   }
@@ -1209,6 +1244,7 @@ const isStrictModeOracle =
   oracle === "class-state-ownership" ||
   oracle === "class-state-transition" ||
   oracle === "hook-state-transition" ||
+  oracle === "lazy-suspense" ||
   oracle === "reducer-transition" ||
   oracle === "transition-action" ||
   oracle === "optimistic-form-action" ||

@@ -33,6 +33,7 @@ export enum ReactProofClaim {
   HookOwnership = "hook-ownership",
   HookStateTransitions = "hook-state-transitions",
   ImperativeHandle = "imperative-handle",
+  LazySuspense = "lazy-suspense",
   MemoDependencies = "memo-dependencies",
   OptimisticState = "optimistic-state",
   ReactNodeFlow = "react-node-flow",
@@ -346,6 +347,59 @@ export enum ReactSemanticRenderKind {
   Direct = "direct",
   Slot = "slot",
   SlotInput = "slot-input",
+}
+
+export enum ReactLazyDeclarationStatus {
+  ModuleStable = "module-stable",
+  RenderUnstable = "render-unstable",
+}
+
+export enum ReactLazyLoaderStatus {
+  Invalid = "invalid",
+  Opaque = "opaque",
+  Valid = "valid",
+}
+
+export enum ReactSuspenseCoverageStatus {
+  Covered = "covered",
+  OutsideBoundary = "outside-boundary",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticSuspenseBoundary {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  renderIds: ReadonlyArray<string>;
+}
+
+export interface ReactSemanticLazyComponent {
+  id: string;
+  name: string;
+  location: ReactProofLocation;
+  declarationOwnerId: string | null;
+  canBeRenderRoot: boolean;
+  identityResolved: boolean;
+  declarationStatus: ReactLazyDeclarationStatus;
+  loaderStatus: ReactLazyLoaderStatus;
+  renderIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticLazyRender {
+  id: string;
+  ownerId: string;
+  lazyComponentId: string;
+  location: ReactProofLocation;
+  topologyBoundaryIds: ReadonlyArray<string>;
+  sourceBoundaryIds: ReadonlyArray<string>;
+  inheritsOwnerBoundary: boolean;
+  outsideBoundary: boolean;
+  topologyComplete: boolean;
+  sourceComplete: boolean;
+  coverageStatus: ReactSuspenseCoverageStatus;
+  complete: boolean;
 }
 
 export interface ReactSemanticSlotFlow {
@@ -964,6 +1018,9 @@ export interface ReactSemanticGraph {
   contexts: ReadonlyArray<ReactSemanticContext>;
   contextProviders: ReadonlyArray<ReactSemanticContextProvider>;
   contextConsumers: ReadonlyArray<ReactSemanticContextConsumer>;
+  suspenseBoundaries: ReadonlyArray<ReactSemanticSuspenseBoundary>;
+  lazyComponents: ReadonlyArray<ReactSemanticLazyComponent>;
+  lazyRenders: ReadonlyArray<ReactSemanticLazyRender>;
   renders: ReadonlyArray<ReactSemanticRender>;
   slotFlows: ReadonlyArray<ReactSemanticSlotFlow>;
   callbacks: ReadonlyArray<ReactSemanticCallback>;

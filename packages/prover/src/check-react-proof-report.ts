@@ -5,6 +5,8 @@ import {
   REACT_FORM_UNKNOWN_SOURCE_ID,
   REACT_PROOF_SCHEMA_VERSION,
   REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
+  REACT_SUSPENSE_OUTSIDE_SOURCE_ID,
+  REACT_SUSPENSE_UNKNOWN_SOURCE_ID,
 } from "./constants.js";
 import {
   ReactActionStateDispatchKind,
@@ -33,6 +35,8 @@ import {
   ReactHookStateUpdaterStatus,
   ReactImperativeHandleRefKind,
   ReactImperativeHandleStatus,
+  ReactLazyDeclarationStatus,
+  ReactLazyLoaderStatus,
   ReactObligationStatus,
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
@@ -47,6 +51,7 @@ import {
   ReactSemanticEdgeKind,
   ReactSemanticFunctionCallKind,
   ReactSemanticRenderKind,
+  ReactSuspenseCoverageStatus,
   ReactTransitionActionStatus,
   ReactTransitionStarterKind,
   ReactUnitKind,
@@ -71,10 +76,13 @@ const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionSt
 const TRANSITION_STARTER_KINDS = new Set(Object.values(ReactTransitionStarterKind));
 const IMPERATIVE_HANDLE_REF_KINDS = new Set(Object.values(ReactImperativeHandleRefKind));
 const IMPERATIVE_HANDLE_STATUSES = new Set(Object.values(ReactImperativeHandleStatus));
+const LAZY_DECLARATION_STATUSES = new Set(Object.values(ReactLazyDeclarationStatus));
+const LAZY_LOADER_STATUSES = new Set(Object.values(ReactLazyLoaderStatus));
 const REDUCER_DISPATCH_KINDS = new Set(Object.values(ReactReducerDispatchKind));
 const REDUCER_DISPATCH_STATUSES = new Set(Object.values(ReactReducerDispatchStatus));
 const REDUCER_PURITY_STATUSES = new Set(Object.values(ReactReducerPurityStatus));
 const REDUCER_RETURN_STATUSES = new Set(Object.values(ReactReducerReturnStatus));
+const SUSPENSE_COVERAGE_STATUSES = new Set(Object.values(ReactSuspenseCoverageStatus));
 const OBLIGATION_STATUSES = new Set(Object.values(ReactObligationStatus));
 const TRANSITION_ACTION_ORIGIN_PHASES = new Set([
   ReactExecutionPhase.ActionStateReducer,
@@ -223,6 +231,41 @@ const expectedHookStateTransitionStatus = (
     return ReactObligationStatus.Violated;
   }
   return transitions.some((transition) => !transition.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedLazySuspenseStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const lazyRenders = report.graph.lazyRenders.filter((render) => render.ownerId === unit.id);
+  const renderedComponentIds = new Set(lazyRenders.map((render) => render.lazyComponentId));
+  const lazyComponents = report.graph.lazyComponents.filter(
+    (component) =>
+      component.declarationOwnerId === unit.id ||
+      renderedComponentIds.has(component.id) ||
+      (!component.identityResolved && !component.declarationOwnerId && unit.canBeRenderRoot),
+  );
+  if (
+    lazyComponents.some(
+      (component) =>
+        component.declarationStatus === ReactLazyDeclarationStatus.RenderUnstable ||
+        component.loaderStatus === ReactLazyLoaderStatus.Invalid,
+    ) ||
+    lazyRenders.some(
+      (render) => render.coverageStatus === ReactSuspenseCoverageStatus.OutsideBoundary,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return lazyComponents.some(
+    (component) =>
+      !component.identityResolved || component.loaderStatus === ReactLazyLoaderStatus.Opaque,
+  ) || lazyRenders.some((render) => render.coverageStatus === ReactSuspenseCoverageStatus.Unknown)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -616,6 +659,17 @@ const checkClaimCoverage = (
         `Imperative handle facts require ${expectedHandleStatus}, not ${imperativeHandle.status}`,
       );
     }
+    const lazySuspense = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.LazySuspense,
+    );
+    const expectedLazyStatus = expectedLazySuspenseStatus(semanticUnit, report);
+    if (lazySuspense && lazySuspense.status !== expectedLazyStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Lazy Suspense facts require ${expectedLazyStatus}, not ${lazySuspense.status}`,
+      );
+    }
     const transitionActions = unitProof.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.TransitionActions,
     );
@@ -859,6 +913,60 @@ const deriveFormSourcesByUnit = (
   return sourcesByUnit;
 };
 
+const deriveSuspenseSourcesByUnit = (
+  report: ReactAppProofReport,
+): ReadonlyMap<string, ReadonlySet<string>> => {
+  const sourcesByUnit = new Map<string, Set<string>>();
+  const rendersById = new Map(report.graph.renders.map((render) => [render.id, render]));
+  const boundaryIdsByRenderId = new Map<string, Set<string>>();
+  const addSource = (unitId: string, sourceId: string): boolean => {
+    let sources = sourcesByUnit.get(unitId);
+    if (!sources) {
+      sources = new Set();
+      sourcesByUnit.set(unitId, sources);
+    }
+    const previousSize = sources.size;
+    sources.add(sourceId);
+    return sources.size !== previousSize;
+  };
+  for (const boundary of report.graph.suspenseBoundaries) {
+    for (const renderId of boundary.renderIds) {
+      const boundaryIds = boundaryIdsByRenderId.get(renderId) ?? new Set<string>();
+      boundaryIds.add(boundary.id);
+      boundaryIdsByRenderId.set(renderId, boundaryIds);
+    }
+  }
+  for (const unit of report.graph.units) {
+    if (unit.canBeRenderRoot) addSource(unit.id, REACT_SUSPENSE_OUTSIDE_SOURCE_ID);
+  }
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const render of report.graph.renders) {
+      if (render.kind === ReactSemanticRenderKind.SlotInput) continue;
+      const boundaryIds = boundaryIdsByRenderId.get(render.id);
+      if (boundaryIds && boundaryIds.size > 0) {
+        for (const boundaryId of boundaryIds) {
+          didSourcesChange = addSource(render.targetId, boundaryId) || didSourcesChange;
+        }
+      } else {
+        for (const sourceId of sourcesByUnit.get(render.ownerId) ?? []) {
+          didSourcesChange = addSource(render.targetId, sourceId) || didSourcesChange;
+        }
+      }
+    }
+    for (const slotFlow of report.graph.slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (sourceRender) {
+        didSourcesChange =
+          addSource(sourceRender.targetId, REACT_SUSPENSE_UNKNOWN_SOURCE_ID) || didSourcesChange;
+      }
+    }
+  }
+  return sourcesByUnit;
+};
+
 const checkGraphReferences = (
   report: ReactAppProofReport,
   failures: ReactProofCertificateFailure[],
@@ -887,6 +995,20 @@ const checkGraphReferences = (
   const formsById = new Map(report.graph.forms.map((form) => [form.id, form]));
   const contextSourcesByUnit = deriveContextSourcesByUnit(report);
   const formSourcesByUnit = deriveFormSourcesByUnit(report);
+  const suspenseSourcesByUnit = deriveSuspenseSourcesByUnit(report);
+  const suspenseBoundariesById = new Map(
+    report.graph.suspenseBoundaries.map((boundary) => [boundary.id, boundary]),
+  );
+  const lazyComponentsById = new Map(
+    report.graph.lazyComponents.map((component) => [component.id, component]),
+  );
+  const lazyRendersById = new Map(report.graph.lazyRenders.map((render) => [render.id, render]));
+  const lazyRenderIdsByComponentId = new Map<string, string[]>();
+  for (const render of report.graph.lazyRenders) {
+    const renderIds = lazyRenderIdsByComponentId.get(render.lazyComponentId) ?? [];
+    renderIds.push(render.id);
+    lazyRenderIdsByComponentId.set(render.lazyComponentId, renderIds);
+  }
   const imperativeHandlesById = new Map(
     report.graph.imperativeHandles.map((handle) => [handle.id, handle]),
   );
@@ -911,6 +1033,130 @@ const checkGraphReferences = (
       new Set(binding.invocationIds),
     ]),
   );
+  for (const boundary of report.graph.suspenseBoundaries) {
+    if (!unitIds.has(boundary.ownerId)) {
+      addFailure(failures, boundary.id, "A Suspense boundary has an unknown owner unit");
+    }
+    if (new Set(boundary.renderIds).size !== boundary.renderIds.length) {
+      addFailure(failures, boundary.id, "A Suspense boundary repeats a covered render");
+    }
+    if (boundary.renderIds.some((renderId) => !rendersById.has(renderId))) {
+      addFailure(failures, boundary.id, "A Suspense boundary references an unknown render");
+    }
+  }
+  for (const component of report.graph.lazyComponents) {
+    if (component.declarationOwnerId && !unitIds.has(component.declarationOwnerId)) {
+      addFailure(failures, component.id, "A lazy component has an unknown declaration owner");
+    }
+    if (!LAZY_DECLARATION_STATUSES.has(component.declarationStatus)) {
+      addFailure(failures, component.id, "A lazy component has an invalid declaration status");
+    }
+    if (!LAZY_LOADER_STATUSES.has(component.loaderStatus)) {
+      addFailure(failures, component.id, "A lazy component has an invalid loader status");
+    }
+    if (
+      component.declarationStatus === ReactLazyDeclarationStatus.ModuleStable &&
+      component.declarationOwnerId
+    ) {
+      addFailure(failures, component.id, "A module-stable lazy component has a render owner");
+    }
+    if (new Set(component.renderIds).size !== component.renderIds.length) {
+      addFailure(failures, component.id, "A lazy component repeats a render");
+    }
+    const componentRenders = component.renderIds.flatMap((renderId) => {
+      const render = lazyRendersById.get(renderId);
+      if (!render || render.lazyComponentId !== component.id) {
+        addFailure(failures, component.id, "A lazy component has an invalid render link");
+        return [];
+      }
+      return [render];
+    });
+    const reciprocalRenderIds = lazyRenderIdsByComponentId.get(component.id) ?? [];
+    const componentRenderIds = new Set(component.renderIds);
+    if (
+      reciprocalRenderIds.length !== component.renderIds.length ||
+      reciprocalRenderIds.some((renderId) => !componentRenderIds.has(renderId))
+    ) {
+      addFailure(failures, component.id, "A lazy component render set is not reciprocal");
+    }
+    const expectedSourceComplete =
+      component.identityResolved && component.loaderStatus !== ReactLazyLoaderStatus.Opaque;
+    if (component.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, component.id, "A lazy component source flag is inconsistent");
+    }
+    const expectedComplete =
+      component.identityResolved &&
+      !component.canBeRenderRoot &&
+      component.declarationStatus === ReactLazyDeclarationStatus.ModuleStable &&
+      component.loaderStatus === ReactLazyLoaderStatus.Valid &&
+      componentRenders.length === component.renderIds.length &&
+      componentRenders.every((render) => render.complete);
+    if (component.complete !== expectedComplete) {
+      addFailure(failures, component.id, "A lazy component completeness flag is inconsistent");
+    }
+  }
+  for (const render of report.graph.lazyRenders) {
+    if (!unitIds.has(render.ownerId)) {
+      addFailure(failures, render.id, "A lazy render has an unknown owner unit");
+    }
+    if (!lazyComponentsById.has(render.lazyComponentId)) {
+      addFailure(failures, render.id, "A lazy render has an unknown component");
+    }
+    if (!SUSPENSE_COVERAGE_STATUSES.has(render.coverageStatus)) {
+      addFailure(failures, render.id, "A lazy render has an invalid coverage status");
+    }
+    if (
+      new Set(render.topologyBoundaryIds).size !== render.topologyBoundaryIds.length ||
+      render.topologyBoundaryIds.some((boundaryId) => !suspenseBoundariesById.has(boundaryId))
+    ) {
+      addFailure(failures, render.id, "A lazy render has invalid direct Suspense boundaries");
+    }
+    if (
+      new Set(render.sourceBoundaryIds).size !== render.sourceBoundaryIds.length ||
+      render.sourceBoundaryIds.some((boundaryId) => !suspenseBoundariesById.has(boundaryId))
+    ) {
+      addFailure(failures, render.id, "A lazy render has invalid source Suspense boundaries");
+    }
+    const expectedSources = new Set(render.topologyBoundaryIds);
+    if (render.inheritsOwnerBoundary) {
+      for (const sourceId of suspenseSourcesByUnit.get(render.ownerId) ?? []) {
+        expectedSources.add(sourceId);
+      }
+    }
+    if (!render.topologyComplete) expectedSources.add(REACT_SUSPENSE_UNKNOWN_SOURCE_ID);
+    const expectedBoundaryIds = [...expectedSources].filter(
+      (sourceId) =>
+        sourceId !== REACT_SUSPENSE_OUTSIDE_SOURCE_ID &&
+        sourceId !== REACT_SUSPENSE_UNKNOWN_SOURCE_ID,
+    );
+    if (
+      expectedBoundaryIds.length !== render.sourceBoundaryIds.length ||
+      expectedBoundaryIds.some((boundaryId) => !render.sourceBoundaryIds.includes(boundaryId))
+    ) {
+      addFailure(failures, render.id, "A lazy render has an inconsistent boundary source set");
+    }
+    const expectedOutsideBoundary = expectedSources.has(REACT_SUSPENSE_OUTSIDE_SOURCE_ID);
+    const expectedSourceComplete =
+      expectedSources.size > 0 && !expectedSources.has(REACT_SUSPENSE_UNKNOWN_SOURCE_ID);
+    let expectedCoverageStatus = ReactSuspenseCoverageStatus.Unknown;
+    if (expectedOutsideBoundary) {
+      expectedCoverageStatus = ReactSuspenseCoverageStatus.OutsideBoundary;
+    } else if (expectedSourceComplete && expectedBoundaryIds.length > 0) {
+      expectedCoverageStatus = ReactSuspenseCoverageStatus.Covered;
+    }
+    if (render.outsideBoundary !== expectedOutsideBoundary) {
+      addFailure(failures, render.id, "A lazy render outside-boundary flag is inconsistent");
+    }
+    if (render.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, render.id, "A lazy render source flag is inconsistent");
+    }
+    if (render.coverageStatus !== expectedCoverageStatus) {
+      addFailure(failures, render.id, "A lazy render coverage status is inconsistent");
+    }
+    if (render.complete !== (expectedCoverageStatus === ReactSuspenseCoverageStatus.Covered)) {
+      addFailure(failures, render.id, "A lazy render completeness flag is inconsistent");
+    }
+  }
   for (const method of report.graph.imperativeHandleMethods) {
     const handle = imperativeHandlesById.get(method.handleId);
     if (
@@ -3356,6 +3602,21 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Form Status consumers",
     report.graph.formStatuses.map((formStatus) => formStatus.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Suspense boundaries",
+    report.graph.suspenseBoundaries.map((boundary) => boundary.id),
+  );
+  checkUniqueIds(
+    failures,
+    "lazy components",
+    report.graph.lazyComponents.map((component) => component.id),
+  );
+  checkUniqueIds(
+    failures,
+    "lazy renders",
+    report.graph.lazyRenders.map((render) => render.id),
   );
   checkUniqueIds(
     failures,

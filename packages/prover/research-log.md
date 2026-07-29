@@ -1965,3 +1965,112 @@ Changeset is warranted before publication.
 Kill: If a complete reducer protocol produces a false `proved` result in two proof-schema releases,
 remove total reducer certification and keep the protocol incomplete until a stronger CFG or
 library proof summary carries the missing semantics.
+
+## Lazy-component and Suspense-topology certificates
+
+### React contract and realistic evidence
+
+React's [`lazy` reference](https://react.dev/reference/react/lazy) supplies three source-level
+requirements. `lazy(load)` should be declared outside components so its identity survives renders;
+`load` must return a Promise or thenable which resolves to an object whose `default` property is a
+valid component; and rendering the result suspends while the module is pending. React caches both
+the thenable and its resolved module. A render-local `lazy()` declaration is therefore not merely
+an allocation smell: React documents that it resets descendant state when the parent rerenders.
+
+The [`Suspense` reference](https://react.dev/reference/react/Suspense) defines the corresponding
+topology. A pending lazy component activates its closest parent boundary and renders that
+boundary's fallback. A boundary can be in the same component, a transitive parent component, or a
+component which places an incoming ReactNode slot. Fetching from an Effect does not activate
+Suspense, so the theorem only assigns suspension behavior to React-recognized sources.
+
+React Bench supplied two realistic OpenCode shapes:
+
+- `app/src/app.tsx` declares route components with module-level `lazy(() => import(...))` and
+  renders each route under local `<Suspense fallback={null}>` boundaries.
+- `app/src/components/status-popover.tsx` maps named module exports with
+  `.then((module) => ({ default: module.Named }))`. Some renders are directly nested under
+  Suspense, while another passes the lazy ReactNode through a body component which places
+  `children` under the boundary.
+
+These examples require symbol identity, named-export loader typing, transitive component topology,
+and ReactNode-slot placement. A lexical parent check alone would reject real correct code and miss
+an unbounded lazy render hidden in a child component.
+
+### Closed subset and fail-closed boundary
+
+The certificate recognizes imported, aliased, and namespace React `lazy` calls assigned to a
+symbol. It resolves a source loader, uses the structured return summarizer to require every
+represented path to return without fallthrough or uncaught throw, asks TypeScript for the awaited
+type of every return, and requires a callable or constructible `default` property. Opaque loader
+functions remain unknown; a closed return with the wrong shape is a counterexample.
+
+Every canonical `<Suspense>` receives a graph identity. Effective project render edges record the
+boundaries active at their exact JSX placements, including boundaries introduced by a closed
+ReactNode slot. A fixed point starts every exported component as outside Suspense and propagates
+either the nearest known boundary or its parent's boundary sources through transitive renders.
+Each lazy render combines its direct/slot boundary alternatives with inherited owner sources. One
+known outside path refutes coverage, a nonempty closed boundary set proves it, and cycles, external
+components, unresolved slots, and components with no closed root path remain unknown.
+
+The first version intentionally does not claim that a dynamic import will succeed, that a fallback
+meets product design requirements, or that a rejected loader has an Error Boundary. Those are
+separate availability, UX, and error-recovery theorems. It proves the generic React lazy identity,
+loader-shape, and pending-state topology protocol.
+
+### Certificate checker, corpus, and runtime calibration
+
+The independent checker validates unique boundary, component, and render IDs; owner and reciprocal
+render links; declaration and loader domains; exact module-stability/source/completeness
+equations; valid direct and propagated boundary identities; root-derived outside and unknown
+sources; exact coverage status; and the per-unit `lazy-suspense` verdict. Report schema 25 and graph
+schema 31 reject stale or forged certificates.
+
+Added corpus:
+
+- proved: direct default import, an async module value, named-export mapping through `.then`,
+  namespace `lazy` composed with `memo`, a transitive child route, ReactNode placement through a
+  project-local Suspense shell, a class component, an outer boundary catching an inner boundary's
+  lazy fallback, an object-property alias, and lazy renders reached through a render helper or
+  synchronous `map` callback;
+- refuted: a root-reachable render outside Suspense, a lazy component inside a boundary's own
+  fallback, render-local `lazy()`, a non-component default, and a default union with a
+  non-component alternative;
+- incomplete: an opaque declared loader, inline or aliased unrecognized higher-order wrappers, an
+  exported lazy component, memo alias, or opaque wrapper alias whose external render topology is
+  open, and a lazy ReactNode crossing an external slot component;
+- forged: an outside-boundary render rewritten as covered and rejected by the checker;
+- runtime: `lazy-suspense-oracle.spec.ts`.
+
+The React 19.2.5 Chromium oracle observes the fallback before reveal, one cached loader execution,
+the loaded component, and preserved child state after a parent rerender. It calibrates the runtime
+contract without upgrading static unknowns. The complete gate now contains 584 static tests and 44
+Chromium runtime oracles across 354 checked-in fixture project configurations.
+
+### Product brief: internal lazy/Suspense facts
+
+Job: Prover consumers need to know that code-split React components retain identity, resolve to a
+renderable default component, and cannot suspend on a reachable path without a known loading
+boundary.
+
+Change: Add one private `lazy-suspense` claim, versioned lazy-component, lazy-render, and Suspense
+boundary facts, whole-project topology propagation, and independent checker equations.
+
+Reuse: Truffler searches for lazy loaders, Suspense topology, deferred values, and resource
+boundaries found no existing theorem. The implementation reuses canonical React API and symbol
+resolution, the type-aware function-return summarizer, component render identities, transparent
+React wrappers, ReactNode slot placement, and the context/Form Status fixed-point pattern.
+
+Metric: The deterministic acceptance metric separates direct, async-loader, named-export, class,
+object-alias, transitive, slot, nested fallback, render-helper, synchronous-callback, exported-root,
+outside-boundary, exported-alias, exported opaque wrapper, fallback, unstable-declaration,
+invalid-loader, opaque-loader, external-slot, and forged cases, plus one loader-cache/
+state-preservation Chromium oracle. Opaque-wrapper coverage includes both inline `withRetry(lazy())`
+and separately aliased `withRetry(Lazy)` shapes.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 25 and its semantic graph to schema 31. No
+telemetry or Changeset is warranted before publication.
+
+Kill: If a complete lazy/Suspense protocol produces a false `proved` topology in two proof-schema
+releases, remove transitive coverage certification and keep non-lexical paths unknown until
+ReactNode SSA or an explicit component proof contract carries the missing placement semantics.

@@ -100,13 +100,14 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
       scoreDiagnostics.has(diagnostic),
     );
 
-    // Each diagnostic's `filePath` is relative to its own project root,
-    // so the code-frame renderer needs to resolve per-diagnostic rather
-    // than against one shared root (there isn't one across projects).
+    // Each diagnostic belongs to a different project root, and staged code
+    // frames may come from a separate index snapshot.
     const projectRootByDiagnostic = new WeakMap<Diagnostic, string>();
+    const frameSourceRootByDiagnostic = new WeakMap<Diagnostic, string>();
     for (const scan of completedScans) {
       for (const diagnostic of scan.result.diagnostics) {
-        projectRootByDiagnostic.set(
+        projectRootByDiagnostic.set(diagnostic, scan.result.project.rootDirectory);
+        frameSourceRootByDiagnostic.set(
           diagnostic,
           scan.frameSourceRoot ?? scan.result.project.rootDirectory,
         );
@@ -114,6 +115,8 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     }
     const resolveDiagnosticSourceRoot = (diagnostic: Diagnostic): string =>
       projectRootByDiagnostic.get(diagnostic) ?? "";
+    const resolveDiagnosticFrameSourceRoot = (diagnostic: Diagnostic): string =>
+      frameSourceRootByDiagnostic.get(diagnostic) ?? resolveDiagnosticSourceRoot(diagnostic);
 
     // Single aggregate scan line in place of the per-project spinner
     // success lines (suppressed via `suppressScanSummary`). Scans run
@@ -137,6 +140,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
         isCodingAgentEnvironment(),
         { animateCountUp: animateRender },
         shouldRenderHyperlinks(process.stdout),
+        resolveDiagnosticFrameSourceRoot,
       );
     }
 

@@ -215,6 +215,7 @@ describe("printMultiProjectSummary code frames", () => {
   const renderFramedOutput = async (scanOverrides: {
     rootDirectory: string;
     frameSourceRoot?: string;
+    filePath?: string;
   }): Promise<string> => {
     const lines: string[] = [];
     vi.spyOn(console, "log").mockImplementation((line?: unknown) => {
@@ -224,7 +225,13 @@ describe("printMultiProjectSummary code frames", () => {
       config: null,
       frameSourceRoot: scanOverrides.frameSourceRoot,
       result: {
-        diagnostics: [buildDiagnostic({ filePath: "src/App.tsx", line: 1, column: 14 })],
+        diagnostics: [
+          buildDiagnostic({
+            filePath: scanOverrides.filePath ?? "src/App.tsx",
+            line: 1,
+            column: 14,
+          }),
+        ],
         score: { score: 40, label: "Needs work" },
         skippedChecks: [],
         project: { ...buildProject("app"), rootDirectory: scanOverrides.rootDirectory },
@@ -255,6 +262,7 @@ describe("printMultiProjectSummary code frames", () => {
     const output = await renderFramedOutput({
       rootDirectory: worktreeDirectory,
       frameSourceRoot: snapshotDirectory,
+      filePath: path.join(worktreeDirectory, "src/App.tsx"),
     });
 
     expect(output).toContain("FROM_SNAPSHOT");

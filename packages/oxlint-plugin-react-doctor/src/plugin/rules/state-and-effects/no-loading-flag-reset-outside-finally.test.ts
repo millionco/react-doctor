@@ -493,6 +493,52 @@ describe("no-loading-flag-reset-outside-finally", () => {
     }
   });
 
+  it("does not treat a ref snapshot as an ownership claim", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const load = async () => {
+           const token = ownerRef.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a ref snapshot backed by a synchronous single-flight claim", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const inFlightRef = useRef(false);
+         const load = async () => {
+           if (inFlightRef.current) return;
+           inFlightRef.current = true;
+           const token = ownerRef.current;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) {
+               inFlightRef.current = false;
+               setIsLoading(false);
+             }
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts an ownership claim aligned with the loading path", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -518,7 +564,8 @@ describe("no-loading-flag-reset-outside-finally", () => {
   });
 
   it("accepts a committed effect invalidation paired with the same reset", () => {
-    const sources = [
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
       `import { useEffect, useRef, useState } from "react";
        const Preview = ({ requestId }) => {
          const [, setIsLoading] = useState(false);
@@ -536,27 +583,8 @@ describe("no-loading-flag-reset-outside-finally", () => {
            }
          };
        };`,
-      `import { useEffect, useRef, useState } from "react";
-       const Preview = ({ requestId }) => {
-         const [, setIsLoading] = useState(false);
-         const sequenceRef = useRef(0);
-         useEffect(() => {
-           setIsLoading(false);
-           sequenceRef.current += 1;
-         }, [requestId]);
-         const load = async () => {
-           const sequence = sequenceRef.current;
-           setIsLoading(true);
-           try { await fetchFeed(); }
-           finally {
-             if (sequenceRef.current === sequence) setIsLoading(false);
-           }
-         };
-       };`,
-    ];
-    for (const source of sources) {
-      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(0);
-    }
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("rejects an effect invalidation that is not paired with the same reset", () => {

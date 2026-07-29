@@ -134,18 +134,40 @@ const isParentNotificationCallbackRef = (
       if (
         !isNodeOfType(definitionNode, "VariableDeclarator") ||
         !isNodeOfType(definitionNode.id, "ObjectPattern") ||
-        !isNodeOfType(definitionNode.init, "Identifier")
+        !definitionNode.init
       ) {
         return false;
       }
-      const receiverReference = getRef(analysis, definitionNode.init);
+      const initializer = stripParenExpression(definitionNode.init as EsTreeNode);
+      if (!isNodeOfType(initializer, "Identifier")) return false;
+      const receiverReference = getRef(analysis, initializer);
       return Boolean(receiverReference && isWholePropsObjectReference(analysis, receiverReference));
+    }),
+  );
+  const hasPropObjectMemberDefinition = Boolean(
+    ref.resolved?.defs.some((definition) => {
+      const definitionNode = definition.node as unknown as EsTreeNode;
+      if (!isNodeOfType(definitionNode, "VariableDeclarator") || !definitionNode.init) {
+        return false;
+      }
+      const initializer = stripParenExpression(definitionNode.init as EsTreeNode);
+      if (
+        !isNodeOfType(initializer, "MemberExpression") ||
+        !getStaticMemberPropertyName(initializer)
+      ) {
+        return false;
+      }
+      const receiver = stripParenExpression(initializer.object as EsTreeNode);
+      if (!isNodeOfType(receiver, "Identifier")) return false;
+      const receiverReference = getRef(analysis, receiver);
+      return Boolean(receiverReference && isProp(analysis, receiverReference));
     }),
   );
   if (
     !isProp(analysis, ref) &&
     !hasUnresolvedCurrentSnapshot &&
     !hasWholePropsDestructuringDefinition &&
+    !hasPropObjectMemberDefinition &&
     !getParentCallbackPropNames({
       analysis,
       expression: callExpr.callee as EsTreeNode,

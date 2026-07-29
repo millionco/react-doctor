@@ -653,6 +653,41 @@ describe("no-pass-live-state-to-parent — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("still flags a callback destructured from a TypeScript-wrapped props object", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `interface EditorProps {
+        onChange: (value: string) => void;
+      }
+      function Editor(props: EditorProps) {
+        const [value] = useState("");
+        const { onChange } = props as EditorProps;
+        useEffect(() => {
+          onChange(value);
+        }, [onChange, value]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a callback aliased from a prop handler bag", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function Editor({ handlers }) {
+        const [value] = useState("");
+        const onChange = handlers.onChange;
+        useEffect(() => {
+          onChange(value);
+        }, [onChange, value]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   // cloudscape use-app-layout: closeFirstDrawer is a stable callback that
   // calls onActiveDrawerChange — a binding destructured from useDrawers(...)
   // whose ARGUMENTS include state. Hook inputs are not provenance of hook

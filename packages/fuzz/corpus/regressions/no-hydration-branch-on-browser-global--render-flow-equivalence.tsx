@@ -29,3 +29,25 @@ export const SuppressedConsumer = () => {
   const { runtime } = useRuntime();
   return <span suppressHydrationWarning>{runtime}</span>;
 };
+
+export const DeadConditionalArms = () => {
+  const consequent = false ? typeof window !== "undefined" : false;
+  const alternate = true ? false : typeof window !== "undefined";
+  return consequent || alternate ? <Client /> : <Server />;
+};
+
+export const StaticallyOverwritten = () => {
+  let show = false;
+  if (typeof window !== "undefined") show = true;
+  if (true) show = false;
+  return show ? <Client /> : <Server />;
+};
+
+export const StableHelperWrite = () => {
+  let show = false;
+  const preserve = () => {
+    show = false;
+  };
+  if (typeof window !== "undefined") preserve();
+  return show ? <Client /> : <Server />;
+};

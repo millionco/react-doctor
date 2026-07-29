@@ -54,6 +54,20 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
       `,
     ],
     [
+      "useMemo object property access",
+      `
+        import { useMemo } from "react";
+        export const Background = () => {
+          const playable = useMemo(() => {
+            let result = false;
+            if (typeof document !== "undefined") result = true;
+            return { playable: result };
+          }, []).playable;
+          return playable ? <video /> : <img alt="" />;
+        };
+      `,
+    ],
+    [
       "local rendered custom-hook state",
       `
         import { useState } from "react";
@@ -66,6 +80,71 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
         export const Page = () => {
           const { registration } = useRegistration();
           return registration ? <Primary /> : <Pending />;
+        };
+      `,
+    ],
+    [
+      "direct custom-hook state return",
+      `
+        import { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return runtime;
+        };
+        export const Page = () => {
+          const runtime = useRuntime();
+          return runtime ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "tuple custom-hook state return",
+      `
+        import { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return [runtime] as const;
+        };
+        export const Page = () => {
+          const [runtime] = useRuntime();
+          return runtime ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "custom-hook result member consumer",
+      `
+        import { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return { runtime };
+        };
+        export const Page = () => {
+          const result = useRuntime();
+          return result.runtime ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "aliased custom-hook result member consumer",
+      `
+        import { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return { runtime };
+        };
+        export const Page = () => {
+          const result = useRuntime();
+          const mode = result.runtime;
+          return mode ? <Client /> : <Server />;
         };
       `,
     ],
@@ -104,6 +183,15 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
           };
           return <main>{renderMedia()}</main>;
         };
+      `,
+    ],
+    [
+      "a browser branch inside a directly rendered local helper",
+      `
+        import React from "react";
+        const renderContent = () =>
+          typeof window !== "undefined" ? <Client /> : <Server />;
+        export const Page = () => <div>{renderContent()}</div>;
       `,
     ],
     [
@@ -264,6 +352,46 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
             typeof document === "undefined" ? "server" : "client";
           useEffect(() => log(readRuntime()), []);
           return <Stable />;
+        };
+      `,
+    ],
+    [
+      "an unused local render helper",
+      `
+        import React from "react";
+        export const Page = () => {
+          const renderContent = () =>
+            typeof window !== "undefined" ? <Client /> : <Server />;
+          log(renderContent);
+          return <Stable />;
+        };
+      `,
+    ],
+    [
+      "a stored state-writing callback",
+      `
+        import React from "react";
+        export const Page = () => {
+          let show = false;
+          const enable = () => {
+            show = true;
+          };
+          if (typeof window !== "undefined") log(enable);
+          return show ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "a browser-guarded helper write preserving the initial value",
+      `
+        import React from "react";
+        export const Page = () => {
+          let show = false;
+          const preserve = () => {
+            show = false;
+          };
+          if (typeof window !== "undefined") preserve();
+          return show ? <Client /> : <Server />;
         };
       `,
     ],
@@ -432,6 +560,55 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
       `,
     ],
     [
+      "a browser-guarded local helper invocation that writes rendered state",
+      `
+        import React from "react";
+        export const Page = () => {
+          let show = false;
+          const enable = () => {
+            show = true;
+          };
+          if (typeof window !== "undefined") enable();
+          return show ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "unrelated browser-derived values compared for equality",
+      `
+        import React from "react";
+        export const Page = () => {
+          const client =
+            typeof window !== "undefined" ? readClientFlag() : false;
+          const server =
+            typeof window === "undefined" ? readServerFlag() : false;
+          return client === server ? <Same /> : <Different />;
+        };
+      `,
+    ],
+    [
+      "a browser-derived possible NaN compared with itself",
+      `
+        import React from "react";
+        export const Page = () => {
+          const value =
+            typeof window !== "undefined" ? Number("x") : 0;
+          return value === value ? <Same /> : <Different />;
+        };
+      `,
+    ],
+    [
+      "a browser predicate in a dynamically selected conditional arm",
+      `
+        import React from "react";
+        export const Page = ({ enabled }) => {
+          const value =
+            enabled ? typeof window !== "undefined" : false;
+          return value ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
       "a browser write from a shadowed same-name binding",
       `
         import React from "react";
@@ -546,6 +723,67 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
       `,
     ],
     [
+      "a stable property beside an unstable memo property",
+      `
+        import { useMemo } from "react";
+        export const Page = () => {
+          const stable = useMemo(() => ({
+            stable: false,
+            runtime: typeof window !== "undefined",
+          }), []).stable;
+          return stable ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "an equivalent browser-guarded memo write",
+      `
+        import { useMemo } from "react";
+        export const Page = () => {
+          const { stable } = useMemo(() => {
+            let stable = false;
+            if (typeof window !== "undefined") stable = false;
+            return { stable };
+          }, []);
+          return stable ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "a browser predicate in the dead consequent of a conditional",
+      `
+        import React from "react";
+        export const Page = () => {
+          const value =
+            false ? typeof window !== "undefined" : false;
+          return value ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "a browser predicate in the dead alternate of a conditional",
+      `
+        import React from "react";
+        export const Page = () => {
+          const value =
+            true ? false : typeof window !== "undefined";
+          return value ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "a browser write followed by a statically unconditional overwrite",
+      `
+        import React from "react";
+        export const Page = () => {
+          let show = false;
+          if (typeof window !== "undefined") show = true;
+          if (true) show = false;
+          return show ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
       "a browser write preserving the same binding",
       `
         import React from "react";
@@ -602,6 +840,58 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
           useEffect(() => setMounted(true), []);
           if (!mounted) return null;
           return runtime ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "an unused direct custom-hook state return",
+      `
+        import React, { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return runtime;
+        };
+        export const Page = () => {
+          const runtime = useRuntime();
+          log(runtime);
+          return <Stable />;
+        };
+      `,
+    ],
+    [
+      "a mount-gated tuple custom-hook consumer",
+      `
+        import React, { useEffect, useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return [runtime] as const;
+        };
+        export const Page = () => {
+          const [runtime] = useRuntime();
+          const [mounted, setMounted] = useState(false);
+          useEffect(() => setMounted(true), []);
+          if (!mounted) return null;
+          return runtime ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "a suppressed custom-hook member consumer",
+      `
+        import React, { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return { runtime };
+        };
+        export const Page = () => {
+          const result = useRuntime();
+          return <span suppressHydrationWarning>{result.runtime}</span>;
         };
       `,
     ],
@@ -667,6 +957,70 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
       export const Page = () => {
         const unstable = ${condition};
         return unstable ? <Client /> : <Server />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "an as-wrapped rendered local helper",
+      `const renderContent = (() =>
+        typeof window !== "undefined" ? <Client /> : <Server />
+      ) as () => React.ReactNode;`,
+    ],
+    [
+      "a satisfies-wrapped rendered local helper",
+      `const renderContent = (() =>
+        typeof window !== "undefined" ? <Client /> : <Server />
+      ) satisfies () => React.ReactNode;`,
+    ],
+  ])("reports %s", (_name, helperDeclaration) => {
+    const result = run(`
+      import React from "react";
+      ${helperDeclaration}
+      export const Page = () => <main>{renderContent()}</main>;
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet for a nested uninvoked browser-guarded writer", () => {
+    const result = run(`
+      import React from "react";
+      export const Page = () => {
+        const visible = React.useMemo(() => {
+          let nextVisible = false;
+          if (typeof window !== "undefined") {
+            const neverRun = () => {
+              nextVisible = true;
+            };
+          }
+          return nextVisible;
+        }, []);
+        return visible ? <Client /> : <Server />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports a nested invoked browser-guarded writer", () => {
+    const result = run(`
+      import React from "react";
+      export const Page = () => {
+        const visible = React.useMemo(() => {
+          let nextVisible = false;
+          if (typeof window !== "undefined") {
+            const enable = () => {
+              nextVisible = true;
+            };
+            enable();
+          }
+          return nextVisible;
+        }, []);
+        return visible ? <Client /> : <Server />;
       };
     `);
     expect(result.parseErrors).toEqual([]);

@@ -232,7 +232,25 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
         node.operator === "delete" &&
         (node.argument as EsTreeNode)) ||
       null;
-    if (!assignmentTarget || getThisFieldName(assignmentTarget) !== fieldName) return;
+    if (!assignmentTarget) return;
+    const unwrappedAssignmentTarget = stripParenExpression(assignmentTarget);
+    if (
+      !isNodeOfType(unwrappedAssignmentTarget, "MemberExpression") ||
+      !isNodeOfType(
+        stripParenExpression(unwrappedAssignmentTarget.object as EsTreeNode),
+        "ThisExpression",
+      )
+    ) {
+      return;
+    }
+    const assignmentFieldName = getStaticPropertyKeyName(unwrappedAssignmentTarget, {
+      allowComputedString: true,
+    });
+    if (!assignmentFieldName) {
+      didFindUnsafeWrite = true;
+      return false;
+    }
+    if (assignmentFieldName !== fieldName) return;
     assignmentCount += 1;
   });
   return !didFindUnsafeWrite && assignmentCount === 1;

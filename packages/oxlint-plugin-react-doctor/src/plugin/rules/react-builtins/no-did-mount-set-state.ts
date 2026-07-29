@@ -718,7 +718,7 @@ const hasExclusiveCallbackRefFieldWrite = (
         return false;
       }
       writerFunctions.add(writerFunction);
-      return false;
+      return;
     }
     const assignmentTarget =
       (isNodeOfType(node, "AssignmentExpression") && (node.left as EsTreeNode)) ||

@@ -490,6 +490,34 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags a nested competing writer inside a callback-ref mutation call", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          Object.assign(this, {
+            monthContainer: element,
+            overwriteLater: () => {
+              this.monthContainer = this.props.fallbackContainer;
+            },
+          });
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     `this["monthContainer"] = element ?? undefined;`,
     `Object.assign(this, { monthContainer: element });`,

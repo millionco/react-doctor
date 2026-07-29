@@ -443,7 +443,13 @@ export class Git extends Context.Service<
               // default; ChildProcess's option flips the polarity.)
               ChildProcess.make(input.command, [...input.args], {
                 cwd: input.directory,
-                env: input.env,
+                env:
+                  input.command === "git"
+                    ? {
+                        ...input.env,
+                        GIT_DIR: undefined,
+                      }
+                    : input.env,
                 extendEnv: true,
               }),
             );

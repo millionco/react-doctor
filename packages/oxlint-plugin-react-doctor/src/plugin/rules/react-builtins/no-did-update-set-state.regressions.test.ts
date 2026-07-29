@@ -248,6 +248,24 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags a named previous/current state comparator", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate(_, prevState) {
+          if (!isEqual(this.state.openToDate, prevState.openToDate)) {
+            this.setState({ openToDate: computeOpenToDate() });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags an unrelated predicate over previous and current values", () => {
     const result = runRule(
       noDidUpdateSetState,
@@ -840,6 +858,27 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags truthiness convergence when the same update changes the state source", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (!this.state.tooltip && this.state.nextTooltip) {
+            this.setState({
+              tooltip: this.state.nextTooltip,
+              nextTooltip: computeNextTooltip(),
+            });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags a truthiness guard around an unstable class field", () => {

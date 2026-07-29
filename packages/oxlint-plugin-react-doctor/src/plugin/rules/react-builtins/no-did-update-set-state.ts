@@ -387,7 +387,9 @@ const isPreviousCurrentComparatorGuard = (
       .slice(index + 1)
       .some(
         (candidate) =>
-          path.source !== candidate.source && haveMatchingStateSourcePaths(path, candidate),
+          path.domain === "props" &&
+          path.source !== candidate.source &&
+          haveMatchingStateSourcePaths(path, candidate),
       ),
   );
 };
@@ -880,6 +882,7 @@ const isConvergentTruthinessGuard = (
           scopes,
           localInitializers,
           callbackRefFieldNames,
+          setStateCall,
         ),
     );
   });

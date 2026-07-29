@@ -1835,7 +1835,7 @@ const getOwningFunction = (functionNode: EsTreeNode): EsTreeNode => {
   let ownerFunction = functionNode;
   let cursor: EsTreeNode | null | undefined = functionNode.parent;
   while (cursor) {
-    if (isFunctionLike(cursor)) return cursor;
+    if (isFunctionLike(cursor)) ownerFunction = cursor;
     cursor = cursor.parent ?? null;
   }
   return ownerFunction;
@@ -2092,25 +2092,27 @@ const findOwnershipClaim = (
       scopes: context.scopes,
     });
     if (!generationKey) return null;
-    const ownerFunction = getOwningFunction(functionNode);
-    let didFindOtherGenerationWrite = false;
-    walkAst(ownerFunction, (candidate) => {
-      if (didFindOtherGenerationWrite || candidate === tokenInitializer) return;
-      const writeTarget = isNodeOfType(candidate, "AssignmentExpression")
-        ? candidate.left
-        : isNodeOfType(candidate, "UpdateExpression") ||
-            (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "delete")
-          ? candidate.argument
-          : null;
-      if (
-        writeTarget &&
-        serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === generationKey &&
-        !isEffectInvalidationPairedWithReset(candidate, truthySets, context)
-      ) {
-        didFindOtherGenerationWrite = true;
-      }
-    });
-    if (didFindOtherGenerationWrite) return null;
+    if (generationKey === refKey) {
+      const ownerFunction = getOwningFunction(functionNode);
+      let didFindOtherGenerationWrite = false;
+      walkAst(ownerFunction, (candidate) => {
+        if (didFindOtherGenerationWrite || candidate === tokenInitializer) return;
+        const writeTarget = isNodeOfType(candidate, "AssignmentExpression")
+          ? candidate.left
+          : isNodeOfType(candidate, "UpdateExpression") ||
+              (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "delete")
+            ? candidate.argument
+            : null;
+        if (
+          writeTarget &&
+          serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === generationKey &&
+          !isEffectInvalidationPairedWithReset(candidate, truthySets, context)
+        ) {
+          didFindOtherGenerationWrite = true;
+        }
+      });
+      if (didFindOtherGenerationWrite) return null;
+    }
   }
   walkOwnFunctionScope(functionNode, (candidate) => {
     if (!isNodeOfType(candidate, "AssignmentExpression") || candidate.operator !== "=") return;

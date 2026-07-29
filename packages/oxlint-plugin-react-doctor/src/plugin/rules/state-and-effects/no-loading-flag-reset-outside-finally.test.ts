@@ -563,6 +563,54 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts unrelated writes to a separate ownership token sequence", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const reserveSequence = () => { sequenceRef.current += 1; };
+         const load = async () => {
+           const token = ++sequenceRef.current;
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("checks ownership writes outside an enclosing effect callback", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const cancel = () => { ownerRef.current = null; };
+         useEffect(() => {
+           const load = async () => {
+             const token = {};
+             ownerRef.current = token;
+             setIsLoading(true);
+             try { await fetchFeed(); }
+             finally {
+               if (ownerRef.current === token) setIsLoading(false);
+             }
+           };
+           void load();
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts a committed effect invalidation paired with the same reset", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

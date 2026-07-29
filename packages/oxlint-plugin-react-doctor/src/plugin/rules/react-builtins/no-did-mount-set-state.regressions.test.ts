@@ -568,6 +568,133 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    `this.monthContainer || this.props.fallbackContainer`,
+    `this.props.useMountedContainer ? this.monthContainer : this.props.fallbackContainer`,
+  ])("still flags a callback-ref value mixed with pre-mount input: %s", (value) => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: ${value} });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a lifecycle local mixing callback-ref and pre-mount values", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          const monthContainer = this.monthContainer ?? this.props.fallbackContainer;
+          this.setState({ monthContainer });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a local helper mixing callback-ref and pre-mount values", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          const readMonthContainer = () =>
+            this.monthContainer ?? this.props.fallbackContainer;
+          this.setState({ monthContainer: readMonthContainer() });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a callback-ref value has only a literal fallback", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer ?? null });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores nested class aliases and callback-ref handler reads", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          class NestedCalendar {
+            readHandler() {
+              const instance = this;
+              return instance.setMonthContainerRef;
+            }
+          }
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a callback-ref handler invoked with a prop value", () => {
     const result = runRule(
       noDidMountSetState,

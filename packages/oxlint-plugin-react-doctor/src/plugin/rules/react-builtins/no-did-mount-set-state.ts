@@ -153,6 +153,159 @@ const containsCallbackRefField = (
   return didFindCallbackRefField;
 };
 
+interface CallbackRefValueEvidence {
+  hasCallbackRefValue: boolean;
+  hasDynamicValue: boolean;
+}
+
+const combineCallbackRefValueEvidence = (
+  nodes: readonly EsTreeNode[],
+  callbackRefFieldNames: ReadonlySet<string>,
+): CallbackRefValueEvidence =>
+  nodes.reduce<CallbackRefValueEvidence>(
+    (evidence, node) => {
+      const nodeEvidence = collectCallbackRefValueEvidence(node, callbackRefFieldNames);
+      return {
+        hasCallbackRefValue: evidence.hasCallbackRefValue || nodeEvidence.hasCallbackRefValue,
+        hasDynamicValue: evidence.hasDynamicValue || nodeEvidence.hasDynamicValue,
+      };
+    },
+    { hasCallbackRefValue: false, hasDynamicValue: false },
+  );
+
+const collectCallbackRefValueEvidence = (
+  node: EsTreeNode,
+  callbackRefFieldNames: ReadonlySet<string>,
+): CallbackRefValueEvidence => {
+  const candidate = stripParenExpression(node);
+  const callbackRefFieldName = getStaticThisFieldName(candidate);
+  if (callbackRefFieldName && callbackRefFieldNames.has(callbackRefFieldName)) {
+    return { hasCallbackRefValue: true, hasDynamicValue: false };
+  }
+  if (isNodeOfType(candidate, "Literal")) {
+    return { hasCallbackRefValue: false, hasDynamicValue: false };
+  }
+  if (isNodeOfType(candidate, "Identifier")) {
+    return {
+      hasCallbackRefValue: false,
+      hasDynamicValue: candidate.name !== "undefined",
+    };
+  }
+  if (isNodeOfType(candidate, "UnaryExpression") || isNodeOfType(candidate, "AwaitExpression")) {
+    return collectCallbackRefValueEvidence(candidate.argument, callbackRefFieldNames);
+  }
+  if (isNodeOfType(candidate, "BinaryExpression") || isNodeOfType(candidate, "LogicalExpression")) {
+    return combineCallbackRefValueEvidence(
+      [candidate.left, candidate.right],
+      callbackRefFieldNames,
+    );
+  }
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    return combineCallbackRefValueEvidence(
+      [candidate.test, candidate.consequent, candidate.alternate],
+      callbackRefFieldNames,
+    );
+  }
+  if (isNodeOfType(candidate, "SequenceExpression")) {
+    const finalExpression = candidate.expressions.at(-1);
+    return finalExpression
+      ? collectCallbackRefValueEvidence(finalExpression, callbackRefFieldNames)
+      : { hasCallbackRefValue: false, hasDynamicValue: true };
+  }
+  if (isNodeOfType(candidate, "TemplateLiteral")) {
+    return combineCallbackRefValueEvidence(candidate.expressions, callbackRefFieldNames);
+  }
+  if (isNodeOfType(candidate, "ArrayExpression")) {
+    const elementNodes: EsTreeNode[] = [];
+    for (const element of candidate.elements) {
+      if (!element || isNodeOfType(element, "SpreadElement")) {
+        return { hasCallbackRefValue: false, hasDynamicValue: true };
+      }
+      elementNodes.push(element);
+    }
+    return combineCallbackRefValueEvidence(elementNodes, callbackRefFieldNames);
+  }
+  if (isNodeOfType(candidate, "ObjectExpression")) {
+    const valueNodes: EsTreeNode[] = [];
+    for (const property of candidate.properties) {
+      if (!isNodeOfType(property, "Property") || property.kind !== "init") {
+        return { hasCallbackRefValue: false, hasDynamicValue: true };
+      }
+      if (property.computed === true) valueNodes.push(property.key as EsTreeNode);
+      valueNodes.push(property.value as EsTreeNode);
+    }
+    return combineCallbackRefValueEvidence(valueNodes, callbackRefFieldNames);
+  }
+  if (isNodeOfType(candidate, "MemberExpression")) {
+    const objectEvidence = collectCallbackRefValueEvidence(
+      candidate.object as EsTreeNode,
+      callbackRefFieldNames,
+    );
+    if (!objectEvidence.hasCallbackRefValue || objectEvidence.hasDynamicValue) {
+      return { hasCallbackRefValue: false, hasDynamicValue: true };
+    }
+    if (candidate.computed !== true) return objectEvidence;
+    const propertyEvidence = collectCallbackRefValueEvidence(
+      candidate.property as EsTreeNode,
+      callbackRefFieldNames,
+    );
+    return {
+      hasCallbackRefValue: true,
+      hasDynamicValue: propertyEvidence.hasDynamicValue,
+    };
+  }
+  if (isNodeOfType(candidate, "CallExpression") || isNodeOfType(candidate, "NewExpression")) {
+    const argumentNodes: EsTreeNode[] = [];
+    for (const argument of candidate.arguments) {
+      if (isNodeOfType(argument, "SpreadElement")) {
+        return { hasCallbackRefValue: false, hasDynamicValue: true };
+      }
+      argumentNodes.push(argument as EsTreeNode);
+    }
+    const argumentEvidence = combineCallbackRefValueEvidence(argumentNodes, callbackRefFieldNames);
+    const callee = stripParenExpression(candidate.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return argumentEvidence;
+    const receiverEvidence = collectCallbackRefValueEvidence(
+      callee.object as EsTreeNode,
+      callbackRefFieldNames,
+    );
+    if (!receiverEvidence.hasCallbackRefValue || receiverEvidence.hasDynamicValue) {
+      return argumentEvidence;
+    }
+    return {
+      hasCallbackRefValue: true,
+      hasDynamicValue: argumentEvidence.hasDynamicValue,
+    };
+  }
+  return { hasCallbackRefValue: false, hasDynamicValue: true };
+};
+
+const isCallbackRefDerivedValue = (
+  node: EsTreeNode,
+  callbackRefFieldNames: ReadonlySet<string>,
+): boolean => {
+  const evidence = collectCallbackRefValueEvidence(node, callbackRefFieldNames);
+  return evidence.hasCallbackRefValue && !evidence.hasDynamicValue;
+};
+
+const functionReturnsCallbackRefDerivedValue = (
+  functionBody: EsTreeNode,
+  callbackRefFieldNames: ReadonlySet<string>,
+): boolean => {
+  if (!isNodeOfType(functionBody, "BlockStatement")) {
+    return isCallbackRefDerivedValue(functionBody, callbackRefFieldNames);
+  }
+  const returnValueNodes: EsTreeNode[] = [];
+  walkAst(functionBody, (node) => {
+    if (node !== functionBody && isFunctionLike(node)) return false;
+    if (isNodeOfType(node, "ReturnStatement") && node.argument) {
+      returnValueNodes.push(node.argument);
+    }
+  });
+  const evidence = combineCallbackRefValueEvidence(returnValueNodes, callbackRefFieldNames);
+  return evidence.hasCallbackRefValue && !evidence.hasDynamicValue;
+};
+
 const collectReferencedNames = (node: EsTreeNode, into: Set<string>): void => {
   walkAst(node, (descendant) => {
     if (!isNodeOfType(descendant, "Identifier")) return;
@@ -199,9 +352,14 @@ const expressionCallsPostMountHelper = (
     const functionBody = (localFunction as { body?: EsTreeNode }).body;
     if (!functionBody) return;
     const nextVisitedFunctionNames = new Set([...visitedFunctionNames, callee.name]);
+    const doesFunctionReadCallbackRefField = containsCallbackRefField(
+      functionBody,
+      callbackRefFieldNames,
+    );
     if (
-      containsPostMountSource(functionBody) ||
-      containsCallbackRefField(functionBody, callbackRefFieldNames) ||
+      (doesFunctionReadCallbackRefField
+        ? functionReturnsCallbackRefDerivedValue(functionBody, callbackRefFieldNames)
+        : containsPostMountSource(functionBody)) ||
       expressionCallsPostMountHelper(
         functionBody,
         localFunctions,
@@ -261,9 +419,14 @@ const argumentDerivesFromPostMountSource = (
     if (descendant !== lifecycleFunction && isFunctionLike(descendant)) return false;
   });
   const doesExpressionDeriveFromPostMountSource = (expression: EsTreeNode): boolean => {
+    const doesExpressionReadCallbackRefField = containsCallbackRefField(
+      expression,
+      callbackRefFieldNames,
+    );
     if (
-      containsPostMountSource(expression) ||
-      containsCallbackRefField(expression, callbackRefFieldNames) ||
+      (doesExpressionReadCallbackRefField
+        ? isCallbackRefDerivedValue(expression, callbackRefFieldNames)
+        : containsPostMountSource(expression)) ||
       expressionCallsPostMountHelper(expression, localFunctions, callbackRefFieldNames)
     ) {
       return true;
@@ -278,9 +441,14 @@ const argumentDerivesFromPostMountSource = (
       const initializer = localInitializers.get(name);
       if (!initializer) continue;
       if (isFunctionLike(stripParenExpression(initializer))) continue;
+      const doesInitializerReadCallbackRefField = containsCallbackRefField(
+        initializer,
+        callbackRefFieldNames,
+      );
       if (
-        containsPostMountSource(initializer) ||
-        containsCallbackRefField(initializer, callbackRefFieldNames) ||
+        (doesInitializerReadCallbackRefField
+          ? isCallbackRefDerivedValue(initializer, callbackRefFieldNames)
+          : containsPostMountSource(initializer)) ||
         expressionCallsPostMountHelper(initializer, localFunctions, callbackRefFieldNames)
       ) {
         return true;
@@ -402,6 +570,12 @@ const collectThisAliasNames = (classNode: EsTreeNode): ReadonlySet<string> => {
   while (didAddAlias) {
     didAddAlias = false;
     walkAst(classNode, (node) => {
+      if (
+        node !== classNode &&
+        (isNodeOfType(node, "ClassDeclaration") || isNodeOfType(node, "ClassExpression"))
+      ) {
+        return false;
+      }
       if (
         !isNodeOfType(node, "VariableDeclarator") ||
         !isNodeOfType(node.id, "Identifier") ||
@@ -529,6 +703,12 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
   if (!writerMemberName) return true;
   let didFindNonRefUsage = false;
   walkAst(classNode, (node) => {
+    if (
+      node !== classNode &&
+      (isNodeOfType(node, "ClassDeclaration") || isNodeOfType(node, "ClassExpression"))
+    ) {
+      return false;
+    }
     if (getStaticThisFieldName(node) === writerMemberName && !isInsideRefAttribute(node)) {
       didFindNonRefUsage = true;
       return false;

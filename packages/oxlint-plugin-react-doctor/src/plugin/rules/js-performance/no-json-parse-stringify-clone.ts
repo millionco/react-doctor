@@ -1,9 +1,18 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findExportedValue } from "../../utils/find-exported-value.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { NEXTJS_PAGE_DATA_EXPORT_NAMES } from "../../utils/nextjs-page-data-export-names.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const MESSAGE =
@@ -121,6 +130,111 @@ const isInsideSnapshotHelper = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const findEnclosingNextjsPageDataFunction = (node: EsTreeNode): EsTreeNode | null => {
+  let outermostFunction: EsTreeNode | null = null;
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor) {
+    if (isFunctionLike(cursor)) outermostFunction = cursor;
+    if (isNodeOfType(cursor, "Program")) {
+      if (!outermostFunction) return null;
+      for (const exportName of NEXTJS_PAGE_DATA_EXPORT_NAMES) {
+        const exportedValue = findExportedValue(cursor, exportName);
+        if (exportedValue && isAstDescendant(outermostFunction, exportedValue)) {
+          return outermostFunction;
+        }
+      }
+      return null;
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+const isInsideReturnedNextjsProps = (node: EsTreeNode, pageDataFunction: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor && cursor !== pageDataFunction) {
+    if (
+      isNodeOfType(cursor, "Property") &&
+      getStaticPropertyKeyName(cursor, { allowComputedString: true }) === "props"
+    ) {
+      const propertyContainer = cursor.parent;
+      if (!propertyContainer) return false;
+      const returnedObject = findTransparentExpressionRoot(propertyContainer);
+      const returnStatement = returnedObject.parent;
+      if (
+        isNodeOfType(returnStatement, "ReturnStatement") &&
+        findEnclosingFunction(returnStatement) === pageDataFunction
+      ) {
+        return true;
+      }
+      if (
+        isNodeOfType(pageDataFunction, "ArrowFunctionExpression") &&
+        !isNodeOfType(pageDataFunction.body, "BlockStatement") &&
+        stripParenExpression(pageDataFunction.body) === returnedObject
+      ) {
+        return true;
+      }
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+const findPageDataResultBinding = (
+  node: EsTreeNode,
+  pageDataFunction: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor && cursor !== pageDataFunction) {
+    if (
+      isNodeOfType(cursor, "VariableDeclarator") &&
+      cursor.init &&
+      isNodeOfType(cursor.id, "Identifier") &&
+      findEnclosingFunction(cursor) === pageDataFunction
+    ) {
+      return cursor.id;
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+const isUsedToSerializeNextjsPageProps = (node: EsTreeNode, context: RuleContext): boolean => {
+  if (!isInProjectDirectory(context, "pages") || isInProjectDirectory(context, "pages/api")) {
+    return false;
+  }
+  const pageDataFunction = findEnclosingNextjsPageDataFunction(node);
+  if (!pageDataFunction) return false;
+  if (isInsideReturnedNextjsProps(node, pageDataFunction)) return true;
+  const bindingIdentifier = findPageDataResultBinding(node, pageDataFunction);
+  const bindingSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
+  if (!bindingSymbol) return false;
+  const aliasSymbols = collectConstAliasSymbols(bindingSymbol, context.scopes);
+  const aliasSymbolIds = new Set(aliasSymbols.map((aliasSymbol) => aliasSymbol.id));
+  let hasPagePropsReference = false;
+  for (const aliasSymbol of aliasSymbols) {
+    for (const reference of aliasSymbol.references) {
+      if (findEnclosingFunction(reference.identifier) !== pageDataFunction) return false;
+      if (isInsideReturnedNextjsProps(reference.identifier, pageDataFunction)) {
+        hasPagePropsReference = true;
+        continue;
+      }
+      const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+      const declarator = referenceRoot.parent;
+      if (
+        isNodeOfType(declarator, "VariableDeclarator") &&
+        declarator.init === referenceRoot &&
+        isNodeOfType(declarator.id, "Identifier")
+      ) {
+        const aliasSymbolForReference = context.scopes.symbolFor(declarator.id);
+        if (aliasSymbolForReference && aliasSymbolIds.has(aliasSymbolForReference.id)) continue;
+      }
+      return false;
+    }
+  }
+  return hasPagePropsReference;
+};
+
 export const noJsonParseStringifyClone = defineRule({
   id: "no-json-parse-stringify-clone",
   title: "JSON parse/stringify deep clone",
@@ -148,6 +262,7 @@ export const noJsonParseStringifyClone = defineRule({
       if (isInsideSnapshotHelper(node)) return;
       if (isAssignedToNormalizationBinding(node)) return;
       if (isCatchParameterRoundTrip(firstArgument)) return;
+      if (isUsedToSerializeNextjsPageProps(node, context)) return;
       context.report({ node, message: MESSAGE });
     },
   }),

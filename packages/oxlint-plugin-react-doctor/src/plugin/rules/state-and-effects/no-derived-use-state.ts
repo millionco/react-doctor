@@ -9,6 +9,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { NEXTJS_PAGE_DATA_EXPORT_NAMES } from "../../utils/nextjs-page-data-export-names.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -289,8 +290,6 @@ const isDraftCommittedToParent = (
   });
   return isCommitted;
 };
-
-const NEXTJS_PAGE_DATA_EXPORT_NAMES = new Set(["getServerSideProps", "getStaticProps"]);
 
 // A Next.js pages-router page gets its props from getServerSideProps /
 // getStaticProps: they are fixed for the page instance (navigation

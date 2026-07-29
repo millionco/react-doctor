@@ -1,16 +1,28 @@
 import { spawnSync } from "node:child_process";
+import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 import * as Schema from "effect/Schema";
 import { JsonReport } from "@react-doctor/core/schemas";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { CLI_HELP_INVOCATIONS } from "./compatibility/cli-help-invocations.ts";
+import { normalizeCliHelp } from "./compatibility/normalize-cli-help.ts";
+import { parseHelpCommandAliases } from "./compatibility/parse-help-command-aliases.ts";
+import type {
+  CliHelpSnapshotEntry,
+  PackedEntrySnapshot,
+  PackedFilePolicy,
+  PackedPublicEntryPointSnapshot,
+} from "./compatibility/public-package-snapshot-types.ts";
+import { readPackageExportValue } from "./utils/read-package-export-value.ts";
 
 interface CommandInput {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;
   readonly allowedStatuses?: readonly number[];
+  readonly environment?: NodeJS.ProcessEnv;
   readonly needsShell?: boolean;
 }
 
@@ -21,12 +33,16 @@ interface StringRecord {
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const FIXTURE_DIRECTORY = path.resolve(REPOSITORY_ROOT, "packages/core/tests/fixtures/basic-react");
+const SNAPSHOT_DIRECTORY = path.join(SCRIPT_DIRECTORY, "compatibility", "snapshots");
+const CLI_HELP_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "cli-help.json");
+const PACKED_ENTRY_SNAPSHOT_PATH = path.join(SNAPSHOT_DIRECTORY, "packed-public-entry-points.json");
 const FORBIDDEN_INSTALLED_PACKAGES: readonly string[] = [
   "ini",
   "effect",
   "@effect/platform-node-shared",
 ];
 const COMMAND_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
+const RUNTIME_EXPORT_MARKER = "REACT_DOCTOR_RUNTIME_EXPORTS=";
 
 const isRecord = (value: unknown): value is StringRecord =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -35,6 +51,7 @@ const runCommand = (input: CommandInput) => {
   const result = spawnSync(input.command, [...input.args], {
     cwd: input.cwd,
     encoding: "utf-8",
+    env: input.environment,
     maxBuffer: COMMAND_OUTPUT_MAX_BYTES,
     shell: input.needsShell === true,
   });
@@ -50,6 +67,261 @@ const runCommand = (input: CommandInput) => {
     process.exit(1);
   }
   return result;
+};
+
+const readJson = <Value>(filePath: string): Value => JSON.parse(fs.readFileSync(filePath, "utf8"));
+
+const writeJson = (filePath: string, value: unknown): void => {
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+};
+
+const toPosixPath = (filePath: string): string => filePath.split(path.sep).join("/");
+
+const collectPackageFiles = (packageDirectory: string): string[] => {
+  const packageFiles: string[] = [];
+  const pendingDirectories = [packageDirectory];
+  while (pendingDirectories.length > 0) {
+    const currentDirectory = pendingDirectories.pop();
+    if (currentDirectory === undefined) break;
+
+    for (const directoryEntry of fs.readdirSync(currentDirectory, { withFileTypes: true })) {
+      if (directoryEntry.name === "node_modules") continue;
+      const entryPath = path.join(currentDirectory, directoryEntry.name);
+      if (directoryEntry.isDirectory()) {
+        pendingDirectories.push(entryPath);
+      } else if (directoryEntry.isFile()) {
+        packageFiles.push(toPosixPath(path.relative(packageDirectory, entryPath)));
+      }
+    }
+  }
+  return packageFiles.sort();
+};
+
+const matchesPackedFilePattern = (filePath: string, pattern: string): boolean => {
+  if (pattern.startsWith("**/*")) return filePath.endsWith(pattern.slice(4));
+  if (!pattern.endsWith("/**")) return filePath === pattern;
+  const directoryPrefix = pattern.slice(0, -3);
+  return filePath === directoryPrefix || filePath.startsWith(`${directoryPrefix}/`);
+};
+
+const assertPackedFilePolicy = (packageDirectory: string, policy: PackedFilePolicy): void => {
+  const packageFiles = collectPackageFiles(packageDirectory);
+  const missingFiles = policy.requiredFiles.filter(
+    (requiredFile) => !packageFiles.includes(requiredFile),
+  );
+  const disallowedFiles = packageFiles.filter(
+    (packageFile) =>
+      !policy.allowedPatterns.some((allowedPattern) =>
+        matchesPackedFilePattern(packageFile, allowedPattern),
+      ),
+  );
+  const explicitlyDeniedFiles = packageFiles.filter((packageFile) =>
+    policy.deniedPatterns.some((deniedPattern) =>
+      matchesPackedFilePattern(packageFile, deniedPattern),
+    ),
+  );
+  if (
+    missingFiles.length === 0 &&
+    disallowedFiles.length === 0 &&
+    explicitlyDeniedFiles.length === 0
+  ) {
+    return;
+  }
+
+  console.error(`Packed file policy failed for ${policy.packageName}.`);
+  if (missingFiles.length > 0) console.error(`Missing: ${missingFiles.join(", ")}`);
+  if (disallowedFiles.length > 0) console.error(`Not allowed: ${disallowedFiles.join(", ")}`);
+  if (explicitlyDeniedFiles.length > 0) {
+    console.error(`Explicitly denied: ${explicitlyDeniedFiles.join(", ")}`);
+  }
+  process.exit(1);
+};
+
+const collectConditionalTargets = (exportValue: unknown, conditionName: string): string[] => {
+  if (!isRecord(exportValue)) return [];
+  const targets: string[] = [];
+  for (const [condition, conditionValue] of Object.entries(exportValue)) {
+    if (condition === conditionName && typeof conditionValue === "string") {
+      targets.push(conditionValue);
+    } else {
+      targets.push(...collectConditionalTargets(conditionValue, conditionName));
+    }
+  }
+  return targets;
+};
+
+const collectRuntimeTargets = (exportValue: unknown): string[] => {
+  if (typeof exportValue === "string") return [exportValue];
+  if (!isRecord(exportValue)) return [];
+
+  return Object.entries(exportValue).flatMap(([condition, conditionValue]) =>
+    condition === "types" ? [] : collectRuntimeTargets(conditionValue),
+  );
+};
+
+const assertPackedEntryFiles = (
+  installDirectory: string,
+  entrySnapshots: ReadonlyArray<PackedEntrySnapshot>,
+): void => {
+  for (const entrySnapshot of entrySnapshots) {
+    const packageDirectory = path.join(installDirectory, "node_modules", entrySnapshot.packageName);
+    const manifest = readJson<StringRecord>(path.join(packageDirectory, "package.json"));
+    const exportValue = readPackageExportValue(manifest.exports, entrySnapshot.subpath);
+    const runtimeTargets = collectRuntimeTargets(exportValue);
+    const declarationTargets = collectConditionalTargets(exportValue, "types");
+
+    for (const target of [...runtimeTargets, ...declarationTargets]) {
+      const targetPath = path.resolve(packageDirectory, target);
+      if (!fs.existsSync(targetPath)) {
+        console.error(
+          `Packed entry ${entrySnapshot.packageName}${entrySnapshot.subpath} points to missing ${target}.`,
+        );
+        process.exit(1);
+      }
+    }
+
+    const hasJavaScriptRuntime = runtimeTargets.some((target) =>
+      [".js", ".mjs", ".cjs"].includes(path.extname(target)),
+    );
+    if (hasJavaScriptRuntime && declarationTargets.length === 0) {
+      console.error(
+        `Packed entry ${entrySnapshot.packageName}${entrySnapshot.subpath} has no declaration target.`,
+      );
+      process.exit(1);
+    }
+  }
+};
+
+const assertPackedBins = (packageDirectory: string): void => {
+  const manifest = readJson<StringRecord>(path.join(packageDirectory, "package.json"));
+  const binValue = manifest.bin;
+  let binTargets: string[] = [];
+  if (typeof binValue === "string") {
+    binTargets = [binValue];
+  } else if (isRecord(binValue)) {
+    binTargets = Object.values(binValue).filter(
+      (target): target is string => typeof target === "string",
+    );
+  }
+  for (const binTarget of binTargets) {
+    if (fs.existsSync(path.resolve(packageDirectory, binTarget))) continue;
+    console.error(`Packed bin target is missing: ${packageDirectory} -> ${binTarget}.`);
+    process.exit(1);
+  }
+};
+
+const toPackageSpecifier = (entrySnapshot: PackedEntrySnapshot): string =>
+  entrySnapshot.subpath === "."
+    ? entrySnapshot.packageName
+    : `${entrySnapshot.packageName}/${entrySnapshot.subpath.slice(2)}`;
+
+const probeRuntimeExportKeys = (
+  installDirectory: string,
+  entrySnapshot: PackedEntrySnapshot,
+  moduleMode: "import" | "require",
+): string[] => {
+  const packageSpecifier = toPackageSpecifier(entrySnapshot);
+  const importAttributes = packageSpecifier.endsWith("/package.json")
+    ? ', { with: { type: "json" } }'
+    : "";
+  let probeSource: string;
+  if (moduleMode === "import") {
+    probeSource = `const namespace = await import(${JSON.stringify(packageSpecifier)}${importAttributes});
+process.stdout.write(${JSON.stringify(RUNTIME_EXPORT_MARKER)} + JSON.stringify(Object.keys(namespace).sort()) + "\\n");`;
+  } else {
+    probeSource = `const { createRequire } = await import("node:module");
+const namespace = createRequire(import.meta.url)(${JSON.stringify(packageSpecifier)});
+process.stdout.write(${JSON.stringify(RUNTIME_EXPORT_MARKER)} + JSON.stringify(Object.keys(namespace).sort()) + "\\n");`;
+  }
+  const result = runCommand({
+    command: process.execPath,
+    args: ["--input-type=module", "--eval", probeSource],
+    cwd: installDirectory,
+    environment: {
+      ...process.env,
+      NO_COLOR: "1",
+      REACT_DOCTOR_NO_TELEMETRY: "1",
+    },
+  });
+  const markerLine = result.stdout
+    .split(/\r?\n/)
+    .find((outputLine) => outputLine.startsWith(RUNTIME_EXPORT_MARKER));
+  if (markerLine === undefined) {
+    console.error(`Runtime export probe produced no result for ${packageSpecifier}.`);
+    process.exit(1);
+  }
+  return JSON.parse(markerLine.slice(RUNTIME_EXPORT_MARKER.length));
+};
+
+const captureRuntimeEntrySnapshots = (
+  installDirectory: string,
+  entrySnapshots: ReadonlyArray<PackedEntrySnapshot>,
+): PackedEntrySnapshot[] =>
+  entrySnapshots.map((entrySnapshot) => {
+    if (entrySnapshot.executionOnly === true) return entrySnapshot;
+    if (entrySnapshot.exportKeys === undefined) {
+      console.error(
+        `Library entry ${entrySnapshot.packageName}${entrySnapshot.subpath} is missing runtime export keys.`,
+      );
+      process.exit(1);
+    }
+    const exportKeys: { import?: ReadonlyArray<string>; require?: ReadonlyArray<string> } = {};
+    if (entrySnapshot.exportKeys.import !== undefined) {
+      exportKeys.import = probeRuntimeExportKeys(installDirectory, entrySnapshot, "import");
+    }
+    if (entrySnapshot.exportKeys.require !== undefined) {
+      exportKeys.require = probeRuntimeExportKeys(installDirectory, entrySnapshot, "require");
+    }
+    return { ...entrySnapshot, exportKeys };
+  });
+
+const captureCliHelpSnapshot = (
+  cliModulePath: string,
+  version: string,
+): { snapshot: CliHelpSnapshotEntry[]; rawOutputByName: ReadonlyMap<string, string> } => {
+  const workingDirectory = os.tmpdir();
+  const rawOutputByName = new Map<string, string>();
+  const snapshot = CLI_HELP_INVOCATIONS.map(({ name, arguments: argumentsList }) => {
+    const result = runCommand({
+      command: process.execPath,
+      args: [cliModulePath, ...argumentsList],
+      cwd: workingDirectory,
+      environment: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+    });
+    rawOutputByName.set(name, result.stdout);
+    return {
+      name,
+      arguments: argumentsList,
+      output: normalizeCliHelp(result.stdout, workingDirectory, version),
+    };
+  });
+  return { snapshot, rawOutputByName };
+};
+
+const assertHelpCommandCoverage = (rawOutputByName: ReadonlyMap<string, string>): void => {
+  const invocationPaths = new Set(
+    CLI_HELP_INVOCATIONS.map(({ arguments: argumentsList }) =>
+      argumentsList.filter((argument) => argument !== "--help").join(" "),
+    ),
+  );
+  for (const [parentName, parentPath] of [
+    ["root", ""],
+    ["ci", "ci"],
+    ["rules", "rules"],
+  ]) {
+    const parentHelp = rawOutputByName.get(parentName);
+    if (parentHelp === undefined) {
+      console.error(`Missing captured help for ${parentName}.`);
+      process.exit(1);
+    }
+    for (const commandAlias of parseHelpCommandAliases(parentHelp)) {
+      const commandPath = [parentPath, commandAlias].filter(Boolean).join(" ");
+      if (!invocationPaths.has(commandPath)) {
+        console.error(`CLI help baseline is missing the supported command "${commandPath}".`);
+        process.exit(1);
+      }
+    }
+  }
 };
 
 const readPackageName = (packageDirectory: string): string | null => {
@@ -99,6 +371,23 @@ const assertFixtureExists = (): void => {
 
 const main = (): void => {
   assertFixtureExists();
+  const argumentsList = process.argv.slice(2);
+  const shouldUpdateSnapshots =
+    argumentsList.length === 1 && argumentsList[0] === "--update-snapshots";
+  if (argumentsList.length > 0 && !shouldUpdateSnapshots) {
+    console.error("Usage: node scripts/smoke-packed-cli-install.ts [--update-snapshots]");
+    process.exit(1);
+  }
+  if (!fs.existsSync(CLI_HELP_SNAPSHOT_PATH) && !shouldUpdateSnapshots) {
+    console.error(`Missing ${path.relative(REPOSITORY_ROOT, CLI_HELP_SNAPSHOT_PATH)}.`);
+    process.exit(1);
+  }
+  if (!fs.existsSync(PACKED_ENTRY_SNAPSHOT_PATH)) {
+    console.error(`Missing ${path.relative(REPOSITORY_ROOT, PACKED_ENTRY_SNAPSHOT_PATH)}.`);
+    process.exit(1);
+  }
+
+  const packedSnapshot = readJson<PackedPublicEntryPointSnapshot>(PACKED_ENTRY_SNAPSHOT_PATH);
 
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-packed-cli-"));
   const packDirectory = path.join(temporaryDirectory, "pack");
@@ -112,7 +401,7 @@ const main = (): void => {
       `${JSON.stringify({ name: "react-doctor-packed-cli-smoke", private: true }, null, 2)}\n`,
     );
 
-    // Pack the CLI together with its unbundled workspace dependencies:
+    // Pack the CLI together with every public package:
     // changesets version-bumps and publishes them as a pinned set, so
     // installing the tarballs mirrors what a release ships. The CLI keeps
     // `oxlint-plugin-react-doctor` and `deslop-js` external (neverBundle —
@@ -123,12 +412,7 @@ const main = (): void => {
     runCommand({
       command: "pnpm",
       args: [
-        "--filter",
-        "react-doctor",
-        "--filter",
-        "oxlint-plugin-react-doctor",
-        "--filter",
-        "deslop-js",
+        ...packedSnapshot.filePolicies.flatMap(({ packageName }) => ["--filter", packageName]),
         "pack",
         "--pack-destination",
         packDirectory,
@@ -138,9 +422,9 @@ const main = (): void => {
     });
 
     const tarballs = fs.readdirSync(packDirectory).filter((fileName) => fileName.endsWith(".tgz"));
-    if (tarballs.length !== 3) {
+    if (tarballs.length !== packedSnapshot.filePolicies.length) {
       console.error(
-        `Expected exactly three packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
+        `Expected ${packedSnapshot.filePolicies.length} packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
       );
       process.exit(1);
     }
@@ -156,6 +440,15 @@ const main = (): void => {
     const installedPackages = collectInstalledPackageNames(
       path.join(installDirectory, "node_modules"),
     );
+    for (const filePolicy of packedSnapshot.filePolicies) {
+      const packageDirectory = path.join(installDirectory, "node_modules", filePolicy.packageName);
+      if (!fs.existsSync(packageDirectory)) {
+        console.error(`Packed install is missing ${filePolicy.packageName}.`);
+        process.exit(1);
+      }
+      assertPackedFilePolicy(packageDirectory, filePolicy);
+      assertPackedBins(packageDirectory);
+    }
     const forbiddenPackages = FORBIDDEN_INSTALLED_PACKAGES.filter((packageName) =>
       installedPackages.has(packageName),
     );
@@ -163,6 +456,23 @@ const main = (): void => {
       console.error(
         `Packed install unexpectedly installed forbidden package(s): ${forbiddenPackages.join(", ")}`,
       );
+      process.exit(1);
+    }
+
+    assertPackedEntryFiles(installDirectory, packedSnapshot.entries);
+    const currentEntrySnapshots = captureRuntimeEntrySnapshots(
+      installDirectory,
+      packedSnapshot.entries,
+    );
+    if (shouldUpdateSnapshots) {
+      writeJson(PACKED_ENTRY_SNAPSHOT_PATH, {
+        ...packedSnapshot,
+        entries: currentEntrySnapshots,
+      });
+    } else if (!isDeepStrictEqual(currentEntrySnapshots, packedSnapshot.entries)) {
+      console.error("Packed runtime export key drift detected.");
+      console.error("Expected:", JSON.stringify(packedSnapshot.entries, null, 2));
+      console.error("Received:", JSON.stringify(currentEntrySnapshots, null, 2));
       process.exit(1);
     }
 
@@ -184,6 +494,39 @@ const main = (): void => {
       process.exit(1);
     }
 
+    const deslopBinaryPath = path.join(
+      installDirectory,
+      "node_modules",
+      "deslop-cli",
+      "dist",
+      "cli.mjs",
+    );
+    runCommand({
+      command: process.execPath,
+      args: [deslopBinaryPath, "--help"],
+      cwd: installDirectory,
+    });
+
+    const cliModulePath = path.join(
+      installDirectory,
+      "node_modules",
+      "react-doctor",
+      "dist",
+      "cli.js",
+    );
+    const cliHelp = captureCliHelpSnapshot(cliModulePath, version);
+    assertHelpCommandCoverage(cliHelp.rawOutputByName);
+    if (shouldUpdateSnapshots) {
+      writeJson(CLI_HELP_SNAPSHOT_PATH, cliHelp.snapshot);
+    } else {
+      const expectedCliHelp = readJson<ReadonlyArray<CliHelpSnapshotEntry>>(CLI_HELP_SNAPSHOT_PATH);
+      if (!isDeepStrictEqual(cliHelp.snapshot, expectedCliHelp)) {
+        console.error("Packed CLI help compatibility snapshot drift detected.");
+        console.error("Run `nr compatibility:packed:update` after reviewing the change.");
+        process.exit(1);
+      }
+    }
+
     const scanResult = runCommand({
       command: process.execPath,
       args: [
@@ -199,9 +542,10 @@ const main = (): void => {
       allowedStatuses: [0, 1],
     });
 
-    let decoded: ReturnType<typeof Schema.decodeUnknownSync<typeof JsonReport>>;
+    const decodeJsonReport = Schema.decodeUnknownSync(JsonReport);
+    let decoded: ReturnType<typeof decodeJsonReport>;
     try {
-      decoded = Schema.decodeUnknownSync(JsonReport)(JSON.parse(scanResult.stdout));
+      decoded = decodeJsonReport(JSON.parse(scanResult.stdout));
     } catch (cause) {
       console.error("Installed CLI did not produce a schema-valid JsonReport.");
       console.error("stdout:", scanResult.stdout.slice(0, 2_000));
@@ -210,11 +554,11 @@ const main = (): void => {
     }
 
     console.log(
-      `Packed install smoke OK: version=${version} diagnostics=${decoded.diagnostics.length} forbiddenPackages=0`,
+      `Packed install smoke OK: version=${version} diagnostics=${decoded.diagnostics.length} entries=${currentEntrySnapshots.length} help=${cliHelp.snapshot.length} forbiddenPackages=0`,
     );
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 };
 
-main();
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) main();

@@ -3,6 +3,11 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  findPublishedPackageManifests,
+  type PackageManifest,
+  readPackageManifest,
+} from "./utils/find-published-package-manifests.ts";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
@@ -13,14 +18,6 @@ const NODE_BUILTIN_MODULES: ReadonlySet<string> = new Set([
   ...builtinModules,
   ...builtinModules.map((moduleName) => `node:${moduleName}`),
 ]);
-
-interface PackageManifest {
-  readonly name: string;
-  readonly private?: boolean;
-  readonly dependencies?: Record<string, string>;
-  readonly peerDependencies?: Record<string, string>;
-  readonly optionalDependencies?: Record<string, string>;
-}
 
 interface PhantomDependency {
   readonly importedPackage: string;
@@ -33,9 +30,6 @@ interface PackageAuditResult {
   readonly phantomDependencies: readonly PhantomDependency[];
   readonly artifactFileCount: number;
 }
-
-const readManifest = (packageDirectory: string): PackageManifest =>
-  JSON.parse(fs.readFileSync(path.join(packageDirectory, "package.json"), "utf8"));
 
 const toPackageName = (moduleSpecifier: string): string => {
   const segments = moduleSpecifier.split("/");
@@ -94,7 +88,7 @@ const collectModuleSpecifiers = (sourceText: string, fileName: string): Set<stri
 };
 
 const auditPublishedPackage = (packageDirectory: string): PackageAuditResult => {
-  const manifest = readManifest(packageDirectory);
+  const manifest = readPackageManifest(packageDirectory);
   const declaredDependencies = new Set<string>([
     ...Object.keys(manifest.dependencies ?? {}),
     ...Object.keys(manifest.peerDependencies ?? {}),
@@ -136,13 +130,9 @@ const auditPublishedPackage = (packageDirectory: string): PackageAuditResult => 
   };
 };
 
-const publishedPackageDirectories = fs
-  .readdirSync(PACKAGES_DIRECTORY, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => path.join(PACKAGES_DIRECTORY, entry.name))
-  .filter((packageDirectory) => fs.existsSync(path.join(packageDirectory, "package.json")))
-  .filter((packageDirectory) => readManifest(packageDirectory).private !== true)
-  .sort();
+const publishedPackageDirectories = findPublishedPackageManifests(PACKAGES_DIRECTORY).map(
+  ({ directory }) => directory,
+);
 
 if (publishedPackageDirectories.length === 0) {
   console.error("No published packages found under packages/.");

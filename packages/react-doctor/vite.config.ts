@@ -2,14 +2,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import {
+  DEFAULT_TEST_TIMEOUT_MS,
+  LSP_RUNTIME_EXTERNALS,
+  NATIVE_ANALYZER_EXTERNALS,
+  NATIVE_ANALYZER_RUNTIME_EXTERNALS,
+  NODE_PACK_TARGET,
+} from "../../scripts/build/constants.js";
+import { readPackageVersion } from "../../scripts/utils/read-package-version.js";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
-
-const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8")) as {
-  version: string;
-};
-
-const TEST_TIMEOUT_MS = 30_000;
+const packageVersion = readPackageVersion(import.meta.url);
 
 // HACK: agent-install's parseSkillManifest silently returns `null` when
 // frontmatter is missing or invalid `name:` / `description:` fields,
@@ -32,8 +35,7 @@ const assertSkillManifestParseable = (manifestPath: string): void => {
   }
 };
 
-// Ship every skill directory under `skills/` (the `react-doctor` skill and
-// its `references/` today) so `react-doctor install` can install them all.
+// Ship repository-root `skills/` as the canonical distributed sources.
 // Each is validated at build time so a broken SKILL.md is caught here, not
 // at install time.
 const copySkillsToDist = () => {
@@ -94,11 +96,7 @@ export default defineConfig({
           // (the server would start and exit immediately). They're
           // declared as runtime dependencies so the published tarball
           // resolves them.
-          "vscode-languageserver",
-          "vscode-languageserver-protocol",
-          "vscode-languageserver-textdocument",
-          "vscode-jsonrpc",
-          "vscode-uri",
+          ...LSP_RUNTIME_EXTERNALS,
           // HACK: deslop-js wraps oxc-parser / oxc-resolver, both of
           // which load platform-specific NAPI bindings via require().
           // Rollup happily inlines the JS loader chain but rewrites
@@ -109,11 +107,7 @@ export default defineConfig({
           // siblings) external so the loaders run untouched and Node
           // resolves the bindings from the deslop-js node_modules
           // tree on install — see issue #404.
-          "deslop-js",
-          "oxc-parser",
-          "oxc-resolver",
-          "oxlint",
-          "oxlint-plugin-react-doctor",
+          ...NATIVE_ANALYZER_RUNTIME_EXTERNALS,
           "prompts",
           "typescript",
           // The interactive Ink report (lazy-loaded for `experimental-tui`).
@@ -129,7 +123,7 @@ export default defineConfig({
         ],
       },
       dts: true,
-      target: "node20",
+      target: NODE_PACK_TARGET,
       platform: "node",
       // Emit source maps so the release pipeline (scripts/sentry-sourcemaps.mjs)
       // can inject Sentry Debug IDs and upload them for readable, de-minified
@@ -138,7 +132,7 @@ export default defineConfig({
       // the Debug IDs injected into the published `dist/cli.js`.
       sourcemap: true,
       env: {
-        VERSION: process.env.VERSION ?? packageJson.version,
+        VERSION: process.env.VERSION ?? packageVersion,
       },
       // HACK: no shebang on dist/cli.js — the published `bin` entry is
       // bin/react-doctor.js, which owns the `#!/usr/bin/env node` line
@@ -164,17 +158,13 @@ export default defineConfig({
           "confbox",
           "jiti",
           "magicast",
-          "deslop-js",
-          "oxc-parser",
-          "oxc-resolver",
-          "oxlint",
-          "oxlint-plugin-react-doctor",
+          ...NATIVE_ANALYZER_RUNTIME_EXTERNALS,
           "prompts",
           "typescript",
         ],
       },
       dts: true,
-      target: "node20",
+      target: NODE_PACK_TARGET,
       platform: "node",
       fixedExtension: false,
     },
@@ -190,27 +180,18 @@ export default defineConfig({
           // same reason as the CLI pack (it resolves its own OTel/native deps
           // via require() at runtime).
           "@sentry/node",
-          "deslop-js",
-          "oxc-parser",
-          "oxc-resolver",
-          "oxlint",
-          "oxlint-plugin-react-doctor",
-          "typescript",
-          "vscode-languageserver",
-          "vscode-languageserver-protocol",
-          "vscode-languageserver-textdocument",
-          "vscode-jsonrpc",
-          "vscode-uri",
+          ...NATIVE_ANALYZER_EXTERNALS,
+          ...LSP_RUNTIME_EXTERNALS,
         ],
       },
       dts: false,
-      target: "node20",
+      target: NODE_PACK_TARGET,
       platform: "node",
       fixedExtension: false,
     },
   ],
   test: {
-    testTimeout: TEST_TIMEOUT_MS,
+    testTimeout: DEFAULT_TEST_TIMEOUT_MS,
     // NOTE: do NOT pin Windows onto a single serial fork
     // (`singleFork` / `maxWorkers: 1` / `fileParallelism: false`).
     // This suite drives the real `oxlint` binary and per-test deslop

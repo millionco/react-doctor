@@ -1,27 +1,24 @@
 import { defineConfig } from "vite-plus";
+import {
+  DEFAULT_TEST_TIMEOUT_MS,
+  ENGINE_RUNTIME_EXTERNALS,
+  NODE_PACK_TARGET,
+} from "../../scripts/build/constants.js";
 
 export default defineConfig({
   pack: [
     {
       entry: { index: "./src/index.ts" },
       deps: {
-        neverBundle: [
-          "deslop-js",
-          "effect",
-          "oxc-parser",
-          "oxc-resolver",
-          "oxlint",
-          "oxlint-plugin-react-doctor",
-          "typescript",
-        ],
+        neverBundle: ENGINE_RUNTIME_EXTERNALS,
       },
       dts: true,
-      target: "node20",
+      target: NODE_PACK_TARGET,
       platform: "node",
       fixedExtension: false,
     },
   ],
   test: {
-    testTimeout: 30_000,
+    testTimeout: DEFAULT_TEST_TIMEOUT_MS,
   },
 });

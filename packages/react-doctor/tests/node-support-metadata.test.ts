@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import { NODE_PACK_TARGET } from "../../../scripts/build/constants.js";
 
 interface PackageJson {
   readonly engines?: {
@@ -61,6 +62,7 @@ const packageBuildConfigs = [
   "packages/api/vite.config.ts",
   "packages/core/vite.config.ts",
   "packages/eslint-plugin-react-doctor/vite.config.ts",
+  "packages/language-server/vite.config.ts",
   "packages/oxlint-plugin-react-doctor/vite.config.ts",
   "packages/react-doctor/vite.config.ts",
 ];
@@ -98,9 +100,10 @@ describe("Node support metadata", () => {
   });
 
   it("keeps published package builds targeting Node 20", () => {
+    expect(NODE_PACK_TARGET).toBe("node20");
     for (const configPath of packageBuildConfigs) {
       const config = readText(configPath);
-      expect(config, configPath).toContain('target: "node20"');
+      expect(config, configPath).toContain("target: NODE_PACK_TARGET");
       expect(config, configPath).not.toContain('target: "node22"');
     }
   });

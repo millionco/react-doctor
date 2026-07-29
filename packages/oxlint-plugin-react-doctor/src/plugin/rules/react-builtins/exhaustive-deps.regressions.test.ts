@@ -7,6 +7,34 @@ import { exhaustiveDeps } from "./exhaustive-deps.js";
 import { clearExhaustiveDepsSuppressionCache } from "./exhaustive-deps-suppression.js";
 
 describe("react-builtins/exhaustive-deps — regressions", () => {
+  it("does not analyze unconfigured custom callback Hooks without dependency arrays", () => {
+    const code = `
+      import { useCallback, useEffect, useRef } from "react";
+
+      const useStableCallback = (callback) => {
+        const callbackRef = useRef(callback);
+        useEffect(() => {
+          callbackRef.current = callback;
+        }, [callback]);
+        return useCallback((...argumentsForCallback) => {
+          return callbackRef.current(...argumentsForCallback);
+        }, []);
+      };
+
+      const Chat = ({ send, share, retry, cite, rate }) => {
+        const sendMessage = useStableCallback((message) => send(message));
+        const shareMessage = useStableCallback((message) => share(message));
+        const retryMessage = useStableCallback((message) => retry(message));
+        const citeMessage = useStableCallback((message) => cite(message));
+        const rateMessage = useStableCallback((message) => rate(message));
+        return null;
+      };
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each([
     [
       "a shadowing local",

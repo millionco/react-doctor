@@ -1691,6 +1691,9 @@ If the missing value is recreated every render, move it inside the hook or stabi
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        const hookName = getHookName(node.callee, context.scopes);
+        if (!hookName || !isHookOfInterest(hookName, node.callee)) return;
+
         for (const finding of findForwardedFreshHookDependencies(
           node,
           context,
@@ -1702,8 +1705,6 @@ If the missing value is recreated every render, move it inside the hook or stabi
           });
         }
 
-        const hookName = getHookName(node.callee, context.scopes);
-        if (!hookName || !isHookOfInterest(hookName, node.callee)) return;
         if (
           HOOKS_REQUIRING_DEPS_MATCH.has(hookName) &&
           !isReactApiCall(node, HOOKS_REQUIRING_DEPS_MATCH, context.scopes, {

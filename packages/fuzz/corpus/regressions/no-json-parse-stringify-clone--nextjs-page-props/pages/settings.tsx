@@ -1,6 +1,6 @@
 // rule: no-json-parse-stringify-clone
-// weakness: framework-gating
-// source: ReactBench RDFPFN792026 exact 15-unit false-positive partition
+// weakness: framework-gating, control-flow, transparent-wrapper
+// source: ReactBench RDFPFN792026 exact 15-unit false-positive partition; Bugbot PR #1498
 
 export const getServerSideProps = withSessionSsr(async ({ req }) => {
   const apiKeys = await loadApiKeys();
@@ -13,3 +13,12 @@ export const getServerSideProps = withSessionSsr(async ({ req }) => {
     },
   };
 });
+
+export const getStaticProps = async ({ missing }) =>
+  missing
+    ? { notFound: true }
+    : ({
+        props: {
+          apiKeys: JSON.parse(JSON.stringify(loadApiKeys())),
+        },
+      } satisfies GetStaticPropsResult);

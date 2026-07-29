@@ -209,6 +209,68 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag JSON normalization in a conditional page-data return", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async ({ preferProps }) => {
+        return preferProps
+          ? { props: { state: JSON.parse(JSON.stringify(state)) } }
+          : { redirect: { destination: "/", permanent: false } };
+      };
+
+      export async function getStaticProps({ missing }) {
+        return missing
+          ? { notFound: true }
+          : { props: { state: JSON.parse(JSON.stringify(state)) } };
+      }
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag JSON normalization in a typed concise page-data return", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = (
+        async () =>
+          ({
+            props: { state: JSON.parse(JSON.stringify(state)) },
+          } as GetServerSidePropsResult)
+      ) satisfies GetServerSideProps;
+
+      export const getStaticProps = async () =>
+        ({
+          props: { state: JSON.parse(JSON.stringify(state)) },
+        } satisfies GetStaticPropsResult);
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a clone in a conditional props object that is not returned", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async ({ missing }) => {
+        const response = missing
+          ? { notFound: true }
+          : { props: { state: JSON.parse(JSON.stringify(state)) } };
+        consume(response);
+        return { props: { state } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags redundant JSON normalization before an API response", () => {
     const result = runRule(
       noJsonParseStringifyClone,

@@ -150,6 +150,19 @@ const findEnclosingNextjsPageDataFunction = (node: EsTreeNode): EsTreeNode | nul
   return null;
 };
 
+const findConditionalReturnExpressionRoot = (node: EsTreeNode): EsTreeNode => {
+  let expressionRoot = findTransparentExpressionRoot(node);
+  while (
+    expressionRoot.parent &&
+    isNodeOfType(expressionRoot.parent, "ConditionalExpression") &&
+    (expressionRoot.parent.consequent === expressionRoot ||
+      expressionRoot.parent.alternate === expressionRoot)
+  ) {
+    expressionRoot = findTransparentExpressionRoot(expressionRoot.parent);
+  }
+  return expressionRoot;
+};
+
 const isInsideReturnedNextjsProps = (node: EsTreeNode, pageDataFunction: EsTreeNode): boolean => {
   let cursor: EsTreeNode | null | undefined = node.parent;
   while (cursor && cursor !== pageDataFunction) {
@@ -159,8 +172,8 @@ const isInsideReturnedNextjsProps = (node: EsTreeNode, pageDataFunction: EsTreeN
     ) {
       const propertyContainer = cursor.parent;
       if (!propertyContainer) return false;
-      const returnedObject = findTransparentExpressionRoot(propertyContainer);
-      const returnStatement = returnedObject.parent;
+      const returnExpression = findConditionalReturnExpressionRoot(propertyContainer);
+      const returnStatement = returnExpression.parent;
       if (
         isNodeOfType(returnStatement, "ReturnStatement") &&
         findEnclosingFunction(returnStatement) === pageDataFunction
@@ -170,7 +183,7 @@ const isInsideReturnedNextjsProps = (node: EsTreeNode, pageDataFunction: EsTreeN
       if (
         isNodeOfType(pageDataFunction, "ArrowFunctionExpression") &&
         !isNodeOfType(pageDataFunction.body, "BlockStatement") &&
-        stripParenExpression(pageDataFunction.body) === returnedObject
+        stripParenExpression(pageDataFunction.body) === stripParenExpression(returnExpression)
       ) {
         return true;
       }

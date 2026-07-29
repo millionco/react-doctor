@@ -810,7 +810,7 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("accepts terminal block catches that return known non-thenable values", () => {
+  it("accepts terminal block catches that return known non-rejecting values", () => {
     const validSources = [
       `const C = ({ source }) => {
         const [, setValue] = useState();
@@ -840,6 +840,25 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
           });
         }, [source]);
       };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return Promise.resolve(null);
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        const fallback = undefined;
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.fallback);
+            return Promise.resolve(fallback);
+          });
+        }, [source]);
+      };`,
     ];
     for (const source of validSources) {
       expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
@@ -848,9 +867,8 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
     }
   });
 
-  it("continues to flag terminal block catches that may return a thenable", () => {
-    const result = runRule(
-      noPromiseThenSideEffectInEffectWithoutCatch,
+  it("continues to flag terminal block catches that may reject", () => {
+    const invalidSources = [
       `const C = ({ source }) => {
         const [, setValue] = useState();
         const fallback = source.fallback;
@@ -861,8 +879,40 @@ describe("no-promise-then-side-effect-in-effect-without-catch audit regressions"
           });
         }, [source]);
       };`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.value);
+            return Promise.resolve(source.fallback);
+          });
+        }, [source]);
+      };`,
+      `const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.value);
+            return Promise.reject(null);
+          });
+        }, [source]);
+      };`,
+      `const Promise = { resolve: () => fetch("/fallback") };
+      const C = ({ source }) => {
+        const [, setValue] = useState();
+        useEffect(() => {
+          fetch("/x").then(setValue).catch(() => {
+            setValue(source.value);
+            return Promise.resolve(null);
+          });
+        }, [source]);
+      };`,
+    ];
+    for (const source of invalidSources) {
+      expect(runRule(noPromiseThenSideEffectInEffectWithoutCatch, source).diagnostics).toHaveLength(
+        1,
+      );
+    }
   });
 
   it("accepts rejection handlers with simple non-throwing arguments", () => {

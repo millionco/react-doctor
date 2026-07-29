@@ -48,13 +48,32 @@ interface ResolvedInitiator {
   initiator: EsTreeNode;
   hasUpstreamRejectionHandling: boolean;
 }
-const isKnownNonThenableHandlerReturn = (
+const isKnownNonRejectingHandlerReturn = (
   expression: EsTreeNode,
   context: RuleContext,
   visitedBindingIdentifiers = new Set<EsTreeNode>(),
 ): boolean => {
   const strippedExpression = stripParenExpression(expression);
   if (isDefinitelyNonThenableValue(strippedExpression)) return true;
+  if (
+    isNodeOfType(strippedExpression, "CallExpression") &&
+    isNodeOfType(strippedExpression.callee, "MemberExpression")
+  ) {
+    const receiver = stripParenExpression(strippedExpression.callee.object);
+    if (
+      isNodeOfType(receiver, "Identifier") &&
+      receiver.name === "Promise" &&
+      context.scopes.isGlobalReference(receiver) &&
+      getStaticPropertyName(strippedExpression.callee) === "resolve"
+    ) {
+      const resolvedValue = strippedExpression.arguments[0];
+      return (
+        !resolvedValue ||
+        (!isNodeOfType(resolvedValue, "SpreadElement") &&
+          isKnownNonRejectingHandlerReturn(resolvedValue, context, visitedBindingIdentifiers))
+      );
+    }
+  }
   if (!isNodeOfType(strippedExpression, "Identifier")) return false;
   if (
     strippedExpression.name === "undefined" &&
@@ -67,7 +86,8 @@ const isKnownNonThenableHandlerReturn = (
   visitedBindingIdentifiers.add(symbol.bindingIdentifier);
   const initializer = getDirectUnreassignedInitializer(symbol);
   return Boolean(
-    initializer && isKnownNonThenableHandlerReturn(initializer, context, visitedBindingIdentifiers),
+    initializer &&
+    isKnownNonRejectingHandlerReturn(initializer, context, visitedBindingIdentifiers),
   );
 };
 const isKnownNonRejectingHandler = (
@@ -91,7 +111,7 @@ const isKnownNonRejectingHandler = (
     if (
       isNodeOfType(child, "ReturnStatement") &&
       child.argument &&
-      !isKnownNonThenableHandlerReturn(child.argument, context)
+      !isKnownNonRejectingHandlerReturn(child.argument, context)
     ) {
       const returnedExpression = stripParenExpression(child.argument);
       if (!isNodeOfType(returnedExpression, "CallExpression")) {
@@ -196,7 +216,7 @@ const hasRejectionHandler = (
     if (
       isNodeOfType(child, "ReturnStatement") &&
       child.argument &&
-      !isKnownNonThenableHandlerReturn(child.argument, context)
+      !isKnownNonRejectingHandlerReturn(child.argument, context)
     ) {
       doesExplicitlyReject = true;
       return false;

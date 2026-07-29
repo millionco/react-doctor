@@ -101,6 +101,16 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "a defaulted component options prop forwarded to a custom hook",
+      `const useNotifyError = ({ onError }) => {
+         onError();
+       };
+       const Image = ({ options = {} }) => {
+         useNotifyError(options);
+         return <div />;
+       };`,
+    ],
+    [
       "a handler method on a custom hook options parameter",
       `const useNotifyError = (options) => {
          options.onError();

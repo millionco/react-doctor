@@ -227,8 +227,13 @@ const argumentValueForParameterBinding = (
   if (!binding.propertyName) return argument;
   let candidate = stripParenExpression(argument);
   if (isNodeOfType(candidate, "Identifier")) {
-    const initializer = findVariableInitializer(candidate, candidate.name)?.initializer;
-    if (initializer) candidate = stripParenExpression(initializer);
+    const variableBinding = findVariableInitializer(candidate, candidate.name);
+    if (
+      variableBinding?.initializer &&
+      isNodeOfType(variableBinding.bindingIdentifier.parent, "VariableDeclarator")
+    ) {
+      candidate = stripParenExpression(variableBinding.initializer);
+    }
   }
   if (!isNodeOfType(candidate, "ObjectExpression")) return argument;
   const matchingProperty = candidate.properties.find(

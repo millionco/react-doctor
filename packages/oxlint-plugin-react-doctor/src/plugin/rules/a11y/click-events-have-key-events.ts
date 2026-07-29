@@ -7,6 +7,10 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activatable-descendant.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import {
+  isFocusForwardingHandler,
+  isFocusForwardingHandlerExpression,
+} from "../../utils/is-focus-forwarding-handler.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -146,74 +150,6 @@ const resolveMemberElementTag = (node: EsTreeNodeOfType<"JSXOpeningElement">): s
   return tag && HTML_TAGS.has(tag) ? tag : null;
 };
 
-// `.click()` is deliberately NOT here: forwarding a click to a hidden
-// file input (`fileInputRef.current?.click()`) is a real keyboard gap
-// because a display:none input can't be focused.
-const FOCUS_FORWARDING_METHOD_NAMES: ReadonlySet<string> = new Set([
-  "focus",
-  "select",
-  "stopPropagation",
-  "preventDefault",
-  "stopImmediatePropagation",
-]);
-
-const isFocusForwardingCall = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return false;
-  const inner = isNodeOfType(node, "ChainExpression") ? (node.expression as EsTreeNode) : node;
-  if (!isNodeOfType(inner, "CallExpression")) return false;
-  const callee = inner.callee as EsTreeNode;
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  if (!isNodeOfType(callee.property, "Identifier")) return false;
-  return FOCUS_FORWARDING_METHOD_NAMES.has(callee.property.name);
-};
-
-const isFocusForwardingFunctionBody = (body: EsTreeNode | null | undefined): boolean => {
-  if (!body) return false;
-  if (isFocusForwardingCall(body)) return true;
-  if (isNodeOfType(body, "BlockStatement")) {
-    const statements = body.body ?? [];
-    if (statements.length === 0) return false;
-    for (const statement of statements) {
-      if (!isNodeOfType(statement, "ExpressionStatement")) return false;
-      if (!isFocusForwardingCall(statement.expression as EsTreeNode)) return false;
-    }
-    return true;
-  }
-  return false;
-};
-
-const resolveHandlerFunction = (attribute: EsTreeNodeOfType<"JSXAttribute">): EsTreeNode | null => {
-  if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
-  return resolveHandlerFunctionExpression(attribute.value.expression as EsTreeNode);
-};
-
-const resolveHandlerFunctionExpression = (handlerExpression: EsTreeNode): EsTreeNode | null => {
-  let expression = handlerExpression;
-  if (isNodeOfType(expression, "Identifier")) {
-    const binding = findVariableInitializer(expression, expression.name);
-    if (!binding?.initializer) return null;
-    expression = binding.initializer;
-  }
-  if (
-    isNodeOfType(expression, "ArrowFunctionExpression") ||
-    isNodeOfType(expression, "FunctionExpression") ||
-    isNodeOfType(expression, "FunctionDeclaration")
-  ) {
-    return expression;
-  }
-  return null;
-};
-
-// `onClick={() => inputRef.current?.focus()}` (and same-file named
-// handlers with that shape) only forward focus to a real control
-// keyboard users already reach via Tab — the wrapper isn't a
-// keyboard-inaccessible action.
-const isFocusForwardingHandler = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
-  const handlerFunction = resolveHandlerFunction(attribute);
-  if (!handlerFunction) return false;
-  return isFocusForwardingFunctionBody((handlerFunction as { body?: EsTreeNode }).body ?? null);
-};
-
 // Items of ARIA composite widgets receive keyboard interaction from the
 // composite container (roving tabindex or aria-activedescendant per the
 // APG), not from their own key handlers — the doc's
@@ -281,12 +217,38 @@ const containsBackdropDismissComparison = (node: EsTreeNode | null | undefined):
   return false;
 };
 
+const resolveBackdropHandlerFunctionExpression = (
+  handlerExpression: EsTreeNode,
+): EsTreeNode | null => {
+  let expression = handlerExpression;
+  if (isNodeOfType(expression, "Identifier")) {
+    const binding = findVariableInitializer(expression, expression.name);
+    if (!binding?.initializer) return null;
+    expression = binding.initializer;
+  }
+  if (
+    isNodeOfType(expression, "ArrowFunctionExpression") ||
+    isNodeOfType(expression, "FunctionExpression") ||
+    isNodeOfType(expression, "FunctionDeclaration")
+  ) {
+    return expression;
+  }
+  return null;
+};
+
+const resolveBackdropHandlerFunction = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): EsTreeNode | null => {
+  if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
+  return resolveBackdropHandlerFunctionExpression(attribute.value.expression as EsTreeNode);
+};
+
 // A handler gated on `e.target === e.currentTarget` is the
 // click-outside/backdrop-dismiss idiom: it only reacts to clicks on the
 // backdrop itself, an action keyboard users perform via Escape instead
 // (the backdrop is never focusable).
 const isBackdropDismissHandler = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
-  const handlerFunction = resolveHandlerFunction(attribute);
+  const handlerFunction = resolveBackdropHandlerFunction(attribute);
   if (!handlerFunction) return false;
   return containsBackdropDismissComparison((handlerFunction as { body?: EsTreeNode }).body ?? null);
 };
@@ -342,18 +304,21 @@ export const clickEventsHaveKeyEvents = defineRule({
           return;
         }
         if (onClick && isPureEventBlockerHandler(onClick)) return;
-        if (onClick && isFocusForwardingHandler(onClick)) return;
-        const spreadHandlerFunction = spreadOnClickExpression
-          ? resolveHandlerFunctionExpression(spreadOnClickExpression)
+        if (onClick && isFocusForwardingHandler(onClick, context.scopes)) return;
+        if (
+          spreadOnClickExpression &&
+          isFocusForwardingHandlerExpression(spreadOnClickExpression, context.scopes)
+        ) {
+          return;
+        }
+        const spreadBackdropHandlerFunction = spreadOnClickExpression
+          ? resolveBackdropHandlerFunctionExpression(spreadOnClickExpression)
           : null;
         if (
-          spreadHandlerFunction &&
-          (isFocusForwardingFunctionBody(
-            (spreadHandlerFunction as { body?: EsTreeNode }).body ?? null,
-          ) ||
-            containsBackdropDismissComparison(
-              (spreadHandlerFunction as { body?: EsTreeNode }).body ?? null,
-            ))
+          spreadBackdropHandlerFunction &&
+          containsBackdropDismissComparison(
+            (spreadBackdropHandlerFunction as { body?: EsTreeNode }).body ?? null,
+          )
         ) {
           return;
         }

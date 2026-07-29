@@ -145,12 +145,10 @@ const argumentDerivesFromPostMountSource = (
   lifecycleFunction: EsTreeNode,
   callbackRefFieldNames: ReadonlySet<string>,
 ): boolean => {
-  const argumentNodes = setStateCall.arguments ?? [];
-  if (argumentNodes.length === 0) return false;
-  if (argumentNodes.some((argument) => containsPostMountSource(argument))) return true;
-  if (argumentNodes.some((argument) => containsCallbackRefField(argument, callbackRefFieldNames))) {
-    return true;
-  }
+  const argumentNode = setStateCall.arguments[0];
+  if (!argumentNode || isNodeOfType(argumentNode, "SpreadElement")) return false;
+  if (containsPostMountSource(argumentNode)) return true;
+  if (containsCallbackRefField(argumentNode, callbackRefFieldNames)) return true;
 
   const localInitializers = new Map<string, EsTreeNode>();
   walkAst(lifecycleFunction, (descendant) => {
@@ -165,7 +163,7 @@ const argumentDerivesFromPostMountSource = (
   if (localInitializers.size === 0) return false;
 
   const reachedNames = new Set<string>();
-  for (const argument of argumentNodes) collectReferencedNames(argument, reachedNames);
+  collectReferencedNames(argumentNode, reachedNames);
   const pendingNames = [...reachedNames];
   while (pendingNames.length > 0) {
     const name = pendingNames.pop();

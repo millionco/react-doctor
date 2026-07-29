@@ -334,6 +334,31 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags when only the setState completion callback reads the ref field", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          this.setState({ selectedDate: this.props.selectedDate }, () => {
+            positionTimeList(this.monthContainer);
+          });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   // setState after an await in an async componentDidMount is the
   // promise-buried case the doc says must not fire in "allowed" mode
   // (dtale NetworkDisplay).

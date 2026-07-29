@@ -445,6 +445,54 @@ describe("no-loading-flag-reset-outside-finally", () => {
     }
   });
 
+  it("requires an ownership claim to execute before the loading setter", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const load = async () => {
+           const token = {};
+           setIsLoading(true);
+           ownerRef.current = token;
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const load = async () => {
+           setIsLoading(true);
+           const requestId = ++latestStartedRef.current;
+           try { await fetchFeed(); }
+           finally {
+             if (requestId >= latestStartedRef.current) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const load = async () => {
+           const token = {};
+           ownerRef.current = (setIsLoading(true), token);
+           try { await fetchFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(1);
+    }
+  });
+
   it("accepts an ownership claim aligned with the loading path", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

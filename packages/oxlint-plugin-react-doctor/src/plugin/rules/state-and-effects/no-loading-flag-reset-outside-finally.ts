@@ -1822,12 +1822,9 @@ const claimPrecedesTruthySet = (
   const truthyIndex = claimEntry.block.body.findIndex(
     (statement) => statement === truthyEntry.entry,
   );
-  if (claimIndex === -1 || truthyIndex === -1) return false;
-  if (claimIndex === truthyIndex) return true;
-  const firstIndex = Math.min(claimIndex, truthyIndex);
-  const lastIndex = Math.max(claimIndex, truthyIndex);
+  if (claimIndex === -1 || truthyIndex === -1 || claimIndex >= truthyIndex) return false;
   return claimEntry.block.body
-    .slice(firstIndex + 1, lastIndex)
+    .slice(claimIndex + 1, truthyIndex)
     .every(
       (statement) =>
         !subtreeHasAbruptSynchronousOperation(statement as EsTreeNode, functionNode, context),

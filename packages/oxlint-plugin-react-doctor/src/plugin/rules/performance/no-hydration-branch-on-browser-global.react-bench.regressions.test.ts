@@ -333,6 +333,38 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
         };
       `,
     ],
+    ...[["0"], ['""'], ["null"], ["undefined"]].map(([value]) => [
+      `strict browser predicate comparison with ${value}`,
+      `
+        import React from "react";
+        export const Page = () => {
+          const stable = (typeof window === "undefined") === ${value};
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ]),
+    [
+      "a browser predicate masked by bitwise and",
+      `
+        import React from "react";
+        export const Page = () => {
+          const stable = (typeof window === "undefined") & 0;
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ],
+    [
+      "inverse browser predicates combined by bitwise or",
+      `
+        import React from "react";
+        export const Page = () => {
+          const stable =
+            (typeof window === "undefined") |
+            (typeof window !== "undefined");
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ],
   ])("stays quiet for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -344,6 +376,11 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
     [
       "a nested browser predicate compared with false",
       `((typeof window === "undefined") === true) === false`,
+    ],
+    ["a browser predicate loosely compared with zero", `(typeof window === "undefined") == 0`],
+    [
+      "a Boolean-wrapped browser predicate compared with false",
+      `Boolean(typeof window === "undefined") === false`,
     ],
   ])("reports %s", (_name, condition) => {
     const result = run(`

@@ -55,6 +55,11 @@ interface HydrationStatementResult {
   readonly value: boolean | null;
 }
 
+interface HydrationPrimitiveResult {
+  readonly kind: "boolean" | "null" | "number" | "string" | "undefined";
+  readonly value: boolean | null | number | string | undefined;
+}
+
 const findGuardingIfStatements = (
   node: EsTreeNode,
   functionBoundary: EsTreeNode,
@@ -311,6 +316,125 @@ const readLogicalConditionResult = (
   return null;
 };
 
+const areLooselyEqualPrimitiveResults = (
+  left: HydrationPrimitiveResult,
+  right: HydrationPrimitiveResult,
+): boolean => {
+  if (left.kind === right.kind) return left.value === right.value;
+  if (
+    (left.kind === "null" && right.kind === "undefined") ||
+    (left.kind === "undefined" && right.kind === "null")
+  ) {
+    return true;
+  }
+  if (left.kind === "boolean") {
+    return areLooselyEqualPrimitiveResults({ kind: "number", value: left.value ? 1 : 0 }, right);
+  }
+  if (right.kind === "boolean") {
+    return areLooselyEqualPrimitiveResults(left, {
+      kind: "number",
+      value: right.value ? 1 : 0,
+    });
+  }
+  if (left.kind === "number" && right.kind === "string") {
+    return left.value === Number(right.value);
+  }
+  if (left.kind === "string" && right.kind === "number") {
+    return Number(left.value) === right.value;
+  }
+  return false;
+};
+
+const readHydrationPrimitiveResult = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  runtime: "client" | "server",
+  state: HydrationResolutionState,
+): HydrationPrimitiveResult | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  const predicateMatch = matchBrowserPredicate(unwrappedExpression, context);
+  if (predicateMatch) {
+    return { kind: "boolean", value: predicateMatch[`${runtime}Result`] };
+  }
+  if (isNodeOfType(unwrappedExpression, "Literal")) {
+    const value = unwrappedExpression.value;
+    if (value === null) return { kind: "null", value };
+    if (typeof value === "boolean") return { kind: "boolean", value };
+    if (typeof value === "number") return { kind: "number", value };
+    if (typeof value === "string") return { kind: "string", value };
+    return null;
+  }
+  if (
+    isNodeOfType(unwrappedExpression, "Identifier") &&
+    unwrappedExpression.name === "undefined" &&
+    context.scopes.isGlobalReference(unwrappedExpression)
+  ) {
+    return { kind: "undefined", value: undefined };
+  }
+  if (
+    isNodeOfType(unwrappedExpression, "UnaryExpression") &&
+    unwrappedExpression.operator === "!"
+  ) {
+    const argumentResult = readHydrationConditionResult(
+      unwrappedExpression.argument,
+      context,
+      runtime,
+      state,
+    );
+    return argumentResult === null ? null : { kind: "boolean", value: !argumentResult };
+  }
+  if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
+    const leftResult = readHydrationPrimitiveResult(
+      unwrappedExpression.left,
+      context,
+      runtime,
+      state,
+    );
+    const rightResult = readHydrationPrimitiveResult(
+      unwrappedExpression.right,
+      context,
+      runtime,
+      state,
+    );
+    if (!leftResult || !rightResult) return null;
+    if (unwrappedExpression.operator === "===" || unwrappedExpression.operator === "!==") {
+      const areEqual =
+        leftResult.kind === rightResult.kind && leftResult.value === rightResult.value;
+      return {
+        kind: "boolean",
+        value: unwrappedExpression.operator === "===" ? areEqual : !areEqual,
+      };
+    }
+    if (unwrappedExpression.operator === "==" || unwrappedExpression.operator === "!=") {
+      const areEqual = areLooselyEqualPrimitiveResults(leftResult, rightResult);
+      return {
+        kind: "boolean",
+        value: unwrappedExpression.operator === "==" ? areEqual : !areEqual,
+      };
+    }
+  }
+  if (isNodeOfType(unwrappedExpression, "CallExpression")) {
+    const callArguments = unwrappedExpression.arguments ?? [];
+    const callee = stripParenExpression(unwrappedExpression.callee);
+    if (
+      isNodeOfType(callee, "Identifier") &&
+      callee.name === "Boolean" &&
+      context.scopes.isGlobalReference(callee) &&
+      callArguments.length === 1 &&
+      !isNodeOfType(callArguments[0], "SpreadElement")
+    ) {
+      const argumentResult = readHydrationConditionResult(
+        callArguments[0],
+        context,
+        runtime,
+        state,
+      );
+      return argumentResult === null ? null : { kind: "boolean", value: argumentResult };
+    }
+  }
+  return null;
+};
+
 const readHydrationConditionResult = (
   expression: EsTreeNode,
   context: RuleContext,
@@ -401,26 +525,8 @@ const readHydrationConditionResult = (
     });
   }
   if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
-    const leftResult = readHydrationConditionResult(
-      unwrappedExpression.left,
-      context,
-      runtime,
-      state,
-    );
-    const rightResult = readHydrationConditionResult(
-      unwrappedExpression.right,
-      context,
-      runtime,
-      state,
-    );
-    if (leftResult === null || rightResult === null) return null;
-    if (unwrappedExpression.operator === "===" || unwrappedExpression.operator === "==") {
-      return leftResult === rightResult;
-    }
-    if (unwrappedExpression.operator === "!==" || unwrappedExpression.operator === "!=") {
-      return leftResult !== rightResult;
-    }
-    return null;
+    const result = readHydrationPrimitiveResult(unwrappedExpression, context, runtime, state);
+    return result?.kind === "boolean" && typeof result.value === "boolean" ? result.value : null;
   }
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&
@@ -720,6 +826,14 @@ const matchHydrationConditionInternal = (
     );
   }
   if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
+    if (
+      unwrappedExpression.operator !== "===" &&
+      unwrappedExpression.operator !== "!==" &&
+      unwrappedExpression.operator !== "==" &&
+      unwrappedExpression.operator !== "!="
+    ) {
+      return null;
+    }
     const nestedMatch =
       matchHydrationConditionInternal(unwrappedExpression.left, context, state) ??
       matchHydrationConditionInternal(unwrappedExpression.right, context, state);

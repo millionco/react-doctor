@@ -271,12 +271,19 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it.each([`this["monthContainer"] = value;`, `this[this.props.fieldName] = value;`])(
-    "still flags a callback-ref field with the competing writer %s",
-    (competingWrite) => {
-      const result = runRule(
-        noDidMountSetState,
-        `
+  it.each([
+    `this["monthContainer"] = value;`,
+    `this[this.props.fieldName] = value;`,
+    `Object.assign(this, { monthContainer: value });`,
+    `Object.defineProperty(this, "monthContainer", { value });`,
+    `Object.defineProperties(this, { monthContainer: { value } });`,
+    `Reflect.set(this, "monthContainer", value);`,
+    `Reflect.defineProperty(this, "monthContainer", { value });`,
+    `Reflect.deleteProperty(this, "monthContainer");`,
+  ])("still flags a callback-ref field with the competing writer %s", (competingWrite) => {
+    const result = runRule(
+      noDidMountSetState,
+      `
       import { Component } from "react";
       class Calendar extends Component {
         monthContainer = undefined;
@@ -299,11 +306,10 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
         }
       }
       `,
-      );
-      expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(1);
-    },
-  );
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 
   it("still flags a callback-ref field initialized from props", () => {
     const result = runRule(

@@ -205,6 +205,65 @@ const isUndefinedOrNull = (node: EsTreeNode | null | undefined): boolean => {
   );
 };
 
+const objectExpressionMayDefineField = (node: EsTreeNode, fieldName: string): boolean => {
+  const candidate = stripParenExpression(node);
+  if (!isNodeOfType(candidate, "ObjectExpression")) return true;
+  return candidate.properties.some((property) => {
+    if (!isNodeOfType(property, "Property")) return true;
+    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    return propertyName === null || propertyName === fieldName;
+  });
+};
+
+const callMayWriteThisField = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  fieldName: string,
+): boolean => {
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object as EsTreeNode);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const methodName = getStaticPropertyKeyName(callee, { allowComputedString: true });
+  const [target, propertyOrSource, ...remainingArguments] = callExpression.arguments;
+  if (
+    !target ||
+    isNodeOfType(target, "SpreadElement") ||
+    !isNodeOfType(stripParenExpression(target as EsTreeNode), "ThisExpression")
+  ) {
+    return false;
+  }
+  if (receiver.name === "Object" && methodName === "assign") {
+    const sources = [propertyOrSource, ...remainingArguments];
+    return sources.some(
+      (source) =>
+        !source ||
+        isNodeOfType(source, "SpreadElement") ||
+        objectExpressionMayDefineField(source as EsTreeNode, fieldName),
+    );
+  }
+  if (receiver.name === "Object" && methodName === "defineProperties") {
+    return (
+      !propertyOrSource ||
+      isNodeOfType(propertyOrSource, "SpreadElement") ||
+      objectExpressionMayDefineField(propertyOrSource as EsTreeNode, fieldName)
+    );
+  }
+  if (
+    (receiver.name === "Object" && methodName === "defineProperty") ||
+    (receiver.name === "Reflect" &&
+      (methodName === "defineProperty" || methodName === "deleteProperty" || methodName === "set"))
+  ) {
+    if (!propertyOrSource || isNodeOfType(propertyOrSource, "SpreadElement")) return true;
+    const propertyName = stripParenExpression(propertyOrSource as EsTreeNode);
+    return (
+      !isNodeOfType(propertyName, "Literal") ||
+      typeof propertyName.value !== "string" ||
+      propertyName.value === fieldName
+    );
+  }
+  return false;
+};
+
 const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: string): boolean => {
   if (fieldName.startsWith("#")) return false;
   let assignmentCount = 0;
@@ -222,6 +281,10 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
       getStaticPropertyKeyName(node, { allowComputedString: true }) === fieldName &&
       !isUndefinedOrNull(node.value as EsTreeNode | null | undefined)
     ) {
+      didFindUnsafeWrite = true;
+      return false;
+    }
+    if (isNodeOfType(node, "CallExpression") && callMayWriteThisField(node, fieldName)) {
       didFindUnsafeWrite = true;
       return false;
     }

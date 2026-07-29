@@ -237,3 +237,40 @@ describe("evaluateSuppression — foreign disable matching is whitespace-robust"
     expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
   });
 });
+
+describe("evaluateSuppression — resilient to invisible Unicode characters (#1472)", () => {
+  it("suppresses despite zero-width space at end of disable-next-line comment", () => {
+    const lines = ["// react-doctor-disable-next-line react-doctor/no-eval\u200B", "eval(code);"];
+    expect(evaluateSuppression(lines, 1, "react-doctor/no-eval")).toEqual({
+      isSuppressed: true,
+      nearMissHint: null,
+    });
+  });
+
+  it("suppresses despite zero-width no-break space at end of disable-next-line comment", () => {
+    const lines = ["// react-doctor-disable-next-line react-doctor/no-eval\uFEFF", "eval(code);"];
+    expect(evaluateSuppression(lines, 1, "react-doctor/no-eval")).toEqual({
+      isSuppressed: true,
+      nearMissHint: null,
+    });
+  });
+
+  it("suppresses despite multiple invisible characters at end of disable-line comment", () => {
+    const lines = ["eval(code); // react-doctor-disable-line react-doctor/no-eval\u200B\uFEFF\u200C"];
+    expect(evaluateSuppression(lines, 0, "react-doctor/no-eval")).toEqual({
+      isSuppressed: true,
+      nearMissHint: null,
+    });
+  });
+
+  it("suppresses with rule list and trailing invisible characters", () => {
+    const lines = [
+      "// react-doctor-disable-next-line react-doctor/no-eval -- test case\u200B",
+      "eval(code);",
+    ];
+    expect(evaluateSuppression(lines, 1, "react-doctor/no-eval")).toEqual({
+      isSuppressed: true,
+      nearMissHint: null,
+    });
+  });
+});

@@ -1,9 +1,11 @@
 import { LOOP_TYPES } from "../../constants/js.js";
 import { SMALL_LITERAL_ARRAY_MAX_ELEMENTS } from "../../constants/thresholds.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
@@ -97,6 +99,7 @@ const STRING_TYPED_PROPERTY_NAMES: ReadonlySet<string> = new Set([
   "label",
   "slug",
   "prefix",
+  "__html",
 ]);
 
 // Identifier suffix conventions whose binding is overwhelmingly a
@@ -237,6 +240,16 @@ const STRING_TYPED_IDENTIFIER_NAMES: ReadonlySet<string> = new Set([
 
 const STRING_RETURNING_CALLEE_PREFIX_PATTERN = /^(?:normalize|format|stringify|serialize)/;
 
+const FRESH_ARRAY_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "concat",
+  "filter",
+  "flat",
+  "flatMap",
+  "map",
+  "slice",
+  "split",
+]);
+
 // HACK: returns true when the receiver of `.includes()` / `.indexOf()`
 // is obviously a string, so the Set rewrite suggestion doesn't apply.
 const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
@@ -264,6 +277,15 @@ const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolea
     isNodeOfType(receiver, "CallExpression") &&
     isNodeOfType(receiver.callee, "Identifier") &&
     STRING_RETURNING_CALLEE_PREFIX_PATTERN.test(receiver.callee.name)
+  ) {
+    return true;
+  }
+  if (
+    isNodeOfType(receiver, "CallExpression") &&
+    isNodeOfType(receiver.callee, "MemberExpression") &&
+    isNodeOfType(receiver.callee.property, "Identifier") &&
+    (receiver.callee.property.name === "concat" || receiver.callee.property.name === "slice") &&
+    isLikelyStringReceiver(receiver.callee.object)
   ) {
     return true;
   }
@@ -304,7 +326,68 @@ const isLikelyStringReceiver = (receiver: EsTreeNode | null | undefined): boolea
       isLikelyStringReceiver(receiver.consequent) && isLikelyStringReceiver(receiver.alternate)
     );
   }
+  if (isNodeOfType(receiver, "LogicalExpression")) {
+    return isLikelyStringReceiver(receiver.left) && isLikelyStringReceiver(receiver.right);
+  }
   return false;
+};
+
+const isFreshArrayReceiver = (receiver: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(receiver, "CallExpression") ||
+    !isNodeOfType(receiver.callee, "MemberExpression") ||
+    !isNodeOfType(receiver.callee.property, "Identifier")
+  ) {
+    return false;
+  }
+  if (!FRESH_ARRAY_METHOD_NAMES.has(receiver.callee.property.name)) return false;
+  if (receiver.callee.property.name === "split") {
+    return isLikelyStringReceiver(receiver.callee.object);
+  }
+  return (
+    isKnownNativeArrayReceiver(receiver.callee.object) ||
+    isFreshArrayReceiver(receiver.callee.object)
+  );
+};
+
+const isTypeScriptRestHelperLookup = (
+  lookupCall: EsTreeNode,
+  receiver: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const enclosingFunction = findEnclosingFunction(lookupCall);
+  if (
+    !isNodeOfType(enclosingFunction, "FunctionExpression") ||
+    !isNodeOfType(enclosingFunction.params?.[1], "Identifier") ||
+    enclosingFunction.params[1].name !== receiver.name
+  ) {
+    return false;
+  }
+  let bindingIdentifier: EsTreeNode | null = null;
+  let ancestor: EsTreeNode | null | undefined = enclosingFunction.parent;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (
+      isNodeOfType(ancestor, "VariableDeclarator") &&
+      isNodeOfType(ancestor.id, "Identifier") &&
+      ancestor.id.name === "__rest"
+    ) {
+      bindingIdentifier = ancestor.id;
+      break;
+    }
+    ancestor = ancestor.parent;
+  }
+  if (!bindingIdentifier) return false;
+  const helperSymbol = scopes.symbolFor(bindingIdentifier);
+  if (!helperSymbol || helperSymbol.references.length === 0) return false;
+  return helperSymbol.references.every((reference) => {
+    const callExpression = reference.identifier.parent;
+    return (
+      isNodeOfType(callExpression, "CallExpression") &&
+      callExpression.callee === reference.identifier &&
+      isSmallInlineLiteralArray(callExpression.arguments?.[1])
+    );
+  });
 };
 
 // `lines[i]` / `tokens[cursor]` — indexing into an array by a numeric
@@ -1606,6 +1689,8 @@ export const jsSetMapLookups = defineRule({
         return;
       }
       if (isLikelyStringReceiver(receiver)) return;
+      if (isFreshArrayReceiver(receiver)) return;
+      if (isTypeScriptRestHelperLookup(node, receiver, context.scopes)) return;
       if (isSmallInlineLiteralArray(receiver)) return;
       if (isScreamingSnakeCaseConstantReceiver(receiver)) return;
       if (isSmallFixedListMember(receiver)) return;

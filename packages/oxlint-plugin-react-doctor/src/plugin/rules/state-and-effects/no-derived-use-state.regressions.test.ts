@@ -266,6 +266,20 @@ describe("no-derived-useState — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not treat a wrapped prop re-seed as a user edit", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function Profile({ name, value: controlledValue }) {
+        const [internalValue, setInternalValue] = useState(name);
+        const value = controlledValue ?? internalValue;
+        const reset = () => setInternalValue(name as string);
+        return <button onClick={reset}>{value}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat a shadowed state name as the controlled fallback", () => {
     const result = runRule(
       noDerivedUseState,

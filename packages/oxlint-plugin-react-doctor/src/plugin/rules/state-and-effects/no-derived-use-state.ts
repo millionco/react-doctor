@@ -431,7 +431,12 @@ const isUserEditableControlledFallback = (
     if (!isReferenceToBinding(child.callee, setterBinding, context)) return;
     if (!isHandlerShapedReseed(child, componentFunction)) return;
     const setterArgument = child.arguments?.[0];
-    if (!setterArgument || isPropDerivedArgument(setterArgument, isPropName)) return;
+    if (
+      !setterArgument ||
+      isPropDerivedArgument(unwrapInitializerSeed(setterArgument), isPropName)
+    ) {
+      return;
+    }
     hasUserEdit = true;
     return false;
   });

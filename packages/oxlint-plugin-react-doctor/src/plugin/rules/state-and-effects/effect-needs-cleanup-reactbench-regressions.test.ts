@@ -526,6 +526,140 @@ const Delayed = ({ task }) => {
     expect(restResult.diagnostics).toHaveLength(1);
   });
 
+  it("uses direct invocation arguments to resolve conditional effect-owned timers", () => {
+    const trueResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ task }) => {
+  const start = (enabled) => {
+    if (enabled) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start(true);
+  }, []);
+  return null;
+};`,
+    );
+    const dynamicResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ enabled, task }) => {
+  const start = (shouldStart) => {
+    if (shouldStart) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start(enabled);
+  }, [enabled]);
+  return null;
+};`,
+    );
+    const defaultTrueResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ task }) => {
+  const start = (enabled = true) => {
+    if (enabled) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start();
+  }, []);
+  return null;
+};`,
+    );
+    const falseResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ task }) => {
+  const start = (enabled) => {
+    if (enabled) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start(false);
+  }, []);
+  return null;
+};`,
+    );
+    const omittedOptionalResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ task }) => {
+  const start = (event) => {
+    if (event) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start();
+  }, []);
+  return null;
+};`,
+    );
+    expect(trueResult.diagnostics).toHaveLength(1);
+    expect(dynamicResult.diagnostics).toHaveLength(1);
+    expect(defaultTrueResult.diagnostics).toHaveLength(1);
+    expect(falseResult.diagnostics).toHaveLength(0);
+    expect(omittedOptionalResult.diagnostics).toHaveLength(0);
+  });
+
+  it("reports when any effect invocation can reach a conditional timer", () => {
+    const mixedInvocationResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ task }) => {
+  const start = (enabled) => {
+    if (enabled) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start(false);
+    start(true);
+  }, []);
+  return null;
+};`,
+    );
+    const reassignedParameterResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ task }) => {
+  const start = (enabled) => {
+    enabled = true;
+    if (enabled) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start(false);
+  }, []);
+  return null;
+};`,
+    );
+    const invertedFalseResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ task }) => {
+  const start = (disabled) => {
+    if (!disabled) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start(false);
+  }, []);
+  return null;
+};`,
+    );
+    const invertedTrueResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Delayed = ({ task }) => {
+  const start = (disabled) => {
+    if (!disabled) setTimeout(task, 10);
+  };
+  useEffect(() => {
+    start(true);
+  }, []);
+  return null;
+};`,
+    );
+    expect(mixedInvocationResult.diagnostics).toHaveLength(1);
+    expect(reassignedParameterResult.diagnostics).toHaveLength(1);
+    expect(invertedFalseResult.diagnostics).toHaveLength(1);
+    expect(invertedTrueResult.diagnostics).toHaveLength(0);
+  });
+
   it("reports effect-owned timers invoked by synchronous array iterators", () => {
     const forEachResult = runRule(
       effectNeedsCleanup,

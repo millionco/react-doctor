@@ -35,6 +35,7 @@ import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-n
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
+import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { getProvenDomEventTargetPrototypeOwnerNames } from "../../utils/is-proven-browser-api-receiver.js";
@@ -5018,13 +5019,275 @@ const isInlineRetainedHandlerFunction = (
   return isPassedInline && findRenderPhaseComponentOrHook(parentNode, context.scopes) !== null;
 };
 
-const isDirectlyInvokedByEffect = (retainedFunction: EsTreeNode, context: RuleContext): boolean => {
-  if (!isFunctionLike(retainedFunction)) return false;
+interface EffectRetainedInvocation {
+  call: EsTreeNodeOfType<"CallExpression">;
+  isDirect: boolean;
+}
+
+interface InvocationArgumentValue {
+  isDefinitelyUndefined: boolean;
+  truthiness: "falsy" | "truthy" | "unknown";
+}
+
+const readInvocationArgumentValue = (
+  expression: EsTreeNode | null,
+  context: RuleContext,
+): InvocationArgumentValue => {
+  if (!expression) return { isDefinitelyUndefined: true, truthiness: "falsy" };
+  const target = stripParenExpression(expression);
+  if (isNodeOfType(target, "Literal")) {
+    return {
+      isDefinitelyUndefined: false,
+      truthiness: target.value ? "truthy" : "falsy",
+    };
+  }
+  if (
+    isNodeOfType(target, "Identifier") &&
+    target.name === "undefined" &&
+    context.scopes.isGlobalReference(target)
+  ) {
+    return { isDefinitelyUndefined: true, truthiness: "falsy" };
+  }
+  if (isNodeOfType(target, "UnaryExpression") && target.operator === "void") {
+    return { isDefinitelyUndefined: true, truthiness: "falsy" };
+  }
+  if (
+    isNodeOfType(target, "ArrayExpression") ||
+    isNodeOfType(target, "ArrowFunctionExpression") ||
+    isNodeOfType(target, "ClassExpression") ||
+    isNodeOfType(target, "FunctionExpression") ||
+    isNodeOfType(target, "NewExpression") ||
+    isNodeOfType(target, "ObjectExpression")
+  ) {
+    return { isDefinitelyUndefined: false, truthiness: "truthy" };
+  }
+  return { isDefinitelyUndefined: false, truthiness: "unknown" };
+};
+
+const readInvocationConditionTruthiness = (
+  expression: EsTreeNode,
+  parameterValues: ReadonlyMap<number, InvocationArgumentValue>,
+  context: RuleContext,
+): InvocationArgumentValue["truthiness"] => {
+  const target = stripParenExpression(expression);
+  const atomicValue = readInvocationArgumentValue(target, context);
+  if (atomicValue.truthiness !== "unknown") return atomicValue.truthiness;
+  if (isNodeOfType(target, "Identifier")) {
+    const symbol = context.scopes.symbolFor(target);
+    return symbol ? (parameterValues.get(symbol.id)?.truthiness ?? "unknown") : "unknown";
+  }
+  if (isNodeOfType(target, "UnaryExpression") && target.operator === "!") {
+    const argumentTruthiness = readInvocationConditionTruthiness(
+      target.argument as EsTreeNode,
+      parameterValues,
+      context,
+    );
+    return argumentTruthiness === "truthy"
+      ? "falsy"
+      : argumentTruthiness === "falsy"
+        ? "truthy"
+        : "unknown";
+  }
+  if (isNodeOfType(target, "LogicalExpression")) {
+    const leftTruthiness = readInvocationConditionTruthiness(
+      target.left as EsTreeNode,
+      parameterValues,
+      context,
+    );
+    const rightTruthiness = readInvocationConditionTruthiness(
+      target.right as EsTreeNode,
+      parameterValues,
+      context,
+    );
+    if (target.operator === "&&") {
+      if (leftTruthiness === "falsy" || rightTruthiness === "falsy") return "falsy";
+      return leftTruthiness === "truthy" && rightTruthiness === "truthy" ? "truthy" : "unknown";
+    }
+    if (target.operator === "||") {
+      if (leftTruthiness === "truthy" || rightTruthiness === "truthy") return "truthy";
+      return leftTruthiness === "falsy" && rightTruthiness === "falsy" ? "falsy" : "unknown";
+    }
+    return "unknown";
+  }
+  if (isNodeOfType(target, "ConditionalExpression")) {
+    const testTruthiness = readInvocationConditionTruthiness(
+      target.test as EsTreeNode,
+      parameterValues,
+      context,
+    );
+    if (testTruthiness === "truthy") {
+      return readInvocationConditionTruthiness(
+        target.consequent as EsTreeNode,
+        parameterValues,
+        context,
+      );
+    }
+    if (testTruthiness === "falsy") {
+      return readInvocationConditionTruthiness(
+        target.alternate as EsTreeNode,
+        parameterValues,
+        context,
+      );
+    }
+    const consequentTruthiness = readInvocationConditionTruthiness(
+      target.consequent as EsTreeNode,
+      parameterValues,
+      context,
+    );
+    const alternateTruthiness = readInvocationConditionTruthiness(
+      target.alternate as EsTreeNode,
+      parameterValues,
+      context,
+    );
+    return consequentTruthiness === alternateTruthiness ? consequentTruthiness : "unknown";
+  }
+  if (
+    isNodeOfType(target, "CallExpression") &&
+    isNodeOfType(target.callee, "Identifier") &&
+    target.callee.name === "Boolean" &&
+    context.scopes.isGlobalReference(target.callee) &&
+    target.arguments[0] &&
+    isAstNode(target.arguments[0])
+  ) {
+    return readInvocationConditionTruthiness(
+      target.arguments[0] as EsTreeNode,
+      parameterValues,
+      context,
+    );
+  }
+  return "unknown";
+};
+
+const getInvocationParameterValues = (
+  retainedFunction: EsTreeNode,
+  invocation: EffectRetainedInvocation,
+  leakNode: EsTreeNode,
+  context: RuleContext,
+): ReadonlyMap<number, InvocationArgumentValue> => {
+  const parameterValues = new Map<number, InvocationArgumentValue>();
+  if (!isFunctionLike(retainedFunction) || !invocation.isDirect) return parameterValues;
+  for (const [parameterIndex, parameter] of retainedFunction.params.entries()) {
+    const argument = invocation.call.arguments[parameterIndex];
+    const argumentExpression = argument && isAstNode(argument) ? (argument as EsTreeNode) : null;
+    let parameterIdentifier: EsTreeNode | null = null;
+    let parameterValue = readInvocationArgumentValue(argumentExpression, context);
+    if (isNodeOfType(parameter, "Identifier")) {
+      parameterIdentifier = parameter;
+    } else if (
+      isNodeOfType(parameter, "AssignmentPattern") &&
+      isNodeOfType(parameter.left, "Identifier")
+    ) {
+      parameterIdentifier = parameter.left;
+      if (parameterValue.isDefinitelyUndefined) {
+        parameterValue = readInvocationArgumentValue(parameter.right as EsTreeNode, context);
+      }
+    } else if (
+      isNodeOfType(parameter, "RestElement") &&
+      isNodeOfType(parameter.argument, "Identifier")
+    ) {
+      parameterIdentifier = parameter.argument;
+      parameterValue = { isDefinitelyUndefined: false, truthiness: "truthy" };
+    }
+    if (!parameterIdentifier) continue;
+    const parameterSymbol = context.scopes.symbolFor(parameterIdentifier);
+    if (!parameterSymbol) continue;
+    const isWrittenBeforeLeak = parameterSymbol.references.some(
+      (reference) => reference.flag !== "read" && reference.identifier.range[0] < leakNode.range[0],
+    );
+    parameterValues.set(
+      parameterSymbol.id,
+      isWrittenBeforeLeak
+        ? { isDefinitelyUndefined: false, truthiness: "unknown" }
+        : parameterValue,
+    );
+  }
+  return parameterValues;
+};
+
+const isLeakPathDisabledForInvocation = (
+  retainedFunction: EsTreeNode,
+  leakNode: EsTreeNode,
+  invocation: EffectRetainedInvocation,
+  context: RuleContext,
+): boolean => {
+  if (!invocation.isDirect) return false;
+  const parameterValues = getInvocationParameterValues(
+    retainedFunction,
+    invocation,
+    leakNode,
+    context,
+  );
+  let child = leakNode;
+  let ancestor = leakNode.parent ?? null;
+  while (ancestor && ancestor !== retainedFunction) {
+    if (isNodeOfType(ancestor, "BlockStatement")) {
+      const childIndex = ancestor.body.findIndex((statement) => statement === child);
+      for (const precedingStatement of ancestor.body.slice(0, childIndex)) {
+        if (
+          !isNodeOfType(precedingStatement, "IfStatement") ||
+          precedingStatement.alternate ||
+          !isEarlyExitStatement(precedingStatement.consequent)
+        ) {
+          continue;
+        }
+        const guardTruthiness = readInvocationConditionTruthiness(
+          precedingStatement.test as EsTreeNode,
+          parameterValues,
+          context,
+        );
+        if (guardTruthiness === "truthy") return true;
+      }
+    }
+    let requiredTruthiness: InvocationArgumentValue["truthiness"] | null = null;
+    let condition: EsTreeNode | null = null;
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      condition = ancestor.test as EsTreeNode;
+      requiredTruthiness = ancestor.consequent === child ? "truthy" : "falsy";
+    } else if (isNodeOfType(ancestor, "ConditionalExpression")) {
+      condition = ancestor.test as EsTreeNode;
+      requiredTruthiness = ancestor.consequent === child ? "truthy" : "falsy";
+    } else if (
+      isNodeOfType(ancestor, "LogicalExpression") &&
+      ancestor.right === child &&
+      ancestor.operator !== "??"
+    ) {
+      condition = ancestor.left as EsTreeNode;
+      requiredTruthiness = ancestor.operator === "&&" ? "truthy" : "falsy";
+    } else if (
+      (isNodeOfType(ancestor, "WhileStatement") || isNodeOfType(ancestor, "DoWhileStatement")) &&
+      ancestor.body === child
+    ) {
+      condition = ancestor.test as EsTreeNode;
+      requiredTruthiness = "truthy";
+    } else if (isNodeOfType(ancestor, "ForStatement") && ancestor.body === child && ancestor.test) {
+      condition = ancestor.test as EsTreeNode;
+      requiredTruthiness = "truthy";
+    }
+    if (condition && requiredTruthiness) {
+      const conditionTruthiness = readInvocationConditionTruthiness(
+        condition,
+        parameterValues,
+        context,
+      );
+      if (conditionTruthiness !== "unknown" && conditionTruthiness !== requiredTruthiness) {
+        return true;
+      }
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+const getEffectRetainedInvocations = (
+  retainedFunction: EsTreeNode,
+  context: RuleContext,
+): EffectRetainedInvocation[] => {
+  if (!isFunctionLike(retainedFunction)) return [];
   const componentFunction = findEnclosingFunction(retainedFunction);
-  if (!componentFunction || !isFunctionLike(componentFunction)) return false;
-  let isInvoked = false;
+  if (!componentFunction || !isFunctionLike(componentFunction)) return [];
+  const invocations: EffectRetainedInvocation[] = [];
   walkAst(componentFunction.body, (child: EsTreeNode) => {
-    if (isInvoked) return false;
     if (
       !isNodeOfType(child, "CallExpression") ||
       findEnclosingFunction(child) !== componentFunction ||
@@ -5035,7 +5298,6 @@ const isDirectlyInvokedByEffect = (retainedFunction: EsTreeNode, context: RuleCo
     const effectCallback = getEffectCallback(child);
     if (!effectCallback || !isFunctionLike(effectCallback)) return;
     walkAst(effectCallback.body, (effectChild: EsTreeNode) => {
-      if (isInvoked) return false;
       if (effectChild !== effectCallback.body && isFunctionLike(effectChild)) return false;
       if (
         !isNodeOfType(effectChild, "CallExpression") ||
@@ -5051,13 +5313,11 @@ const isDirectlyInvokedByEffect = (retainedFunction: EsTreeNode, context: RuleCo
           resolveRefOwnedCleanupFunction(argument, context) === retainedFunction &&
           isSynchronousIteratorCallbackCall(effectChild, argument),
       );
-      if (isDirectInvocation || isSynchronousIteratorInvocation) {
-        isInvoked = true;
-        return false;
-      }
+      if (isDirectInvocation) invocations.push({ call: effectChild, isDirect: true });
+      if (isSynchronousIteratorInvocation) invocations.push({ call: effectChild, isDirect: false });
     });
   });
-  return isInvoked;
+  return invocations;
 };
 
 export const effectNeedsCleanup = defineRule({
@@ -5073,7 +5333,8 @@ export const effectNeedsCleanup = defineRule({
       if (!refEffectUsage && !isPotentiallyReachableFunction(retainedFunction, context)) {
         return;
       }
-      const isEffectInvoked = isDirectlyInvokedByEffect(retainedFunction, context);
+      const effectInvocations = getEffectRetainedInvocations(retainedFunction, context);
+      const isEffectInvoked = effectInvocations.length > 0;
       const leak = findRetainedFunctionLeak(
         retainedFunction,
         context,
@@ -5096,7 +5357,12 @@ export const effectNeedsCleanup = defineRule({
         isEffectInvoked &&
         leak.resourceName === "setTimeout" &&
         (!isNodeReachableWithinFunction(leak.node, context) ||
-          (retainedFunction.params.length > 0 && !context.cfg.isUnconditionalFromEntry(leak.node)))
+          (isFunctionLike(retainedFunction) &&
+            retainedFunction.params.length > 0 &&
+            !context.cfg.isUnconditionalFromEntry(leak.node) &&
+            effectInvocations.every((invocation) =>
+              isLeakPathDisabledForInvocation(retainedFunction, leak.node, invocation, context),
+            )))
       ) {
         return;
       }

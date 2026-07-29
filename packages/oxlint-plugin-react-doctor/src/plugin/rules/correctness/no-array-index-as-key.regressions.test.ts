@@ -851,11 +851,41 @@ const TabContent = ({ children }) => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("flags React.Children.toArray through a transparent children wrapper", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const TabContent = ({ children }) => {
+  const childArray = React.Children.toArray(children as React.ReactNode);
+  return childArray.map((child, index) => (
+    <Fragment key={index}>{child}</Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("flags fragments wrapping conditionally normalized React children", () => {
       const result = runRule(
         noArrayIndexAsKey,
         `const TabContent = ({ children }) => {
   const childItems = (Array.isArray(children) ? children : [children]).filter(Boolean);
+  return childItems.map((child, i) => <Fragment key={i}>{child}</Fragment>);
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags conditionally normalized React children through a transparent wrapper", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const TabContent = ({ children }) => {
+  const childItems = (Array.isArray(children as React.ReactNode)
+    ? children
+    : [children]).filter(Boolean);
   return childItems.map((child, i) => <Fragment key={i}>{child}</Fragment>);
 };
 `,

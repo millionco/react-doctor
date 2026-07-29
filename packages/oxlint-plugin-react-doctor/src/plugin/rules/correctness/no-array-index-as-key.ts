@@ -1227,7 +1227,8 @@ const isReactChildrenToArrayCall = (node: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  const normalizedValue = candidate.arguments?.[0];
+  const normalizedValueNode = candidate.arguments?.[0];
+  const normalizedValue = normalizedValueNode ? stripParenExpression(normalizedValueNode) : null;
   if (
     !normalizedValue ||
     !isNodeOfType(normalizedValue, "Identifier") ||
@@ -1270,8 +1271,10 @@ const isReactChildrenArrayNormalization = (node: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  const testedValue = test.arguments?.[0];
-  if (!testedValue || !isNodeOfType(testedValue, "Identifier")) return false;
+  const testedValueNode = test.arguments?.[0];
+  if (!testedValueNode) return false;
+  const testedValue = stripParenExpression(testedValueNode);
+  if (!isNodeOfType(testedValue, "Identifier")) return false;
   const testedBinding = findVariableInitializer(testedValue, testedValue.name);
   if (
     testedValue.name !== "children" ||

@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 25;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 31;
+export const REACT_PROOF_SCHEMA_VERSION = 26;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 32;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -12,6 +12,8 @@ export const REACT_CONTEXT_DEFAULT_SOURCE_ID = "react:context-default";
 export const REACT_CONTEXT_UNKNOWN_SOURCE_ID = "react:context-unknown";
 export const REACT_FORM_OUTSIDE_SOURCE_ID = "react:form-outside";
 export const REACT_FORM_UNKNOWN_SOURCE_ID = "react:form-unknown";
+export const REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID = "react:error-boundary-outside";
+export const REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID = "react:error-boundary-unknown";
 export const REACT_SUSPENSE_OUTSIDE_SOURCE_ID = "react:suspense-outside";
 export const REACT_SUSPENSE_OWNER_SOURCE_ID = "react:suspense-owner";
 export const REACT_SUSPENSE_UNKNOWN_SOURCE_ID = "react:suspense-unknown";

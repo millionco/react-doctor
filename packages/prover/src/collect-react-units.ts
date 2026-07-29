@@ -7,6 +7,7 @@ import { isReactHookName } from "./is-react-hook-name.js";
 import { isFunctionBoundary } from "./is-function-boundary.js";
 import { ReactClassComponentBase, ReactUnitKind } from "./types.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
+import { getStaticClassMethodDeclaration } from "./utils/get-static-class-method-declaration.js";
 import { getStaticPropertyName } from "./utils/get-static-property-name.js";
 import type { ReactUnitDescriptor } from "./types.js";
 
@@ -31,6 +32,7 @@ const getReactClassComponentBase = (
 };
 
 const SUPPORTED_CLASS_LIFECYCLE_NAMES = new Set([
+  "componentDidCatch",
   "componentDidMount",
   "componentDidUpdate",
   "componentWillUnmount",
@@ -65,9 +67,19 @@ const hasSupportedClassSyntax = (
     }
     if (!ts.isMethodDeclaration(member)) return false;
     const methodName = getStaticPropertyName(member.name);
-    if (!methodName || getClassMethodDeclaration(classNode, methodName) !== member) return false;
+    if (!methodName) return false;
+    if (methodName === "getDerivedStateFromError") {
+      return (
+        getStaticClassMethodDeclaration(classNode, methodName) === member &&
+        member.parameters.length === 1
+      );
+    }
+    if (getClassMethodDeclaration(classNode, methodName) !== member) return false;
     if (isReservedClassLifecycleName(methodName)) {
       if (!SUPPORTED_CLASS_LIFECYCLE_NAMES.has(methodName)) return false;
+      if (methodName === "componentDidCatch") {
+        return member.parameters.length >= 1 && member.parameters.length <= 2;
+      }
       if (methodName === "componentDidUpdate") return member.parameters.length <= 2;
       return member.parameters.length === 0;
     }

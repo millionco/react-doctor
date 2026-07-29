@@ -87,6 +87,12 @@ The report includes:
   `<Suspense>` boundaries; malformed loaders, render-local declarations, and known root paths
   outside Suspense are refuted, while external components, exported lazy aliases, and unresolved
   slots fail closed;
+- Error Boundary facts that identify symbol-resolved React class boundaries, require a total pure
+  `static getDerivedStateFromError` transition and a render guard which reveals fallback UI, and
+  trace root-reachable explicit render throws through direct, helper, transitive component, and
+  closed ReactNode-slot paths; uncovered failures and invalid recovery protocols are refuted,
+  opaque state or topology remains unknown, and event handlers, server rendering, ordinary async
+  callbacks, and errors thrown by a boundary itself stay outside this theorem;
 - Action State facts that identify canonical `useActionState` tuples, resolve each reducer Action
   without imposing reducer purity, and classify every dispatcher call or escape; a dispatch is
   certified only when every represented root is a Form Action, an Action State reducer, or a
@@ -159,6 +165,11 @@ Suspense boundary and render identities, stable declaration and loader-status eq
 boundary sources independently propagated from every exported render root through effective
 component and ReactNode-slot renders. The checker rejects forged loader, topology, outside-boundary,
 source, completeness, and claim-verdict combinations.
+Error Boundary certificates additionally require reciprocal definition/instance/render links,
+phase-correct class ownership, exact recovery-protocol equations, and boundary sources
+independently propagated from every exported render root through effective component and
+ReactNode-slot renders. The checker rejects forged protocol, topology, outside-boundary, source,
+completeness, and claim-verdict combinations.
 Transition Action certificates require a valid non-render execution root, a symbol-identified
 starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
 source/completeness equations. The checker rejects forged synchronous, controlled-input,

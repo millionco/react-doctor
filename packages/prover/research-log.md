@@ -2074,3 +2074,100 @@ telemetry or Changeset is warranted before publication.
 Kill: If a complete lazy/Suspense protocol produces a false `proved` topology in two proof-schema
 releases, remove transitive coverage certification and keep non-lexical paths unknown until
 ReactNode SSA or an explicit component proof contract carries the missing placement semantics.
+
+## Error Boundary containment certificates
+
+### React contract and realistic evidence
+
+React's
+[`Component` reference](https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary)
+defines an Error Boundary as a class which implements
+[`static getDerivedStateFromError`](https://react.dev/reference/react/Component#static-getderivedstatefromerror)
+to display fallback UI and may implement
+[`componentDidCatch`](https://react.dev/reference/react/Component#componentdidcatch) for reporting.
+It catches rendering failures in descendant components. It does not catch event-handler errors,
+server-rendering errors, errors thrown by the boundary itself, or ordinary asynchronous callback
+errors. React's [`lazy`](https://react.dev/reference/react/lazy) and
+[`use`](https://react.dev/reference/react/use#displaying-an-error-with-an-error-boundary)
+references separately confirm that rejected lazy loaders and rejected resources propagate to the
+nearest Error Boundary.
+
+React Bench supplied a representative application boundary in
+`migrate-react-opencode-solid-to-react/solution/port/ui/src/storybook/scaffold.tsx`, while the
+application's `src/app.tsx` uses a class boundary whose `getDerivedStateFromError` flips a fallback
+state key and whose render path supplies application fallback UI. These shapes require class-symbol
+identity, state-transition evidence, and whole-project descendant topology. Merely finding a
+method named `componentDidCatch` or a lexical JSX ancestor is not enough.
+
+### Closed subset and fail-closed boundary
+
+The certificate recognizes classes whose base resolves to React `Component` or `PureComponent`.
+A valid first-version recovery protocol has a source-visible static
+`getDerivedStateFromError`, returns an object which sets one common state key to `true` on every
+represented path, is render-pure, and has a render guard on that exact `this.state` key whose
+fallback branch does not return `this.props.children`. `componentDidCatch` is recorded when
+present but is not required for recovery. Opaque returned state, unsupported render control flow,
+or unresolved class state remains unknown; a missing or non-total recovery transition is a source
+counterexample.
+
+The modeled failure source is an explicit `throw` reachable from a client render root, including
+project-local render helpers and synchronous render callbacks. Boundary identity is propagated
+through direct and transitive component renders and closed ReactNode-slot placement. A boundary
+does not protect its own render or fallback. A known exported-root path without a valid boundary
+refutes containment, a nonempty closed boundary set proves it, and opaque component or slot
+topology remains unknown.
+
+This theorem intentionally does not claim that arbitrary calls cannot throw. It also excludes
+event handlers, server rendering, Effects, timers, subscriptions, rejected lazy loaders,
+rejected `use` resources, and Transition Action failures until those sources have their own
+typed or CFG-backed failure summaries. Covering those source families is the next step toward the
+full React availability proof; treating every call signature as non-throwing would be unsound.
+
+### Certificate checker, corpus, and runtime calibration
+
+The independent checker validates unique definition, instance, render, and failure identities;
+React class ownership; reciprocal definition/instance and boundary/render links; exact protocol
+status and completeness equations; valid propagated boundary sources; root-derived outside and
+unknown sources; exact coverage status; and the per-unit `error-boundary` verdict. Report schema
+26 and graph schema 32 reject stale or forged certificates.
+
+Added corpus:
+
+- proved: direct descendant, project render-helper, and closed ReactNode-slot failures;
+- refuted: a root-reachable failure outside a boundary and a boundary without a valid fallback
+  transition;
+- incomplete: an opaque recovery-state helper;
+- excluded: an event-handler throw which is not mislabeled as a render failure;
+- forged: outside-boundary coverage rewritten as covered and rejected by the checker;
+- runtime: `error-boundary-oracle.spec.ts`.
+
+The React 19.2.5 Chromium oracle observes a descendant failure reveal its nearest fallback and a
+failing inner fallback escape to an outer boundary. Runtime evidence calibrates boundary ownership
+but never upgrades a static unknown. The complete gate contains 592 static tests and 46 Chromium
+runtime oracles across 361 checked-in fixture project configurations.
+
+### Product brief: internal Error Boundary facts
+
+Job: Prover consumers need to know that every modeled client render failure is contained by a
+valid recovery boundary, and that an apparent boundary can actually transition to fallback UI.
+
+Change: Add one private `error-boundary` claim, versioned definition, instance, and render-failure
+facts, whole-project topology propagation, and independent checker equations.
+
+Reuse: Truffler searches for Error Boundary protocols, derived error state, render-failure
+topology, and nearest-boundary propagation found no existing theorem. The implementation reuses
+React class-symbol resolution, class render collection, structured return summaries, render
+purity, reachable helper callbacks, effective component renders, and ReactNode-slot propagation.
+
+Metric: The deterministic acceptance metric separates direct, helper, slot, uncovered, invalid,
+opaque, event-excluded, and forged-certificate cases, plus descendant and own-fallback Chromium
+oracles.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 26 and its semantic graph to schema 32. No
+telemetry or Changeset is warranted before publication.
+
+Kill: If a complete Error Boundary protocol produces a false `proved` containment result in two
+proof-schema releases, remove transitive containment certification and keep non-lexical paths
+unknown until exception effects or an explicit component proof contract carry the missing
+semantics.

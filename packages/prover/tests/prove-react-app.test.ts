@@ -23,6 +23,8 @@ import {
   ReactEffectDependencyMode,
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
+  ReactErrorBoundaryCoverageStatus,
+  ReactErrorBoundaryProtocolStatus,
   ReactExecutionPhase,
   ReactFormActionStatus,
   ReactFormStatusTopologyStatus,
@@ -702,8 +704,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(25);
-    expect(report.graph.schemaVersion).toBe(31);
+    expect(report.schemaVersion).toBe(26);
+    expect(report.graph.schemaVersion).toBe(32);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -4099,6 +4101,103 @@ describe("proveReactApp", () => {
     const report = proveFixture("shadowed-component-class");
 
     expect(report.graph.units).toEqual([]);
+  });
+
+  it.each([
+    "proved-error-boundary",
+    "proved-error-boundary-slot",
+    "proved-error-boundary-helper-throw",
+  ])("proves a valid Error Boundary around a reachable render failure in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const definition = report.graph.errorBoundaryDefinitions[0];
+    const renderFailure = report.graph.renderFailures[0];
+    const failureProof = report.units
+      .find((unit) => unit.name === "BrokenPanel")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.ErrorBoundary);
+
+    expect(definition?.derivedStateStatus).toBe(ReactErrorBoundaryProtocolStatus.Valid);
+    expect(definition?.fallbackRenderStatus).toBe(ReactErrorBoundaryProtocolStatus.Valid);
+    expect(definition?.complete).toBe(true);
+    expect(report.graph.errorBoundaries).toHaveLength(1);
+    expect(renderFailure?.sourceBoundaryIds).toHaveLength(1);
+    expect(renderFailure?.coverageStatus).toBe(ReactErrorBoundaryCoverageStatus.Covered);
+    expect(renderFailure?.complete).toBe(true);
+    expect(failureProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("refutes a reachable render failure outside an Error Boundary", () => {
+    const report = proveFixture("refuted-render-error-outside-boundary");
+    const renderFailure = report.graph.renderFailures[0];
+    const failureProof = report.units
+      .find((unit) => unit.name === "BrokenPanel")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.ErrorBoundary);
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(renderFailure?.outsideBoundary).toBe(true);
+    expect(renderFailure?.coverageStatus).toBe(ReactErrorBoundaryCoverageStatus.OutsideBoundary);
+    expect(failureProof?.status).toBe(ReactObligationStatus.Violated);
+    expect(failureProof?.evidence[0]?.description).toMatch(/escape/);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("refutes an Error Boundary that cannot transition into fallback state", () => {
+    const report = proveFixture("refuted-invalid-error-boundary");
+    const definition = report.graph.errorBoundaryDefinitions[0];
+    const boundaryProof = report.units
+      .find((unit) => unit.name === "ErrorBoundary")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.ErrorBoundary);
+
+    expect(report.status).toBe(ReactAppProofStatus.Refuted);
+    expect(definition?.derivedStateStatus).toBe(ReactErrorBoundaryProtocolStatus.Invalid);
+    expect(definition?.complete).toBe(false);
+    expect(boundaryProof?.status).toBe(ReactObligationStatus.Violated);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("fails closed when Error Boundary state recovery crosses a helper", () => {
+    const report = proveFixture("incomplete-opaque-error-boundary");
+    const definition = report.graph.errorBoundaryDefinitions[0];
+    const renderFailure = report.graph.renderFailures[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(definition?.derivedStateStatus).toBe(ReactErrorBoundaryProtocolStatus.Unknown);
+    expect(renderFailure?.coverageStatus).toBe(ReactErrorBoundaryCoverageStatus.Unknown);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("does not treat an event-handler exception as a render failure", () => {
+    const report = proveFixture("proved-event-error-outside-boundary-scope");
+    const appProof = report.units
+      .find((unit) => unit.name === "App")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.ErrorBoundary);
+
+    expect(report.graph.renderFailures).toEqual([]);
+    expect(appProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged Error Boundary coverage certificate", () => {
+    const report = proveFixture("refuted-render-error-outside-boundary");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        renderFailures: report.graph.renderFailures.map((renderFailure) => ({
+          ...renderFailure,
+          outsideBoundary: false,
+          coverageStatus: ReactErrorBoundaryCoverageStatus.Covered,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("render failure coverage status"),
+      ),
+    ).toBe(true);
   });
 
   it.each([

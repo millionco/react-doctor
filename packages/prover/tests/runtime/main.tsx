@@ -129,6 +129,54 @@ const LazySuspenseOracle = () => {
   );
 };
 
+interface ErrorBoundaryProperties {
+  children: ReactNode;
+  fallback: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProperties, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
+}
+
+const ThrowingRenderFailure = () => {
+  throw new Error("descendant render failed");
+};
+
+const ThrowingFallback = () => {
+  throw new Error("boundary fallback failed");
+};
+
+const ErrorBoundaryOracle = () => {
+  const doesFallbackThrow =
+    new URLSearchParams(window.location.search).get("mode") === "throwing-fallback";
+  if (doesFallbackThrow) {
+    return (
+      <ErrorBoundary fallback={<output data-testid="outer-error-fallback">outer caught</output>}>
+        <ErrorBoundary fallback={<ThrowingFallback />}>
+          <ThrowingRenderFailure />
+        </ErrorBoundary>
+      </ErrorBoundary>
+    );
+  }
+  return (
+    <ErrorBoundary fallback={<output data-testid="error-fallback">caught</output>}>
+      <ThrowingRenderFailure />
+    </ErrorBoundary>
+  );
+};
+
 interface ReducerOracleState {
   count: number;
 }
@@ -1216,6 +1264,9 @@ const RuntimeOracle = () => {
   if (oracle === "lazy-suspense") {
     return <LazySuspenseOracle />;
   }
+  if (oracle === "error-boundary") {
+    return <ErrorBoundaryOracle />;
+  }
   if (oracle === "transition-action") {
     return <TransitionActionOracle />;
   }
@@ -1245,6 +1296,7 @@ const isStrictModeOracle =
   oracle === "class-state-transition" ||
   oracle === "hook-state-transition" ||
   oracle === "lazy-suspense" ||
+  oracle === "error-boundary" ||
   oracle === "reducer-transition" ||
   oracle === "transition-action" ||
   oracle === "optimistic-form-action" ||

@@ -1,6 +1,8 @@
 import {
   REACT_CONTEXT_DEFAULT_SOURCE_ID,
   REACT_CONTEXT_UNKNOWN_SOURCE_ID,
+  REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID,
+  REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID,
   REACT_FORM_OUTSIDE_SOURCE_ID,
   REACT_FORM_UNKNOWN_SOURCE_ID,
   REACT_PROOF_SCHEMA_VERSION,
@@ -28,6 +30,8 @@ import {
   ReactEffectResourceDisposalStatus,
   ReactEffectResourceKind,
   ReactEffectDependencyMode,
+  ReactErrorBoundaryCoverageStatus,
+  ReactErrorBoundaryProtocolStatus,
   ReactExecutionPhase,
   ReactFormActionKind,
   ReactFormActionStatus,
@@ -46,6 +50,7 @@ import {
   ReactReducerDispatchStatus,
   ReactReducerPurityStatus,
   ReactReducerReturnStatus,
+  ReactRenderFailureKind,
   ReactSchedulerCancellationStatus,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
@@ -76,6 +81,9 @@ const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionSt
 const TRANSITION_STARTER_KINDS = new Set(Object.values(ReactTransitionStarterKind));
 const IMPERATIVE_HANDLE_REF_KINDS = new Set(Object.values(ReactImperativeHandleRefKind));
 const IMPERATIVE_HANDLE_STATUSES = new Set(Object.values(ReactImperativeHandleStatus));
+const ERROR_BOUNDARY_COVERAGE_STATUSES = new Set(Object.values(ReactErrorBoundaryCoverageStatus));
+const ERROR_BOUNDARY_PROTOCOL_STATUSES = new Set(Object.values(ReactErrorBoundaryProtocolStatus));
+const RENDER_FAILURE_KINDS = new Set(Object.values(ReactRenderFailureKind));
 const LAZY_DECLARATION_STATUSES = new Set(Object.values(ReactLazyDeclarationStatus));
 const LAZY_LOADER_STATUSES = new Set(Object.values(ReactLazyLoaderStatus));
 const REDUCER_DISPATCH_KINDS = new Set(Object.values(ReactReducerDispatchKind));
@@ -266,6 +274,35 @@ const expectedLazySuspenseStatus = (
     (component) =>
       !component.identityResolved || component.loaderStatus === ReactLazyLoaderStatus.Opaque,
   ) || lazyRenders.some((render) => render.coverageStatus === ReactSuspenseCoverageStatus.Unknown)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedErrorBoundaryStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const definitions = report.graph.errorBoundaryDefinitions.filter(
+    (definition) => definition.ownerId === unit.id,
+  );
+  const failures = report.graph.renderFailures.filter((failure) => failure.ownerId === unit.id);
+  if (
+    definitions.some(
+      (definition) =>
+        definition.derivedStateStatus === ReactErrorBoundaryProtocolStatus.Invalid ||
+        definition.fallbackRenderStatus === ReactErrorBoundaryProtocolStatus.Invalid,
+    ) ||
+    failures.some(
+      (failure) => failure.coverageStatus === ReactErrorBoundaryCoverageStatus.OutsideBoundary,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return definitions.some((definition) => !definition.complete) ||
+    failures.some((failure) => failure.coverageStatus === ReactErrorBoundaryCoverageStatus.Unknown)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -670,6 +707,17 @@ const checkClaimCoverage = (
         `Lazy Suspense facts require ${expectedLazyStatus}, not ${lazySuspense.status}`,
       );
     }
+    const errorBoundary = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ErrorBoundary,
+    );
+    const expectedErrorStatus = expectedErrorBoundaryStatus(semanticUnit, report);
+    if (errorBoundary && errorBoundary.status !== expectedErrorStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Error Boundary facts require ${expectedErrorStatus}, not ${errorBoundary.status}`,
+      );
+    }
     const transitionActions = unitProof.obligations.find(
       (obligation) => obligation.claim === ReactProofClaim.TransitionActions,
     );
@@ -967,6 +1015,65 @@ const deriveSuspenseSourcesByUnit = (
   return sourcesByUnit;
 };
 
+const deriveErrorBoundarySourcesByUnit = (
+  report: ReactAppProofReport,
+): ReadonlyMap<string, ReadonlySet<string>> => {
+  const sourcesByUnit = new Map<string, Set<string>>();
+  const rendersById = new Map(report.graph.renders.map((render) => [render.id, render]));
+  const boundaryIdsByRenderId = new Map<string, Set<string>>();
+  const addSource = (unitId: string, sourceId: string): boolean => {
+    const sources = sourcesByUnit.get(unitId) ?? new Set<string>();
+    const previousSize = sources.size;
+    sources.add(sourceId);
+    sourcesByUnit.set(unitId, sources);
+    return sources.size !== previousSize;
+  };
+  for (const boundary of report.graph.errorBoundaries) {
+    for (const renderId of boundary.renderIds) {
+      const boundaryIds = boundaryIdsByRenderId.get(renderId) ?? new Set<string>();
+      boundaryIds.add(boundary.id);
+      boundaryIdsByRenderId.set(renderId, boundaryIds);
+    }
+  }
+  for (const unit of report.graph.units) {
+    if (unit.canBeRenderRoot) {
+      addSource(unit.id, REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID);
+    }
+  }
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const render of report.graph.renders) {
+      const boundaryIds = boundaryIdsByRenderId.get(render.id);
+      if (
+        render.kind === ReactSemanticRenderKind.SlotInput &&
+        (!boundaryIds || boundaryIds.size === 0)
+      ) {
+        continue;
+      }
+      if (boundaryIds && boundaryIds.size > 0) {
+        for (const boundaryId of boundaryIds) {
+          didSourcesChange = addSource(render.targetId, boundaryId) || didSourcesChange;
+        }
+      } else {
+        for (const sourceId of sourcesByUnit.get(render.ownerId) ?? []) {
+          didSourcesChange = addSource(render.targetId, sourceId) || didSourcesChange;
+        }
+      }
+    }
+    for (const slotFlow of report.graph.slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (sourceRender && !boundaryIdsByRenderId.has(sourceRender.id)) {
+        didSourcesChange =
+          addSource(sourceRender.targetId, REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID) ||
+          didSourcesChange;
+      }
+    }
+  }
+  return sourcesByUnit;
+};
+
 const checkGraphReferences = (
   report: ReactAppProofReport,
   failures: ReactProofCertificateFailure[],
@@ -996,6 +1103,19 @@ const checkGraphReferences = (
   const contextSourcesByUnit = deriveContextSourcesByUnit(report);
   const formSourcesByUnit = deriveFormSourcesByUnit(report);
   const suspenseSourcesByUnit = deriveSuspenseSourcesByUnit(report);
+  const errorBoundarySourcesByUnit = deriveErrorBoundarySourcesByUnit(report);
+  const errorBoundaryDefinitionsById = new Map(
+    report.graph.errorBoundaryDefinitions.map((definition) => [definition.id, definition]),
+  );
+  const errorBoundariesById = new Map(
+    report.graph.errorBoundaries.map((boundary) => [boundary.id, boundary]),
+  );
+  const errorBoundaryInstanceIdsByDefinitionId = new Map(
+    report.graph.errorBoundaryDefinitions.map((definition) => [
+      definition.id,
+      new Set(definition.instanceIds),
+    ]),
+  );
   const suspenseBoundariesById = new Map(
     report.graph.suspenseBoundaries.map((boundary) => [boundary.id, boundary]),
   );
@@ -1033,6 +1153,148 @@ const checkGraphReferences = (
       new Set(binding.invocationIds),
     ]),
   );
+  for (const definition of report.graph.errorBoundaryDefinitions) {
+    const owner = unitsById.get(definition.ownerId);
+    if (!owner || owner.kind !== ReactUnitKind.ClassComponent) {
+      addFailure(
+        failures,
+        definition.id,
+        "An Error Boundary definition has no class component owner",
+      );
+    }
+    if (
+      !ERROR_BOUNDARY_PROTOCOL_STATUSES.has(definition.derivedStateStatus) ||
+      !ERROR_BOUNDARY_PROTOCOL_STATUSES.has(definition.fallbackRenderStatus)
+    ) {
+      addFailure(failures, definition.id, "An Error Boundary has an invalid protocol status");
+    }
+    if (new Set(definition.instanceIds).size !== definition.instanceIds.length) {
+      addFailure(failures, definition.id, "An Error Boundary definition repeats an instance");
+    }
+    if (
+      definition.instanceIds.some(
+        (instanceId) => errorBoundariesById.get(instanceId)?.definitionId !== definition.id,
+      )
+    ) {
+      addFailure(
+        failures,
+        definition.id,
+        "An Error Boundary definition has an invalid instance link",
+      );
+    }
+    const expectedSourceComplete =
+      definition.derivedStateStatus !== ReactErrorBoundaryProtocolStatus.Unknown &&
+      definition.fallbackRenderStatus !== ReactErrorBoundaryProtocolStatus.Unknown;
+    const expectedComplete =
+      expectedSourceComplete &&
+      definition.derivedStateStatus === ReactErrorBoundaryProtocolStatus.Valid &&
+      definition.fallbackRenderStatus === ReactErrorBoundaryProtocolStatus.Valid;
+    if (definition.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, definition.id, "An Error Boundary source certificate is inconsistent");
+    }
+    if (definition.complete !== expectedComplete) {
+      addFailure(failures, definition.id, "An Error Boundary completeness flag is inconsistent");
+    }
+    if (
+      definition.derivedStateStatus === ReactErrorBoundaryProtocolStatus.Valid &&
+      (!definition.derivedStateLocation || !definition.fallbackStateKey)
+    ) {
+      addFailure(
+        failures,
+        definition.id,
+        "A valid Error Boundary has no derived-state method or fallback key",
+      );
+    }
+  }
+  for (const boundary of report.graph.errorBoundaries) {
+    const definition = errorBoundaryDefinitionsById.get(boundary.definitionId);
+    if (!unitIds.has(boundary.ownerId) || !definition) {
+      addFailure(
+        failures,
+        boundary.id,
+        "An Error Boundary instance has an unknown owner or definition",
+      );
+    }
+    if (!errorBoundaryInstanceIdsByDefinitionId.get(boundary.definitionId)?.has(boundary.id)) {
+      addFailure(
+        failures,
+        boundary.id,
+        "An Error Boundary instance is not linked from its definition",
+      );
+    }
+    if (new Set(boundary.renderIds).size !== boundary.renderIds.length) {
+      addFailure(failures, boundary.id, "An Error Boundary repeats a protected render");
+    }
+    if (boundary.renderIds.some((renderId) => !rendersById.has(renderId))) {
+      addFailure(failures, boundary.id, "An Error Boundary references an unknown render");
+    }
+  }
+  for (const renderFailure of report.graph.renderFailures) {
+    if (!unitIds.has(renderFailure.ownerId)) {
+      addFailure(failures, renderFailure.id, "A render failure has an unknown owner unit");
+    }
+    if (!RENDER_FAILURE_KINDS.has(renderFailure.kind)) {
+      addFailure(failures, renderFailure.id, "A render failure has an invalid kind");
+    }
+    if (!ERROR_BOUNDARY_COVERAGE_STATUSES.has(renderFailure.coverageStatus)) {
+      addFailure(failures, renderFailure.id, "A render failure has an invalid coverage status");
+    }
+    if (new Set(renderFailure.sourceBoundaryIds).size !== renderFailure.sourceBoundaryIds.length) {
+      addFailure(failures, renderFailure.id, "A render failure repeats a source boundary");
+    }
+    const expectedSources = errorBoundarySourcesByUnit.get(renderFailure.ownerId) ?? new Set();
+    if (expectedSources.size === 0) {
+      addFailure(failures, renderFailure.id, "An unreachable render failure has a graph fact");
+    }
+    const expectedBoundaryIds = [...expectedSources].filter(
+      (sourceId) =>
+        sourceId !== REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID &&
+        sourceId !== REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID,
+    );
+    if (
+      expectedBoundaryIds.length !== renderFailure.sourceBoundaryIds.length ||
+      expectedBoundaryIds.some(
+        (boundaryId) => !renderFailure.sourceBoundaryIds.includes(boundaryId),
+      )
+    ) {
+      addFailure(failures, renderFailure.id, "A render failure has inconsistent boundary sources");
+    }
+    const sourceDefinitions = expectedBoundaryIds.flatMap((boundaryId) => {
+      const boundary = errorBoundariesById.get(boundaryId);
+      const definition = boundary ? errorBoundaryDefinitionsById.get(boundary.definitionId) : null;
+      return definition ? [definition] : [];
+    });
+    const expectedOutsideBoundary = expectedSources.has(REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID);
+    const expectedTopologyComplete =
+      !expectedSources.has(REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID) &&
+      sourceDefinitions.length === expectedBoundaryIds.length &&
+      sourceDefinitions.every((definition) => definition.sourceComplete);
+    const hasValidBoundary = sourceDefinitions.some((definition) => definition.complete);
+    let expectedCoverageStatus = ReactErrorBoundaryCoverageStatus.Unknown;
+    if (expectedOutsideBoundary || (expectedTopologyComplete && !hasValidBoundary)) {
+      expectedCoverageStatus = ReactErrorBoundaryCoverageStatus.OutsideBoundary;
+    } else if (expectedTopologyComplete && hasValidBoundary) {
+      expectedCoverageStatus = ReactErrorBoundaryCoverageStatus.Covered;
+    }
+    if (renderFailure.outsideBoundary !== expectedOutsideBoundary) {
+      addFailure(failures, renderFailure.id, "A render failure outside flag is inconsistent");
+    }
+    if (
+      renderFailure.topologyComplete !== expectedTopologyComplete ||
+      renderFailure.sourceComplete !== expectedTopologyComplete
+    ) {
+      addFailure(failures, renderFailure.id, "A render failure source certificate is inconsistent");
+    }
+    if (renderFailure.coverageStatus !== expectedCoverageStatus) {
+      addFailure(failures, renderFailure.id, "A render failure coverage status is inconsistent");
+    }
+    if (
+      renderFailure.complete !==
+      (expectedCoverageStatus === ReactErrorBoundaryCoverageStatus.Covered)
+    ) {
+      addFailure(failures, renderFailure.id, "A render failure completeness flag is inconsistent");
+    }
+  }
   for (const boundary of report.graph.suspenseBoundaries) {
     if (!unitIds.has(boundary.ownerId)) {
       addFailure(failures, boundary.id, "A Suspense boundary has an unknown owner unit");
@@ -3607,6 +3869,21 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Suspense boundaries",
     report.graph.suspenseBoundaries.map((boundary) => boundary.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Error Boundary definitions",
+    report.graph.errorBoundaryDefinitions.map((definition) => definition.id),
+  );
+  checkUniqueIds(
+    failures,
+    "Error Boundary instances",
+    report.graph.errorBoundaries.map((boundary) => boundary.id),
+  );
+  checkUniqueIds(
+    failures,
+    "render failures",
+    report.graph.renderFailures.map((renderFailure) => renderFailure.id),
   );
   checkUniqueIds(
     failures,

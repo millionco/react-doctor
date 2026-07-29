@@ -17,6 +17,7 @@ import { createComponentSlotFlow } from "./create-component-slot-flow.js";
 import type { ComponentSlotFlowDescriptor } from "./create-component-slot-flow.js";
 import { collectDirectHookCalls } from "./collect-direct-hook-calls.js";
 import { collectEffectEventBindings } from "./collect-effect-event-bindings.js";
+import { collectErrorBoundaryProtocol } from "./collect-error-boundary-protocol.js";
 import { collectEffectCleanupFunctions } from "./collect-effect-cleanup-functions.js";
 import { collectEffectCalls } from "./collect-effect-calls.js";
 import {
@@ -48,6 +49,8 @@ import {
   REACT_MEMO_HOOK_NAMES,
   REACT_CONTEXT_DEFAULT_SOURCE_ID,
   REACT_CONTEXT_UNKNOWN_SOURCE_ID,
+  REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID,
+  REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID,
   REACT_FORM_OUTSIDE_SOURCE_ID,
   REACT_FORM_UNKNOWN_SOURCE_ID,
   REACT_SEMANTIC_GRAPH_SCHEMA_VERSION,
@@ -84,6 +87,8 @@ import {
   ReactClassStateWriteStatus,
   ReactClassUpdateCycleStatus,
   ReactEffectDependencyMode,
+  ReactErrorBoundaryCoverageStatus,
+  ReactErrorBoundaryProtocolStatus,
   ReactExecutionPhase,
   ReactFormActionStatus,
   ReactFormStatusTopologyStatus,
@@ -100,6 +105,7 @@ import {
   ReactReducerDispatchStatus,
   ReactReducerPurityStatus,
   ReactReducerReturnStatus,
+  ReactRenderFailureKind,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
   ReactSemanticRenderKind,
@@ -119,6 +125,8 @@ import type {
   ReactSemanticEdge,
   ReactSemanticEffect,
   ReactSemanticEffectEvent,
+  ReactSemanticErrorBoundary,
+  ReactSemanticErrorBoundaryDefinition,
   ReactSemanticEventBinding,
   ReactSemanticCallbackPropAlternative,
   ReactSemanticCallbackPropFlow,
@@ -148,6 +156,7 @@ import type {
   ReactSemanticTransitionAction,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
+  ReactSemanticRenderFailure,
   ReactSemanticSlotFlow,
   ReactSemanticEffectResource,
   ReactSemanticScheduler,
@@ -159,6 +168,7 @@ import { areProofLocationsEqual } from "./utils/are-proof-locations-equal.js";
 import { collectReachableCallExpressions } from "./utils/collect-reachable-call-expressions.js";
 import { collectExecutionCallbackIds } from "./utils/collect-execution-callback-ids.js";
 import { getClassMethodDeclaration } from "./utils/get-class-method-declaration.js";
+import { getStaticClassMethodDeclaration } from "./utils/get-static-class-method-declaration.js";
 import { getContainingFunction } from "./utils/get-containing-function.js";
 import { getJsxOpeningElementForAttribute } from "./utils/get-jsx-opening-element-for-attribute.js";
 import { getJsxComponentTargetFunction } from "./utils/get-jsx-component-target-function.js";
@@ -409,6 +419,7 @@ const collectCallableRefGraph = (
 
 interface RenderGraphFacts {
   edges: ReadonlyArray<ReactSemanticEdge>;
+  errorBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>;
   renders: ReadonlyArray<ReactSemanticRender>;
   suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>;
 }
@@ -421,6 +432,7 @@ interface RenderSlotBoundary {
 }
 
 interface SlotGraphFacts {
+  errorBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>;
   renders: ReadonlyArray<ReactSemanticRender>;
   slotFlows: ReadonlyArray<ReactSemanticSlotFlow>;
   suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>;
@@ -429,6 +441,22 @@ interface SlotGraphFacts {
 interface SuspenseGraphFacts {
   boundaries: ReadonlyArray<ReactSemanticSuspenseBoundary>;
   boundariesByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticSuspenseBoundary>;
+}
+
+interface ErrorBoundaryDefinitionIdentity {
+  definition: ReactSemanticErrorBoundaryDefinition;
+  identity: UnitGraphIdentity;
+}
+
+interface ErrorBoundaryGraphFacts {
+  boundaries: ReadonlyArray<ReactSemanticErrorBoundary>;
+  boundariesByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticErrorBoundary>;
+  definitions: ReadonlyArray<ReactSemanticErrorBoundaryDefinition>;
+  definitionsByUnitId: ReadonlyMap<string, ReactSemanticErrorBoundaryDefinition>;
+}
+
+interface RenderErrorGraphFacts {
+  failures: ReadonlyArray<ReactSemanticRenderFailure>;
 }
 
 interface LazyComponentIdentity {
@@ -861,6 +889,124 @@ const resolveUnitTarget = (
   return symbol ? (unitIdsBySymbol.get(symbol) ?? null) : null;
 };
 
+const collectErrorBoundaryGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  unitIdsBySymbol: ReadonlyMap<ts.Symbol, string>,
+  context: ReactAnalysisContext,
+): ErrorBoundaryGraphFacts => {
+  const definitionIdentities: ErrorBoundaryDefinitionIdentity[] = [];
+  for (const identity of identities) {
+    const classNode = identity.descriptor.classNode;
+    const renderMethod =
+      classNode && identity.descriptor.kind === ReactUnitKind.ClassComponent
+        ? getClassMethodDeclaration(classNode, "render")
+        : null;
+    if (!classNode || !renderMethod) continue;
+    const protocol = collectErrorBoundaryProtocol(classNode, renderMethod, context);
+    if (!protocol.isCandidate) continue;
+    const definition: ReactSemanticErrorBoundaryDefinition = {
+      id: createSemanticId(
+        "error-boundary-definition",
+        identity.descriptor.name,
+        classNode,
+        context,
+      ),
+      ownerId: identity.semanticUnit.id,
+      location: getNodeLocation(classNode, context.rootDirectory),
+      derivedStateLocation: protocol.derivedStateMethod
+        ? getNodeLocation(protocol.derivedStateMethod, context.rootDirectory)
+        : null,
+      componentDidCatchLocation: protocol.componentDidCatchMethod
+        ? getNodeLocation(protocol.componentDidCatchMethod, context.rootDirectory)
+        : null,
+      fallbackStateKey: protocol.fallbackStateKey,
+      derivedStateStatus: protocol.derivedStateStatus,
+      fallbackRenderStatus: protocol.fallbackRenderStatus,
+      instanceIds: [],
+      sourceComplete: protocol.isSourceComplete,
+      complete:
+        protocol.isSourceComplete &&
+        protocol.derivedStateStatus === ReactErrorBoundaryProtocolStatus.Valid &&
+        protocol.fallbackRenderStatus === ReactErrorBoundaryProtocolStatus.Valid,
+    };
+    definitionIdentities.push({ definition, identity });
+  }
+  const definitionsByUnitId = new Map(
+    definitionIdentities.map(({ definition }) => [definition.ownerId, definition]),
+  );
+  const boundaries: ReactSemanticErrorBoundary[] = [];
+  const boundariesByOpeningNode = new Map<ts.JsxOpeningLikeElement, ReactSemanticErrorBoundary>();
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const visit = (node: ts.Node): void => {
+      if (node !== functionNode && isFunctionBoundary(node)) return;
+      const openingElement =
+        ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node) ? node : null;
+      if (openingElement && !ts.isJsxNamespacedName(openingElement.tagName)) {
+        const targetId = resolveUnitTarget(
+          openingElement.tagName,
+          unitIdsBySymbol,
+          context.typeChecker,
+        );
+        const definition = targetId ? definitionsByUnitId.get(targetId) : null;
+        if (definition) {
+          const boundary: ReactSemanticErrorBoundary = {
+            id: createSemanticId("error-boundary", definition.id, openingElement.tagName, context),
+            ownerId: identity.semanticUnit.id,
+            definitionId: definition.id,
+            location: getNodeLocation(openingElement.tagName, context.rootDirectory),
+            renderIds: [],
+          };
+          boundaries.push(boundary);
+          boundariesByOpeningNode.set(openingElement, boundary);
+        }
+      }
+      node.forEachChild(visit);
+    };
+    functionNode.forEachChild(visit);
+  }
+  const instanceIdsByDefinitionId = new Map<string, string[]>();
+  for (const boundary of boundaries) {
+    const instanceIds = instanceIdsByDefinitionId.get(boundary.definitionId) ?? [];
+    instanceIds.push(boundary.id);
+    instanceIdsByDefinitionId.set(boundary.definitionId, instanceIds);
+  }
+  const definitions = definitionIdentities.map(({ definition }) => ({
+    ...definition,
+    instanceIds: instanceIdsByDefinitionId.get(definition.id) ?? [],
+  }));
+  return {
+    boundaries,
+    boundariesByOpeningNode,
+    definitions,
+    definitionsByUnitId: new Map(definitions.map((definition) => [definition.ownerId, definition])),
+  };
+};
+
+const collectActiveErrorBoundaryIds = (
+  node: ts.Node,
+  boundariesByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticErrorBoundary>,
+  stopNode: ts.Node | null = null,
+): ReadonlyArray<string> => {
+  const boundaryIds: string[] = [];
+  const originOpeningElement =
+    ts.isJsxOpeningElement(node.parent) || ts.isJsxSelfClosingElement(node.parent)
+      ? node.parent
+      : null;
+  let currentNode: ts.Node | undefined = node.parent;
+  while (currentNode && currentNode !== stopNode && !isFunctionBoundary(currentNode)) {
+    if (ts.isJsxElement(currentNode)) {
+      const boundary = boundariesByOpeningNode.get(currentNode.openingElement);
+      if (boundary && currentNode.openingElement !== originOpeningElement) {
+        boundaryIds.unshift(boundary.id);
+      }
+    }
+    currentNode = currentNode.parent;
+  }
+  return boundaryIds;
+};
+
 const isTransparentSlotOpening = (
   openingElement: ts.JsxOpeningLikeElement,
   providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
@@ -984,6 +1130,7 @@ const collectRenderEdges = (
   unitIdsBySymbol: ReadonlyMap<ts.Symbol, string>,
   providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
   formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>,
+  errorBoundariesByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticErrorBoundary>,
   suspenseBoundariesByOpeningNode: ReadonlyMap<
     ts.JsxOpeningLikeElement,
     ReactSemanticSuspenseBoundary
@@ -992,10 +1139,16 @@ const collectRenderEdges = (
 ): RenderGraphFacts => {
   const functionNode = identity.descriptor.functionNode;
   if (!functionNode) {
-    return { edges: [], renders: [], suspenseBoundaryIdsByRenderId: new Map() };
+    return {
+      edges: [],
+      errorBoundaryIdsByRenderId: new Map(),
+      renders: [],
+      suspenseBoundaryIdsByRenderId: new Map(),
+    };
   }
   const edges: ReactSemanticEdge[] = [];
   const renders: ReactSemanticRender[] = [];
+  const errorBoundaryIdsByRenderId = new Map<string, ReadonlyArray<string>>();
   const suspenseBoundaryIdsByRenderId = new Map<string, ReadonlyArray<string>>();
   const visit = (node: ts.Node): void => {
     if (node !== functionNode && isFunctionBoundary(node)) {
@@ -1055,21 +1208,36 @@ const collectRenderEdges = (
             slotBoundary?.node ?? null,
           ),
         );
+        errorBoundaryIdsByRenderId.set(
+          renderId,
+          collectActiveErrorBoundaryIds(
+            tagName,
+            errorBoundariesByOpeningNode,
+            slotBoundary?.node ?? null,
+          ),
+        );
       }
     }
     node.forEachChild(visit);
   };
   functionNode.forEachChild(visit);
-  return { edges, renders, suspenseBoundaryIdsByRenderId };
+  return {
+    edges,
+    errorBoundaryIdsByRenderId,
+    renders,
+    suspenseBoundaryIdsByRenderId,
+  };
 };
 
 const collectSlotGraph = (
   renders: ReadonlyArray<ReactSemanticRender>,
+  errorBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
   suspenseBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
   identitiesByFunction: ReadonlyMap<ts.FunctionLikeDeclaration, UnitGraphIdentity>,
   slotFlow: ComponentSlotFlowDescriptor,
   providersByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticContextProvider>,
   formsByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticForm>,
+  errorBoundariesByOpeningNode: ReadonlyMap<ts.JsxOpeningLikeElement, ReactSemanticErrorBoundary>,
   suspenseBoundariesByOpeningNode: ReadonlyMap<
     ts.JsxOpeningLikeElement,
     ReactSemanticSuspenseBoundary
@@ -1084,6 +1252,7 @@ const collectSlotGraph = (
   const slotRenders: ReactSemanticRender[] = [];
   const slotFlows: ReactSemanticSlotFlow[] = [];
   const resolvedSuspenseBoundaryIdsByRenderId = new Map(suspenseBoundaryIdsByRenderId);
+  const resolvedErrorBoundaryIdsByRenderId = new Map(errorBoundaryIdsByRenderId);
   for (const render of renders) {
     if (render.kind !== ReactSemanticRenderKind.SlotInput) {
       resolvedRenders.push(render);
@@ -1170,6 +1339,14 @@ const collectSlotGraph = (
           ),
         ]),
       ]);
+      resolvedErrorBoundaryIdsByRenderId.set(slotRender.id, [
+        ...new Set([
+          ...(errorBoundaryIdsByRenderId.get(render.id) ?? []),
+          ...placement.topologyFrames.flatMap((topologyFrame) =>
+            collectActiveErrorBoundaryIds(topologyFrame.node, errorBoundariesByOpeningNode),
+          ),
+        ]),
+      ]);
     }
     resolvedRenders.push({
       ...render,
@@ -1190,6 +1367,7 @@ const collectSlotGraph = (
     });
   }
   return {
+    errorBoundaryIdsByRenderId: resolvedErrorBoundaryIdsByRenderId,
     renders: [...resolvedRenders, ...slotRenders],
     slotFlows,
     suspenseBoundaryIdsByRenderId: resolvedSuspenseBoundaryIdsByRenderId,
@@ -1751,6 +1929,11 @@ const collectClassLifecycleGraph = (
   const mountMethod = getClassMethodDeclaration(classNode, "componentDidMount");
   const unmountMethod = getClassMethodDeclaration(classNode, "componentWillUnmount");
   const updateMethod = getClassMethodDeclaration(classNode, "componentDidUpdate");
+  const componentDidCatchMethod = getClassMethodDeclaration(classNode, "componentDidCatch");
+  const derivedStateFromErrorMethod = getStaticClassMethodDeclaration(
+    classNode,
+    "getDerivedStateFromError",
+  );
   const callbacks: ReactSemanticCallback[] = [];
   const reachableFunctions: ReactSemanticReachableFunction[] = [];
   const functionCalls: ReactSemanticFunctionCall[] = [];
@@ -2113,6 +2296,8 @@ const collectClassLifecycleGraph = (
     ...(mountMethod ? [mountMethod] : []),
     ...(unmountMethod ? [unmountMethod] : []),
     ...(updateMethod ? [updateMethod] : []),
+    ...(componentDidCatchMethod ? [componentDidCatchMethod] : []),
+    ...(derivedStateFromErrorMethod ? [derivedStateFromErrorMethod] : []),
     ...[...resourceCallbackFunctions].filter(ts.isMethodDeclaration),
     ...[...schedulerCallbackFunctions].filter(ts.isMethodDeclaration),
     ...[...transitionUpdaterFunctions].filter(ts.isMethodDeclaration),
@@ -4725,6 +4910,163 @@ const deriveSuspenseSourcesByUnit = (
   return sourcesByUnit;
 };
 
+const addErrorBoundarySource = (
+  sourcesByUnit: Map<string, Set<string>>,
+  unitId: string,
+  sourceId: string,
+): boolean => {
+  const sources = sourcesByUnit.get(unitId) ?? new Set<string>();
+  const previousSize = sources.size;
+  sources.add(sourceId);
+  sourcesByUnit.set(unitId, sources);
+  return sources.size !== previousSize;
+};
+
+const deriveErrorBoundarySourcesByUnit = (
+  units: ReadonlyArray<ReactSemanticUnit>,
+  renders: ReadonlyArray<ReactSemanticRender>,
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
+  errorBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
+): ReadonlyMap<string, ReadonlySet<string>> => {
+  const sourcesByUnit = new Map<string, Set<string>>();
+  const rendersById = new Map(renders.map((render) => [render.id, render]));
+  for (const unit of units) {
+    if (unit.canBeRenderRoot) {
+      addErrorBoundarySource(sourcesByUnit, unit.id, REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID);
+    }
+  }
+  let didSourcesChange = true;
+  while (didSourcesChange) {
+    didSourcesChange = false;
+    for (const render of renders) {
+      const boundaryIds = errorBoundaryIdsByRenderId.get(render.id) ?? [];
+      if (render.kind === ReactSemanticRenderKind.SlotInput && boundaryIds.length === 0) {
+        continue;
+      }
+      if (boundaryIds.length > 0) {
+        for (const boundaryId of boundaryIds) {
+          didSourcesChange =
+            addErrorBoundarySource(sourcesByUnit, render.targetId, boundaryId) || didSourcesChange;
+        }
+      } else {
+        for (const sourceId of sourcesByUnit.get(render.ownerId) ?? []) {
+          didSourcesChange =
+            addErrorBoundarySource(sourcesByUnit, render.targetId, sourceId) || didSourcesChange;
+        }
+      }
+    }
+    for (const slotFlow of slotFlows) {
+      if (slotFlow.complete) continue;
+      const sourceRender = rendersById.get(slotFlow.sourceRenderId);
+      if (sourceRender && (errorBoundaryIdsByRenderId.get(sourceRender.id)?.length ?? 0) === 0) {
+        didSourcesChange =
+          addErrorBoundarySource(
+            sourcesByUnit,
+            sourceRender.targetId,
+            REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID,
+          ) || didSourcesChange;
+      }
+    }
+  }
+  return sourcesByUnit;
+};
+
+const findFirstThrowStatement = (
+  functionNode: ts.FunctionLikeDeclaration,
+): ts.ThrowStatement | null => {
+  let throwStatement: ts.ThrowStatement | null = null;
+  const visit = (node: ts.Node): void => {
+    if (throwStatement || (node !== functionNode && isFunctionBoundary(node))) return;
+    if (ts.isThrowStatement(node)) {
+      throwStatement = node;
+      return;
+    }
+    node.forEachChild(visit);
+  };
+  functionNode.forEachChild(visit);
+  return throwStatement;
+};
+
+const collectRenderErrorGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  renders: ReadonlyArray<ReactSemanticRender>,
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>,
+  errorBoundaryIdsByRenderId: ReadonlyMap<string, ReadonlyArray<string>>,
+  errorBoundaries: ReadonlyArray<ReactSemanticErrorBoundary>,
+  errorBoundaryDefinitions: ReadonlyArray<ReactSemanticErrorBoundaryDefinition>,
+  context: ReactAnalysisContext,
+): RenderErrorGraphFacts => {
+  const sourcesByUnit = deriveErrorBoundarySourcesByUnit(
+    identities.map((identity) => identity.semanticUnit),
+    renders,
+    slotFlows,
+    errorBoundaryIdsByRenderId,
+  );
+  const boundariesById = new Map(errorBoundaries.map((boundary) => [boundary.id, boundary]));
+  const definitionsById = new Map(
+    errorBoundaryDefinitions.map((definition) => [definition.id, definition]),
+  );
+  const failures: ReactSemanticRenderFailure[] = [];
+  for (const identity of identities) {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode) continue;
+    const unitId = identity.semanticUnit.id;
+    const sources = sourcesByUnit.get(unitId) ?? new Set<string>();
+    if (sources.size === 0) continue;
+    const reachableFunctions = collectReachableFunctionGraph(
+      functionNode,
+      context.typeChecker,
+    ).functions.map((descriptor) => descriptor.functionNode);
+    for (const reachableFunction of new Set([functionNode, ...reachableFunctions])) {
+      const returnSummary = summarizeFunctionReturns(reachableFunction, context.typeChecker);
+      if (!returnSummary.canThrow) continue;
+      const throwStatement = findFirstThrowStatement(reachableFunction);
+      if (!throwStatement) continue;
+      const sourceBoundaryIds = [...sources].filter(
+        (sourceId) =>
+          sourceId !== REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID &&
+          sourceId !== REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID,
+      );
+      const outsideBoundary = sources.has(REACT_ERROR_BOUNDARY_OUTSIDE_SOURCE_ID);
+      const hasUnknownSource = sources.has(REACT_ERROR_BOUNDARY_UNKNOWN_SOURCE_ID);
+      const sourceDefinitions = sourceBoundaryIds.flatMap((boundaryId) => {
+        const boundary = boundariesById.get(boundaryId);
+        const definition = boundary ? definitionsById.get(boundary.definitionId) : null;
+        return definition ? [definition] : [];
+      });
+      const topologyComplete =
+        !hasUnknownSource &&
+        sourceDefinitions.length === sourceBoundaryIds.length &&
+        sourceDefinitions.every((definition) => definition.sourceComplete);
+      const hasValidBoundary = sourceDefinitions.some((definition) => definition.complete);
+      let coverageStatus = ReactErrorBoundaryCoverageStatus.Unknown;
+      if (outsideBoundary || (topologyComplete && !hasValidBoundary)) {
+        coverageStatus = ReactErrorBoundaryCoverageStatus.OutsideBoundary;
+      } else if (topologyComplete && hasValidBoundary) {
+        coverageStatus = ReactErrorBoundaryCoverageStatus.Covered;
+      }
+      failures.push({
+        id: createSemanticId(
+          "render-failure",
+          `${unitId}:${ReactRenderFailureKind.ExplicitThrow}`,
+          throwStatement,
+          context,
+        ),
+        ownerId: unitId,
+        location: getNodeLocation(throwStatement, context.rootDirectory),
+        kind: ReactRenderFailureKind.ExplicitThrow,
+        sourceBoundaryIds,
+        outsideBoundary,
+        topologyComplete,
+        sourceComplete: topologyComplete,
+        coverageStatus,
+        complete: coverageStatus === ReactErrorBoundaryCoverageStatus.Covered,
+      });
+    }
+  }
+  return { failures };
+};
+
 const resolveLazyComponentIdentity = (
   expression: ts.Expression | ts.JsxTagNameExpression,
   componentsBySymbol: ReadonlyMap<ts.Symbol, LazyComponentIdentity>,
@@ -5270,8 +5612,10 @@ export const buildReactSemanticGraph = (
   const contextGraph = collectContextGraph(identities, sourceFiles, context);
   const formTopologyGraph = collectFormTopologyGraph(identities, context);
   const suspenseGraph = collectSuspenseGraph(identities, context);
+  const errorBoundaryGraph = collectErrorBoundaryGraph(identities, unitIdsBySymbol, context);
   const edges: ReactSemanticEdge[] = [];
   const renders: ReactSemanticRender[] = [];
+  const errorBoundaryIdsByRenderId = new Map<string, ReadonlyArray<string>>();
   const suspenseBoundaryIdsByRenderId = new Map<string, ReadonlyArray<string>>();
   const hookCalls: ReactSemanticHookCall[] = [];
   const effects: ReactSemanticEffect[] = [];
@@ -5383,11 +5727,15 @@ export const buildReactSemanticGraph = (
       unitIdsBySymbol,
       contextGraph.providersByOpeningNode,
       formTopologyGraph.formsByOpeningNode,
+      errorBoundaryGraph.boundariesByOpeningNode,
       suspenseGraph.boundariesByOpeningNode,
       context,
     );
     edges.push(...renderGraph.edges);
     renders.push(...renderGraph.renders);
+    for (const [renderId, boundaryIds] of renderGraph.errorBoundaryIdsByRenderId) {
+      errorBoundaryIdsByRenderId.set(renderId, boundaryIds);
+    }
     for (const [renderId, boundaryIds] of renderGraph.suspenseBoundaryIdsByRenderId) {
       suspenseBoundaryIdsByRenderId.set(renderId, boundaryIds);
     }
@@ -5507,11 +5855,13 @@ export const buildReactSemanticGraph = (
   }
   const slotGraph = collectSlotGraph(
     renders,
+    errorBoundaryIdsByRenderId,
     suspenseBoundaryIdsByRenderId,
     unitIdentitiesByFunction,
     slotFlow,
     contextGraph.providersByOpeningNode,
     formTopologyGraph.formsByOpeningNode,
+    errorBoundaryGraph.boundariesByOpeningNode,
     suspenseGraph.boundariesByOpeningNode,
     context,
   );
@@ -5544,6 +5894,27 @@ export const buildReactSemanticGraph = (
     slotGraph.suspenseBoundaryIdsByRenderId,
     context,
   );
+  const renderIdsByErrorBoundaryId = new Map<string, string[]>();
+  for (const render of slotGraph.renders) {
+    for (const boundaryId of slotGraph.errorBoundaryIdsByRenderId.get(render.id) ?? []) {
+      const renderIds = renderIdsByErrorBoundaryId.get(boundaryId) ?? [];
+      renderIds.push(render.id);
+      renderIdsByErrorBoundaryId.set(boundaryId, renderIds);
+    }
+  }
+  const errorBoundaries = errorBoundaryGraph.boundaries.map((boundary) => ({
+    ...boundary,
+    renderIds: renderIdsByErrorBoundaryId.get(boundary.id) ?? [],
+  }));
+  const renderErrorGraph = collectRenderErrorGraph(
+    identities,
+    slotGraph.renders,
+    slotGraph.slotFlows,
+    slotGraph.errorBoundaryIdsByRenderId,
+    errorBoundaries,
+    errorBoundaryGraph.definitions,
+    context,
+  );
   const renderIdsBySuspenseBoundaryId = new Map<string, string[]>();
   for (const render of slotGraph.renders) {
     for (const boundaryId of slotGraph.suspenseBoundaryIdsByRenderId.get(render.id) ?? []) {
@@ -5571,6 +5942,9 @@ export const buildReactSemanticGraph = (
     contexts: contextGraph.contexts,
     contextProviders: contextGraph.contextProviders,
     contextConsumers,
+    errorBoundaryDefinitions: errorBoundaryGraph.definitions,
+    errorBoundaries,
+    renderFailures: renderErrorGraph.failures,
     suspenseBoundaries,
     lazyComponents: lazyGraph.components,
     lazyRenders: lazyGraph.renders,

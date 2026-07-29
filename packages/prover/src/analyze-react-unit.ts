@@ -11,6 +11,7 @@ import { analyzeEffectCleanup } from "./analyze-effect-cleanup.js";
 import { analyzeEffectDependencies } from "./analyze-effect-dependencies.js";
 import { analyzeEffectEventUsage } from "./analyze-effect-event-usage.js";
 import { analyzeEffectStateUpdates } from "./analyze-effect-state-updates.js";
+import { analyzeErrorBoundary } from "./analyze-error-boundary.js";
 import { analyzeExternalStoreConsistency } from "./analyze-external-store-consistency.js";
 import { analyzeFormActions } from "./analyze-form-actions.js";
 import { analyzeFormStatus } from "./analyze-form-status.js";
@@ -45,6 +46,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.ComponentIdentity,
   ReactProofClaim.ComponentInvocation,
   ReactProofClaim.ContextTopology,
+  ReactProofClaim.ErrorBoundary,
   ReactProofClaim.EffectCleanup,
   ReactProofClaim.EffectDependencies,
   ReactProofClaim.EffectEventUsage,
@@ -153,6 +155,7 @@ export const analyzeReactUnit = (
       analyzeEffectDependencies(unit.functionNode, context),
       analyzeEffectEventUsage(unit.functionNode, context),
       analyzeEffectStateUpdates(unit, context),
+      analyzeErrorBoundary(unit, context),
       analyzeExternalStoreConsistency(unit, context),
       analyzeFormActions(unit, context),
       analyzeFormStatus(unit, context),

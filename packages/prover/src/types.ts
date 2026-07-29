@@ -21,6 +21,7 @@ export enum ReactProofClaim {
   ComponentIdentity = "component-identity",
   ComponentInvocation = "component-invocation",
   ContextTopology = "context-topology",
+  ErrorBoundary = "error-boundary",
   AsyncEffectOwnership = "async-effect-ownership",
   EffectCleanup = "effect-cleanup",
   EffectDependencies = "effect-dependencies",
@@ -366,6 +367,22 @@ export enum ReactSuspenseCoverageStatus {
   Unknown = "unknown",
 }
 
+export enum ReactErrorBoundaryProtocolStatus {
+  Invalid = "invalid",
+  Unknown = "unknown",
+  Valid = "valid",
+}
+
+export enum ReactErrorBoundaryCoverageStatus {
+  Covered = "covered",
+  OutsideBoundary = "outside-boundary",
+  Unknown = "unknown",
+}
+
+export enum ReactRenderFailureKind {
+  ExplicitThrow = "explicit-throw",
+}
+
 export interface ReactSemanticSuspenseBoundary {
   id: string;
   ownerId: string;
@@ -399,6 +416,41 @@ export interface ReactSemanticLazyRender {
   topologyComplete: boolean;
   sourceComplete: boolean;
   coverageStatus: ReactSuspenseCoverageStatus;
+  complete: boolean;
+}
+
+export interface ReactSemanticErrorBoundaryDefinition {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  derivedStateLocation: ReactProofLocation | null;
+  componentDidCatchLocation: ReactProofLocation | null;
+  fallbackStateKey: string | null;
+  derivedStateStatus: ReactErrorBoundaryProtocolStatus;
+  fallbackRenderStatus: ReactErrorBoundaryProtocolStatus;
+  instanceIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticErrorBoundary {
+  id: string;
+  ownerId: string;
+  definitionId: string;
+  location: ReactProofLocation;
+  renderIds: ReadonlyArray<string>;
+}
+
+export interface ReactSemanticRenderFailure {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  kind: ReactRenderFailureKind;
+  sourceBoundaryIds: ReadonlyArray<string>;
+  outsideBoundary: boolean;
+  topologyComplete: boolean;
+  sourceComplete: boolean;
+  coverageStatus: ReactErrorBoundaryCoverageStatus;
   complete: boolean;
 }
 
@@ -1018,6 +1070,9 @@ export interface ReactSemanticGraph {
   contexts: ReadonlyArray<ReactSemanticContext>;
   contextProviders: ReadonlyArray<ReactSemanticContextProvider>;
   contextConsumers: ReadonlyArray<ReactSemanticContextConsumer>;
+  errorBoundaryDefinitions: ReadonlyArray<ReactSemanticErrorBoundaryDefinition>;
+  errorBoundaries: ReadonlyArray<ReactSemanticErrorBoundary>;
+  renderFailures: ReadonlyArray<ReactSemanticRenderFailure>;
   suspenseBoundaries: ReadonlyArray<ReactSemanticSuspenseBoundary>;
   lazyComponents: ReadonlyArray<ReactSemanticLazyComponent>;
   lazyRenders: ReadonlyArray<ReactSemanticLazyRender>;

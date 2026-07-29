@@ -2091,8 +2091,7 @@ const findOwnershipClaim = (
       node: tokenInitializer.argument,
       scopes: context.scopes,
     });
-    if (!generationKey) return null;
-    if (generationKey === refKey) {
+    if (generationKey && generationKey === refKey) {
       const ownerFunction = getOwningFunction(functionNode);
       let didFindOtherGenerationWrite = false;
       walkAst(ownerFunction, (candidate) => {

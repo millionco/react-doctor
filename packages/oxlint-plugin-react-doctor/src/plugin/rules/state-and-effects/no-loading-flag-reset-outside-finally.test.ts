@@ -586,6 +586,81 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a guarded finalizer before a later risky await", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const ownerRef = useRef(null);
+         const load = async () => {
+           const token = {};
+           ownerRef.current = token;
+           setIsLoading(true);
+           try { prepareFeed(); }
+           finally {
+             if (ownerRef.current === token) setIsLoading(false);
+           }
+           await fetchMore();
+         };
+       };`,
+      `import { useEffect, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const mountedRef = useRef(true);
+         useEffect(() => () => { mountedRef.current = false; }, []);
+         const load = async () => {
+           setIsLoading(true);
+           try { prepareFeed(); }
+           finally {
+             if (mountedRef.current) setIsLoading(false);
+           }
+           await fetchMore();
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("rejects ordered guards that stay true for stale operations", () => {
+    const sources = [
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const load = async () => {
+           const requestId = ++sequenceRef.current;
+           latestStartedRef.current = requestId;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (requestId <= latestStartedRef.current) setIsLoading(false);
+           }
+         };
+       };`,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const latestStartedRef = useRef(0);
+         const sequenceRef = useRef(0);
+         const load = async () => {
+           const requestId = ++sequenceRef.current;
+           latestStartedRef.current = requestId;
+           setIsLoading(true);
+           try { await fetchFeed(); }
+           finally {
+             if (latestStartedRef.current >= requestId) setIsLoading(false);
+           }
+         };
+       };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(1);
+    }
+  });
+
   it("checks ownership writes outside an enclosing effect callback", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

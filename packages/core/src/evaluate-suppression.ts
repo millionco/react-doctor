@@ -7,14 +7,8 @@ import {
 } from "./find-stacked-disable-comments.js";
 import { isRuleListedInComment } from "./is-rule-listed-in-comment.js";
 
-// HACK: [\s\u200B\u200C\u200D\uFEFF]* before the `$` (#1472).
-// See the comment in `find-stacked-disable-comments.ts` for the full
-// rationale: invisible Unicode characters at line ends (triggered by
-// TERMINAL_EMULATOR=JetBrains-JediTerm and similar IDE/terminal configs)
-// are not matched by `\s` and break bare `$` matches despite being
-// invisible to users.
 const DISABLE_LINE_PATTERN =
-  /(?:\/\/|\/\*)\s*react-doctor-disable-line\b(?:\s+([^\r\n]*?))?\s*(?:\*\/)?\s*\}?[\s\u200B\u200C\u200D\uFEFF]*$/;
+  /(?:\/\/|\/\*)\s*react-doctor-disable-line\b(?:\s+([^\r\n]*?))?\s*(?:\*\/)?\s*\}?\s*$/;
 
 interface SuppressionEvaluation {
   isSuppressed: boolean;

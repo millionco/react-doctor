@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/core";
@@ -78,6 +79,21 @@ describe("mergeAndFilterDiagnostics — respectInlineDisables option", () => {
     );
     const filtered = mergeAndFilterDiagnostics(
       [baseDiagnostic()],
+      projectDir,
+      null,
+      createNodeReadFileLinesSync(projectDir),
+    );
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("filters react-doctor-disable comments when oxlint reports a file URL", () => {
+    const projectDir = setupCase(
+      "file-url-respects-disables",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\nconst x = 1;\n`,
+    );
+    const fileUrl = pathToFileURL(path.join(projectDir, "src", "app.tsx")).href;
+    const filtered = mergeAndFilterDiagnostics(
+      [baseDiagnostic({ filePath: fileUrl })],
       projectDir,
       null,
       createNodeReadFileLinesSync(projectDir),

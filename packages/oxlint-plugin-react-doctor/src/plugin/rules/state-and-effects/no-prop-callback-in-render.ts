@@ -202,11 +202,23 @@ const customHookParameterUsesLegacyLocalAssumption = (
 const referenceHasComponentPropOrigin = (
   analysis: ProgramAnalysis,
   reference: Reference,
+  scopes: ScopeAnalysis,
+  visitedReferences: ReadonlySet<Reference>,
 ): boolean =>
-  getUpstreamRefs(analysis, reference).some(
-    (upstreamReference) =>
-      isProp(analysis, upstreamReference) && !isCustomHookParameter(upstreamReference),
-  );
+  getUpstreamRefs(analysis, reference).some((upstreamReference) => {
+    if (isProp(analysis, upstreamReference) && !isCustomHookParameter(upstreamReference)) {
+      return true;
+    }
+    return (
+      isCustomHookParameter(upstreamReference) &&
+      customHookParameterHasComponentPropCall(
+        analysis,
+        upstreamReference,
+        scopes,
+        visitedReferences,
+      )
+    );
+  });
 
 const argumentValueForParameterBinding = (
   argument: EsTreeNode,
@@ -231,7 +243,10 @@ const customHookParameterHasComponentPropCall = (
   analysis: ProgramAnalysis,
   reference: Reference,
   scopes: ScopeAnalysis,
+  visitedReferences: ReadonlySet<Reference>,
 ): boolean => {
+  if (visitedReferences.has(reference)) return false;
+  const nextVisitedReferences = new Set(visitedReferences).add(reference);
   const binding = customHookParameterBinding(reference);
   if (!binding) return false;
   const { functionNode, parameterIndex } = binding;
@@ -250,7 +265,7 @@ const customHookParameterHasComponentPropCall = (
     const argumentValue = argumentValueForParameterBinding(argument, binding);
     if (!argumentValue) return false;
     return getDownstreamRefs(analysis, argumentValue).some((argumentReference) =>
-      referenceHasComponentPropOrigin(analysis, argumentReference),
+      referenceHasComponentPropOrigin(analysis, argumentReference, scopes, nextVisitedReferences),
     );
   });
 };
@@ -267,7 +282,7 @@ const hasProvenComponentPropOrigin = (
   return customHookParameterReferences.some(
     (parameterReference) =>
       customHookParameterUsesLegacyLocalAssumption(parameterReference, scopes) ||
-      customHookParameterHasComponentPropCall(analysis, parameterReference, scopes),
+      customHookParameterHasComponentPropCall(analysis, parameterReference, scopes, new Set()),
   );
 };
 

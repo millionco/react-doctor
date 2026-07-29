@@ -88,6 +88,19 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "a component prop forwarded through chained custom hooks",
+      `const useNotifyError = (onError) => {
+         onError();
+       };
+       const useImageError = (onError) => {
+         useNotifyError(onError);
+       };
+       const Image = ({ onError }) => {
+         useImageError(onError);
+         return <div />;
+       };`,
+    ],
+    [
       "a handler method on a custom hook options parameter",
       `const useNotifyError = (options) => {
          options.onError();
@@ -482,6 +495,18 @@ describe("no-prop-callback-in-render", () => {
          const [state, setState] = useState("fresh");
          const options = { onReady, setState };
          useSyncState(options);
+         return <div>{state}</div>;
+       };`,
+    ],
+    [
+      "a defaulted options setter with a sibling prop",
+      `import { useState } from "react";
+       const useSyncState = ({ onReady, setState = () => {} }) => {
+         if (onReady) setState("fresh");
+       };
+       const Panel = ({ onReady }) => {
+         const [state, setState] = useState("fresh");
+         useSyncState({ onReady, setState });
          return <div>{state}</div>;
        };`,
     ],

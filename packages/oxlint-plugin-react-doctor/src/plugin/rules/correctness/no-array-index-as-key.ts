@@ -1217,14 +1217,26 @@ const isReactChildrenObject = (node: EsTreeNode): boolean => {
 
 const isReactChildrenToArrayCall = (node: EsTreeNode): boolean => {
   const candidate = stripParenExpression(node);
-  return Boolean(
-    isNodeOfType(candidate, "CallExpression") &&
-    isNodeOfType(candidate.callee, "MemberExpression") &&
-    !candidate.callee.computed &&
-    isReactChildrenObject(candidate.callee.object) &&
-    isNodeOfType(candidate.callee.property, "Identifier") &&
-    candidate.callee.property.name === "toArray",
-  );
+  if (
+    !isNodeOfType(candidate, "CallExpression") ||
+    !isNodeOfType(candidate.callee, "MemberExpression") ||
+    candidate.callee.computed ||
+    !isReactChildrenObject(candidate.callee.object) ||
+    !isNodeOfType(candidate.callee.property, "Identifier") ||
+    candidate.callee.property.name !== "toArray"
+  ) {
+    return false;
+  }
+  const normalizedValue = candidate.arguments?.[0];
+  if (
+    !normalizedValue ||
+    !isNodeOfType(normalizedValue, "Identifier") ||
+    normalizedValue.name !== "children"
+  ) {
+    return false;
+  }
+  const normalizedBinding = findVariableInitializer(normalizedValue, normalizedValue.name);
+  return Boolean(normalizedBinding && findEnclosingParameter(normalizedBinding.bindingIdentifier));
 };
 
 const isSameIdentifier = (first: EsTreeNode, second: EsTreeNode): boolean => {

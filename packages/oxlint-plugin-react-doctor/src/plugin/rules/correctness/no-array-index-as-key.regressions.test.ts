@@ -836,6 +836,21 @@ const TabContent = ({ children }) => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("stays silent when React.Children.toArray normalizes ordinary data", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const DataRows = ({ items }) => {
+  const rows = React.Children.toArray(items);
+  return rows.map((row, index) => (
+    <Fragment key={index}>{row}</Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("flags fragments wrapping conditionally normalized React children", () => {
       const result = runRule(
         noArrayIndexAsKey,

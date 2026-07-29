@@ -208,6 +208,7 @@ describe("summarizeFunctionReturns", () => {
 
     expect(summary.isComplete).toBe(false);
     expect(summary.canFallThrough).toBe(false);
+    expect(summary.canThrow).toBe(true);
     expect(summary.expressions).toHaveLength(1);
   });
 
@@ -283,6 +284,7 @@ describe("summarizeFunctionReturns", () => {
 
     expect(summary.isComplete).toBe(false);
     expect(summary.canFallThrough).toBe(false);
+    expect(summary.canThrow).toBe(true);
     expect(summary.expressions).toHaveLength(0);
   });
 

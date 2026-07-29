@@ -75,6 +75,11 @@ The report includes:
   synchronous pure updaters are certified, observable effects are refuted, and opaque updater
   bodies or escaped setters fail closed without confusing `useReducer` dispatch or similarly named
   functions with state setters;
+- reducer-transition facts that identify each canonical `useReducer` tuple, resolve the reducer and
+  optional lazy initializer, use TypeScript union types to close exhaustive switch paths, and
+  classify every dispatcher reference by its React callback phase; pure total transitions and
+  owned non-render calls are certified, fallthrough, throw, impurity, and render/reducer dispatches
+  are refuted, while wrappers, unsupported control flow, and escaped dispatchers fail closed;
 - Action State facts that identify canonical `useActionState` tuples, resolve each reducer Action
   without imposing reducer purity, and classify every dispatcher call or escape; a dispatch is
   certified only when every represented root is a Form Action, an Action State reducer, or a
@@ -138,6 +143,10 @@ Hook state-transition certificates additionally require a non-class owner, phase
 execution roots, a `state-transition` updater callback for every resolved functional updater, and
 source/completeness flags derived from the updater classification. The checker rejects forged
 purity, setter-escape, callback ownership, and completeness combinations.
+Reducer certificates additionally require phase-correct reducer and initializer callbacks,
+type-aware total-return evidence, a symbol-linked state/dispatcher tuple, owned execution roots for
+every direct dispatch, non-escape, and exact source/completeness equations. The checker rejects
+forged callback, purity, totality, phase, reducer-link, and verdict combinations.
 Transition Action certificates require a valid non-render execution root, a symbol-identified
 starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
 source/completeness equations. The checker rejects forged synchronous, controlled-input,

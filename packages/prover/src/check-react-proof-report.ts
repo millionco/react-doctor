@@ -38,6 +38,10 @@ import {
   ReactOptimisticReducerStatus,
   ReactProofCertificateStatus,
   ReactProofClaim,
+  ReactReducerDispatchKind,
+  ReactReducerDispatchStatus,
+  ReactReducerPurityStatus,
+  ReactReducerReturnStatus,
   ReactSchedulerCancellationStatus,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
@@ -67,6 +71,10 @@ const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionSt
 const TRANSITION_STARTER_KINDS = new Set(Object.values(ReactTransitionStarterKind));
 const IMPERATIVE_HANDLE_REF_KINDS = new Set(Object.values(ReactImperativeHandleRefKind));
 const IMPERATIVE_HANDLE_STATUSES = new Set(Object.values(ReactImperativeHandleStatus));
+const REDUCER_DISPATCH_KINDS = new Set(Object.values(ReactReducerDispatchKind));
+const REDUCER_DISPATCH_STATUSES = new Set(Object.values(ReactReducerDispatchStatus));
+const REDUCER_PURITY_STATUSES = new Set(Object.values(ReactReducerPurityStatus));
+const REDUCER_RETURN_STATUSES = new Set(Object.values(ReactReducerReturnStatus));
 const OBLIGATION_STATUSES = new Set(Object.values(ReactObligationStatus));
 const TRANSITION_ACTION_ORIGIN_PHASES = new Set([
   ReactExecutionPhase.ActionStateReducer,
@@ -215,6 +223,73 @@ const expectedHookStateTransitionStatus = (
     return ReactObligationStatus.Violated;
   }
   return transitions.some((transition) => !transition.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedReducerPurityStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  if (unit.kind === ReactUnitKind.ClassComponent) {
+    return ReactObligationStatus.Proved;
+  }
+  const reducers = report.graph.reducers.filter((reducer) => reducer.ownerId === unit.id);
+  if (
+    reducers.some(
+      (reducer) =>
+        reducer.reducerPurity === ReactReducerPurityStatus.Impure ||
+        reducer.initializerPurity === ReactReducerPurityStatus.Impure,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return reducers.some(
+    (reducer) =>
+      reducer.reducerPurity === ReactReducerPurityStatus.Opaque ||
+      reducer.initializerPurity === ReactReducerPurityStatus.Opaque,
+  )
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedReducerTransitionStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  if (unit.kind === ReactUnitKind.ClassComponent) {
+    return ReactObligationStatus.Proved;
+  }
+  const reducers = report.graph.reducers.filter((reducer) => reducer.ownerId === unit.id);
+  const dispatches = report.graph.reducerDispatches.filter(
+    (dispatch) => dispatch.ownerId === unit.id,
+  );
+  if (
+    reducers.some(
+      (reducer) =>
+        reducer.reducerPurity === ReactReducerPurityStatus.Impure ||
+        reducer.initializerPurity === ReactReducerPurityStatus.Impure ||
+        reducer.reducerReturnStatus === ReactReducerReturnStatus.MayFallThrough ||
+        reducer.reducerReturnStatus === ReactReducerReturnStatus.MayThrow ||
+        reducer.initializerReturnStatus === ReactReducerReturnStatus.MayFallThrough ||
+        reducer.initializerReturnStatus === ReactReducerReturnStatus.MayThrow,
+    ) ||
+    dispatches.some(
+      (dispatch) =>
+        dispatch.status === ReactReducerDispatchStatus.Render ||
+        dispatch.status === ReactReducerDispatchStatus.Reducer,
+    )
+  ) {
+    return ReactObligationStatus.Violated;
+  }
+  return reducers.some((reducer) => !reducer.complete) ||
+    dispatches.some((dispatch) => !dispatch.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -506,6 +581,28 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `Hook state transition facts require ${expectedHookStateStatus}, not ${hookStateTransitions.status}`,
+      );
+    }
+    const reducerPurity = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ReducerPurity,
+    );
+    const expectedPurityStatus = expectedReducerPurityStatus(semanticUnit, report);
+    if (reducerPurity && reducerPurity.status !== expectedPurityStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Reducer purity facts require ${expectedPurityStatus}, not ${reducerPurity.status}`,
+      );
+    }
+    const reducerTransitions = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.ReducerTransitions,
+    );
+    const expectedReducerStatus = expectedReducerTransitionStatus(semanticUnit, report);
+    if (reducerTransitions && reducerTransitions.status !== expectedReducerStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Reducer transition facts require ${expectedReducerStatus}, not ${reducerTransitions.status}`,
       );
     }
     const imperativeHandle = unitProof.obligations.find(
@@ -1858,6 +1955,152 @@ const checkGraphReferences = (
       );
     }
   }
+  const reducersById = new Map(report.graph.reducers.map((reducer) => [reducer.id, reducer]));
+  for (const reducer of report.graph.reducers) {
+    const owner = unitsById.get(reducer.ownerId);
+    const reducerCallback = reducer.reducerCallbackId
+      ? callbacksById.get(reducer.reducerCallbackId)
+      : null;
+    const initializerCallback = reducer.initializerCallbackId
+      ? callbacksById.get(reducer.initializerCallbackId)
+      : null;
+    if (
+      !owner ||
+      owner.kind === ReactUnitKind.ClassComponent ||
+      owner.kind === ReactUnitKind.InvalidHookOwner
+    ) {
+      addFailure(failures, reducer.id, "A reducer has an unknown or invalid owner");
+    }
+    if (!reducer.stateName || !reducer.dispatcherName) {
+      addFailure(failures, reducer.id, "A reducer has an unnamed state or dispatcher binding");
+    }
+    if (
+      !REDUCER_PURITY_STATUSES.has(reducer.reducerPurity) ||
+      !REDUCER_PURITY_STATUSES.has(reducer.initializerPurity) ||
+      !REDUCER_RETURN_STATUSES.has(reducer.reducerReturnStatus) ||
+      !REDUCER_RETURN_STATUSES.has(reducer.initializerReturnStatus)
+    ) {
+      addFailure(failures, reducer.id, "A reducer has an invalid purity or return status");
+    }
+    const hasValidReducerCallback =
+      reducerCallback?.ownerId === reducer.ownerId &&
+      reducerCallback.kind === ReactSemanticCallbackKind.Reducer &&
+      reducerCallback.phase === ReactExecutionPhase.StateTransition;
+    const hasValidInitializerCallback =
+      initializerCallback?.ownerId === reducer.ownerId &&
+      initializerCallback.kind === ReactSemanticCallbackKind.ReducerInitializer &&
+      initializerCallback.phase === ReactExecutionPhase.StateTransition;
+    if (reducer.reducerCallbackId && !hasValidReducerCallback) {
+      addFailure(failures, reducer.id, "A reducer has an invalid transition callback");
+    }
+    if (reducer.initializerCallbackId && !hasValidInitializerCallback) {
+      addFailure(failures, reducer.id, "A reducer has an invalid initializer callback");
+    }
+    if (
+      (!reducer.reducerCallbackId &&
+        (reducer.reducerPurity !== ReactReducerPurityStatus.Opaque ||
+          reducer.reducerReturnStatus !== ReactReducerReturnStatus.Opaque)) ||
+      reducer.reducerReturnStatus === ReactReducerReturnStatus.Absent
+    ) {
+      addFailure(failures, reducer.id, "A reducer callback status is inconsistent");
+    }
+    const hasAbsentInitializer =
+      !reducer.initializerCallbackId &&
+      reducer.initializerPurity === ReactReducerPurityStatus.Pure &&
+      reducer.initializerReturnStatus === ReactReducerReturnStatus.Absent;
+    const hasOpaqueInitializer =
+      !reducer.initializerCallbackId &&
+      reducer.initializerPurity === ReactReducerPurityStatus.Opaque &&
+      reducer.initializerReturnStatus === ReactReducerReturnStatus.Opaque;
+    if (!hasAbsentInitializer && !hasOpaqueInitializer && !hasValidInitializerCallback) {
+      addFailure(failures, reducer.id, "A reducer initializer status is inconsistent");
+    }
+    if (
+      hasValidInitializerCallback &&
+      reducer.initializerReturnStatus === ReactReducerReturnStatus.Absent
+    ) {
+      addFailure(failures, reducer.id, "A resolved reducer initializer cannot be absent");
+    }
+    const expectedSourceComplete =
+      hasValidReducerCallback &&
+      reducer.reducerPurity !== ReactReducerPurityStatus.Opaque &&
+      reducer.reducerReturnStatus !== ReactReducerReturnStatus.Opaque &&
+      (hasAbsentInitializer ||
+        (hasValidInitializerCallback &&
+          reducer.initializerPurity !== ReactReducerPurityStatus.Opaque &&
+          reducer.initializerReturnStatus !== ReactReducerReturnStatus.Opaque));
+    if (reducer.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, reducer.id, "A reducer source flag is inconsistent");
+    }
+    const expectedComplete =
+      expectedSourceComplete &&
+      reducer.reducerPurity === ReactReducerPurityStatus.Pure &&
+      reducer.initializerPurity === ReactReducerPurityStatus.Pure &&
+      reducer.reducerReturnStatus === ReactReducerReturnStatus.Total &&
+      (reducer.initializerReturnStatus === ReactReducerReturnStatus.Absent ||
+        reducer.initializerReturnStatus === ReactReducerReturnStatus.Total);
+    if (reducer.complete !== expectedComplete) {
+      addFailure(failures, reducer.id, "A reducer completeness flag is inconsistent");
+    }
+  }
+  for (const dispatch of report.graph.reducerDispatches) {
+    const reducer = reducersById.get(dispatch.reducerId);
+    const executionCallbacks = dispatch.executionCallbackIds.flatMap((callbackId) => {
+      const callback = callbacksById.get(callbackId);
+      if (!callback || callback.ownerId !== dispatch.ownerId) {
+        addFailure(failures, dispatch.id, "A reducer dispatch has an invalid execution callback");
+        return [];
+      }
+      return [callback];
+    });
+    if (!reducer || reducer.ownerId !== dispatch.ownerId) {
+      addFailure(failures, dispatch.id, "A reducer dispatch has an invalid reducer owner");
+    }
+    if (
+      !REDUCER_DISPATCH_KINDS.has(dispatch.kind) ||
+      !REDUCER_DISPATCH_STATUSES.has(dispatch.status)
+    ) {
+      addFailure(failures, dispatch.id, "A reducer dispatch has an invalid kind or status");
+    }
+    if (new Set(dispatch.executionCallbackIds).size !== dispatch.executionCallbackIds.length) {
+      addFailure(failures, dispatch.id, "A reducer dispatch repeats an execution callback");
+    }
+    let expectedStatus = ReactReducerDispatchStatus.Unknown;
+    if (dispatch.kind === ReactReducerDispatchKind.Escape) {
+      expectedStatus = ReactReducerDispatchStatus.Escape;
+    } else if (
+      executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.Render)
+    ) {
+      expectedStatus = ReactReducerDispatchStatus.Render;
+    } else if (
+      executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.StateTransition)
+    ) {
+      expectedStatus = ReactReducerDispatchStatus.Reducer;
+    } else if (executionCallbacks.length > 0) {
+      expectedStatus = ReactReducerDispatchStatus.Owned;
+    }
+    if (
+      dispatch.kind === ReactReducerDispatchKind.Escape &&
+      dispatch.executionCallbackIds.length > 0
+    ) {
+      addFailure(failures, dispatch.id, "An escaping reducer dispatch has execution callbacks");
+    }
+    if (dispatch.status !== expectedStatus) {
+      addFailure(failures, dispatch.id, "A reducer dispatch status is inconsistent");
+    }
+    const expectedSourceComplete =
+      Boolean(reducer?.complete) &&
+      expectedStatus !== ReactReducerDispatchStatus.Escape &&
+      expectedStatus !== ReactReducerDispatchStatus.Unknown;
+    if (dispatch.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, dispatch.id, "A reducer dispatch source flag is inconsistent");
+    }
+    const expectedComplete =
+      expectedSourceComplete && expectedStatus === ReactReducerDispatchStatus.Owned;
+    if (dispatch.complete !== expectedComplete) {
+      addFailure(failures, dispatch.id, "A reducer dispatch completeness flag is inconsistent");
+    }
+  }
   for (const action of report.graph.formActions) {
     const owner = unitsById.get(action.ownerId);
     if (!owner || owner.kind === ReactUnitKind.InvalidHookOwner) {
@@ -3088,6 +3331,16 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "Hook state transitions",
     report.graph.hookStateTransitions.map((transition) => transition.id),
+  );
+  checkUniqueIds(
+    failures,
+    "reducers",
+    report.graph.reducers.map((reducer) => reducer.id),
+  );
+  checkUniqueIds(
+    failures,
+    "reducer dispatches",
+    report.graph.reducerDispatches.map((dispatch) => dispatch.id),
   );
   checkUniqueIds(
     failures,

@@ -38,6 +38,7 @@ export enum ReactProofClaim {
   ReactNodeFlow = "react-node-flow",
   ReconciliationIdentity = "reconciliation-identity",
   ReducerPurity = "reducer-purity",
+  ReducerTransitions = "reducer-transitions",
   RefAccess = "ref-access",
   RenderPurity = "render-purity",
   ScheduledCallbackLifetime = "scheduled-callback-lifetime",
@@ -698,6 +699,61 @@ export interface ReactSemanticHookStateTransition {
   complete: boolean;
 }
 
+export enum ReactReducerDispatchKind {
+  Call = "call",
+  Escape = "escape",
+}
+
+export enum ReactReducerDispatchStatus {
+  Escape = "escape",
+  Owned = "owned",
+  Reducer = "reducer",
+  Render = "render",
+  Unknown = "unknown",
+}
+
+export enum ReactReducerPurityStatus {
+  Impure = "impure",
+  Opaque = "opaque",
+  Pure = "pure",
+}
+
+export enum ReactReducerReturnStatus {
+  Absent = "absent",
+  MayFallThrough = "may-fall-through",
+  MayThrow = "may-throw",
+  Opaque = "opaque",
+  Total = "total",
+}
+
+export interface ReactSemanticReducer {
+  id: string;
+  ownerId: string;
+  stateName: string;
+  dispatcherName: string;
+  location: ReactProofLocation;
+  reducerCallbackId: string | null;
+  initializerCallbackId: string | null;
+  reducerPurity: ReactReducerPurityStatus;
+  initializerPurity: ReactReducerPurityStatus;
+  reducerReturnStatus: ReactReducerReturnStatus;
+  initializerReturnStatus: ReactReducerReturnStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticReducerDispatch {
+  id: string;
+  ownerId: string;
+  reducerId: string;
+  kind: ReactReducerDispatchKind;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  status: ReactReducerDispatchStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
 export enum ReactActionStateReducerStatus {
   Opaque = "opaque",
   Resolved = "resolved",
@@ -930,6 +986,8 @@ export interface ReactSemanticGraph {
   forms: ReadonlyArray<ReactSemanticForm>;
   formStatuses: ReadonlyArray<ReactSemanticFormStatus>;
   hookStateTransitions: ReadonlyArray<ReactSemanticHookStateTransition>;
+  reducers: ReadonlyArray<ReactSemanticReducer>;
+  reducerDispatches: ReadonlyArray<ReactSemanticReducerDispatch>;
   optimisticStates: ReadonlyArray<ReactSemanticOptimisticState>;
   optimisticUpdates: ReadonlyArray<ReactSemanticOptimisticUpdate>;
   transitionActions: ReadonlyArray<ReactSemanticTransitionAction>;

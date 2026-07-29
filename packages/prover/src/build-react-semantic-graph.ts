@@ -37,6 +37,7 @@ import type {
 } from "./collect-imperative-handles.js";
 import { collectFormActions } from "./collect-form-actions.js";
 import { collectOptimisticState } from "./collect-optimistic-state.js";
+import { collectReducerTransitions } from "./collect-reducer-transitions.js";
 import { collectTransitionActions } from "./collect-transition-actions.js";
 import type { TransitionActionDescriptor } from "./collect-transition-actions.js";
 import { collectReactiveCaptures } from "./collect-reactive-captures.js";
@@ -44,7 +45,6 @@ import { collectReachableFunctionGraph } from "./collect-reachable-functions.js"
 import {
   REACT_EXTERNAL_STORE_HOOK_NAMES,
   REACT_MEMO_HOOK_NAMES,
-  REACT_REDUCER_HOOK_NAMES,
   REACT_CONTEXT_DEFAULT_SOURCE_ID,
   REACT_CONTEXT_UNKNOWN_SOURCE_ID,
   REACT_FORM_OUTSIDE_SOURCE_ID,
@@ -63,6 +63,7 @@ import { isFunctionBoundary } from "./is-function-boundary.js";
 import { isIdentifierReference } from "./is-identifier-reference.js";
 import { isReactContextExpression } from "./is-react-context-expression.js";
 import { resolveFunction } from "./resolve-function.js";
+import { summarizeFunctionReturns } from "./summarize-function-returns.js";
 import { mergeCallableBindings } from "./resolve-callable-expression.js";
 import type { ResolvedCallableValueDescriptor } from "./resolve-callable-expression.js";
 import {
@@ -86,6 +87,10 @@ import {
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
   ReactObligationStatus,
+  ReactReducerDispatchKind,
+  ReactReducerDispatchStatus,
+  ReactReducerPurityStatus,
+  ReactReducerReturnStatus,
   ReactSemanticCallbackKind,
   ReactSemanticEdgeKind,
   ReactSemanticRenderKind,
@@ -126,6 +131,8 @@ import type {
   ReactSemanticImperativeHandleMethod,
   ReactSemanticOptimisticState,
   ReactSemanticOptimisticUpdate,
+  ReactSemanticReducer,
+  ReactSemanticReducerDispatch,
   ReactSemanticTransitionAction,
   ReactSemanticReachableFunction,
   ReactSemanticRender,
@@ -229,6 +236,14 @@ interface HookStateTransitionGraphFacts extends CallbackGraphFacts {
   transitions: ReadonlyArray<ReactSemanticHookStateTransition>;
 }
 
+interface ReducerDefinitionGraphFacts extends CallbackGraphFacts {
+  reducers: ReadonlyArray<ReactSemanticReducer>;
+}
+
+interface ReducerDispatchGraphFacts {
+  dispatches: ReadonlyArray<ReactSemanticReducerDispatch>;
+}
+
 interface ImperativeHandleGraphFacts extends CallbackGraphFacts {
   handles: ReadonlyArray<ReactSemanticImperativeHandle>;
   methods: ReadonlyArray<ReactSemanticImperativeHandleMethod>;
@@ -292,12 +307,6 @@ interface CallbackPropReachabilityDescriptor {
 interface ReachabilityGraphFacts {
   reachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>;
   functionCalls: ReadonlyArray<ReactSemanticFunctionCall>;
-}
-
-interface ReducerCallbackDescriptor {
-  argumentIndex: number;
-  kind: ReactSemanticCallbackKind;
-  name: string;
 }
 
 interface ContextDefinitionIdentity {
@@ -2304,60 +2313,247 @@ const collectMemoCallbacks = (
   return { callbacks, reachableFunctions, functionCalls };
 };
 
-const collectReducerCallbacks = (
+const getReducerPurityStatus = (
+  functionNode: ts.FunctionLikeDeclaration | null,
+  context: ReactAnalysisContext,
+): ReactReducerPurityStatus => {
+  if (!functionNode) return ReactReducerPurityStatus.Opaque;
+  const purityProof = analyzeRenderPurity(functionNode, context);
+  if (purityProof.status === ReactObligationStatus.Violated) {
+    return ReactReducerPurityStatus.Impure;
+  }
+  return purityProof.status === ReactObligationStatus.Proved
+    ? ReactReducerPurityStatus.Pure
+    : ReactReducerPurityStatus.Opaque;
+};
+
+const getReducerReturnStatus = (
+  functionNode: ts.FunctionLikeDeclaration | null,
+  isAbsent: boolean,
+  context: ReactAnalysisContext,
+): ReactReducerReturnStatus => {
+  if (isAbsent) return ReactReducerReturnStatus.Absent;
+  if (!functionNode) return ReactReducerReturnStatus.Opaque;
+  const returnSummary = summarizeFunctionReturns(functionNode, context.typeChecker);
+  if (returnSummary.canFallThrough) return ReactReducerReturnStatus.MayFallThrough;
+  if (returnSummary.canThrow) return ReactReducerReturnStatus.MayThrow;
+  return returnSummary.isComplete
+    ? ReactReducerReturnStatus.Total
+    : ReactReducerReturnStatus.Opaque;
+};
+
+const collectReducerDefinitionGraph = (
   identity: UnitGraphIdentity,
   context: ReactAnalysisContext,
-): CallbackGraphFacts => {
+): ReducerDefinitionGraphFacts => {
   const functionNode = identity.descriptor.functionNode;
-  if (!functionNode) return { callbacks: [], reachableFunctions: [], functionCalls: [] };
+  if (
+    !functionNode ||
+    identity.descriptor.kind === ReactUnitKind.ClassComponent ||
+    identity.descriptor.kind === ReactUnitKind.InvalidHookOwner
+  ) {
+    return {
+      reducers: [],
+      callbacks: [],
+      reachableFunctions: [],
+      functionCalls: [],
+    };
+  }
   const callbacks: ReactSemanticCallback[] = [];
   const reachableFunctions: ReactSemanticReachableFunction[] = [];
   const functionCalls: ReactSemanticFunctionCall[] = [];
-  const callbackDescriptors: ReadonlyArray<ReducerCallbackDescriptor> = [
-    {
-      argumentIndex: 0,
-      kind: ReactSemanticCallbackKind.Reducer,
-      name: "reducer",
-    },
-    {
-      argumentIndex: 2,
-      kind: ReactSemanticCallbackKind.ReducerInitializer,
-      name: "reducer-initializer",
-    },
-  ];
-  for (const hookCall of collectHookCalls(
-    functionNode,
-    REACT_REDUCER_HOOK_NAMES,
-    context.typeChecker,
-  )) {
-    for (const descriptor of callbackDescriptors) {
-      const callbackExpression = hookCall.arguments[descriptor.argumentIndex];
-      const callback = callbackExpression
-        ? resolveFunction(callbackExpression, context.typeChecker)
-        : null;
-      if (!callback) continue;
-      const callbackFact = createCallbackFact(
+  const hookBindings = collectHookBindings(functionNode, context.typeChecker);
+  const stableSymbols = new Set([
+    ...hookBindings.refs,
+    ...hookBindings.stateSetters,
+    ...hookBindings.transitionStarters,
+  ]);
+  const createReducerCallback = (
+    reducerId: string,
+    callbackFunction: ts.FunctionLikeDeclaration | null,
+    kind: ReactSemanticCallbackKind,
+    name: string,
+  ): ReactSemanticCallback | null => {
+    if (!callbackFunction) return null;
+    const callback = {
+      ...createCallbackFact(
         identity,
-        callback,
+        callbackFunction,
         functionNode,
-        new Set(),
-        descriptor.kind,
+        stableSymbols,
+        kind,
         ReactExecutionPhase.StateTransition,
-        descriptor.name,
+        name,
+        context,
+      ),
+      id: createSemanticId(`${kind}:${reducerId}`, name, callbackFunction, context),
+    };
+    callbacks.push(callback);
+    const reachabilityFacts = collectReachabilityGraphFacts(
+      identity,
+      callbackFunction,
+      callback,
+      context,
+    );
+    reachableFunctions.push(...reachabilityFacts.reachableFunctions);
+    functionCalls.push(...reachabilityFacts.functionCalls);
+    return callback;
+  };
+  const reducers = collectReducerTransitions(functionNode, context).reducers.map(
+    (descriptor): ReactSemanticReducer => {
+      const reducerId = createSemanticId(
+        "reducer",
+        descriptor.dispatcherSymbol?.getName() ?? descriptor.stateSymbol?.getName() ?? "useReducer",
+        descriptor.callExpression,
         context,
       );
-      callbacks.push(callbackFact);
-      const reachabilityFacts = collectReachabilityGraphFacts(
-        identity,
-        callback,
-        callbackFact,
+      const reducerCallback = createReducerCallback(
+        reducerId,
+        descriptor.reducerFunction,
+        ReactSemanticCallbackKind.Reducer,
+        "reducer",
+      );
+      const initializerCallback = createReducerCallback(
+        reducerId,
+        descriptor.initializerFunction,
+        ReactSemanticCallbackKind.ReducerInitializer,
+        "reducer-initializer",
+      );
+      const reducerPurity = getReducerPurityStatus(descriptor.reducerFunction, context);
+      const initializerPurity = descriptor.initializerProvided
+        ? getReducerPurityStatus(descriptor.initializerFunction, context)
+        : ReactReducerPurityStatus.Pure;
+      const reducerReturnStatus = getReducerReturnStatus(
+        descriptor.reducerFunction,
+        false,
         context,
       );
-      reachableFunctions.push(...reachabilityFacts.reachableFunctions);
-      functionCalls.push(...reachabilityFacts.functionCalls);
-    }
+      const initializerReturnStatus = getReducerReturnStatus(
+        descriptor.initializerFunction,
+        !descriptor.initializerProvided,
+        context,
+      );
+      const sourceComplete =
+        Boolean(reducerCallback) &&
+        reducerPurity !== ReactReducerPurityStatus.Opaque &&
+        reducerReturnStatus !== ReactReducerReturnStatus.Opaque &&
+        (!descriptor.initializerProvided ||
+          (Boolean(initializerCallback) &&
+            initializerPurity !== ReactReducerPurityStatus.Opaque &&
+            initializerReturnStatus !== ReactReducerReturnStatus.Opaque));
+      const complete =
+        sourceComplete &&
+        reducerPurity === ReactReducerPurityStatus.Pure &&
+        initializerPurity === ReactReducerPurityStatus.Pure &&
+        reducerReturnStatus === ReactReducerReturnStatus.Total &&
+        (initializerReturnStatus === ReactReducerReturnStatus.Absent ||
+          initializerReturnStatus === ReactReducerReturnStatus.Total);
+      return {
+        id: reducerId,
+        ownerId: identity.semanticUnit.id,
+        stateName: descriptor.stateSymbol?.getName() ?? "unused reducer state",
+        dispatcherName: descriptor.dispatcherSymbol?.getName() ?? "unused reducer dispatcher",
+        location: getNodeLocation(descriptor.callExpression, context.rootDirectory),
+        reducerCallbackId: reducerCallback?.id ?? null,
+        initializerCallbackId: initializerCallback?.id ?? null,
+        reducerPurity,
+        initializerPurity,
+        reducerReturnStatus,
+        initializerReturnStatus,
+        sourceComplete,
+        complete,
+      };
+    },
+  );
+  return { reducers, callbacks, reachableFunctions, functionCalls };
+};
+
+const collectReducerDispatchGraph = (
+  identity: UnitGraphIdentity,
+  existingReducers: ReadonlyArray<ReactSemanticReducer>,
+  existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
+  existingReachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>,
+  context: ReactAnalysisContext,
+): ReducerDispatchGraphFacts => {
+  const functionNode = identity.descriptor.functionNode;
+  if (
+    !functionNode ||
+    identity.descriptor.kind === ReactUnitKind.ClassComponent ||
+    identity.descriptor.kind === ReactUnitKind.InvalidHookOwner
+  ) {
+    return { dispatches: [] };
   }
-  return { callbacks, reachableFunctions, functionCalls };
+  const callbacksById = new Map(existingCallbacks.map((callback) => [callback.id, callback]));
+  const collection = collectReducerTransitions(functionNode, context);
+  const reducersByCall = new Map(
+    collection.reducers.flatMap(
+      (descriptor): ReadonlyArray<[ts.CallExpression, ReactSemanticReducer]> => {
+        const reducerId = createSemanticId(
+          "reducer",
+          descriptor.dispatcherSymbol?.getName() ??
+            descriptor.stateSymbol?.getName() ??
+            "useReducer",
+          descriptor.callExpression,
+          context,
+        );
+        const reducer = existingReducers.find((candidate) => candidate.id === reducerId);
+        return reducer ? [[descriptor.callExpression, reducer]] : [];
+      },
+    ),
+  );
+  const dispatches = collection.dispatches.map((descriptor): ReactSemanticReducerDispatch => {
+    const reducer = reducersByCall.get(descriptor.binding.callExpression);
+    const executionCallbackIds = descriptor.callExpression
+      ? collectExecutionCallbackIds({
+          callbacks: existingCallbacks,
+          evidenceNode: descriptor.callExpression,
+          ownerId: identity.semanticUnit.id,
+          reachableFunctions: existingReachableFunctions,
+          rootDirectory: context.rootDirectory,
+        })
+      : [];
+    const executionCallbacks = executionCallbackIds.flatMap((callbackId) => {
+      const callback = callbacksById.get(callbackId);
+      return callback ? [callback] : [];
+    });
+    let status = ReactReducerDispatchStatus.Unknown;
+    if (!descriptor.callExpression) {
+      status = ReactReducerDispatchStatus.Escape;
+    } else if (
+      executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.Render)
+    ) {
+      status = ReactReducerDispatchStatus.Render;
+    } else if (
+      executionCallbacks.some((callback) => callback.phase === ReactExecutionPhase.StateTransition)
+    ) {
+      status = ReactReducerDispatchStatus.Reducer;
+    } else if (executionCallbacks.length > 0) {
+      status = ReactReducerDispatchStatus.Owned;
+    }
+    const sourceComplete =
+      Boolean(reducer?.complete) &&
+      status !== ReactReducerDispatchStatus.Escape &&
+      status !== ReactReducerDispatchStatus.Unknown;
+    return {
+      id: createSemanticId(
+        "reducer-dispatch",
+        descriptor.binding.dispatcherSymbol.getName(),
+        descriptor.evidenceNode,
+        context,
+      ),
+      ownerId: identity.semanticUnit.id,
+      reducerId: reducer?.id ?? "",
+      kind: descriptor.callExpression
+        ? ReactReducerDispatchKind.Call
+        : ReactReducerDispatchKind.Escape,
+      location: getNodeLocation(descriptor.evidenceNode, context.rootDirectory),
+      executionCallbackIds,
+      status,
+      sourceComplete,
+      complete: sourceComplete && status === ReactReducerDispatchStatus.Owned,
+    };
+  });
+  return { dispatches };
 };
 
 const collectActionStateDefinitionGraph = (
@@ -4206,6 +4402,8 @@ export const buildReactSemanticGraph = (
   const actionStateDispatches: ReactSemanticActionStateDispatch[] = [];
   const formActions: ReactSemanticFormAction[] = [];
   const hookStateTransitions: ReactSemanticHookStateTransition[] = [];
+  const reducers: ReactSemanticReducer[] = [];
+  const reducerDispatches: ReactSemanticReducerDispatch[] = [];
   const optimisticStates: ReactSemanticOptimisticState[] = [];
   const optimisticUpdates: ReactSemanticOptimisticUpdate[] = [];
   const transitionActions: ReactSemanticTransitionAction[] = [];
@@ -4323,7 +4521,8 @@ export const buildReactSemanticGraph = (
     callbacks.push(...memoGraph.callbacks);
     reachableFunctions.push(...memoGraph.reachableFunctions);
     functionCalls.push(...memoGraph.functionCalls);
-    const reducerGraph = collectReducerCallbacks(identity, context);
+    const reducerGraph = collectReducerDefinitionGraph(identity, context);
+    reducers.push(...reducerGraph.reducers);
     callbacks.push(...reducerGraph.callbacks);
     reachableFunctions.push(...reducerGraph.reachableFunctions);
     functionCalls.push(...reducerGraph.functionCalls);
@@ -4382,6 +4581,16 @@ export const buildReactSemanticGraph = (
       context,
     );
     actionStateDispatches.push(...actionStateDispatchGraph.dispatches);
+  }
+  for (const identity of identities) {
+    const reducerDispatchGraph = collectReducerDispatchGraph(
+      identity,
+      reducers,
+      callbacks,
+      reachableFunctions,
+      context,
+    );
+    reducerDispatches.push(...reducerDispatchGraph.dispatches);
   }
   for (const identity of identities) {
     const hookStateTransitionGraph = collectHookStateTransitionGraph(
@@ -4470,6 +4679,8 @@ export const buildReactSemanticGraph = (
     forms: formTopologyGraph.forms,
     formStatuses,
     hookStateTransitions,
+    reducers,
+    reducerDispatches,
     optimisticStates,
     optimisticUpdates,
     transitionActions,

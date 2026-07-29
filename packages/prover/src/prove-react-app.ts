@@ -58,6 +58,8 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
       forms: [],
       formStatuses: [],
       hookStateTransitions: [],
+      reducers: [],
+      reducerDispatches: [],
       optimisticStates: [],
       optimisticUpdates: [],
       transitionActions: [],

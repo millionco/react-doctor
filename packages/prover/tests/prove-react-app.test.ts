@@ -34,6 +34,10 @@ import {
   ReactOptimisticActionStatus,
   ReactOptimisticReducerStatus,
   ReactProofClaim,
+  ReactReducerDispatchKind,
+  ReactReducerDispatchStatus,
+  ReactReducerPurityStatus,
+  ReactReducerReturnStatus,
   ReactSchedulerCancellationStatus,
   ReactSchedulerKind,
   ReactProofCertificateStatus,
@@ -375,6 +379,21 @@ const REFUTED_FIXTURES: ReadonlyArray<RefutedFixtureExpectation> = [
     evidencePattern: /not pure during render/,
   },
   {
+    fixtureName: "reducer-fallthrough",
+    claim: ReactProofClaim.ReducerTransitions,
+    evidencePattern: /without returning state/,
+  },
+  {
+    fixtureName: "reducer-throw",
+    claim: ReactProofClaim.ReducerTransitions,
+    evidencePattern: /throw instead of returning state/,
+  },
+  {
+    fixtureName: "reducer-render-dispatch",
+    claim: ReactProofClaim.ReducerTransitions,
+    evidencePattern: /executes during render/,
+  },
+  {
     fixtureName: "named-memo-impure-helper",
     claim: ReactProofClaim.RenderPurity,
     evidencePattern: /not pure during render/,
@@ -553,6 +572,8 @@ describe("proveReactApp", () => {
     "proved-cfg",
     "proved-memo",
     "proved-reducer",
+    "proved-reducer-dispatch-only",
+    "proved-reducer-lazy-initializer",
     "proved-context",
     "proved-wrapped-component",
     "proved-null-component",
@@ -678,8 +699,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(23);
-    expect(report.graph.schemaVersion).toBe(29);
+    expect(report.schemaVersion).toBe(24);
+    expect(report.graph.schemaVersion).toBe(30);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -1119,6 +1140,93 @@ describe("proveReactApp", () => {
         (callback) =>
           callback.kind === ReactSemanticCallbackKind.Reducer &&
           callback.phase === ReactExecutionPhase.StateTransition,
+      ),
+    ).toBe(true);
+  });
+
+  it("certifies a total typed reducer, lazy initializer, and event dispatch", () => {
+    const report = proveFixture("proved-reducer-lazy-initializer");
+    const reducer = report.graph.reducers[0];
+    const dispatch = report.graph.reducerDispatches[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(reducer?.reducerPurity).toBe(ReactReducerPurityStatus.Pure);
+    expect(reducer?.initializerPurity).toBe(ReactReducerPurityStatus.Pure);
+    expect(reducer?.reducerReturnStatus).toBe(ReactReducerReturnStatus.Total);
+    expect(reducer?.initializerReturnStatus).toBe(ReactReducerReturnStatus.Total);
+    expect(reducer?.complete).toBe(true);
+    expect(dispatch?.kind).toBe(ReactReducerDispatchKind.Call);
+    expect(dispatch?.status).toBe(ReactReducerDispatchStatus.Owned);
+    expect(dispatch?.complete).toBe(true);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("certifies an omitted reducer state binding and stable dispatcher dependency", () => {
+    const report = proveFixture("proved-reducer-dispatch-only");
+    const reducer = report.graph.reducers[0];
+
+    expect(report.status).toBe(ReactAppProofStatus.Proved);
+    expect(reducer?.stateName).toBe("unused reducer state");
+    expect(reducer?.dispatcherName).toBe("forceRender");
+    expect(report.graph.reducerDispatches).toHaveLength(1);
+    expect(report.graph.reducerDispatches[0]?.status).toBe(ReactReducerDispatchStatus.Owned);
+  });
+
+  it.each(["reducer-dispatch-escape", "opaque-reducer-wrapper"])(
+    "fails closed for an open reducer transition protocol in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const reducerProof = report.units
+        .flatMap((unit) => unit.obligations)
+        .find((obligation) => obligation.claim === ReactProofClaim.ReducerTransitions);
+
+      expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+      expect(reducerProof?.status).toBe(ReactObligationStatus.Unknown);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("rejects forged reducer totality", () => {
+    const report = proveFixture("reducer-fallthrough");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        reducers: report.graph.reducers.map((reducer) => ({
+          ...reducer,
+          reducerReturnStatus: ReactReducerReturnStatus.Total,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("Reducer transition facts require"),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects forged reducer dispatch ownership", () => {
+    const report = proveFixture("reducer-render-dispatch");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        reducerDispatches: report.graph.reducerDispatches.map((dispatch) => ({
+          ...dispatch,
+          status: ReactReducerDispatchStatus.Owned,
+          sourceComplete: true,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("reducer dispatch status"),
       ),
     ).toBe(true);
   });
@@ -1817,6 +1925,13 @@ describe("proveReactApp", () => {
     "invalid-hook-helper",
     "class-component",
     "named-memo-impure-helper",
+    "proved-reducer-lazy-initializer",
+    "proved-reducer-dispatch-only",
+    "reducer-fallthrough",
+    "reducer-throw",
+    "reducer-render-dispatch",
+    "reducer-dispatch-escape",
+    "opaque-reducer-wrapper",
     "external-store-helper-boundary",
     "proved-external-store-callback-props",
     "proved-external-store-conditional-props",

@@ -89,10 +89,17 @@ declare module "react" {
   };
   export const useRef: <Value>(initialValue: Value) => MutableRefObject<Value>;
   export const useContext: <Value>(context: Context<Value>) => Value;
-  export const useReducer: <State, Action>(
-    reducer: (state: State, action: Action) => State,
-    initialState: State,
-  ) => [State, (action: Action) => void];
+  export const useReducer: {
+    <State, Action>(
+      reducer: (state: State, action: Action) => State,
+      initialState: State,
+    ): [State, (action: Action) => void];
+    <State, Action, InitialArg>(
+      reducer: (state: State, action: Action) => State,
+      initialArg: InitialArg,
+      initializer: (initialArg: InitialArg) => State,
+    ): [State, (action: Action) => void];
+  };
   export const useState: <Value>(
     initialValue: Value | (() => Value),
   ) => [Value, (nextValue: Value | ((previousValue: Value) => Value)) => void];

@@ -482,6 +482,7 @@ Each discovered unit receives these obligations:
 | `optimistic-state`            | Reducer/updater purity, setter identity, render exclusion, Form/Transition Action ownership |
 | `reconciliation-identity`     | Missing, duplicate, index-derived, and unconstrained dynamic list keys                      |
 | `reducer-purity`              | Reducer and reducer-initializer transition purity                                           |
+| `reducer-transitions`         | Reducer/initializer totality, tuple identity, dispatch ownership, render exclusion          |
 | `ref-access`                  | Render-phase access to refs created by `useRef`                                             |
 | `scheduled-callback-lifetime` | Effect ownership, deferred callback resolution, exact handles, guaranteed cancellation      |
 | `transition-actions`          | Starter identity, Action ownership/phase, synchrony, direct controlled-input state          |
@@ -1863,3 +1864,104 @@ Changeset is warranted before publication.
 Kill: If a complete handle protocol produces a false `proved` result in two proof-schema releases,
 remove complete invocation coverage and keep handles unknown until interprocedural ref SSA or an
 explicit component proof contract carries the missing ownership.
+
+## Reducer-transition protocol certificates
+
+### React contract and realistic evidence
+
+React's [`useReducer` reference](https://react.dev/reference/react/useReducer) defines a narrow
+runtime protocol that is suitable for static proof: the reducer must be pure, receives the current
+state and action, and returns the next state; the optional initializer receives `initialArg` and
+returns the initial state; `dispatch` has stable identity; and development Strict Mode calls the
+reducer and initializer twice to expose accidental impurity. React also documents that a reducer
+which falls through produces `undefined`, that a render-phase dispatch causes a rerender loop, and
+that identical state is skipped using `Object.is`.
+
+React Compiler fixtures independently preserve the same boundaries. Its invalid-access fixtures
+reject ref reads inside reducer and initializer callbacks, its state-mutation fixture rejects
+mutation of the value returned by `useReducer`, and its reactive-scope fixture treats the returned
+dispatcher as non-reactive. Compiler acceptance is not used as the theorem: it supplies normalized
+CFG evidence and a compatibility oracle, while the prover emits and checks its own reducer facts.
+
+React Bench supplied representative application shapes:
+
+- OpenCode's file tree uses `useReducer((tick: number) => tick + 1, 0)` as a closed force-render
+  reducer. The omitted state binding remains valid and the direct dispatcher can still be tracked.
+- OpenCode's server synchronization stores the same force-render dispatcher inside a ref-owned
+  object. That dispatcher escapes the local callback graph and therefore remains incomplete.
+- React Phone Number Input wraps a large reducer with Immer's `produce` and computes initial state
+  through `getInitialState`. Without an explicit Immer proof summary, the returned reducer identity
+  is opaque and cannot be promoted from its TypeScript signature alone.
+
+### Closed subset and fail-closed boundary
+
+The certificate recognizes canonical imported, aliased, or namespace `useReducer` calls. It records
+the exact tuple state and dispatcher symbols when destructured, but still certifies reducer and
+initializer functions when either tuple element is intentionally omitted. Resolved callbacks get
+dedicated `state-transition` roots and transitive project-helper reachability.
+
+Purity reuses the render-purity analysis because reducers and initializers share React's
+repeatability requirement. Totality reuses the structured return summarizer and TypeScript checker:
+expression bodies, terminal branches, caught throws, `finally` overrides, proved loop exits,
+default-covered switches, and literal-union-exhaustive switches can close; reachable fallthrough
+and uncaught throw paths are counterexamples; unsupported control flow stays opaque.
+
+Every dispatcher reference is symbol-classified. Direct calls must resolve to at least one modeled
+React callback root. Event, Effect, scheduler, Action, subscription, and other non-render roots are
+owned. Render and reducer-transition roots are counterexamples. Dependency-array references are
+permitted because React guarantees stable dispatcher identity. Object storage, prop passing,
+returns, aliases, and every other escape stay incomplete.
+
+This theorem proves the generic React reducer protocol, not an application's domain transition
+specification. A reducer that intentionally increments when the product should decrement can still
+satisfy React. Business invariants require a future user-supplied refinement contract over
+`State × Action → State`; inventing those invariants from names or examples would not be a proof.
+
+### Certificate checker, corpus, and runtime calibration
+
+The independent checker validates unique reducer and dispatch identities; owner and tuple names;
+reducer and initializer callback kinds and phases; absent, opaque, and resolved initializer
+equations; purity and total-return status domains; reciprocal reducer/dispatch links; exact
+execution callback ownership; derived render/reducer/owned/escape status; and final
+source/completeness conjunctions. It separately derives both `reducer-purity` and
+`reducer-transitions` obligation verdicts. Report schema 24 and graph schema 30 reject stale
+certificates.
+
+Added corpus:
+
+- proved: a typed exhaustive reducer with a pure lazy initializer and event-owned dispatch;
+- refuted: reducer fallthrough, uncaught throw, and render-phase dispatch;
+- incomplete: an escaped dispatcher and an opaque higher-order reducer wrapper;
+- forged: totality and dispatch-ownership mutations rejected by the checker;
+- runtime: `reducer-transition-oracle.spec.ts`.
+
+The Chromium oracle runs under root Strict Mode. It observes two lazy-initializer executions on
+mount and two reducer executions for one event while React commits exactly one increment. The
+oracle calibrates replay behavior against React 19.2.5; it does not upgrade a static certificate.
+The complete gate now reports 561 static tests and 43 Chromium runtime oracles across 332
+checked-in fixture project configurations.
+
+### Product brief: internal reducer-transition facts
+
+Job: Prover consumers need to know that a reducer is replay-safe, returns state on every represented
+path, and can only be activated through a completely owned React callback.
+
+Change: Add one private `reducer-transitions` claim, versioned reducer/dispatch facts, type-aware
+return evidence, execution-phase ownership, and independent checker equations.
+
+Reuse: Truffler searches for reducer transitions, tuple state/dispatcher bindings, total function
+returns, and dispatch ownership found no existing complete protocol. The implementation reuses
+canonical Hook resolution, render-purity analysis, TypeScript-aware return summaries, semantic
+callback roots, project-helper reachability, and stable-Hook dependency recognition.
+
+Metric: The deterministic acceptance metric separates total, fallthrough, throw, lazy-init,
+render-dispatch, event-dispatch, escape, opaque-wrapper, and forged-certificate cases, plus one
+Strict Mode replay oracle.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 24 and its semantic graph to schema 30. No
+Changeset is warranted before publication.
+
+Kill: If a complete reducer protocol produces a false `proved` result in two proof-schema releases,
+remove total reducer certification and keep the protocol incomplete until a stronger CFG or
+library proof summary carries the missing semantics.

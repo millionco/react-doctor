@@ -9,6 +9,7 @@ export interface FunctionReturnExpressionDescriptor {
 
 export interface FunctionReturnSummary {
   canFallThrough: boolean;
+  canThrow: boolean;
   expressions: ReadonlyArray<FunctionReturnExpressionDescriptor>;
   isComplete: boolean;
 }
@@ -288,11 +289,12 @@ export const summarizeFunctionReturns = (
   typeChecker?: ts.TypeChecker,
 ): FunctionReturnSummary => {
   if (!functionNode.body) {
-    return { canFallThrough: true, expressions: [], isComplete: false };
+    return { canFallThrough: true, canThrow: false, expressions: [], isComplete: false };
   }
   if (!ts.isBlock(functionNode.body)) {
     return {
       canFallThrough: false,
+      canThrow: false,
       expressions: [{ expression: functionNode.body, isConditionallyReached: false }],
       isComplete: true,
     };
@@ -300,6 +302,7 @@ export const summarizeFunctionReturns = (
   const summary = summarizeStatements(functionNode.body.statements, false, typeChecker);
   return {
     canFallThrough: summary.doesAnyPathFallThrough,
+    canThrow: summary.doesAnyPathThrow,
     expressions: summary.expressions,
     isComplete: summary.isComplete && !summary.doesAnyPathThrow,
   };

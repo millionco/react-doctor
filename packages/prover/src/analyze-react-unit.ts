@@ -23,6 +23,7 @@ import { analyzeOptimisticState } from "./analyze-optimistic-state.js";
 import { analyzeRefAccess } from "./analyze-ref-access.js";
 import { analyzeReactNodeFlow } from "./analyze-react-node-flow.js";
 import { analyzeReducerPurity } from "./analyze-reducer-purity.js";
+import { analyzeReducerTransitions } from "./analyze-reducer-transitions.js";
 import { analyzeReconciliationIdentity } from "./analyze-reconciliation-identity.js";
 import { analyzeRenderPurity } from "./analyze-render-purity.js";
 import { analyzeScheduledCallbackLifetime } from "./analyze-scheduled-callback-lifetime.js";
@@ -59,6 +60,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.ReactNodeFlow,
   ReactProofClaim.ReconciliationIdentity,
   ReactProofClaim.ReducerPurity,
+  ReactProofClaim.ReducerTransitions,
   ReactProofClaim.RefAccess,
   ReactProofClaim.RenderPurity,
   ReactProofClaim.ScheduledCallbackLifetime,
@@ -161,6 +163,7 @@ export const analyzeReactUnit = (
       analyzeReactNodeFlow(unit, context),
       analyzeReconciliationIdentity(unit.functionNode, context),
       analyzeReducerPurity(unit.functionNode, context),
+      analyzeReducerTransitions(unit, context),
       analyzeRefAccess(unit.functionNode, context),
       analyzeRenderPurity(unit.functionNode, context),
       analyzeScheduledCallbackLifetime(unit, context),

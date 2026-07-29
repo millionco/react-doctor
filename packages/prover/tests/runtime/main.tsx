@@ -11,6 +11,7 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useOptimistic,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -35,12 +36,16 @@ import {
   OPTIMISTIC_ACTION_DELAY_MS,
   OPTIMISTIC_ACTION_INITIAL_RUNS,
   PRIMARY_STORE_INITIAL_VERSION,
+  REDUCER_INITIAL_COUNT,
+  REDUCER_INCREMENT,
+  REDUCER_INITIAL_RUNS,
   SCHEDULER_CALLBACK_DELAY_MS,
   SECONDARY_STORE_INITIAL_VERSION,
   SLOW_QUERY_DELAY_MS,
   STORE_VERSION_INCREMENT,
   STRICT_MODE_CONSTRUCTION_RUNS,
   STRICT_MODE_HOOK_UPDATER_RUNS,
+  STRICT_MODE_REDUCER_RUNS,
   TRANSITION_ACTION_DELAY_MS,
   TRANSITION_ACTION_INITIAL_RUNS,
   UNOBSERVED_CALLBACK_REVISION,
@@ -65,6 +70,8 @@ declare global {
     schedulerHits: number;
     hookStateUpdaterRuns: number;
     optimisticActionRuns: number;
+    reducerInitializerRuns: number;
+    reducerRuns: number;
     transitionActionRuns: number;
   }
 }
@@ -86,7 +93,46 @@ window.observerHits = 0;
 window.schedulerHits = 0;
 window.hookStateUpdaterRuns = HOOK_STATE_UPDATER_INITIAL_RUNS;
 window.optimisticActionRuns = OPTIMISTIC_ACTION_INITIAL_RUNS;
+window.reducerInitializerRuns = REDUCER_INITIAL_RUNS;
+window.reducerRuns = REDUCER_INITIAL_RUNS;
 window.transitionActionRuns = TRANSITION_ACTION_INITIAL_RUNS;
+
+interface ReducerOracleState {
+  count: number;
+}
+
+const initializeReducerOracle = (initialCount: number): ReducerOracleState => {
+  window.reducerInitializerRuns += 1;
+  return { count: initialCount };
+};
+
+const reduceReducerOracle = (
+  state: ReducerOracleState,
+  action: "increment",
+): ReducerOracleState => {
+  window.reducerRuns += 1;
+  if (action === "increment") {
+    return { count: state.count + REDUCER_INCREMENT };
+  }
+  return state;
+};
+
+const ReducerTransitionOracle = () => {
+  const [state, dispatch] = useReducer(
+    reduceReducerOracle,
+    REDUCER_INITIAL_COUNT,
+    initializeReducerOracle,
+  );
+  return (
+    <main>
+      <button type="button" onClick={() => dispatch("increment")}>
+        run reducer
+      </button>
+      <output data-testid="reducer-count">{state.count}</output>
+      <output data-testid="expected-reducer-runs">{STRICT_MODE_REDUCER_RUNS}</output>
+    </main>
+  );
+};
 
 interface OptimisticTodo {
   label: string;
@@ -1132,6 +1178,9 @@ const RuntimeOracle = () => {
   if (oracle === "hook-state-transition") {
     return <HookStateTransitionOracle />;
   }
+  if (oracle === "reducer-transition") {
+    return <ReducerTransitionOracle />;
+  }
   if (oracle === "transition-action") {
     return <TransitionActionOracle />;
   }
@@ -1160,6 +1209,7 @@ const isStrictModeOracle =
   oracle === "class-state-ownership" ||
   oracle === "class-state-transition" ||
   oracle === "hook-state-transition" ||
+  oracle === "reducer-transition" ||
   oracle === "transition-action" ||
   oracle === "optimistic-form-action" ||
   oracle === "action-state" ||

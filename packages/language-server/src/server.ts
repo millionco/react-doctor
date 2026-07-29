@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listSourceFiles, messageFromUnknown, resolveNodeForOxlint } from "@react-doctor/core";
 import {
   CodeActionKind,
   CodeActionTriggerKind,
@@ -56,6 +55,7 @@ import { buildFalsePositiveIssueUrl, type FalsePositiveReport } from "./features
 import { buildSuppressAllTextEdits } from "./features/suppress.js";
 import { createProjectGraph } from "./core/project-graph.js";
 import { createScanRunner, type ScanRunner } from "./core/scan-runner.js";
+import { listSourceFiles, messageFromUnknown, resolveNodeForOxlint } from "./core/core-api.js";
 import { createScheduler } from "./runtime/scheduler.js";
 import { createScanTelemetry } from "./runtime/scan-telemetry.js";
 import { chunk } from "./utils/chunk.js";

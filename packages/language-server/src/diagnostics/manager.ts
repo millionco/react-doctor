@@ -4,7 +4,7 @@ import { isPositionInRange } from "../text/positions.js";
 import { fsPathToUri, uriToFsPath } from "../text/uri.js";
 import { toLspDiagnostic } from "./mapper.js";
 
-export interface DiagnosticsManagerOptions {
+interface DiagnosticsManagerOptions {
   /** Sends the authoritative diagnostic set for a URI to the client. */
   readonly publish: (uri: string, diagnostics: LspDiagnostic[]) => void;
   /** Resolves current file text (open buffer or disk) for precise ranges. */

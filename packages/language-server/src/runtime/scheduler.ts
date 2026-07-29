@@ -1,4 +1,4 @@
-import { messageFromUnknown } from "@react-doctor/core";
+import { messageFromUnknown } from "../core/core-api.js";
 import { DOCUMENT_CHANGE_DEBOUNCE_MS, MIN_SCAN_CONCURRENCY } from "../constants.js";
 import {
   SILENT_LOGGER,

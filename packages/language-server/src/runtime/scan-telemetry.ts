@@ -25,7 +25,7 @@ interface ActiveBurst {
  * `accumulate` for `background` outcomes), so the event reflects the workspace
  * audit rather than per-keystroke activity.
  */
-export interface ScanTelemetry {
+interface ScanTelemetry {
   /** Start a burst, discarding any prior partial (e.g. a rescan supersedes it). */
   readonly begin: (trigger: WorkspaceScanTrigger, projectCount: number) => void;
   /** Fold one completed background scan outcome into the active burst. */

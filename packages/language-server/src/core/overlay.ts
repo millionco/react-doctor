@@ -4,7 +4,7 @@ import path from "node:path";
 import {
   ADOPTABLE_LINT_CONFIG_FILENAMES,
   STAGED_FILES_PROJECT_CONFIG_FILENAMES,
-} from "@react-doctor/core";
+} from "./core-api.js";
 import type { TextProvider } from "../types.js";
 import { toProjectRelative } from "../utils/to-project-relative.js";
 
@@ -27,7 +27,7 @@ export interface OverlaySnapshot {
   readonly cleanup: () => void;
 }
 
-export interface MaterializeOverlayInput {
+interface MaterializeOverlayInput {
   /** Absolute project root. */
   readonly projectDirectory: string;
   /** Absolute target file paths to overlay (the open buffers). */

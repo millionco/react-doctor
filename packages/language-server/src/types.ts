@@ -1,4 +1,4 @@
-import type { Diagnostic as CoreDiagnostic, ProjectInfo } from "@react-doctor/core";
+import type { CoreDiagnostic, ProjectInfo } from "./core/core-api.js";
 
 /**
  * Minimal logging seam so modules don't depend on the LSP connection

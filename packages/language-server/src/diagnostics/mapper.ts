@@ -1,5 +1,3 @@
-import { buildDiagnosticIdentity, getRuleMetadata } from "@react-doctor/core";
-import type { Diagnostic as CoreDiagnostic, DiagnosticRelatedLocation } from "@react-doctor/core";
 import {
   DiagnosticSeverity,
   DiagnosticTag,
@@ -9,10 +7,12 @@ import {
 } from "vscode-languageserver";
 import { URI } from "vscode-uri";
 import { DIAGNOSTIC_SOURCE } from "../constants.js";
+import { buildDiagnosticIdentity, getRuleMetadata } from "../core/core-api.js";
+import type { CoreDiagnostic, DiagnosticRelatedLocation } from "../core/core-api.js";
 import type { ReactDoctorDiagnosticData } from "../types.js";
 import { rangeFromByteSpan, rangeFromLineColumn } from "../text/positions.js";
 
-export interface MapDiagnosticInput {
+interface MapDiagnosticInput {
   readonly diagnostic: CoreDiagnostic;
   /** Absolute fs path of the file this diagnostic belongs to. */
   readonly fsPath: string;

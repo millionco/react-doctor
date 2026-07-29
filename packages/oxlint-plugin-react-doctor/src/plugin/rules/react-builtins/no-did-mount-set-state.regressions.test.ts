@@ -359,6 +359,87 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags when a nested payload callback reads the ref field", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          this.setState({
+            selectedDate: this.props.selectedDate,
+            getContainer: () => this.monthContainer,
+          });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags when a nested function shadows the lifecycle local", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          const container = this.props.initialContainer;
+          const readLater = () => {
+            const container = this.monthContainer;
+            return container;
+          };
+          this.setState({ container, readLater });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when one callback ref assigns its field in separate branches", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          if (element) {
+            this.monthContainer = element;
+          } else {
+            this.monthContainer = element;
+          }
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // setState after an await in an async componentDidMount is the
   // promise-buried case the doc says must not fire in "allowed" mode
   // (dtale NetworkDisplay).

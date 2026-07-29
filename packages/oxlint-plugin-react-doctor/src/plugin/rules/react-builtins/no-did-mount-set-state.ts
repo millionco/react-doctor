@@ -77,6 +77,7 @@ const containsPostMountSource = (node: EsTreeNode): boolean => {
   let didFindSource = false;
   walkAst(node, (descendant) => {
     if (didFindSource) return false;
+    if (descendant !== node && isFunctionLike(descendant)) return false;
     if (
       isNodeOfType(descendant, "NewExpression") &&
       isNodeOfType(descendant.callee, "Identifier") &&
@@ -104,6 +105,7 @@ const containsCallbackRefField = (
 ): boolean => {
   let didFindCallbackRefField = false;
   walkAst(node, (descendant) => {
+    if (descendant !== node && isFunctionLike(descendant)) return false;
     const fieldName = getThisFieldName(descendant);
     if (fieldName && callbackRefFieldNames.has(fieldName)) {
       didFindCallbackRefField = true;
@@ -152,6 +154,7 @@ const argumentDerivesFromPostMountSource = (
 
   const localInitializers = new Map<string, EsTreeNode>();
   walkAst(lifecycleFunction, (descendant) => {
+    if (descendant !== lifecycleFunction && isFunctionLike(descendant)) return false;
     if (
       isNodeOfType(descendant, "VariableDeclarator") &&
       isNodeOfType(descendant.id, "Identifier") &&
@@ -170,6 +173,7 @@ const argumentDerivesFromPostMountSource = (
     if (name === undefined) break;
     const initializer = localInitializers.get(name);
     if (!initializer) continue;
+    if (isFunctionLike(stripParenExpression(initializer))) continue;
     if (
       containsPostMountSource(initializer) ||
       containsCallbackRefField(initializer, callbackRefFieldNames)
@@ -264,7 +268,7 @@ const callMayWriteThisField = (
 
 const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: string): boolean => {
   if (fieldName.startsWith("#")) return false;
-  let assignmentCount = 0;
+  const writerFunctions = new Set<EsTreeNode>();
   let didFindUnsafeWrite = false;
   walkAst(classNode, (node) => {
     if (
@@ -312,9 +316,17 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
       return false;
     }
     if (assignmentFieldName !== fieldName) return;
-    assignmentCount += 1;
+    let writerFunction: EsTreeNode | null | undefined = node.parent;
+    while (writerFunction && writerFunction !== classNode && !isFunctionLike(writerFunction)) {
+      writerFunction = writerFunction.parent;
+    }
+    if (!writerFunction || writerFunction === classNode) {
+      didFindUnsafeWrite = true;
+      return false;
+    }
+    writerFunctions.add(writerFunction);
   });
-  return !didFindUnsafeWrite && assignmentCount === 1;
+  return !didFindUnsafeWrite && writerFunctions.size === 1;
 };
 
 // A setState after an `await` in an async componentDidMount is the

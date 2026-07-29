@@ -4,42 +4,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
-import { isTrivialBuiltInConstruction } from "../../utils/is-trivial-built-in-construction.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-// Sister rule to `rerender-lazy-state-init`. `useRef` is even less
-// forgiving than `useState`: it does NOT accept a lazy initializer
-// callback. If you write `useRef(expensiveCall())`, the expensive
-// call runs on EVERY render and its result is silently discarded
-// after the first one. The fix is the classic lazy-ref pattern:
-//
-//   const ref = useRef<T | null>(null);
-//   if (ref.current === null) ref.current = expensiveCall();
-//
-// or `useMemo(() => expensiveCall(), [])` when the value can be
-// recomputed on remount safely.
-//
-// Covers two initializer shapes:
-//   - `useRef(callee())`         — plain call (the function/method case)
-//   - `useRef(new Callee())`     — `new` expression (the class case)
-//
-// Both allocate fresh per render and lose the allocation immediately
-// after the first render — but only EXPENSIVE construction is worth the
-// lazy-init ceremony. Zero-argument empty-container built-ins
-// (`new Set()`, `new Map()`, `new AbortController()`, …) cost about as
-// much as the trivial coercion helpers, so recommending the null-check
-// pattern for them is net-negative; they're exempt via
-// `isTrivialBuiltInConstruction` (shared with `rerender-lazy-state-init`).
-// Runtime arguments (`new Set(items)` iterates its input every render)
-// and member-expression callees (`new ns.Map()`) still fire.
-//
-// LIMITATIONS:
-//   - Doesn't try to follow identifier bindings (`const init = expensiveCall();
-//     useRef(init)`) — that's a separate (rare) pattern.
-//   - Trivial wrappers (`Number`, `String`, `Array`, `Boolean`,
-//     `parseInt`, `parseFloat`) are exempt because they're essentially
-//     free — same exemption list as `rerender-lazy-state-init`.
 export const rerenderLazyRefInit = defineRule({
   id: "rerender-lazy-ref-init",
   title: "Ref initializer runs on every render",
@@ -69,13 +36,7 @@ export const rerenderLazyRefInit = defineRule({
         : (memberPropertyName ?? "fn");
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
-      if (isTrivialBuiltInConstruction(initializer)) return;
 
-      // `useRef(useId())` / `useRef(useContext(Ctx))` captures another
-      // hook's value. The result is already stable per the rules of
-      // hooks, and the lazy-init fix this rule suggests
-      // (`if (ref.current === null) ref.current = useId()`) would call
-      // a hook conditionally — illegal. Skip hook-shaped callees.
       if (isPlainCall && isReactHookName(calleeName)) return;
 
       const callShape = isNewCall ? `new ${calleeName}()` : `${calleeName}()`;

@@ -155,6 +155,176 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a boolean previous-to-current transition", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (this.props.showTimeSelect && !prevProps.showTimeSelect) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a destructured boolean previous-to-current transition", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate({ showTimeSelect: previouslyShowedTimeSelect }) {
+          if (this.props.showTimeSelect && !previouslyShowedTimeSelect) {
+            this.setState({ monthContainer: this.monthContainer });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags boolean tests for different previous and current paths", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (this.props.showTimeSelect && !prevProps.inline) {
+            this.setState({ updates: this.state.updates + 1 });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a shadowed previous-props name in a boolean test", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate(prevProps) {
+          {
+            const prevProps = { showTimeSelect: false };
+            if (this.props.showTimeSelect && !prevProps.showTimeSelect) {
+              this.setState({ updates: this.state.updates + 1 });
+            }
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a named previous/current equality comparator", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (!isSameDay(this.props.openToDate, prevProps.openToDate)) {
+            this.setState({ date: this.props.openToDate });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an unrelated predicate over previous and current values", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (shouldUpdate(this.props.openToDate, prevProps.openToDate)) {
+            this.setState({ updates: this.state.updates + 1 });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a const alias for an exact convergence guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          const didTooltipChange = this.state.tooltip !== this.props.tooltip;
+          if (didTooltipChange) {
+            this.setState({ tooltip: this.props.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a reassigned alias for an exact convergence guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          let didTooltipChange = this.state.tooltip !== this.props.tooltip;
+          didTooltipChange = this.props.forceUpdate;
+          if (didTooltipChange) {
+            this.setState({ tooltip: this.props.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a previous/current transition split across nested branches", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (this.props.showTimeSelect) {
+            this.measure();
+          } else if (prevProps.showTimeSelect) {
+            this.setState({ monthContainer: undefined });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when every logical-OR branch is a historical transition", () => {
     const result = runRule(
       noDidUpdateSetState,
@@ -555,7 +725,25 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("still flags a convergent render-known prop copy", () => {
+  it("still flags a structurally equal prop-derived call that can return a fresh value", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (this.state.tooltip !== computeTooltip(this.props.tooltip)) {
+            this.setState({ tooltip: computeTooltip(this.props.tooltip) });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on an exact render-known prop convergence guard", () => {
     const result = runRule(
       noDidUpdateSetState,
       `
@@ -563,6 +751,88 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
         componentDidUpdate() {
           if (this.state.tooltip !== this.props.tooltip) {
             this.setState({ tooltip: this.props.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when every mixed OR branch converges", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate(prevProps) {
+          if (
+            this.props.enabled &&
+            (
+              this.state.tooltip !== this.props.tooltip ||
+              !prevProps.enabled
+            )
+          ) {
+            this.setState({ tooltip: this.props.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a stable truthiness convergence guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (!this.state.tooltip && this.props.tooltip) {
+            this.setState({ tooltip: this.props.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a truthiness guard around an unstable class field", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (!this.state.tooltip && this.tooltip) {
+            this.setState({ tooltip: this.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an exact guard whose assigned identifier is shadowed", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          const tooltip = this.durationNode.textContent;
+          if (this.state.tooltip !== tooltip) {
+            {
+              const tooltip = computeTooltip();
+              this.setState({ tooltip });
+            }
           }
         }
       }

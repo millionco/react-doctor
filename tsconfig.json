@@ -4,6 +4,11 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "paths": {
+      "oxlint-plugin-react-doctor/contracts": [
+        "./packages/oxlint-plugin-react-doctor/src/contracts.ts"
+      ]
+    },
     "declaration": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

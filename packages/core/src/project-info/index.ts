@@ -6,6 +6,13 @@ export {
   listWorkspacePackages,
 } from "./discover-project.js";
 export { clearPackageJsonCache, readPackageJson } from "./package-json.js";
+export { buildPackageGraph } from "./package-graph.js";
+export type {
+  PackageGraph,
+  PackageGraphDependencyDeclaration,
+  PackageGraphPackage,
+  PackageGraphWorkspaceEdge,
+} from "./package-graph.js";
 export { isAnalyzableProject } from "./is-analyzable-project.js";
 export {
   parseReactMajor,

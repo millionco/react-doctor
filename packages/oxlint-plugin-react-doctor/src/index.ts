@@ -18,7 +18,7 @@ export {
   TANSTACK_START_RULES,
 } from "./rules.js";
 
-export { MOTION_LIBRARY_PACKAGES } from "./plugin/constants/style.js";
+export { MOTION_LIBRARY_PACKAGES } from "./plugin/constants/motion-library-packages.js";
 
 export { CROSS_FILE_RULE_IDS } from "./plugin/constants/cross-file-rule-ids.js";
 

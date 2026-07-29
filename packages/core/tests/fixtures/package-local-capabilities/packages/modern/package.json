@@ -1,0 +1,8 @@
+{
+  "name": "modern",
+  "dependencies": {
+    "@tanstack/react-query": "^5.66.0",
+    "next": "catalog:modern",
+    "react": "catalog:modern"
+  }
+}

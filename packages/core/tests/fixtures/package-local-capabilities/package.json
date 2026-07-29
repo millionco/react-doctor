@@ -1,0 +1,13 @@
+{
+  "name": "package-local-capabilities",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "catalogs": {
+    "modern": {
+      "next": "^16.0.0",
+      "react": "^19.2.0"
+    }
+  }
+}

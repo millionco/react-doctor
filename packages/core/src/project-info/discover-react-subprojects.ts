@@ -3,10 +3,11 @@ import { IGNORED_DIRECTORIES } from "./constants.js";
 import type { PackageJson, WorkspacePackage } from "../types/index.js";
 import { isDirectory, isFile, readDirectoryEntries } from "./fs-utils.js";
 import { hasReactDependency } from "./dependencies.js";
+import { buildPackageGraph } from "./package-graph.js";
 import { readPackageJson } from "./package-json.js";
 import {
   getNxWorkspaceDirectories,
-  listWorkspacePackages,
+  getWorkspacePatterns,
   parsePnpmWorkspacePatterns,
   resolveWorkspaceDirectories,
 } from "./workspaces.js";
@@ -28,10 +29,21 @@ const toReactWorkspacePackages = (directories: string[]): WorkspacePackage[] => 
   return packages;
 };
 
-const listManifestWorkspacePackages = (rootDirectory: string): WorkspacePackage[] => {
+const listPackageGraphWorkspacePackages = (rootDirectory: string): WorkspacePackage[] => {
   const packageJsonPath = path.join(rootDirectory, "package.json");
-  if (isFile(packageJsonPath)) return listWorkspacePackages(rootDirectory);
+  const rootPackageJson = readPackageJson(packageJsonPath);
+  if (getWorkspacePatterns(rootDirectory, rootPackageJson).length === 0) return [];
 
+  const packageGraph = buildPackageGraph(rootDirectory, rootPackageJson);
+  return packageGraph.packages
+    .filter((packageNode) => hasReactDependency(packageNode.manifest))
+    .map((packageNode) => ({
+      name: packageNode.name ?? path.basename(packageNode.directory),
+      directory: packageNode.directory,
+    }));
+};
+
+const listWorkspacePackagesWithoutRootManifest = (rootDirectory: string): WorkspacePackage[] => {
   const patterns = parsePnpmWorkspacePatterns(rootDirectory);
   const nxPatterns = patterns.length > 0 ? [] : getNxWorkspaceDirectories(rootDirectory);
   const directories = (patterns.length > 0 ? patterns : nxPatterns).flatMap((pattern) =>
@@ -114,7 +126,9 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
 export const discoverReactSubprojects = (rootDirectory: string): WorkspacePackage[] => {
   if (!isDirectory(rootDirectory)) return [];
 
-  const manifestPackages = listManifestWorkspacePackages(rootDirectory);
+  const manifestPackages = isFile(path.join(rootDirectory, "package.json"))
+    ? listPackageGraphWorkspacePackages(rootDirectory)
+    : listWorkspacePackagesWithoutRootManifest(rootDirectory);
   if (manifestPackages.length > 0) return manifestPackages;
 
   return discoverReactSubprojectsByFilesystem(rootDirectory);

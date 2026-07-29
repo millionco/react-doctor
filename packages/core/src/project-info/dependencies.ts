@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DependencyInfo, PackageJson } from "../types/index.js";
-import { detectFramework } from "./detectors.js";
+import { detectFramework } from "./detect-framework.js";
 import { isFile, isPlainObject } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
 import { readPackageJson } from "./package-json.js";
@@ -362,7 +362,7 @@ export const getPreactVersion = (packageJson: PackageJson): string | null => {
   return allDependencies.preact ?? null;
 };
 
-interface ResolveCatalogBackedDependencyVersionOptions {
+interface ResolveCatalogBackedDependencyOptions {
   rootDirectory: string;
   rootPackageJson: PackageJson;
   packageName: string;
@@ -371,15 +371,40 @@ interface ResolveCatalogBackedDependencyVersionOptions {
   version: string | null;
 }
 
-export const resolveCatalogBackedDependencyVersion = ({
+export interface CatalogBackedDependencyResolution {
+  readonly resolvedVersion: string | null;
+  readonly resolutionSource:
+    | "none"
+    | "manifest"
+    | "declaring-package-catalog"
+    | "workspace-root-catalog"
+    | "monorepo-root-catalog"
+    | "unresolved-catalog";
+  readonly resolutionSourceDirectory: string | null;
+}
+
+export const resolveCatalogBackedDependency = ({
   rootDirectory,
   rootPackageJson,
   packageName,
   sourceDirectory = rootDirectory,
   sourcePackageJson = rootPackageJson,
   version,
-}: ResolveCatalogBackedDependencyVersionOptions): string | null => {
-  if (version === null || !isCatalogReference(version)) return version;
+}: ResolveCatalogBackedDependencyOptions): CatalogBackedDependencyResolution => {
+  if (version === null) {
+    return {
+      resolvedVersion: null,
+      resolutionSource: "none",
+      resolutionSourceDirectory: null,
+    };
+  }
+  if (!isCatalogReference(version)) {
+    return {
+      resolvedVersion: version,
+      resolutionSource: "manifest",
+      resolutionSourceDirectory: sourceDirectory,
+    };
+  }
 
   const catalogName = extractCatalogName(version);
   const resolvedSourceVersion = resolveCatalogVersion(
@@ -388,7 +413,13 @@ export const resolveCatalogBackedDependencyVersion = ({
     sourceDirectory,
     catalogName,
   );
-  if (resolvedSourceVersion) return resolvedSourceVersion;
+  if (resolvedSourceVersion) {
+    return {
+      resolvedVersion: resolvedSourceVersion,
+      resolutionSource: "declaring-package-catalog",
+      resolutionSourceDirectory: sourceDirectory,
+    };
+  }
 
   if (sourceDirectory !== rootDirectory || sourcePackageJson !== rootPackageJson) {
     const resolvedRootVersion = resolveCatalogVersion(
@@ -397,21 +428,54 @@ export const resolveCatalogBackedDependencyVersion = ({
       rootDirectory,
       catalogName,
     );
-    if (resolvedRootVersion) return resolvedRootVersion;
+    if (resolvedRootVersion) {
+      return {
+        resolvedVersion: resolvedRootVersion,
+        resolutionSource: "workspace-root-catalog",
+        resolutionSourceDirectory: rootDirectory,
+      };
+    }
   }
 
   const monorepoRoot = findMonorepoRoot(rootDirectory);
-  if (!monorepoRoot) return version;
+  if (!monorepoRoot) {
+    return {
+      resolvedVersion: version,
+      resolutionSource: "unresolved-catalog",
+      resolutionSourceDirectory: null,
+    };
+  }
 
   const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
-  if (!isFile(monorepoPackageJsonPath)) return version;
+  if (!isFile(monorepoPackageJsonPath)) {
+    return {
+      resolvedVersion: version,
+      resolutionSource: "unresolved-catalog",
+      resolutionSourceDirectory: null,
+    };
+  }
 
-  return (
-    resolveCatalogVersion(
-      readPackageJson(monorepoPackageJsonPath),
-      packageName,
-      monorepoRoot,
-      catalogName,
-    ) ?? version
+  const resolvedMonorepoVersion = resolveCatalogVersion(
+    readPackageJson(monorepoPackageJsonPath),
+    packageName,
+    monorepoRoot,
+    catalogName,
   );
+  if (resolvedMonorepoVersion) {
+    return {
+      resolvedVersion: resolvedMonorepoVersion,
+      resolutionSource: "monorepo-root-catalog",
+      resolutionSourceDirectory: monorepoRoot,
+    };
+  }
+
+  return {
+    resolvedVersion: version,
+    resolutionSource: "unresolved-catalog",
+    resolutionSourceDirectory: null,
+  };
 };
+
+export const resolveCatalogBackedDependencyVersion = (
+  options: ResolveCatalogBackedDependencyOptions,
+): string | null => resolveCatalogBackedDependency(options).resolvedVersion;

@@ -335,10 +335,19 @@ const objectExpressionMayDefineField = (node: EsTreeNode, fieldName: string): bo
   });
 };
 
+const isThisOrAlias = (node: EsTreeNode, thisAliasNames: ReadonlySet<string>): boolean => {
+  const candidate = stripParenExpression(node);
+  return (
+    isNodeOfType(candidate, "ThisExpression") ||
+    (isNodeOfType(candidate, "Identifier") && thisAliasNames.has(candidate.name))
+  );
+};
+
 const callMayWriteThisField = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   fieldName: string,
   receiverKinds: ReadonlyMap<string, "object" | "reflect">,
+  thisAliasNames: ReadonlySet<string>,
 ): boolean => {
   const callee = stripParenExpression(callExpression.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -348,11 +357,11 @@ const callMayWriteThisField = (
   if (!receiverKind) return false;
   const methodName = getStaticPropertyKeyName(callee, { allowComputedString: true });
   const [target, propertyOrSource, ...remainingArguments] = callExpression.arguments;
-  if (
-    !target ||
-    isNodeOfType(target, "SpreadElement") ||
-    !isNodeOfType(stripParenExpression(target as EsTreeNode), "ThisExpression")
-  ) {
+  const unwrappedTarget =
+    target && !isNodeOfType(target, "SpreadElement")
+      ? stripParenExpression(target as EsTreeNode)
+      : null;
+  if (!unwrappedTarget || !isThisOrAlias(unwrappedTarget, thisAliasNames)) {
     return false;
   }
   if (receiverKind === "object" && methodName === "assign") {
@@ -387,6 +396,34 @@ const callMayWriteThisField = (
   return false;
 };
 
+const collectThisAliasNames = (classNode: EsTreeNode): ReadonlySet<string> => {
+  const thisAliasNames = new Set<string>();
+  let didAddAlias = true;
+  while (didAddAlias) {
+    didAddAlias = false;
+    walkAst(classNode, (node) => {
+      if (
+        !isNodeOfType(node, "VariableDeclarator") ||
+        !isNodeOfType(node.id, "Identifier") ||
+        !node.init
+      ) {
+        return;
+      }
+      const initializer = stripParenExpression(node.init);
+      if (
+        !isNodeOfType(initializer, "ThisExpression") &&
+        (!isNodeOfType(initializer, "Identifier") || !thisAliasNames.has(initializer.name))
+      ) {
+        return;
+      }
+      if (thisAliasNames.has(node.id.name)) return;
+      thisAliasNames.add(node.id.name);
+      didAddAlias = true;
+    });
+  }
+  return thisAliasNames;
+};
+
 const getEnclosingWriterFunction = (node: EsTreeNode, classNode: EsTreeNode): EsTreeNode | null => {
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor && ancestor !== classNode && !isFunctionLike(ancestor)) {
@@ -395,9 +432,36 @@ const getEnclosingWriterFunction = (node: EsTreeNode, classNode: EsTreeNode): Es
   return ancestor && ancestor !== classNode ? ancestor : null;
 };
 
+const isInsideRefAttribute = (node: EsTreeNode): boolean => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor && !isFunctionLike(ancestor)) {
+    if (
+      isNodeOfType(ancestor, "JSXAttribute") &&
+      isNodeOfType(ancestor.name, "JSXIdentifier") &&
+      ancestor.name.name === "ref"
+    ) {
+      return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const getWriterMemberName = (writerFunction: EsTreeNode): string | null => {
+  const parent = writerFunction.parent;
+  if (
+    !parent ||
+    (!isNodeOfType(parent, "MethodDefinition") && !isNodeOfType(parent, "PropertyDefinition"))
+  ) {
+    return null;
+  }
+  return getStaticPropertyKeyName(parent, { allowComputedString: true });
+};
+
 const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: string): boolean => {
   if (fieldName.startsWith("#")) return false;
   const receiverKinds = collectMutationReceiverKinds(classNode);
+  const thisAliasNames = collectThisAliasNames(classNode);
   const writerFunctions = new Set<EsTreeNode>();
   let didFindUnsafeWrite = false;
   walkAst(classNode, (node) => {
@@ -418,7 +482,7 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
     }
     if (
       isNodeOfType(node, "CallExpression") &&
-      callMayWriteThisField(node, fieldName, receiverKinds)
+      callMayWriteThisField(node, fieldName, receiverKinds, thisAliasNames)
     ) {
       const writerFunction = getEnclosingWriterFunction(node, classNode);
       if (!writerFunction) {
@@ -439,10 +503,7 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
     const unwrappedAssignmentTarget = stripParenExpression(assignmentTarget);
     if (
       !isNodeOfType(unwrappedAssignmentTarget, "MemberExpression") ||
-      !isNodeOfType(
-        stripParenExpression(unwrappedAssignmentTarget.object as EsTreeNode),
-        "ThisExpression",
-      )
+      !isThisOrAlias(unwrappedAssignmentTarget.object as EsTreeNode, thisAliasNames)
     ) {
       return;
     }
@@ -461,7 +522,19 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
     }
     writerFunctions.add(writerFunction);
   });
-  return !didFindUnsafeWrite && writerFunctions.size === 1;
+  if (didFindUnsafeWrite || writerFunctions.size !== 1) return false;
+  const [writerFunction] = writerFunctions;
+  if (!writerFunction) return false;
+  const writerMemberName = getWriterMemberName(writerFunction);
+  if (!writerMemberName) return true;
+  let didFindNonRefUsage = false;
+  walkAst(classNode, (node) => {
+    if (getStaticThisFieldName(node) === writerMemberName && !isInsideRefAttribute(node)) {
+      didFindNonRefUsage = true;
+      return false;
+    }
+  });
+  return !didFindNonRefUsage;
 };
 
 // A setState after an `await` in an async componentDidMount is the

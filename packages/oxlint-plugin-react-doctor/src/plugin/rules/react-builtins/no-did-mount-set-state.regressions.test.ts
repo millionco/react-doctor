@@ -568,6 +568,60 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags a callback-ref handler invoked with a prop value", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        componentDidMount() {
+          this.setMonthContainerRef(this.props.monthContainer);
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    `instance.monthContainer = value;`,
+    `Object.assign(instance, { monthContainer: value });`,
+  ])("still flags a competing writer through a this alias: %s", (competingWrite) => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        overrideMonthContainer = (value) => {
+          const instance = this;
+          ${competingWrite}
+        };
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+        render() {
+          return <div ref={this.setMonthContainerRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a nested post-mount update in disallow-in-func mode", () => {
     const result = runRule(
       noDidMountSetState,

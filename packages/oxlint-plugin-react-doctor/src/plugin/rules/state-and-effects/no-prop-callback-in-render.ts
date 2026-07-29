@@ -6,9 +6,12 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { functionHasReactComponentEvidence } from "../../utils/function-has-react-component-evidence.js";
+import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -28,6 +31,7 @@ import {
 interface CustomHookParameterBinding {
   functionNode: EsTreeNode;
   parameterIndex: number;
+  propertyName?: string;
 }
 
 const functionBindingSymbols = (
@@ -158,7 +162,13 @@ const customHookParameterBinding = (reference: Reference): CustomHookParameterBi
   const parameterIndex = (functionNode.params ?? []).findIndex((parameter) =>
     patternContainsBinding(parameter, parameterBinding),
   );
-  return parameterIndex >= 0 ? { functionNode, parameterIndex } : null;
+  if (parameterIndex < 0) return null;
+  const parameter = functionNode.params?.[parameterIndex];
+  if (!parameter || !isNodeOfType(parameter, "ObjectPattern")) {
+    return { functionNode, parameterIndex };
+  }
+  const propertyName = getDestructuredBindingPropertyName(parameterBinding);
+  return propertyName ? { functionNode, parameterIndex, propertyName } : null;
 };
 
 const isDirectlyExportedFunction = (functionNode: EsTreeNode): boolean => {
@@ -198,6 +208,25 @@ const referenceHasComponentPropOrigin = (
       isProp(analysis, upstreamReference) && !isCustomHookParameter(upstreamReference),
   );
 
+const argumentValueForParameterBinding = (
+  argument: EsTreeNode,
+  binding: CustomHookParameterBinding,
+): EsTreeNode | null => {
+  if (!binding.propertyName) return argument;
+  let candidate = stripParenExpression(argument);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const initializer = findVariableInitializer(candidate, candidate.name)?.initializer;
+    if (initializer) candidate = stripParenExpression(initializer);
+  }
+  if (!isNodeOfType(candidate, "ObjectExpression")) return argument;
+  const matchingProperty = candidate.properties.find(
+    (property) =>
+      isNodeOfType(property, "Property") &&
+      getStaticPropertyKeyName(property, { allowComputedString: true }) === binding.propertyName,
+  );
+  return isNodeOfType(matchingProperty, "Property") ? matchingProperty.value : null;
+};
+
 const customHookParameterHasComponentPropCall = (
   analysis: ProgramAnalysis,
   reference: Reference,
@@ -218,7 +247,9 @@ const customHookParameterHasComponentPropCall = (
     }
     const argument = callExpression.arguments?.[parameterIndex];
     if (!argument || isNodeOfType(argument, "SpreadElement")) return false;
-    return getDownstreamRefs(analysis, argument).some((argumentReference) =>
+    const argumentValue = argumentValueForParameterBinding(argument, binding);
+    if (!argumentValue) return false;
+    return getDownstreamRefs(analysis, argumentValue).some((argumentReference) =>
       referenceHasComponentPropOrigin(analysis, argumentReference),
     );
   });

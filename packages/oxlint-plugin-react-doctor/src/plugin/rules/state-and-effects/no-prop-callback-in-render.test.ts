@@ -473,6 +473,19 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "an options object with a sibling prop and local state setter",
+      `import { useState } from "react";
+       const useSyncState = ({ onReady, setState }) => {
+         if (onReady) setState("fresh");
+       };
+       const Panel = ({ onReady }) => {
+         const [state, setState] = useState("fresh");
+         const options = { onReady, setState };
+         useSyncState(options);
+         return <div>{state}</div>;
+       };`,
+    ],
+    [
       "native array transforms on a custom hook parameter",
       `const useItems = (items: readonly string[]) => {
          items.map((item) => item.length);

@@ -804,6 +804,420 @@ const Table = () => (
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toEqual([]);
     });
+
+    it("flags fragments wrapping dynamic React.Children entries", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const TabContent = ({ children }) => {
+  const childArray = React.Children.toArray(children).filter(Boolean);
+  return childArray.map((child, index) => (
+    <React.Fragment key={index}>{child}</React.Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags fragments wrapping aliased named Children entries", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `import { Children as ReactChildren } from "react";
+const TabContent = ({ children }) => {
+  const childArray = ReactChildren.toArray(children);
+  return childArray.map((child, index) => (
+    <Fragment key={index}>{child}</Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags fragments wrapping conditionally normalized React children", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const TabContent = ({ children }) => {
+  const childItems = (Array.isArray(children) ? children : [children]).filter(Boolean);
+  return childItems.map((child, i) => <Fragment key={i}>{child}</Fragment>);
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent on conditionally normalized text and value inputs", () => {
+      const valuesResult = runRule(
+        noArrayIndexAsKey,
+        `const ValueRows = ({ values }) => {
+  const normalized = Array.isArray(values) ? values : [values];
+  return normalized.map((value, index) => (
+    <Fragment key={index}>{value}</Fragment>
+  ));
+};
+`,
+      );
+      const textResult = runRule(
+        noArrayIndexAsKey,
+        `const TextRows = (text) => {
+  const normalized = Array.isArray(text) ? text : [text];
+  return normalized.map((part, index) => (
+    <Fragment key={index}>{part}</Fragment>
+  ));
+};
+`,
+      );
+      expect(valuesResult.parseErrors).toEqual([]);
+      expect(textResult.parseErrors).toEqual([]);
+      expect(valuesResult.diagnostics).toEqual([]);
+      expect(textResult.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on shadowed React and Array lookalikes", () => {
+      const reactResult = runRule(
+        noArrayIndexAsKey,
+        `const React = { Children: { toArray: (value) => value } };
+const TextRun = ({ children }) =>
+  React.Children.toArray(children).map((child, index) => (
+    <React.Fragment key={index}>{child}</React.Fragment>
+  ));
+`,
+      );
+      const arrayResult = runRule(
+        noArrayIndexAsKey,
+        `const Array = { isArray: () => true };
+const TextRun = ({ children }) => {
+  const items = Array.isArray(children) ? children : [children];
+  return items.map((child, index) => (
+    <Fragment key={index}>{child}</Fragment>
+  ));
+};
+`,
+      );
+      expect(reactResult.parseErrors).toEqual([]);
+      expect(arrayResult.parseErrors).toEqual([]);
+      expect(reactResult.diagnostics).toEqual([]);
+      expect(arrayResult.diagnostics).toEqual([]);
+    });
+
+    it("flags fragments wrapping dynamically accumulated React children", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const TabContent = ({ children }) => {
+  const childArray = React.Children.toArray(children);
+  const toRender = [];
+  for (const child of childArray) {
+    if (isPanel(child)) toRender.push(<Panel>{child}</Panel>);
+    else toRender.push(child);
+  }
+  return toRender.map((child, i) => (
+    <React.Fragment key={i}>{child}</React.Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent on fragments wrapping accumulated text", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Labels = ({ values }) => {
+  const labels = [];
+  for (const value of values) labels.push(value.label);
+  return labels.map((label, index) => (
+    <Fragment key={index}>{label}</Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on text derived from accumulated React children", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Labels = ({ children }) => {
+  const childArray = React.Children.toArray(children);
+  const labels = [];
+  for (const child of childArray) labels.push(child.props.label);
+  return labels.map((label, index) => (
+    <Fragment key={index}>{label}</Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on fragments wrapping static accumulated JSX", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const LoadingRows = ({ count }) => {
+  const rows = [];
+  for (let index = 0; index < count; index += 1) {
+    rows.push(<Skeleton />);
+  }
+  return rows.map((row, index) => (
+    <Fragment key={index}>{row}</Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a self-fed empty-array accumulator", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Rows = () => {
+  const rows = [];
+  for (const row of rows) rows.push(row);
+  return rows.map((row, index) => (
+    <Fragment key={index}>{row}</Fragment>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("flags loop counters bounded by non-identifier length receivers", () => {
+      const callResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = () => {
+  const rows = [];
+  for (let index = 0; index < getItems().length; index += 1) {
+    rows.push(<Row key={index} />);
+  }
+  return rows;
+};
+`,
+      );
+      const memberResult = runRule(
+        noArrayIndexAsKey,
+        `class Rows extends React.Component {
+  render() {
+    const rows = [];
+    for (let index = 0; index < this.items.length; index += 1) {
+      rows.push(<Row key={index} />);
+    }
+    return rows;
+  }
+}
+`,
+      );
+      expect(callResult.parseErrors).toEqual([]);
+      expect(memberResult.parseErrors).toEqual([]);
+      expect(callResult.diagnostics).toHaveLength(1);
+      expect(memberResult.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent when an unrelated length read does not bound the counter", () => {
+      const forResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ items }) => {
+  const rows = [];
+  for (let index = 0; index < 5 && items.length > 0; index += 1) {
+    rows.push(<Row key={index} />);
+  }
+  return rows;
+};
+`,
+      );
+      const whileResult = runRule(
+        noArrayIndexAsKey,
+        `const Rows = ({ items }) => {
+  const rows = [];
+  let index = 0;
+  while (index < 5 && items.length > 0) {
+    rows.push(<Row key={index} />);
+    index += 1;
+  }
+  return rows;
+};
+`,
+      );
+      expect(forResult.parseErrors).toEqual([]);
+      expect(whileResult.parseErrors).toEqual([]);
+      expect(forResult.diagnostics).toEqual([]);
+      expect(whileResult.diagnostics).toEqual([]);
+    });
+
+    it("correlates identical member-chain collections without crossing collection paths", () => {
+      const sameCollectionResult = runRule(
+        noArrayIndexAsKey,
+        `const Gallery = ({ state }) => {
+  const rows = [];
+  let index = 0;
+  while (index < state.photos.length) {
+    const photo = state.photos[index];
+    rows.push(
+      <div aria-hidden>
+        <img key={index} src={photo.url} />
+      </div>,
+    );
+    index += 1;
+  }
+  return rows;
+};
+`,
+      );
+      const differentCollectionResult = runRule(
+        noArrayIndexAsKey,
+        `const Gallery = ({ photos, state }) => {
+  const rows = [];
+  let index = 0;
+  while (index < photos.length) {
+    const photo = state.photos[index];
+    rows.push(
+      <div aria-hidden>
+        <img key={index} src={photo.url} />
+      </div>,
+    );
+    index += 1;
+  }
+  return rows;
+};
+`,
+      );
+      expect(sameCollectionResult.parseErrors).toEqual([]);
+      expect(differentCollectionResult.parseErrors).toEqual([]);
+      expect(sameCollectionResult.diagnostics).toHaveLength(1);
+      expect(differentCollectionResult.diagnostics).toEqual([]);
+    });
+
+    it("flags stateless wrappers around cast dynamic React children", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const TabContent = ({ children }) => {
+  const normalized = React.Children.toArray(children);
+  return normalized.map((child, idx) => (
+    <div key={idx}>{child as React.ReactNode}</div>
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent on bare text items inside fragments", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const TextRun = ({ parts }) =>
+  parts.map((part, index) => (
+    <Fragment key={index}>
+      {index > 0 ? " and " : null}
+      {part}
+    </Fragment>
+  ));
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on fragment-wrapped static placeholders", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const LoadingRows = ({ count }) =>
+  Array.from({ length: count }, (_, index) => (
+    <Fragment key={index}>
+      <Skeleton />
+    </Fragment>
+  ));
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
+  describe("data-indexed while-loop counters", () => {
+    it("flags a mutable counter used to select array entries", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Gallery = ({ photos, activePhotoIndex, preloadSize }) => {
+  let counter = 1;
+  let index = activePhotoIndex;
+  const preloadPhotos = [];
+  while (index < photos.length && counter <= preloadSize) {
+    const photo = photos[index];
+    preloadPhotos.push(
+      <img key={index} src={photo.photo} alt="" aria-hidden="true" />,
+    );
+    index += 1;
+    counter += 1;
+  }
+  return preloadPhotos;
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent on count-only placeholder while loops", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const LoadingRows = ({ count }) => {
+  let index = 0;
+  const rows = [];
+  while (index < count) {
+    rows.push(<Skeleton key={index} />);
+    index += 1;
+  }
+  return rows;
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when a while-loop key is not used to select array data", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const SelectedPane = ({ selectedIndex }) => {
+  let index = selectedIndex;
+  while (shouldRender(index)) {
+    return <Pane key={index} selectedIndex={index} />;
+  }
+  return null;
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when a while-loop reads an unrelated collection", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Gallery = ({ photos, bounds, selectedIndex }) => {
+  let index = selectedIndex;
+  const rows = [];
+  while (index < bounds.length) {
+    const photo = photos[index];
+    rows.push(<img key={index} src={photo.url} alt="" />);
+    index += 1;
+  }
+  return rows;
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
   });
 
   describe("entries() tuples still resolve as positional indexes", () => {

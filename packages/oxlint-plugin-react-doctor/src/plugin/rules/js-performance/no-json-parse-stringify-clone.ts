@@ -239,12 +239,45 @@ const isExpressionReturnedByFunction = (node: EsTreeNode, functionNode: EsTreeNo
   );
 };
 
+const isValueForwardedThroughLiteralStructure = (
+  node: EsTreeNode,
+  structure: EsTreeNode,
+): boolean => {
+  const strippedNode = stripParenExpression(node);
+  const strippedStructure = stripParenExpression(structure);
+  if (strippedNode === strippedStructure) return true;
+  if (isNodeOfType(strippedStructure, "ConditionalExpression")) {
+    return (
+      isValueForwardedThroughLiteralStructure(strippedNode, strippedStructure.consequent) ||
+      isValueForwardedThroughLiteralStructure(strippedNode, strippedStructure.alternate)
+    );
+  }
+  if (isNodeOfType(strippedStructure, "ArrayExpression")) {
+    return strippedStructure.elements.some(
+      (element) =>
+        element &&
+        !isNodeOfType(element, "SpreadElement") &&
+        isValueForwardedThroughLiteralStructure(strippedNode, element),
+    );
+  }
+  if (!isNodeOfType(strippedStructure, "ObjectExpression")) return false;
+  return strippedStructure.properties.some((property) => {
+    if (isNodeOfType(property, "SpreadElement")) {
+      return isValueForwardedThroughLiteralStructure(strippedNode, property.argument);
+    }
+    return (
+      isNodeOfType(property, "Property") &&
+      isValueForwardedThroughLiteralStructure(strippedNode, property.value)
+    );
+  });
+};
+
 const isValueForwardedToBindingInitializer = (
   node: EsTreeNode,
   bindingInitializer: EsTreeNode,
 ): boolean => {
   const directValue = findConditionalReturnExpressionRoot(node);
-  if (stripParenExpression(bindingInitializer) === stripParenExpression(directValue)) return true;
+  if (isValueForwardedThroughLiteralStructure(directValue, bindingInitializer)) return true;
   const initializer = stripParenExpression(bindingInitializer);
   if (!isNodeOfType(initializer, "CallExpression")) return false;
   const callee = stripParenExpression(initializer.callee);

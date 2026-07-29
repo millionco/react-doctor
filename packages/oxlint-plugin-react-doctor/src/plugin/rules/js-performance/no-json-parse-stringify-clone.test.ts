@@ -288,6 +288,34 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag JSON normalization nested in a returned props binding", () => {
+    const validSources = [
+      `
+      export const getServerSideProps = async () => {
+        const props = {
+          state: JSON.parse(JSON.stringify(state)),
+        };
+        return { props };
+      };
+      `,
+      `
+      export const getServerSideProps = async () => {
+        const pageProps = {
+          nested: [{ state: JSON.parse(JSON.stringify(state)) }],
+        };
+        return { props: pageProps };
+      };
+      `,
+    ];
+    for (const source of validSources) {
+      const result = runRule(noJsonParseStringifyClone, source, {
+        filename: "/repo/src/pages/settings.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
   it("still flags a nested helper clone that is mutated before page serialization", () => {
     const result = runRule(
       noJsonParseStringifyClone,
@@ -299,6 +327,23 @@ describe("no-json-parse-stringify-clone", () => {
           return workingCopy;
         };
         return { props: { state: buildState() } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a clone passed through an opaque nested props value", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const props = {
+          state: consume(JSON.parse(JSON.stringify(state))),
+        };
+        return { props };
       };
       `,
       { filename: "/repo/src/pages/settings.tsx" },

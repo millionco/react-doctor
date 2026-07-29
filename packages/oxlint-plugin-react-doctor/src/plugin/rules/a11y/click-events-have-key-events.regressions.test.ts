@@ -571,4 +571,25 @@ describe("a11y/click-events-have-key-events regressions", () => {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it.each(["input!.focus();", "(input as HTMLElement).focus();", "(input)?.focus();"])(
+    "does not flag conditional focus forwarding through %s",
+    (focusStatement) => {
+      const result = runRule(
+        clickEventsHaveKeyEvents,
+        `const Cell = ({ event }) => (
+        <div
+          onClick={event.target.closest("button") ? null : () => {
+            if (event.target.closest("button")) return;
+            const input = document.querySelector("input");
+            ${focusStatement}
+          }}
+        >
+          Label
+        </div>
+      );`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
 });

@@ -314,10 +314,11 @@ const isFocusCallOnVariable = (statement: EsTreeNode, variableName: string): boo
   const expression = stripParenExpression(statement.expression as EsTreeNode);
   if (!isNodeOfType(expression, "CallExpression")) return false;
   const callee = stripParenExpression(expression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object as EsTreeNode);
   return (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.object, "Identifier") &&
-    callee.object.name === variableName &&
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === variableName &&
     isNodeOfType(callee.property, "Identifier") &&
     callee.property.name === "focus" &&
     expression.arguments.length === 0

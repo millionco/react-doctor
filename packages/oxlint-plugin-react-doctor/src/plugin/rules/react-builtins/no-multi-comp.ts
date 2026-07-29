@@ -386,7 +386,10 @@ const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set
       for (const specifier of statement.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
         const local = specifier.local as EsTreeNode;
-        if (isNodeOfType(local, "Identifier")) names.add(local.name);
+        if (!isNodeOfType(local, "Identifier")) continue;
+        names.add(local.name);
+        const wrappedComponentName = getReactHocWrappedIdentifierName(local, scopes);
+        if (wrappedComponentName) names.add(wrappedComponentName);
       }
       continue;
     }

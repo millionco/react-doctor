@@ -226,6 +226,62 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  it("traces a default export specifier through a React HoC alias", () => {
+    expectPass(
+      `import { memo } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = memo(FeatureImpl);
+       export { Feature as default };`,
+    );
+  });
+
+  it("traces a named export specifier through a React HoC alias", () => {
+    expectPass(
+      `import { memo } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = memo(FeatureImpl);
+       export { Feature };`,
+    );
+  });
+
+  it("traces a typed component through a default React HoC export specifier", () => {
+    expectPass(
+      `import { memo, type FC } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = memo(FeatureImpl satisfies FC);
+       export { Feature as default };`,
+    );
+  });
+
+  it("does not trace a mutable React HoC export specifier alias", () => {
+    expectFail(
+      `import { memo } from "react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       let Feature = memo(FeatureImpl);
+       Feature = 42;
+       export { Feature as default };`,
+    );
+  });
+
+  it("does not trace a non-React HoC export specifier alias", () => {
+    expectFail(
+      `import { memo } from "./not-react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       const Feature = memo(FeatureImpl);
+       export { Feature };`,
+    );
+  });
+
   it("does not treat a shadowed memo function as a React export wrapper", () => {
     expectFail(
       `const memo = (_component) => 0;

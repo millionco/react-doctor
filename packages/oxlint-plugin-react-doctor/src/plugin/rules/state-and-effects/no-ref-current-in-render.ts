@@ -1,5 +1,6 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { collectSynchronouslyEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
+import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -345,6 +346,7 @@ const isPredictableInitializationValue = (
   requiresClosedTruthyDomain: boolean,
 ): boolean =>
   isInitializationInputIndependent(node, renderOwner, scopes) &&
+  !containsNonDeterministicSource(node) &&
   ((isProvablyTruthyInitializationValue(node, scopes) &&
     (!requiresClosedTruthyDomain || !refHasDeclaredType(refSymbol))) ||
     refHasClosedFalsySentinelDomain(refSymbol, node, scopes));

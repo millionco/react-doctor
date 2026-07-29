@@ -370,6 +370,17 @@ describe("no-ref-current-in-render — predictable initialization proofs", () =>
          return null;
        };`,
     ],
+    [
+      "a stored callback that reads the clock when invoked",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const clockRef = useRef<{ read: () => number } | null>(null);
+         if (clockRef.current === null) {
+           clockRef.current = { read: () => Date.now() };
+         }
+         return null;
+       };`,
+    ],
   ])("stays silent for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -490,6 +501,28 @@ describe("no-ref-current-in-render — predictable initialization proofs", () =>
        const Panel = ({ data }: { data: Map<string, string> }) => {
          const mapRef = useRef<Map<string, string> | null>(null);
          mapRef.current ??= data;
+         return null;
+       };`,
+    ],
+    [
+      "a random value captured during object initialization",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const valueRef = useRef<{ id: number } | null>(null);
+         if (valueRef.current === null) {
+           valueRef.current = { id: Math.random() };
+         }
+         return null;
+       };`,
+    ],
+    [
+      "a wall-clock value captured during object initialization",
+      `import { useRef } from "react";
+       const Panel = () => {
+         const valueRef = useRef<{ createdAt: Date } | null>(null);
+         if (valueRef.current === null) {
+           valueRef.current = { createdAt: new Date() };
+         }
          return null;
        };`,
     ],

@@ -31,3 +31,11 @@ export const AliasComparisons = () => {
   const primitive = isServer === zero;
   return stable || primitive ? <Same /> : <Different />;
 };
+
+export const MutableAliasComparisons = () => {
+  let isServer = false;
+  if (typeof window === "undefined") isServer = true;
+  const equal = isServer === isServer;
+  const unequal = isServer !== isServer;
+  return equal || unequal ? <Same /> : <Different />;
+};

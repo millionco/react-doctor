@@ -399,7 +399,245 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
         };
       `,
     ],
+    ...["===", "!=="].map((operator) => [
+      `mutable browser alias self-${operator === "===" ? "equality" : "inequality"}`,
+      `
+        import React from "react";
+        export const Page = () => {
+          let isServer = false;
+          if (typeof window === "undefined") isServer = true;
+          const stable = isServer ${operator} isServer;
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ]),
   ])("stays quiet for %s", (_name, code) => {
+    const result = run(code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "a dynamically nested browser write",
+      `
+        import React from "react";
+        export const Page = ({ enabled }) => {
+          let show = false;
+          if (typeof window !== "undefined") {
+            if (enabled) show = true;
+          }
+          return show ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "a browser write from a shadowed same-name binding",
+      `
+        import React from "react";
+        export const Page = () => {
+          const value = false;
+          let show = value;
+          if (typeof window !== "undefined") {
+            const value = true;
+            show = value;
+          }
+          return show ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    ...["false", "reset"].map((condition) => [
+      `a browser write followed by a ${condition} conditional overwrite`,
+      `
+        import React from "react";
+        export const Page = ({ reset }) => {
+          let show = false;
+          if (typeof window !== "undefined") show = true;
+          if (${condition}) show = false;
+          return show ? <Client /> : <Server />;
+        };
+      `,
+    ]),
+    [
+      "shadowed branch-local return conditions",
+      `
+        import React from "react";
+        export const Page = () => {
+          if (typeof window !== "undefined") {
+            const ready = true;
+            if (ready) return <Primary />;
+            return <Fallback />;
+          } else {
+            const ready = false;
+            if (ready) return <Primary />;
+            return <Fallback />;
+          }
+        };
+      `,
+    ],
+    [
+      "shadowed JSX child bindings",
+      `
+        import React from "react";
+        export const Page = () => {
+          if (typeof window !== "undefined") {
+            const label = "client";
+            return <div>{label}</div>;
+          } else {
+            const label = "server";
+            return <div>{label}</div>;
+          }
+        };
+      `,
+    ],
+    [
+      "shadowed JSX attribute bindings",
+      `
+        import React from "react";
+        export const Page = () => {
+          if (typeof window !== "undefined") {
+            const label = "client";
+            return <div title={label} />;
+          } else {
+            const label = "server";
+            return <div title={label} />;
+          }
+        };
+      `,
+    ],
+    [
+      "a structurally rendered suppressed custom-hook value",
+      `
+        import React, { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return { runtime };
+        };
+        export const Page = () => {
+          const { runtime } = useRuntime();
+          return (
+            <span suppressHydrationWarning>
+              {runtime ? <Client /> : <Server />}
+            </span>
+          );
+        };
+      `,
+    ],
+  ])("reports adversarial %s", (_name, code) => {
+    const result = run(code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      "a statically unreachable browser write",
+      `
+        import React from "react";
+        export const Page = () => {
+          let show = false;
+          if (typeof window !== "undefined") {
+            if (false) show = true;
+          }
+          return show ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "a browser write preserving the same binding",
+      `
+        import React from "react";
+        export const Page = () => {
+          const value = false;
+          let show = value;
+          if (typeof window !== "undefined") show = value;
+          return show ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "same-binding equivalent return trees",
+      `
+        import React from "react";
+        export const Page = () => {
+          const ready = true;
+          if (typeof window !== "undefined") {
+            if (ready) return <Primary />;
+            return <Fallback />;
+          } else {
+            if (ready) return <Primary />;
+            return <Fallback />;
+          }
+        };
+      `,
+    ],
+    [
+      "same-binding equivalent JSX children and attributes",
+      `
+        import React from "react";
+        export const Page = () => {
+          const label = "same";
+          if (typeof window !== "undefined") {
+            return <div title={label}>{label}</div>;
+          }
+          return <div title={label}>{label}</div>;
+        };
+      `,
+    ],
+    [
+      "a mount-gated custom-hook consumer",
+      `
+        import React, { useEffect, useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return { runtime };
+        };
+        export const Page = () => {
+          const { runtime } = useRuntime();
+          const [mounted, setMounted] = useState(false);
+          useEffect(() => setMounted(true), []);
+          if (!mounted) return null;
+          return runtime ? <Client /> : <Server />;
+        };
+      `,
+    ],
+    [
+      "suppressed custom-hook text",
+      `
+        import React, { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return { runtime };
+        };
+        export const Page = () => {
+          const { runtime } = useRuntime();
+          return <span suppressHydrationWarning>{runtime}</span>;
+        };
+      `,
+    ],
+    [
+      "suppressed custom-hook attribute",
+      `
+        import React, { useState } from "react";
+        const useRuntime = () => {
+          const [runtime] = useState(
+            typeof window === "undefined" ? "server" : "client",
+          );
+          return { runtime };
+        };
+        export const Page = () => {
+          const { runtime } = useRuntime();
+          return <span suppressHydrationWarning title={runtime} />;
+        };
+      `,
+    ],
+  ])("stays quiet for adversarial %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);

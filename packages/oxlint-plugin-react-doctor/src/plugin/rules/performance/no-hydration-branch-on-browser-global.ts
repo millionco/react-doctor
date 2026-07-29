@@ -19,6 +19,7 @@ import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
@@ -124,8 +125,10 @@ const getAssignedValue = (identifier: EsTreeNode): EsTreeNode | null => {
 const doesGuardPreserveInitialSymbolValue = (
   symbol: SymbolDescriptor,
   guardingIfStatement: EsTreeNodeOfType<"IfStatement">,
+  scopes: ScopeAnalysis,
 ): boolean => {
-  if (!symbol.initializer) return false;
+  const initialValue = symbol.initializer;
+  if (!initialValue) return false;
   const guardedWrites = symbol.references.filter(
     (reference) =>
       reference.flag !== "read" && isDescendantOf(reference.identifier, guardingIfStatement),
@@ -135,7 +138,9 @@ const doesGuardPreserveInitialSymbolValue = (
     guardedWrites.every((reference) => {
       const assignedValue = getAssignedValue(reference.identifier);
       return Boolean(
-        assignedValue && areExpressionsStructurallyEqual(symbol.initializer, assignedValue),
+        assignedValue &&
+        areExpressionsStructurallyEqual(initialValue, assignedValue) &&
+        doEquivalentExpressionBindingsMatch(initialValue, assignedValue, scopes),
       );
     })
   );
@@ -146,12 +151,15 @@ const isWriteOverwrittenBefore = (
   writeIdentifier: EsTreeNode,
   guardingIfStatement: EsTreeNodeOfType<"IfStatement">,
   readIdentifier: EsTreeNode,
+  context: RuleContext,
 ): boolean =>
   symbol.references.some(
     (reference) =>
       reference.flag !== "read" &&
       reference.identifier !== writeIdentifier &&
       !isDescendantOf(reference.identifier, guardingIfStatement) &&
+      isNodeReachableWithinFunction(reference.identifier, context) &&
+      context.cfg.isUnconditionalFromEntry(reference.identifier) &&
       getNodeStartIndex(reference.identifier) > getNodeStartIndex(writeIdentifier) &&
       getNodeStartIndex(reference.identifier) < getNodeStartIndex(readIdentifier),
   );
@@ -649,23 +657,33 @@ const doEquivalentExpressionBindingsMatch = (
     const rightSymbol = scopes.symbolFor(right);
     return leftSymbol || rightSymbol ? leftSymbol?.id === rightSymbol?.id : true;
   }
-  if (isNodeOfType(left, "MemberExpression") && isNodeOfType(right, "MemberExpression")) {
-    return (
-      doEquivalentExpressionBindingsMatch(left.object, right.object, scopes) &&
-      (!left.computed || doEquivalentExpressionBindingsMatch(left.property, right.property, scopes))
-    );
-  }
-  if (isNodeOfType(left, "CallExpression") && isNodeOfType(right, "CallExpression")) {
-    const rightArguments = right.arguments ?? [];
-    return (
-      doEquivalentExpressionBindingsMatch(left.callee, right.callee, scopes) &&
-      (left.arguments ?? []).every((argument, index) => {
-        const rightArgument = rightArguments[index];
-        return Boolean(
-          rightArgument && doEquivalentExpressionBindingsMatch(argument, rightArgument, scopes),
-        );
-      })
-    );
+  const rightEntries = new Map(Object.entries(right));
+  for (const [key, leftValue] of Object.entries(left)) {
+    if (key === "parent") continue;
+    const rightValue = rightEntries.get(key);
+    if (isAstNode(leftValue)) {
+      if (
+        !isAstNode(rightValue) ||
+        !doEquivalentExpressionBindingsMatch(leftValue, rightValue, scopes)
+      ) {
+        return false;
+      }
+      continue;
+    }
+    if (!Array.isArray(leftValue)) continue;
+    if (!Array.isArray(rightValue)) return false;
+    const leftNodes = leftValue.filter(isAstNode);
+    const rightNodes = rightValue.filter(isAstNode);
+    if (
+      leftNodes.length !== rightNodes.length ||
+      leftNodes.some(
+        (leftNode, index) =>
+          !rightNodes[index] ||
+          !doEquivalentExpressionBindingsMatch(leftNode, rightNodes[index], scopes),
+      )
+    ) {
+      return false;
+    }
   }
   return true;
 };
@@ -733,6 +751,7 @@ const matchHydrationConditionInternal = (
       }
       for (const reference of symbol.references) {
         if (reference.flag === "read") continue;
+        if (!isNodeReachableWithinFunction(reference.identifier, context)) continue;
         const enclosingFunction = findEnclosingFunction(reference.identifier);
         if (!enclosingFunction) continue;
         for (const guardingIfStatement of findGuardingIfStatements(
@@ -740,12 +759,13 @@ const matchHydrationConditionInternal = (
           enclosingFunction,
         )) {
           if (
-            doesGuardPreserveInitialSymbolValue(symbol, guardingIfStatement) ||
+            doesGuardPreserveInitialSymbolValue(symbol, guardingIfStatement, context.scopes) ||
             isWriteOverwrittenBefore(
               symbol,
               reference.identifier,
               guardingIfStatement,
               unwrappedExpression,
+              context,
             )
           ) {
             continue;
@@ -856,9 +876,9 @@ const matchHydrationConditionInternal = (
     ) {
       return null;
     }
-    const nestedMatch =
-      matchHydrationConditionInternal(unwrappedExpression.left, context, state) ??
-      matchHydrationConditionInternal(unwrappedExpression.right, context, state);
+    const leftMatch = matchHydrationConditionInternal(unwrappedExpression.left, context, state);
+    const rightMatch = matchHydrationConditionInternal(unwrappedExpression.right, context, state);
+    const nestedMatch = leftMatch ?? rightMatch;
     if (!nestedMatch) return null;
     const clientResult = readHydrationConditionResult(
       unwrappedExpression,
@@ -872,9 +892,10 @@ const matchHydrationConditionInternal = (
       "server",
       state,
     );
-    return clientResult !== null && serverResult !== null && clientResult === serverResult
-      ? null
-      : nestedMatch;
+    if (clientResult !== null && serverResult !== null) {
+      return clientResult !== serverResult ? nestedMatch : null;
+    }
+    return Boolean(leftMatch) === Boolean(rightMatch) ? null : nestedMatch;
   }
   if (
     !isNodeOfType(unwrappedExpression, "LogicalExpression") ||
@@ -985,18 +1006,24 @@ const matchHydrationCondition = (
 const areNodeArraysEquivalent = (
   leftNodes: ReadonlyArray<EsTreeNode>,
   rightNodes: ReadonlyArray<EsTreeNode>,
+  scopes: ScopeAnalysis,
 ): boolean =>
   leftNodes.length === rightNodes.length &&
-  leftNodes.every((leftNode, index) => areRenderedBranchesEquivalent(leftNode, rightNodes[index]));
+  leftNodes.every((leftNode, index) =>
+    areRenderedBranchesEquivalent(leftNode, rightNodes[index], scopes),
+  );
 
 const areRenderedBranchesEquivalent = (
   leftNode: EsTreeNode | null | undefined,
   rightNode: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (!leftNode || !rightNode) return leftNode === rightNode;
   const left = stripParenExpression(leftNode);
   const right = stripParenExpression(rightNode);
-  if (areExpressionsStructurallyEqual(left, right)) return true;
+  if (areExpressionsStructurallyEqual(left, right)) {
+    return doEquivalentExpressionBindingsMatch(left, right, scopes);
+  }
   if (left.type !== right.type) return false;
   if (isNodeOfType(left, "JSXText") && isNodeOfType(right, "JSXText")) {
     return left.value === right.value;
@@ -1008,26 +1035,32 @@ const areRenderedBranchesEquivalent = (
     if (!isAstNode(left.expression) || !isAstNode(right.expression)) {
       return left.expression.type === right.expression.type;
     }
-    return areRenderedBranchesEquivalent(left.expression, right.expression);
+    return areRenderedBranchesEquivalent(left.expression, right.expression, scopes);
   }
   if (isNodeOfType(left, "JSXElement") && isNodeOfType(right, "JSXElement")) {
     if (flattenJsxName(left.openingElement.name) !== flattenJsxName(right.openingElement.name)) {
       return false;
     }
-    if (!areNodeArraysEquivalent(left.openingElement.attributes, right.openingElement.attributes)) {
+    if (
+      !areNodeArraysEquivalent(
+        left.openingElement.attributes,
+        right.openingElement.attributes,
+        scopes,
+      )
+    ) {
       return false;
     }
-    return areNodeArraysEquivalent(left.children, right.children);
+    return areNodeArraysEquivalent(left.children, right.children, scopes);
   }
   if (isNodeOfType(left, "JSXFragment") && isNodeOfType(right, "JSXFragment")) {
-    return areNodeArraysEquivalent(left.children, right.children);
+    return areNodeArraysEquivalent(left.children, right.children, scopes);
   }
   if (isNodeOfType(left, "JSXAttribute") && isNodeOfType(right, "JSXAttribute")) {
     if (flattenJsxName(left.name) !== flattenJsxName(right.name)) return false;
-    return areRenderedBranchesEquivalent(left.value, right.value);
+    return areRenderedBranchesEquivalent(left.value, right.value, scopes);
   }
   if (isNodeOfType(left, "JSXSpreadAttribute") && isNodeOfType(right, "JSXSpreadAttribute")) {
-    return areRenderedBranchesEquivalent(left.argument, right.argument);
+    return areRenderedBranchesEquivalent(left.argument, right.argument, scopes);
   }
   if (isNodeOfType(left, "TemplateLiteral") && isNodeOfType(right, "TemplateLiteral")) {
     if (left.quasis.length !== right.quasis.length) return false;
@@ -1040,7 +1073,7 @@ const areRenderedBranchesEquivalent = (
     ) {
       return false;
     }
-    return areNodeArraysEquivalent(left.expressions, right.expressions);
+    return areNodeArraysEquivalent(left.expressions, right.expressions, scopes);
   }
   return false;
 };
@@ -1248,6 +1281,34 @@ const getFunctionBindingIdentifier = (functionNode: EsTreeNode): EsTreeNode | nu
       ? functionNode.parent.id
       : null;
 
+const doesReferenceControlStructuralRenderedValue = (referenceIdentifier: EsTreeNode): boolean => {
+  let currentNode = referenceIdentifier;
+  let parentNode = currentNode.parent;
+  while (parentNode) {
+    if (
+      isNodeOfType(parentNode, "ConditionalExpression") &&
+      parentNode.test === currentNode &&
+      (isStructuralRenderedValue(parentNode.consequent) ||
+        isStructuralRenderedValue(parentNode.alternate))
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(parentNode, "LogicalExpression") &&
+      parentNode.left === currentNode &&
+      isStructuralRenderedValue(parentNode.right)
+    ) {
+      return true;
+    }
+    if (isNodeOfType(parentNode, "JSXExpressionContainer") || isFunctionLike(parentNode)) {
+      return false;
+    }
+    currentNode = parentNode;
+    parentNode = currentNode.parent;
+  }
+  return false;
+};
+
 const isReturnedUseStateInitializerRendered = (
   node: EsTreeNode,
   componentOrHookNode: EsTreeNode,
@@ -1307,7 +1368,17 @@ const isReturnedUseStateInitializerRendered = (
           return Boolean(
             renderingComponent &&
             renderingComponent !== componentOrHookNode &&
-            isInRenderedOutput(consumerReference.identifier, renderingComponent, scopes),
+            isInRenderedOutput(consumerReference.identifier, renderingComponent, scopes) &&
+            !isGatedByFalsyInitialState(consumerReference.identifier, scopes) &&
+            !isAfterClientOnlyEarlyReturn(
+              consumerReference.identifier,
+              renderingComponent,
+              scopes,
+            ) &&
+            (!hasSuppressHydrationWarningAttribute(
+              findEnclosingJsxOpeningElement(consumerReference.identifier),
+            ) ||
+              doesReferenceControlStructuralRenderedValue(consumerReference.identifier)),
           );
         })
       ) {
@@ -1336,29 +1407,32 @@ const findFollowingReturnedValues = (
 const areConditionExpressionsEquivalent = (
   leftExpression: EsTreeNode,
   rightExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const left = stripParenExpression(leftExpression);
   const right = stripParenExpression(rightExpression);
-  if (areExpressionsStructurallyEqual(left, right)) return true;
+  if (areExpressionsStructurallyEqual(left, right)) {
+    return doEquivalentExpressionBindingsMatch(left, right, scopes);
+  }
   if (left.type !== right.type) return false;
   if (isNodeOfType(left, "UnaryExpression") && isNodeOfType(right, "UnaryExpression")) {
     return (
       left.operator === right.operator &&
-      areConditionExpressionsEquivalent(left.argument, right.argument)
+      areConditionExpressionsEquivalent(left.argument, right.argument, scopes)
     );
   }
   if (isNodeOfType(left, "LogicalExpression") && isNodeOfType(right, "LogicalExpression")) {
     return (
       left.operator === right.operator &&
-      areConditionExpressionsEquivalent(left.left, right.left) &&
-      areConditionExpressionsEquivalent(left.right, right.right)
+      areConditionExpressionsEquivalent(left.left, right.left, scopes) &&
+      areConditionExpressionsEquivalent(left.right, right.right, scopes)
     );
   }
   if (isNodeOfType(left, "BinaryExpression") && isNodeOfType(right, "BinaryExpression")) {
     return (
       left.operator === right.operator &&
-      areConditionExpressionsEquivalent(left.left, right.left) &&
-      areConditionExpressionsEquivalent(left.right, right.right)
+      areConditionExpressionsEquivalent(left.left, right.left, scopes) &&
+      areConditionExpressionsEquivalent(left.right, right.right, scopes)
     );
   }
   return false;
@@ -1367,19 +1441,20 @@ const areConditionExpressionsEquivalent = (
 const areReturnTreesEquivalent = (
   leftStatement: EsTreeNode | null | undefined,
   rightStatement: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (!leftStatement || !rightStatement) return leftStatement === rightStatement;
   if (
     isNodeOfType(leftStatement, "ReturnStatement") &&
     isNodeOfType(rightStatement, "ReturnStatement")
   ) {
-    return areRenderedBranchesEquivalent(leftStatement.argument, rightStatement.argument);
+    return areRenderedBranchesEquivalent(leftStatement.argument, rightStatement.argument, scopes);
   }
   if (isNodeOfType(leftStatement, "IfStatement") && isNodeOfType(rightStatement, "IfStatement")) {
     return (
-      areConditionExpressionsEquivalent(leftStatement.test, rightStatement.test) &&
-      areReturnTreesEquivalent(leftStatement.consequent, rightStatement.consequent) &&
-      areReturnTreesEquivalent(leftStatement.alternate, rightStatement.alternate)
+      areConditionExpressionsEquivalent(leftStatement.test, rightStatement.test, scopes) &&
+      areReturnTreesEquivalent(leftStatement.consequent, rightStatement.consequent, scopes) &&
+      areReturnTreesEquivalent(leftStatement.alternate, rightStatement.alternate, scopes)
     );
   }
   if (
@@ -1397,7 +1472,7 @@ const areReturnTreesEquivalent = (
   return (
     leftReturningStatements.length === rightReturningStatements.length &&
     leftReturningStatements.every((statement, index) =>
-      areReturnTreesEquivalent(statement, rightReturningStatements[index]),
+      areReturnTreesEquivalent(statement, rightReturningStatements[index], scopes),
     )
   );
 };
@@ -1451,7 +1526,9 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       if (!conditionMatch) return;
       const { predicateMatch, predicateNode } = conditionMatch;
       if (reportedNodes.has(predicateNode)) return;
-      if (rightBranch && areRenderedBranchesEquivalent(leftBranch, rightBranch)) return;
+      if (rightBranch && areRenderedBranchesEquivalent(leftBranch, rightBranch, context.scopes)) {
+        return;
+      }
       const enclosingFunction = findEnclosingFunction(conditionNode);
       const componentOrHookNode =
         findRenderPhaseComponentOrHook(conditionNode, context.scopes) ??
@@ -1537,7 +1614,12 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         reportHydrationBranch(node, renderedValue, null, true);
       },
       IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
-        if (node.alternate && areReturnTreesEquivalent(node.consequent, node.alternate)) return;
+        if (
+          node.alternate &&
+          areReturnTreesEquivalent(node.consequent, node.alternate, context.scopes)
+        ) {
+          return;
+        }
         const consequentValues = getReturnedValues(node.consequent);
         const alternateValues = node.alternate
           ? getReturnedValues(node.alternate)

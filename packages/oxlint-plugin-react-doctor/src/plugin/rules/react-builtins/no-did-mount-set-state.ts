@@ -98,6 +98,22 @@ const containsPostMountSource = (node: EsTreeNode): boolean => {
   return didFindSource;
 };
 
+const containsCallbackRefField = (
+  node: EsTreeNode,
+  callbackRefFieldNames: ReadonlySet<string>,
+): boolean => {
+  let didFindCallbackRefField = false;
+  walkAst(node, (descendant) => {
+    const fieldName = getThisFieldName(descendant);
+    if (fieldName && callbackRefFieldNames.has(fieldName)) {
+      didFindCallbackRefField = true;
+      return false;
+    }
+    return undefined;
+  });
+  return didFindCallbackRefField;
+};
+
 const collectReferencedNames = (node: EsTreeNode, into: Set<string>): void => {
   walkAst(node, (descendant) => {
     if (!isNodeOfType(descendant, "Identifier")) return;
@@ -132,16 +148,8 @@ const argumentDerivesFromPostMountSource = (
   const argumentNodes = setStateCall.arguments ?? [];
   if (argumentNodes.length === 0) return false;
   if (argumentNodes.some((argument) => containsPostMountSource(argument))) return true;
-  for (const argument of argumentNodes) {
-    let didFindCallbackRefField = false;
-    walkAst(argument, (descendant) => {
-      const fieldName = getThisFieldName(descendant);
-      if (fieldName && callbackRefFieldNames.has(fieldName)) {
-        didFindCallbackRefField = true;
-        return false;
-      }
-    });
-    if (didFindCallbackRefField) return true;
+  if (argumentNodes.some((argument) => containsCallbackRefField(argument, callbackRefFieldNames))) {
+    return true;
   }
 
   const localInitializers = new Map<string, EsTreeNode>();
@@ -164,7 +172,12 @@ const argumentDerivesFromPostMountSource = (
     if (name === undefined) break;
     const initializer = localInitializers.get(name);
     if (!initializer) continue;
-    if (containsPostMountSource(initializer)) return true;
+    if (
+      containsPostMountSource(initializer) ||
+      containsCallbackRefField(initializer, callbackRefFieldNames)
+    ) {
+      return true;
+    }
     const referencedNames = new Set<string>();
     collectReferencedNames(initializer, referencedNames);
     for (const referencedName of referencedNames) {
@@ -179,9 +192,16 @@ const argumentDerivesFromPostMountSource = (
 const isUndefinedOrNull = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return true;
   const value = stripParenExpression(node);
+  const voidOperand = isNodeOfType(value, "UnaryExpression")
+    ? stripParenExpression(value.argument)
+    : null;
   return (
     (isNodeOfType(value, "Identifier") && value.name === "undefined") ||
-    (isNodeOfType(value, "Literal") && value.value === null)
+    (isNodeOfType(value, "Literal") && value.value === null) ||
+    (isNodeOfType(value, "UnaryExpression") &&
+      value.operator === "void" &&
+      isNodeOfType(voidOperand, "Literal") &&
+      voidOperand.value === 0)
   );
 };
 

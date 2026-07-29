@@ -392,7 +392,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "const result = items.map((item) => item.value).filter(Boolean);",
   },
   "js-hoist-intl": {
-    code: "function fmt(locale, n) { return new Intl.NumberFormat(locale).format(n); }",
+    code: 'function fmt(n) { return new Intl.NumberFormat("en-US").format(n); }',
   },
   "js-hoist-regexp": {
     code: 'for (const line of lines) { const m = new RegExp("\\\\d+", "i"); m.test(line); }',

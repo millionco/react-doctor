@@ -3,6 +3,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
+  classifyPackageRole,
   clearMinifiedFileCache,
   isLargeMinifiedFile,
   MINIFIED_MAX_LINE_LENGTH_CHARS,
@@ -39,5 +40,26 @@ describe("clearCaches", () => {
     // The aggregate clear must invalidate the minified memo so the predicate
     // re-sniffs the now-small file. A surviving `true` means it was not wired.
     expect(isLargeMinifiedFile(bundlePath)).toBe(false);
+  });
+
+  it("clears the memoized package role", () => {
+    const packageDirectory = path.join(temporaryDirectory, "package");
+    const sourcePath = path.join(packageDirectory, "src", "button.tsx");
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.writeFileSync(sourcePath, "export const button = null;\n");
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "@scope/ui", exports: { ".": "./index.js" } }),
+    );
+    expect(classifyPackageRole(sourcePath)).toBe("library");
+
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "@scope/ui", private: true }),
+    );
+    expect(classifyPackageRole(sourcePath)).toBe("library");
+
+    clearCaches();
+    expect(classifyPackageRole(sourcePath)).toBe("unknown");
   });
 });

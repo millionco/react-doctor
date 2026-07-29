@@ -1,13 +1,14 @@
 import * as path from "node:path";
-import type { WorkspacePackage } from "@react-doctor/core";
+import type { WorkspacePackage } from "../../core/core-types.js";
 import {
+  buildPackageGraph,
   discoverReactSubprojects,
-  highlighter,
   isDirectory,
   isFile,
   isMonorepoRoot,
-  listWorkspacePackages,
-} from "@react-doctor/core";
+  readPackageJson,
+} from "../../core/core-project-discovery.js";
+import { highlighter } from "../../core/core-presentation.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { CliInputError } from "./cli-input-error.js";
 import { METRIC } from "./constants.js";
@@ -15,12 +16,21 @@ import { prompts } from "./prompts.js";
 import { recordCount } from "./record-metric.js";
 
 export const discoverWorkspacePackages = (rootDirectory: string): WorkspacePackage[] => {
-  const hasRootPackageJson = isFile(path.join(rootDirectory, "package.json"));
-  const packages = listWorkspacePackages(rootDirectory);
-  if (packages.length === 0 && (!hasRootPackageJson || isMonorepoRoot(rootDirectory))) {
+  const packageJsonPath = path.join(rootDirectory, "package.json");
+  if (!isFile(packageJsonPath)) return discoverReactSubprojects(rootDirectory);
+  if (!isMonorepoRoot(rootDirectory)) return [];
+
+  const packageGraph = buildPackageGraph(rootDirectory, readPackageJson(packageJsonPath));
+  if (packageGraph.workspacePatterns.length === 0) {
     return discoverReactSubprojects(rootDirectory);
   }
-  return packages;
+  const workspacePackages = packageGraph.packages
+    .filter((packageNode) => packageNode.hasReactDependency)
+    .map((packageNode) => ({
+      name: packageNode.name ?? path.basename(packageNode.directory),
+      directory: packageNode.isRoot ? rootDirectory : packageNode.directory,
+    }));
+  return workspacePackages.length > 0 ? workspacePackages : discoverReactSubprojects(rootDirectory);
 };
 
 export const selectProjects = async (

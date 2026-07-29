@@ -1,4 +1,8 @@
-import { isPlainObject, redactSensitiveText, scrubSensitivePaths } from "@react-doctor/core";
+import {
+  isPlainObject,
+  redactSensitiveText,
+  scrubSensitivePaths,
+} from "../../core/core-primitives.js";
 
 /**
  * Free-text fields can carry both a home-directory path (the OS username) and a

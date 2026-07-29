@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
 import {
   Config,
   DeadCode,
@@ -8,14 +9,15 @@ import {
   Linter,
   LintPartialFailures,
   OxlintConcurrency,
+  OxlintSpawnSlots,
   Progress,
   Project,
   ProjectChecks,
   Reporter,
-  Score,
   SupplyChain,
-} from "@react-doctor/core";
-import type { ProgressHandle, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
+} from "../../core/core-runtime.js";
+import { Score } from "../../core/core-score.js";
+import type { ProgressHandle, ProjectInfo, WorkerSlots } from "../../core/core-types.js";
 import { spinner } from "./spinner.js";
 
 export interface BuildRuntimeLayersInput {
@@ -59,14 +61,11 @@ export interface BuildRuntimeLayersInput {
    */
   readonly shouldShowProgressSpinners: boolean;
   /**
-   * Resolved oxlint worker count from the CLI's `--no-parallel` flag
-   * (today the only value it produces is `1` — serial). When provided, it
-   * overrides the `OxlintConcurrency` Reference for this run via
-   * `Layer.succeed`; `undefined` leaves the env-seeded ambient default
-   * (parallel: auto-detect cores unless `REACT_DOCTOR_PARALLEL` pins a
-   * count) in place.
+   * Invocation-wide oxlint subprocess count, resolved once from the explicit
+   * concurrency pin or the env-seeded automatic default.
    */
-  readonly oxlintConcurrency?: number;
+  readonly oxlintConcurrency: number;
+  readonly oxlintSpawnSlots: WorkerSlots;
   readonly reporterLayer?: Layer.Layer<Reporter>;
   readonly progressLayer?: Layer.Layer<Progress>;
 }
@@ -159,11 +158,9 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
     supplyChainLayer,
   );
 
-  // Only override the ambient `OxlintConcurrency` Reference when the CLI
-  // resolved a concrete worker count (today: `--no-parallel` → serial);
-  // otherwise leave the env-seeded default (parallel) so
-  // `REACT_DOCTOR_PARALLEL` still applies to flag-less runs.
-  return input.oxlintConcurrency === undefined
-    ? baseLayers
-    : Layer.mergeAll(baseLayers, Layer.succeed(OxlintConcurrency, input.oxlintConcurrency));
+  return Layer.mergeAll(
+    baseLayers,
+    Layer.succeed(OxlintConcurrency, input.oxlintConcurrency),
+    Layer.succeed(OxlintSpawnSlots, input.oxlintSpawnSlots),
+  );
 };

@@ -1,14 +1,28 @@
+import { defineConfig } from "./core/core-configuration.js";
+import type { ReactDoctorConfig } from "./core/core-configuration.js";
+import { summarizeDiagnostics } from "./core/core-diagnostic-semantics.js";
 import {
-  buildJsonReport,
-  buildJsonReportError,
-  clearAutoSuppressionCaches,
-  clearConfigCache,
-  clearIgnorePatternsCache,
-  clearMinifiedFileCache,
-  clearPackageJsonCache,
-  clearPackageRoleCache,
-  clearProjectCache,
-} from "@react-doctor/core";
+  AmbiguousProjectError,
+  isProjectDiscoveryError,
+  isReactDoctorError,
+  NoReactDependencyError,
+  NotADirectoryError,
+  PackageJsonNotFoundError,
+  ProjectNotFoundError,
+  ReactDoctorError,
+} from "./core/core-errors.js";
+import { filterSourceFiles, hasReactRuntime } from "./core/core-project-discovery.js";
+import { buildJsonReport, buildJsonReportError } from "./core/core-reporting.js";
+import { clearCoreCaches } from "./core/core-scan-cache.js";
+import { getDiffInfo } from "./core/core-version-control.js";
+import type {
+  JsonReport,
+  JsonReportDiffInfo,
+  JsonReportError,
+  JsonReportMode,
+  JsonReportProjectEntry,
+  JsonReportSummary,
+} from "./core/core-reporting.js";
 import type {
   Diagnostic,
   DiagnoseOptions,
@@ -16,20 +30,13 @@ import type {
   DiagnoseProjectsResult,
   DiagnoseResult,
   DiffInfo,
-  JsonReport,
-  JsonReportDiffInfo,
-  JsonReportError,
-  JsonReportMode,
-  JsonReportProjectEntry,
-  JsonReportSummary,
   ProjectDefinition,
   ProjectInfo,
   ProjectResult,
   ProjectResultError,
   ProjectResultOk,
-  ReactDoctorConfig,
   ScoreResult,
-} from "@react-doctor/core";
+} from "./core/core-types.js";
 
 export type {
   Diagnostic,
@@ -53,45 +60,37 @@ export type {
   ScoreResult,
 };
 export {
-  getDiffInfo,
+  AmbiguousProjectError,
+  buildJsonReport,
+  buildJsonReportError,
   filterSourceFiles,
+  getDiffInfo,
+  hasReactRuntime,
+  isProjectDiscoveryError,
+  isReactDoctorError,
+  NoReactDependencyError,
+  NotADirectoryError,
+  PackageJsonNotFoundError,
+  ProjectNotFoundError,
+  ReactDoctorError,
   summarizeDiagnostics,
   defineConfig,
-  hasReactRuntime,
-} from "@react-doctor/core";
-export { buildJsonReport, buildJsonReportError };
+};
 // `ReactDoctorError` is the tagged Schema class from
 // `@react-doctor/core`, used by the new Effect pipeline.
 // `isReactDoctorError` narrows to that tagged class.
-// The four narrow errors below are still plain JS Error subclasses —
+// The five narrow errors below are still plain JS Error subclasses —
 // they're thrown synchronously by `discoverProject` /
 // `resolveDiagnoseTarget` / `readPackageJson` BEFORE the Effect
 // runtime takes over, so callers can `try/catch` them without
 // Effect-aware machinery.
-export {
-  ReactDoctorError,
-  ProjectNotFoundError,
-  NoReactDependencyError,
-  PackageJsonNotFoundError,
-  NotADirectoryError,
-  AmbiguousProjectError,
-  isReactDoctorError,
-  isProjectDiscoveryError,
-} from "@react-doctor/core";
-
 // HACK: programmatic API consumers (watch-mode tools, test runners,
 // agentic CLI flows) call diagnose() repeatedly on the same directory.
 // project / config / package.json results are memoized at module scope
 // to keep CLI scans fast — this hook lets long-running consumers
 // invalidate when the underlying files change between calls.
 export const clearCaches = (): void => {
-  clearProjectCache();
-  clearConfigCache();
-  clearPackageJsonCache();
-  clearIgnorePatternsCache();
-  clearPackageRoleCache();
-  clearAutoSuppressionCaches();
-  clearMinifiedFileCache();
+  clearCoreCaches();
 };
 
 interface ToJsonReportOptions {

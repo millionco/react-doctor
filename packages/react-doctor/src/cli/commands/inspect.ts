@@ -3,27 +3,22 @@ import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
+import { mergeReactDoctorConfigs } from "../../core/core-configuration.js";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import { highlighter } from "../../core/core-presentation.js";
+import { toRelativePath } from "../../core/core-primitives.js";
+import { hasReactRuntime, resolveScanTarget } from "../../core/core-project-discovery.js";
+import { buildJsonReport } from "../../core/core-reporting.js";
+import type { JsonReportMode } from "../../core/core-reporting.js";
+import { DEFAULT_PROJECT_SCAN_CONCURRENCY, mapWithConcurrency } from "../../core/core-runtime.js";
+import type { DiffInfo, InspectResult } from "../../core/core-types.js";
 import {
-  buildJsonReport,
-  DEFAULT_PROJECT_SCAN_CONCURRENCY,
   getBaselineDiffPlan,
   getChangedLineRanges,
   getDiffInfo,
-  hasReactRuntime,
-  highlighter,
-  mapWithConcurrency,
-  mergeReactDoctorConfigs,
-  resolveScanTarget,
-  toRelativePath,
-} from "@react-doctor/core";
-import { inspect } from "../../inspect.js";
+} from "../../core/core-version-control.js";
+import { createInvocationInspect } from "../../inspect.js";
 import { flushSentry } from "../../instrument.js";
-import type {
-  DiffInfo,
-  InspectResult,
-  JsonReportMode,
-  ReactDoctorConfig,
-} from "@react-doctor/core";
 import type { RequestedScope } from "../utils/resolve-scope.js";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { METRIC, STAGED_FILES_TEMP_DIR_PREFIX } from "../utils/constants.js";
@@ -64,13 +59,8 @@ import type { CliInspectOptions } from "../utils/resolve-cli-inspect-options.js"
 import { finalizeScope, resolveScope, warnDeprecatedDiff } from "../utils/resolve-scope.js";
 import { resolveMergeBaseRef } from "../utils/materialize-baseline-files.js";
 import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
-import {
-  resolveProjectChangedLineRanges,
-  resolveProjectDiffIncludePaths,
-} from "../utils/resolve-project-diff-include-paths.js";
-import { resolveProjectSourceFilePaths } from "../utils/resolve-project-source-file-paths.js";
+import { resolveProjectChangedLineRanges } from "../utils/resolve-project-diff-include-paths.js";
 import { runExplain } from "../utils/run-explain.js";
-import { projectManifestChanged } from "../utils/project-manifest-changed.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
 import { resolveProjectRelativeDirectory } from "../utils/resolve-project-relative-directory.js";
@@ -83,6 +73,7 @@ import { validateIncludeUntrackedScope, validateModeFlags } from "../utils/valid
 import { VERSION } from "../utils/version.js";
 import { findStagedSnapshotDivergences } from "../utils/find-staged-snapshot-divergences.js";
 import { CliInputError } from "../utils/cli-input-error.js";
+import { buildProjectScanPlan } from "../utils/build-project-scan-plan.js";
 
 interface CompletedScan {
   directory: string;
@@ -359,6 +350,7 @@ export const inspectAction = async (
     }
 
     const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
+    const inspectProject = createInvocationInspect(scanOptions.concurrency);
     // One `--max-duration` budget per invocation, shared by every project of a
     // workspace scan: fix the absolute deadline once here and hand it to each
     // project's `inspect()` (rather than restarting the budget per project).
@@ -425,7 +417,7 @@ export const inspectAction = async (
         logger.break();
       }
       try {
-        const scanResult = await inspect(snapshot.tempDirectory, {
+        const scanResult = await inspectProject(snapshot.tempDirectory, {
           ...scanOptions,
           deadlineEpochMs: scanDeadlineEpochMs,
           includePaths: snapshot.stagedFiles,
@@ -641,67 +633,29 @@ export const inspectAction = async (
       // diff change shouldn't pull a project into the scan (nothing to report).
       const supplyChainEnabled = flags.supplyChain ?? projectConfig?.supplyChain?.enabled !== false;
 
-      let includePaths: string[] | undefined;
-      let supplyChainManifestChanged = false;
-      const projectBaselineBaseFiles =
-        baselineDiffPlan === null
-          ? null
-          : resolveProjectSourceFilePaths(
-              resolvedDirectory,
-              scanDirectory,
-              baselineDiffPlan.baseFiles,
-            );
-      const projectBaselineHeadFiles =
-        baselineDiffPlan === null
-          ? null
-          : resolveProjectSourceFilePaths(
-              resolvedDirectory,
-              scanDirectory,
-              baselineDiffPlan.headFiles,
-            );
-      if (isDiffMode) {
-        const changedSourceFiles =
-          diffInfo === null
-            ? []
-            : resolveProjectDiffIncludePaths(resolvedDirectory, scanDirectory, diffInfo);
-        // A PR that edits this project's package.json should still have its
-        // dependencies scored, even with no changed source files — dependency
-        // health is a manifest property, not a per-file one.
-        supplyChainManifestChanged =
-          supplyChainEnabled &&
-          diffInfo !== null &&
-          projectManifestChanged(resolvedDirectory, scanDirectory, diffInfo);
-        const hasBaselineOnlyFiles = (projectBaselineBaseFiles?.length ?? 0) > 0;
-        if (
-          changedSourceFiles.length === 0 &&
-          !supplyChainManifestChanged &&
-          !hasBaselineOnlyFiles
-        ) {
-          if (!isQuiet) {
-            logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
-            logger.break();
-          }
-          return null;
+      const projectScanPlan = buildProjectScanPlan({
+        rootDirectory: resolvedDirectory,
+        projectDirectory: scanDirectory,
+        baselineDiffPlan,
+        diffInfo,
+        isDiffMode,
+        supplyChainEnabled,
+      });
+      if (projectScanPlan.shouldSkipProject) {
+        if (!isQuiet) {
+          logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
+          logger.break();
         }
-        // A changed package.json enters the scan as an include so the run
-        // stays in diff mode (lint ignores it — it's not a source file) while
-        // the supply-chain pass runs. Including it also makes the baseline pass
-        // materialize the base manifest, so the delta filters out pre-existing
-        // low-score dependencies instead of reporting them as newly introduced.
-        includePaths = [...changedSourceFiles];
-        if (includePaths.length === 0 && hasBaselineOnlyFiles) {
-          includePaths.push(...(projectBaselineBaseFiles ?? []));
-        }
-        if (supplyChainManifestChanged) includePaths.push("package.json");
+        return null;
       }
 
       if (!isQuiet && !isMultiProject) {
         logger.dim("  ");
       }
-      const scanResult = await inspect(scanDirectory, {
+      const scanResult = await inspectProject(scanDirectory, {
         ...scanOptions,
         deadlineEpochMs: scanDeadlineEpochMs,
-        includePaths,
+        includePaths: projectScanPlan.includePaths,
         configOverride: projectConfig,
         configSourceDirectory: projectConfigSourceDirectory ?? undefined,
         suppressRendering: isMultiProject,
@@ -710,19 +664,19 @@ export const inspectAction = async (
         concurrentScan: isMultiProject,
         baseline:
           baselineRef !== null &&
-          projectBaselineBaseFiles !== null &&
-          projectBaselineHeadFiles !== null
+          projectScanPlan.projectBaselineBaseFiles !== null &&
+          projectScanPlan.projectBaselineHeadFiles !== null
             ? {
                 ref: baselineRef,
-                baseFiles: projectBaselineBaseFiles,
-                headFiles: projectBaselineHeadFiles,
+                baseFiles: projectScanPlan.projectBaselineBaseFiles,
+                headFiles: projectScanPlan.projectBaselineHeadFiles,
               }
             : undefined,
         changedLineRanges:
           scope === "lines" && changedLineRanges !== null
             ? resolveProjectChangedLineRanges(resolvedDirectory, scanDirectory, changedLineRanges)
             : undefined,
-        supplyChainManifestChanged,
+        supplyChainManifestChanged: projectScanPlan.supplyChainManifestChanged,
       });
       if (!isQuiet && !isMultiProject) {
         logger.break();

@@ -1,17 +1,16 @@
 import isUnicodeSupported from "is-unicode-supported";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
+import { DIAGNOSTIC_CATEGORY_BUCKETS, groupBy } from "../../core/core-diagnostic-semantics.js";
 import {
   CODE_FRAME_BATCH_MAX_SPAN_LINES,
   CODE_FRAME_LINES_ABOVE,
   CODE_FRAME_LINES_BELOW,
-  DIAGNOSTIC_CATEGORY_BUCKETS,
-  groupBy,
   highlighter,
-  MILLISECONDS_PER_SECOND,
-  TOP_ERRORS_DISPLAY_COUNT,
-} from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/core";
+} from "../../core/core-presentation.js";
+import { MILLISECONDS_PER_SECOND } from "../../core/core-runtime.js";
+import { TOP_ERRORS_DISPLAY_COUNT } from "../../core/core-score.js";
+import type { Diagnostic } from "../../core/core-types.js";
 import { pathToFileURL } from "node:url";
 import { boxText } from "./box-text.js";
 import { buildCodeFrame } from "./build-code-frame.js";

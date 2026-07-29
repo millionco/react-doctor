@@ -1,10 +1,6 @@
-import { filterDiagnosticsForSurface } from "@react-doctor/core";
-import type {
-  Diagnostic,
-  DiagnosticSurface,
-  InspectResult,
-  ReactDoctorConfig,
-} from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import type { Diagnostic, DiagnosticSurface, InspectResult } from "../../core/core-types.js";
+import { filterDiagnosticsForSurface } from "../../core/core-diagnostic-semantics.js";
 
 export interface SurfaceFilterableScan {
   readonly result: InspectResult;

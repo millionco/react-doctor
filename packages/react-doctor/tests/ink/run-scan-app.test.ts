@@ -5,7 +5,7 @@ import type { InspectResult, ResolvedScanTarget } from "@react-doctor/core";
 import { Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
-import { inspect } from "../../src/inspect.js";
+import { createInvocationInspect, inspect } from "../../src/inspect.js";
 import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 
 interface MockScanAppProps {
@@ -62,13 +62,17 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   };
 });
 
-vi.mock("../../src/inspect.js", () => ({
-  inspect: vi.fn(async (directory: string): Promise<InspectResult> => {
+vi.mock("../../src/inspect.js", () => {
+  const inspect = vi.fn(async (directory: string): Promise<InspectResult> => {
     const result = mockState.inspectResults.get(directory);
     if (!result) throw new Error(`Missing inspect result for ${directory}`);
     return result;
-  }),
-}));
+  });
+  return {
+    inspect,
+    createInvocationInspect: vi.fn(() => inspect),
+  };
+});
 
 vi.mock("../../src/cli/utils/select-projects.js", () => ({
   discoverWorkspacePackages: vi.fn(() => []),
@@ -199,6 +203,8 @@ describe("runScanApp", () => {
     expect(resolveScanTarget).toHaveBeenCalledWith(requestedAdminDirectory, {
       allowAmbiguous: true,
     });
+    expect(createInvocationInspect).toHaveBeenCalledTimes(1);
+    expect(createInvocationInspect).toHaveBeenCalledWith(undefined);
     expect(inspect).toHaveBeenCalledTimes(2);
     expect(inspect).toHaveBeenNthCalledWith(
       1,

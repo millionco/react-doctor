@@ -1,13 +1,9 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import {
-  CANONICAL_GITHUB_URL,
-  DOCS_URL,
-  highlighter,
-  SHARE_BASE_URL,
-  TOP_ERRORS_DISPLAY_COUNT,
-} from "@react-doctor/core";
-import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
+import { CANONICAL_GITHUB_URL, DOCS_URL, SHARE_BASE_URL } from "../../core/core-product.js";
+import { TOP_ERRORS_DISPLAY_COUNT } from "../../core/core-score.js";
+import type { Diagnostic, ScoreResult } from "../../core/core-types.js";
 import { buildSectionDivider } from "./build-section-divider.js";
 import { colorizeByScore } from "./colorize-by-score.js";
 import { SCORE_PROJECTION_BAR_ROWS_ABOVE_CURSOR } from "./constants.js";

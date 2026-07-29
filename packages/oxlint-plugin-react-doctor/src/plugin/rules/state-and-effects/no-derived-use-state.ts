@@ -36,6 +36,7 @@ const isInitialOnlySeedName = (propName: string): boolean =>
 // "staleness" is the feature, not a bug.
 const SNAPSHOT_STATE_NAME_PATTERN =
   /^(initial|previous|prev|preserved|saved|original|cached|snapshot|prior|debounced|deferred)([A-Z_]|$)/;
+const INTERNAL_STATE_NAME_PATTERN = /^(internal|uncontrolled)([A-Z_]|$)/;
 
 const getStateSetterName = (useStateCall: EsTreeNodeOfType<"CallExpression">): string | null => {
   const declarator = useStateCall.parent;
@@ -357,6 +358,86 @@ const isInRenderScope = (node: EsTreeNode, componentFunction: EsTreeNode): boole
   return true;
 };
 
+const isReferenceToBinding = (
+  reference: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(reference, "Identifier")) return false;
+  const bindingSymbol = context.scopes.symbolFor(bindingIdentifier);
+  if (!bindingSymbol) return false;
+  const referenceSymbol = context.scopes.referenceFor(reference)?.resolvedSymbol;
+  return referenceSymbol?.id === bindingSymbol.id;
+};
+
+const isControlledPropFallbackExpression = (
+  expression: EsTreeNode,
+  stateBinding: EsTreeNode,
+  isPropName: IsPropNameFn,
+  context: RuleContext,
+): boolean => {
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    const consequent = unwrapInitializerSeed(expression.consequent);
+    const alternate = unwrapInitializerSeed(expression.alternate);
+    return (
+      (isReferenceToBinding(consequent, stateBinding, context) &&
+        isPropDerivedArgument(alternate, isPropName)) ||
+      (isPropDerivedArgument(consequent, isPropName) &&
+        isReferenceToBinding(alternate, stateBinding, context))
+    );
+  }
+  return (
+    isNodeOfType(expression, "LogicalExpression") &&
+    expression.operator === "??" &&
+    isPropDerivedArgument(unwrapInitializerSeed(expression.left), isPropName) &&
+    isReferenceToBinding(unwrapInitializerSeed(expression.right), stateBinding, context)
+  );
+};
+
+const isUserEditableControlledFallback = (
+  useStateCall: EsTreeNodeOfType<"CallExpression">,
+  isPropName: IsPropNameFn,
+  context: RuleContext,
+): boolean => {
+  const declarator = useStateCall.parent;
+  if (!isNodeOfType(declarator, "VariableDeclarator")) return false;
+  if (!isNodeOfType(declarator.id, "ArrayPattern")) return false;
+  const stateBinding = declarator.id.elements?.[0];
+  const setterBinding = declarator.id.elements?.[1];
+  if (!isNodeOfType(stateBinding, "Identifier") || !isNodeOfType(setterBinding, "Identifier")) {
+    return false;
+  }
+  if (!INTERNAL_STATE_NAME_PATTERN.test(stateBinding.name)) return false;
+  const componentFunction = findEnclosingFunction(useStateCall);
+  if (!componentFunction) return false;
+
+  let hasControlledFallback = false;
+  let hasUserEdit = false;
+  walkAst(componentFunction, (child) => {
+    if (child !== componentFunction && isFunctionLike(child)) {
+      return;
+    }
+    if (
+      !hasControlledFallback &&
+      (isNodeOfType(child, "ConditionalExpression") || isNodeOfType(child, "LogicalExpression")) &&
+      isControlledPropFallbackExpression(child, stateBinding, isPropName, context)
+    ) {
+      hasControlledFallback = true;
+    }
+  });
+  walkAst(componentFunction, (child) => {
+    if (hasUserEdit) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isReferenceToBinding(child.callee, setterBinding, context)) return;
+    if (!isHandlerShapedReseed(child, componentFunction)) return;
+    const setterArgument = child.arguments?.[0];
+    if (!setterArgument || isPropDerivedArgument(setterArgument, isPropName)) return;
+    hasUserEdit = true;
+    return false;
+  });
+  return hasControlledFallback && hasUserEdit;
+};
+
 // Two exemptions, one walk (they look for the same prop-derived setter call
 // and differ only in where it sits):
 //   - Draft buffer: the re-seed lives in a NESTED handler (e.g.
@@ -456,6 +537,7 @@ export const noDerivedUseState = defineRule({
         const reportStalePropCopy = (propName: string): void => {
           if (isIntentionalSnapshotState(node)) return;
           if (hasSessionDismissProp(propStackTracker.getCurrentPropNames())) return;
+          if (isUserEditableControlledFallback(node, propStackTracker.isPropName, context)) return;
           if (isDraftReseedOrRenderAdjusted(node, propStackTracker.isPropName)) return;
           if (isEffectDrivenResync(node)) return;
           if (isNextjsDataFetchingPage(node)) return;

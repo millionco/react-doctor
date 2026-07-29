@@ -1,4 +1,4 @@
-import { highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
 
 // The ANSI escape introducer (built from its char code so the SGR patterns
 // below don't embed a control character in a regex literal).

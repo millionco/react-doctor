@@ -1,4 +1,4 @@
-import { isPlainObject } from "@react-doctor/core";
+import { isPlainObject } from "../../core/core-primitives.js";
 
 // A key that can appear unquoted in a TS object literal. Anything else
 // (e.g. "react-doctor/no-danger") is quoted via JSON.stringify.

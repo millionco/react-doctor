@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
-import { isErrnoException } from "@react-doctor/core";
+import { isErrnoException } from "../../core/core-errors.js";
 import { AGENT_HOOK_TIMEOUT_SECONDS } from "./constants.js";
 import * as fs from "node:fs";
 import { CliInputError } from "./cli-input-error.js";

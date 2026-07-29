@@ -1,7 +1,9 @@
-import { highlighter, toRelativePath } from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import { highlighter } from "../../core/core-presentation.js";
+import { toRelativePath } from "../../core/core-primitives.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { inspect } from "../../inspect.js";
-import type { Diagnostic, InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
+import type { Diagnostic, InspectOptions } from "../../core/core-types.js";
 import { buildCodeFrame } from "./build-code-frame.js";
 import { buildDiagnosticIssueUrl } from "./build-diagnostic-issue-url.js";
 import { findOwningProjectDirectory } from "./find-owning-project.js";

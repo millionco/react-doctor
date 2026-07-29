@@ -1,5 +1,6 @@
-import { buildRuleDocsUrl, highlighter } from "@react-doctor/core";
-import type { RuleSeverityOverride } from "@react-doctor/core";
+import type { RuleSeverityOverride } from "../../core/core-configuration.js";
+import { highlighter } from "../../core/core-presentation.js";
+import { buildRuleDocsUrl } from "../../core/core-product.js";
 import type { RuleCatalogEntry } from "./rule-catalog.js";
 import type { EffectiveRuleSeverity } from "./resolve-effective-rule-severity.js";
 

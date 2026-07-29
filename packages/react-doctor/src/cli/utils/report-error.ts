@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/node";
-import { isReactDoctorError } from "@react-doctor/core";
+import { isReactDoctorError } from "../../core/core-errors.js";
 import { getActiveRunTrace, recordRunTraceId } from "./active-run-trace.js";
 import { buildSentryScope } from "./build-sentry-scope.js";
 import { METRIC, SENTRY_FLUSH_TIMEOUT_MS } from "./constants.js";

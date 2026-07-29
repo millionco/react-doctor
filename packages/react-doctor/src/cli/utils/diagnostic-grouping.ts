@@ -1,11 +1,11 @@
 import {
-  buildRuleDocsUrl,
-  groupBy,
   hasPublishedFixRecipe,
   MIGRATION_SCALE_RULE_FILE_COUNT,
   MIN_SHARED_FIX_SITE_COUNT,
-} from "@react-doctor/core";
-import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+} from "../../core/core-presentation.js";
+import { groupBy } from "../../core/core-diagnostic-semantics.js";
+import { buildRuleDocsUrl } from "../../core/core-product.js";
+import type { Diagnostic, ScoreResult } from "../../core/core-types.js";
 
 // Ordering / formatting helpers shared by the diagnostics renderer, the
 // agent-handoff payload builder, and the on-disk diagnostics writer — so

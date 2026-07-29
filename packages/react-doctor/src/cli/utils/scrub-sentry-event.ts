@@ -1,5 +1,5 @@
 import type { Event } from "@sentry/node";
-import { scrubSensitivePaths } from "@react-doctor/core";
+import { scrubSensitivePaths } from "../../core/core-primitives.js";
 import { anonymizeInPlace, anonymizeText } from "./anonymize-text.js";
 
 /**

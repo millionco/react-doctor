@@ -1,4 +1,4 @@
-import type { PromptMultiselectChoiceState } from "@react-doctor/core";
+import type { PromptMultiselectChoiceState } from "../../core/core-types.js";
 
 export const shouldSelectAllChoices = (choiceStates: PromptMultiselectChoiceState[]): boolean => {
   const enabledChoiceStates = choiceStates.filter((choiceState) => !choiceState.disabled);

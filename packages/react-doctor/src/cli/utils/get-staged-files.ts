@@ -1,6 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { Git, StagedFiles, messageFromUnknown, type StagedSnapshot } from "@react-doctor/core";
+import { messageFromUnknown } from "../../core/core-errors.js";
+import { Git, StagedFiles } from "../../core/core-runtime.js";
+import type { StagedSnapshot } from "../../core/core-types.js";
 import { cliLogger } from "./cli-logger.js";
 
 const stagedFilesLayer = StagedFiles.layerNode.pipe(Layer.provide(Git.layerNode));

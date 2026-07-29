@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { Progress, Reporter } from "@react-doctor/core";
-import type { ProgressHandle } from "@react-doctor/core";
+import { Progress, Reporter } from "../../core/core-runtime.js";
+import type { ProgressHandle } from "../../core/core-types.js";
 import type { ScanStore } from "./scan-store.js";
 
 export const reporterLayerForStore = (store: ScanStore): Layer.Layer<Reporter> =>

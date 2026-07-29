@@ -1,8 +1,8 @@
-import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+import type { Diagnostic, ScoreResult } from "../../core/core-types.js";
 // The live feed carries diagnostics exactly as `Reporter.emit` produces them
 // (the schema class), which differs from the index `Diagnostic` type only in
 // nested-array readonly-ness. The settled `report` keeps the index type.
-import type { Diagnostic as LiveDiagnostic } from "@react-doctor/core/schemas";
+import type { LiveDiagnostic } from "../../core/core-reporting.js";
 
 import { TUI_LIVE_FEED_MAX_ENTRIES } from "../utils/constants.js";
 import type { CliAgentId } from "../utils/launch-agent.js";

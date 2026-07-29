@@ -4,7 +4,7 @@ import {
   CODE_FRAME_LINES_ABOVE,
   CODE_FRAME_LINES_BELOW,
   CODE_FRAME_MAX_LINE_LENGTH_CHARS,
-} from "@react-doctor/core";
+} from "../../core/core-presentation.js";
 import { resolveAbsolutePath } from "./resolve-absolute-path.js";
 
 interface CodeFrameInput {

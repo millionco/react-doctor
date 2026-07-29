@@ -1,4 +1,4 @@
-import { DIAGNOSTIC_CATEGORY_BUCKETS } from "@react-doctor/core";
+import { DIAGNOSTIC_CATEGORY_BUCKETS } from "../../../core/core-diagnostic-semantics.js";
 import type { DiagnosticRow } from "./diagnostic-rows.js";
 
 export interface DiagnosticHeaderEntry {

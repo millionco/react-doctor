@@ -1,4 +1,4 @@
-import { OUTPUT_MEASURE_WIDTH_CHARS } from "@react-doctor/core";
+import { OUTPUT_MEASURE_WIDTH_CHARS } from "../../core/core-presentation.js";
 import { MIN_MEASURE_WIDTH_CHARS } from "./constants.js";
 
 interface ResolveClampedWidthInput {

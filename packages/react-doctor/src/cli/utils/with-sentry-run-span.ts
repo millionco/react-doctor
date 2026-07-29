@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/node";
-import type { ProjectInfo } from "@react-doctor/core";
+import type { ProjectInfo } from "../../core/core-types.js";
 import { isSentryTracingEnabled } from "../../instrument.js";
 import { recordRunTraceId, setActiveRunTrace } from "./active-run-trace.js";
 import { buildSentryScope } from "./build-sentry-scope.js";

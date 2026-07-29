@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isErrnoException } from "@react-doctor/core";
+import { isErrnoException } from "../../core/core-errors.js";
 import { CliInputError } from "./cli-input-error.js";
 import { toForwardSlashes } from "./path-format.js";
 

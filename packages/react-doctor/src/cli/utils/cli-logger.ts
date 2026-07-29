@@ -1,6 +1,6 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
 
 /**
  * Thin synchronous façade over Effect's `Console` module. Used by

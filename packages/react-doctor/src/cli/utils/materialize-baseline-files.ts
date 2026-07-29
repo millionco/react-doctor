@@ -1,10 +1,10 @@
 import * as Effect from "effect/Effect";
+import { Git } from "../../core/core-runtime.js";
+import type { MaterializedTree } from "../../core/core-types.js";
 import {
   GIT_SHOW_MAX_BUFFER_BYTES,
-  Git,
-  type MaterializedTree,
   materializeSourceTree,
-} from "@react-doctor/core";
+} from "../../core/core-version-control.js";
 import { isMaterializableGitSource } from "./is-materializable-git-source.js";
 
 export interface BaselineMaterializedTree extends MaterializedTree {

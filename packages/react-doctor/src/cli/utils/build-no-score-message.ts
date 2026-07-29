@@ -1,4 +1,4 @@
-import { ENTERPRISE_CONTACT_URL } from "@react-doctor/core";
+import { ENTERPRISE_CONTACT_URL } from "../../core/core-product.js";
 
 const ENTERPRISE_CONTACT_HINT = `Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`;
 

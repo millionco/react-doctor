@@ -1,5 +1,5 @@
-import { calculateScore, TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
-import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+import { calculateScore, TOP_ERRORS_DISPLAY_COUNT } from "../../core/core-score.js";
+import type { Diagnostic, ScoreResult } from "../../core/core-types.js";
 import { buildRulePriorityMap } from "./diagnostic-grouping.js";
 import { getTopErrorRuleKeys } from "./render-diagnostics.js";
 

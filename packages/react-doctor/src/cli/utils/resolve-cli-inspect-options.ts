@@ -1,4 +1,5 @@
-import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import type { InspectOptions } from "../../core/core-types.js";
 import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
 import { pickBlockingLevel } from "./resolve-blocking-level.js";

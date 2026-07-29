@@ -1,4 +1,4 @@
-import type { BlockingLevel, Diagnostic } from "@react-doctor/core";
+import type { BlockingLevel, Diagnostic } from "../../core/core-types.js";
 
 // Whether the scan should block CI (exit non-zero) at the given threshold:
 // `none` never blocks, `warning` blocks on any diagnostic, `error` blocks only

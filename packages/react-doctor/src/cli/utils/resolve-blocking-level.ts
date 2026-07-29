@@ -1,4 +1,5 @@
-import type { BlockingLevel, ReactDoctorConfig } from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import type { BlockingLevel } from "../../core/core-types.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 

@@ -1,4 +1,4 @@
-import type { DiffInfo } from "@react-doctor/core";
+import type { DiffInfo } from "../../core/core-types.js";
 import { resolveProjectRelativeDirectory } from "./resolve-project-relative-directory.js";
 import { toForwardSlashes } from "./path-format.js";
 

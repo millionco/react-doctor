@@ -1,5 +1,6 @@
 import { Command, Option } from "commander";
-import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
+import { highlighter } from "../core/core-presentation.js";
+import { CANONICAL_GITHUB_URL, CI_URL } from "../core/core-product.js";
 import { flushSentry, initializeSentry } from "../instrument.js";
 import { ciConfigAction, ciInstallAction, ciUpgradeAction } from "./commands/ci.js";
 import { designAction } from "./commands/design.js";

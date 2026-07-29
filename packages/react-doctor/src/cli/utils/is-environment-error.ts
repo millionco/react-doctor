@@ -1,4 +1,4 @@
-import { isErrnoException, messageFromUnknown } from "@react-doctor/core";
+import { isErrnoException, messageFromUnknown } from "../../core/core-errors.js";
 
 // Filesystem conditions React Doctor cannot fix: a full or read-only disk, a
 // failing disk, denied permissions, or a path blocked by an existing file.

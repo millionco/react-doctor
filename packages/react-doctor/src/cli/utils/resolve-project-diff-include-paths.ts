@@ -1,4 +1,4 @@
-import type { ChangedFileLineRanges, DiffInfo } from "@react-doctor/core";
+import type { ChangedFileLineRanges, DiffInfo } from "../../core/core-types.js";
 import { resolveProjectRelativeDirectory } from "./resolve-project-relative-directory.js";
 import { toForwardSlashes } from "./path-format.js";
 import { resolveProjectSourceFilePaths } from "./resolve-project-source-file-paths.js";

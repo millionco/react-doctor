@@ -1,4 +1,4 @@
-import { SCORE_GOOD_THRESHOLD, SCORE_OK_THRESHOLD } from "@react-doctor/core";
+import { SCORE_GOOD_THRESHOLD, SCORE_OK_THRESHOLD } from "../../core/core-score.js";
 
 export const scoreBandLabel = (score: number): string => {
   if (score >= SCORE_GOOD_THRESHOLD) return "Great";

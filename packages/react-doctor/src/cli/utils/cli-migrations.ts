@@ -1,4 +1,5 @@
-import { findLegacyConfig, toRelativePath } from "@react-doctor/core";
+import { findLegacyConfig } from "../../core/core-configuration.js";
+import { toRelativePath } from "../../core/core-primitives.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { type CliStateOptions } from "./cli-state-store.js";
 import { type Migration, type MigrationResult, runMigrations } from "./cli-lifecycle.js";

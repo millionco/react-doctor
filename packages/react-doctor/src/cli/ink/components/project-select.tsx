@@ -2,7 +2,7 @@ import path from "node:path";
 import figures from "figures";
 import { Box, Text, useInput } from "ink";
 import { useMemo, useState } from "react";
-import type { WorkspacePackage } from "@react-doctor/core";
+import type { WorkspacePackage } from "../../../core/core-types.js";
 import {
   TUI_PRINTABLE_ASCII_MIN_CODE_POINT,
   TUI_PROJECT_SELECT_CHROME_ROWS,

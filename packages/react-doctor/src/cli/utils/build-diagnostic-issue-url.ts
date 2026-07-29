@@ -1,5 +1,5 @@
-import { CANONICAL_GITHUB_URL } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/core";
+import { CANONICAL_GITHUB_URL } from "../../core/core-product.js";
+import type { Diagnostic } from "../../core/core-types.js";
 
 interface BuildDiagnosticIssueUrlInput {
   readonly diagnostic: Diagnostic;

@@ -1,5 +1,5 @@
 import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor";
-import { isSameRuleKey } from "@react-doctor/core";
+import { isSameRuleKey } from "../../core/core-diagnostic-semantics.js";
 import type { RuleSeverity } from "oxlint-plugin-react-doctor";
 
 export interface RuleCatalogEntry {

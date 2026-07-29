@@ -1,5 +1,6 @@
-import { filterSourceFiles } from "@react-doctor/core";
-import type { DiffInfo, ReactDoctorConfig, ScopeValue } from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import { filterSourceFiles } from "../../core/core-project-discovery.js";
+import type { DiffInfo, ScopeValue } from "../../core/core-types.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import type { InspectFlags } from "./inspect-flags.js";
 import { prompts } from "./prompts.js";

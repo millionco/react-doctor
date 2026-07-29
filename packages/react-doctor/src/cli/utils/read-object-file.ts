@@ -1,6 +1,6 @@
 import { parseJSON5 } from "confbox";
-import { isPlainObject } from "@react-doctor/core";
 import * as fs from "node:fs";
+import { isPlainObject } from "../../core/core-primitives.js";
 
 /**
  * Reads a JSON / JSONC file as a plain object, or `null` when it is missing,

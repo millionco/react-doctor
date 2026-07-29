@@ -1,4 +1,4 @@
-import { MILLISECONDS_PER_SECOND } from "@react-doctor/core";
+import { MILLISECONDS_PER_SECOND } from "../../core/core-runtime.js";
 import { cliLogger as logger } from "./cli-logger.js";
 
 // `--max-duration <seconds>` → milliseconds, or `undefined` when unset. An

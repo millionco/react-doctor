@@ -1,4 +1,4 @@
-import { highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
 import { resolveMeasureWidth } from "./resolve-measure-width.js";
 
 const DIVIDER_INDENT = "  ";

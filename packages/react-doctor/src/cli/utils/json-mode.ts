@@ -1,8 +1,8 @@
 import { performance } from "node:perf_hooks";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { buildJsonReportError } from "@react-doctor/core";
-import type { JsonReport, JsonReportMode } from "@react-doctor/core";
+import { buildJsonReportError } from "../../core/core-reporting.js";
+import type { JsonReport, JsonReportMode } from "../../core/core-reporting.js";
 import { INTERNAL_ERROR_JSON_FALLBACK } from "./constants.js";
 import { makeNoopConsole } from "./noop-console.js";
 import { VERSION } from "./version.js";

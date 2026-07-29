@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
-import type { Diagnostic } from "@react-doctor/core";
+import type { Diagnostic } from "../../core/core-types.js";
 import { buildSortedRuleGroups } from "./diagnostic-grouping.js";
 import { formatRuleSummary } from "./render-diagnostics.js";
 import * as fs from "node:fs";

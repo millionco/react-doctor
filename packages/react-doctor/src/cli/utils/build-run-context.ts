@@ -1,4 +1,5 @@
-import { resolveLintBatchOrdering, scrubSensitivePaths } from "@react-doctor/core";
+import { scrubSensitivePaths } from "../../core/core-primitives.js";
+import { resolveLintBatchOrdering } from "../../core/core-scan-cache.js";
 import { detectTerminalKind } from "./detect-terminal-kind.js";
 import {
   detectCiEventName,

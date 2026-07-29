@@ -1,5 +1,5 @@
 import ora from "ora";
-import { SPINNER_INDENT_CHARS } from "@react-doctor/core";
+import { SPINNER_INDENT_CHARS } from "../../core/core-presentation.js";
 import { isSpinnerInteractive } from "./is-spinner-interactive.js";
 
 let isSilent = false;

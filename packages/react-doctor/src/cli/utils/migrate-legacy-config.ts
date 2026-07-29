@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { LegacyConfigLocation } from "@react-doctor/core";
+import type { LegacyConfigLocation } from "../../core/core-types.js";
 import { readObjectFile } from "./read-object-file.js";
 import { serializeTsObjectLiteral } from "./serialize-ts-object-literal.js";
 import * as fs from "node:fs";

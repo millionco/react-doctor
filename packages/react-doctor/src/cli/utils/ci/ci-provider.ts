@@ -1,4 +1,4 @@
-import type { BlockingLevel, ScopeValue } from "@react-doctor/core";
+import type { BlockingLevel, ScopeValue } from "../../../core/core-types.js";
 
 // One CI backend React Doctor can scaffold and manage. GitHub Actions is the
 // fully supported provider; GitLab CI is a gate-only scaffold (no PR-opening,

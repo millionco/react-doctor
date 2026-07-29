@@ -1,4 +1,4 @@
-import { filterSourceFiles } from "@react-doctor/core";
+import { filterSourceFiles } from "../../core/core-project-discovery.js";
 import { toForwardSlashes } from "./path-format.js";
 import { resolveProjectRelativeDirectory } from "./resolve-project-relative-directory.js";
 

@@ -1,4 +1,4 @@
-import type { InspectResult } from "@react-doctor/core";
+import type { InspectResult } from "../../core/core-types.js";
 
 export const countUniqueScannedFiles = (results: ReadonlyArray<InspectResult>): number => {
   const uniqueScannedFilePaths = new Set<string>();

@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { CI_URL, GITHUB_ACTIONS_SETUP_URL, highlighter } from "@react-doctor/core";
+import { highlighter } from "../../../core/core-presentation.js";
+import { CI_URL, GITHUB_ACTIONS_SETUP_URL } from "../../../core/core-product.js";
 import { cliLogger as logger } from "../cli-logger.js";
 import { METRIC } from "../constants.js";
 import { detectDefaultBranch } from "../detect-default-branch.js";

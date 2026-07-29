@@ -1,4 +1,4 @@
-import { createNodeReadFileLinesSync } from "@react-doctor/core";
+import { createNodeReadFileLinesSync } from "../../core/core-presentation.js";
 
 /**
  * Builds a cached `(filePath, line) -> source text` reader rooted at

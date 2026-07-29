@@ -1,4 +1,5 @@
-import { detectAiTrainingEnvironment, highlighter } from "@react-doctor/core";
+import { highlighter } from "../../core/core-presentation.js";
+import { detectAiTrainingEnvironment } from "../../core/core-runtime.js";
 import { METRIC } from "./constants.js";
 import { recordCount } from "./record-metric.js";
 

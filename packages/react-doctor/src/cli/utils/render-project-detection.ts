@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
-import type { ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
+import type { ReactDoctorConfig } from "../../core/core-configuration.js";
+import type { ProjectInfo } from "../../core/core-types.js";
 
 export interface PrintProjectDetectionInput {
   readonly projectInfo: ProjectInfo;

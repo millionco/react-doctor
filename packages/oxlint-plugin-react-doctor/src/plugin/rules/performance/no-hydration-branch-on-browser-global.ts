@@ -16,6 +16,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
+import { getResolvedStaticPropertyName } from "../../utils/get-resolved-static-property-name.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -930,7 +931,7 @@ const findRenderedValueInAndBranch = (
   scopes: ScopeAnalysis,
 ): EsTreeNode | null => {
   const unwrappedNode = stripParenExpression(node);
-  if (isRenderedValue(unwrappedNode, scopes)) return unwrappedNode;
+  if (isPotentiallyRenderedValue(unwrappedNode, scopes)) return unwrappedNode;
   if (!isNodeOfType(unwrappedNode, "LogicalExpression") || unwrappedNode.operator !== "&&") {
     return null;
   }
@@ -983,47 +984,6 @@ const isInRenderedOutput = (
   return false;
 };
 
-const isReturnedUseStateInitializer = (
-  node: EsTreeNode,
-  componentOrHookNode: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
-  let currentNode = node.parent;
-  while (currentNode && currentNode !== componentOrHookNode) {
-    if (
-      isNodeOfType(currentNode, "CallExpression") &&
-      isReactApiCall(currentNode, "useState", scopes, {
-        allowGlobalReactNamespace: true,
-        resolveNamedAliases: true,
-      }) &&
-      isNodeOfType(currentNode.parent, "VariableDeclarator") &&
-      isNodeOfType(currentNode.parent.id, "ArrayPattern")
-    ) {
-      const stateBinding = currentNode.parent.id.elements?.[0];
-      if (!isNodeOfType(stateBinding, "Identifier")) return false;
-      const stateSymbol = scopes.symbolFor(stateBinding);
-      if (!stateSymbol) return false;
-      return stateSymbol.references.some((reference) => {
-        let referenceParent = reference.identifier.parent;
-        while (referenceParent && referenceParent !== componentOrHookNode) {
-          if (
-            isNodeOfType(referenceParent, "ReturnStatement") &&
-            findEnclosingFunction(referenceParent) === componentOrHookNode
-          ) {
-            return true;
-          }
-          if (isFunctionLike(referenceParent)) return false;
-          referenceParent = referenceParent.parent;
-        }
-        return false;
-      });
-    }
-    if (isFunctionLike(currentNode)) return false;
-    currentNode = currentNode.parent;
-  }
-  return false;
-};
-
 const getReturnedValues = (statement: EsTreeNode | null | undefined): ReadonlyArray<EsTreeNode> => {
   if (!statement) return [];
   if (isNodeOfType(statement, "ReturnStatement")) {
@@ -1046,6 +1006,143 @@ const getReturnedValues = (statement: EsTreeNode | null | undefined): ReadonlyAr
     if (statementAlwaysExits(childStatement)) break;
   }
   return returnedValues;
+};
+
+const isPotentiallyRenderedValueInternal = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedFunctionNodes: Set<EsTreeNode>,
+): boolean => {
+  const unwrappedNode = stripParenExpression(node);
+  if (isRenderedValue(unwrappedNode, scopes)) return true;
+  if (isNodeOfType(unwrappedNode, "ConditionalExpression")) {
+    return (
+      isPotentiallyRenderedValueInternal(unwrappedNode.consequent, scopes, visitedFunctionNodes) &&
+      isPotentiallyRenderedValueInternal(unwrappedNode.alternate, scopes, visitedFunctionNodes)
+    );
+  }
+  if (isNodeOfType(unwrappedNode, "LogicalExpression")) {
+    return isPotentiallyRenderedValueInternal(unwrappedNode.right, scopes, visitedFunctionNodes);
+  }
+  if (!isNodeOfType(unwrappedNode, "CallExpression")) return false;
+  const calledFunction = resolveExactLocalFunction(unwrappedNode.callee, scopes);
+  if (!isFunctionLike(calledFunction) || visitedFunctionNodes.has(calledFunction)) return false;
+  visitedFunctionNodes.add(calledFunction);
+  const returnedValues = isNodeOfType(calledFunction.body, "BlockStatement")
+    ? getReturnedValues(calledFunction.body)
+    : [calledFunction.body];
+  const isPotentiallyRendered =
+    returnedValues.length > 0 &&
+    returnedValues.every((returnedValue) =>
+      isPotentiallyRenderedValueInternal(returnedValue, scopes, visitedFunctionNodes),
+    );
+  visitedFunctionNodes.delete(calledFunction);
+  return isPotentiallyRendered;
+};
+
+const isPotentiallyRenderedValue = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  isPotentiallyRenderedValueInternal(node, scopes, new Set());
+
+const findUseStateBindingSymbol = (
+  node: EsTreeNode,
+  componentOrHookNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => {
+  let currentNode = node.parent;
+  while (currentNode && currentNode !== componentOrHookNode) {
+    if (
+      isNodeOfType(currentNode, "CallExpression") &&
+      isReactApiCall(currentNode, "useState", scopes, {
+        allowGlobalReactNamespace: true,
+        resolveNamedAliases: true,
+      }) &&
+      isNodeOfType(currentNode.parent, "VariableDeclarator") &&
+      isNodeOfType(currentNode.parent.id, "ArrayPattern")
+    ) {
+      const stateBinding = currentNode.parent.id.elements?.[0];
+      return isNodeOfType(stateBinding, "Identifier") ? scopes.symbolFor(stateBinding) : null;
+    }
+    if (isFunctionLike(currentNode)) return null;
+    currentNode = currentNode.parent;
+  }
+  return null;
+};
+
+const getFunctionBindingIdentifier = (functionNode: EsTreeNode): EsTreeNode | null =>
+  isNodeOfType(functionNode, "FunctionDeclaration")
+    ? functionNode.id
+    : isNodeOfType(functionNode.parent, "VariableDeclarator")
+      ? functionNode.parent.id
+      : null;
+
+const isReturnedUseStateInitializerRendered = (
+  node: EsTreeNode,
+  componentOrHookNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isFunctionLike(componentOrHookNode)) return false;
+  const stateSymbol = findUseStateBindingSymbol(node, componentOrHookNode, scopes);
+  if (!stateSymbol) return false;
+  const returnedValues = isNodeOfType(componentOrHookNode.body, "BlockStatement")
+    ? getReturnedValues(componentOrHookNode.body)
+    : [componentOrHookNode.body];
+  const returnedPropertyNames = new Set<string>();
+  for (const returnedValue of returnedValues) {
+    const unwrappedValue = stripParenExpression(returnedValue);
+    if (!isNodeOfType(unwrappedValue, "ObjectExpression")) continue;
+    for (const property of unwrappedValue.properties) {
+      if (
+        isNodeOfType(property, "Property") &&
+        property.kind === "init" &&
+        doesNodeReadSymbol(property.value, stateSymbol)
+      ) {
+        const propertyName = getResolvedStaticPropertyName(property, scopes);
+        if (propertyName !== null) returnedPropertyNames.add(propertyName);
+      }
+    }
+  }
+  if (returnedPropertyNames.size === 0) return false;
+  const functionBinding = getFunctionBindingIdentifier(componentOrHookNode);
+  if (!isNodeOfType(functionBinding, "Identifier")) return false;
+  const functionSymbol = scopes.symbolFor(functionBinding);
+  if (!functionSymbol) return false;
+  for (const functionReference of functionSymbol.references) {
+    const callExpression = functionReference.identifier.parent;
+    if (
+      !isNodeOfType(callExpression, "CallExpression") ||
+      callExpression.callee !== functionReference.identifier ||
+      !isNodeOfType(callExpression.parent, "VariableDeclarator") ||
+      !isNodeOfType(callExpression.parent.id, "ObjectPattern")
+    ) {
+      continue;
+    }
+    for (const property of callExpression.parent.id.properties) {
+      if (
+        !isNodeOfType(property, "Property") ||
+        !returnedPropertyNames.has(getResolvedStaticPropertyName(property, scopes) ?? "") ||
+        !isNodeOfType(property.value, "Identifier")
+      ) {
+        continue;
+      }
+      const consumerSymbol = scopes.symbolFor(property.value);
+      if (
+        consumerSymbol?.references.some((consumerReference) => {
+          const renderingComponent = findRenderPhaseComponentOrHook(
+            consumerReference.identifier,
+            scopes,
+          );
+          return Boolean(
+            renderingComponent &&
+            renderingComponent !== componentOrHookNode &&
+            isInRenderedOutput(consumerReference.identifier, renderingComponent, scopes),
+          );
+        })
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
 };
 
 const findFollowingReturnedValues = (
@@ -1175,7 +1272,7 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       leftBranch: EsTreeNode,
       rightBranch: EsTreeNode | null,
       requiresRenderedContext: boolean,
-      allowsReturnedStateInitializer = false,
+      hasProvenRenderedConsumer = false,
     ): void => {
       const conditionMatch = matchHydrationCondition(conditionNode, context);
       if (!conditionMatch) return;
@@ -1201,9 +1298,14 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       )
         return;
       if (
-        !allowsReturnedStateInitializer &&
-        !isRenderedValue(leftBranch, context.scopes) &&
-        (!rightBranch || !isRenderedValue(rightBranch, context.scopes))
+        !hasProvenRenderedConsumer &&
+        !(requiresRenderedContext
+          ? isPotentiallyRenderedValue(leftBranch, context.scopes)
+          : isRenderedValue(leftBranch, context.scopes)) &&
+        (!rightBranch ||
+          !(requiresRenderedContext
+            ? isPotentiallyRenderedValue(rightBranch, context.scopes)
+            : isRenderedValue(rightBranch, context.scopes)))
       ) {
         const attribute = findEnclosingJsxAttribute(conditionNode);
         if (!attribute || isEventHandlerAttribute(attribute)) return;
@@ -1245,7 +1347,7 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         const componentOrHookNode = findRenderPhaseComponentOrHook(node, context.scopes);
         if (
           componentOrHookNode &&
-          isReturnedUseStateInitializer(node, componentOrHookNode, context.scopes)
+          isReturnedUseStateInitializerRendered(node, componentOrHookNode, context.scopes)
         ) {
           reportHydrationBranch(node.test, node.consequent, node.alternate, false, true);
         }
@@ -1255,7 +1357,7 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         const renderedValue =
           node.operator === "&&"
             ? findRenderedValueInAndBranch(node.right, context.scopes)
-            : isRenderedValue(node.right, context.scopes)
+            : isPotentiallyRenderedValue(node.right, context.scopes)
               ? node.right
               : null;
         if (!renderedValue) return;

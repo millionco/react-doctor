@@ -54,7 +54,7 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
       `,
     ],
     [
-      "returned custom-hook state",
+      "local rendered custom-hook state",
       `
         import { useState } from "react";
         export const useRegistration = () => {
@@ -62,6 +62,10 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
             typeof window === "undefined" ? { type: "primary" } : null,
           );
           return { registration };
+        };
+        export const Page = () => {
+          const { registration } = useRegistration();
+          return registration ? <Primary /> : <Pending />;
         };
       `,
     ],
@@ -99,6 +103,34 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
             return <img alt="" />;
           };
           return <main>{renderMedia()}</main>;
+        };
+      `,
+    ],
+    [
+      "a createElement lookalike rendered by React",
+      `
+        import React from "react";
+        const renderer = { createElement: () => "not React" };
+        export const Page = ({ ready }) =>
+          React.createElement(
+            "main",
+            null,
+            ready && typeof window !== "undefined" && renderer.createElement(),
+          );
+      `,
+    ],
+    [
+      "a shadowed React factory returned by a component",
+      `
+        import { useState } from "react";
+        const React = {
+          createElement: (value) => value === "server" ? "server" : "client",
+        };
+        export const Page = () => {
+          useState(false);
+          return typeof window === "undefined"
+            ? React.createElement("server")
+            : React.createElement("client");
         };
       `,
     ],
@@ -173,7 +205,7 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
       `,
     ],
     [
-      "a returned state value used only as metadata",
+      "a custom hook state value returned without a local rendered consumer",
       `
         import { useState } from "react";
         export const useMetadata = () => {
@@ -240,12 +272,14 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
       `
         import React from "react";
         const renderer = { createElement: () => "not React" };
-        export const Page = ({ ready }) =>
-          React.createElement(
-            "main",
-            null,
-            ready && typeof window !== "undefined" && renderer.createElement(),
-          );
+        export const Page = () => {
+          const metadata =
+            typeof window === "undefined"
+              ? renderer.createElement("server")
+              : renderer.createElement("client");
+          log(metadata);
+          return React.createElement("main", null, "stable");
+        };
       `,
     ],
     [
@@ -255,9 +289,11 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
         const React = { createElement: () => "not React" };
         export const Page = () => {
           useState(false);
-          return typeof window === "undefined"
+          const metadata = typeof window === "undefined"
             ? React.createElement("server")
             : React.createElement("client");
+          log(metadata);
+          return <Stable />;
         };
       `,
     ],

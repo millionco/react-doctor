@@ -55,9 +55,11 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
       const second = new RegExp(\`^\${rootName}/\`);
       const third = new RegExp(\`^\${currentRootFolder}/\`);
       const fourth = new RegExp(\`^\${topLevelName}/\`);
-      const fifth = new RegExp(\`^\${directorySegment}/\`);`,
+      const fifth = new RegExp(\`^\${directorySegment}/\`);
+      const sixth = new RegExp(\`^\${resourceFolder}/\`);
+      const seventh = new RegExp(\`^\${PathSource}/\`);`,
     );
-    expect(result.diagnostics).toHaveLength(5);
+    expect(result.diagnostics).toHaveLength(7);
   });
 
   it("does not flag path-like identifiers outside anchored path-prefix patterns", () => {
@@ -88,6 +90,27 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
       `const first = new RegExp(\`^\${escapeRegExp(rootFolderName)}/\`);
       const escapedRootFolderName = RegExp.escape(rootFolderName);
       const second = new RegExp(\`^\${escapedRootFolderName}/\`);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an anchored path alias when one conditional branch is unescaped", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const escapedRootFolder = escapeRegExp(rootFolder);
+      const pathPrefix = shouldEscape ? escapedRootFolder : untrustedValue;
+      const matcher = new RegExp(\`^\${pathPrefix}/\`);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an anchored path alias when every conditional branch is escaped", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const escapedRootFolder = escapeRegExp(rootFolder);
+      const sanitizedFallbackFolder = RegExp.escape(fallbackFolder);
+      const pathPrefix = useFallback ? sanitizedFallbackFolder : escapedRootFolder;
+      const matcher = new RegExp(\`^\${pathPrefix}/\`);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

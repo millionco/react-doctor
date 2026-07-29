@@ -32,7 +32,7 @@ const TEST_CONTEXT_FILE_PATTERN =
 // stay quiet. `term(?!in)` keeps `searchTerm` while excluding
 // `terminalSequence` / `terminate`-shaped names.
 const SEARCH_TERM_NAME_PATTERN = /search|query|highlight|filter|term(?!in)|keyword/i;
-const REGEX_SOURCE_NAME_PATTERN = /pattern|regex|regexp|source/i;
+const REGEX_SOURCE_WORDS = ["pattern", "regex", "regexp"];
 
 // An escape helper applied to the value makes the pattern safe. Also treat
 // `.replace(...)` / `.replaceAll(...)` as author-driven sanitization.
@@ -352,11 +352,11 @@ const isTypePositionIdentifier = (identifier: EsTreeNode): boolean => {
 };
 
 const identifierNameHasPathSegmentSemantics = (identifierName: string): boolean => {
-  if (REGEX_SOURCE_NAME_PATTERN.test(identifierName)) return false;
   const identifierWords = identifierName
     .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
     .split(/[\s_]+/)
     .map((word) => word.toLowerCase());
+  if (identifierWords.some((word) => REGEX_SOURCE_WORDS.includes(word))) return false;
   return (
     identifierWords.some((word) => ["path", "folder", "directory", "root"].includes(word)) ||
     (identifierWords.includes("top") && identifierWords.includes("level"))
@@ -456,12 +456,48 @@ const compositeInitializerResolvesEscaped = (
   regexpObjectSymbolIds: ReadonlySet<number>,
   globalRegExpObjectNames: ReadonlySet<string>,
 ): boolean => {
+  if (isNodeOfType(strippedInitializer, "ConditionalExpression")) {
+    return [strippedInitializer.consequent, strippedInitializer.alternate].every((branch) =>
+      initializerLooksEscaped(
+        branch,
+        remainingHops,
+        scopes,
+        regexpObjectSymbolIds,
+        globalRegExpObjectNames,
+      ),
+    );
+  }
+  if (
+    isNodeOfType(strippedInitializer, "BinaryExpression") ||
+    isNodeOfType(strippedInitializer, "LogicalExpression")
+  ) {
+    return [strippedInitializer.left, strippedInitializer.right].every((operand) =>
+      initializerLooksEscaped(
+        operand,
+        remainingHops,
+        scopes,
+        regexpObjectSymbolIds,
+        globalRegExpObjectNames,
+      ),
+    );
+  }
+  if (isNodeOfType(strippedInitializer, "TemplateLiteral")) {
+    return strippedInitializer.expressions.every((expression) =>
+      initializerLooksEscaped(
+        expression,
+        remainingHops,
+        scopes,
+        regexpObjectSymbolIds,
+        globalRegExpObjectNames,
+      ),
+    );
+  }
   let didResolveAnyLeafEscaped = false;
   for (const leafIdentifier of collectLeafIdentifiers(strippedInitializer)) {
     if (
       identifierResolvesToEscapedValue(
         leafIdentifier,
-        remainingHops,
+        remainingHops - 1,
         scopes,
         regexpObjectSymbolIds,
         globalRegExpObjectNames,
@@ -514,7 +550,7 @@ const initializerLooksEscaped = (
     }
     return compositeInitializerResolvesEscaped(
       strippedInitializer,
-      remainingHops - 1,
+      remainingHops,
       scopes,
       regexpObjectSymbolIds,
       globalRegExpObjectNames,

@@ -5,11 +5,12 @@ import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import { getCallbackRefFieldNames, getThisFieldName } from "./no-did-update-set-state.js";
+import { getCallbackRefFieldNames } from "./no-did-update-set-state.js";
 
 const LIFECYCLE_NAMES = new Set(["componentDidMount"]);
 const MESSAGE =
@@ -73,11 +74,28 @@ const POST_MOUNT_MEMBER_NAMES = new Set([
 ]);
 const OBSERVER_CONSTRUCTOR_PATTERN = /Observer$/;
 
+const getStaticThisFieldName = (node: EsTreeNode): string | null => {
+  const candidate = stripParenExpression(node);
+  if (
+    !isNodeOfType(candidate, "MemberExpression") ||
+    !isNodeOfType(stripParenExpression(candidate.object as EsTreeNode), "ThisExpression")
+  ) {
+    return null;
+  }
+  return getStaticPropertyKeyName(candidate, { allowComputedString: true });
+};
+
 const containsPostMountSource = (node: EsTreeNode): boolean => {
   let didFindSource = false;
   walkAst(node, (descendant) => {
     if (didFindSource) return false;
-    if (descendant !== node && isFunctionLike(descendant)) return false;
+    if (
+      descendant !== node &&
+      isFunctionLike(descendant) &&
+      !isImmediatelyInvokedFunction(descendant)
+    ) {
+      return false;
+    }
     if (
       isNodeOfType(descendant, "NewExpression") &&
       isNodeOfType(descendant.callee, "Identifier") &&
@@ -105,8 +123,14 @@ const containsCallbackRefField = (
 ): boolean => {
   let didFindCallbackRefField = false;
   walkAst(node, (descendant) => {
-    if (descendant !== node && isFunctionLike(descendant)) return false;
-    const fieldName = getThisFieldName(descendant);
+    if (
+      descendant !== node &&
+      isFunctionLike(descendant) &&
+      !isImmediatelyInvokedFunction(descendant)
+    ) {
+      return false;
+    }
+    const fieldName = getStaticThisFieldName(descendant);
     if (fieldName && callbackRefFieldNames.has(fieldName)) {
       didFindCallbackRefField = true;
       return false;
@@ -138,6 +162,47 @@ const collectReferencedNames = (node: EsTreeNode, into: Set<string>): void => {
   });
 };
 
+const expressionCallsPostMountHelper = (
+  node: EsTreeNode,
+  localFunctions: ReadonlyMap<string, EsTreeNode>,
+  callbackRefFieldNames: ReadonlySet<string>,
+  visitedFunctionNames: ReadonlySet<string> = new Set(),
+): boolean => {
+  let didFindPostMountHelper = false;
+  walkAst(node, (descendant) => {
+    if (didFindPostMountHelper) return false;
+    if (
+      descendant !== node &&
+      isFunctionLike(descendant) &&
+      !isImmediatelyInvokedFunction(descendant)
+    ) {
+      return false;
+    }
+    if (!isNodeOfType(descendant, "CallExpression")) return;
+    const callee = stripParenExpression(descendant.callee);
+    if (!isNodeOfType(callee, "Identifier") || visitedFunctionNames.has(callee.name)) return;
+    const localFunction = localFunctions.get(callee.name);
+    if (!localFunction) return;
+    const functionBody = (localFunction as { body?: EsTreeNode }).body;
+    if (!functionBody) return;
+    const nextVisitedFunctionNames = new Set([...visitedFunctionNames, callee.name]);
+    if (
+      containsPostMountSource(functionBody) ||
+      containsCallbackRefField(functionBody, callbackRefFieldNames) ||
+      expressionCallsPostMountHelper(
+        functionBody,
+        localFunctions,
+        callbackRefFieldNames,
+        nextVisitedFunctionNames,
+      )
+    ) {
+      didFindPostMountHelper = true;
+      return false;
+    }
+  });
+  return didFindPostMountHelper;
+};
+
 // True when the setState argument reads a post-mount-only source directly,
 // or references a local declared in the lifecycle body whose initializer
 // (transitively) does — `const el = this.ref.current; const z = calc(el);
@@ -153,16 +218,40 @@ const argumentDerivesFromPostMountSource = (
   if (containsCallbackRefField(argumentNode, callbackRefFieldNames)) return true;
 
   const localInitializers = new Map<string, EsTreeNode>();
+  const localFunctions = new Map<string, EsTreeNode>();
+  const ambiguousLocalNames = new Set<string>();
+  const registerLocalBinding = (name: string, initializer: EsTreeNode): void => {
+    if (ambiguousLocalNames.has(name)) return;
+    if (localInitializers.has(name)) {
+      ambiguousLocalNames.add(name);
+      localInitializers.delete(name);
+      localFunctions.delete(name);
+      return;
+    }
+    localInitializers.set(name, initializer);
+    if (isFunctionLike(stripParenExpression(initializer))) {
+      localFunctions.set(name, initializer);
+    }
+  };
   walkAst(lifecycleFunction, (descendant) => {
-    if (descendant !== lifecycleFunction && isFunctionLike(descendant)) return false;
     if (
       isNodeOfType(descendant, "VariableDeclarator") &&
       isNodeOfType(descendant.id, "Identifier") &&
       descendant.init
     ) {
-      localInitializers.set(descendant.id.name, descendant.init);
+      registerLocalBinding(descendant.id.name, descendant.init);
+    } else if (
+      descendant !== lifecycleFunction &&
+      isNodeOfType(descendant, "FunctionDeclaration") &&
+      descendant.id
+    ) {
+      registerLocalBinding(descendant.id.name, descendant);
     }
+    if (descendant !== lifecycleFunction && isFunctionLike(descendant)) return false;
   });
+  if (expressionCallsPostMountHelper(argumentNode, localFunctions, callbackRefFieldNames)) {
+    return true;
+  }
   if (localInitializers.size === 0) return false;
 
   const reachedNames = new Set<string>();
@@ -176,7 +265,8 @@ const argumentDerivesFromPostMountSource = (
     if (isFunctionLike(stripParenExpression(initializer))) continue;
     if (
       containsPostMountSource(initializer) ||
-      containsCallbackRefField(initializer, callbackRefFieldNames)
+      containsCallbackRefField(initializer, callbackRefFieldNames) ||
+      expressionCallsPostMountHelper(initializer, localFunctions, callbackRefFieldNames)
     ) {
       return true;
     }
@@ -266,6 +356,14 @@ const callMayWriteThisField = (
   return false;
 };
 
+const getEnclosingWriterFunction = (node: EsTreeNode, classNode: EsTreeNode): EsTreeNode | null => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor && ancestor !== classNode && !isFunctionLike(ancestor)) {
+    ancestor = ancestor.parent;
+  }
+  return ancestor && ancestor !== classNode ? ancestor : null;
+};
+
 const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: string): boolean => {
   if (fieldName.startsWith("#")) return false;
   const writerFunctions = new Set<EsTreeNode>();
@@ -287,7 +385,12 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
       return false;
     }
     if (isNodeOfType(node, "CallExpression") && callMayWriteThisField(node, fieldName)) {
-      didFindUnsafeWrite = true;
+      const writerFunction = getEnclosingWriterFunction(node, classNode);
+      if (!writerFunction) {
+        didFindUnsafeWrite = true;
+        return false;
+      }
+      writerFunctions.add(writerFunction);
       return false;
     }
     const assignmentTarget =
@@ -316,11 +419,8 @@ const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: str
       return false;
     }
     if (assignmentFieldName !== fieldName) return;
-    let writerFunction: EsTreeNode | null | undefined = node.parent;
-    while (writerFunction && writerFunction !== classNode && !isFunctionLike(writerFunction)) {
-      writerFunction = writerFunction.parent;
-    }
-    if (!writerFunction || writerFunction === classNode) {
+    const writerFunction = getEnclosingWriterFunction(node, classNode);
+    if (!writerFunction) {
       didFindUnsafeWrite = true;
       return false;
     }

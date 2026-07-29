@@ -761,6 +761,45 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when an exact state source is preserved by the update", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (this.state.tooltip !== this.state.nextTooltip) {
+            this.setState({ tooltip: this.state.nextTooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags exact convergence when the same update changes the state source", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class FormattedDuration extends React.Component {
+        componentDidUpdate() {
+          if (this.state.tooltip !== this.state.nextTooltip) {
+            this.setState({
+              tooltip: this.state.nextTooltip,
+              nextTooltip: computeNextTooltip(),
+            });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when every mixed OR branch converges", () => {
     const result = runRule(
       noDidUpdateSetState,

@@ -677,18 +677,43 @@ const getSetStateFieldValue = (setStateCall: EsTreeNode, fieldName: string): EsT
   return null;
 };
 
+const setStatePreservesSourcePath = (
+  setStateCall: EsTreeNode,
+  sourcePath: StateSourcePath,
+): boolean => {
+  if (sourcePath.domain !== "state") return true;
+  const [sourceFieldName] = sourcePath.members;
+  if (!sourceFieldName || !isNodeOfType(setStateCall, "CallExpression")) return false;
+  const argument = setStateCall.arguments?.[0];
+  if (!argument || !isNodeOfType(argument, "ObjectExpression")) return false;
+  for (const property of argument.properties ?? []) {
+    if (!isNodeOfType(property, "Property") || property.computed === true) return false;
+    const propertyName =
+      (isNodeOfType(property.key, "Identifier") && property.key.name) ||
+      (isNodeOfType(property.key, "Literal") &&
+        typeof property.key.value === "string" &&
+        property.key.value) ||
+      null;
+    if (propertyName === sourceFieldName) return false;
+  }
+  return true;
+};
+
 const isStableConvergenceValue = (
   value: EsTreeNode,
   scopes: ScopeAnalysis,
   localInitializers: ReadonlyMap<string, EsTreeNode>,
   callbackRefFieldNames: ReadonlySet<string>,
+  setStateCall?: EsTreeNode,
   visitedSymbolIds: ReadonlySet<number> = new Set(),
 ): boolean => {
   const unwrappedValue = stripParenExpression(value);
+  const sourcePath = getStateSourcePath(unwrappedValue, NO_PREVIOUS_SOURCE_PATHS, scopes);
   if (
     isUndefinedIdentifier(unwrappedValue) ||
     isNodeOfType(unwrappedValue, "Literal") ||
-    getStateSourcePath(unwrappedValue, NO_PREVIOUS_SOURCE_PATHS, scopes) !== null ||
+    (sourcePath !== null &&
+      (!setStateCall || setStatePreservesSourcePath(setStateCall, sourcePath))) ||
     derivesFromPostMountValue(unwrappedValue, localInitializers, callbackRefFieldNames)
   ) {
     return true;
@@ -708,6 +733,7 @@ const isStableConvergenceValue = (
     scopes,
     localInitializers,
     callbackRefFieldNames,
+    setStateCall,
     new Set([...visitedSymbolIds, symbol.id]),
   );
 };
@@ -766,7 +792,13 @@ const isConvergentExactGuard = (
   if (!assignedValue || !areExpressionsBindingEquivalent(comparedValue, assignedValue, scopes)) {
     return false;
   }
-  return isStableConvergenceValue(comparedValue, scopes, localInitializers, callbackRefFieldNames);
+  return isStableConvergenceValue(
+    comparedValue,
+    scopes,
+    localInitializers,
+    callbackRefFieldNames,
+    setStateCall,
+  );
 };
 
 const collectTruthfulGuardBranches = (

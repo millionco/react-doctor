@@ -106,6 +106,71 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  it("traces an as-cast component through a direct default React HoC call", () => {
+    expectPass(
+      `import { memo, type FC } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       export default memo(FeatureImpl as FC);`,
+    );
+  });
+
+  it("traces a satisfies-wrapped component through a direct default React HoC call", () => {
+    expectPass(
+      `import { memo, type FC } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       export default memo(FeatureImpl satisfies FC);`,
+    );
+  });
+
+  it("traces an as-cast component through a default-exported React HoC alias", () => {
+    expectPass(
+      `import { memo, type FC } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = memo(FeatureImpl as FC);
+       export default Feature;`,
+    );
+  });
+
+  it("traces a satisfies-wrapped component through a default-exported React HoC alias", () => {
+    expectPass(
+      `import { memo, type FC } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = memo(FeatureImpl satisfies FC);
+       export default Feature;`,
+    );
+  });
+
+  it("does not trace an as-cast component through a shadowed default HoC call", () => {
+    expectFail(
+      `import type { FC } from "react";
+       const memo = (value) => value;
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       export default memo(FeatureImpl as FC);`,
+    );
+  });
+
+  it("does not trace a satisfies-wrapped component through a shadowed HoC alias", () => {
+    expectFail(
+      `import type { FC } from "react";
+       const memo = (value) => value;
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       const Feature = memo(FeatureImpl satisfies FC);
+       export default Feature;`,
+    );
+  });
+
   it("does not treat a default call to a shadowed memo function as a React export", () => {
     expectFail(
       `const memo = (value) => value;

@@ -356,7 +356,9 @@ const getReactHocWrappedIdentifierName = (
   }
   if (!isNodeOfType(current, "CallExpression") || !isHocCall(current, scopes)) return null;
   const wrappedArgument = current.arguments[0];
-  return isNodeOfType(wrappedArgument, "Identifier") ? wrappedArgument.name : null;
+  if (!wrappedArgument) return null;
+  const unwrappedArgument = unwrapTsCast(wrappedArgument);
+  return isNodeOfType(unwrappedArgument, "Identifier") ? unwrappedArgument.name : null;
 };
 
 const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set<string> => {

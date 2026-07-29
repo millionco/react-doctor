@@ -536,6 +536,62 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     for (const source of sources) expectPass(source);
   });
 
+  it("traces component identity through read-only export aliases", () => {
+    const sources = [
+      `function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = FeatureImpl;
+       export default Feature;`,
+      `function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = FeatureImpl;
+       export { Feature };`,
+      `function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Feature = FeatureImpl;
+       module.exports = Feature;`,
+    ];
+    for (const source of sources) expectPass(source);
+  });
+
+  it("traces CommonJS object exports by component value identity", () => {
+    for (const source of [
+      `function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       module.exports = { "Feature": FeatureImpl };`,
+      `function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       module.exports = { ["Feature"]: FeatureImpl };`,
+    ]) {
+      expectPass(source);
+    }
+  });
+
+  it("counts an inline CommonJS object method as the public feature surface", () => {
+    expectPass(
+      `function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       module.exports = { "Feature"() { return <><PrivateHeader /><PrivateBody /></>; } };`,
+    );
+  });
+
+  it("does not infer an exported component from an unrelated CommonJS property value", () => {
+    const result = runRule(
+      noMultiComp,
+      `function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function Feature() { return <div />; }
+       module.exports = { Feature: 42 };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
   it("counts a direct CommonJS component assignment as the public feature surface", () => {
     expectPass(
       `function PrivateHeader() { return <header />; }

@@ -15,6 +15,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { forEachChildNode, walkAst } from "../../utils/walk-ast.js";
 import { REACT_HOC_NAMES, REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
@@ -346,12 +347,12 @@ const unwrapTsCast = (expression: EsTreeNode): EsTreeNode => {
   return current;
 };
 
-const getReactHocWrappedIdentifierName = (
+const getExportedComponentIdentifierName = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
 ): string | null => {
   let current = unwrapTsCast(expression);
-  let didTraverseReactHoc = false;
+  let didTraverseIdentity = false;
   const visitedSymbolIds = new Set<number>();
   while (true) {
     if (isNodeOfType(current, "Identifier")) {
@@ -371,15 +372,16 @@ const getReactHocWrappedIdentifierName = (
             isHocCall(unwrappedInitializer, scopes)))
       ) {
         visitedSymbolIds.add(symbol.id);
+        didTraverseIdentity = true;
         current = unwrappedInitializer;
         continue;
       }
-      return didTraverseReactHoc ? current.name : null;
+      return didTraverseIdentity ? current.name : null;
     }
     if (!isNodeOfType(current, "CallExpression") || !isHocCall(current, scopes)) return null;
     const wrappedArgument = current.arguments[0];
     if (!wrappedArgument) return null;
-    didTraverseReactHoc = true;
+    didTraverseIdentity = true;
     current = unwrapTsCast(wrappedArgument);
   }
 };
@@ -389,24 +391,20 @@ const getCommonJsExportTarget = (
   scopes: ScopeAnalysis,
 ): CommonJsExportTarget | null => {
   const target = unwrapTsCast(expression);
-  if (
-    !isNodeOfType(target, "MemberExpression") ||
-    target.computed ||
-    !isNodeOfType(target.property, "Identifier")
-  ) {
-    return null;
-  }
+  if (!isNodeOfType(target, "MemberExpression")) return null;
+  const targetPropertyName = getStaticPropertyName(target);
+  if (!targetPropertyName) return null;
   if (
     isNodeOfType(target.object, "Identifier") &&
     target.object.name === "exports" &&
     scopes.isGlobalReference(target.object)
   ) {
-    return { exportName: target.property.name };
+    return { exportName: targetPropertyName };
   }
   if (
     isNodeOfType(target.object, "Identifier") &&
     target.object.name === "module" &&
-    target.property.name === "exports" &&
+    targetPropertyName === "exports" &&
     scopes.isGlobalReference(target.object)
   ) {
     return { exportName: null };
@@ -414,16 +412,22 @@ const getCommonJsExportTarget = (
   const receiver = target.object;
   if (
     !isNodeOfType(receiver, "MemberExpression") ||
-    receiver.computed ||
     !isNodeOfType(receiver.object, "Identifier") ||
     receiver.object.name !== "module" ||
     !scopes.isGlobalReference(receiver.object) ||
-    !isNodeOfType(receiver.property, "Identifier") ||
-    receiver.property.name !== "exports"
+    getStaticPropertyName(receiver) !== "exports"
   ) {
     return null;
   }
-  return { exportName: target.property.name };
+  return { exportName: targetPropertyName };
+};
+
+const getObjectPropertyName = (property: EsTreeNodeOfType<"Property">): string | null => {
+  if (!property.computed && isNodeOfType(property.key, "Identifier")) return property.key.name;
+  if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
+    return property.key.value;
+  }
+  return null;
 };
 
 const collectCommonJsExportedNames = (
@@ -436,22 +440,24 @@ const collectCommonJsExportedNames = (
   if (target.exportName) names.add(target.exportName);
   const exportedValue = unwrapTsCast(assignment.right);
   if (isNodeOfType(exportedValue, "Identifier")) names.add(exportedValue.name);
-  const wrappedComponentName = getReactHocWrappedIdentifierName(exportedValue, scopes);
+  const wrappedComponentName = getExportedComponentIdentifierName(exportedValue, scopes);
   if (wrappedComponentName) names.add(wrappedComponentName);
   if (!isNodeOfType(exportedValue, "ObjectExpression")) return;
   for (const property of exportedValue.properties ?? []) {
-    if (
-      !isNodeOfType(property, "Property") ||
-      property.computed ||
-      !isNodeOfType(property.key, "Identifier")
-    ) {
-      continue;
-    }
-    names.add(property.key.name);
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyName = getObjectPropertyName(property);
     const propertyValue = unwrapTsCast(property.value as EsTreeNode);
     if (isNodeOfType(propertyValue, "Identifier")) names.add(propertyValue.name);
-    const wrappedPropertyName = getReactHocWrappedIdentifierName(propertyValue, scopes);
+    const wrappedPropertyName = getExportedComponentIdentifierName(propertyValue, scopes);
     if (wrappedPropertyName) names.add(wrappedPropertyName);
+    if (
+      propertyName &&
+      (isNodeOfType(propertyValue, "FunctionExpression") ||
+        isNodeOfType(propertyValue, "ArrowFunctionExpression")) &&
+      containsJsx(propertyValue)
+    ) {
+      names.add(propertyName);
+    }
   }
 };
 
@@ -477,7 +483,7 @@ const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set
       if (isNodeOfType(defaultExpression, "Identifier")) {
         names.add(defaultExpression.name);
       }
-      const wrappedComponentName = getReactHocWrappedIdentifierName(defaultExpression, scopes);
+      const wrappedComponentName = getExportedComponentIdentifierName(defaultExpression, scopes);
       if (wrappedComponentName) names.add(wrappedComponentName);
       continue;
     }
@@ -489,7 +495,7 @@ const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set
         const local = specifier.local as EsTreeNode;
         if (!isNodeOfType(local, "Identifier")) continue;
         names.add(local.name);
-        const wrappedComponentName = getReactHocWrappedIdentifierName(local, scopes);
+        const wrappedComponentName = getExportedComponentIdentifierName(local, scopes);
         if (wrappedComponentName) names.add(wrappedComponentName);
       }
       continue;
@@ -506,7 +512,7 @@ const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set
       // declaration IS the public surface, just re-exported through a
       // HoC wrapper under a (possibly different) name.
       if (isNodeOfType(init, "CallExpression")) {
-        const wrappedComponentName = getReactHocWrappedIdentifierName(init, scopes);
+        const wrappedComponentName = getExportedComponentIdentifierName(init, scopes);
         if (wrappedComponentName) names.add(wrappedComponentName);
         continue;
       }
@@ -538,6 +544,13 @@ const isExportedDeclaration = (node: EsTreeNode, reExportedNames: Set<string>): 
     return true;
   }
   if (isNodeOfType(node, "Identifier") && reExportedNames.has(node.name)) {
+    return true;
+  }
+  if (
+    isNodeOfType(node, "Literal") &&
+    typeof node.value === "string" &&
+    reExportedNames.has(node.value)
+  ) {
     return true;
   }
   let current: EsTreeNode | null | undefined = node.parent;
@@ -731,14 +744,15 @@ const walkComponentSearch = (node: EsTreeNode, context: VisitContext): void => {
 
   // Object property: { RenderFoo() { return <div/> } } where key is PascalCase.
   if (isNodeOfType(node, "Property")) {
+    const propertyName = getObjectPropertyName(node);
     if (
-      isNodeOfType(node.key, "Identifier") &&
-      isReactComponentName(node.key.name) &&
+      propertyName &&
+      isReactComponentName(propertyName) &&
       (isNodeOfType(node.value, "FunctionExpression") ||
         isNodeOfType(node.value, "ArrowFunctionExpression")) &&
       containsJsx(node.value as EsTreeNode)
     ) {
-      recordComponent(context, node.key.name, node.key as EsTreeNode, true);
+      recordComponent(context, propertyName, node.key as EsTreeNode, true);
       context.componentDepth += 1;
       walkChildren(node, context);
       context.componentDepth -= 1;

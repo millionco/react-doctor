@@ -30,6 +30,7 @@ import {
 } from "./collect-effect-resource-protocols.js";
 import { collectHookBindings } from "./collect-hook-bindings.js";
 import { collectHookCalls } from "./collect-hook-calls.js";
+import { collectHostControlProtocols } from "./collect-host-control-protocols.js";
 import { collectHookStateTransitions } from "./collect-hook-state-transitions.js";
 import { collectImperativeHandles, ImperativeHandleRefKind } from "./collect-imperative-handles.js";
 import type {
@@ -93,6 +94,7 @@ import {
   ReactExecutionPhase,
   ReactFormActionStatus,
   ReactFormStatusTopologyStatus,
+  ReactHostControlStatus,
   ReactHookStateUpdaterStatus,
   ReactIdentityStability,
   ReactImperativeHandleRefKind,
@@ -146,6 +148,7 @@ import type {
   ReactSemanticGraph,
   ReactSemanticHookCall,
   ReactSemanticHookStateTransition,
+  ReactSemanticHostControl,
   ReactSemanticImperativeHandle,
   ReactSemanticImperativeHandleBinding,
   ReactSemanticImperativeHandleInvocation,
@@ -3462,6 +3465,60 @@ const collectHookStateTransitionGraph = (
   return { transitions, callbacks, reachableFunctions, functionCalls };
 };
 
+const collectHostControlGraph = (
+  identities: ReadonlyArray<UnitGraphIdentity>,
+  eventBindings: ReadonlyArray<ReactSemanticEventBinding>,
+  stateTransitions: ReadonlyArray<ReactSemanticHookStateTransition>,
+  context: ReactAnalysisContext,
+): ReadonlyArray<ReactSemanticHostControl> =>
+  identities.flatMap((identity) => {
+    const functionNode = identity.descriptor.functionNode;
+    if (!functionNode || identity.descriptor.kind === ReactUnitKind.InvalidHookOwner) return [];
+    return collectHostControlProtocols(functionNode, context).map((descriptor) => {
+      const callbackLocation = descriptor.callbackSourceNode
+        ? getNodeLocation(descriptor.callbackSourceNode, context.rootDirectory)
+        : null;
+      const callbackIds = callbackLocation
+        ? (eventBindings.find(
+            (eventBinding) =>
+              eventBinding.ownerId === identity.semanticUnit.id &&
+              eventBinding.eventName === "onChange" &&
+              areProofLocationsEqual(eventBinding.location, callbackLocation),
+          )?.callbackIds ?? [])
+        : [];
+      const transitionIds = descriptor.setterCallExpressions.flatMap((callExpression) => {
+        const callLocation = getNodeLocation(callExpression, context.rootDirectory);
+        const transition = stateTransitions.find(
+          (candidate) =>
+            candidate.ownerId === identity.semanticUnit.id &&
+            areProofLocationsEqual(candidate.location, callLocation),
+        );
+        return transition ? [transition.id] : [];
+      });
+      return {
+        id: createSemanticId("host-control", descriptor.kind, descriptor.node, context),
+        ownerId: identity.semanticUnit.id,
+        location: getNodeLocation(descriptor.node, context.rootDirectory),
+        kind: descriptor.kind,
+        controlledPropName: descriptor.controlledPropName,
+        controlledPropPresent: descriptor.controlledPropPresent,
+        defaultPropName: descriptor.defaultPropName,
+        defaultPropPresent: descriptor.defaultPropPresent,
+        stateName: descriptor.stateName,
+        setterName: descriptor.setterName,
+        valueStatus: descriptor.valueStatus,
+        mutabilityStatus: descriptor.mutabilityStatus,
+        updateStatus: descriptor.updateStatus,
+        callbackIds,
+        transitionIds,
+        status: descriptor.status,
+        sourceComplete: descriptor.sourceComplete,
+        complete:
+          descriptor.sourceComplete && descriptor.status === ReactHostControlStatus.Resolved,
+      };
+    });
+  });
+
 const collectOptimisticStateGraph = (
   identity: UnitGraphIdentity,
   existingCallbacks: ReadonlyArray<ReactSemanticCallback>,
@@ -5989,6 +6046,12 @@ export const buildReactSemanticGraph = (
     reachableFunctions.push(...hookStateTransitionGraph.reachableFunctions);
     functionCalls.push(...hookStateTransitionGraph.functionCalls);
   }
+  const hostControls = collectHostControlGraph(
+    identities,
+    eventGraph.eventBindings,
+    hookStateTransitions,
+    context,
+  );
   for (const identity of identities) {
     const optimisticStateGraph = collectOptimisticStateGraph(
       identity,
@@ -6109,6 +6172,7 @@ export const buildReactSemanticGraph = (
     errorBoundaries,
     renderFailures: renderErrorGraph.failures,
     useResources: useResourceGraph.resources,
+    hostControls,
     suspenseBoundaries,
     lazyComponents: lazyGraph.components,
     lazyRenders: lazyGraph.renders,

@@ -2273,3 +2273,109 @@ Kill: If a complete `use` resource protocol produces a false `proved` identity o
 in two proof-schema releases, remove stable resource certification and keep `use(Promise)`
 incomplete until an explicit caching or component-placement proof contract carries the missing
 semantics.
+
+## Intrinsic host-control ownership certificates
+
+### React contract and realistic evidence
+
+React's [`input`](https://react.dev/reference/react-dom/components/input),
+[`textarea`](https://react.dev/reference/react-dom/components/textarea), and
+[`select`](https://react.dev/reference/react-dom/components/select) references define a React
+ownership protocol rather than a styling convention. A `value` prop controls text inputs,
+textareas, and selects; `checked` controls checkboxes and radios. A control cannot be both
+controlled and uncontrolled, cannot switch ownership during its lifetime, and an editable
+controlled field must synchronously update its backing value from `onChange`. React otherwise
+reverts the browser's edit. `defaultValue` and `defaultChecked` initialize uncontrolled controls,
+while `readOnly` and `disabled` make a missing update intentional.
+
+React Bench's gap lab records controlled-to-uncontrolled input flow through
+`value={draft ?? user?.name}` as a high-value React bug class which the ordinary rule suite misses.
+The broader corpus also contains the corresponding defensive normalization repeatedly:
+`value={value ?? ""}`, `value={field.value ?? ""}`, and explicit `String(value ?? "")` forms.
+Those shapes demonstrate why prop presence alone is insufficient. The proof needs the rendered
+value domain, state origin, and update channel, and it must distinguish a normalization which is
+always defined from a fallback which can still produce `undefined`.
+
+### Closed subset and fail-closed boundary
+
+The certificate recognizes intrinsic `input`, `textarea`, and `select` render sites, including
+render helpers reachable from a component. Static input `type` selects the text, checkable, file,
+or non-editable protocol; static `multiple` distinguishes single and multiple selects. JSX
+attributes are interpreted in source order. A later explicit prop closes an earlier spread, while
+a spread which may provide a relevant prop leaves that property unresolved.
+
+TypeScript classifies each explicit controlled value as defined, nullish, or unknown. For an exact
+local `useState` value whose declared type is wider than its actual source protocol, the collector
+also reads the initializer and every direct setter argument. A known nullish initializer plus a
+known defined write is a concrete ownership switch; an uncalled wider union is not refuted merely
+because its annotation permits more values. Nullish controlled props and simultaneous
+`value`/`defaultValue` or `checked`/`defaultChecked` props are counterexamples.
+
+An editable controlled field is complete only when its `onChange` expression resolves to a closed
+callback set and every callback's entry-dominating operation writes the exact
+`event.target.value`, `event.currentTarget.value`, `event.target.checked`, or
+`event.currentTarget.checked` into the setter paired with the rendered state value. A missing
+handler, conditional write, nested deferred write, or transformed value is a counterexample.
+Uncontrolled controls and statically immutable controls need no state transition.
+
+Prop-controlled library components, callback helpers, dynamic input types, overriding spreads,
+controlled file inputs, multiple-select array extraction, class state, destructured event values,
+and non-entry-dominating but potentially total callback CFGs remain unknown. Those require
+component contracts, general value SSA, or compiler-backed dominance before they can be
+certified. The theorem does not attempt domain validation such as whether a select value matches
+an option, browser constraint validation, accessibility, or business-level form correctness.
+
+### Certificate checker, corpus, and runtime calibration
+
+The independent checker validates unique control identities; owner units; enum domains;
+element-specific controlled/default prop names; controlled-prop and value-status coherence;
+paired state and setter names; event-phase callbacks; same-owner direct-value state transitions;
+the complete callback and transition links required by an exact update; and exact protocol status,
+source, completeness, and per-unit verdict equations. Report schema 28 and graph schema 34 reject
+stale or forged certificates.
+
+Added corpus:
+
+- proved: exact text input, textarea, checkbox, and single-select state echoes; a nullish state
+  normalized to an always-defined rendered value; uncontrolled defaults; an explicit read-only
+  input; a disabled textarea; and an uncontrolled file input;
+- refuted: a definite `undefined`-to-string ownership switch, controlled/default conflict, missing
+  update, deferred update, and transformed update;
+- incomplete: a prop-owned value/callback contract, an input whose ownership props come from a
+  spread, a controlled file input, a controlled multiple-select, and a dynamic input type;
+- forged: a switching value rewritten as defined and resolved, rejected by the checker;
+- runtime: `host-control-oracle.spec.ts`.
+
+The React 19.2.5 Chromium oracle observes an exact controlled input preserve the typed DOM value
+and backing output, and observes React emit its uncontrolled-to-controlled warning when a
+source-visible `undefined` state becomes a string. Runtime evidence calibrates the ownership
+transition but never upgrades a static unknown. The complete gate contains 617 static tests and 50
+Chromium runtime oracles across 383 checked-in fixture project configurations.
+
+### Product brief: internal host-control facts
+
+Job: Prover consumers need evidence that each intrinsic form field has stable React ownership and
+that user edits cannot be reverted by an absent, delayed, conditional, or mismatched state write.
+
+Change: Add one private `host-control` claim, versioned intrinsic-control facts, TypeScript and
+Hook-state value-domain analysis, exact event-to-state links, adversarial fixtures, and browser
+oracles.
+
+Reuse: Truffler searches for controlled input protocols, JSX attribute resolution, event-target
+state writes, and intrinsic form controls found no existing theorem. The implementation reuses
+ordered JSX spread property discovery, canonical Hook binding identity, callable-value
+resolution, event callback facts, Hook state-transition facts, source locations, and
+entry-dominance checks.
+
+Metric: The deterministic acceptance metric separates exact text, textarea, checkbox, select,
+uncontrolled, immutable, file, ownership-switch, prop-conflict, missing, deferred, transformed,
+prop-owned, spread-owned, and forged-certificate cases, plus exact-echo and ownership-warning
+Chromium oracles.
+
+Compat: No React Doctor CLI, score, config, Action, or published JSON report changes. The private
+`@react-doctor/prover@0.0.0` report moves to schema 28 and its semantic graph to schema 34. No
+telemetry or Changeset is warranted before publication.
+
+Kill: If a complete host-control protocol produces a false `proved` ownership or update result in
+two proof-schema releases, remove exact host-control certification and retain only explicit
+counterexamples until component contracts or compiler-backed value SSA closes the missing flow.

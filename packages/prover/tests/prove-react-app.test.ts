@@ -28,6 +28,10 @@ import {
   ReactExecutionPhase,
   ReactFormActionStatus,
   ReactFormStatusTopologyStatus,
+  ReactHostControlKind,
+  ReactHostControlStatus,
+  ReactHostControlUpdateStatus,
+  ReactHostControlValueStatus,
   ReactHookStateUpdaterStatus,
   ReactIdentityStability,
   ReactImperativeHandleRefKind,
@@ -706,8 +710,8 @@ describe("proveReactApp", () => {
     const report = proveFixture("proved-chat");
     const effect = report.graph.effects[0];
 
-    expect(report.schemaVersion).toBe(27);
-    expect(report.graph.schemaVersion).toBe(33);
+    expect(report.schemaVersion).toBe(28);
+    expect(report.graph.schemaVersion).toBe(34);
     expect(effect?.hookName).toBe("useEffect");
     expect(effect?.callbackResolved).toBe(true);
     expect(effect?.dependencyMode).toBe(ReactEffectDependencyMode.Inline);
@@ -4327,6 +4331,147 @@ describe("proveReactApp", () => {
     expect(
       certificate.failures.some((failure) =>
         failure.description.includes("use resource Suspense certificate"),
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    "proved-host-control",
+    "proved-host-control-uncontrolled",
+    "proved-host-control-immutable",
+    "proved-host-control-normalized",
+  ])("proves complete intrinsic form ownership in %s", (fixtureName) => {
+    const report = proveFixture(fixtureName);
+    const controlProof = report.units
+      .find((unit) => unit.name === "App")
+      ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.HostControl);
+
+    expect(report.graph.hostControls.length).toBeGreaterThan(0);
+    expect(report.graph.hostControls.every((control) => control.complete)).toBe(true);
+    expect(controlProof?.status).toBe(ReactObligationStatus.Proved);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("links text, textarea, checkbox, and select controls to exact event transitions", () => {
+    const report = proveFixture("proved-host-control");
+    const kinds = new Set(report.graph.hostControls.map((control) => control.kind));
+
+    expect(kinds).toEqual(
+      new Set([
+        ReactHostControlKind.CheckableInput,
+        ReactHostControlKind.Select,
+        ReactHostControlKind.TextInput,
+        ReactHostControlKind.Textarea,
+      ]),
+    );
+    expect(
+      report.graph.hostControls.every(
+        (control) =>
+          control.updateStatus === ReactHostControlUpdateStatus.Exact &&
+          control.callbackIds.length === 1 &&
+          control.transitionIds.length === 1,
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    {
+      fixtureName: "refuted-host-control-switch",
+      updateStatus: ReactHostControlUpdateStatus.Exact,
+      valueStatus: ReactHostControlValueStatus.MaySwitch,
+    },
+    {
+      fixtureName: "refuted-host-control-conflict",
+      updateStatus: ReactHostControlUpdateStatus.Exact,
+      valueStatus: ReactHostControlValueStatus.Defined,
+    },
+    {
+      fixtureName: "refuted-host-control-missing-update",
+      updateStatus: ReactHostControlUpdateStatus.Missing,
+      valueStatus: ReactHostControlValueStatus.Defined,
+    },
+    {
+      fixtureName: "refuted-host-control-deferred-update",
+      updateStatus: ReactHostControlUpdateStatus.Deferred,
+      valueStatus: ReactHostControlValueStatus.Defined,
+    },
+    {
+      fixtureName: "refuted-host-control-wrong-value",
+      updateStatus: ReactHostControlUpdateStatus.WrongValue,
+      valueStatus: ReactHostControlValueStatus.Defined,
+    },
+  ])(
+    "refutes the host control protocol in $fixtureName",
+    ({ fixtureName, updateStatus, valueStatus }) => {
+      const report = proveFixture(fixtureName);
+      const control = report.graph.hostControls[0];
+      const controlProof = report.units
+        .find((unit) => unit.name === "App")
+        ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.HostControl);
+
+      expect(report.status).toBe(ReactAppProofStatus.Refuted);
+      expect(control?.status).toBe(ReactHostControlStatus.Invalid);
+      expect(control?.valueStatus).toBe(valueStatus);
+      expect(control?.updateStatus).toBe(updateStatus);
+      expect(controlProof?.status).toBe(ReactObligationStatus.Violated);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it.each(["incomplete-host-control-prop", "incomplete-host-control-spread"])(
+    "fails closed for an open host control contract in %s",
+    (fixtureName) => {
+      const report = proveFixture(fixtureName);
+      const control = report.graph.hostControls[0];
+      const controlProof = report.units
+        .find((unit) => unit.name === "App")
+        ?.obligations.find((obligation) => obligation.claim === ReactProofClaim.HostControl);
+
+      expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+      expect(control?.status).toBe(ReactHostControlStatus.Unknown);
+      expect(control?.complete).toBe(false);
+      expect(controlProof?.status).toBe(ReactObligationStatus.Unknown);
+      expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+    },
+  );
+
+  it("fails closed for unsupported host control protocols", () => {
+    const report = proveFixture("incomplete-host-control-unsupported");
+
+    expect(report.status).toBe(ReactAppProofStatus.Incomplete);
+    expect(report.graph.hostControls.map((control) => control.kind)).toEqual([
+      ReactHostControlKind.FileInput,
+      ReactHostControlKind.SelectMultiple,
+      ReactHostControlKind.Unknown,
+    ]);
+    expect(
+      report.graph.hostControls.every(
+        (control) =>
+          control.status === ReactHostControlStatus.Unknown && control.complete === false,
+      ),
+    ).toBe(true);
+    expect(checkReactProofReport(report).status).toBe(ReactProofCertificateStatus.Valid);
+  });
+
+  it("rejects a forged host control certificate", () => {
+    const report = proveFixture("refuted-host-control-switch");
+    const certificate = checkReactProofReport({
+      ...report,
+      graph: {
+        ...report.graph,
+        hostControls: report.graph.hostControls.map((control) => ({
+          ...control,
+          valueStatus: ReactHostControlValueStatus.Defined,
+          status: ReactHostControlStatus.Resolved,
+          complete: true,
+        })),
+      },
+    });
+
+    expect(certificate.status).toBe(ReactProofCertificateStatus.Invalid);
+    expect(
+      certificate.failures.some((failure) =>
+        failure.description.includes("Host control facts require"),
       ),
     ).toBe(true);
   });

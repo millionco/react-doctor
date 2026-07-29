@@ -30,6 +30,7 @@ export enum ReactProofClaim {
   ExternalStoreConsistency = "external-store-consistency",
   FormActions = "form-actions",
   FormStatus = "form-status",
+  HostControl = "host-control",
   HookOrder = "hook-order",
   HookOwnership = "hook-ownership",
   HookStateTransitions = "hook-state-transitions",
@@ -481,6 +482,67 @@ export interface ReactSemanticUseResource {
   outsideErrorBoundary: boolean;
   errorTopologyComplete: boolean;
   errorCoverageStatus: ReactErrorBoundaryCoverageStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactHostControlKind {
+  CheckableInput = "checkable-input",
+  FileInput = "file-input",
+  Select = "select",
+  SelectMultiple = "select-multiple",
+  TextInput = "text-input",
+  Textarea = "textarea",
+  Unknown = "unknown",
+}
+
+export enum ReactHostControlValueStatus {
+  Absent = "absent",
+  Defined = "defined",
+  MaySwitch = "may-switch",
+  Nullish = "nullish",
+  Unknown = "unknown",
+}
+
+export enum ReactHostControlMutabilityStatus {
+  Editable = "editable",
+  Immutable = "immutable",
+  Unknown = "unknown",
+}
+
+export enum ReactHostControlUpdateStatus {
+  Conditional = "conditional",
+  Deferred = "deferred",
+  Exact = "exact",
+  Missing = "missing",
+  NotRequired = "not-required",
+  Opaque = "opaque",
+  WrongValue = "wrong-value",
+}
+
+export enum ReactHostControlStatus {
+  Invalid = "invalid",
+  Resolved = "resolved",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticHostControl {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  kind: ReactHostControlKind;
+  controlledPropName: string;
+  controlledPropPresent: boolean | null;
+  defaultPropName: string;
+  defaultPropPresent: boolean | null;
+  stateName: string | null;
+  setterName: string | null;
+  valueStatus: ReactHostControlValueStatus;
+  mutabilityStatus: ReactHostControlMutabilityStatus;
+  updateStatus: ReactHostControlUpdateStatus;
+  callbackIds: ReadonlyArray<string>;
+  transitionIds: ReadonlyArray<string>;
+  status: ReactHostControlStatus;
   sourceComplete: boolean;
   complete: boolean;
 }
@@ -1105,6 +1167,7 @@ export interface ReactSemanticGraph {
   errorBoundaries: ReadonlyArray<ReactSemanticErrorBoundary>;
   renderFailures: ReadonlyArray<ReactSemanticRenderFailure>;
   useResources: ReadonlyArray<ReactSemanticUseResource>;
+  hostControls: ReadonlyArray<ReactSemanticHostControl>;
   suspenseBoundaries: ReadonlyArray<ReactSemanticSuspenseBoundary>;
   lazyComponents: ReadonlyArray<ReactSemanticLazyComponent>;
   lazyRenders: ReadonlyArray<ReactSemanticLazyRender>;

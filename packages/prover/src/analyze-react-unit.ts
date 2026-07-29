@@ -18,6 +18,7 @@ import { analyzeFormStatus } from "./analyze-form-status.js";
 import { analyzeHookOrder } from "./analyze-hook-order.js";
 import { analyzeHookOwnership } from "./analyze-hook-ownership.js";
 import { analyzeHookStateTransitions } from "./analyze-hook-state-transitions.js";
+import { analyzeHostControl } from "./analyze-host-control.js";
 import { analyzeImperativeHandle } from "./analyze-imperative-handle.js";
 import { analyzeLazySuspense } from "./analyze-lazy-suspense.js";
 import { analyzeMemoDependencies } from "./analyze-memo-dependencies.js";
@@ -55,6 +56,7 @@ const ALL_REACT_PROOF_CLAIMS: ReadonlyArray<ReactProofClaim> = [
   ReactProofClaim.ExternalStoreConsistency,
   ReactProofClaim.FormActions,
   ReactProofClaim.FormStatus,
+  ReactProofClaim.HostControl,
   ReactProofClaim.HookOrder,
   ReactProofClaim.HookOwnership,
   ReactProofClaim.HookStateTransitions,
@@ -161,6 +163,7 @@ export const analyzeReactUnit = (
       analyzeExternalStoreConsistency(unit, context),
       analyzeFormActions(unit, context),
       analyzeFormStatus(unit, context),
+      analyzeHostControl(unit, context),
       analyzeHookOrder(unit.functionNode, context),
       analyzeHookOwnership(unit.functionNode),
       analyzeHookStateTransitions(unit, context),

@@ -40,6 +40,7 @@ export const proveReactApp = (input: ProveReactAppInput): ReactAppProofReport =>
       errorBoundaries: [],
       renderFailures: [],
       useResources: [],
+      hostControls: [],
       suspenseBoundaries: [],
       lazyComponents: [],
       lazyRenders: [],

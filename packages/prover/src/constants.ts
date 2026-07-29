@@ -1,7 +1,7 @@
 import { ReactEffectResourceKind } from "./types.js";
 
-export const REACT_PROOF_SCHEMA_VERSION = 27;
-export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 33;
+export const REACT_PROOF_SCHEMA_VERSION = 28;
+export const REACT_SEMANTIC_GRAPH_SCHEMA_VERSION = 34;
 export const REACT_COMPILER_VERSION = "babel-plugin-react-compiler@1.0.0";
 export const REACT_COMPILER_FACT_PHASE = "InferReactivePlaces";
 export const FIRST_SOURCE_LINE = 1;
@@ -33,6 +33,9 @@ export const REACT_REDUCER_TUPLE_LENGTH = 2;
 export const REACT_TRANSITION_ACTION_INDEX = 0;
 export const REACT_TRANSITION_STARTER_INDEX = 1;
 export const REACT_USE_TRANSITION_TUPLE_LENGTH = 2;
+export const REACT_HOST_CONTROL_EVENT_PARAMETER_INDEX = 0;
+export const REACT_HOST_CONTROL_SETTER_ARGUMENT_INDEX = 0;
+export const REACT_HOST_CONTROL_STATE_INDEX = 0;
 
 export const REACT_EFFECT_HOOK_NAMES = new Set([
   "useEffect",

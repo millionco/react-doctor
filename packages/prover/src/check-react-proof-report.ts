@@ -36,6 +36,11 @@ import {
   ReactFormActionKind,
   ReactFormActionStatus,
   ReactFormStatusTopologyStatus,
+  ReactHostControlKind,
+  ReactHostControlMutabilityStatus,
+  ReactHostControlStatus,
+  ReactHostControlUpdateStatus,
+  ReactHostControlValueStatus,
   ReactHookStateUpdaterStatus,
   ReactImperativeHandleRefKind,
   ReactImperativeHandleStatus,
@@ -68,6 +73,7 @@ import type {
   ReactAppProofReport,
   ReactProofCertificateCheck,
   ReactProofCertificateFailure,
+  ReactSemanticHostControl,
   ReactSemanticUnit,
 } from "./types.js";
 
@@ -77,6 +83,11 @@ const ACTION_STATE_DISPATCH_KINDS = new Set(Object.values(ReactActionStateDispat
 const ACTION_STATE_REDUCER_STATUSES = new Set(Object.values(ReactActionStateReducerStatus));
 const FORM_ACTION_KINDS = new Set(Object.values(ReactFormActionKind));
 const FORM_ACTION_STATUSES = new Set(Object.values(ReactFormActionStatus));
+const HOST_CONTROL_KINDS = new Set(Object.values(ReactHostControlKind));
+const HOST_CONTROL_MUTABILITY_STATUSES = new Set(Object.values(ReactHostControlMutabilityStatus));
+const HOST_CONTROL_STATUSES = new Set(Object.values(ReactHostControlStatus));
+const HOST_CONTROL_UPDATE_STATUSES = new Set(Object.values(ReactHostControlUpdateStatus));
+const HOST_CONTROL_VALUE_STATUSES = new Set(Object.values(ReactHostControlValueStatus));
 const OPTIMISTIC_ACTION_STATUSES = new Set(Object.values(ReactOptimisticActionStatus));
 const OPTIMISTIC_REDUCER_STATUSES = new Set(Object.values(ReactOptimisticReducerStatus));
 const TRANSITION_ACTION_STATUSES = new Set(Object.values(ReactTransitionActionStatus));
@@ -331,6 +342,62 @@ const expectedUseResourceStatus = (
     return ReactObligationStatus.Violated;
   }
   return resources.some((resource) => !resource.complete)
+    ? ReactObligationStatus.Unknown
+    : ReactObligationStatus.Proved;
+};
+
+const expectedHostControlProtocolStatus = (
+  control: ReactSemanticHostControl,
+): ReactHostControlStatus => {
+  if (
+    control.kind === ReactHostControlKind.Unknown ||
+    control.controlledPropPresent === null ||
+    control.defaultPropPresent === null ||
+    (control.controlledPropPresent &&
+      (control.kind === ReactHostControlKind.FileInput ||
+        control.kind === ReactHostControlKind.SelectMultiple))
+  ) {
+    return ReactHostControlStatus.Unknown;
+  }
+  if (
+    (control.controlledPropPresent && control.defaultPropPresent) ||
+    control.valueStatus === ReactHostControlValueStatus.MaySwitch ||
+    control.valueStatus === ReactHostControlValueStatus.Nullish
+  ) {
+    return ReactHostControlStatus.Invalid;
+  }
+  if (
+    control.valueStatus === ReactHostControlValueStatus.Unknown ||
+    control.updateStatus === ReactHostControlUpdateStatus.Opaque ||
+    (control.controlledPropPresent &&
+      control.mutabilityStatus === ReactHostControlMutabilityStatus.Unknown &&
+      control.updateStatus !== ReactHostControlUpdateStatus.Exact)
+  ) {
+    return ReactHostControlStatus.Unknown;
+  }
+  if (
+    control.updateStatus === ReactHostControlUpdateStatus.Conditional ||
+    control.updateStatus === ReactHostControlUpdateStatus.Deferred ||
+    control.updateStatus === ReactHostControlUpdateStatus.Missing ||
+    control.updateStatus === ReactHostControlUpdateStatus.WrongValue
+  ) {
+    return ReactHostControlStatus.Invalid;
+  }
+  return ReactHostControlStatus.Resolved;
+};
+
+const expectedHostControlStatus = (
+  unit: ReactSemanticUnit,
+  report: ReactAppProofReport,
+): ReactObligationStatus => {
+  if (!unit.sourceComplete || unit.kind === ReactUnitKind.InvalidHookOwner) {
+    return ReactObligationStatus.Unknown;
+  }
+  const controls = report.graph.hostControls.filter((control) => control.ownerId === unit.id);
+  if (controls.some((control) => control.status === ReactHostControlStatus.Invalid)) {
+    return ReactObligationStatus.Violated;
+  }
+  return controls.some((control) => !control.complete)
     ? ReactObligationStatus.Unknown
     : ReactObligationStatus.Proved;
 };
@@ -755,6 +822,17 @@ const checkClaimCoverage = (
         failures,
         semanticUnit.id,
         `use resource facts require ${expectedResourceStatus}, not ${useResource.status}`,
+      );
+    }
+    const hostControl = unitProof.obligations.find(
+      (obligation) => obligation.claim === ReactProofClaim.HostControl,
+    );
+    const expectedControlStatus = expectedHostControlStatus(semanticUnit, report);
+    if (hostControl && hostControl.status !== expectedControlStatus) {
+      addFailure(
+        failures,
+        semanticUnit.id,
+        `Host control facts require ${expectedControlStatus}, not ${hostControl.status}`,
       );
     }
     const transitionActions = unitProof.obligations.find(
@@ -2660,6 +2738,110 @@ const checkGraphReferences = (
       );
     }
   }
+  const hookStateTransitionsById = new Map(
+    report.graph.hookStateTransitions.map((transition) => [transition.id, transition]),
+  );
+  for (const control of report.graph.hostControls) {
+    const owner = unitsById.get(control.ownerId);
+    if (!owner || owner.kind === ReactUnitKind.InvalidHookOwner) {
+      addFailure(failures, control.id, "A host control has an unknown or invalid owner");
+    }
+    if (
+      !HOST_CONTROL_KINDS.has(control.kind) ||
+      !HOST_CONTROL_MUTABILITY_STATUSES.has(control.mutabilityStatus) ||
+      !HOST_CONTROL_UPDATE_STATUSES.has(control.updateStatus) ||
+      !HOST_CONTROL_VALUE_STATUSES.has(control.valueStatus) ||
+      !HOST_CONTROL_STATUSES.has(control.status)
+    ) {
+      addFailure(failures, control.id, "A host control has an invalid protocol domain");
+    }
+    const expectedControlledPropName =
+      control.kind === ReactHostControlKind.CheckableInput ? "checked" : "value";
+    const expectedDefaultPropName =
+      control.kind === ReactHostControlKind.CheckableInput ? "defaultChecked" : "defaultValue";
+    if (
+      control.controlledPropName !== expectedControlledPropName ||
+      control.defaultPropName !== expectedDefaultPropName
+    ) {
+      addFailure(failures, control.id, "A host control uses the wrong ownership props");
+    }
+    if (
+      (control.controlledPropPresent === false &&
+        control.valueStatus !== ReactHostControlValueStatus.Absent) ||
+      (control.controlledPropPresent === true &&
+        control.valueStatus === ReactHostControlValueStatus.Absent) ||
+      (control.controlledPropPresent === null &&
+        control.valueStatus !== ReactHostControlValueStatus.Unknown)
+    ) {
+      addFailure(failures, control.id, "A host control value status contradicts prop presence");
+    }
+    if (Boolean(control.stateName) !== Boolean(control.setterName)) {
+      addFailure(failures, control.id, "A host control has a partial state binding");
+    }
+    if ((!control.controlledPropPresent || !control.stateName) && control.setterName) {
+      addFailure(failures, control.id, "A host control has a setter without controlled state");
+    }
+    if (new Set(control.callbackIds).size !== control.callbackIds.length) {
+      addFailure(failures, control.id, "A host control repeats an event callback");
+    }
+    for (const callbackId of control.callbackIds) {
+      const callback = callbacksById.get(callbackId);
+      if (
+        callback?.ownerId !== control.ownerId ||
+        callback.kind !== ReactSemanticCallbackKind.EventHandler ||
+        callback.phase !== ReactExecutionPhase.Event
+      ) {
+        addFailure(failures, control.id, "A host control has an invalid change callback");
+      }
+    }
+    if (new Set(control.transitionIds).size !== control.transitionIds.length) {
+      addFailure(failures, control.id, "A host control repeats a state transition");
+    }
+    for (const transitionId of control.transitionIds) {
+      const transition = hookStateTransitionsById.get(transitionId);
+      if (
+        transition?.ownerId !== control.ownerId ||
+        transition.stateName !== control.stateName ||
+        transition.setterName !== control.setterName ||
+        transition.updaterStatus !== ReactHookStateUpdaterStatus.DirectValue
+      ) {
+        addFailure(failures, control.id, "A host control has an invalid backing-state transition");
+      }
+    }
+    if (
+      control.updateStatus === ReactHostControlUpdateStatus.Exact &&
+      (!control.stateName ||
+        control.callbackIds.length === 0 ||
+        control.transitionIds.length === 0 ||
+        control.transitionIds.some(
+          (transitionId) => !hookStateTransitionsById.get(transitionId)?.complete,
+        ))
+    ) {
+      addFailure(failures, control.id, "An exact host control update lacks a complete event link");
+    }
+    if (
+      control.controlledPropPresent === false &&
+      control.updateStatus !== ReactHostControlUpdateStatus.NotRequired
+    ) {
+      addFailure(failures, control.id, "An uncontrolled host control requires an update");
+    }
+    const expectedStatus = expectedHostControlProtocolStatus(control);
+    if (control.status !== expectedStatus) {
+      addFailure(failures, control.id, "A host control status is inconsistent");
+    }
+    const expectedSourceComplete =
+      expectedStatus !== ReactHostControlStatus.Unknown &&
+      control.valueStatus !== ReactHostControlValueStatus.Unknown &&
+      control.updateStatus !== ReactHostControlUpdateStatus.Opaque;
+    if (control.sourceComplete !== expectedSourceComplete) {
+      addFailure(failures, control.id, "A host control source flag is inconsistent");
+    }
+    const expectedComplete =
+      expectedSourceComplete && expectedStatus === ReactHostControlStatus.Resolved;
+    if (control.complete !== expectedComplete) {
+      addFailure(failures, control.id, "A host control completeness flag is inconsistent");
+    }
+  }
   const reducersById = new Map(report.graph.reducers.map((reducer) => [reducer.id, reducer]));
   for (const reducer of report.graph.reducers) {
     const owner = unitsById.get(reducer.ownerId);
@@ -4086,6 +4268,11 @@ export const checkReactProofReport = (report: ReactAppProofReport): ReactProofCe
     failures,
     "use resources",
     report.graph.useResources.map((resource) => resource.id),
+  );
+  checkUniqueIds(
+    failures,
+    "host controls",
+    report.graph.hostControls.map((control) => control.id),
   );
   checkUniqueIds(
     failures,

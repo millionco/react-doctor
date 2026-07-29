@@ -99,6 +99,15 @@ The report includes:
   custom Hooks; fresh
   render-created Promises, missing Suspense, and missing valid Error Boundaries are refuted, while
   opaque factories, props, and topology fail closed;
+- host-control facts for intrinsic `input`, `select`, and `textarea` elements that distinguish
+  text, checkable, file, single-select, and multiple-select protocols; TypeScript value domains and
+  source-visible `useState` initializers and writes establish whether controlled ownership stays
+  defined, remains nullish, or can switch, while exact event facts tie editable controlled fields
+  to an entry-dominating write of `event.target` or `event.currentTarget` data into the same state
+  binding; uncontrolled defaults and explicit `readOnly` or `disabled` controls are certified,
+  conflicting controlled/default props, known ownership switches, missing writes, deferred writes,
+  conditional writes, and transformed values are refuted, while prop contracts, overriding
+  spreads, dynamic input kinds, file values, and multiple-select transforms fail closed;
 - Action State facts that identify canonical `useActionState` tuples, resolve each reducer Action
   without imposing reducer purity, and classify every dispatcher call or escape; a dispatch is
   certified only when every represented root is a Form Action, an Action State reducer, or a
@@ -181,6 +190,12 @@ TypeScript-derived thenable kind, a closed cache-identity origin, independently 
 Suspense and Error Boundary sources, valid recovery definitions, and the exact conjunction of
 type, identity, topology, coverage, and completeness fields. The checker rejects forged resource
 kind, identity, source, boundary, status, completeness, and claim-verdict combinations.
+Host-control certificates additionally require coherent controlled/default prop presence, the
+element-specific `value`/`checked` domain, paired local state and setter identities, event-phase
+callbacks, reciprocal direct-value state transitions, and exact status, source, completeness, and
+claim-verdict equations. An exact update must have a complete event callback and state-transition
+link; the checker rejects forged ownership, mutability, update, callback, transition, and verdict
+facts.
 Transition Action certificates require a valid non-render execution root, a symbol-identified
 starter, a phase-correct Action callback, coherent controlled-state evidence, and exact
 source/completeness equations. The checker rejects forged synchronous, controlled-input,

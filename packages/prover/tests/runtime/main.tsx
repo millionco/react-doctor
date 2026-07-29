@@ -1223,6 +1223,49 @@ const ImperativeHandleOracle = () => {
   );
 };
 
+const ExactHostControlOracle = () => {
+  const [name, setName] = useState("");
+  return (
+    <main>
+      <label>
+        Profile name
+        <input
+          aria-label="profile name"
+          value={name}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => setName(event.currentTarget.value)}
+        />
+      </label>
+      <output data-testid="host-control-value">{name}</output>
+    </main>
+  );
+};
+
+const SwitchingHostControlOracle = () => {
+  const [name, setName] = useState<string | undefined>(undefined);
+  return (
+    <main>
+      <button type="button" onClick={() => setName("Ada")}>
+        load profile
+      </button>
+      <label>
+        Profile name
+        <input
+          aria-label="profile name"
+          value={name}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => setName(event.currentTarget.value)}
+        />
+      </label>
+    </main>
+  );
+};
+
+const HostControlOracle = () =>
+  new URLSearchParams(window.location.search).get("mode") === "switch" ? (
+    <SwitchingHostControlOracle />
+  ) : (
+    <ExactHostControlOracle />
+  );
+
 const RuntimeOracle = () => {
   const oracle = new URLSearchParams(window.location.search).get("oracle");
   if (oracle === "keys") {
@@ -1299,6 +1342,9 @@ const RuntimeOracle = () => {
   }
   if (oracle === "use-resource") {
     return <UseResourceOracle />;
+  }
+  if (oracle === "host-control") {
+    return <HostControlOracle />;
   }
   if (oracle === "transition-action") {
     return <TransitionActionOracle />;

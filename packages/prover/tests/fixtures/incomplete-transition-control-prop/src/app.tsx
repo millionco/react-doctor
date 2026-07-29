@@ -4,7 +4,7 @@ interface SearchFieldProperties {
   value: string;
 }
 
-const SearchField = ({ value }: SearchFieldProperties) => <input value={value} />;
+const SearchField = ({ value }: SearchFieldProperties) => <input value={value} readOnly />;
 
 export const Search = () => {
   const [query, setQuery] = useState("");

@@ -400,6 +400,28 @@ const readHydrationConditionResult = (
       parameterValuesBySymbolId,
     });
   }
+  if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
+    const leftResult = readHydrationConditionResult(
+      unwrappedExpression.left,
+      context,
+      runtime,
+      state,
+    );
+    const rightResult = readHydrationConditionResult(
+      unwrappedExpression.right,
+      context,
+      runtime,
+      state,
+    );
+    if (leftResult === null || rightResult === null) return null;
+    if (unwrappedExpression.operator === "===" || unwrappedExpression.operator === "==") {
+      return leftResult === rightResult;
+    }
+    if (unwrappedExpression.operator === "!==" || unwrappedExpression.operator === "!=") {
+      return leftResult !== rightResult;
+    }
+    return null;
+  }
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&
     unwrappedExpression.operator === "!"
@@ -698,10 +720,25 @@ const matchHydrationConditionInternal = (
     );
   }
   if (isNodeOfType(unwrappedExpression, "BinaryExpression")) {
-    return (
+    const nestedMatch =
       matchHydrationConditionInternal(unwrappedExpression.left, context, state) ??
-      matchHydrationConditionInternal(unwrappedExpression.right, context, state)
+      matchHydrationConditionInternal(unwrappedExpression.right, context, state);
+    if (!nestedMatch) return null;
+    const clientResult = readHydrationConditionResult(
+      unwrappedExpression,
+      context,
+      "client",
+      state,
     );
+    const serverResult = readHydrationConditionResult(
+      unwrappedExpression,
+      context,
+      "server",
+      state,
+    );
+    return clientResult !== null && serverResult !== null && clientResult === serverResult
+      ? null
+      : nestedMatch;
   }
   if (
     !isNodeOfType(unwrappedExpression, "LogicalExpression") ||

@@ -297,9 +297,63 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
         };
       `,
     ],
+    [
+      "equal duplicated browser predicates",
+      `
+        import React from "react";
+        export const Page = () => {
+          const stable =
+            (typeof window === "undefined") ===
+            (typeof window === "undefined");
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ],
+    [
+      "unequal duplicated browser predicates",
+      `
+        import React from "react";
+        export const Page = () => {
+          const stable =
+            (typeof window === "undefined") !==
+            (typeof window === "undefined");
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ],
+    [
+      "nested equal duplicated browser comparisons",
+      `
+        import React from "react";
+        export const Page = () => {
+          const stable =
+            ((typeof window === "undefined") === true) ===
+            ((typeof window === "undefined") === true);
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ],
   ])("stays quiet for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    ["a browser predicate compared with false", `(typeof window === "undefined") === false`],
+    [
+      "a nested browser predicate compared with false",
+      `((typeof window === "undefined") === true) === false`,
+    ],
+  ])("reports %s", (_name, condition) => {
+    const result = run(`
+      import React from "react";
+      export const Page = () => {
+        const unstable = ${condition};
+        return unstable ? <Client /> : <Server />;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

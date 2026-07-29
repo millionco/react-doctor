@@ -415,7 +415,7 @@ const isUserEditableControlledFallback = (
   let hasUserEdit = false;
   walkAst(componentFunction, (child) => {
     if (child !== componentFunction && isFunctionLike(child)) {
-      return;
+      return false;
     }
     if (
       !hasControlledFallback &&

@@ -280,6 +280,25 @@ describe("no-derived-useState — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not infer a controlled fallback from inside a nested handler", () => {
+    const result = runRule(
+      noDerivedUseState,
+      `function Profile({ name, value: controlledValue }) {
+        const [internalValue, setInternalValue] = useState(name);
+        const logValue = () => console.log(controlledValue ?? internalValue);
+        return (
+          <input
+            value={internalValue}
+            onClick={logValue}
+            onChange={(event) => setInternalValue(event.target.value)}
+          />
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat a shadowed state name as the controlled fallback", () => {
     const result = runRule(
       noDerivedUseState,

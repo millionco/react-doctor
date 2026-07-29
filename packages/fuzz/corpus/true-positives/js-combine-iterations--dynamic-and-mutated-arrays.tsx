@@ -5,6 +5,11 @@
 export const getDynamicLabels = (items: Array<{ active: boolean; label: string }>) =>
   items.filter((item) => item.active).map((item) => item.label);
 
+export const getDefaultedLabels = (props: { items?: string[] }) => {
+  const { items = ["one", "two", "three"] } = props;
+  return items.filter((item) => item !== "two").map((item) => item.toUpperCase());
+};
+
 export const getExtendedSideLabels = (extraSide: string) => {
   const sides = ["top", "right", "bottom", "left"];
   sides.push(extraSide);

@@ -141,6 +141,24 @@ describe("js-performance/js-combine-iterations — regressions", () => {
     `);
   });
 
+  it("still flags an object-destructured prop with a small literal default", () => {
+    expectFail(`
+      const getLabels = (props) => {
+        const { items = ['one', 'two', 'three'] } = props;
+        return items.filter(item => item !== 'two').map(item => item.toUpperCase());
+      };
+    `);
+  });
+
+  it("still flags an array-destructured value with a small literal default", () => {
+    expectFail(`
+      const getLabels = (values) => {
+        const [items = ['one', 'two', 'three']] = values;
+        return items.filter(item => item !== 'two').map(item => item.toUpperCase());
+      };
+    `);
+  });
+
   it("still flags a local var that is mutated before the chain", () => {
     expectFail(`
       const selectSides = (value) => {

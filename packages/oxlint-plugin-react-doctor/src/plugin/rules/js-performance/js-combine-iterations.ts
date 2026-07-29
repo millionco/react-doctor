@@ -254,6 +254,12 @@ const isSmallLiteralArrayRootedChain = (
     if (isNodeOfType(cursor, "Identifier")) {
       const symbol = scopes.symbolFor(cursor);
       if (!symbol?.initializer || !isSmallLiteralArray(symbol.initializer)) return false;
+      if (
+        !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+        !isNodeOfType(symbol.declarationNode.id, "Identifier")
+      ) {
+        return false;
+      }
       return (
         (symbol.kind === "const" || symbol.kind === "let" || symbol.kind === "var") &&
         symbol.references.every(

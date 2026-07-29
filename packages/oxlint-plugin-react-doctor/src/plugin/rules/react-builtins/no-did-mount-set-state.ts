@@ -1,12 +1,15 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
+import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { getCallbackRefFieldNames, getThisFieldName } from "./no-did-update-set-state.js";
 
 const LIFECYCLE_NAMES = new Set(["componentDidMount"]);
 const MESSAGE =
@@ -124,10 +127,22 @@ const collectReferencedNames = (node: EsTreeNode, into: Set<string>): void => {
 const argumentDerivesFromPostMountSource = (
   setStateCall: EsTreeNodeOfType<"CallExpression">,
   lifecycleFunction: EsTreeNode,
+  callbackRefFieldNames: ReadonlySet<string>,
 ): boolean => {
   const argumentNodes = setStateCall.arguments ?? [];
   if (argumentNodes.length === 0) return false;
   if (argumentNodes.some((argument) => containsPostMountSource(argument))) return true;
+  for (const argument of argumentNodes) {
+    let didFindCallbackRefField = false;
+    walkAst(argument, (descendant) => {
+      const fieldName = getThisFieldName(descendant);
+      if (fieldName && callbackRefFieldNames.has(fieldName)) {
+        didFindCallbackRefField = true;
+        return false;
+      }
+    });
+    if (didFindCallbackRefField) return true;
+  }
 
   const localInitializers = new Map<string, EsTreeNode>();
   walkAst(lifecycleFunction, (descendant) => {
@@ -159,6 +174,48 @@ const argumentDerivesFromPostMountSource = (
     }
   }
   return false;
+};
+
+const isUndefinedOrNull = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node) return true;
+  const value = stripParenExpression(node);
+  return (
+    (isNodeOfType(value, "Identifier") && value.name === "undefined") ||
+    (isNodeOfType(value, "Literal") && value.value === null)
+  );
+};
+
+const hasExclusiveCallbackRefFieldWrite = (classNode: EsTreeNode, fieldName: string): boolean => {
+  if (fieldName.startsWith("#")) return false;
+  let assignmentCount = 0;
+  let didFindUnsafeWrite = false;
+  walkAst(classNode, (node) => {
+    if (
+      node !== classNode &&
+      (isNodeOfType(node, "ClassDeclaration") || isNodeOfType(node, "ClassExpression"))
+    ) {
+      return false;
+    }
+    if (
+      isNodeOfType(node, "PropertyDefinition") &&
+      node.static !== true &&
+      getStaticPropertyKeyName(node, { allowComputedString: true }) === fieldName &&
+      !isUndefinedOrNull(node.value as EsTreeNode | null | undefined)
+    ) {
+      didFindUnsafeWrite = true;
+      return false;
+    }
+    const assignmentTarget =
+      (isNodeOfType(node, "AssignmentExpression") && (node.left as EsTreeNode)) ||
+      (isNodeOfType(node, "UpdateExpression") && (node.argument as EsTreeNode)) ||
+      (isNodeOfType(node, "UnaryExpression") &&
+        node.operator === "delete" &&
+        (node.argument as EsTreeNode)) ||
+      null;
+    if (!assignmentTarget || getThisFieldName(assignmentTarget) !== fieldName) return;
+    assignmentCount += 1;
+  });
+  return !didFindUnsafeWrite && assignmentCount === 1;
 };
 
 // A setState after an `await` in an async componentDidMount is the
@@ -231,7 +288,24 @@ export const noDidMountSetState = defineRule({
         const lifecycleFunction = getEnclosingLifecycleFunction(node);
         if (lifecycleFunction) {
           if (isAfterAwaitInAsyncLifecycle(node, lifecycleFunction)) return;
-          if (argumentDerivesFromPostMountSource(node, lifecycleFunction)) return;
+          const enclosingClass = findEnclosingClass(lifecycleFunction);
+          const callbackRefFieldNames = getCallbackRefFieldNames(enclosingClass, context.scopes);
+          const exclusivelyRefOwnedFieldNames = enclosingClass
+            ? new Set(
+                [...callbackRefFieldNames].filter((fieldName) =>
+                  hasExclusiveCallbackRefFieldWrite(enclosingClass, fieldName),
+                ),
+              )
+            : new Set<string>();
+          if (
+            argumentDerivesFromPostMountSource(
+              node,
+              lifecycleFunction,
+              exclusivelyRefOwnedFieldNames,
+            )
+          ) {
+            return;
+          }
         }
         context.report({ node: node.callee, message: MESSAGE });
       },

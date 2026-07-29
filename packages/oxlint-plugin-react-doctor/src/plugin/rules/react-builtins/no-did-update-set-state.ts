@@ -277,7 +277,7 @@ const isHistoricalToCurrentTransitionGuard = (
   );
 };
 
-const getThisFieldName = (node: EsTreeNode): string | null => {
+export const getThisFieldName = (node: EsTreeNode): string | null => {
   const unwrappedNode = stripParenExpression(node);
   if (
     !isNodeOfType(unwrappedNode, "MemberExpression") ||
@@ -433,7 +433,7 @@ const collectCallbackRefFieldsFromExpression = (
   }
 };
 
-const getCallbackRefFieldNames = (
+export const getCallbackRefFieldNames = (
   classNode: EsTreeNode | null,
   scopes: ScopeAnalysis,
 ): ReadonlySet<string> => {

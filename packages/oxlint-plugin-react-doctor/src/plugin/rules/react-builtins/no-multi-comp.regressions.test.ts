@@ -340,6 +340,58 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  it("traces a named inline component through a direct React HoC", () => {
+    expectPass(
+      `import { memo } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       export default memo(function FeatureImpl() {
+         return <><PrivateHeader /><PrivateBody /></>;
+       });`,
+    );
+  });
+
+  it("traces a named inline component through composed React HoCs", () => {
+    expectPass(
+      `import { forwardRef, memo } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       export default memo(forwardRef(function FeatureImpl() {
+         return <><PrivateHeader /><PrivateBody /></>;
+       }));`,
+    );
+  });
+
+  it("recognizes an anonymous inline function in a default React HoC", () => {
+    expectPass(
+      `import { memo } from "react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function Gamma() { return <div />; }
+       export default memo(function () { return <div />; });`,
+    );
+  });
+
+  it("recognizes an anonymous inline arrow in a default React HoC", () => {
+    expectPass(
+      `import { memo } from "react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function Gamma() { return <div />; }
+       export default memo(() => <div />);`,
+    );
+  });
+
+  it("does not infer a public component from a non-HoC default call", () => {
+    expectFail(
+      `const wrap = (value) => value;
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function Gamma() { return <div />; }
+       export default wrap(() => <div />);`,
+    );
+  });
+
   it("does not treat a shadowed memo function as a React export wrapper", () => {
     expectFail(
       `const memo = (_component) => 0;

@@ -449,6 +449,12 @@ const isExportedDeclaration = (node: EsTreeNode, reExportedNames: Set<string>): 
   // node itself) so `export function Foo()` and `export const Foo =`
   // both resolve correctly, while a function nested INSIDE another
   // function still bails before climbing out of its host.
+  if (
+    isNodeOfType(node, "ExportNamedDeclaration") ||
+    isNodeOfType(node, "ExportDefaultDeclaration")
+  ) {
+    return true;
+  }
   if (isNodeOfType(node, "Identifier") && reExportedNames.has(node.name)) {
     return true;
   }

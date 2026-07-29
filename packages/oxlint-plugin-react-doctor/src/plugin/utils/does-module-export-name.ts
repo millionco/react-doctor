@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { readCurrentResourceSource } from "../../internal/resource-host/resource-host-context.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import { parseExportSpecifiers } from "./parse-export-specifiers.js";
 import { stripJsComments } from "./strip-js-comments.js";
@@ -46,6 +47,12 @@ export const doesModuleExportName = (filePath: string, exportedName: string): bo
   // this one file's content (see cross-file-probe-recorder.ts). An absent
   // file lands in the same probe: its content answer is "absent".
   recordContentProbe(filePath);
+  const currentResourceSource = readCurrentResourceSource(filePath);
+  if (currentResourceSource !== undefined) {
+    if (currentResourceSource === null) return false;
+    return collectSourceTextExportNames(currentResourceSource).has(exportedName);
+  }
+
   try {
     const fileStat = fs.statSync(filePath);
     const cached = exportNamesCache.get(filePath);

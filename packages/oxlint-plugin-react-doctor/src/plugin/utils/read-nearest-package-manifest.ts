@@ -5,6 +5,7 @@ import {
   recordContentProbe,
   recordExistenceProbe,
 } from "./cross-file-probe-recorder.js";
+import { getCurrentResourceHost } from "../../internal/resource-host/resource-host-context.js";
 
 // The single owner of the nearest-package.json machinery every manifest
 // consumer (`classify-package-platform`, `is-inside-node-cli-package`,
@@ -56,6 +57,10 @@ export const resetManifestCaches = (): void => {
 
 export const findNearestPackageDirectory = (filename: string): string | null => {
   if (!filename) return null;
+  const currentResourceHost = getCurrentResourceHost();
+  if (currentResourceHost) {
+    return currentResourceHost.findOwningPackage(filename)?.directoryPath ?? null;
+  }
 
   // The walk's outcome depends on EVERY ancestor probe (a package.json
   // appearing closer to the file re-anchors the classification), so a memo
@@ -111,6 +116,10 @@ export const readNearestPackageManifest = (filename: string): PackageManifest | 
 };
 
 export const readPackageManifest = (packageDirectory: string): PackageManifest | null => {
+  const currentResourceHost = getCurrentResourceHost();
+  if (currentResourceHost) {
+    return currentResourceHost.readManifest(path.join(packageDirectory, "package.json"));
+  }
   const packageJsonPath = path.join(packageDirectory, "package.json");
 
   // Recorded BEFORE the memo lookup — every consumer's verdict is a pure

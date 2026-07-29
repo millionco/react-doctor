@@ -58,7 +58,7 @@ import {
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`, narrowed to
 // DIRECT parent-callback call sites. The verification run showed the
-// eventual-call chain walk (`isPropCall`) misidentifying local utilities as
+// eventual-call chain walk misidentifying local utilities as
 // parent callbacks: `setValue` destructured from `useForm(...)`, wrapper
 // functions that mention a prop somewhere in their body, and useState
 // setters seeded from a prop. The rule now requires the callee itself to

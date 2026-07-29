@@ -4,6 +4,7 @@ import {
   CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS,
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
+import { getCurrentResourceHost } from "../../internal/resource-host/resource-host-context.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
 
@@ -233,6 +234,10 @@ const matchPathPattern = (source: string, pattern: string): string | null => {
 // concrete file on disk, or null when no alias matches. Relative
 // imports are NOT handled here — callers resolve those first.
 export const resolveTsconfigAliasPath = (fromFilename: string, source: string): string | null => {
+  const currentResourceHost = getCurrentResourceHost();
+  if (currentResourceHost) {
+    return currentResourceHost.resolveTsconfigAlias(fromFilename, source);
+  }
   const config = findNearestTsconfig(path.dirname(fromFilename));
   if (!config) return null;
 

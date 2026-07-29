@@ -1,6 +1,7 @@
 import type { ReportDescriptor } from "./report-descriptor.js";
 import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+import type { RulePackageContext } from "./rule-package-context.js";
 
 // The "base" context the host (oxlint at runtime, ESLint via the
 // adapter, our test harness) hands to a rule. Pure I/O surface — the
@@ -27,6 +28,7 @@ export interface BaseRuleContext {
 // directly. `scopes` / `cfg` are guaranteed non-null because every rule is
 // wrapped at plugin load time. Tests pass a fully-built context via run-rule.ts.
 export interface RuleContext extends Omit<BaseRuleContext, "getFilename"> {
+  readonly packageContext?: RulePackageContext | null;
   readonly scopes: ScopeAnalysis;
   readonly cfg: ControlFlowAnalysis;
 }

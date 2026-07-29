@@ -1,39 +1,10 @@
 import type { EsTreeNode } from "./es-tree-node.js";
-import { findExportedValue } from "./find-exported-value.js";
-import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 export interface ReExportTarget {
   importedName: string;
   source: string;
 }
-
-// Given a parsed Program AST and an exported name, returns the
-// function/arrow node bound to that export, or null if the export
-// doesn't resolve to a function in this file. Handles:
-//
-//   export function reducer(state, action) {...}
-//   export const reducer = (state, action) => {...}
-//   export const reducer = function (state, action) {...}
-//   export default function reducer(state, action) {...}
-//   export default function (state, action) {...}              (exportedName === "default")
-//   export default (state, action) => {...}                    (exportedName === "default")
-//   function reducer(state, action) {...}; export { reducer };
-//   const reducer = (...) => {...}; export { reducer };
-//   export { reducer as default };                              (exportedName === "default")
-//
-// Re-exports (`export { reducer } from "./other"`,
-// `export * from "./other"`) are NOT followed here — that's the
-// barrel-following layer's job (see `resolve-barrel-export-file-path`).
-// If a re-export is encountered the function returns null and the
-// caller is expected to resolve the barrel separately.
-export const findExportedFunctionBody = (
-  programRoot: EsTreeNode,
-  exportedName: string,
-): EsTreeNode | null => {
-  const exportedValue = findExportedValue(programRoot, exportedName);
-  return isFunctionLike(exportedValue) ? exportedValue : null;
-};
 
 // Convenience: returns the source-side identifier name for an
 // import specifier. Handles both `import { foo } from "..."` and

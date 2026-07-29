@@ -21,6 +21,7 @@ import { Git } from "../src/services/git.js";
 import { LintPartialFailures, Linter } from "../src/services/linter.js";
 import { Progress } from "../src/services/progress.js";
 import { Project } from "../src/services/project.js";
+import { ProjectChecks } from "../src/services/project-checks.js";
 import { Reporter } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
 import { SupplyChain } from "../src/services/supply-chain.js";
@@ -79,6 +80,7 @@ const baseInput: InspectInput = {
 
 const layers = Layer.mergeAll(
   Project.layerOf(sampleProject),
+  ProjectChecks.layerOf([]),
   Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
   Files.layerInMemory(new Map()),
   Linter.layerOf([lintDiagnostic]),

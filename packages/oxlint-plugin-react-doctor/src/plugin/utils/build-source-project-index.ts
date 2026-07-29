@@ -1,5 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getCurrentResourceHost } from "../../internal/resource-host/resource-host-context.js";
+import type { ResourceDirectoryEntry } from "../../internal/resource-host/resource-host.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
@@ -29,6 +31,7 @@ export interface SourceProjectIndex {
 const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
 const SOURCE_PROJECT_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
 const SOURCE_PROJECT_MDX_FILE_PATTERN = /\.mdx$/i;
+const MAXIMUM_SOURCE_PROJECT_DIRECTORY_ENTRIES = Number.MAX_SAFE_INTEGER;
 const SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
   ".angular",
   ".astro",
@@ -52,6 +55,10 @@ const SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
 ]);
 const sourceProjectScopeCache = new WeakMap<EsTreeNodeOfType<"Program">, ScopeAnalysis>();
 
+interface SourceProjectDirectoryEntry extends ResourceDirectoryEntry {
+  readonly isSymbolicLink: boolean;
+}
+
 const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">): ScopeAnalysis => {
   const cachedScopes = sourceProjectScopeCache.get(programNode);
   if (cachedScopes) return cachedScopes;
@@ -63,6 +70,7 @@ const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">):
 const listProductionSourceFiles = (
   rootDirectory: string,
 ): { sourceFilePaths: ReadonlyArray<string>; hasOpaqueMdxConsumerSurface: boolean } | null => {
+  const resourceHost = getCurrentResourceHost();
   const sourceFilePaths: string[] = [];
   const pendingDirectories = [rootDirectory];
   let hasOpaqueMdxConsumerSurface = false;
@@ -70,25 +78,42 @@ const listProductionSourceFiles = (
   while (pendingDirectories.length > 0) {
     const currentDirectory = pendingDirectories.pop();
     if (!currentDirectory) continue;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(currentDirectory, { withFileTypes: true });
-    } catch {
-      return null;
+    let entries: ReadonlyArray<SourceProjectDirectoryEntry>;
+    if (resourceHost) {
+      const directoryListing = resourceHost.listDirectory(
+        currentDirectory,
+        MAXIMUM_SOURCE_PROJECT_DIRECTORY_ENTRIES,
+      );
+      if (directoryListing.didReachLimit) return null;
+      entries = directoryListing.entries.map((entry) => ({
+        ...entry,
+        isSymbolicLink: entry.kind === "other",
+      }));
+    } else {
+      try {
+        entries = fs.readdirSync(currentDirectory, { withFileTypes: true }).map((entry) => ({
+          name: entry.name,
+          path: path.join(currentDirectory, entry.name),
+          kind: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
+          isSymbolicLink: entry.isSymbolicLink(),
+        }));
+      } catch {
+        return null;
+      }
     }
     for (const entry of entries) {
-      const absolutePath = path.join(currentDirectory, entry.name);
+      const absolutePath = entry.path;
       const isIgnoredDirectoryName =
         SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES.has(entry.name) ||
         (entry.name.startsWith(".") && entry.name !== ".dumi" && entry.name !== ".storybook");
-      if (entry.isSymbolicLink() && isIgnoredDirectoryName) continue;
-      if (entry.isSymbolicLink()) return null;
-      if (entry.isDirectory()) {
+      if (entry.isSymbolicLink && isIgnoredDirectoryName) continue;
+      if (entry.isSymbolicLink) return null;
+      if (entry.kind === "directory") {
         if (isIgnoredDirectoryName) continue;
         pendingDirectories.push(absolutePath);
         continue;
       }
-      if (!entry.isFile() || isTestlikeFilename(absolutePath)) continue;
+      if (entry.kind !== "file" || isTestlikeFilename(absolutePath)) continue;
       if (SOURCE_PROJECT_MDX_FILE_PATTERN.test(entry.name)) {
         hasOpaqueMdxConsumerSurface = true;
         continue;

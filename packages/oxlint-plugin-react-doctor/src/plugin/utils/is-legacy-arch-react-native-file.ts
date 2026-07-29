@@ -1,5 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  getCurrentResourceHost,
+  readCurrentResourceSource,
+} from "../../internal/resource-host/resource-host-context.js";
 import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
 import type { PackageManifest } from "./read-nearest-package-manifest.js";
 import {
@@ -47,6 +51,8 @@ const recordFilesystemProbes = (packageDirectory: string): void => {
 };
 
 const readTextFileOrNull = (absolutePath: string): string | null => {
+  const resourceSource = readCurrentResourceSource(absolutePath);
+  if (resourceSource !== undefined) return resourceSource;
   try {
     return fs.readFileSync(absolutePath, "utf-8");
   } catch {
@@ -72,8 +78,12 @@ const isNewArchDisabledInGradleProperties = (packageDirectory: string): boolean 
 };
 
 const isNewArchDisabledInStaticExpoConfig = (packageDirectory: string): boolean => {
+  const currentResourceHost = getCurrentResourceHost();
   for (const dynamicFilename of DYNAMIC_EXPO_CONFIG_FILENAMES) {
-    if (fs.existsSync(path.join(packageDirectory, dynamicFilename))) return false;
+    const dynamicConfigPath = path.join(packageDirectory, dynamicFilename);
+    if (currentResourceHost?.fileExists(dynamicConfigPath) ?? fs.existsSync(dynamicConfigPath)) {
+      return false;
+    }
   }
   for (const staticFilename of STATIC_EXPO_CONFIG_FILENAMES) {
     const contents = readTextFileOrNull(path.join(packageDirectory, staticFilename));

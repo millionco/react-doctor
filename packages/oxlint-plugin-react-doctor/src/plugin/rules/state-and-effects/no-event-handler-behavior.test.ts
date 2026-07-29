@@ -9,7 +9,7 @@ const expectEventHandlerDiagnostics = (code: string, diagnosticCount: number): v
   expect(result.diagnostics).toHaveLength(diagnosticCount);
 };
 
-describe("no-event-handler event-source contract", () => {
+describe("no-event-handler event-source behavior", () => {
   it("reports handler-proven state that guards transferable effect work", () => {
     expectEventHandlerDiagnostics(
       `function Form({ onSubmit }) {

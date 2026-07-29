@@ -8,6 +8,8 @@ import {
   collectCrossFileDependencyProbes,
 } from "./cross-file-dependencies.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
+import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
+import { normalizeFilename } from "./utils/normalize-filename.js";
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
 import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
 import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alias.js";
@@ -73,6 +75,40 @@ describe("collectCrossFileDependencyProbes — driver", () => {
   });
 });
 
+describe("React Router cache dependencies", () => {
+  it("bounds every rule to the owning package manifest", () => {
+    writeFixtureFile(
+      "package.json",
+      `{ "dependencies": { "@react-router/dev": "7.9.0", "react-router": "7.9.0" } }\n`,
+    );
+    const routePath = writeFixtureFile(
+      "src/route.tsx",
+      `import { useNavigate } from "react-router";
+export const Route = () => {
+  const navigate = useNavigate();
+  navigate("/next");
+  return null;
+};\n`,
+    );
+
+    for (const ruleId of REACT_ROUTER_RULE_IDS) {
+      const trace = collectFor(routePath, [ruleId]);
+      expect(trace, ruleId).not.toBeNull();
+      expect(trace?.existencePaths.has(fixturePath("src/package.json")), ruleId).toBe(true);
+      expect(trace?.contentPaths, ruleId).toEqual(new Set([fixturePath("package.json")]));
+    }
+  });
+
+  it("keeps project-wide rules without a sound dependency bound unfingerprintable", () => {
+    const routePath = writeFixtureFile("src/route.tsx", "export const Route = () => null;\n");
+
+    for (const ruleId of ["nextjs-no-img-element", "window-open-without-noopener"]) {
+      expect(UNBOUNDED_CROSS_FILE_RULE_IDS.has(ruleId), ruleId).toBe(true);
+      expect(collectFor(routePath, [ruleId]), ruleId).toBeNull();
+    }
+  });
+});
+
 describe("no-barrel-import collector", () => {
   const setupBarrelFixture = (): string => {
     writeFixtureFile("src/components/Button.tsx", "export const Button = () => null;\n");
@@ -91,11 +127,17 @@ describe("no-barrel-import collector", () => {
     // The barrel's content is read; a NAMED re-export target is only
     // resolved (existence) — the rule never reads its content.
     expect(trace?.contentPaths.has(fixturePath("src/components/index.ts"))).toBe(true);
-    expect(trace?.existencePaths.has(fixturePath("src/components/Button.tsx"))).toBe(true);
+    expect(
+      trace?.existencePaths.has(normalizeFilename(fixturePath("src/components/Button.tsx"))),
+    ).toBe(true);
     // The extension candidates probed (and absent) BEFORE the directory
     // resolution — a file appearing at one of them shadows the barrel.
-    expect(trace?.existencePaths.has(fixturePath("src/components.ts"))).toBe(true);
-    expect(trace?.existencePaths.has(fixturePath("src/components.tsx"))).toBe(true);
+    expect(trace?.existencePaths.has(normalizeFilename(fixturePath("src/components.ts")))).toBe(
+      true,
+    );
+    expect(trace?.existencePaths.has(normalizeFilename(fixturePath("src/components.tsx")))).toBe(
+      true,
+    );
     // An unrelated sibling is NOT a dependency.
     expect(trace?.contentPaths.has(fixturePath("src/unrelated.tsx"))).toBe(false);
     expect(trace?.existencePaths.has(fixturePath("src/unrelated.tsx"))).toBe(false);
@@ -325,7 +367,112 @@ describe("forwarded Hook dependency collectors", () => {
   });
 });
 
+describe("browser render guard collector", () => {
+  it("records package, alias, re-export, and imported Hook content on repeat collections", () => {
+    writeFixtureFile(
+      "package.json",
+      `{ "dependencies": { "next": "^15.0.0", "react": "^19.0.0" } }\n`,
+    );
+    writeFixtureFile(
+      "tsconfig.json",
+      `{ "compilerOptions": { "baseUrl": ".", "paths": { "@hooks": ["src/hooks/index"] } } }\n`,
+    );
+    writeFixtureFile(
+      "src/use-hydrated.ts",
+      `import { useSyncExternalStore } from "react";
+const subscribe = () => () => {};
+export const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => false);
+`,
+    );
+    writeFixtureFile(
+      "src/hooks/index.ts",
+      `export { useHydrated as useClientReady } from "../use-hydrated";\n`,
+    );
+    writeFixtureFile("src/nested-unrelated.ts", "export const nestedUnrelated = true;\n");
+    writeFixtureFile(
+      "src/unrelated.ts",
+      `import { nestedUnrelated } from "./nested-unrelated";
+export const unrelated = nestedUnrelated;
+`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { useClientReady as useHydrated } from "@hooks";
+import { unrelated } from "./unrelated";
+export const App = () => {
+  const hydrated = useHydrated();
+  return hydrated && <span>{document.title}{String(unrelated)}</span>;
+};
+`,
+    );
+    const expectedContentPaths = [
+      fixturePath("package.json"),
+      fixturePath("tsconfig.json"),
+      fixturePath("src/hooks/index.ts"),
+      fixturePath("src/use-hydrated.ts"),
+    ];
+
+    for (const trace of [
+      collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]),
+      collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]),
+    ]) {
+      for (const expectedPath of expectedContentPaths) {
+        expect(trace?.contentPaths.has(expectedPath)).toBe(true);
+      }
+      expect(trace?.contentPaths.has(fixturePath("src/unrelated.ts"))).toBe(true);
+      expect(trace?.contentPaths.has(fixturePath("src/nested-unrelated.ts"))).toBe(false);
+    }
+  });
+
+  it("records unresolved candidates and terminates on cyclic re-exports", () => {
+    writeFixtureFile("src/cycle-a.ts", `export { useHydrated } from "./cycle-b";\n`);
+    writeFixtureFile("src/cycle-b.ts", `export { useHydrated } from "./cycle-a";\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { useHydrated } from "./cycle-a";
+import { useMissingHydration } from "./missing-hydration";
+export const App = () => {
+  const hydrated = useHydrated() || useMissingHydration();
+  return hydrated && <span>{window.innerWidth}</span>;
+};
+`,
+    );
+    const trace = collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]);
+
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths.has(fixturePath("src/cycle-a.ts"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/cycle-b.ts"))).toBe(true);
+    expect(
+      trace?.existencePaths.has(normalizeFilename(fixturePath("src/missing-hydration.ts"))),
+    ).toBe(true);
+  });
+});
+
 describe("nextjs collectors", () => {
+  it("records the owning package manifest for the async dynamic API wrapper gate", () => {
+    writeFixtureFile(
+      "package.json",
+      `{ "dependencies": { "next": "^15.0.0", "react": "^19.0.0" } }\n`,
+    );
+    const pagePath = writeFixtureFile(
+      "app/page.tsx",
+      `import { cookies } from "next/headers";
+export default function Page() {
+  return cookies().get("session");
+}
+`,
+    );
+
+    for (const trace of [
+      collectFor(pagePath, ["nextjs-async-dynamic-api-not-awaited"]),
+      collectFor(pagePath, ["nextjs-async-dynamic-api-not-awaited"]),
+    ]) {
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths.has(fixturePath("package.json"))).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("app/package.json"))).toBe(true);
+    }
+  });
+
   it("records ancestor layout probes for a page file only", () => {
     writeFixtureFile("app/layout.tsx", "export default ({ children }) => children;\n");
     const pagePath = writeFixtureFile("app/products/page.tsx", "export default () => <div />;\n");

@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseSync } from "oxc-parser";
 import { CROSS_FILE_PARSE_MAX_BYTES } from "../constants/thresholds.js";
+import { getCurrentResourceHost } from "../../internal/resource-host/resource-host-context.js";
 import { attachParentReferences } from "./attach-parent-references.js";
 import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import type { EsTreeNode } from "./es-tree-node.js";
@@ -82,6 +83,19 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
     absoluteFilePath.endsWith(".d.mts") ||
     absoluteFilePath.endsWith(".d.cts");
   if (!isDeclarationFile) recordContentProbe(absoluteFilePath);
+
+  const currentResourceHost = getCurrentResourceHost();
+  if (currentResourceHost) {
+    if (isDeclarationFile) return null;
+    const sourceText = currentResourceHost.readSource(absoluteFilePath);
+    if (sourceText === null || Buffer.byteLength(sourceText) > CROSS_FILE_PARSE_MAX_BYTES) {
+      return null;
+    }
+    return parseSourceText({
+      filename: absoluteFilePath,
+      sourceText,
+    });
+  }
 
   let fileStat: fs.Stats;
   try {

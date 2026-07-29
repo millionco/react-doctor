@@ -4,7 +4,7 @@ import reactDoctorPlugin, {
   REACT_COMPILER_RULES,
   REACT_DOCTOR_RULES,
 } from "oxlint-plugin-react-doctor";
-import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
+import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor/contracts";
 import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
@@ -13,6 +13,8 @@ import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-reso
 import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
 import { shouldEnableRuleByDefaultStatus } from "../../utils/should-enable-rule-by-default-status.js";
 import type { UnpluginAutoImportGlobalScope } from "./collect-unplugin-auto-import-global-scopes.js";
+import { buildPackageContextSettings } from "./build-package-context-settings.js";
+import type { PackageGraph } from "../../project-info/package-graph.js";
 
 export interface OxlintConfigOptions {
   pluginPath: string;
@@ -62,6 +64,9 @@ export interface OxlintConfigOptions {
    * for other selections.
    */
   sidecarRuleIdFilter?: ReadonlySet<string>;
+  packageGraph?: PackageGraph;
+  enablePackageContext?: boolean;
+  enablePackageCapabilityGates?: boolean;
 }
 
 const resolveSettingsRootDirectory = (rootDirectory: string): string => {
@@ -135,6 +140,9 @@ export const createOxlintConfig = ({
   disableReactHooksJsPlugin = false,
   ruleSelection,
   sidecarRuleIdFilter,
+  packageGraph,
+  enablePackageContext = false,
+  enablePackageCapabilityGates = false,
 }: OxlintConfigOptions) => {
   const hasIncludedTags = includedTags.size > 0;
   // The sidecar carries only cross-file react-doctor rules — the React
@@ -162,6 +170,21 @@ export const createOxlintConfig = ({
 
   const capabilities = getCapabilities(project);
   const settingsRootDirectory = resolveSettingsRootDirectory(project.rootDirectory);
+  const shouldBuildPackageContext = enablePackageContext || enablePackageCapabilityGates;
+  const packageContexts =
+    shouldBuildPackageContext && packageGraph !== undefined
+      ? buildPackageContextSettings(packageGraph, settingsRootDirectory)
+      : [];
+  let candidateCapabilities = capabilities;
+  if (enablePackageCapabilityGates) {
+    const packageCandidateCapabilities = new Set(capabilities);
+    for (const packageContext of packageContexts) {
+      for (const capability of packageContext.capabilities) {
+        packageCandidateCapabilities.add(capability);
+      }
+    }
+    candidateCapabilities = packageCandidateCapabilities;
+  }
 
   const enabledReactDoctorRules: Record<string, OxlintRuleSeverity> = {};
   for (const registryEntry of REACT_DOCTOR_RULES) {
@@ -191,9 +214,9 @@ export const createOxlintConfig = ({
       !shouldEnableRule(
         rule.requires,
         rule.tags,
-        capabilities,
+        candidateCapabilities,
         ignoredTags,
-        rule.disabledWhen,
+        enablePackageCapabilityGates ? undefined : rule.disabledWhen,
         includedTags,
       )
     )
@@ -273,6 +296,8 @@ export const createOxlintConfig = ({
         // `hasCapability`. Sorted so equivalent projects hash identically
         // (this bag feeds the ruleset cache key).
         capabilities: [...capabilities].sort(),
+        ...(packageContexts.length > 0 ? { packageContexts, packageContextEnabled: true } : {}),
+        ...(enablePackageCapabilityGates ? { packageCapabilityGates: true } : {}),
         ...(runtimeGlobals && runtimeGlobals.length > 0
           ? { runtimeGlobals: [...runtimeGlobals] }
           : {}),

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { analyzeScopes } from "../../semantic/scope-analysis.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import { attachParentReferences } from "../../../test-utils/attach-parent-references.js";
+import { attachParentReferences } from "../../utils/attach-parent-references.js";
 import { parseFixture } from "../../../test-utils/parse-fixture.js";
 import type { RunRuleResult } from "../../../test-utils/run-rule.js";
 import { runRule } from "../../../test-utils/run-rule.js";

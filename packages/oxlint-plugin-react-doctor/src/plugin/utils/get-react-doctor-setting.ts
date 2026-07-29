@@ -1,5 +1,6 @@
 import type { Capability } from "./capability.js";
 import type { RuleContext } from "./rule-context.js";
+import { readOwnPropertyValue } from "./read-own-property-value.js";
 
 // Extracted helpers for reading typed entries out of the `react-doctor`
 // settings bag that core writes into the oxlint config (see
@@ -24,16 +25,19 @@ const readReactDoctorSettingsBag = (settings: RuleContext["settings"]): object |
   return reactDoctorSettings;
 };
 
-const readOwnPropertyValue = (bag: object, settingName: string): unknown =>
-  Object.getOwnPropertyDescriptor(bag, settingName)?.value;
+export const getReactDoctorSetting = (
+  settings: RuleContext["settings"],
+  settingName: string,
+): unknown => {
+  const bag = readReactDoctorSettingsBag(settings);
+  return bag === null ? undefined : readOwnPropertyValue(bag, settingName);
+};
 
 export const getReactDoctorStringSetting = (
   settings: RuleContext["settings"],
   settingName: string,
 ): string | undefined => {
-  const bag = readReactDoctorSettingsBag(settings);
-  if (!bag) return undefined;
-  const settingValue = readOwnPropertyValue(bag, settingName);
+  const settingValue = getReactDoctorSetting(settings, settingName);
   return typeof settingValue === "string" ? settingValue : undefined;
 };
 
@@ -41,21 +45,25 @@ export const getReactDoctorNumberSetting = (
   settings: RuleContext["settings"],
   settingName: string,
 ): number | undefined => {
-  const bag = readReactDoctorSettingsBag(settings);
-  if (!bag) return undefined;
-  const settingValue = readOwnPropertyValue(bag, settingName);
+  const settingValue = getReactDoctorSetting(settings, settingName);
   return typeof settingValue === "number" && Number.isFinite(settingValue)
     ? settingValue
     : undefined;
+};
+
+export const getReactDoctorBooleanSetting = (
+  settings: RuleContext["settings"],
+  settingName: string,
+): boolean | undefined => {
+  const settingValue = getReactDoctorSetting(settings, settingName);
+  return typeof settingValue === "boolean" ? settingValue : undefined;
 };
 
 export const getReactDoctorStringArraySetting = (
   settings: RuleContext["settings"],
   settingName: string,
 ): ReadonlyArray<string> => {
-  const bag = readReactDoctorSettingsBag(settings);
-  if (!bag) return [];
-  const settingValue = readOwnPropertyValue(bag, settingName);
+  const settingValue = getReactDoctorSetting(settings, settingName);
   if (!Array.isArray(settingValue)) return [];
   return settingValue.filter(
     (entry): entry is string => typeof entry === "string" && entry.length > 0,

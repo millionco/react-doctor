@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { analyzeControlFlow } from "../semantic/control-flow-graph.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
-import { attachParentReferences } from "../../test-utils/attach-parent-references.js";
+import { attachParentReferences } from "./attach-parent-references.js";
 import { attachSourceLocations } from "../../test-utils/attach-source-locations.js";
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 import type { EsTreeNode } from "./es-tree-node.js";

@@ -262,6 +262,7 @@ export const METRIC = {
   cliError: "cli.error",
   cliEnvironmentError: "cli.env_error",
   stagedSnapshotDivergence: "staged.snapshot_divergence",
+  stagedPerProject: "staged.per_project",
   projectDetected: "project.detected",
   projectPathSelected: "project.path_selected",
   projectConfigSelected: "project.config_selected",

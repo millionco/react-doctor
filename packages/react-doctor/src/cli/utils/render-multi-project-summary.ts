@@ -106,7 +106,10 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
     const projectRootByDiagnostic = new WeakMap<Diagnostic, string>();
     for (const scan of completedScans) {
       for (const diagnostic of scan.result.diagnostics) {
-        projectRootByDiagnostic.set(diagnostic, scan.result.project.rootDirectory);
+        projectRootByDiagnostic.set(
+          diagnostic,
+          scan.frameSourceRoot ?? scan.result.project.rootDirectory,
+        );
       }
     }
     const resolveDiagnosticSourceRoot = (diagnostic: Diagnostic): string =>

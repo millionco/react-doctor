@@ -1,10 +1,12 @@
-import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
-import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/plugin/utils/es-tree-node.js";
-import { isFunctionLike } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-function-like.js";
-import { isHookCall } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-hook-call.js";
-import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-node-of-type.js";
-import { stripParenExpression } from "../../oxlint-plugin-react-doctor/src/plugin/utils/strip-paren-expression.js";
-import { walkAst } from "../../oxlint-plugin-react-doctor/src/plugin/utils/walk-ast.js";
+import {
+  isFunctionLike,
+  isHookCall,
+  isNodeOfType,
+  parseFixture,
+  stripParenExpression,
+  walkAst,
+} from "../../oxlint-plugin-react-doctor/src/internal/rule-engine-testkit.js";
+import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/internal/rule-engine-testkit.js";
 import type { EquivalentVariant } from "./equivalent-fuzz-variants.js";
 
 interface SpannedNode {

@@ -1,7 +1,9 @@
-import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
-import { walkAst } from "../../oxlint-plugin-react-doctor/src/plugin/utils/walk-ast.js";
-import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-node-of-type.js";
-import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/plugin/utils/es-tree-node.js";
+import {
+  isNodeOfType,
+  parseFixture,
+  walkAst,
+} from "../../oxlint-plugin-react-doctor/src/internal/rule-engine-testkit.js";
+import type { EsTreeNode } from "../../oxlint-plugin-react-doctor/src/internal/rule-engine-testkit.js";
 import { MAX_VERDICT_VARIANT_ANCHORS } from "./constants.js";
 
 // The mutation-robustness catalog: rewrites that change the SOURCE SHAPE of

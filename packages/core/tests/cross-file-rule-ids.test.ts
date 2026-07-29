@@ -175,7 +175,6 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-derived-state",
       "no-derived-state-effect",
       "no-dynamic-import-path",
-      "no-effect-with-fresh-deps",
       "no-event-handler",
       "no-full-lodash-import",
       "no-hydration-branch-on-browser-global",

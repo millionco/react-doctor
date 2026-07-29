@@ -8,8 +8,8 @@ import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-na
 import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activatable-descendant.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import {
-  isFocusForwardingHandler,
-  isFocusForwardingHandlerExpression,
+  isFocusForwardingOrBlockingHandler,
+  isFocusForwardingOrBlockingHandlerExpression,
 } from "../../utils/is-focus-forwarding-handler.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
@@ -304,10 +304,10 @@ export const clickEventsHaveKeyEvents = defineRule({
           return;
         }
         if (onClick && isPureEventBlockerHandler(onClick)) return;
-        if (onClick && isFocusForwardingHandler(onClick, context.scopes)) return;
+        if (onClick && isFocusForwardingOrBlockingHandler(onClick, context.scopes)) return;
         if (
           spreadOnClickExpression &&
-          isFocusForwardingHandlerExpression(spreadOnClickExpression, context.scopes)
+          isFocusForwardingOrBlockingHandlerExpression(spreadOnClickExpression, context.scopes)
         ) {
           return;
         }

@@ -24,6 +24,18 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a named function focus-forwarding click handler", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `function focusInput() {
+        document.querySelector("input")?.focus();
+      }
+      export const A = () => <div onClick={focusInput}><input /></div>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag a named same-file propagation-guard handler", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,

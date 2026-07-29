@@ -70,6 +70,31 @@ describe("a11y/no-static-element-interactions regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag an unchanged let handler that only forwards focus", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Autocomplete = ({ inputRef }) => {
+        let focusInput = () => inputRef.current?.focus();
+        return <div onClick={focusInput}><input ref={inputRef} /></div>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a reassigned focus-forwarding handler", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `export const Autocomplete = ({ inputRef, activate }) => {
+        let focusInput = () => inputRef.current?.focus();
+        focusInput = activate;
+        return <div onClick={focusInput}><input ref={inputRef} /></div>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a focus-forwarding wrapper that also performs an action", () => {
     const result = runRule(
       noStaticElementInteractions,

@@ -1,4 +1,5 @@
 import type { DependencyGraph, ReExportCycle } from "../types.js";
+import { findStronglyConnectedComponents } from "../utils/find-strongly-connected-components.js";
 
 /**
  * Reports cycles in the subgraph of `isReExportEdge` edges only. These are
@@ -22,7 +23,7 @@ export const detectReExportCycles = (graph: DependencyGraph): ReExportCycle[] =>
     adjacency[edge.source].push(edge.target);
   }
 
-  const sccComponents = computeStronglyConnectedComponents(adjacency);
+  const sccComponents = findStronglyConnectedComponents(adjacency);
   const findings: ReExportCycle[] = [];
 
   for (const component of sccComponents) {
@@ -55,75 +56,4 @@ export const detectReExportCycles = (graph: DependencyGraph): ReExportCycle[] =>
     firstFinding.files[0].localeCompare(secondFinding.files[0]),
   );
   return findings;
-};
-
-/**
- * Iterative Tarjan's SCC. Singleton components are returned too so the
- * caller can distinguish a real self-loop from a node with no edges.
- */
-const computeStronglyConnectedComponents = (adjacency: number[][]): number[][] => {
-  const nodeCount = adjacency.length;
-  if (nodeCount === 0) return [];
-
-  const indices: number[] = new Array(nodeCount).fill(-1);
-  const lowLinks: number[] = new Array(nodeCount).fill(0);
-  const onStack: boolean[] = new Array(nodeCount).fill(false);
-  const tarjanStack: number[] = [];
-  const components: number[][] = [];
-  let nextIndex = 0;
-
-  for (let startNode = 0; startNode < nodeCount; startNode++) {
-    if (indices[startNode] !== -1) continue;
-
-    const dfsStack: { node: number; successorPosition: number }[] = [
-      { node: startNode, successorPosition: 0 },
-    ];
-    indices[startNode] = nextIndex;
-    lowLinks[startNode] = nextIndex;
-    nextIndex++;
-    onStack[startNode] = true;
-    tarjanStack.push(startNode);
-
-    while (dfsStack.length > 0) {
-      const frame = dfsStack[dfsStack.length - 1];
-      const successors = adjacency[frame.node];
-
-      if (frame.successorPosition < successors.length) {
-        const successorNode = successors[frame.successorPosition];
-        frame.successorPosition++;
-        if (indices[successorNode] === -1) {
-          indices[successorNode] = nextIndex;
-          lowLinks[successorNode] = nextIndex;
-          nextIndex++;
-          onStack[successorNode] = true;
-          tarjanStack.push(successorNode);
-          dfsStack.push({ node: successorNode, successorPosition: 0 });
-        } else if (onStack[successorNode]) {
-          if (indices[successorNode] < lowLinks[frame.node]) {
-            lowLinks[frame.node] = indices[successorNode];
-          }
-        }
-      } else {
-        if (lowLinks[frame.node] === indices[frame.node]) {
-          const component: number[] = [];
-          let popped: number;
-          do {
-            popped = tarjanStack.pop()!;
-            onStack[popped] = false;
-            component.push(popped);
-          } while (popped !== frame.node);
-          components.push(component);
-        }
-        dfsStack.pop();
-        if (dfsStack.length > 0) {
-          const parent = dfsStack[dfsStack.length - 1];
-          if (lowLinks[frame.node] < lowLinks[parent.node]) {
-            lowLinks[parent.node] = lowLinks[frame.node];
-          }
-        }
-      }
-    }
-  }
-
-  return components;
 };

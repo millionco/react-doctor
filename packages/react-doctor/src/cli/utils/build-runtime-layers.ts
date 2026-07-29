@@ -10,6 +10,7 @@ import {
   OxlintConcurrency,
   Progress,
   Project,
+  ProjectChecks,
   Reporter,
   Score,
   SupplyChain,
@@ -145,6 +146,7 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
 
   const baseLayers = Layer.mergeAll(
     projectLayer,
+    ProjectChecks.layerNode,
     configLayer,
     Files.layerNode,
     Git.layerNode,

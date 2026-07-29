@@ -17,6 +17,7 @@ import {
   mergeReactDoctorConfigs,
   Progress,
   Project,
+  ProjectChecks,
   Reporter,
   resolveScanTarget,
   restoreLegacyThrow,
@@ -80,6 +81,7 @@ const buildDiagnoseLayer = (input: DiagnoseLayerInput) => {
         });
   return Layer.mergeAll(
     Project.layerNode,
+    ProjectChecks.layerNode,
     configLayer,
     input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]),
     Files.layerNode,

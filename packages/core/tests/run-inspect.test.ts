@@ -1,13 +1,16 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import { afterAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
+import type { ScoreRequestMetadata } from "../src/calculate-score.js";
 import {
   DeadCodeAnalysisFailed,
   GitInvocationFailed,
@@ -27,9 +30,10 @@ import { Config } from "../src/services/config.js";
 import { DeadCode } from "../src/services/dead-code.js";
 import { Files } from "../src/services/files.js";
 import { Git } from "../src/services/git.js";
-import { LintPartialFailures, Linter } from "../src/services/linter.js";
+import { type LintInput, LintPartialFailures, Linter } from "../src/services/linter.js";
 import { Progress, ProgressCapture } from "../src/services/progress.js";
 import { Project } from "../src/services/project.js";
+import { ProjectChecks } from "../src/services/project-checks.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
 import { SupplyChain } from "../src/services/supply-chain.js";
@@ -117,14 +121,31 @@ const supplyChainDiagnostic: Diagnostic = {
   category: "Security",
 };
 
+const projectCheckDiagnostic: Diagnostic = {
+  filePath: "package.json",
+  plugin: "react-doctor",
+  rule: "synthetic-project-check",
+  severity: "warning",
+  message: "Synthetic project check",
+  help: "Fix the project configuration.",
+  line: 0,
+  column: 0,
+  category: "Maintainability",
+};
+
 const layersOf = (config: {
   diagnostics?: ReadonlyArray<Diagnostic>;
+  projectChecks?: ReadonlyArray<Diagnostic>;
+  projectChecksLayer?: Layer.Layer<ProjectChecks>;
   linter?: Layer.Layer<Linter>;
   deadCode?: ReadonlyArray<Diagnostic>;
   supplyChain?: ReadonlyArray<Diagnostic>;
   githubViewerPermission?: string | null;
+  gitLayer?: Layer.Layer<Git>;
   reactDoctorConfig?: ReactDoctorConfig | null;
+  configSourceDirectory?: string | null;
   scoreLayer?: Layer.Layer<Score>;
+  reporterLayer?: Layer.Layer<Reporter>;
   // Pins the dead-code/lint overlap mode. Defaults to "off" so emit-order
   // assertions stay deterministic regardless of the test box's free memory
   // (the "auto" gate reads `os.freemem()`); overlap tests opt into "on".
@@ -132,25 +153,27 @@ const layersOf = (config: {
 }) =>
   Layer.mergeAll(
     Project.layerOf(sampleProject),
+    config.projectChecksLayer ?? ProjectChecks.layerOf(config.projectChecks ?? []),
     Config.layerOf({
       config: config.reactDoctorConfig ?? null,
       resolvedDirectory: "/repo",
-      configSourceDirectory: null,
+      configSourceDirectory: config.configSourceDirectory ?? null,
     }),
     Files.layerInMemory(new Map()),
     config.linter ?? Linter.layerOf(config.diagnostics ?? []),
     LintPartialFailures.layerLive,
     DeadCode.layerOf(config.deadCode ?? []),
-    Git.layerOf({
-      headSha: "abc123",
-      githubRepo: "millionco/sample-app",
-      defaultBranch: "main",
-      githubViewerPermission: config.githubViewerPermission,
-    }),
+    config.gitLayer ??
+      Git.layerOf({
+        headSha: "abc123",
+        githubRepo: "millionco/sample-app",
+        defaultBranch: "main",
+        githubViewerPermission: config.githubViewerPermission,
+      }),
     config.scoreLayer ?? Score.layerOf({ score: 85, label: "Good" }),
     SupplyChain.layerOf(config.supplyChain ?? []),
     Progress.layerNoop,
-    Reporter.layerCapture,
+    config.reporterLayer ?? Reporter.layerCapture,
     Layer.succeed(DeadCodeOverlap, config.deadCodeOverlap ?? "off"),
   );
 
@@ -164,6 +187,7 @@ describe("runInspect — phase timeouts & overall deadline", () => {
   }) =>
     Layer.mergeAll(
       Project.layerOf(sampleProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       overrides.linter,
@@ -282,9 +306,11 @@ const overlapLayersOf = (config: {
   linter?: Layer.Layer<Linter>;
   diagnostics?: ReadonlyArray<Diagnostic>;
   deadCode?: ReadonlyArray<Diagnostic>;
+  reporter?: Layer.Layer<Reporter>;
 }) =>
   Layer.mergeAll(
     Project.layerOf(sampleProject),
+    ProjectChecks.layerOf([]),
     Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
     Files.layerInMemory(new Map()),
     config.linter ?? Linter.layerOf(config.diagnostics ?? []),
@@ -294,11 +320,111 @@ const overlapLayersOf = (config: {
     Score.layerOf({ score: 85, label: "Good" }),
     config.supplyChain,
     Progress.layerNoop,
-    Reporter.layerNoop,
+    config.reporter ?? Reporter.layerNoop,
     Layer.succeed(SupplyChainOverlapTimeoutMs, config.overlapTimeoutMs),
   );
 
 describe("runInspect — happy path", () => {
+  it("assembles the exact Linter request without changing optional-value semantics", async () => {
+    const ignoredTags = new Set(["experimental"]);
+    const includedTags = new Set(["correctness"]);
+    const reactDoctorConfig: ReactDoctorConfig = { warnings: false };
+    const capturedLintInputs: LintInput[] = [];
+    const linter = Layer.mock(Linter, {
+      run: (lintInput) => {
+        capturedLintInputs.push(lintInput);
+        lintInput.onFileProgress?.(1, 2);
+        lintInput.onFileCoverage?.({
+          candidateFiles: ["src/App.tsx", "src/Skipped.tsx"],
+          analyzedFiles: ["src/App.tsx"],
+        });
+        lintInput.onCacheStats?.(3, 5);
+        lintInput.onSidecarStats?.(7, 11);
+        return Stream.empty;
+      },
+    });
+
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        includePaths: ["src/App.tsx", "README.md"],
+        customRulesOnly: true,
+        respectInlineDisables: false,
+        adoptExistingLintConfig: false,
+        ignoredTags,
+        includedTags,
+        includeTagDefaults: false,
+        nodeBinaryPath: "/opt/node/bin/node",
+        suppressScanSummary: true,
+        skipExplicitIncludePathFilter: true,
+        deadlineEpochMs: 1_900_000_000_000,
+      }).pipe(
+        Effect.provide(
+          layersOf({
+            linter,
+            reactDoctorConfig,
+            configSourceDirectory: "/repo/config",
+          }),
+        ),
+      ),
+    );
+
+    expect(capturedLintInputs).toHaveLength(1);
+    const lintInput = capturedLintInputs[0];
+    expect(Object.keys(lintInput)).toEqual([
+      "rootDirectory",
+      "project",
+      "includePaths",
+      "nodeBinaryPath",
+      "customRulesOnly",
+      "respectInlineDisables",
+      "adoptExistingLintConfig",
+      "ignoredTags",
+      "includedTags",
+      "includeTagDefaults",
+      "userConfig",
+      "configSourceDirectory",
+      "onFileProgress",
+      "onFileCoverage",
+      "onCacheStats",
+      "onSidecarStats",
+      "deadlineEpochMs",
+    ]);
+    expect(lintInput).toMatchObject({
+      rootDirectory: "/repo",
+      project: sampleProject,
+      includePaths: ["src/App.tsx", "README.md"],
+      nodeBinaryPath: "/opt/node/bin/node",
+      customRulesOnly: true,
+      respectInlineDisables: false,
+      adoptExistingLintConfig: false,
+      includeTagDefaults: false,
+      userConfig: reactDoctorConfig,
+      configSourceDirectory: "/repo/config",
+      deadlineEpochMs: 1_900_000_000_000,
+    });
+    expect(lintInput.ignoredTags).toBe(ignoredTags);
+    expect(lintInput.includedTags).toBe(includedTags);
+    expect(output.analyzedFiles).toEqual(["src/App.tsx"]);
+    expect(output.scannedFileCount).toBe(2);
+    expect(output.lintCacheHitFileCount).toBe(3);
+    expect(output.lintCacheTotalFileCount).toBe(5);
+    expect(output.lintSidecarReplayedFileCount).toBe(7);
+    expect(output.lintSidecarTotalFileCount).toBe(11);
+
+    await Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layersOf({ linter }))));
+
+    expect(capturedLintInputs).toHaveLength(2);
+    const defaultLintInput = capturedLintInputs[1];
+    expect(defaultLintInput).toHaveProperty("includePaths", undefined);
+    expect(defaultLintInput).toHaveProperty("nodeBinaryPath", undefined);
+    expect(defaultLintInput).toHaveProperty("includedTags", undefined);
+    expect(defaultLintInput).toHaveProperty("includeTagDefaults", undefined);
+    expect(defaultLintInput).toHaveProperty("userConfig", undefined);
+    expect(defaultLintInput).toHaveProperty("configSourceDirectory", undefined);
+    expect(defaultLintInput).toHaveProperty("deadlineEpochMs", undefined);
+  });
+
   it("collects diagnostics from Linter, DeadCode, and emits them through Reporter", async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
@@ -344,6 +470,51 @@ describe("runInspect — happy path", () => {
     expect(output.didDeadCodeFail).toBe(false);
   });
 
+  it("collects project-check diagnostics through the shared pipeline before lint", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const output = yield* runInspect(baseInput);
+        const reporterCapture = yield* ReporterCapture;
+        const captured = yield* Ref.get(reporterCapture);
+        return { output, captured };
+      }).pipe(
+        Effect.provide(
+          layersOf({
+            projectChecks: [projectCheckDiagnostic],
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+
+    expect(result.output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual(
+      expect.arrayContaining(["synthetic-project-check", "no-derived-state"]),
+    );
+    expect(result.output.diagnostics).toHaveLength(2);
+    expect(result.captured.map((diagnostic) => diagnostic.rule)).toEqual([
+      "synthetic-project-check",
+      "no-derived-state",
+    ]);
+  });
+
+  it("does not invoke project checks for a diff scan", async () => {
+    const projectChecksRun = vi.fn(() => Effect.succeed([projectCheckDiagnostic]));
+    const projectChecksLayer = Layer.mock(ProjectChecks, { run: projectChecksRun });
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, includePaths: ["src/App.tsx"] }).pipe(
+        Effect.provide(
+          layersOf({
+            diagnostics: [lintDiagnostic],
+            projectChecksLayer,
+          }),
+        ),
+      ),
+    );
+
+    expect(projectChecksRun).not.toHaveBeenCalled();
+    expect(output.diagnostics).toEqual([lintDiagnostic]);
+  });
+
   it("adds local authenticated GitHub viewer permission to score metadata", async () => {
     const output = await Effect.runPromise(
       runInspect({ ...baseInput, resolveLocalGithubViewerPermission: true }).pipe(
@@ -387,6 +558,7 @@ describe("runInspect — happy path", () => {
     });
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([]),
@@ -411,6 +583,120 @@ describe("runInspect — happy path", () => {
       defaultBranch: "main",
     });
     expect(output.scoreMetadata).not.toHaveProperty("githubViewerPermission");
+  });
+
+  it("joins viewer permission after scan finalization and reuses the metadata object for scoring", async () => {
+    const events: string[] = [];
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const viewerStarted = yield* Deferred.make<void>();
+        const releaseViewer = yield* Deferred.make<void>();
+        const lintCompleted = yield* Deferred.make<void>();
+        const reporterFinalized = yield* Deferred.make<void>();
+        let scoredMetadata: ScoreRequestMetadata | undefined;
+
+        const gitLayer = Layer.mock(Git, {
+          githubRepo: () => Effect.succeed("millionco/sample-app"),
+          headSha: () => Effect.succeed("abc123"),
+          defaultBranch: () => Effect.succeed("main"),
+          githubViewerPermission: () =>
+            Effect.gen(function* () {
+              events.push("viewer:start");
+              yield* Deferred.succeed(viewerStarted, undefined);
+              yield* Deferred.await(releaseViewer);
+              events.push("viewer:complete");
+              return "maintain";
+            }),
+        });
+        const linter = Layer.succeed(
+          Linter,
+          Linter.of({
+            run: () =>
+              Stream.unwrap(
+                Effect.gen(function* () {
+                  yield* Deferred.await(viewerStarted);
+                  events.push("lint:complete");
+                  yield* Deferred.succeed(lintCompleted, undefined);
+                  return Stream.empty;
+                }),
+              ),
+          }),
+        );
+        const reporterLayer = Layer.succeed(
+          Reporter,
+          Reporter.of({
+            emit: () => Effect.void,
+            finalize: Effect.gen(function* () {
+              events.push("reporter:finalize");
+              yield* Deferred.succeed(reporterFinalized, undefined);
+            }),
+          }),
+        );
+        const scoreLayer = Layer.succeed(
+          Score,
+          Score.of({
+            compute: (input) =>
+              Effect.sync(() => {
+                events.push("score:compute");
+                scoredMetadata = input.metadata;
+                return { score: 85, label: "Good" };
+              }),
+          }),
+        );
+
+        const inspectFiber = yield* Effect.forkChild(
+          runInspect({
+            ...baseInput,
+            resolveLocalGithubViewerPermission: true,
+          }).pipe(
+            Effect.provide(
+              layersOf({
+                gitLayer,
+                linter,
+                reporterLayer,
+                scoreLayer,
+              }),
+            ),
+          ),
+        );
+
+        yield* Deferred.await(lintCompleted);
+        yield* Deferred.await(reporterFinalized);
+        const eventsBeforeViewerRelease = [...events];
+        yield* Deferred.succeed(releaseViewer, undefined);
+        const output = yield* Fiber.join(inspectFiber);
+
+        return {
+          eventsBeforeViewerRelease,
+          output,
+          scoredMetadata,
+        };
+      }),
+    );
+
+    expect(result.eventsBeforeViewerRelease).toEqual([
+      "viewer:start",
+      "lint:complete",
+      "reporter:finalize",
+    ]);
+    expect(events).toEqual([
+      "viewer:start",
+      "lint:complete",
+      "reporter:finalize",
+      "viewer:complete",
+      "score:compute",
+    ]);
+    expect(result.scoredMetadata).toBe(result.output.scoreMetadata);
+    expect(result.output.scoreMetadata).toEqual({
+      repo: "millionco/sample-app",
+      sha: "abc123",
+      framework: "vite",
+      reactVersion: "19.0.0",
+      sourceFileCount: 1,
+      defaultBranch: "main",
+      githubViewerPermission: "maintain",
+    });
   });
 });
 
@@ -545,6 +831,7 @@ describe("runInspect — missing React dependency", () => {
     const projectWithoutReact: ProjectInfo = { ...sampleProject, reactVersion: null };
     const layers = Layer.mergeAll(
       Project.layerOf(projectWithoutReact),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([]),
@@ -568,6 +855,7 @@ describe("runInspect — missing React dependency", () => {
             new ReactDoctorError({ reason: new NoReactDependency({ directory: "/repo" }) }),
           ),
       }),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([]),
@@ -609,6 +897,7 @@ describe("runInspect — mid-stream lint failure", () => {
     });
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       failingLinter,
@@ -645,6 +934,7 @@ describe("runInspect — dead-code failure", () => {
     });
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([lintDiagnostic]),
@@ -734,6 +1024,7 @@ describe("runInspect — dead-code/lint overlap", () => {
     });
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       failingLinter,
@@ -845,6 +1136,7 @@ describe("runInspect — scan progress phases", () => {
     });
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       trackingLinter,
@@ -948,6 +1240,7 @@ describe("runInspect — diff mode skips dead-code", () => {
     });
     const layers = Layer.mergeAll(
       Project.layerOf(nextProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       reportingLinter,
@@ -1012,6 +1305,7 @@ describe("runInspect — Reporter sees post-filter diagnostics", () => {
     };
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({
         config: { ignore: { files: ["src/ignored.*"] } } as never,
         resolvedDirectory: "/repo",
@@ -1079,6 +1373,7 @@ describe("runInspect — related-diagnostic dedupe on the production lint path",
   it("preserves the compiler finding when config suppresses the native rule", async () => {
     const layers = Layer.mergeAll(
       Project.layerOf(sampleProject),
+      ProjectChecks.layerOf([]),
       Config.layerOf({
         config: { ignore: { rules: ["react-doctor/rules-of-hooks"] } },
         resolvedDirectory: "/repo",
@@ -1160,6 +1455,39 @@ describe("runInspect — supply-chain lint overlap", () => {
     ]);
     expect(output.supplyChainOverlapTimedOut).toBe(false);
     expect(output.securityScanFailed).toBe(false);
+  });
+
+  it("finalizes Reporter immediately after the combined background join", async () => {
+    const events: string[] = [];
+    const reporter = Layer.succeed(
+      Reporter,
+      Reporter.of({
+        emit: (diagnostic) =>
+          Effect.sync(() => {
+            events.push(`emit:${diagnostic.rule}`);
+          }),
+        finalize: Effect.sync(() => {
+          events.push("finalize");
+        }),
+      }),
+    );
+
+    await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: SupplyChain.layerOf([supplyChainDiagnostic]),
+            overlapTimeoutMs: 90_000,
+            diagnostics: [lintDiagnostic],
+            reporter,
+          }),
+        ),
+      ),
+    );
+
+    expect(events).toContain("emit:low-supply-chain-score");
+    expect(events).toContain("emit:no-derived-state");
+    expect(events.at(-1)).toBe("finalize");
   });
 
   it("keeps the score unchanged on the healthy overlap path", async () => {
@@ -1344,6 +1672,7 @@ describe("runInspect — security scan rules in the environment-checks phase", (
   const scanRuleLayersOf = (rootDirectory: string, config: ReactDoctorConfig | null = null) =>
     Layer.mergeAll(
       Project.layerOf({ ...sampleProject, rootDirectory }),
+      ProjectChecks.layerOf([]),
       Config.layerOf({ config, resolvedDirectory: rootDirectory, configSourceDirectory: null }),
       Files.layerInMemory(new Map()),
       Linter.layerOf([]),

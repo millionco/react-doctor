@@ -52,6 +52,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 import { spawnLintBatches } from "../src/runners/oxlint/spawn-batches.js";
+import { createOxlintSpawnSlots } from "../src/utils/create-oxlint-spawn-slots.js";
 
 const project: ProjectInfo = {
   rootDirectory: "/tmp/app",
@@ -89,6 +90,7 @@ const runWithConcurrency = (concurrency: number) =>
     nodeBinaryPath: process.execPath,
     project,
     concurrency,
+    spawnSlots: createOxlintSpawnSlots(concurrency),
   });
 
 beforeEach(() => {

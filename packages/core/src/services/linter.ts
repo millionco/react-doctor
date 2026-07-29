@@ -9,6 +9,7 @@ import {
   LintBatchOrdering,
   OxlintConcurrency,
   OxlintOutputMaxBytes,
+  OxlintSpawnSlots,
   OxlintSpawnTimeoutMs,
   PerFileLintCacheEnabled,
   SidecarLintCacheEnabled,
@@ -128,6 +129,7 @@ export class Linter extends Context.Service<
             // async runner so the override is actually load-bearing.
             const spawnTimeoutMs = yield* OxlintSpawnTimeoutMs;
             const outputMaxBytes = yield* OxlintOutputMaxBytes;
+            const spawnSlots = yield* OxlintSpawnSlots;
             const concurrency = yield* OxlintConcurrency;
             const lintBatchOrdering = yield* LintBatchOrdering;
             const perFileLintCacheEnabled = yield* PerFileLintCacheEnabled;
@@ -162,6 +164,7 @@ export class Linter extends Context.Service<
                   onSidecarStats: input.onSidecarStats,
                   spawnTimeoutMs,
                   outputMaxBytes,
+                  spawnSlots: spawnSlots ?? undefined,
                   concurrency,
                   signal,
                   lintBatchOrdering,

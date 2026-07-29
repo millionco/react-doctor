@@ -97,6 +97,7 @@ interface CompletedScan {
 }
 
 interface StagedProjectScanContext {
+  readonly projectDirectory: string;
   readonly scanDirectory: string;
   /** `scanDirectory` relative to the scan root; empty when they're the same. */
   readonly treeRelativeDirectory: string;
@@ -460,6 +461,7 @@ export const inspectAction = async (
         // index is keyed to the root, so there is nothing for it to scan.
         if (treeRelativeDirectory === null) return null;
         return {
+          projectDirectory,
           scanDirectory,
           treeRelativeDirectory,
           projectConfig:
@@ -592,15 +594,24 @@ export const inspectAction = async (
         recordCount(METRIC.stagedPerProject, 1, { projectCount: stagedProjectScans.length });
       }
       const tempDirectory = fs.mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
+      const configSubdirectories = new Set<string>();
+      for (const projectScan of stagedProjectScans) {
+        configSubdirectories.add(projectScan.treeRelativeDirectory);
+        const projectRelativeDirectory = resolveProjectRelativeDirectory(
+          resolvedDirectory,
+          projectScan.projectDirectory,
+        );
+        if (projectRelativeDirectory !== null) {
+          configSubdirectories.add(projectRelativeDirectory);
+        }
+      }
       // If materialization throws before `snapshot.cleanup` is wired up, remove
       // the temp dir we just created so it can't leak.
       const snapshot = await materializeStagedFiles({
         directory: resolvedDirectory,
         stagedFiles: selectedStagedFiles,
         tempDirectory,
-        configSubdirectories: stagedProjectScans.map(
-          (projectScan) => projectScan.treeRelativeDirectory,
-        ),
+        configSubdirectories: [...configSubdirectories],
       }).catch((error: unknown) => {
         fs.rmSync(tempDirectory, { recursive: true, force: true });
         throw error;

@@ -168,6 +168,48 @@ describe("inspectAction staged materialization", () => {
     );
   });
 
+  it("materializes package config when rootDir redirects the scan directory", async () => {
+    const directory = createDirectory("rd-staged-root-dir-config-");
+    const packageDirectory = path.join(directory, "packages", "app");
+    fs.mkdirSync(path.join(packageDirectory, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      '{"name":"app","dependencies":{"react":"19"}}\n',
+    );
+    fs.writeFileSync(
+      path.join(packageDirectory, "doctor.config.json"),
+      `${JSON.stringify({ rootDir: "src" })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(packageDirectory, "src/app.tsx"),
+      "export const App = () => null;\n",
+    );
+    fs.writeFileSync(
+      path.join(directory, "package.json"),
+      '{"name":"monorepo-root","private":true}\n',
+    );
+    fs.writeFileSync(path.join(directory, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
+    fs.writeFileSync(
+      path.join(directory, "doctor.config.json"),
+      `${JSON.stringify({ projects: ["packages/app"], noScore: true })}\n`,
+    );
+    initializeRepository(directory);
+    vi.mocked(getStagedSourceFiles).mockResolvedValue(["packages/app/src/app.tsx"]);
+    vi.mocked(materializeStagedFiles).mockImplementation(
+      async ({ stagedFiles, tempDirectory }) => ({
+        tempDirectory,
+        stagedFiles: [],
+        unmaterializedFiles: [...stagedFiles],
+        cleanup: () => fs.rmSync(tempDirectory, { recursive: true, force: true }),
+      }),
+    );
+
+    await inspectAction(directory, { staged: true, lint: false, yes: true });
+
+    const [materializeInput] = vi.mocked(materializeStagedFiles).mock.calls[0] ?? [];
+    expect(materializeInput?.configSubdirectories).toEqual(["packages/app/src", "packages/app"]);
+  });
+
   it("skips a package whose staged files could not be snapshotted and scans its sibling", async () => {
     const directory = createDirectory("rd-staged-materialize-one-package-");
     for (const packageName of ["app", "other"]) {

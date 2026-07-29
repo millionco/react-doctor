@@ -271,6 +271,76 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag JSON normalization in a returned page-result binding", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async ({ missing }) => {
+        const response = missing
+          ? { notFound: true }
+          : { props: { state: JSON.parse(JSON.stringify(state)) } };
+        return response;
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a nested helper clone that is mutated before page serialization", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const buildState = () => {
+          const workingCopy = JSON.parse(JSON.stringify(state));
+          mutate(workingCopy);
+          return workingCopy;
+        };
+        return { props: { state: buildState() } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a nested IIFE clone binding that is mutated before page serialization", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const serializedState = (() => {
+          const workingCopy = JSON.parse(JSON.stringify(state));
+          mutate(workingCopy);
+          return workingCopy;
+        })();
+        return { props: { serializedState } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a clone passed through an opaque initializer before page serialization", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const serializedState = consume(JSON.parse(JSON.stringify(state)));
+        return { props: { serializedState } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags redundant JSON normalization before an API response", () => {
     const result = runRule(
       noJsonParseStringifyClone,

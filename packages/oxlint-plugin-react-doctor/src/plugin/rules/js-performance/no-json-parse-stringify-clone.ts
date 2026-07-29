@@ -163,7 +163,36 @@ const findConditionalReturnExpressionRoot = (node: EsTreeNode): EsTreeNode => {
   return expressionRoot;
 };
 
-const isInsideReturnedNextjsProps = (node: EsTreeNode, pageDataFunction: EsTreeNode): boolean => {
+const isReturnedPageDataResultBinding = (
+  returnExpression: EsTreeNode,
+  pageDataFunction: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const declarator = returnExpression.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== returnExpression ||
+    !isNodeOfType(declarator.id, "Identifier") ||
+    findEnclosingFunction(declarator) !== pageDataFunction
+  ) {
+    return false;
+  }
+  const bindingSymbol = context.scopes.symbolFor(declarator.id);
+  if (!bindingSymbol || bindingSymbol.references.length !== 1) return false;
+  const referenceRoot = findTransparentExpressionRoot(bindingSymbol.references[0].identifier);
+  const returnStatement = referenceRoot.parent;
+  return (
+    isNodeOfType(returnStatement, "ReturnStatement") &&
+    returnStatement.argument === referenceRoot &&
+    findEnclosingFunction(returnStatement) === pageDataFunction
+  );
+};
+
+const isInsideReturnedNextjsProps = (
+  node: EsTreeNode,
+  pageDataFunction: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   let cursor: EsTreeNode | null | undefined = node.parent;
   while (cursor && cursor !== pageDataFunction) {
     if (
@@ -187,25 +216,53 @@ const isInsideReturnedNextjsProps = (node: EsTreeNode, pageDataFunction: EsTreeN
       ) {
         return true;
       }
+      if (isReturnedPageDataResultBinding(returnExpression, pageDataFunction, context)) return true;
     }
     cursor = cursor.parent ?? null;
   }
   return false;
 };
 
-const findPageDataResultBinding = (
+const isExpressionReturnedByFunction = (node: EsTreeNode, functionNode: EsTreeNode): boolean => {
+  const returnExpression = findConditionalReturnExpressionRoot(node);
+  if (
+    isNodeOfType(functionNode, "ArrowFunctionExpression") &&
+    !isNodeOfType(functionNode.body, "BlockStatement")
+  ) {
+    return stripParenExpression(functionNode.body) === stripParenExpression(returnExpression);
+  }
+  const returnStatement = returnExpression.parent;
+  return (
+    isNodeOfType(returnStatement, "ReturnStatement") &&
+    returnStatement.argument === returnExpression &&
+    findEnclosingFunction(returnStatement) === functionNode
+  );
+};
+
+const isValueForwardedToBindingInitializer = (
   node: EsTreeNode,
-  pageDataFunction: EsTreeNode,
-): EsTreeNodeOfType<"Identifier"> | null => {
+  bindingInitializer: EsTreeNode,
+): boolean => {
+  const directValue = findConditionalReturnExpressionRoot(node);
+  if (stripParenExpression(bindingInitializer) === stripParenExpression(directValue)) return true;
+  const initializer = stripParenExpression(bindingInitializer);
+  if (!isNodeOfType(initializer, "CallExpression")) return false;
+  const callee = stripParenExpression(initializer.callee);
+  return isFunctionLike(callee) && isExpressionReturnedByFunction(node, callee);
+};
+
+const findPageDataResultBinding = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor && cursor !== pageDataFunction) {
-    if (
-      isNodeOfType(cursor, "VariableDeclarator") &&
-      cursor.init &&
-      isNodeOfType(cursor.id, "Identifier") &&
-      findEnclosingFunction(cursor) === pageDataFunction
-    ) {
-      return cursor.id;
+  while (cursor) {
+    if (isNodeOfType(cursor, "VariableDeclarator")) {
+      if (
+        cursor.init &&
+        isNodeOfType(cursor.id, "Identifier") &&
+        isValueForwardedToBindingInitializer(node, cursor.init)
+      ) {
+        return cursor.id;
+      }
+      return null;
     }
     cursor = cursor.parent ?? null;
   }
@@ -218,8 +275,8 @@ const isUsedToSerializeNextjsPageProps = (node: EsTreeNode, context: RuleContext
   }
   const pageDataFunction = findEnclosingNextjsPageDataFunction(node);
   if (!pageDataFunction) return false;
-  if (isInsideReturnedNextjsProps(node, pageDataFunction)) return true;
-  const bindingIdentifier = findPageDataResultBinding(node, pageDataFunction);
+  if (isInsideReturnedNextjsProps(node, pageDataFunction, context)) return true;
+  const bindingIdentifier = findPageDataResultBinding(node);
   const bindingSymbol = bindingIdentifier ? context.scopes.symbolFor(bindingIdentifier) : null;
   if (!bindingSymbol) return false;
   const aliasSymbols = collectConstAliasSymbols(bindingSymbol, context.scopes);
@@ -228,7 +285,7 @@ const isUsedToSerializeNextjsPageProps = (node: EsTreeNode, context: RuleContext
   for (const aliasSymbol of aliasSymbols) {
     for (const reference of aliasSymbol.references) {
       if (findEnclosingFunction(reference.identifier) !== pageDataFunction) return false;
-      if (isInsideReturnedNextjsProps(reference.identifier, pageDataFunction)) {
+      if (isInsideReturnedNextjsProps(reference.identifier, pageDataFunction, context)) {
         hasPagePropsReference = true;
         continue;
       }

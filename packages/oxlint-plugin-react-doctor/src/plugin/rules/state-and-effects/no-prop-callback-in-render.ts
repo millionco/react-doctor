@@ -1,3 +1,4 @@
+import type { Reference } from "eslint-scope";
 import { COMPONENT_HOC_WRAPPER_NAMES, REACT_HOC_NAMES } from "../../constants/react.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
@@ -15,9 +16,19 @@ import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-import { getDownstreamRefs } from "./utils/effect/ast.js";
-import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { isPropCallbackInvocationRef } from "./utils/effect/react.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import { getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
+import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import {
+  isCustomHookParameter,
+  isProp,
+  isPropCallbackInvocationRef,
+} from "./utils/effect/react.js";
+
+interface CustomHookParameterBinding {
+  functionNode: EsTreeNode;
+  parameterIndex: number;
+}
 
 const functionBindingSymbols = (
   functionNode: EsTreeNode,
@@ -121,6 +132,114 @@ const functionHasReactComponentUse = (functionNode: EsTreeNode, scopes: ScopeAna
   );
 };
 
+const patternContainsBinding = (pattern: EsTreeNode, binding: EsTreeNode): boolean => {
+  let containsBinding = false;
+  walkAst(pattern, (node) => {
+    if (node !== binding) return;
+    containsBinding = true;
+    return false;
+  });
+  return containsBinding;
+};
+
+const customHookFunctionSymbol = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): SymbolDescriptor | null => functionBindingSymbols(functionNode, scopes)[0] ?? null;
+
+const customHookParameterBinding = (reference: Reference): CustomHookParameterBinding | null => {
+  const parameterDefinition = reference.resolved?.defs.find(
+    (definition) => definition.type === "Parameter",
+  );
+  if (!parameterDefinition) return null;
+  const functionNode = parameterDefinition.node as unknown as EsTreeNode;
+  if (!isFunctionLike(functionNode)) return null;
+  const parameterBinding = parameterDefinition.name as unknown as EsTreeNode;
+  const parameterIndex = (functionNode.params ?? []).findIndex((parameter) =>
+    patternContainsBinding(parameter, parameterBinding),
+  );
+  return parameterIndex >= 0 ? { functionNode, parameterIndex } : null;
+};
+
+const isDirectlyExportedFunction = (functionNode: EsTreeNode): boolean => {
+  let ancestor = functionNode.parent;
+  while (ancestor && !isNodeOfType(ancestor, "Program")) {
+    if (
+      isNodeOfType(ancestor, "ExportNamedDeclaration") ||
+      isNodeOfType(ancestor, "ExportDefaultDeclaration")
+    ) {
+      return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const customHookParameterUsesLegacyLocalAssumption = (
+  reference: Reference,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const binding = customHookParameterBinding(reference);
+  if (!binding) return false;
+  const { functionNode } = binding;
+  if (!isFunctionLike(functionNode) || isDirectlyExportedFunction(functionNode)) {
+    return false;
+  }
+  const functionSymbol = customHookFunctionSymbol(functionNode, scopes);
+  return Boolean(functionSymbol && functionSymbol.references.length === 0);
+};
+
+const referenceHasComponentPropOrigin = (
+  analysis: ProgramAnalysis,
+  reference: Reference,
+): boolean =>
+  getUpstreamRefs(analysis, reference).some(
+    (upstreamReference) =>
+      isProp(analysis, upstreamReference) && !isCustomHookParameter(upstreamReference),
+  );
+
+const customHookParameterHasComponentPropCall = (
+  analysis: ProgramAnalysis,
+  reference: Reference,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const binding = customHookParameterBinding(reference);
+  if (!binding) return false;
+  const { functionNode, parameterIndex } = binding;
+  const functionSymbol = customHookFunctionSymbol(functionNode, scopes);
+  if (!functionSymbol) return false;
+  return functionSymbol.references.some((functionReference) => {
+    const callExpression = functionReference.identifier.parent;
+    if (
+      !isNodeOfType(callExpression, "CallExpression") ||
+      callExpression.callee !== functionReference.identifier
+    ) {
+      return false;
+    }
+    const argument = callExpression.arguments?.[parameterIndex];
+    if (!argument || isNodeOfType(argument, "SpreadElement")) return false;
+    return getDownstreamRefs(analysis, argument).some((argumentReference) =>
+      referenceHasComponentPropOrigin(analysis, argumentReference),
+    );
+  });
+};
+
+const hasProvenComponentPropOrigin = (
+  analysis: ProgramAnalysis,
+  reference: Reference,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const customHookParameterReferences = getUpstreamRefs(analysis, reference).filter(
+    isCustomHookParameter,
+  );
+  if (customHookParameterReferences.length === 0) return true;
+  return customHookParameterReferences.some(
+    (parameterReference) =>
+      customHookParameterUsesLegacyLocalAssumption(parameterReference, scopes) ||
+      customHookParameterHasComponentPropCall(analysis, parameterReference, scopes),
+  );
+};
+
 const isPreservedThroughConciseArrow = (
   callExpression: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -202,10 +321,11 @@ export const noPropCallbackInRender = defineRule({
       const callee = stripParenExpression(node.callee);
       if (isFunctionLike(callee)) return;
       if (
-        !getDownstreamRefs(analysis, callee).some((reference) =>
-          isPropCallbackInvocationRef(analysis, reference, {
-            nativeMethodScopes: context.scopes,
-          }),
+        !getDownstreamRefs(analysis, callee).some(
+          (reference) =>
+            isPropCallbackInvocationRef(analysis, reference, {
+              nativeMethodScopes: context.scopes,
+            }) && hasProvenComponentPropOrigin(analysis, reference, context.scopes),
         )
       ) {
         return;

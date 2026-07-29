@@ -68,6 +68,26 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "a component prop forwarded to a custom hook callback",
+      `const useNotifyError = (error, onError) => {
+         if (error) onError(error);
+       };
+       const Image = ({ error, onError }) => {
+         useNotifyError(error, onError);
+         return <div />;
+       };`,
+    ],
+    [
+      "a component prop forwarded in a custom hook options object",
+      `const useNotifyError = (options) => {
+         options.onError();
+       };
+       const Image = ({ onError }) => {
+         useNotifyError({ onError });
+         return <div />;
+       };`,
+    ],
+    [
       "a handler method on a custom hook options parameter",
       `const useNotifyError = (options) => {
          options.onError();
@@ -157,6 +177,16 @@ describe("no-prop-callback-in-render", () => {
          replaceItems();
          items.forEach(() => {});
        };`,
+    ],
+    [
+      "a custom hook whose name is shadowed by a CommonJS export",
+      `function useItems(items) {
+         items.forEach(() => {});
+       }
+       function exposeReplacement() {
+         const useItems = () => {};
+         exports.useItems = useItems;
+       }`,
     ],
     [
       "a native type name shadowed by an enclosing type parameter",
@@ -395,6 +425,51 @@ describe("no-prop-callback-in-render", () => {
          let total = 0;
          items.forEach((item) => { total += item.length; });
          return total;
+       };`,
+    ],
+    [
+      "compiled native iteration in a CommonJS-exported custom hook",
+      `exports.useMultipleFocusControl = useMultipleFocusControl;
+       function useMultipleFocusControl(activeDrawersIds) {
+         activeDrawersIds.forEach((drawerId) => {
+           consume(drawerId);
+         });
+       }`,
+    ],
+    [
+      "an arrow custom hook exported through CommonJS",
+      `const useSyncState = (setState) => {
+         setState("fresh");
+       };
+       exports.useSyncState = useSyncState;`,
+    ],
+    [
+      "a custom hook exported through an ESM specifier",
+      `const useSyncState = (setState) => {
+         setState("fresh");
+       };
+       export { useSyncState };`,
+    ],
+    [
+      "same-component state setters passed to a local custom hook",
+      `import { useState } from "react";
+       const useSyncState = (state, setState) => {
+         if (state === "stale") setState("fresh");
+       };
+       const Panel = () => {
+         const [state, setState] = useState("fresh");
+         useSyncState(state, setState);
+         return <div>{state}</div>;
+       };`,
+    ],
+    [
+      "state setters on an exported custom hook options object",
+      `interface SyncOptions {
+         state: string;
+         setState: (state: string) => void;
+       }
+       export const useSyncState = ({ state, setState }: SyncOptions) => {
+         if (state === "stale") setState("fresh");
        };`,
     ],
     [

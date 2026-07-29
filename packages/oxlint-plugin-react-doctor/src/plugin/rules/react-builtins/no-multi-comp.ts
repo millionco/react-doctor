@@ -347,18 +347,37 @@ const getReactHocWrappedIdentifierName = (
   scopes: ScopeAnalysis,
 ): string | null => {
   let current = unwrapTsCast(expression);
-  if (isNodeOfType(current, "Identifier")) {
-    const symbol = scopes.symbolFor(current);
-    if (!symbol || symbol.references.some((reference) => reference.flag !== "read")) return null;
-    const initializer = getDirectConstInitializer(symbol);
-    if (!initializer) return null;
-    current = unwrapTsCast(initializer);
+  let didTraverseReactHoc = false;
+  const visitedSymbolIds = new Set<number>();
+  while (true) {
+    if (isNodeOfType(current, "Identifier")) {
+      const symbol = scopes.symbolFor(current);
+      const initializer =
+        symbol &&
+        !visitedSymbolIds.has(symbol.id) &&
+        symbol.references.every((reference) => reference.flag === "read")
+          ? getDirectConstInitializer(symbol)
+          : null;
+      const unwrappedInitializer = initializer ? unwrapTsCast(initializer) : null;
+      if (
+        symbol &&
+        unwrappedInitializer &&
+        (isNodeOfType(unwrappedInitializer, "Identifier") ||
+          (isNodeOfType(unwrappedInitializer, "CallExpression") &&
+            isHocCall(unwrappedInitializer, scopes)))
+      ) {
+        visitedSymbolIds.add(symbol.id);
+        current = unwrappedInitializer;
+        continue;
+      }
+      return didTraverseReactHoc ? current.name : null;
+    }
+    if (!isNodeOfType(current, "CallExpression") || !isHocCall(current, scopes)) return null;
+    const wrappedArgument = current.arguments[0];
+    if (!wrappedArgument) return null;
+    didTraverseReactHoc = true;
+    current = unwrapTsCast(wrappedArgument);
   }
-  if (!isNodeOfType(current, "CallExpression") || !isHocCall(current, scopes)) return null;
-  const wrappedArgument = current.arguments[0];
-  if (!wrappedArgument) return null;
-  const unwrappedArgument = unwrapTsCast(wrappedArgument);
-  return isNodeOfType(unwrappedArgument, "Identifier") ? unwrappedArgument.name : null;
 };
 
 const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set<string> => {

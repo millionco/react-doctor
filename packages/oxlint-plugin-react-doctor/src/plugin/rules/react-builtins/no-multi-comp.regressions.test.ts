@@ -282,6 +282,64 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  it("traces directly composed React HoCs to the terminal component", () => {
+    expectPass(
+      `import { forwardRef, memo } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       export default memo(forwardRef(FeatureImpl));`,
+    );
+  });
+
+  it("traces composed React HoCs through read-only const aliases", () => {
+    expectPass(
+      `import { forwardRef, memo } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Forwarded = forwardRef(FeatureImpl);
+       const Feature = memo(Forwarded);
+       export default Feature;`,
+    );
+  });
+
+  it("traces a typed composed React HoC through an export specifier", () => {
+    expectPass(
+      `import { forwardRef, memo, type FC } from "react";
+       function PrivateHeader() { return <header />; }
+       function PrivateBody() { return <main />; }
+       function FeatureImpl() { return <><PrivateHeader /><PrivateBody /></>; }
+       const Forwarded = forwardRef(FeatureImpl satisfies FC);
+       const Feature = memo(Forwarded);
+       export { Feature as default };`,
+    );
+  });
+
+  it("does not trace a composed chain containing a non-React HoC", () => {
+    expectFail(
+      `import { memo } from "react";
+       import { forwardRef } from "./not-react";
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       export default memo(forwardRef(FeatureImpl));`,
+    );
+  });
+
+  it("does not trace a composed chain containing a shadowed HoC", () => {
+    expectFail(
+      `import { memo } from "react";
+       const forwardRef = (value) => value;
+       function Alpha() { return <div />; }
+       function Beta() { return <div />; }
+       function FeatureImpl() { return <div />; }
+       const Forwarded = forwardRef(FeatureImpl);
+       const Feature = memo(Forwarded);
+       export default Feature;`,
+    );
+  });
+
   it("does not treat a shadowed memo function as a React export wrapper", () => {
     expectFail(
       `const memo = (_component) => 0;

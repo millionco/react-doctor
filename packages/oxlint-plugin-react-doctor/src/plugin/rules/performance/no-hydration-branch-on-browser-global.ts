@@ -371,6 +371,28 @@ const readHydrationPrimitiveResult = (
   ) {
     return { kind: "undefined", value: undefined };
   }
+  if (isNodeOfType(unwrappedExpression, "Identifier")) {
+    const symbol = context.scopes.symbolFor(unwrappedExpression);
+    const parameterValue = symbol ? state.parameterValuesBySymbolId.get(symbol.id) : null;
+    if (symbol && parameterValue && !state.visitedSymbolIds.has(symbol.id)) {
+      state.visitedSymbolIds.add(symbol.id);
+      const result = readHydrationPrimitiveResult(parameterValue, context, runtime, state);
+      state.visitedSymbolIds.delete(symbol.id);
+      return result;
+    }
+    if (
+      symbol &&
+      symbol.kind === "const" &&
+      symbol.initializer &&
+      symbol.references.every((reference) => reference.flag === "read") &&
+      !state.visitedSymbolIds.has(symbol.id)
+    ) {
+      state.visitedSymbolIds.add(symbol.id);
+      const result = readHydrationPrimitiveResult(symbol.initializer, context, runtime, state);
+      state.visitedSymbolIds.delete(symbol.id);
+      return result;
+    }
+  }
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&
     unwrappedExpression.operator === "!"

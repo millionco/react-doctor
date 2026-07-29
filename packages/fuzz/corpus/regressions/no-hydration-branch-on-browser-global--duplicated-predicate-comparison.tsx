@@ -22,3 +22,12 @@ export const BitwiseComparisons = () => {
   const combined = (typeof window === "undefined") | (typeof window !== "undefined");
   return masked || combined ? <Same /> : <Different />;
 };
+
+export const AliasComparisons = () => {
+  const isServer = typeof window === "undefined";
+  const serverAlias = isServer;
+  const zero = 0;
+  const stable = serverAlias === isServer;
+  const primitive = isServer === zero;
+  return stable || primitive ? <Same /> : <Different />;
+};

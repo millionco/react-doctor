@@ -365,6 +365,40 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
         };
       `,
     ],
+    [
+      "equal aliased browser predicates",
+      `
+        import React from "react";
+        export const Page = () => {
+          const isServer = typeof window === "undefined";
+          const stable = isServer === isServer;
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ],
+    [
+      "a strict browser predicate comparison with an aliased zero",
+      `
+        import React from "react";
+        export const Page = () => {
+          const zero = 0;
+          const stable = (typeof window === "undefined") === zero;
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ],
+    [
+      "equal boolean aliases of a browser predicate",
+      `
+        import React from "react";
+        export const Page = () => {
+          const isServer = typeof window === "undefined";
+          const serverAlias = isServer;
+          const stable = serverAlias === isServer;
+          return stable ? <Same /> : <Different />;
+        };
+      `,
+    ],
   ])("stays quiet for %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -381,6 +415,13 @@ describe("no-hydration-branch-on-browser-global — ReactBench regressions", () 
     [
       "a Boolean-wrapped browser predicate compared with false",
       `Boolean(typeof window === "undefined") === false`,
+    ],
+    [
+      "an aliased browser predicate compared with false",
+      `(() => {
+        const isServer = typeof window === "undefined";
+        return isServer === false;
+      })()`,
     ],
   ])("reports %s", (_name, condition) => {
     const result = run(`

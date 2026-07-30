@@ -256,4 +256,129 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
     expect(memberCall.diagnostics).toHaveLength(1);
     expect(updateExpression.diagnostics).toHaveLength(1);
   });
+
+  it("flags destructured parameter merges passed through JSX", () => {
+    const directObject = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `interface ButtonLabels { next: string; cancel: string }
+       interface Props { buttonLabels?: any }
+       const defaultLabels = { next: "Next", cancel: "Cancel" };
+       const Wizard = (_props: { buttonLabels: ButtonLabels }) => null;
+       const WizardFunction = ({ buttonLabels = {} }: Props) => <Wizard buttonLabels={{ ...defaultLabels, ...buttonLabels }} />;`,
+    );
+    const nestedAttribute = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `interface SlotAttributes { wrapper?: { style?: object } }
+       interface Props { slots: Partial<SlotAttributes> }
+       const defaultSlots = { wrapper: { style: { width: 100 } } };
+       const Skeleton = ({ slots }: Props) => {
+         const resolved = { ...defaultSlots, ...slots };
+         return <div style={resolved.wrapper?.style} />;
+       };`,
+    );
+    const destructuredSpread = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `interface SlotAttributes { wrapper?: { className: string } }
+       interface Props { slots: Partial<SlotAttributes> }
+       const defaultSlots = { wrapper: { className: "root" } };
+       const Skeleton = ({ slots }: Props) => {
+         const { wrapper } = { ...defaultSlots, ...slots };
+         return <div {...wrapper} />;
+       };`,
+    );
+    const unresolvedTypeWithOptionalAccess = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `import type { SlotAttributes } from "./types";
+       declare const getDefaultSlots: () => SlotAttributes;
+       const Skeleton = ({ slots }: { slots: SlotAttributes }) => {
+         const defaultSlots = getDefaultSlots();
+         const resolved = { ...defaultSlots, ...slots };
+         return <div style={resolved.wrapper?.style} />;
+       };`,
+    );
+    const reactBenchAnyLabels = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `import React from "react";
+       interface WizardProps {}
+       interface WizardFunctionProps extends WizardProps {
+         buttonLabels?: any;
+         fields: unknown[];
+       }
+       const defaultLabels = { cancel: "Cancel", next: "Next" };
+       const Wizard = (_props: unknown) => null;
+       const WizardFunction: React.FC<WizardFunctionProps> = ({ buttonLabels = {}, fields, ...props }) => (
+         <Wizard {...props} fields={fields} buttonLabels={{ ...defaultLabels, ...buttonLabels }} />
+       );`,
+    );
+    expect(directObject.diagnostics).toHaveLength(1);
+    expect(nestedAttribute.diagnostics).toHaveLength(1);
+    expect(destructuredSpread.diagnostics).toHaveLength(1);
+    expect(unresolvedTypeWithOptionalAccess.diagnostics).toHaveLength(1);
+    expect(reactBenchAnyLabels.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps repaired and non-optional JSX sinks quiet", () => {
+    const requiredKeys = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `interface ButtonLabels { next: string }
+       interface Props { buttonLabels: ButtonLabels }
+       const defaultLabels = { next: "Next" };
+       const Wizard = (_props: { buttonLabels: ButtonLabels }) => null;
+       const WizardFunction = ({ buttonLabels }: Props) => <Wizard buttonLabels={{ ...defaultLabels, ...buttonLabels }} />;`,
+    );
+    const finalDefaults = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `interface ButtonLabels { next?: string }
+       interface Props { buttonLabels: ButtonLabels }
+       const defaultLabels = { next: "Next" };
+       const Wizard = (_props: { buttonLabels: Required<ButtonLabels> }) => null;
+       const WizardFunction = ({ buttonLabels }: Props) => <Wizard buttonLabels={{ ...defaultLabels, ...buttonLabels, ...defaultLabels }} />;`,
+    );
+    const attributeFallback = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `interface SlotAttributes { wrapper?: { style?: object } }
+       interface Props { slots: Partial<SlotAttributes> }
+       const defaultSlots = { wrapper: { style: { width: 100 } } };
+       const Skeleton = ({ slots }: Props) => {
+         const resolved = { ...defaultSlots, ...slots };
+         return <div style={resolved.wrapper?.style ?? {}} />;
+       };`,
+    );
+    const spreadFallback = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `interface SlotAttributes { wrapper?: { className: string } }
+       interface Props { slots: Partial<SlotAttributes> }
+       const defaultSlots = { wrapper: { className: "root" } };
+       const Skeleton = ({ slots }: Props) => {
+         const { wrapper } = { ...defaultSlots, ...slots };
+         return <div {...(wrapper ?? {})} />;
+       };`,
+    );
+    const unresolvedTypeWithoutOptionalAccess = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `import type { SlotAttributes } from "./types";
+       declare const getDefaultSlots: () => SlotAttributes;
+       const Skeleton = ({ slots }: { slots: SlotAttributes }) => {
+         const defaultSlots = getDefaultSlots();
+         const resolved = { ...defaultSlots, ...slots };
+         return <div style={resolved.wrapper.style} />;
+       };`,
+    );
+    const opaqueDefaultsWithLaterRepair = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `interface Props { width?: number }
+       declare const getDefaults: () => { width: number };
+       const Panel = (props: Props) => {
+         const defaults = getDefaults();
+         const merged = { ...defaults, ...props, width: 100 };
+         return <div data-width={merged.width} />;
+       };`,
+    );
+    expect(requiredKeys.diagnostics).toHaveLength(0);
+    expect(finalDefaults.diagnostics).toHaveLength(0);
+    expect(attributeFallback.diagnostics).toHaveLength(0);
+    expect(spreadFallback.diagnostics).toHaveLength(0);
+    expect(unresolvedTypeWithoutOptionalAccess.diagnostics).toHaveLength(0);
+    expect(opaqueDefaultsWithLaterRepair.diagnostics).toHaveLength(0);
+  });
 });

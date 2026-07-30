@@ -427,6 +427,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
+    ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
     ["no-dynamic-import-path", collectNearestManifestDependencies],
@@ -466,7 +467,6 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
  * partition), forcing a conscious classification.
  */
 export const UNBOUNDED_CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
-  "nextjs-async-dynamic-api-not-awaited",
   "nextjs-no-img-element",
   "no-loading-flag-reset-outside-finally",
   "only-export-components",

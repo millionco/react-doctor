@@ -326,6 +326,30 @@ describe("forwarded Hook dependency collectors", () => {
 });
 
 describe("nextjs collectors", () => {
+  it("records the owning package manifest for the async dynamic API wrapper gate", () => {
+    writeFixtureFile(
+      "package.json",
+      `{ "dependencies": { "next": "^15.0.0", "react": "^19.0.0" } }\n`,
+    );
+    const pagePath = writeFixtureFile(
+      "app/page.tsx",
+      `import { cookies } from "next/headers";
+export default function Page() {
+  return cookies().get("session");
+}
+`,
+    );
+
+    for (const trace of [
+      collectFor(pagePath, ["nextjs-async-dynamic-api-not-awaited"]),
+      collectFor(pagePath, ["nextjs-async-dynamic-api-not-awaited"]),
+    ]) {
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths.has(fixturePath("package.json"))).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("app/package.json"))).toBe(true);
+    }
+  });
+
   it("records ancestor layout probes for a page file only", () => {
     writeFixtureFile("app/layout.tsx", "export default ({ children }) => children;\n");
     const pagePath = writeFixtureFile("app/products/page.tsx", "export default () => <div />;\n");

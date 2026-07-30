@@ -327,6 +327,66 @@ describe("prefer-module-scope-pure-function", () => {
     expect(result.diagnostics[0].message).toContain("Input");
   });
 
+  it("flags pure functions inside a compiled forwardRef component", () => {
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      var react_1 = require("react");
+
+      var InternalNavigableGroup = (0, react_1.forwardRef)(function (props, ref) {
+        function focusElement(element) {
+          element.focus();
+        }
+        return react_1.default.createElement("div", { ref: ref });
+      });
+    `,
+      { filename: "src/navigable-group/internal.js" },
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("focusElement");
+    expect(result.diagnostics[0].message).toContain("InternalNavigableGroup");
+  });
+
+  it("does not treat a sequence ending in another wrapper as forwardRef", () => {
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      var react_1 = require("react");
+
+      var InternalNavigableGroup = (react_1.forwardRef, makeFactory)(function () {
+        function focusElement(element) {
+          element.focus();
+        }
+        return { focusElement };
+      });
+    `,
+      { filename: "src/navigable-group/internal.js" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a compiled forwardRef render function that captures component state", () => {
+    const result = runRule(
+      preferModuleScopePureFunction,
+      `
+      var react_1 = require("react");
+
+      var InternalNavigableGroup = (0, react_1.forwardRef)(function (props, ref) {
+        var activeElement = props.activeElement;
+        function focusElement() {
+          activeElement.focus();
+        }
+        return react_1.default.createElement("div", { ref: ref });
+      });
+    `,
+      { filename: "src/navigable-group/internal.js" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag pure functions inside a PascalCase factory that returns an object literal", () => {
     // Regression: `DailyVideoApiAdapter` / `AIHandlePlugin` style factories
     // are PascalCase but return a plain object, never re-render, and live in

@@ -209,6 +209,34 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(localSetterMethod.diagnostics).toHaveLength(0);
   });
 
+  it("ignores setter-shaped mutators on updater-local built-ins and factory results", () => {
+    const localBuiltIns = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);setValue(previous=>{const date=new Date(previous);date.setTime(previous);const view=new DataView(new ArrayBuffer(8));view.setUint8(0,previous);const bytes=new Uint8Array(8);bytes.set([previous]);return previous+1})}`,
+    );
+    const chainedLazyContainer = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{let draft;const next=(draft??=new Map(previous));next.set("value",1);return next})}`,
+    );
+    const localFactoryResult = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{const createDraft=()=>new Map(previous);const next=createDraft();next.set("value",1);createDraft().set("other",2);return next})}`,
+    );
+    const externalDate = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const date=new Date();const C=()=>{const[,setValue]=useState(0);setValue(previous=>{date.setTime(previous);return previous+1})}`,
+    );
+    const externalFactoryResult = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const cache=new Map();const getCache=()=>cache;const C=()=>{const[,setValue]=useState(0);setValue(previous=>{const next=getCache();next.set("value",previous);return previous+1})}`,
+    );
+    expect(localBuiltIns.diagnostics).toHaveLength(0);
+    expect(chainedLazyContainer.diagnostics).toHaveLength(0);
+    expect(localFactoryResult.diagnostics).toHaveLength(0);
+    expect(externalDate.diagnostics).toHaveLength(1);
+    expect(externalFactoryResult.diagnostics).toHaveLength(1);
+  });
+
   it("flags persistence and submission calls while following pure local name lookalikes", () => {
     const importedPersistence = runRule(
       noSideEffectInStateUpdaterFunction,

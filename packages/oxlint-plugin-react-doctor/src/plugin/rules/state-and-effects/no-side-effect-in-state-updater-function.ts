@@ -18,6 +18,7 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
+import { isCpuTypedArray } from "../../utils/is-cpu-typed-array.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -54,6 +55,8 @@ const CALLBACK_PROP_NAME_PATTERN = /^(?:on|set)[A-Z]/;
 const SAFE_GLOBAL_RECEIVER_NAMES = new Set(["Math", "JSON", "Object", "Array"]);
 const FRESH_CONTAINER_CONSTRUCTOR_NAMES = new Set([
   "Array",
+  "DataView",
+  "Date",
   "Object",
   ...SAFE_MUTABLE_CONSTRUCTOR_NAMES,
 ]);
@@ -463,11 +466,15 @@ const baseReceiverIdentifier = (expression: EsTreeNode): EsTreeNodeOfType<"Ident
   return isNodeOfType(current, "Identifier") ? current : null;
 };
 
-const expressionIsFreshContainer = (expression: EsTreeNode, context: RuleContext): boolean => {
+const expressionIsDirectFreshContainer = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   const candidate = stripParenExpression(expression);
   if (isNodeOfType(candidate, "ObjectExpression") || isNodeOfType(candidate, "ArrayExpression")) {
     return true;
   }
+  if (isCpuTypedArray(candidate, context.scopes)) return true;
   if (!isNodeOfType(candidate, "NewExpression")) return false;
   const constructor = stripParenExpression(candidate.callee);
   return Boolean(
@@ -480,6 +487,7 @@ const expressionIsFreshContainer = (expression: EsTreeNode, context: RuleContext
 const identifierIsAssignedOnlyFreshContainers = (
   identifier: EsTreeNodeOfType<"Identifier">,
   context: RuleContext,
+  includeCurrentAssignment = false,
 ): boolean => {
   const symbol = context.scopes.symbolFor(identifier);
   if (!symbol) return false;
@@ -501,20 +509,57 @@ const identifierIsAssignedOnlyFreshContainers = (
     if (
       !assignment ||
       !isNodeOfType(assignment, "AssignmentExpression") ||
-      (assignment.operator !== "=" && assignment.operator !== "??=") ||
+      (assignment.operator !== "=" &&
+        assignment.operator !== "??=" &&
+        assignment.operator !== "||=") ||
       assignment.left !== referenceRoot ||
-      !expressionIsFreshContainer(assignment.right, context)
+      !expressionIsDirectFreshContainer(assignment.right, context)
     ) {
       return false;
     }
     if (
-      assignment.range[0] < identifier.range[0] &&
+      (includeCurrentAssignment
+        ? assignment.range[0] <= identifier.range[0]
+        : assignment.range[0] < identifier.range[0]) &&
       findDeferredExecutionBoundary(assignment) === findDeferredExecutionBoundary(identifier)
     ) {
       hasPriorFreshAssignment = true;
     }
   }
   return hasPriorFreshAssignment;
+};
+
+const expressionIsFreshContainer = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (expressionIsDirectFreshContainer(candidate, context)) return true;
+  if (!isNodeOfType(candidate, "AssignmentExpression")) return false;
+  if (candidate.operator === "=") {
+    return expressionIsDirectFreshContainer(candidate.right, context);
+  }
+  const left = stripParenExpression(candidate.left);
+  return Boolean(
+    (candidate.operator === "??=" || candidate.operator === "||=") &&
+    isNodeOfType(left, "Identifier") &&
+    identifierIsAssignedOnlyFreshContainers(left, context, true),
+  );
+};
+
+const functionReturnsOnlyFreshContainers = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const returnValues = collectFunctionReturnValues(functionNode);
+  return Boolean(
+    returnValues?.every((returnValue) => expressionIsFreshContainer(returnValue, context)),
+  );
+};
+
+const callReturnsOnlyFreshContainers = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const calledFunction = resolveCalledLocalFunction(call, context);
+  return Boolean(calledFunction && functionReturnsOnlyFreshContainers(calledFunction, context));
 };
 
 const memberReceiverIsUpdaterLocal = (
@@ -582,6 +627,9 @@ const receiverIsUpdaterLocal = (
 ): boolean => {
   const unwrappedReceiver = stripParenExpression(receiver);
   if (expressionIsFreshContainer(unwrappedReceiver, context)) return true;
+  if (isNodeOfType(unwrappedReceiver, "CallExpression")) {
+    return callReturnsOnlyFreshContainers(unwrappedReceiver, context);
+  }
   if (isNodeOfType(unwrappedReceiver, "MemberExpression")) {
     return memberReceiverIsUpdaterLocal(
       unwrappedReceiver,
@@ -650,6 +698,9 @@ const receiverIsUpdaterLocal = (
   if (identifierIsAssignedOnlyFreshContainers(baseIdentifier, context)) return true;
   if (!initializer) return false;
   if (expressionIsFreshContainer(initializer, context)) return true;
+  if (isNodeOfType(initializer, "CallExpression")) {
+    return callReturnsOnlyFreshContainers(initializer, context);
+  }
   if (!isNodeOfType(initializer, "Identifier")) return false;
   return receiverIsUpdaterLocal(
     initializer,

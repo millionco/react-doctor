@@ -48,8 +48,9 @@ export const prepareLintSources = (
       : path.resolve(rootDirectory, candidateFile);
     const sourceBuffer = fs.readFileSync(absoluteSourcePath);
     if (ASTRO_FILE_PATTERN.test(candidateFile)) {
+      const compilerSourcePath = absoluteSourcePath.replaceAll("\\", "/");
       const convertedSource = convertToTSX(sourceBuffer.toString("utf8"), {
-        filename: absoluteSourcePath,
+        filename: compilerSourcePath,
         sourcemap: "external",
         includeScripts: true,
       });

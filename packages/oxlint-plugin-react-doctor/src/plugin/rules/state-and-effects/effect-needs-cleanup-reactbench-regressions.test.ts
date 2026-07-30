@@ -733,4 +733,214 @@ const Delayed = ({ task }) => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("accepts a ref-owned timer released through a parameterized helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, task }) => {
+  const timerRef = useRef(null);
+  const clearTimerRef = (ownedTimerRef) => {
+    if (ownedTimerRef.current) {
+      clearTimeout(ownedTimerRef.current);
+      ownedTimerRef.current = null;
+    }
+  };
+  useEffect(() => {
+    return () => clearTimerRef(timerRef);
+  }, []);
+  useEffect(() => {
+    clearTimerRef(timerRef);
+    timerRef.current = setTimeout(task, delay);
+  }, [delay, task]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts ref-owned timers released through useCallback helpers", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+const Delayed = ({ delay, task }) => {
+  const timerRef = useRef(null);
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+  useEffect(() => {
+    return () => clearTimer();
+  }, [clearTimer]);
+  useEffect(() => {
+    clearTimer();
+    if (delay <= 0) return;
+    timerRef.current = setTimeout(task, delay);
+  }, [clearTimer, delay, task]);
+  return null;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts timer handles retained in stable ref fields", () => {
+    const directStorageResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, task }) => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    return () => clearTimeout(timerRef.current);
+  }, []);
+  useEffect(() => {
+    clearTimeout(timerRef.current);
+    const timer = setTimeout(task, delay);
+    timerRef.current = timer;
+  }, [delay, task]);
+  return null;
+};`,
+    );
+    const objectStorageResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, task }) => {
+  const pendingRef = useRef(null);
+  useEffect(() => {
+    return () => clearTimeout(pendingRef.current.timeout);
+  }, []);
+  useEffect(() => {
+    clearTimeout(pendingRef.current.timeout);
+    pendingRef.current = {
+      timeout: setTimeout(task, delay),
+      startedAt: Date.now(),
+    };
+  }, [delay, task]);
+  return null;
+};`,
+    );
+    expect(directStorageResult.diagnostics).toHaveLength(0);
+    expect(objectStorageResult.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps conditional and mismatched timer retention conservative", () => {
+    const conditionalStorageResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, enabled, task }) => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    return () => clearTimeout(timerRef.current);
+  }, []);
+  useEffect(() => {
+    clearTimeout(timerRef.current);
+    const timer = setTimeout(task, delay);
+    if (enabled) timerRef.current = timer;
+  }, [delay, enabled, task]);
+  return null;
+};`,
+    );
+    const mismatchedStorageResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, task }) => {
+  const pendingRef = useRef(null);
+  useEffect(() => {
+    return () => clearTimeout(pendingRef.current.otherTimeout);
+  }, []);
+  useEffect(() => {
+    clearTimeout(pendingRef.current.timeout);
+    const timer = setTimeout(task, delay);
+    pendingRef.current = { timeout: timer };
+  }, [delay, task]);
+  return null;
+};`,
+    );
+    expect(conditionalStorageResult.diagnostics).toHaveLength(1);
+    expect(mismatchedStorageResult.diagnostics).toHaveLength(1);
+  });
+
+  it("requires every cleanup-effect path to release the retained timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, enabled, task }) => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    if (enabled) return () => clearTimeout(timerRef.current);
+  }, [enabled]);
+  useEffect(() => {
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(task, delay);
+  }, [delay, task]);
+  return null;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps parameterized helpers tied to the exact timer owner", () => {
+    const replacementMismatchResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, task }) => {
+  const timerRef = useRef(null);
+  const otherTimerRef = useRef(null);
+  const clearTimerRef = (ownedTimerRef) => clearTimeout(ownedTimerRef.current);
+  useEffect(() => {
+    return () => clearTimerRef(timerRef);
+  }, []);
+  useEffect(() => {
+    clearTimerRef(otherTimerRef);
+    timerRef.current = setTimeout(task, delay);
+  }, [delay, task]);
+  return null;
+};`,
+    );
+    const unmountMismatchResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, task }) => {
+  const timerRef = useRef(null);
+  const otherTimerRef = useRef(null);
+  const clearTimerRef = (ownedTimerRef) => clearTimeout(ownedTimerRef.current);
+  useEffect(() => {
+    return () => clearTimerRef(otherTimerRef);
+  }, []);
+  useEffect(() => {
+    clearTimerRef(timerRef);
+    timerRef.current = setTimeout(task, delay);
+  }, [delay, task]);
+  return null;
+};`,
+    );
+    expect(replacementMismatchResult.diagnostics).toHaveLength(1);
+    expect(unmountMismatchResult.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps reassigned cleanup-helper parameters conservative", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Delayed = ({ delay, task }) => {
+  const timerRef = useRef(null);
+  const otherTimerRef = useRef(null);
+  const clearTimerRef = (ownedTimerRef) => {
+    ownedTimerRef = otherTimerRef;
+    clearTimeout(ownedTimerRef.current);
+  };
+  useEffect(() => {
+    return () => clearTimerRef(timerRef);
+  }, []);
+  useEffect(() => {
+    clearTimerRef(timerRef);
+    timerRef.current = setTimeout(task, delay);
+  }, [delay, task]);
+  return null;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

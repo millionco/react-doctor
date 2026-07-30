@@ -12,6 +12,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
@@ -49,6 +50,7 @@ const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
 const SIDE_EFFECT_CALL_NAME_PATTERN =
   /^(?:analytics|capture|dispatch|emit|log|notify|persist|record|report|save|send|submit|track)/;
 const ASYNC_UPDATE_CALL_NAME_PATTERN = /^update[A-Z_]/;
+const CALLBACK_PROP_NAME_PATTERN = /^(?:on|set)[A-Z]/;
 const SAFE_GLOBAL_RECEIVER_NAMES = new Set(["Math", "JSON", "Object", "Array"]);
 const FRESH_CONTAINER_CONSTRUCTOR_NAMES = new Set([
   "Array",
@@ -731,12 +733,8 @@ const identifierIsCallbackParameter = (identifier: EsTreeNode, context: RuleCont
   if (!isNodeOfType(identifier, "Identifier")) return false;
   const symbol = context.scopes.symbolFor(identifier);
   if (symbol?.kind !== "parameter") return false;
-  const bindingParent = symbol.bindingIdentifier.parent;
-  return Boolean(
-    isNodeOfType(bindingParent, "Property") &&
-    /^(?:on|set)[A-Z]/.test(
-      getStaticPropertyKeyName(bindingParent, { allowComputedString: true }) ?? "",
-    ),
+  return CALLBACK_PROP_NAME_PATTERN.test(
+    getDestructuredBindingPropertyName(symbol.bindingIdentifier) ?? "",
   );
 };
 
@@ -779,6 +777,13 @@ const freshObjectMethodIsExternalCallback = (
     isNodeOfType(unwrappedValue, "Identifier") &&
     GLOBAL_SIDE_EFFECT_CALL_NAMES.has(unwrappedValue.name) &&
     context.scopes.isGlobalReference(unwrappedValue)
+  ) {
+    return true;
+  }
+  if (identifierIsCallbackParameter(unwrappedValue, context)) return true;
+  if (
+    isNodeOfType(unwrappedValue, "MemberExpression") &&
+    CALLBACK_PROP_NAME_PATTERN.test(getStaticPropertyName(unwrappedValue) ?? "")
   ) {
     return true;
   }
@@ -967,11 +972,18 @@ const callHasSideEffectName = (
   const callName = getCallName(call);
   if (!callName) return false;
   const callee = stripParenExpression(call.callee);
+  const memberCalleeUsesExternalCallback =
+    isNodeOfType(callee, "MemberExpression") &&
+    freshObjectMethodIsExternalCallback(call, invocationReferenceNode, context);
+  const memberCalleeIsExternalCallback =
+    isNodeOfType(callee, "MemberExpression") &&
+    CALLBACK_PROP_NAME_PATTERN.test(getStaticPropertyName(callee) ?? "") &&
+    (memberCalleeUsesExternalCallback ||
+      (!memberReceiverIsFreshObjectLiteral(callee, context) &&
+        !receiverIsUpdaterLocal(callee.object, updaterFunction, executedFunctions, context)));
   const isDiscardedExternalCallbackCall =
     isResultDiscardedCall(call) &&
-    (identifierIsCallbackParameter(callee, context) ||
-      (isNodeOfType(callee, "MemberExpression") &&
-        /^on[A-Z]/.test(getStaticPropertyName(callee) ?? "")));
+    (identifierIsCallbackParameter(callee, context) || memberCalleeIsExternalCallback);
   const isAsyncUpdateCall =
     ASYNC_UPDATE_CALL_NAME_PATTERN.test(callName) && callStartsPromiseChain(call);
   if (isNodeOfType(callee, "MemberExpression")) {
@@ -999,12 +1011,7 @@ const callHasSideEffectName = (
     return false;
   }
   if (isDiscardedExternalCallbackCall) return true;
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    freshObjectMethodIsExternalCallback(call, invocationReferenceNode, context)
-  ) {
-    return true;
-  }
+  if (memberCalleeUsesExternalCallback) return true;
   if (
     isNodeOfType(callee, "MemberExpression") &&
     !SIDE_EFFECT_CALL_NAME_PATTERN.test(callName) &&

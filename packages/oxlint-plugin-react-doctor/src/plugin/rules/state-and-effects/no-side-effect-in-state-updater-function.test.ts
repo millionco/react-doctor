@@ -185,13 +185,28 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import{useState}from"react";const C=({setMessages:updateMessages})=>{const[,setRequests]=useState([]);setRequests(previous=>{updateMessages(messages=>messages);return previous})}`,
     );
+    const defaultedSetterProp = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const noop=()=>{};const C=({setGroupState=noop})=>{const[,setOpen]=useState(false);setOpen(previous=>{setGroupState("group",{open:previous});return!previous})}`,
+    );
+    const memberSetterProp = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=props=>{const[,setRequests]=useState([]);setRequests(previous=>{props.setMessages(previous);return previous})}`,
+    );
     const localSetterHelper = runRule(
       noSideEffectInStateUpdaterFunction,
       `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);const setFormatter=value=>value+1;setValue(previous=>setFormatter(previous))}`,
     );
+    const localSetterMethod = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const helpers={setMessages:value=>value};const[,setValue]=useState(0);setValue(previous=>{helpers.setMessages(previous);return previous})}`,
+    );
     expect(directSetterProp.diagnostics).toHaveLength(1);
     expect(renamedSetterProp.diagnostics).toHaveLength(1);
+    expect(defaultedSetterProp.diagnostics).toHaveLength(1);
+    expect(memberSetterProp.diagnostics).toHaveLength(1);
     expect(localSetterHelper.diagnostics).toHaveLength(0);
+    expect(localSetterMethod.diagnostics).toHaveLength(0);
   });
 
   it("flags persistence and submission calls while following pure local name lookalikes", () => {

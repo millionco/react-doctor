@@ -369,6 +369,36 @@ const getExportedBindings = (
   return exportedBindings;
 };
 
+const isViteDefineConfigCallback = (
+  initializer: Parameters<typeof walkAst>[0] | null,
+  callback: Parameters<typeof walkAst>[0],
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!initializer) return false;
+  const unwrappedInitializer = stripParenExpression(initializer);
+  if (
+    !isNodeOfType(unwrappedInitializer, "CallExpression") ||
+    !isNodeOfType(unwrappedInitializer.callee, "Identifier")
+  ) {
+    return false;
+  }
+  const callbackArgument = unwrappedInitializer.arguments[0];
+  if (!callbackArgument || stripParenExpression(callbackArgument) !== callback) return false;
+  const calleeSymbol = scopes.symbolFor(unwrappedInitializer.callee);
+  if (
+    calleeSymbol?.kind !== "import" ||
+    getImportedName(calleeSymbol.declarationNode) !== "defineConfig"
+  ) {
+    return false;
+  }
+  const importDeclaration = calleeSymbol.declarationNode.parent;
+  return Boolean(
+    importDeclaration &&
+    isNodeOfType(importDeclaration, "ImportDeclaration") &&
+    importDeclaration.source.value === "vite",
+  );
+};
+
 const isExportedConfigProperty = (
   property: Parameters<typeof walkAst>[0],
   exportedBindings: ReadonlySet<SymbolDescriptor>,
@@ -405,7 +435,18 @@ const isExportedConfigProperty = (
     if (isNodeOfType(ancestor, "VariableDeclarator") && isNodeOfType(ancestor.id, "Identifier")) {
       const binding = scopes.symbolFor(ancestor.id);
       if (binding && exportedBindings.has(binding)) {
-        return !didCrossNestedProperty && !containingFunction;
+        if (didCrossNestedProperty || didCrossFunctionBoundary) return false;
+        if (!containingFunction) return true;
+        const callbackReturnValue =
+          containingReturn && isNodeOfType(containingReturn, "ReturnStatement")
+            ? containingReturn.argument
+            : containingFunction.body;
+        return (
+          Boolean(
+            callbackReturnValue &&
+            isNodeOfType(stripParenExpression(callbackReturnValue), "ObjectExpression"),
+          ) && isViteDefineConfigCallback(ancestor.init, containingFunction, scopes)
+        );
       }
     }
     ancestor = ancestor.parent;

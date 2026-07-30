@@ -195,6 +195,164 @@ describe("probeFastRefreshFileStatus", () => {
 
   it.each([
     [
+      "concise callback",
+      `
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+        const config = defineConfig(({ mode }) => ({
+          plugins: [...(mode !== "test" ? [tanstackStart()] : []), react()],
+        }));
+        export default config;
+      `,
+      "tanstack",
+    ],
+    [
+      "block callback with an aliased import",
+      `
+        import { defineConfig as createViteConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        const config = createViteConfig(() => {
+          const plugins = [react()];
+          return { plugins };
+        });
+        export default config;
+      `,
+      "generic",
+    ],
+    [
+      "object config",
+      `
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        const config = defineConfig({ plugins: [react()] });
+        export default config;
+      `,
+      "generic",
+    ],
+  ])("recognizes an exported Vite defineConfig value — %s", (_label, config, runtime) => {
+    const sourcePath = createFixture({
+      manifest: {
+        scripts: { dev: "vite" },
+        dependencies: { react: "19.0.0", "@tanstack/react-start": "1.120.0" },
+        devDependencies: { vite: "7.0.0", "@vitejs/plugin-react": "5.0.0" },
+      },
+      files: { "vite.config.ts": config },
+    });
+
+    expect(probeFastRefreshFileStatus(sourcePath)).toEqual({ isActive: true, runtime });
+  });
+
+  it.each([
+    [
+      "local factory named defineConfig",
+      `
+        import react from "@vitejs/plugin-react";
+        const defineConfig = (factory) => factory({});
+        const config = defineConfig(() => ({ plugins: [react()] }));
+        export default config;
+      `,
+    ],
+    [
+      "shadowed Vite import",
+      `
+        import { defineConfig as viteDefineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        const defineConfig = (factory) => factory({});
+        const config = defineConfig(() => ({ plugins: [react()] }));
+        export default config;
+      `,
+    ],
+    [
+      "unexported local config",
+      `
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        const unused = defineConfig(() => ({ plugins: [react()] }));
+        export default { plugins: [] };
+      `,
+    ],
+    [
+      "unrelated factory",
+      `
+        import react from "@vitejs/plugin-react";
+        const createConfig = (factory) => factory({});
+        const config = createConfig(() => ({ plugins: [react()] }));
+        export default config;
+      `,
+    ],
+    [
+      "indirect callback",
+      `
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        const createConfig = () => ({ plugins: [react()] });
+        const config = defineConfig(createConfig);
+        export default config;
+      `,
+    ],
+    [
+      "conditional callback",
+      `
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        const activeConfig = () => ({ plugins: [react()] });
+        const inactiveConfig = () => ({ plugins: [] });
+        const config = defineConfig(process.env.ACTIVE ? activeConfig : inactiveConfig);
+        export default config;
+      `,
+    ],
+    [
+      "conditional callback return",
+      `
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        const config = defineConfig(() =>
+          process.env.ACTIVE ? { plugins: [react()] } : { plugins: [] },
+        );
+        export default config;
+      `,
+    ],
+    [
+      "non-Vite defineConfig import",
+      `
+        import { defineConfig } from "vitest/config";
+        import react from "@vitejs/plugin-react";
+        const config = defineConfig(() => ({ plugins: [react()] }));
+        export default config;
+      `,
+    ],
+    [
+      "nested callback decoy",
+      `
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        const config = defineConfig(() => ({
+          nested: { plugins: [react()] },
+          plugins: [],
+        }));
+        export default config;
+      `,
+    ],
+    [
+      "inactive callback config",
+      `
+        import { defineConfig } from "vite";
+        const config = defineConfig(() => ({ plugins: [] }));
+        export default config;
+      `,
+    ],
+  ])("rejects an unproven exported defineConfig callback — %s", (_label, config) => {
+    const sourcePath = createFixture({
+      manifest: viteManifest({ dev: "vite" }),
+      files: { "vite.config.ts": config },
+    });
+
+    expect(probeFastRefreshFileStatus(sourcePath).isActive).toBe(false);
+  });
+
+  it.each([
+    [
       "reassigned plugin array",
       `
         import react from "@vitejs/plugin-react";

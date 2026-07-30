@@ -1,5 +1,6 @@
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
 import { MUTATING_COLLECTION_METHODS, PROMISE_SETTLE_METHODS } from "../../constants/js.js";
+import { SAFE_MUTABLE_CONSTRUCTOR_NAMES } from "../../constants/library.js";
 import {
   STATE_UPDATER_CALL_PROPERTY_WRITE_RANK,
   STATE_UPDATER_INITIAL_PROPERTY_WRITE_RANK,
@@ -51,11 +52,8 @@ const ASYNC_UPDATE_CALL_NAME_PATTERN = /^update[A-Z_]/;
 const SAFE_GLOBAL_RECEIVER_NAMES = new Set(["Math", "JSON", "Object", "Array"]);
 const FRESH_CONTAINER_CONSTRUCTOR_NAMES = new Set([
   "Array",
-  "Map",
   "Object",
-  "Set",
-  "WeakMap",
-  "WeakSet",
+  ...SAFE_MUTABLE_CONSTRUCTOR_NAMES,
 ]);
 const SIDE_EFFECT_METHOD_NAMES = new Set([
   "appendChild",
@@ -484,7 +482,13 @@ const identifierIsAssignedOnlyFreshContainers = (
   const symbol = context.scopes.symbolFor(identifier);
   if (!symbol) return false;
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
-  if (initializer && !(isNodeOfType(initializer, "Literal") && initializer.value === null)) {
+  const isEmptyInitializer =
+    !initializer ||
+    (isNodeOfType(initializer, "Literal") && initializer.value === null) ||
+    (isNodeOfType(initializer, "Identifier") &&
+      initializer.name === "undefined" &&
+      context.scopes.isGlobalReference(initializer));
+  if (!isEmptyInitializer) {
     return false;
   }
   let hasPriorFreshAssignment = false;

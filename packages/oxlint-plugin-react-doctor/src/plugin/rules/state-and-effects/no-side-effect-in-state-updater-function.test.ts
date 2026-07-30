@@ -149,11 +149,31 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import{useState}from"react";let cache=null;const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{cache??=new Map(previous);cache.set("value",1);return previous})}`,
     );
+    const undefinedInitializedLocalReceiver = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{let next=undefined;next=new Map(previous);next.set("value",1);return next})}`,
+    );
+    const shadowedUndefinedReceiver = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const undefined=getExternalMap();const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{let next=undefined;if(previous.size)next=new Map(previous);next.set("value",1);return next})}`,
+    );
+    const updaterLocalMutableBuilders = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState("");setValue(previous=>{const params=new URLSearchParams();params.set("value",previous);const headers=new Headers();headers.set("x-value",previous);const data=new FormData();data.set("value",previous);return params.toString()})}`,
+    );
+    const externalMutableBuilders = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const params=new URLSearchParams();const headers=new Headers();const data=new FormData();const C=()=>{const[,setValue]=useState("");setValue(previous=>{params.set("value",previous);headers.set("x-value",previous);data.set("value",previous);return previous})}`,
+    );
     expect(externalReceiver.diagnostics).toHaveLength(1);
     expect(updaterLocalReceivers.diagnostics).toHaveLength(0);
     expect(lazilyInitializedLocalReceiver.diagnostics).toHaveLength(0);
     expect(nullishInitializedLocalReceiver.diagnostics).toHaveLength(0);
     expect(nullishInitializedExternalReceiver.diagnostics).toHaveLength(1);
+    expect(undefinedInitializedLocalReceiver.diagnostics).toHaveLength(0);
+    expect(shadowedUndefinedReceiver.diagnostics).toHaveLength(1);
+    expect(updaterLocalMutableBuilders.diagnostics).toHaveLength(0);
+    expect(externalMutableBuilders.diagnostics).toHaveLength(3);
   });
 
   it("flags discarded setter callback props without treating local setter helpers as effects", () => {

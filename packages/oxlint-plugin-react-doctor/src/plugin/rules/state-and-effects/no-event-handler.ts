@@ -136,23 +136,17 @@ const isDeferredRefFocusSynchronization = (
   if (!getSchedulerName(callExpression, scopes)) return false;
   const callback = callExpression.arguments?.[0] as EsTreeNode | undefined;
   if (!isFunctionLike(callback)) return false;
-  let hasRefFocusCall = false;
-  let hasOtherCall = false;
-  walkAst(callback.body as EsTreeNode, (child: EsTreeNode): boolean | void => {
-    if (hasOtherCall) return false;
-    if (child !== callback && isFunctionLike(child)) {
-      hasOtherCall = true;
-      return false;
-    }
-    if (!isNodeOfType(child, "CallExpression")) return;
-    if (isReactRefMemberCall(child, "focus", scopes)) {
-      hasRefFocusCall = true;
-      return;
-    }
-    hasOtherCall = true;
-    return false;
-  });
-  return hasRefFocusCall && !hasOtherCall;
+  const callbackBody = stripParenExpression(callback.body as EsTreeNode);
+  if (isNodeOfType(callbackBody, "CallExpression")) {
+    return isReactRefMemberCall(callbackBody, "focus", scopes);
+  }
+  if (!isNodeOfType(callbackBody, "BlockStatement") || callbackBody.body.length !== 1) return false;
+  const statement = callbackBody.body[0] as EsTreeNode;
+  return (
+    isNodeOfType(statement, "ExpressionStatement") &&
+    isNodeOfType(statement.expression, "CallExpression") &&
+    isReactRefMemberCall(statement.expression, "focus", scopes)
+  );
 };
 
 const consequentHasTransferableWork = (

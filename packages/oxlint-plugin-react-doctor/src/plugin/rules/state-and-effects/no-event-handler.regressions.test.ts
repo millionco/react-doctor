@@ -959,6 +959,27 @@ describe("no-event-handler — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still reports mixed scheduled focus and non-call work", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Form() {
+        const [submitted, setSubmitted] = useState(false);
+        const statusRef = useRef(null);
+        useEffect(() => {
+          if (submitted) {
+            setTimeout(() => {
+              statusRef.current?.focus();
+              document.title = "Submitted";
+            }, 0);
+          }
+        }, [submitted]);
+        return <button onClick={() => setSubmitted(true)}>Submit</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still reports delete calls on opaque clients stored in refs", () => {
     const result = runRule(
       noEventHandler,

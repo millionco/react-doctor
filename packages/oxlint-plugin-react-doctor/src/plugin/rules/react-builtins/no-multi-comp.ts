@@ -621,6 +621,33 @@ const detectVariableComponent = (
   return null;
 };
 
+const isComponentSymbol = (symbol: SymbolDescriptor, scopes: ScopeAnalysis): boolean => {
+  if (!isReactComponentName(symbol.name)) return false;
+  if (symbol.references.some((reference) => reference.flag !== "read")) return false;
+  if (symbol.kind === "class") return isEs6Component(symbol.declarationNode);
+  if (symbol.kind === "function") return containsJsx(symbol.declarationNode);
+  return Boolean(detectVariableComponent(symbol.declarationNode, scopes));
+};
+
+const isCompoundComponentMemberAssignment = (
+  assignment: EsTreeNodeOfType<"AssignmentExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const target = unwrapTsCast(assignment.left);
+  if (!isNodeOfType(target, "MemberExpression")) return false;
+  const receiver = unwrapTsCast(target.object);
+  if (!isNodeOfType(receiver, "Identifier")) return false;
+  const receiverSymbol = scopes.symbolFor(receiver);
+  if (!receiverSymbol || !isComponentSymbol(receiverSymbol, scopes)) return false;
+  const value = unwrapTsCast(assignment.right);
+  return (
+    ((isNodeOfType(value, "FunctionExpression") ||
+      isNodeOfType(value, "ArrowFunctionExpression")) &&
+      containsJsx(value)) ||
+    isHocComponent(value, scopes)
+  );
+};
+
 interface VisitContext {
   components: DetectedComponent[];
   componentDepth: number;
@@ -762,6 +789,12 @@ const walkComponentSearch = (node: EsTreeNode, context: VisitContext): void => {
 
   // Assignment to exports.Foo / module.exports.Foo
   if (isNodeOfType(node, "AssignmentExpression")) {
+    if (isCompoundComponentMemberAssignment(node, context.scopes)) {
+      context.componentDepth += 1;
+      walkChildren(node, context);
+      context.componentDepth -= 1;
+      return;
+    }
     const exportTarget = getCommonJsExportTarget(node.left, context.scopes);
     if (exportTarget?.exportName && isReactComponentName(exportTarget.exportName)) {
       const right = node.right;

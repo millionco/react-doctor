@@ -659,6 +659,39 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  it("treats component member assignments as a compound component surface", () => {
+    expectPass(
+      `function Header({ children }) { return <header>{children}</header>; }
+       Header.Search = function HeaderSearch() {
+         const [query, setQuery] = useState("");
+         return <input value={query} onChange={(event) => setQuery(event.target.value)} />;
+       };
+       Header.Button = function HeaderButton({ to, children }) {
+         const navigate = useNavigate();
+         return <button onClick={() => navigate(to)}>{children}</button>;
+       };
+       export default Header;`,
+    );
+  });
+
+  it("still counts components assigned to a non-component namespace", () => {
+    expectFail(
+      `const Header = {};
+       Header.Search = function HeaderSearch() {
+         const [query, setQuery] = useState("");
+         return <input value={query} onChange={(event) => setQuery(event.target.value)} />;
+       };
+       Header.Button = function HeaderButton() {
+         const navigate = useNavigate();
+         return <button onClick={() => navigate("/")}>Go</button>;
+       };
+       Header.Menu = function HeaderMenu() {
+         const location = useLocation();
+         return <nav>{location.pathname}</nav>;
+       };`,
+    );
+  });
+
   it("still flags 3+ private components with no exports at all", () => {
     expectFail(
       `function Foo() { return <div />; } function Bar() { return <div />; } function Baz() { return <div />; }`,

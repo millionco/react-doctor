@@ -27,10 +27,14 @@ export interface EnclosingComponentInfo {
 export const enclosingComponentOrHookScope = (
   startNode: EsTreeNode,
   ownScopeFor: ScopeAnalysis["ownScopeFor"],
+  allowSequenceExpressionHocCallee = false,
 ): EnclosingComponentInfo | null => {
   const functionNode = findEnclosingFunction(startNode);
   if (!functionNode) return null;
-  const displayName = componentOrHookDisplayNameForFunction(functionNode);
+  const displayName = componentOrHookDisplayNameForFunction(
+    functionNode,
+    allowSequenceExpressionHocCallee,
+  );
   if (!displayName) return null;
   // A PascalCase name alone doesn't make a function a component. Factory
   // functions (ProseMirror plugins, API adapters, query builders) are

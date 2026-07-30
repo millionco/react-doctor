@@ -989,6 +989,65 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("accepts equivalent cancellation writes from every cleanup return", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const ImageViewer = ({ filePath, reloadKey }) => {
+        const [, setImage] = useState();
+        useEffect(() => {
+          let cancelled = false;
+          if (readCache(filePath) && reloadKey === 0) {
+            return () => {
+              cancelled = true;
+            };
+          }
+          const load = async () => {
+            try {
+              const loaded = await preloadImage(filePath);
+              if (cancelled) return;
+              setImage(loaded);
+            } catch (error) {
+              if (cancelled) return;
+              setImage(null);
+            }
+          };
+          load();
+          return () => {
+            cancelled = true;
+          };
+        }, [filePath, reloadKey]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires every cleanup return to write the cancellation guard", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const ImageViewer = ({ filePath, reloadKey }) => {
+        const [, setImage] = useState();
+        useEffect(() => {
+          let cancelled = false;
+          if (readCache(filePath) && reloadKey === 0) {
+            return () => {
+              recordCacheHit();
+            };
+          }
+          const load = async () => {
+            const loaded = await preloadImage(filePath);
+            if (cancelled) return;
+            setImage(loaded);
+          };
+          load();
+          return () => {
+            cancelled = true;
+          };
+        }, [filePath, reloadKey]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an external-store dependency without a cancellation guard", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,

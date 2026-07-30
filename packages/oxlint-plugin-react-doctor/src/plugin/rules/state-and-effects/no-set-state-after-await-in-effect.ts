@@ -5,12 +5,12 @@ import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoke
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -169,18 +169,13 @@ const walkWithoutNestedFunctions = (
   });
 };
 
-const getUnconditionalCleanupFunction = (
+const getCleanupFunctionsOnEveryPath = (
   effectCallback: EsTreeNode,
   context: RuleContext,
-): EsTreeNode | null => {
-  if (!isFunctionLike(effectCallback)) return null;
+): EsTreeNode[] => {
+  if (!isFunctionLike(effectCallback)) return [];
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
-    const cleanupFunctions = resolveCleanupFunctions(
-      effectCallback.body,
-      effectCallback,
-      context.scopes,
-    );
-    return cleanupFunctions.length === 1 ? (cleanupFunctions[0] ?? null) : null;
+    return resolveCleanupFunctions(effectCallback.body, effectCallback, context.scopes);
   }
   const cleanupReturns = collectFunctionReturnStatements(effectCallback).flatMap(
     (returnStatement) => {
@@ -193,16 +188,16 @@ const getUnconditionalCleanupFunction = (
       return cleanupFunctions.length > 0 ? [{ cleanupFunctions, returnStatement }] : [];
     },
   );
-  if (cleanupReturns.length !== 1) return null;
-  const cleanupReturn = cleanupReturns[0];
   if (
-    !cleanupReturn ||
-    cleanupReturn.cleanupFunctions.length !== 1 ||
-    !isNodeOnUnconditionalPath(cleanupReturn.returnStatement, effectCallback)
+    !doNodesCoverEveryPathFromFunctionEntry(
+      effectCallback,
+      cleanupReturns.map(({ returnStatement }) => returnStatement),
+      context,
+    )
   ) {
-    return null;
+    return [];
   }
-  return cleanupReturn.cleanupFunctions[0] ?? null;
+  return cleanupReturns.flatMap(({ cleanupFunctions }) => cleanupFunctions);
 };
 
 const collectUnconditionalCleanupActions = (
@@ -247,32 +242,46 @@ const collectCleanupGuardWrites = (
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): Map<string, boolean> => {
+  const cleanupWriteMaps = getCleanupFunctionsOnEveryPath(effectCallback, context).map(
+    (cleanupFunction) => {
+      const writes = new Map<string, boolean>();
+      if (!isFunctionLike(cleanupFunction)) return writes;
+      const recordAssignment = (candidate: EsTreeNode): void => {
+        const expression = isNodeOfType(candidate, "ExpressionStatement")
+          ? (candidate.expression as EsTreeNode)
+          : candidate;
+        const assignedValue = isNodeOfType(expression, "AssignmentExpression")
+          ? stripParenExpression(expression.right)
+          : null;
+        if (
+          !isNodeOfType(expression, "AssignmentExpression") ||
+          expression.operator !== "=" ||
+          !isNodeOfType(assignedValue, "Literal") ||
+          typeof assignedValue.value !== "boolean"
+        ) {
+          return;
+        }
+        const targetKey = serializeReferenceKey({
+          node: expression.left,
+          scopes: context.scopes,
+        });
+        if (targetKey) writes.set(targetKey, assignedValue.value);
+      };
+      const body = cleanupFunction.body;
+      if (isNodeOfType(body, "BlockStatement")) {
+        collectUnconditionalCleanupActions(body.body as EsTreeNode[], recordAssignment);
+      } else if (body) {
+        recordAssignment(body);
+      }
+      return writes;
+    },
+  );
+  const [firstWrites, ...remainingWrites] = cleanupWriteMaps;
   const writes = new Map<string, boolean>();
-  const recordAssignment = (candidate: EsTreeNode): void => {
-    const expression = isNodeOfType(candidate, "ExpressionStatement")
-      ? (candidate.expression as EsTreeNode)
-      : candidate;
-    const assignedValue = isNodeOfType(expression, "AssignmentExpression")
-      ? stripParenExpression(expression.right)
-      : null;
-    if (
-      !isNodeOfType(expression, "AssignmentExpression") ||
-      expression.operator !== "=" ||
-      !isNodeOfType(assignedValue, "Literal") ||
-      typeof assignedValue.value !== "boolean"
-    ) {
-      return;
-    }
-    const targetKey = serializeReferenceKey({ node: expression.left, scopes: context.scopes });
-    if (targetKey) writes.set(targetKey, assignedValue.value);
-  };
-  const cleanupFunction = getUnconditionalCleanupFunction(effectCallback, context);
-  if (cleanupFunction && isFunctionLike(cleanupFunction)) {
-    const body = cleanupFunction.body;
-    if (isNodeOfType(body, "BlockStatement")) {
-      collectUnconditionalCleanupActions(body.body as EsTreeNode[], recordAssignment);
-    } else if (body) {
-      recordAssignment(body);
+  if (!firstWrites) return writes;
+  for (const [targetKey, value] of firstWrites) {
+    if (remainingWrites.every((candidateWrites) => candidateWrites.get(targetKey) === value)) {
+      writes.set(targetKey, value);
     }
   }
   return writes;
@@ -282,27 +291,41 @@ const collectCleanupAbortedControllers = (
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): Set<string> => {
+  const cleanupControllerSets = getCleanupFunctionsOnEveryPath(effectCallback, context).map(
+    (cleanupFunction) => {
+      const controllerKeys = new Set<string>();
+      if (!isFunctionLike(cleanupFunction)) return controllerKeys;
+      const recordAbort = (candidate: EsTreeNode): void => {
+        const expression = isNodeOfType(candidate, "ExpressionStatement")
+          ? candidate.expression
+          : candidate;
+        if (!isNodeOfType(expression, "CallExpression")) return;
+        const callee = stripParenExpression(expression.callee);
+        if (
+          !isNodeOfType(callee, "MemberExpression") ||
+          getStaticPropertyName(callee) !== "abort"
+        ) {
+          return;
+        }
+        const receiver = stripParenExpression(callee.object);
+        const receiverKey = serializeReferenceKey({ node: receiver, scopes: context.scopes });
+        if (receiverKey) controllerKeys.add(receiverKey);
+      };
+      const body = cleanupFunction.body;
+      if (isNodeOfType(body, "BlockStatement")) {
+        collectUnconditionalCleanupActions(body.body as EsTreeNode[], recordAbort);
+      } else if (body) {
+        recordAbort(body);
+      }
+      return controllerKeys;
+    },
+  );
+  const [firstControllerKeys, ...remainingControllerSets] = cleanupControllerSets;
   const controllerKeys = new Set<string>();
-  const recordAbort = (candidate: EsTreeNode): void => {
-    const expression = isNodeOfType(candidate, "ExpressionStatement")
-      ? candidate.expression
-      : candidate;
-    if (!isNodeOfType(expression, "CallExpression")) return;
-    const callee = stripParenExpression(expression.callee);
-    if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "abort") {
-      return;
-    }
-    const receiver = stripParenExpression(callee.object);
-    const receiverKey = serializeReferenceKey({ node: receiver, scopes: context.scopes });
-    if (receiverKey) controllerKeys.add(receiverKey);
-  };
-  const cleanupFunction = getUnconditionalCleanupFunction(effectCallback, context);
-  if (cleanupFunction && isFunctionLike(cleanupFunction)) {
-    const body = cleanupFunction.body;
-    if (isNodeOfType(body, "BlockStatement")) {
-      collectUnconditionalCleanupActions(body.body as EsTreeNode[], recordAbort);
-    } else if (body) {
-      recordAbort(body);
+  if (!firstControllerKeys) return controllerKeys;
+  for (const controllerKey of firstControllerKeys) {
+    if (remainingControllerSets.every((candidateKeys) => candidateKeys.has(controllerKey))) {
+      controllerKeys.add(controllerKey);
     }
   }
   return controllerKeys;

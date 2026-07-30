@@ -19,6 +19,7 @@ import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
 import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
+import { isFunctionLike } from "./utils/is-function-like.js";
 import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
@@ -30,6 +31,7 @@ import {
   resolveCrossFileFunctionExport,
   resolveCrossFileValueExportWithFilePath,
 } from "./utils/resolve-cross-file-function-export.js";
+import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
@@ -220,10 +222,12 @@ const flattenProgramImportEntries = (program: EsTreeNode): ImportEntryName[] => 
   return entries;
 };
 
-const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
-  absoluteFilePath,
-  staticImports,
-}) => {
+const collectFunctionExportDependencies = (
+  { absoluteFilePath, staticImports }: CrossFileDependencyCollectorInput,
+  maximumForwardDepth: number,
+  shouldTraverseResolvedExport: (resolved: ResolvedCrossFileValueExport) => boolean = () => true,
+  shouldTraverseFilePath: (filePath: string) => boolean = () => true,
+): void => {
   const greatestTraversedDepthByFilePath = new Map<string, number>();
 
   const collectProgramDependencies = (
@@ -241,7 +245,14 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
         entry.source,
         entry.exportedName,
       );
-      if (!resolved || remainingDepth === 0) continue;
+      if (
+        !resolved ||
+        remainingDepth === 0 ||
+        !shouldTraverseResolvedExport(resolved) ||
+        !shouldTraverseFilePath(resolved.filePath)
+      ) {
+        continue;
+      }
       collectProgramDependencies(resolved.filePath, resolved.programNode, remainingDepth - 1);
     }
   };
@@ -252,13 +263,19 @@ const collectForwardedHookDependencies: CrossFileDependencyCollector = ({
       entry.source,
       entry.exportedName,
     );
-    if (!resolved) continue;
-    collectProgramDependencies(
-      resolved.filePath,
-      resolved.programNode,
-      CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
-    );
+    if (
+      !resolved ||
+      !shouldTraverseResolvedExport(resolved) ||
+      !shouldTraverseFilePath(resolved.filePath)
+    ) {
+      continue;
+    }
+    collectProgramDependencies(resolved.filePath, resolved.programNode, maximumForwardDepth);
   }
+};
+
+const collectForwardedHookDependencies: CrossFileDependencyCollector = (input) => {
+  collectFunctionExportDependencies(input, CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH);
 };
 
 const collectCreateRefDependencies: CrossFileDependencyCollector = ({
@@ -397,6 +414,18 @@ const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ abso
   classifyPackagePlatform(absoluteFilePath);
 };
 
+// The browser-render guard follows imported functions and re-exports without
+// a depth limit while looking for Hooks that establish hydration state.
+const collectBrowserRenderGuardDependencies: CrossFileDependencyCollector = (input) => {
+  collectNearestManifestDependencies(input);
+  collectFunctionExportDependencies(
+    input,
+    Number.POSITIVE_INFINITY,
+    (resolved) => isFunctionLike(resolved.exportedNode),
+    (filePath) => !filePath.split(/[\\/]/).includes("node_modules"),
+  );
+};
+
 // rn-no-legacy-shadow-styles / rn-style-prefer-boxshadow gate on
 // `isLegacyArchReactNativeFile`, which reads the nearest manifest plus
 // `android/gradle.properties` and the Expo app-config files. The helper
@@ -444,7 +473,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
-    ["no-unguarded-browser-global-in-render-or-hook-init", collectNearestManifestDependencies],
+    ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
     ["rerender-memo-with-default-value", collectForwardedHookDependencies],

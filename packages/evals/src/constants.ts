@@ -42,6 +42,7 @@ export const REACT_DOCTOR_REPORT_MODES: ReadonlySet<string> = new Set([
 ]);
 export const REACT_DOCTOR_REPORT_FRAMEWORKS: ReadonlySet<string> = new Set([
   "nextjs",
+  "astro",
   "vite",
   "cra",
   "remix",

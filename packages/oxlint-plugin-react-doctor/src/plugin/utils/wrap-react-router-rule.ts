@@ -1,8 +1,6 @@
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import { isReactRouterFileActive } from "./is-react-router-file.js";
 import type { Rule } from "./rule.js";
-import type { RuleVisitors } from "./rule-visitors.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 export const wrapReactRouterRule = (rule: Rule): Rule => {
   const innerCreate = rule.create.bind(rule);
@@ -10,7 +8,7 @@ export const wrapReactRouterRule = (rule: Rule): Rule => {
   return {
     ...rule,
     create: (context) => {
-      if (!isReactRouterFileActive(context, { requiresFramework })) return EMPTY_VISITORS;
+      if (!isReactRouterFileActive(context, { requiresFramework })) return EMPTY_RULE_VISITORS;
       return innerCreate(context);
     },
   };

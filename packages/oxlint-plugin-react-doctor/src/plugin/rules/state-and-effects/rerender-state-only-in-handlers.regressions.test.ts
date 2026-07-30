@@ -1147,6 +1147,41 @@ describe("rerender-state-only-in-handlers — external location invalidation", (
         }`,
     },
     {
+      name: "a module-scope global alias",
+      source: `import { useState } from "react";
+        const browser = window;
+        function ModuleScopeAliasedLocation() {
+          const [revision, setRevision] = useState(0);
+          const navigate = () => {
+            history.pushState({}, "", "/next");
+            setRevision((previous) => previous + 1);
+          };
+          return <button onClick={navigate}>{browser.location.pathname}</button>;
+        }`,
+    },
+    {
+      name: "a computed global location property",
+      source: `function ComputedLocation() {
+        const [revision, setRevision] = useState(0);
+        const navigate = () => {
+          history.pushState({}, "", "/next");
+          setRevision((previous) => previous + 1);
+        };
+          return <button onClick={navigate}>{window["location"].pathname}</button>;
+        }`,
+    },
+    {
+      name: "a static template global location property",
+      source: `function StaticTemplateLocation() {
+        const [revision, setRevision] = useState(0);
+        const navigate = () => {
+          history.pushState({}, "", "/next");
+          setRevision((previous) => previous + 1);
+        };
+        return <button onClick={navigate}>{window[\`location\`].pathname}</button>;
+      }`,
+    },
+    {
       name: "a render-invoked useCallback location reader",
       source: `import { useCallback, useState } from "react";
         function MemoizedLocationReader() {

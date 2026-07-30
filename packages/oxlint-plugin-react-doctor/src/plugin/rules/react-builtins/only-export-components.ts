@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { exportAllAddsRuntimeValues } from "../../utils/export-all-adds-runtime-values.js";
 import { getReactRouterFrameworkModuleKind } from "../../utils/get-react-router-framework-module-kind.js";
@@ -548,7 +549,7 @@ export const onlyExportComponents = defineRule({
     const settings = resolveSettings(context.settings);
     const filename = normalizeFilename(context.filename ?? "");
     const fastRefreshStatus = getFastRefreshFileStatus(context);
-    if (!fastRefreshStatus.isActive) return {};
+    if (!fastRefreshStatus.isActive) return EMPTY_RULE_VISITORS;
     const reactRouterModuleKind =
       fastRefreshStatus.runtime === "react-router" || fastRefreshStatus.runtime === "remix"
         ? getReactRouterFrameworkModuleKind(context)
@@ -558,8 +559,8 @@ export const onlyExportComponents = defineRule({
     const isFrameworkFileExempt =
       !isReactRouterRouteModule &&
       isFrameworkRouteOrSpecialFilename(context, fastRefreshStatus.runtime);
-    if (isFrameworkFileExempt) return {};
-    if (!isFileNameAllowed(filename, settings.checkJS)) return {};
+    if (isFrameworkFileExempt) return EMPTY_RULE_VISITORS;
+    if (!isFileNameAllowed(filename, settings.checkJS)) return EMPTY_RULE_VISITORS;
     const allowedRouteExportNames =
       fastRefreshStatus.runtime === "next"
         ? NEXT_ALLOWED_EXPORT_NAMES

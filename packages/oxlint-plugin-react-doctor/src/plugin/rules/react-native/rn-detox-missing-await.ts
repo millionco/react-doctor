@@ -1,5 +1,6 @@
 import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -10,10 +11,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 // Only run in Detox test files. `.e2e.<ext>` is the Detox convention and
 // an `e2e/` directory is the other common layout. Gating here (plus the
@@ -303,7 +301,7 @@ export const rnDetoxMissingAwait = defineRule({
     "Prepend `await` to Detox actions, `waitFor(...)` chains, and `expect(element(...))` assertions. They return promises tied to Detox's synchronization, so a missing await runs steps out of order.",
   create: (context: RuleContext) => {
     const filename = normalizeFilename(context.filename ?? "");
-    if (!filename || !DETOX_TEST_FILE.test(filename)) return EMPTY_VISITORS;
+    if (!filename || !DETOX_TEST_FILE.test(filename)) return EMPTY_RULE_VISITORS;
 
     return {
       ExpressionStatement(node: EsTreeNodeOfType<"ExpressionStatement">) {

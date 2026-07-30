@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -699,7 +700,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
   create: (context: RuleContext): RuleVisitors => {
     const normalizedFilename = (context.filename ?? "").replaceAll("\\", "/");
     const basename = normalizedFilename.slice(normalizedFilename.lastIndexOf("/") + 1);
-    if (BUILD_SCRIPT_BASENAME_PATTERN.test(basename)) return {};
+    if (BUILD_SCRIPT_BASENAME_PATTERN.test(basename)) return EMPTY_RULE_VISITORS;
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isGlobalFetchCall(node, context)) return;

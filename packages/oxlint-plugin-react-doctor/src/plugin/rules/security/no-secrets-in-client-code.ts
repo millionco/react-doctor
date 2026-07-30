@@ -17,6 +17,7 @@ import { hasDirective } from "../../utils/has-directive.js";
 import { isInsideServerOnlyScope } from "../../utils/is-inside-server-only-scope.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPlaceholderSecretValue } from "../../utils/is-placeholder-secret-value.js";
+import { resolveClientSecretRecommendation } from "../../utils/resolve-client-secret-recommendation.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // A public http(s) endpoint URL (OAuth authorize URL, API base) is meant to
@@ -50,31 +51,13 @@ const isIdentifierLikeKeyNameValue = (literalValue: string): boolean => {
   return wordSegments.every((segment) => /^[a-z]+(?:[A-Z][a-z]+)*$/.test(segment));
 };
 
-// Frameworks with a documented public-env convention get advice naming
-// their exact prefix; everything else falls back to the generic
-// `recommendation`. A project carries exactly one framework token, so the
-// first hit is the only hit.
-const FRAMEWORK_ENV_ADVICE = [
-  ["nextjs", "Next.js", "NEXT_PUBLIC_*"],
-  ["vite", "Vite", "VITE_*"],
-  ["tanstack-start", "TanStack Start", "VITE_*"],
-  ["cra", "Create React App", "REACT_APP_*"],
-  ["gatsby", "Gatsby", "GATSBY_*"],
-] as const;
 export const noSecretsInClientCode = defineRule({
   id: "no-secrets-in-client-code",
   title: "Secret in client code",
   severity: "warn",
   recommendation:
     "Move secrets to server-only code. Anything in client env variables gets shipped to the browser, so it can't hold secrets.",
-  recommendationFor: (hasCapability) => {
-    for (const [frameworkToken, frameworkName, publicEnvPrefix] of FRAMEWORK_ENV_ADVICE) {
-      if (hasCapability(frameworkToken)) {
-        return `Move secrets to server-only code. In ${frameworkName}, only \`${publicEnvPrefix}\` env vars are exposed to the browser, and they must not contain secrets`;
-      }
-    }
-    return undefined;
-  },
+  recommendationFor: resolveClientSecretRecommendation,
   create: (context: RuleContext) => {
     const filename = normalizeFilename(context.filename ?? "");
     const framework = getReactDoctorStringSetting(context.settings, "framework");

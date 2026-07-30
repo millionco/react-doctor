@@ -1,4 +1,5 @@
 import { reactDoctorRules } from "./plugin/rule-registry.js";
+import { EXTERNAL_RULES, REACT_COMPILER_RULES } from "./external-rules.js";
 import type { RuleFramework } from "./plugin/utils/rule.js";
 import type { OxlintRuleSeverity } from "./types.js";
 
@@ -38,9 +39,6 @@ const collectReactDoctorRulesByFramework = (frameworkName: RuleFramework) =>
       entry.rule.framework === frameworkName && isRecommendedByDefault(entry) && !isScanRule(entry),
   );
 
-const collectExternalRulesBySource = (source: string) =>
-  EXTERNAL_RULES.filter((rule) => rule.source === source);
-
 const collectFrameworkSpecificRuleKeys = (): ReadonlySet<string> => {
   const collected = new Set<string>();
   for (const entry of reactDoctorRules) {
@@ -51,40 +49,7 @@ const collectFrameworkSpecificRuleKeys = (): ReadonlySet<string> => {
 
 export const REACT_DOCTOR_RULES = reactDoctorRules;
 
-// Only React Compiler rules remain external. The previous
-// `react/*`, `jsx-a11y/*`, and `effect/*` entries are now natively
-// ported into this package and ship through `REACT_DOCTOR_RULES`.
-export const EXTERNAL_RULES = [
-  { key: "react-hooks-js/set-state-in-render", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/immutability", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/refs", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/purity", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/hooks", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/set-state-in-effect", source: "react-compiler", severity: "warn" },
-  { key: "react-hooks-js/globals", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/error-boundaries", source: "react-compiler", severity: "error" },
-  {
-    key: "react-hooks-js/preserve-manual-memoization",
-    source: "react-compiler",
-    severity: "error",
-  },
-  { key: "react-hooks-js/unsupported-syntax", source: "react-compiler", severity: "error" },
-  {
-    key: "react-hooks-js/component-hook-factories",
-    source: "react-compiler",
-    severity: "error",
-  },
-  { key: "react-hooks-js/static-components", source: "react-compiler", severity: "error" },
-  // These stay `error`: each react-hooks-js compiler diagnostic marks code the
-  // React Compiler could NOT optimize (an unmemoizable component shape), which
-  // is a real perf regression — not redundant-memo cleanup. Demoting them hid
-  // those regressions (regression #140). The redundant-memo cleanup lives in
-  // the local `react-compiler-no-manual-memoization` rule instead.
-  { key: "react-hooks-js/use-memo", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/void-use-memo", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/incompatible-library", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/todo", source: "react-compiler", severity: "error" },
-] as const;
+export { EXTERNAL_RULES, REACT_COMPILER_RULES };
 
 export const RULES = [...REACT_DOCTOR_RULES, ...EXTERNAL_RULES] as const;
 
@@ -113,4 +78,3 @@ export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set(
   REACT_DOCTOR_RULES.map((rule) => rule.key),
 );
 export const FRAMEWORK_SPECIFIC_RULE_KEYS = collectFrameworkSpecificRuleKeys();
-export const REACT_COMPILER_RULES = toRuleMap(collectExternalRulesBySource("react-compiler"));

@@ -9,6 +9,7 @@ import {
   LintBatchOrdering,
   OxlintConcurrency,
   OxlintOutputMaxBytes,
+  OxlintSpawnSlots,
   OxlintSpawnTimeoutMs,
   PerFileLintCacheEnabled,
   SidecarLintCacheEnabled,
@@ -129,6 +130,7 @@ export class Linter extends Context.Service<
             const spawnTimeoutMs = yield* OxlintSpawnTimeoutMs;
             const outputMaxBytes = yield* OxlintOutputMaxBytes;
             const concurrency = yield* OxlintConcurrency;
+            const spawnSlots = yield* OxlintSpawnSlots;
             const lintBatchOrdering = yield* LintBatchOrdering;
             const perFileLintCacheEnabled = yield* PerFileLintCacheEnabled;
             const sidecarLintCacheEnabled = yield* SidecarLintCacheEnabled;
@@ -162,6 +164,7 @@ export class Linter extends Context.Service<
                   onSidecarStats: input.onSidecarStats,
                   spawnTimeoutMs,
                   outputMaxBytes,
+                  spawnSlots: spawnSlots ?? undefined,
                   concurrency,
                   signal,
                   lintBatchOrdering,

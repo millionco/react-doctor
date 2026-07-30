@@ -20,12 +20,13 @@
 //     function of that one file's content, so the probe alone captures the
 //     dependency and the cache stays warm;
 //   - multi-file-derived memos (`classify-package-platform`'s directory
-//     walk, `resolve-tsconfig-alias`'s extends-chain loader) BYPASS their
-//     memo while a recorder is active (still repopulating it), because a
-//     memo hit would skip the intermediate probes the fingerprint needs.
+//     walk, `resolve-tsconfig-alias`'s config-chain and directory lookups)
+//     replay every intermediate probe on a memo hit, so fingerprints remain
+//     complete without repeating filesystem work.
 //
-// Recording is synchronous and single-flight: collectors run in the core
-// orchestrator's synchronous sections, so a module-level slot is safe.
+// Recording is synchronous: collectors run in the core orchestrator's
+// synchronous sections, so a module-level slot is safe. Nested captures
+// merge their traces into the outer file-level trace.
 // When no recorder is active (every production lint path inside oxlint),
 // both record functions are a single null check.
 
@@ -34,6 +35,11 @@ export interface CrossFileProbeTrace {
   readonly existencePaths: Set<string>;
   /** Paths whose content (bytes, exports, parse) was consulted. */
   readonly contentPaths: Set<string>;
+}
+
+export interface CapturedCrossFileProbes<Value> {
+  readonly value: Value;
+  readonly trace: CrossFileProbeTrace;
 }
 
 let activeProbeTrace: CrossFileProbeTrace | null = null;
@@ -48,10 +54,11 @@ export const recordContentProbe = (absolutePath: string): void => {
 
 export const isProbeRecorderActive = (): boolean => activeProbeTrace !== null;
 
-// Runs `collect` with a fresh trace installed and returns everything it
-// probed. Re-entrant use is a programming error — the collectors never
-// nest — so the previous trace is restored defensively rather than merged.
-export const collectCrossFileProbes = (collect: () => void): CrossFileProbeTrace => {
+// Captures a helper's probes separately while preserving the complete outer
+// trace. Memoized multi-file helpers store this trace and replay it on hits.
+export const captureCrossFileProbes = <Value>(
+  collect: () => Value,
+): CapturedCrossFileProbes<Value> => {
   const previousTrace = activeProbeTrace;
   const trace: CrossFileProbeTrace = {
     existencePaths: new Set<string>(),
@@ -59,9 +66,19 @@ export const collectCrossFileProbes = (collect: () => void): CrossFileProbeTrace
   };
   activeProbeTrace = trace;
   try {
-    collect();
+    return { value: collect(), trace };
   } finally {
     activeProbeTrace = previousTrace;
+    if (previousTrace !== null) {
+      for (const existencePath of trace.existencePaths) {
+        previousTrace.existencePaths.add(existencePath);
+      }
+      for (const contentPath of trace.contentPaths) {
+        previousTrace.contentPaths.add(contentPath);
+      }
+    }
   }
-  return trace;
 };
+
+export const collectCrossFileProbes = (collect: () => void): CrossFileProbeTrace =>
+  captureCrossFileProbes(collect).trace;

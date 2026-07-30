@@ -2,8 +2,10 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { collectCrossFileProbes } from "./cross-file-probe-recorder.js";
 import {
   __clearTsconfigAliasCacheForTests,
+  resetTsconfigAliasCaches,
   resolveTsconfigAliasPath,
 } from "./resolve-tsconfig-alias.js";
 
@@ -131,6 +133,45 @@ describe("resolveTsconfigAliasPath", () => {
     fs.utimesSync(tsconfigPath, future, future);
 
     expect(resolveTsconfigAliasPath(fromFile, "@/Thing")).toBe(newTarget);
+  });
+
+  it("reuses probe-time directory lookups until scan caches reset", () => {
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./old/*"] } } }),
+    );
+    const oldTarget = writeFile("old/Thing.tsx", "export const Thing = () => null;");
+    const fromFile = path.join(temporaryDirectory, "src/features/page.tsx");
+    const collectResolution = () => {
+      let result: string | null = null;
+      const trace = collectCrossFileProbes(() => {
+        result = resolveTsconfigAliasPath(fromFile, "@/Thing");
+      });
+      return { result, trace };
+    };
+
+    const first = collectResolution();
+    expect(first.result).toBe(oldTarget);
+
+    writeFile(
+      "src/tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./fresh/*"] } } }),
+    );
+    const freshTarget = writeFile("src/fresh/Thing.tsx", "export const Thing = () => null;");
+
+    const cached = collectResolution();
+    expect(cached.result).toBe(oldTarget);
+    expect(cached.trace).toEqual(first.trace);
+
+    resetTsconfigAliasCaches();
+    const refreshed = collectResolution();
+    expect(refreshed.result).toBe(freshTarget);
+    expect(
+      refreshed.trace.contentPaths.has(path.join(temporaryDirectory, "src/tsconfig.json")),
+    ).toBe(true);
+    expect(refreshed.trace.contentPaths.has(path.join(temporaryDirectory, "tsconfig.json"))).toBe(
+      false,
+    );
   });
 
   it("returns null when no tsconfig is found", () => {

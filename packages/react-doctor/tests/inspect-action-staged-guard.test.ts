@@ -16,8 +16,8 @@ vi.mock("../src/cli/utils/handle-error.js", () => ({
   handleUserError: vi.fn(),
 }));
 
-vi.mock("../src/inspect.js", () => ({
-  inspect: vi.fn(
+vi.mock("../src/inspect.js", () => {
+  const inspect = vi.fn(
     async (directory: string): Promise<InspectResult> => ({
       diagnostics: [],
       score: null,
@@ -48,8 +48,12 @@ vi.mock("../src/inspect.js", () => ({
       },
       elapsedMilliseconds: 1,
     }),
-  ),
-}));
+  );
+  return {
+    inspect,
+    createInvocationInspect: vi.fn(() => inspect),
+  };
+});
 
 const temporaryDirectories: string[] = [];
 

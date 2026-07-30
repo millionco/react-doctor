@@ -178,6 +178,121 @@ const getSingleSetterCallFromHandler = (
   };
 };
 
+const areIdentifierReferencesEqual = (
+  firstIdentifier: EsTreeNode,
+  secondIdentifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (
+    !isNodeOfType(firstIdentifier, "Identifier") ||
+    !isNodeOfType(secondIdentifier, "Identifier")
+  ) {
+    return false;
+  }
+  const firstSymbol = scopes.symbolFor(firstIdentifier);
+  const secondSymbol = scopes.symbolFor(secondIdentifier);
+  if (firstSymbol || secondSymbol) return firstSymbol === secondSymbol;
+  return (
+    firstIdentifier.name === secondIdentifier.name &&
+    scopes.isGlobalReference(firstIdentifier) &&
+    scopes.isGlobalReference(secondIdentifier)
+  );
+};
+
+const areUrlSearchParamsSnapshotExpressionsEqual = (
+  firstExpression: EsTreeNode,
+  secondExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const firstUnwrappedExpression = stripParenExpression(firstExpression);
+  const secondUnwrappedExpression = stripParenExpression(secondExpression);
+  if (
+    !isNodeOfType(firstUnwrappedExpression, "NewExpression") ||
+    !isNodeOfType(secondUnwrappedExpression, "NewExpression") ||
+    !isNodeOfType(firstUnwrappedExpression.callee, "Identifier") ||
+    !isNodeOfType(secondUnwrappedExpression.callee, "Identifier") ||
+    firstUnwrappedExpression.callee.name !== "URLSearchParams" ||
+    secondUnwrappedExpression.callee.name !== "URLSearchParams" ||
+    !scopes.isGlobalReference(firstUnwrappedExpression.callee) ||
+    !scopes.isGlobalReference(secondUnwrappedExpression.callee)
+  ) {
+    return false;
+  }
+  const firstArguments = firstUnwrappedExpression.arguments ?? [];
+  const secondArguments = secondUnwrappedExpression.arguments ?? [];
+  if (firstArguments.length === 0 || firstArguments.length !== secondArguments.length) return false;
+  return firstArguments.every((firstArgument, argumentIndex: number) =>
+    areExpressionsStructurallyEqual(firstArgument, secondArguments[argumentIndex], {
+      areIdentifiersEqual: (firstIdentifier, secondIdentifier) =>
+        areIdentifierReferencesEqual(firstIdentifier, secondIdentifier, scopes),
+    }),
+  );
+};
+
+interface EventListenerCall {
+  readonly receiver: EsTreeNode;
+  readonly eventName: EsTreeNode;
+  readonly handler: EsTreeNode;
+}
+
+const getEventListenerCall = (
+  expression: EsTreeNode,
+  methodName: "addEventListener" | "removeEventListener",
+): EventListenerCall | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (
+    !isNodeOfType(unwrappedExpression, "CallExpression") ||
+    !isNodeOfType(unwrappedExpression.callee, "MemberExpression") ||
+    unwrappedExpression.callee.computed ||
+    !isNodeOfType(unwrappedExpression.callee.property, "Identifier") ||
+    unwrappedExpression.callee.property.name !== methodName
+  ) {
+    return null;
+  }
+  const eventName = unwrappedExpression.arguments?.[0];
+  const handler = unwrappedExpression.arguments?.[1];
+  if (!eventName || !handler) return null;
+  return {
+    receiver: unwrappedExpression.callee.object,
+    eventName,
+    handler,
+  };
+};
+
+const cleanupRemovesEventListener = (
+  effectBodyStatements: EsTreeNode[],
+  subscriptionCall: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const subscription = getEventListenerCall(subscriptionCall, "addEventListener");
+  if (!subscription) return false;
+  const lastStatement = effectBodyStatements[effectBodyStatements.length - 1];
+  if (!isNodeOfType(lastStatement, "ReturnStatement") || !isFunctionLike(lastStatement.argument)) {
+    return false;
+  }
+  const cleanupStatements = getCallbackStatements(lastStatement.argument);
+  if (cleanupStatements.length !== 1) return false;
+  let cleanupExpression: EsTreeNode | null | undefined = cleanupStatements[0];
+  if (isNodeOfType(cleanupExpression, "ExpressionStatement")) {
+    cleanupExpression = cleanupExpression.expression;
+  }
+  if (isNodeOfType(cleanupExpression, "ReturnStatement")) {
+    cleanupExpression = cleanupExpression.argument;
+  }
+  if (!cleanupExpression) return false;
+  const cleanup = getEventListenerCall(cleanupExpression, "removeEventListener");
+  if (!cleanup) return false;
+  const equalityOptions = {
+    areIdentifiersEqual: (firstIdentifier: EsTreeNode, secondIdentifier: EsTreeNode) =>
+      areIdentifierReferencesEqual(firstIdentifier, secondIdentifier, scopes),
+  };
+  return (
+    areExpressionsStructurallyEqual(subscription.receiver, cleanup.receiver, equalityOptions) &&
+    areExpressionsStructurallyEqual(subscription.eventName, cleanup.eventName, equalityOptions) &&
+    areExpressionsStructurallyEqual(subscription.handler, cleanup.handler, equalityOptions)
+  );
+};
+
 // ————— Hand-rolled module-scope store (the RD-FN-061 shape) —————
 //
 //   let sharedState = initial;                     (1) mutable module-scope snapshot
@@ -346,9 +461,18 @@ const findModuleSubscribeCallForwardingSetter = (
 
 const cleanupReleasesSubscription = (
   effectBodyStatements: EsTreeNode[],
+  subscriptionCall: EsTreeNode,
   boundReleaseName: string | null,
   boundSubscriptionName: string | null,
+  scopes: ScopeAnalysis,
+  requiresExactEventListenerCleanup: boolean,
 ): boolean => {
+  if (
+    requiresExactEventListenerCleanup &&
+    getEventListenerCall(subscriptionCall, "addEventListener")
+  ) {
+    return cleanupRemovesEventListener(effectBodyStatements, subscriptionCall, scopes);
+  }
   const lastStatement = effectBodyStatements[effectBodyStatements.length - 1];
   if (!isNodeOfType(lastStatement, "ReturnStatement")) return false;
   const knownBoundReleaseNames = new Set<string>();
@@ -444,7 +568,15 @@ export const preferUseSyncExternalStore = defineRule({
         const useStateInitializer = useStateInitializerByValueName.get(valueName);
         if (!useStateInitializer) continue;
 
-        if (!areExpressionsStructurallyEqual(useStateInitializer, setterPayload.setterArgument)) {
+        const isUrlSearchParamsSnapshot = areUrlSearchParamsSnapshotExpressionsEqual(
+          useStateInitializer,
+          setterPayload.setterArgument,
+          context.scopes,
+        );
+        if (
+          !isUrlSearchParamsSnapshot &&
+          !areExpressionsStructurallyEqual(useStateInitializer, setterPayload.setterArgument)
+        ) {
           continue;
         }
 
@@ -453,8 +585,11 @@ export const preferUseSyncExternalStore = defineRule({
         if (
           !cleanupReleasesSubscription(
             effectBodyStatements,
+            subscription.call,
             subscription.boundReleaseName,
             subscription.boundSubscriptionName,
+            context.scopes,
+            isUrlSearchParamsSnapshot,
           )
         ) {
           continue;

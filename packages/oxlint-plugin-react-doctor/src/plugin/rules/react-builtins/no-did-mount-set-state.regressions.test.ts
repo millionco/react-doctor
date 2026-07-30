@@ -722,6 +722,125 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on rendered span heights mapped from Object.keys", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import React, { Component } from "react";
+      class TextBox extends Component {
+        componentDidMount() {
+          const heights = Object.keys(this.spanHeights)
+            .map((key) => this.spanHeights[key].clientHeight);
+          const firstH = heights[0];
+          const lastH = heights[heights.length - 1];
+          const totH = heights.reduce(
+            (accumulator, currentValue) => accumulator + currentValue,
+            0,
+          );
+          this.setState({ totH, firstH, lastH });
+        }
+        render() {
+          this.spanHeights = {};
+          return React.Children.map(this.props.children, (child, index) =>
+            React.cloneElement(child, {
+              ref: (span) => (this.spanHeights[\`span\${index + 1}\`] = span),
+            }),
+          );
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a mounted flag paired with a rendered DOM width", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      import { findDOMNode } from "react-dom";
+      class Image extends Component {
+        componentDidMount() {
+          const dom = findDOMNode(this);
+          const rect = dom.getBoundingClientRect();
+          const width = Math.round(rect.right - rect.left);
+          this.setState({
+            mounted: true,
+            width,
+          });
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an overflow flag paired with a createRef height", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import React from "react";
+      class ToggleMore extends React.PureComponent {
+        overflow = React.createRef();
+        componentDidMount() {
+          if (this.overflow.current) {
+            const height = this.overflow.current.clientHeight;
+            if (height > this.state.checkHeight && !this.state.overflow) {
+              this.setState({
+                overflow: true,
+                max: height,
+              });
+            }
+          }
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    `this.props.elements.map((element) => element.clientHeight)`,
+    `this.props.deferredMap((element) => element.clientHeight)`,
+  ])("still flags post-mount-looking reads inside an unproven callback host: %s", (value) => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Gallery extends Component {
+        componentDidMount() {
+          const heights = ${value};
+          this.setState({ heights });
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a mount flag paired with a prop-derived value", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Image extends Component {
+        componentDidMount() {
+          this.setState({
+            mounted: true,
+            width: this.props.width,
+          });
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("ignores nested class aliases and callback-ref handler reads", () => {
     const result = runRule(
       noDidMountSetState,

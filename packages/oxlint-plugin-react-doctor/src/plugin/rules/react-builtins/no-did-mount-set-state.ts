@@ -10,6 +10,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetStateCallInLifecycle } from "../../utils/is-set-state-in-lifecycle.js";
+import { isSynchronousIteratorCall } from "../../utils/is-synchronous-iterator-callback.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getCallbackRefFieldNames } from "./no-did-update-set-state.js";
@@ -54,17 +55,18 @@ const isInsideNestedLifecycleFunction = (
 // right after mount is the deliberate two-pass render pattern (hydration
 // gates, enter animations): the second render IS the point, and no initial
 // state or getDerivedStateFromProps can replace it.
+const isMountFlagProperty = (property: EsTreeNode): boolean =>
+  isNodeOfType(property, "Property") &&
+  property.kind === "init" &&
+  property.computed !== true &&
+  isNodeOfType(property.value, "Literal") &&
+  property.value.value === true;
+
 const isMountFlagArgument = (argument: EsTreeNode | undefined): boolean => {
   if (!argument || !isNodeOfType(argument, "ObjectExpression")) return false;
   const properties = argument.properties ?? [];
   if (properties.length === 0) return false;
-  return properties.every(
-    (property) =>
-      isNodeOfType(property, "Property") &&
-      property.computed !== true &&
-      isNodeOfType(property.value, "Literal") &&
-      property.value.value === true,
-  );
+  return properties.every(isMountFlagProperty);
 };
 
 // Sources whose values genuinely cannot exist before mount — the doc's
@@ -99,16 +101,19 @@ const getStaticThisFieldName = (node: EsTreeNode): string | null => {
   return getStaticPropertyKeyName(candidate, { allowComputedString: true });
 };
 
-const containsPostMountSource = (node: EsTreeNode): boolean => {
+const containsPostMountSource = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let didFindSource = false;
   walkAst(node, (descendant) => {
     if (didFindSource) return false;
-    if (
-      descendant !== node &&
-      isFunctionLike(descendant) &&
-      !isImmediatelyInvokedFunction(descendant)
-    ) {
-      return false;
+    if (descendant !== node && isFunctionLike(descendant)) {
+      const parent = descendant.parent;
+      if (
+        !isImmediatelyInvokedFunction(descendant) &&
+        (!isNodeOfType(parent, "CallExpression") ||
+          !isSynchronousIteratorCall(parent, descendant, scopes))
+      ) {
+        return false;
+      }
     }
     if (
       isNodeOfType(descendant, "NewExpression") &&
@@ -333,6 +338,7 @@ const expressionCallsPostMountHelper = (
   node: EsTreeNode,
   localFunctions: ReadonlyMap<string, EsTreeNode>,
   callbackRefFieldNames: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
   visitedFunctionNames: ReadonlySet<string> = new Set(),
 ): boolean => {
   let didFindPostMountHelper = false;
@@ -360,11 +366,12 @@ const expressionCallsPostMountHelper = (
     if (
       (doesFunctionReadCallbackRefField
         ? functionReturnsCallbackRefDerivedValue(functionBody, callbackRefFieldNames)
-        : containsPostMountSource(functionBody)) ||
+        : containsPostMountSource(functionBody, scopes)) ||
       expressionCallsPostMountHelper(
         functionBody,
         localFunctions,
         callbackRefFieldNames,
+        scopes,
         nextVisitedFunctionNames,
       )
     ) {
@@ -383,6 +390,7 @@ const argumentDerivesFromPostMountSource = (
   setStateCall: EsTreeNodeOfType<"CallExpression">,
   lifecycleFunction: EsTreeNode,
   callbackRefFieldNames: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const argumentNode = setStateCall.arguments[0];
   if (!argumentNode || isNodeOfType(argumentNode, "SpreadElement")) return false;
@@ -427,8 +435,8 @@ const argumentDerivesFromPostMountSource = (
     if (
       (doesExpressionReadCallbackRefField
         ? isCallbackRefDerivedValue(expression, callbackRefFieldNames)
-        : containsPostMountSource(expression)) ||
-      expressionCallsPostMountHelper(expression, localFunctions, callbackRefFieldNames)
+        : containsPostMountSource(expression, scopes)) ||
+      expressionCallsPostMountHelper(expression, localFunctions, callbackRefFieldNames, scopes)
     ) {
       return true;
     }
@@ -449,8 +457,8 @@ const argumentDerivesFromPostMountSource = (
       if (
         (doesInitializerReadCallbackRefField
           ? isCallbackRefDerivedValue(initializer, callbackRefFieldNames)
-          : containsPostMountSource(initializer)) ||
-        expressionCallsPostMountHelper(initializer, localFunctions, callbackRefFieldNames)
+          : containsPostMountSource(initializer, scopes)) ||
+        expressionCallsPostMountHelper(initializer, localFunctions, callbackRefFieldNames, scopes)
       ) {
         return true;
       }
@@ -470,12 +478,19 @@ const argumentDerivesFromPostMountSource = (
     return doesExpressionDeriveFromPostMountSource(statePayload);
   }
   if (statePayload.properties.length === 0) return false;
-  return statePayload.properties.every(
-    (property) =>
-      isNodeOfType(property, "Property") &&
-      property.kind === "init" &&
-      doesExpressionDeriveFromPostMountSource(property.value as EsTreeNode),
-  );
+  let hasPostMountValue = false;
+  for (const property of statePayload.properties) {
+    if (isMountFlagProperty(property)) continue;
+    if (
+      !isNodeOfType(property, "Property") ||
+      property.kind !== "init" ||
+      !doesExpressionDeriveFromPostMountSource(property.value as EsTreeNode)
+    ) {
+      return false;
+    }
+    hasPostMountValue = true;
+  }
+  return hasPostMountValue;
 };
 
 const isUndefinedOrNull = (node: EsTreeNode | null | undefined): boolean => {
@@ -881,6 +896,7 @@ export const noDidMountSetState = defineRule({
               node,
               lifecycleFunction,
               exclusivelyRefOwnedFieldNames,
+              context.scopes,
             )
           ) {
             return;

@@ -14,6 +14,7 @@ export const FRAMEWORK_TOKENS = [
   "cra",
   "remix",
   "gatsby",
+  "astro",
   "expo",
   "react-native",
   "tanstack-start",

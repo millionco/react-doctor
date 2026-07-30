@@ -141,9 +141,19 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{let next=null;if(previous.size){if(!next)next=new Map(previous);next.set("value",1)}return next??previous})}`,
     );
+    const nullishInitializedLocalReceiver = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{let next=null;next??=new Map(previous);next.set("value",1);return next})}`,
+    );
+    const nullishInitializedExternalReceiver = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";let cache=null;const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{cache??=new Map(previous);cache.set("value",1);return previous})}`,
+    );
     expect(externalReceiver.diagnostics).toHaveLength(1);
     expect(updaterLocalReceivers.diagnostics).toHaveLength(0);
     expect(lazilyInitializedLocalReceiver.diagnostics).toHaveLength(0);
+    expect(nullishInitializedLocalReceiver.diagnostics).toHaveLength(0);
+    expect(nullishInitializedExternalReceiver.diagnostics).toHaveLength(1);
   });
 
   it("flags discarded setter callback props without treating local setter helpers as effects", () => {

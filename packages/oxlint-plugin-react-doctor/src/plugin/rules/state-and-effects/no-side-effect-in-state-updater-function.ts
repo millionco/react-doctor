@@ -495,7 +495,7 @@ const identifierIsAssignedOnlyFreshContainers = (
     if (
       !assignment ||
       !isNodeOfType(assignment, "AssignmentExpression") ||
-      assignment.operator !== "=" ||
+      (assignment.operator !== "=" && assignment.operator !== "??=") ||
       assignment.left !== referenceRoot ||
       !expressionIsFreshContainer(assignment.right, context)
     ) {

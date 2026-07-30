@@ -48,7 +48,7 @@
   "scripts": {
     "dev": "vp pack --watch",
     "build": "pnpm gen && node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
-    "gen": "tsx ./scripts/generate-rule-registry.mjs && vp fmt src/plugin/core-rule-registry-data.json",
+    "gen": "tsx ./scripts/generate-rule-registry.mjs",
     "gen:check": "pnpm gen && git diff --exit-code -- src/plugin/core-rule-registry-data.json src/plugin/rule-registry.ts src/plugin/security-scan-rule-registry.ts",
     "gen:fixtures": "node ./scripts/extract-oxc-fixtures.mjs /tmp/oxc",
     "gen:fixture-tests": "node ./scripts/generate-fixture-tests.mjs",
@@ -64,7 +64,8 @@
     "oxc-parser": "^0.142.0"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0"
+    "@types/node": "^25.6.0",
+    "oxfmt": "0.46.0"
   },
   "engines": {
     "node": "^20.19.0 || >=22.13.0"

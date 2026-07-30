@@ -14,6 +14,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { format } from "oxfmt";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
@@ -510,7 +511,12 @@ const coreRuleEntries = ruleEntries.map((entry) => {
   };
 });
 
-fs.writeFileSync(CORE_REGISTRY_DATA_OUTPUT, `${JSON.stringify(coreRuleEntries, null, 2)}\n`);
+const coreRegistryData = await format(
+  CORE_REGISTRY_DATA_OUTPUT,
+  `${JSON.stringify(coreRuleEntries, null, 2)}\n`,
+  { printWidth: GENERATED_LINE_WIDTH },
+);
+fs.writeFileSync(CORE_REGISTRY_DATA_OUTPUT, coreRegistryData.code);
 
 const securityScanEntries = ruleEntries.filter(
   (entry) => typeof entry.sourceRule.scan === "function",

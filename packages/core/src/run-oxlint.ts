@@ -28,6 +28,7 @@ import type {
   SidecarDependencyProbe,
   SidecarLintCache,
 } from "./runners/oxlint/sidecar-lint-cache.js";
+import type { WorkerSlots } from "./utils/create-worker-slots.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
@@ -133,6 +134,7 @@ interface RunOxlintOptions {
    * exhaustion (see `spawnLintBatches`).
    */
   concurrency?: number;
+  spawnSlots?: WorkerSlots;
   /**
    * Aborted when the orchestrator's lint-phase timeout fires; forwarded to
    * `spawnLintBatches` so in-flight oxlint subprocesses are torn down instead
@@ -634,6 +636,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           spawnTimeoutMs,
           outputMaxBytes,
           concurrency: options.concurrency,
+          spawnSlots: options.spawnSlots,
           signal: options.signal,
           deadlineEpochMs: options.deadlineEpochMs,
         });
@@ -1016,6 +1019,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         spawnTimeoutMs,
         outputMaxBytes,
         concurrency: options.concurrency,
+        spawnSlots: options.spawnSlots,
         signal: options.signal,
         deadlineEpochMs: options.deadlineEpochMs,
       });

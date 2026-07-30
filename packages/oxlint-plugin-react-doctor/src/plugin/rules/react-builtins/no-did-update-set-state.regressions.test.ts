@@ -303,6 +303,43 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a negated const alias for an exact convergence guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          const isTooltipCurrent = this.state.tooltip === this.props.tooltip;
+          if (!isTooltipCurrent) {
+            this.setState({ tooltip: this.props.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an exact guard settles its right-hand state field", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          if (this.state.measuredWidth !== this.state.renderedWidth) {
+            this.setState({ renderedWidth: this.state.measuredWidth });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a reassigned alias for an exact convergence guard", () => {
     const result = runRule(
       noDidUpdateSetState,
@@ -312,6 +349,26 @@ describe("react-builtins/no-did-update-set-state — regressions", () => {
           let didTooltipChange = this.state.tooltip !== this.props.tooltip;
           didTooltipChange = this.props.forceUpdate;
           if (didTooltipChange) {
+            this.setState({ tooltip: this.props.tooltip });
+          }
+        }
+      }
+      `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a negated mutable alias for an exact convergence guard", () => {
+    const result = runRule(
+      noDidUpdateSetState,
+      `
+      class Calendar extends React.Component {
+        componentDidUpdate() {
+          let isTooltipCurrent = this.state.tooltip === this.props.tooltip;
+          isTooltipCurrent = this.props.forceUpdate;
+          if (!isTooltipCurrent) {
             this.setState({ tooltip: this.props.tooltip });
           }
         }

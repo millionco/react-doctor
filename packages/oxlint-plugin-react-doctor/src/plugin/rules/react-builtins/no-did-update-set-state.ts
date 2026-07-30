@@ -747,8 +747,39 @@ const isConvergentExactGuard = (
   scopes: ScopeAnalysis,
   localInitializers: ReadonlyMap<string, EsTreeNode>,
   callbackRefFieldNames: ReadonlySet<string>,
+  visitedSymbolIds: ReadonlySet<number> = new Set(),
 ): boolean => {
   const expression = stripParenExpression(test);
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    return isConvergentExactGuard(
+      expression.argument as EsTreeNode,
+      setStateCall,
+      !isTruthfulBranch,
+      scopes,
+      localInitializers,
+      callbackRefFieldNames,
+      visitedSymbolIds,
+    );
+  }
+  if (isNodeOfType(expression, "Identifier")) {
+    const symbol = scopes.symbolFor(expression);
+    if (
+      symbol?.kind === "const" &&
+      symbol.initializer &&
+      !visitedSymbolIds.has(symbol.id) &&
+      !symbol.references.some((reference) => reference.flag !== "read")
+    ) {
+      return isConvergentExactGuard(
+        symbol.initializer,
+        setStateCall,
+        isTruthfulBranch,
+        scopes,
+        localInitializers,
+        callbackRefFieldNames,
+        new Set([...visitedSymbolIds, symbol.id]),
+      );
+    }
+  }
   if (isNodeOfType(expression, "LogicalExpression")) {
     if (expression.operator !== "&&" && expression.operator !== "||") return false;
     const leftIsConvergent = isConvergentExactGuard(
@@ -758,6 +789,7 @@ const isConvergentExactGuard = (
       scopes,
       localInitializers,
       callbackRefFieldNames,
+      visitedSymbolIds,
     );
     const rightIsConvergent = isConvergentExactGuard(
       expression.right as EsTreeNode,
@@ -766,6 +798,7 @@ const isConvergentExactGuard = (
       scopes,
       localInitializers,
       callbackRefFieldNames,
+      visitedSymbolIds,
     );
     const requiresEveryBranch =
       (isTruthfulBranch && expression.operator === "||") ||
@@ -785,21 +818,27 @@ const isConvergentExactGuard = (
   }
   const leftFieldName = getThisStateFieldName(expression.left as EsTreeNode);
   const rightFieldName = getThisStateFieldName(expression.right as EsTreeNode);
-  const fieldName = leftFieldName ?? rightFieldName;
-  const comparedValue = leftFieldName
-    ? (expression.right as EsTreeNode)
-    : (expression.left as EsTreeNode);
-  if (!fieldName) return false;
-  const assignedValue = getSetStateFieldValue(setStateCall, fieldName);
-  if (!assignedValue || !areExpressionsBindingEquivalent(comparedValue, assignedValue, scopes)) {
-    return false;
-  }
-  return isStableConvergenceValue(
-    comparedValue,
-    scopes,
-    localInitializers,
-    callbackRefFieldNames,
-    setStateCall,
+  const matchesConvergentAssignment = (
+    fieldName: string | null,
+    comparedValue: EsTreeNode,
+  ): boolean => {
+    if (!fieldName) return false;
+    const assignedValue = getSetStateFieldValue(setStateCall, fieldName);
+    return (
+      assignedValue !== null &&
+      areExpressionsBindingEquivalent(comparedValue, assignedValue, scopes) &&
+      isStableConvergenceValue(
+        comparedValue,
+        scopes,
+        localInitializers,
+        callbackRefFieldNames,
+        setStateCall,
+      )
+    );
+  };
+  return (
+    matchesConvergentAssignment(leftFieldName, expression.right as EsTreeNode) ||
+    matchesConvergentAssignment(rightFieldName, expression.left as EsTreeNode)
   );
 };
 

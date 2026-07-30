@@ -12,7 +12,7 @@ import {
 } from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures");
-const VALID_FRAMEWORKS = ["nextjs", "vite", "cra", "remix", "gatsby", "unknown"];
+const VALID_FRAMEWORKS = ["nextjs", "vite", "cra", "remix", "gatsby", "astro", "unknown"];
 
 interface ReactCompilerDetectionCase {
   readonly name: string;
@@ -2824,6 +2824,22 @@ describe("listWorkspacePackages", () => {
     expect(projectInfo.framework, "the framework package outranks its bundler").toBe("gatsby");
   });
 
+  it("classifies an Astro app that also lists Vite as `astro`, not `vite`", () => {
+    const projectDirectory = path.join(tempDirectory, "astro-with-vite");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "astro-with-vite",
+        dependencies: { astro: "^7.1.5", react: "^19.2.8" },
+        devDependencies: { vite: "^6.0.0" },
+      }),
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.framework, "the framework package outranks its bundler").toBe("astro");
+  });
+
   it("flags a web-rooted monorepo with an Expo workspace as an Expo project", () => {
     const rootDirectory = path.join(tempDirectory, "expo-workspace-monorepo");
     const mobileDirectory = path.join(rootDirectory, "apps", "mobile");
@@ -4451,6 +4467,7 @@ describe("formatFrameworkName", () => {
     expect(formatFrameworkName("cra")).toBe("Create React App");
     expect(formatFrameworkName("remix")).toBe("Remix");
     expect(formatFrameworkName("gatsby")).toBe("Gatsby");
+    expect(formatFrameworkName("astro")).toBe("Astro");
   });
 
   it("formats unknown framework as React", () => {

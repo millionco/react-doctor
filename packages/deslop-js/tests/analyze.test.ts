@@ -88,6 +88,21 @@ describe("simple-app", () => {
   });
 });
 
+describe("astro-app", () => {
+  it("treats Astro's default Sharp image service as used", async () => {
+    const result = await scanFixture("astro-app");
+    const dependencies = staleDependencyNames(result);
+    assert.ok(
+      !dependencies.includes("sharp"),
+      `sharp should be implicit for Astro, got: ${dependencies}`,
+    );
+    assert.ok(
+      dependencies.includes("unused-dep"),
+      `unused-dep should be unused, got: ${dependencies}`,
+    );
+  });
+});
+
 describe("gitignore-app", () => {
   it("suppresses reports for gitignored files without dropping their import edges", async () => {
     const result = await scanFixture("gitignore-app");

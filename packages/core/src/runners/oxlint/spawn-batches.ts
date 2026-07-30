@@ -9,6 +9,7 @@ import {
   PROGRESS_TICK_INTERVAL_MS,
 } from "../../constants.js";
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
+import type { PreparedSourceMap } from "../../utils/prepare-lint-sources.js";
 import { isSplittableReactDoctorError, ReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
@@ -47,6 +48,7 @@ export interface SpawnLintBatchesInput {
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
   readonly sourcePathByLintPath?: ReadonlyMap<string, string>;
+  readonly sourceMapByLintPath?: ReadonlyMap<string, PreparedSourceMap>;
   readonly onPartialFailure?: (reason: string) => void;
   readonly onAnalyzedFiles?: (filePaths: ReadonlyArray<string>) => void;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
@@ -144,6 +146,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     nodeBinaryPath,
     project,
     sourcePathByLintPath,
+    sourceMapByLintPath,
     onPartialFailure,
     onFileProgress,
     spawnTimeoutMs,
@@ -236,7 +239,13 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           outputMaxBytes,
           signal,
         );
-        return parseOxlintOutput(stdout, project, rootDirectory, sourcePathByLintPath);
+        return parseOxlintOutput(
+          stdout,
+          project,
+          rootDirectory,
+          sourcePathByLintPath,
+          sourceMapByLintPath,
+        );
       } catch (error) {
         if (!isSplittableReactDoctorError(error)) throw error;
         // A splittable failure that surfaced only after the deadline passed is

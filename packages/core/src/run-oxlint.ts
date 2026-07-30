@@ -41,7 +41,7 @@ import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
-import { prepareHtmlLintSources } from "./utils/prepare-html-lint-sources.js";
+import { prepareLintSources } from "./utils/prepare-lint-sources.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
@@ -527,15 +527,11 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       rootDirectory,
       candidateFiles,
     });
-    const preparedHtmlSources = prepareHtmlLintSources(
-      rootDirectory,
-      configDirectory,
-      candidateFiles,
-    );
-    const lintFiles = preparedHtmlSources.lintFiles;
-    const hasHtmlFiles = preparedHtmlSources.sourcePathByLintPath.size > 0;
+    const preparedLintSources = prepareLintSources(rootDirectory, configDirectory, candidateFiles);
+    const lintFiles = preparedLintSources.lintFiles;
+    const hasPreparedFiles = preparedLintSources.sourcePathByLintPath.size > 0;
     const lintProject =
-      !project.hasThree && preparedHtmlSources.hasThreeModuleImport
+      !project.hasThree && preparedLintSources.hasThreeModuleImport
         ? { ...project, hasThree: true }
         : project;
     const buildConfig = (overrides: {
@@ -571,7 +567,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         ? new Map(sizedScanFiles.map((entry) => [entry.path, entry.sizeBytes]))
         : null;
     if (sizeByFile !== null) {
-      for (const [lintPath, sizeBytes] of preparedHtmlSources.sizeByLintPath) {
+      for (const [lintPath, sizeBytes] of preparedLintSources.sizeByLintPath) {
         sizeByFile.set(lintPath, sizeBytes);
       }
     }
@@ -625,7 +621,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           rootDirectory,
           nodeBinaryPath,
           project: lintProject,
-          sourcePathByLintPath: preparedHtmlSources.sourcePathByLintPath,
+          sourcePathByLintPath: preparedLintSources.sourcePathByLintPath,
+          sourceMapByLintPath: preparedLintSources.sourceMapByLintPath,
           onPartialFailure: reportPartialFailure,
           onAnalyzedFiles: (filePaths) => {
             analyzedFiles = filePaths;
@@ -684,7 +681,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       project.hasReactCompilerLintPlugin !== true &&
       extendsPaths.length === 0 &&
       userPlugins.length === 0 &&
-      !hasHtmlFiles;
+      !hasPreparedFiles;
 
     if (useFileLintCache) {
       const rulesetHash = computeRulesetHash({
@@ -1007,7 +1004,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         rootDirectory,
         nodeBinaryPath,
         project: lintProject,
-        sourcePathByLintPath: preparedHtmlSources.sourcePathByLintPath,
+        sourcePathByLintPath: preparedLintSources.sourcePathByLintPath,
+        sourceMapByLintPath: preparedLintSources.sourceMapByLintPath,
         onPartialFailure,
         onAnalyzedFiles: (filePaths) => {
           analyzedFiles = filePaths;

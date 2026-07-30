@@ -10,6 +10,7 @@
 // the two cannot drift.
 export const FRAMEWORK_TOKENS = [
   "nextjs",
+  "astro",
   "vite",
   "cra",
   "remix",

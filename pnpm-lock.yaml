@@ -67,9 +67,15 @@ importers:
 
   packages/core:
     dependencies:
+      '@astrojs/compiler':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@effect/platform-node-shared':
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70(effect@4.0.0-beta.70)
+      '@jridgewell/trace-mapping':
+        specifier: ^0.3.31
+        version: 0.3.31
       browserslist:
         specifier: ^4.28.1
         version: 4.28.1
@@ -246,6 +252,9 @@ importers:
 
   packages/react-doctor:
     dependencies:
+      '@astrojs/compiler':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@babel/code-frame':
         specifier: ^7.29.0
         version: 7.29.0
@@ -374,6 +383,9 @@ packages:
 
   '@ark/util@0.56.0':
     resolution: {integrity: sha512-BghfRC8b9pNs3vBoDJhcta0/c1J1rsoS1+HgVUreMFPdhz/CRAKReAu57YEllNaSy98rWAdY1gE+gFup7OXpgA==}
+
+  '@astrojs/compiler@4.0.0':
+    resolution: {integrity: sha512-eouss7G8ygdZqHuke033VMcVw5HTZUu+PXd/h06DGDUg/jt5btPYPqh66ENWw/mU78rBrf/oeC4oqoBwMtDMNA==}
 
   '@aws-sdk/checksums@3.1000.16':
     resolution: {integrity: sha512-EKnvkXSmz3IpA99tCNuI+dLFXyZyClSm8zns9sB/elvkU+MTuomAs6toJMPMBf98/fICG/urXDkzGz0/c3yyAQ==}
@@ -4415,6 +4427,8 @@ snapshots:
       '@ark/util': 0.56.0
 
   '@ark/util@0.56.0': {}
+
+  '@astrojs/compiler@4.0.0': {}
 
   '@aws-sdk/checksums@3.1000.16':
     dependencies:

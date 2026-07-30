@@ -586,6 +586,7 @@ const loopBodyHasOrderedSharedReceiverAwait = (
   walkAst(loopBody, (child: EsTreeNode): boolean | void => {
     if (hasOrderedSharedReceiverAwait) return false;
     if (child !== loopBody && isFunctionLike(child)) return false;
+    if (LOOP_STATEMENT_TYPES.has(child.type)) return false;
     const callExpression = getAwaitedMemberCall(child);
     if (
       !callExpression ||

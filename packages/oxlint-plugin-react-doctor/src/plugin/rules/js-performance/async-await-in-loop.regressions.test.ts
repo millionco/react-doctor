@@ -699,6 +699,15 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("does not use an ordered nested loop to exempt an outer sibling await", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events, batches) { for (const event of events) { await upload(event); for (const batch of batches) { const before = replica.getText(); const result = await replica.apply(event, batch); const after = replica.getText(); consume(result, before, after); } } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags .map(async) whose promises are never collected", () => {
     const result = runRule(
       asyncAwaitInLoop,

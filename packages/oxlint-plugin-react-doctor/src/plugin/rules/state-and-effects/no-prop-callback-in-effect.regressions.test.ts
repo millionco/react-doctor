@@ -410,3 +410,186 @@ describe("no-prop-callback-in-effect — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+describe("no-prop-callback-in-effect — external synchronization", () => {
+  it("stays silent for a matchMedia transition exposed by an external subscription hook", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Sidebar({ query, onBreakPoint }) {
+        const broken = useMediaQuery(query);
+        const reactId = useId();
+        const callbackRef = useRef(onBreakPoint);
+        useEffect(() => {
+          if (broken) callbackRef.current?.(true);
+        }, [broken, reactId]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a layout effect reports a post-commit DOM measurement", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Photo({ photo, onViewportSize }) {
+        const buttonRef = useRef(null);
+        const measureViewport = useCallback(() => {
+          const rect = buttonRef.current.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        }, []);
+        useLayoutEffect(() => {
+          const { width, height } = measureViewport();
+          onViewportSize?.(width, height);
+        }, [measureViewport, onViewportSize, photo]);
+        return <button ref={buttonRef} />;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent after restoring imperative editor selection from props", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Editor({ textareaRef, text, pendingSelection, onApplied }) {
+        const selectionSync = useTextareaSelectionSync(textareaRef);
+        useLayoutEffect(() => {
+          const element = textareaRef.current;
+          if (!element || !pendingSelection) return;
+          element.value = text;
+          selectionSync.restoreSelection(pendingSelection);
+          onApplied?.(null);
+        }, [text, textareaRef, pendingSelection, selectionSync, onApplied]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an effect registers and clears an opaque hook controller", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Editor({ textareaRef, onMapperChange }) {
+        const mapper = useRemoteSelectionMapper(textareaRef);
+        useEffect(() => {
+          onMapperChange?.(mapper);
+          return () => onMapperChange?.(null);
+        }, [mapper, onMapperChange]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a layout effect registers and replaces a stable mapper", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Editor({ onRegister }) {
+        const enqueueOperations = useCallback((operations) => consume(operations), []);
+        useLayoutEffect(() => {
+          onRegister(enqueueOperations);
+          return () => onRegister(() => {});
+        }, [onRegister, enqueueOperations]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a layout effect registers an inline imperative mapper", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Editor({ textareaRef, registerMapper }) {
+        const selectionSync = useTextareaSelectionSync(textareaRef);
+        useLayoutEffect(() => {
+          const mapper = (operations) => {
+            selectionSync.restoreSelection(mapOperations(operations));
+          };
+          registerMapper(mapper);
+          return () => registerMapper(() => undefined);
+        }, [registerMapper, selectionSync]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags proven React state when unrelated controller dependencies are present", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Field({ onChange }) {
+        const [value] = useState("");
+        const controller = useTextareaSelectionSync();
+        const format = useCallback((input) => input.trim(), []);
+        useEffect(() => {
+          controller.restoreSelection();
+          onChange(format(value));
+        }, [value, controller, format, onChange]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a fixed callback payload controlled by proven React state", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Field({ onOpen }) {
+        const [isOpen] = useState(false);
+        useEffect(() => {
+          if (isOpen) onOpen(true);
+        }, [isOpen, onOpen]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a supported custom-hook state value handed to the parent", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Field({ source, onError }) {
+        const result = useProperty(source);
+        useEffect(() => {
+          onError(result);
+        }, [result, onError]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a custom-hook state handback when unrelated teardown is returned", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `function Field({ source, onResult }) {
+        const result = useProperty(source);
+        useEffect(() => {
+          onResult(result);
+          return () => teardown();
+        }, [result, onResult]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

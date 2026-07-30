@@ -870,6 +870,113 @@ describe("react-builtins/no-did-mount-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags a callback-ref field written through a captured alias in a nested class", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        render() {
+          const calendar = this;
+          class NestedCalendar {
+            overwriteMonthContainer(value) {
+              calendar.monthContainer = value;
+            }
+          }
+          return <div ref={this.setMonthContainerRef} />;
+        }
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores a same-named field written through a nested class instance", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Calendar extends Component {
+        monthContainer = undefined;
+        setMonthContainerRef = (element) => {
+          this.monthContainer = element ?? undefined;
+        };
+        render() {
+          class NestedCalendar {
+            overwriteMonthContainer(value) {
+              this.monthContainer = value;
+            }
+          }
+          return <div ref={this.setMonthContainerRef} />;
+        }
+        componentDidMount() {
+          this.setState({ monthContainer: this.monthContainer });
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a synchronous map returns callback-ref measurements", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Gallery extends Component {
+        measuredElement = undefined;
+        setMeasuredElementRef = (element) => {
+          this.measuredElement = element ?? undefined;
+        };
+        componentDidMount() {
+          const elements = [0].map(() => this.measuredElement);
+          this.setState({ elements });
+        }
+        render() {
+          return <div ref={this.setMeasuredElementRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags callback-ref reads inside an unproven map callback", () => {
+    const result = runRule(
+      noDidMountSetState,
+      `
+      import { Component } from "react";
+      class Gallery extends Component {
+        measuredElement = undefined;
+        setMeasuredElementRef = (element) => {
+          this.measuredElement = element ?? undefined;
+        };
+        componentDidMount() {
+          const heights = this.props.collection.map(
+            () => this.measuredElement.clientHeight,
+          );
+          this.setState({ heights });
+        }
+        render() {
+          return <div ref={this.setMeasuredElementRef} />;
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a callback-ref handler invoked with a prop value", () => {
     const result = runRule(
       noDidMountSetState,

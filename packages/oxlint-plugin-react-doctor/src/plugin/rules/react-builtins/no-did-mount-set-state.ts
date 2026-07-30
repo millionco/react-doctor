@@ -139,15 +139,19 @@ const containsPostMountSource = (node: EsTreeNode, scopes: ScopeAnalysis): boole
 const containsCallbackRefField = (
   node: EsTreeNode,
   callbackRefFieldNames: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
 ): boolean => {
   let didFindCallbackRefField = false;
   walkAst(node, (descendant) => {
-    if (
-      descendant !== node &&
-      isFunctionLike(descendant) &&
-      !isImmediatelyInvokedFunction(descendant)
-    ) {
-      return false;
+    if (descendant !== node && isFunctionLike(descendant)) {
+      const parent = descendant.parent;
+      if (
+        !isImmediatelyInvokedFunction(descendant) &&
+        (!isNodeOfType(parent, "CallExpression") ||
+          !isSynchronousIteratorCall(parent, descendant, scopes))
+      ) {
+        return false;
+      }
     }
     const fieldName = getStaticThisFieldName(descendant);
     if (fieldName && callbackRefFieldNames.has(fieldName)) {
@@ -312,6 +316,31 @@ const functionReturnsCallbackRefDerivedValue = (
   return evidence.hasCallbackRefValue && !evidence.hasDynamicValue;
 };
 
+const synchronousIteratorResultDerivesFromCallbackRef = (
+  node: EsTreeNode,
+  callbackRefFieldNames: ReadonlySet<string>,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const candidate = stripParenExpression(node);
+  if (!isNodeOfType(candidate, "CallExpression")) return false;
+  const callee = stripParenExpression(candidate.callee);
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    getStaticPropertyKeyName(callee, { allowComputedString: true }) === "forEach"
+  ) {
+    return false;
+  }
+  return candidate.arguments.some((argument) => {
+    if (isNodeOfType(argument, "SpreadElement")) return false;
+    const callback = stripParenExpression(argument);
+    return (
+      isFunctionLike(callback) &&
+      isSynchronousIteratorCall(candidate, callback, scopes) &&
+      functionReturnsCallbackRefDerivedValue(callback.body, callbackRefFieldNames)
+    );
+  });
+};
+
 const collectReferencedNames = (node: EsTreeNode, into: Set<string>): void => {
   walkAst(node, (descendant) => {
     if (!isNodeOfType(descendant, "Identifier")) return;
@@ -362,6 +391,7 @@ const expressionCallsPostMountHelper = (
     const doesFunctionReadCallbackRefField = containsCallbackRefField(
       functionBody,
       callbackRefFieldNames,
+      scopes,
     );
     if (
       (doesFunctionReadCallbackRefField
@@ -431,10 +461,12 @@ const argumentDerivesFromPostMountSource = (
     const doesExpressionReadCallbackRefField = containsCallbackRefField(
       expression,
       callbackRefFieldNames,
+      scopes,
     );
     if (
       (doesExpressionReadCallbackRefField
-        ? isCallbackRefDerivedValue(expression, callbackRefFieldNames)
+        ? isCallbackRefDerivedValue(expression, callbackRefFieldNames) ||
+          synchronousIteratorResultDerivesFromCallbackRef(expression, callbackRefFieldNames, scopes)
         : containsPostMountSource(expression, scopes)) ||
       expressionCallsPostMountHelper(expression, localFunctions, callbackRefFieldNames, scopes)
     ) {
@@ -453,10 +485,16 @@ const argumentDerivesFromPostMountSource = (
       const doesInitializerReadCallbackRefField = containsCallbackRefField(
         initializer,
         callbackRefFieldNames,
+        scopes,
       );
       if (
         (doesInitializerReadCallbackRefField
-          ? isCallbackRefDerivedValue(initializer, callbackRefFieldNames)
+          ? isCallbackRefDerivedValue(initializer, callbackRefFieldNames) ||
+            synchronousIteratorResultDerivesFromCallbackRef(
+              initializer,
+              callbackRefFieldNames,
+              scopes,
+            )
           : containsPostMountSource(initializer, scopes)) ||
         expressionCallsPostMountHelper(initializer, localFunctions, callbackRefFieldNames, scopes)
       ) {
@@ -519,10 +557,15 @@ const objectExpressionMayDefineField = (node: EsTreeNode, fieldName: string): bo
   });
 };
 
-const isThisOrAlias = (node: EsTreeNode, thisAliasNames: ReadonlySet<string>): boolean => {
+const isThisOrAlias = (
+  node: EsTreeNode,
+  thisAliasNames: ReadonlySet<string>,
+  classNode?: EsTreeNode,
+): boolean => {
   const candidate = stripParenExpression(node);
   return (
-    isNodeOfType(candidate, "ThisExpression") ||
+    (isNodeOfType(candidate, "ThisExpression") &&
+      (!classNode || findEnclosingClass(candidate) === classNode)) ||
     (isNodeOfType(candidate, "Identifier") && thisAliasNames.has(candidate.name))
   );
 };
@@ -532,6 +575,7 @@ const callMayWriteThisField = (
   fieldName: string,
   receiverKinds: ReadonlyMap<string, "object" | "reflect">,
   thisAliasNames: ReadonlySet<string>,
+  classNode: EsTreeNode,
 ): boolean => {
   const callee = stripParenExpression(callExpression.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -545,7 +589,7 @@ const callMayWriteThisField = (
     target && !isNodeOfType(target, "SpreadElement")
       ? stripParenExpression(target as EsTreeNode)
       : null;
-  if (!unwrappedTarget || !isThisOrAlias(unwrappedTarget, thisAliasNames)) {
+  if (!unwrappedTarget || !isThisOrAlias(unwrappedTarget, thisAliasNames, classNode)) {
     return false;
   }
   if (receiverKind === "object" && methodName === "assign") {
@@ -709,13 +753,8 @@ const hasExclusiveCallbackRefFieldWrite = (
   let didFindUnsafeWrite = false;
   walkAst(classNode, (node) => {
     if (
-      node !== classNode &&
-      (isNodeOfType(node, "ClassDeclaration") || isNodeOfType(node, "ClassExpression"))
-    ) {
-      return false;
-    }
-    if (
       isNodeOfType(node, "PropertyDefinition") &&
+      findEnclosingClass(node) === classNode &&
       node.static !== true &&
       getStaticPropertyKeyName(node, { allowComputedString: true }) === fieldName &&
       !isUndefinedOrNull(node.value as EsTreeNode | null | undefined)
@@ -725,7 +764,7 @@ const hasExclusiveCallbackRefFieldWrite = (
     }
     if (
       isNodeOfType(node, "CallExpression") &&
-      callMayWriteThisField(node, fieldName, receiverKinds, thisAliasNames)
+      callMayWriteThisField(node, fieldName, receiverKinds, thisAliasNames, classNode)
     ) {
       const writerFunction = getEnclosingWriterFunction(node, classNode);
       if (!writerFunction) {
@@ -746,7 +785,7 @@ const hasExclusiveCallbackRefFieldWrite = (
     const unwrappedAssignmentTarget = stripParenExpression(assignmentTarget);
     if (
       !isNodeOfType(unwrappedAssignmentTarget, "MemberExpression") ||
-      !isThisOrAlias(unwrappedAssignmentTarget.object as EsTreeNode, thisAliasNames)
+      !isThisOrAlias(unwrappedAssignmentTarget.object as EsTreeNode, thisAliasNames, classNode)
     ) {
       return;
     }

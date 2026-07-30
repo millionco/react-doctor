@@ -128,6 +128,78 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(externalReceiver.diagnostics).toHaveLength(1);
   });
 
+  it("flags external collection mutations and ignores updater-local collections", () => {
+    const externalReceiver = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useRef,useState}from"react";const C=()=>{const cache=useRef(new Map());const[,setValue]=useState(0);setValue(previous=>{cache.current.set("value",previous);return previous+1})}`,
+    );
+    const updaterLocalReceivers = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{const next=new Map(previous);next.set("value",1);const seen=new Set();seen.add("value");seen.delete("value");seen.clear();new Map(previous).set("other",2);new Set().add("other");return next})}`,
+    );
+    const lazilyInitializedLocalReceiver = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{let next=null;if(previous.size){if(!next)next=new Map(previous);next.set("value",1)}return next??previous})}`,
+    );
+    expect(externalReceiver.diagnostics).toHaveLength(1);
+    expect(updaterLocalReceivers.diagnostics).toHaveLength(0);
+    expect(lazilyInitializedLocalReceiver.diagnostics).toHaveLength(0);
+  });
+
+  it("flags discarded setter callback props without treating local setter helpers as effects", () => {
+    const directSetterProp = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({setGroupState})=>{const[,setOpen]=useState(false);setOpen(previous=>{setGroupState("group",{open:previous});return!previous})}`,
+    );
+    const renamedSetterProp = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({setMessages:updateMessages})=>{const[,setRequests]=useState([]);setRequests(previous=>{updateMessages(messages=>messages);return previous})}`,
+    );
+    const localSetterHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);const setFormatter=value=>value+1;setValue(previous=>setFormatter(previous))}`,
+    );
+    expect(directSetterProp.diagnostics).toHaveLength(1);
+    expect(renamedSetterProp.diagnostics).toHaveLength(1);
+    expect(localSetterHelper.diagnostics).toHaveLength(0);
+  });
+
+  it("flags persistence and submission calls while following pure local name lookalikes", () => {
+    const importedPersistence = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{saveColumnWidths}from"./storage";import{useState}from"react";const C=()=>{const[,setWidths]=useState({});setWidths(previous=>{saveColumnWidths("table",previous);return previous})}`,
+    );
+    const unresolvedSubmission = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const{submitFeedback}=useFeedback();const[,setMessages]=useState([]);setMessages(previous=>{submitFeedback(previous);return previous})}`,
+    );
+    const localPureHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);const saveValue=value=>value+1;setValue(previous=>saveValue(previous))}`,
+    );
+    expect(importedPersistence.diagnostics).toHaveLength(1);
+    expect(unresolvedSubmission.diagnostics).toHaveLength(1);
+    expect(localPureHelper.diagnostics).toHaveLength(0);
+  });
+
+  it("flags async update calls that start a promise chain without flagging plain update helpers", () => {
+    const asyncUpdate = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{updateChatMessageFeedback}from"./api";import{useState}from"react";const C=()=>{const[,setRequests]=useState([]);setRequests(previous=>{updateChatMessageFeedback(1,"up").then(()=>{});return previous})}`,
+    );
+    const plainUpdate = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{updateRecord}from"./model";import{useState}from"react";const C=()=>{const[,setValue]=useState(0);setValue(previous=>updateRecord(previous))}`,
+    );
+    const localAsyncUpdate = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);const updateRecord=value=>Promise.resolve(value);setValue(previous=>updateRecord(previous).then(value=>value+1))}`,
+    );
+    expect(asyncUpdate.diagnostics).toHaveLength(1);
+    expect(plainUpdate.diagnostics).toHaveLength(0);
+    expect(localAsyncUpdate.diagnostics).toHaveLength(0);
+  });
+
   it("does not inspect deferred callbacks stored in state", () => {
     const result = runRule(
       noSideEffectInStateUpdaterFunction,

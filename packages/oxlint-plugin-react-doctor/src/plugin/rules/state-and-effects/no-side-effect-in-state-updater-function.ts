@@ -1,4 +1,5 @@
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
+import { MUTATING_COLLECTION_METHODS, PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import {
   STATE_UPDATER_CALL_PROPERTY_WRITE_RANK,
   STATE_UPDATER_INITIAL_PROPERTY_WRITE_RANK,
@@ -45,7 +46,8 @@ const SYNCHRONOUS_CALLBACK_METHOD_NAMES = new Set([
   "toSorted",
 ]);
 const SIDE_EFFECT_CALL_NAME_PATTERN =
-  /^(?:analytics|capture|dispatch|emit|log|notify|persist|record|report|send|track)/;
+  /^(?:analytics|capture|dispatch|emit|log|notify|persist|record|report|save|send|submit|track)/;
+const ASYNC_UPDATE_CALL_NAME_PATTERN = /^update[A-Z_]/;
 const SAFE_GLOBAL_RECEIVER_NAMES = new Set(["Math", "JSON", "Object", "Array"]);
 const FRESH_CONTAINER_CONSTRUCTOR_NAMES = new Set([
   "Array",
@@ -461,6 +463,54 @@ const baseReceiverIdentifier = (expression: EsTreeNode): EsTreeNodeOfType<"Ident
   return isNodeOfType(current, "Identifier") ? current : null;
 };
 
+const expressionIsFreshContainer = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "ObjectExpression") || isNodeOfType(candidate, "ArrayExpression")) {
+    return true;
+  }
+  if (!isNodeOfType(candidate, "NewExpression")) return false;
+  const constructor = stripParenExpression(candidate.callee);
+  return Boolean(
+    isNodeOfType(constructor, "Identifier") &&
+    FRESH_CONTAINER_CONSTRUCTOR_NAMES.has(constructor.name) &&
+    context.scopes.isGlobalReference(constructor),
+  );
+};
+
+const identifierIsAssignedOnlyFreshContainers = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const symbol = context.scopes.symbolFor(identifier);
+  if (!symbol) return false;
+  const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+  if (initializer && !(isNodeOfType(initializer, "Literal") && initializer.value === null)) {
+    return false;
+  }
+  let hasPriorFreshAssignment = false;
+  for (const reference of symbol.references) {
+    if (reference.flag === "read") continue;
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const assignment = referenceRoot.parent;
+    if (
+      !assignment ||
+      !isNodeOfType(assignment, "AssignmentExpression") ||
+      assignment.operator !== "=" ||
+      assignment.left !== referenceRoot ||
+      !expressionIsFreshContainer(assignment.right, context)
+    ) {
+      return false;
+    }
+    if (
+      assignment.range[0] < identifier.range[0] &&
+      findDeferredExecutionBoundary(assignment) === findDeferredExecutionBoundary(identifier)
+    ) {
+      hasPriorFreshAssignment = true;
+    }
+  }
+  return hasPriorFreshAssignment;
+};
+
 const memberReceiverIsUpdaterLocal = (
   receiver: EsTreeNodeOfType<"MemberExpression">,
   updaterFunction: EsTreeNode,
@@ -525,6 +575,7 @@ const receiverIsUpdaterLocal = (
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean => {
   const unwrappedReceiver = stripParenExpression(receiver);
+  if (expressionIsFreshContainer(unwrappedReceiver, context)) return true;
   if (isNodeOfType(unwrappedReceiver, "MemberExpression")) {
     return memberReceiverIsUpdaterLocal(
       unwrappedReceiver,
@@ -590,21 +641,9 @@ const receiverIsUpdaterLocal = (
     return didFindDirectInvocation && doAllArgumentsStayLocal;
   }
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+  if (identifierIsAssignedOnlyFreshContainers(baseIdentifier, context)) return true;
   if (!initializer) return false;
-  if (
-    isNodeOfType(initializer, "ObjectExpression") ||
-    isNodeOfType(initializer, "ArrayExpression")
-  ) {
-    return true;
-  }
-  if (isNodeOfType(initializer, "NewExpression")) {
-    const constructor = stripParenExpression(initializer.callee);
-    return Boolean(
-      isNodeOfType(constructor, "Identifier") &&
-      FRESH_CONTAINER_CONSTRUCTOR_NAMES.has(constructor.name) &&
-      context.scopes.isGlobalReference(constructor),
-    );
-  }
+  if (expressionIsFreshContainer(initializer, context)) return true;
   if (!isNodeOfType(initializer, "Identifier")) return false;
   return receiverIsUpdaterLocal(
     initializer,
@@ -691,7 +730,20 @@ const identifierIsCallbackParameter = (identifier: EsTreeNode, context: RuleCont
   const bindingParent = symbol.bindingIdentifier.parent;
   return Boolean(
     isNodeOfType(bindingParent, "Property") &&
-    /^on[A-Z]/.test(getStaticPropertyKeyName(bindingParent, { allowComputedString: true }) ?? ""),
+    /^(?:on|set)[A-Z]/.test(
+      getStaticPropertyKeyName(bindingParent, { allowComputedString: true }) ?? "",
+    ),
+  );
+};
+
+const callStartsPromiseChain = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const callRoot = findTransparentExpressionRoot(call);
+  const parent = callRoot.parent;
+  return Boolean(
+    parent &&
+    isNodeOfType(parent, "MemberExpression") &&
+    parent.object === callRoot &&
+    PROMISE_SETTLE_METHODS.has(getStaticPropertyName(parent) ?? ""),
   );
 };
 
@@ -916,6 +968,8 @@ const callHasSideEffectName = (
     (identifierIsCallbackParameter(callee, context) ||
       (isNodeOfType(callee, "MemberExpression") &&
         /^on[A-Z]/.test(getStaticPropertyName(callee) ?? "")));
+  const isAsyncUpdateCall =
+    ASYNC_UPDATE_CALL_NAME_PATTERN.test(callName) && callStartsPromiseChain(call);
   if (isNodeOfType(callee, "MemberExpression")) {
     const globalReceiver = baseReceiverIdentifier(callee.object);
     const isGlobalObjectMember = Boolean(
@@ -933,6 +987,7 @@ const callHasSideEffectName = (
   if (
     isNodeOfType(callee, "Identifier") &&
     !SIDE_EFFECT_CALL_NAME_PATTERN.test(callName) &&
+    !isAsyncUpdateCall &&
     !isDiscardedExternalCallbackCall &&
     !(GLOBAL_SIDE_EFFECT_CALL_NAMES.has(callName) && context.scopes.isGlobalReference(callee)) &&
     !(GLOBAL_SCHEDULER_CALL_NAMES.has(callName) && context.scopes.isGlobalReference(callee))
@@ -950,6 +1005,8 @@ const callHasSideEffectName = (
     isNodeOfType(callee, "MemberExpression") &&
     !SIDE_EFFECT_CALL_NAME_PATTERN.test(callName) &&
     !SIDE_EFFECT_METHOD_NAMES.has(callName) &&
+    !MUTATING_COLLECTION_METHODS.has(callName) &&
+    !isAsyncUpdateCall &&
     !isDiscardedExternalCallbackCall
   ) {
     return false;

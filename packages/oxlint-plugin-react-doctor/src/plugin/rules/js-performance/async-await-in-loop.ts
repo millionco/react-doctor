@@ -45,6 +45,7 @@ const getLoopBody = (loopNode: EsTreeNode): EsTreeNode | null => {
 const findFirstAwaitOutsideNestedFunctions = (
   block: EsTreeNode,
   skipNestedLoops = false,
+  shouldSkipAwait?: (awaitNode: EsTreeNode) => boolean,
 ): EsTreeNode | null => {
   let firstAwait: EsTreeNode | null = null;
   walkAst(block, (child: EsTreeNode): boolean | void => {
@@ -60,7 +61,7 @@ const findFirstAwaitOutsideNestedFunctions = (
     // exemptions — attributing their awaits to the outer loop both
     // double-reports and bypasses those exemptions.
     if (skipNestedLoops && child !== block && LOOP_STATEMENT_TYPES.has(child.type)) return false;
-    if (isNodeOfType(child, "AwaitExpression")) {
+    if (isNodeOfType(child, "AwaitExpression") && !shouldSkipAwait?.(child)) {
       firstAwait = child;
     }
   });
@@ -576,39 +577,25 @@ const doesAwaitProduceObservedOrderedOutput = (
   return doesProduceObservedOrderedOutput;
 };
 
-const loopBodyHasOrderedSharedReceiverAwait = (
+const isOrderedSharedReceiverAwait = (
+  awaitNode: EsTreeNode,
   loopNode: EsTreeNode,
   context: RuleContext,
 ): boolean => {
-  const loopBody = getLoopBody(loopNode);
-  if (!loopBody) return false;
-  let hasOrderedSharedReceiverAwait = false;
-  walkAst(loopBody, (child: EsTreeNode): boolean | void => {
-    if (hasOrderedSharedReceiverAwait) return false;
-    if (child !== loopBody && isFunctionLike(child)) return false;
-    if (LOOP_STATEMENT_TYPES.has(child.type)) return false;
-    const callExpression = getAwaitedMemberCall(child);
-    if (
-      !callExpression ||
-      !doesAwaitedCallReadIterationBinding(callExpression, loopNode, context)
-    ) {
-      return;
-    }
-    const receiver = getMemberCallReceiver(callExpression);
-    if (!receiver) return;
-    const receiverKey = resolveExpressionKey(receiver, context);
-    if (!receiverKey || !isStableOutsideLoopReceiver(receiver, receiverKey, loopNode, context)) {
-      return;
-    }
-    if (
-      doesAwaitBridgeReceiverSnapshots(child, loopNode, receiverKey, context) ||
-      doesAwaitProduceObservedOrderedOutput(child, loopNode, context)
-    ) {
-      hasOrderedSharedReceiverAwait = true;
-      return false;
-    }
-  });
-  return hasOrderedSharedReceiverAwait;
+  const callExpression = getAwaitedMemberCall(awaitNode);
+  if (!callExpression || !doesAwaitedCallReadIterationBinding(callExpression, loopNode, context)) {
+    return false;
+  }
+  const receiver = getMemberCallReceiver(callExpression);
+  if (!receiver) return false;
+  const receiverKey = resolveExpressionKey(receiver, context);
+  if (!receiverKey || !isStableOutsideLoopReceiver(receiver, receiverKey, loopNode, context)) {
+    return false;
+  }
+  return (
+    doesAwaitBridgeReceiverSnapshots(awaitNode, loopNode, receiverKey, context) ||
+    doesAwaitProduceObservedOrderedOutput(awaitNode, loopNode, context)
+  );
 };
 
 const isIntentionallySequentialAwait = (awaitNode: EsTreeNode, context: RuleContext): boolean =>
@@ -1151,7 +1138,6 @@ export const asyncAwaitInLoop = defineRule({
       const loopBody = loopNode.body;
       if (!loopBody) return;
       if (loopBodyHasIntentionallySequentialAwait(loopBody, context)) return;
-      if (loopBodyHasOrderedSharedReceiverAwait(loopNode, context)) return;
       if (
         (isNodeOfType(loopNode, "WhileStatement") || isNodeOfType(loopNode, "DoWhileStatement")) &&
         isLoopTestDependentOnBodyState(loopNode.test, loopBody)
@@ -1161,7 +1147,9 @@ export const asyncAwaitInLoop = defineRule({
       if (hasLoopCarriedDependency(loopBody)) return;
       if (loopBodyHasAwaitDependentEarlyExit(loopBody, getLoopLabelName(loopNode))) return;
       if (isLoopInsideWorkerPoolFunction(loopNode)) return;
-      const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody, true);
+      const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody, true, (awaitNode) =>
+        isOrderedSharedReceiverAwait(awaitNode, loopNode, context),
+      );
       if (firstAwait) {
         context.report({
           node: firstAwait,

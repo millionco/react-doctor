@@ -708,6 +708,15 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("does not use one ordered shared receiver await to exempt a sibling await", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); await upload(event); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags .map(async) whose promises are never collected", () => {
     const result = runRule(
       asyncAwaitInLoop,

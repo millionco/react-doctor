@@ -56,3 +56,9 @@ export const CalendarDateTimeNullishLeft = () => {
   }));
   return null;
 };
+
+export const ScalarCalendarDateTime = () => {
+  const [, setValue] = useState(new CalendarDateTime(2025, 1, 29, 14, 30));
+  setValue((previous) => previous.add({ months: 1 }).set({ day: 1 }));
+  return null;
+};

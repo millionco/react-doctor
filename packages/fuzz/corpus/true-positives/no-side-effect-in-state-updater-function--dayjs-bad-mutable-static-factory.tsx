@@ -19,3 +19,9 @@ export const MutableUtcMonth = () => {
   }));
   return null;
 };
+
+export const MutableChainedMonth = () => {
+  const [, setDate] = useState(dayjs());
+  setDate((previous) => previous.add(1, "month").set("date", 1));
+  return null;
+};

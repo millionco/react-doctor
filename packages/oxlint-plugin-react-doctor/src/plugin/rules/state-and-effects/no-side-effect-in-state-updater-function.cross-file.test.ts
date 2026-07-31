@@ -42,6 +42,52 @@ describe("no-side-effect-in-state-updater-function cross-file Day.js wrappers", 
     expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(0);
   });
 
+  it("follows immutable Day.js factories through multiple wrapper imports", () => {
+    writeFile("src/utils/base-dayjs.ts", `import dayjs from"dayjs";export default dayjs`);
+    writeFile("src/utils/middle-dayjs.ts", `import dayjs from"./base-dayjs";export default dayjs`);
+    writeFile("src/utils/dayjs.ts", `import dayjs from"./middle-dayjs";export default dayjs`);
+    expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(0);
+  });
+
+  it("follows aliased named Day.js factories through multiple wrappers", () => {
+    writeFile(
+      "src/utils/base-dayjs.ts",
+      `import dayjs from"dayjs";const factory=dayjs;export{factory as makeDate}`,
+    );
+    writeFile(
+      "src/utils/middle-dayjs.ts",
+      `import{makeDate}from"./base-dayjs";const factory=makeDate;export{factory as makeDate}`,
+    );
+    writeFile("src/utils/dayjs.ts", `import{makeDate}from"./middle-dayjs";export default makeDate`);
+    expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust a multi-hop wrapper that activates badMutable", () => {
+    writeFile(
+      "src/utils/base-dayjs.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable);export default dayjs`,
+    );
+    writeFile("src/utils/middle-dayjs.ts", `import dayjs from"./base-dayjs";export default dayjs`);
+    writeFile("src/utils/dayjs.ts", `import dayjs from"./middle-dayjs";export default dayjs`);
+    expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust a multi-hop wrapper around a mutable factory", () => {
+    writeFile(
+      "src/utils/base-dayjs.ts",
+      `const mutableDate=()=>({add(){return this}});export default mutableDate`,
+    );
+    writeFile("src/utils/middle-dayjs.ts", `import dayjs from"./base-dayjs";export default dayjs`);
+    writeFile("src/utils/dayjs.ts", `import dayjs from"./middle-dayjs";export default dayjs`);
+    expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(1);
+  });
+
+  it("does not trust cyclic Day.js factory wrappers", () => {
+    writeFile("src/utils/a.ts", `import dayjs from"./b";export default dayjs`);
+    writeFile("src/utils/b.ts", `import dayjs from"./a";export default dayjs`);
+    expect(runConsumer("./utils/a").diagnostics).toHaveLength(1);
+  });
+
   it("does not trust a same-named wrapper around a mutable factory", () => {
     writeFile(
       "src/dayjs.ts",

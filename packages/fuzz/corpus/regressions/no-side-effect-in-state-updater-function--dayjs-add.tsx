@@ -23,3 +23,15 @@ export const MonthPicker = () => {
   }));
   return null;
 };
+
+export const ScalarMonthPicker = () => {
+  const [, setDate] = useState(dayjs());
+  setDate((previous) => previous.add(1, "month").set("date", 1));
+  return null;
+};
+
+export const DirectFactoryMonthPicker = () => {
+  const [, setDate] = useState(dayjs());
+  setDate(() => dayjs().add(1, "month").set("date", 1));
+  return null;
+};

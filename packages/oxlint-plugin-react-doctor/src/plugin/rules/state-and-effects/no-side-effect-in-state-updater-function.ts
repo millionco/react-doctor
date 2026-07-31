@@ -670,10 +670,22 @@ const programActivatesDayjsBadMutable = (
   return false;
 };
 
-const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleContext): boolean => {
+const expressionResolvesToDayjsFactory = (
+  expression: EsTreeNode,
+  scopes: RuleContext["scopes"],
+  filename?: string,
+  visitedFilePaths: Set<string> = new Set(),
+): boolean => {
   const currentProgram = findProgramRoot(expression);
   if (!currentProgram) return false;
-  const importedReference = resolveImportedApiReference(expression, context.scopes);
+  if (filename) {
+    if (visitedFilePaths.has(filename) || visitedFilePaths.size >= CROSS_FILE_BARREL_FOLLOW_DEPTH) {
+      return false;
+    }
+    visitedFilePaths.add(filename);
+  }
+  if (programActivatesDayjsBadMutable(currentProgram, scopes, filename)) return false;
+  const importedReference = resolveImportedApiReference(expression, scopes);
   if (!importedReference || importedReference.isNamespace) {
     return false;
   }
@@ -682,31 +694,26 @@ const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleCo
     (importedReference.importedName === "default" ||
       DAYJS_STATIC_FACTORY_METHOD_NAMES.has(importedReference.importedName ?? ""))
   ) {
-    return !programActivatesDayjsBadMutable(currentProgram, context.scopes, context.filename);
+    return true;
   }
-  if (!context.filename || importedReference.importedName === null) return false;
+  if (!filename || importedReference.importedName === null) return false;
   const resolvedExport = resolveCrossFileValueExportWithFilePath(
-    context.filename,
+    filename,
     importedReference.source,
     importedReference.importedName,
   );
   if (!resolvedExport) return false;
   const wrapperScopes = analyzeScopes(resolvedExport.programNode);
-  const wrappedReference = resolveImportedApiReference(resolvedExport.exportedNode, wrapperScopes);
-  return Boolean(
-    wrappedReference &&
-    wrappedReference.source === DAYJS_MODULE_NAME &&
-    (wrappedReference.importedName === "default" ||
-      DAYJS_STATIC_FACTORY_METHOD_NAMES.has(wrappedReference.importedName ?? "")) &&
-    !wrappedReference.isNamespace &&
-    !programActivatesDayjsBadMutable(
-      resolvedExport.programNode,
-      wrapperScopes,
-      resolvedExport.filePath,
-    ) &&
-    !programActivatesDayjsBadMutable(currentProgram, context.scopes, context.filename),
+  return expressionResolvesToDayjsFactory(
+    resolvedExport.exportedNode,
+    wrapperScopes,
+    resolvedExport.filePath,
+    new Set(visitedFilePaths),
   );
 };
+
+const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleContext): boolean =>
+  expressionResolvesToDayjsFactory(expression, context.scopes, context.filename);
 
 const newExpressionIsInternationalizedCalendarDateTime = (
   expression: EsTreeNodeOfType<"NewExpression">,
@@ -786,6 +793,23 @@ const hasPriorStateSetterCall = (
   return hasPriorCall;
 };
 
+const getStateInitialValues = (
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): EsTreeNode[] | null => {
+  const setter = stripParenExpression(setterCall.callee);
+  if (!isNodeOfType(setter, "Identifier")) return null;
+  const pair = resolveReactUseStatePair(setter, context.scopes);
+  if (!pair || !isNodeOfType(pair.declarator.init, "CallExpression")) return null;
+  if (hasPriorStateSetterCall(setterCall, pair.setterSymbol.id, context)) return null;
+  const initialValueArgument = pair.declarator.init.arguments?.[0];
+  if (!initialValueArgument || isNodeOfType(initialValueArgument, "SpreadElement")) return null;
+  const initialValue = stripParenExpression(initialValueArgument);
+  const lazyInitializer = resolveLocalFunction(initialValue, context);
+  if (lazyInitializer && (!isFunctionLike(lazyInitializer) || lazyInitializer.async)) return null;
+  return lazyInitializer ? collectFunctionReturnValues(lazyInitializer) : [initialValue];
+};
+
 const getStateMemberInitialValues = (
   expression: EsTreeNodeOfType<"MemberExpression">,
   updaterFunction: EsTreeNode,
@@ -806,19 +830,7 @@ const getStateMemberInitialValues = (
   ) {
     return null;
   }
-  const setter = stripParenExpression(setterCall.callee);
-  if (!isNodeOfType(setter, "Identifier")) return null;
-  const pair = resolveReactUseStatePair(setter, context.scopes);
-  if (!pair || !isNodeOfType(pair.declarator.init, "CallExpression")) return null;
-  if (hasPriorStateSetterCall(setterCall, pair.setterSymbol.id, context)) return null;
-  const initialValueArgument = pair.declarator.init.arguments?.[0];
-  if (!initialValueArgument || isNodeOfType(initialValueArgument, "SpreadElement")) return null;
-  const initialValue = stripParenExpression(initialValueArgument);
-  const lazyInitializer = resolveLocalFunction(initialValue, context);
-  if (lazyInitializer && (!isFunctionLike(lazyInitializer) || lazyInitializer.async)) return null;
-  const possibleInitialValues = lazyInitializer
-    ? collectFunctionReturnValues(lazyInitializer)
-    : [initialValue];
+  const possibleInitialValues = getStateInitialValues(setterCall, context);
   if (!possibleInitialValues) return null;
   const memberInitialValues: EsTreeNode[] = [];
   for (const possibleInitialValue of possibleInitialValues) {
@@ -861,6 +873,19 @@ const expressionIsInternationalizedCalendarDateTime = (
   ) {
     return true;
   }
+  if (isNodeOfType(candidate, "CallExpression")) {
+    const callee = stripParenExpression(candidate.callee);
+    return Boolean(
+      isNodeOfType(callee, "MemberExpression") &&
+      INTERNATIONALIZED_DATE_IMMUTABLE_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
+      expressionIsInternationalizedCalendarDateTime(
+        callee.object,
+        updaterFunction,
+        setterCall,
+        context,
+      ),
+    );
+  }
   if (
     isNodeOfType(candidate, "LogicalExpression") &&
     (candidate.operator === "??" || candidate.operator === "||")
@@ -890,6 +915,25 @@ const expressionIsInternationalizedCalendarDateTime = (
       )
     );
   }
+  if (isNodeOfType(candidate, "Identifier")) {
+    const updaterParameterSymbol = getUpdaterParameterSymbol(updaterFunction, context);
+    const candidateSymbol = context.scopes.symbolFor(candidate);
+    if (updaterParameterSymbol && candidateSymbol?.id === updaterParameterSymbol.id) {
+      const initialValues = getStateInitialValues(setterCall, context);
+      return Boolean(
+        initialValues &&
+        initialValues.length > 0 &&
+        initialValues.every((initialValue) =>
+          expressionIsInternationalizedCalendarDateTime(
+            initialValue,
+            updaterFunction,
+            setterCall,
+            context,
+          ),
+        ),
+      );
+    }
+  }
   if (!isNodeOfType(candidate, "MemberExpression")) return false;
   const initialValues = getStateMemberInitialValues(
     candidate,
@@ -898,13 +942,79 @@ const expressionIsInternationalizedCalendarDateTime = (
     context,
   );
   return Boolean(
-    initialValues?.every((initialValue) => {
-      const initialCandidate = resolveDirectUnreassignedExpression(initialValue, context.scopes);
-      return (
-        isNodeOfType(initialCandidate, "NewExpression") &&
-        newExpressionIsInternationalizedCalendarDateTime(initialCandidate, context)
+    initialValues &&
+    initialValues.length > 0 &&
+    initialValues.every((initialValue) =>
+      expressionIsInternationalizedCalendarDateTime(
+        initialValue,
+        updaterFunction,
+        setterCall,
+        context,
+      ),
+    ),
+  );
+};
+
+const expressionIsDayjsValue = (
+  expression: EsTreeNode,
+  updaterFunction: EsTreeNode,
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const candidate = resolveDirectUnreassignedExpression(expression, context.scopes);
+  if (isNodeOfType(candidate, "CallExpression")) {
+    const callee = stripParenExpression(candidate.callee);
+    if (importedReferenceIsDayjsFactory(callee, context)) return true;
+    return Boolean(
+      isNodeOfType(callee, "MemberExpression") &&
+      DAYJS_IMMUTABLE_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "") &&
+      expressionIsDayjsValue(callee.object, updaterFunction, setterCall, context),
+    );
+  }
+  if (
+    isNodeOfType(candidate, "LogicalExpression") &&
+    (candidate.operator === "??" || candidate.operator === "||")
+  ) {
+    if (expressionIsDayjsValue(candidate.left, updaterFunction, setterCall, context)) {
+      return true;
+    }
+    const leftCandidate = resolveDirectUnreassignedExpression(candidate.left, context.scopes);
+    const leftAlwaysFallsThrough =
+      candidate.operator === "??"
+        ? isNullishExpression(leftCandidate)
+        : isDefinitelyFalsyExpression(leftCandidate, context.scopes);
+    return (
+      leftAlwaysFallsThrough &&
+      expressionIsDayjsValue(candidate.right, updaterFunction, setterCall, context)
+    );
+  }
+  if (isNodeOfType(candidate, "Identifier")) {
+    const updaterParameterSymbol = getUpdaterParameterSymbol(updaterFunction, context);
+    const candidateSymbol = context.scopes.symbolFor(candidate);
+    if (updaterParameterSymbol && candidateSymbol?.id === updaterParameterSymbol.id) {
+      const initialValues = getStateInitialValues(setterCall, context);
+      return Boolean(
+        initialValues &&
+        initialValues.length > 0 &&
+        initialValues.every((initialValue) =>
+          expressionIsDayjsValue(initialValue, updaterFunction, setterCall, context),
+        ),
       );
-    }),
+    }
+  }
+  if (!isNodeOfType(candidate, "MemberExpression")) return false;
+  const initialValues = getStateMemberInitialValues(
+    candidate,
+    updaterFunction,
+    setterCall,
+    context,
+  );
+  return Boolean(
+    initialValues &&
+    initialValues.length > 0 &&
+    initialValues.every((initialValue) =>
+      expressionIsDayjsValue(initialValue, updaterFunction, setterCall, context),
+    ),
   );
 };
 
@@ -930,18 +1040,7 @@ const callUsesProvenImmutableLibraryValueMethod = (
     return true;
   }
   if (!methodName || !DAYJS_IMMUTABLE_METHOD_NAMES.has(methodName)) return false;
-  const receiver = resolveDirectUnreassignedExpression(callee.object, context.scopes);
-  if (!isNodeOfType(receiver, "MemberExpression")) return false;
-  const initialValues = getStateMemberInitialValues(receiver, updaterFunction, setterCall, context);
-  return Boolean(
-    initialValues?.every((initialValue) => {
-      const initialCall = stripParenExpression(initialValue);
-      return (
-        isNodeOfType(initialCall, "CallExpression") &&
-        importedReferenceIsDayjsFactory(stripParenExpression(initialCall.callee), context)
-      );
-    }),
-  );
+  return expressionIsDayjsValue(callee.object, updaterFunction, setterCall, context);
 };
 
 const expressionIsDirectFreshContainer = (

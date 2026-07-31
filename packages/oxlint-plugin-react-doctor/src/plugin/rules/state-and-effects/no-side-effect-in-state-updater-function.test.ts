@@ -280,6 +280,59 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(dayjsValue.diagnostics).toHaveLength(0);
   });
 
+  it("keeps scalar, factory, logical, and chained immutable date values pure", () => {
+    const scalarDayjs = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState(dayjs());setDate(previous=>previous.add(1,"month").set("date",1))}`,
+    );
+    const aliasedScalarDayjs = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState(dayjs());setDate(previous=>{const current=previous??dayjs();return current.add(1,"month")})}`,
+    );
+    const directDayjsFactory = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState(dayjs());setDate(()=>dayjs().add(1,"month").set("date",1))}`,
+    );
+    const aliasedDayjsFactories = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const factory=dayjs;const C=()=>{const[,setDate]=useState(dayjs());setDate(()=>{const localFactory=factory;return localFactory().add(1,"month")})}`,
+    );
+    const scalarCalendarDateTime = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setDate]=useState(new CalendarDateTime(2025,1,1));setDate(previous=>previous.add({months:1}).set({day:1}))}`,
+    );
+    const logicalCalendarDateTime = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setDate]=useState(new CalendarDateTime(2025,1,1));setDate(previous=>(previous??new CalendarDateTime(2025,1,1)).add({months:1}))}`,
+    );
+    expect([
+      scalarDayjs.diagnostics.length,
+      aliasedScalarDayjs.diagnostics.length,
+      directDayjsFactory.diagnostics.length,
+      aliasedDayjsFactories.diagnostics.length,
+      scalarCalendarDateTime.diagnostics.length,
+      logicalCalendarDateTime.diagnostics.length,
+    ]).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it("does not trust scalar and chained immutable date lookalikes", () => {
+    const mutableScalarDayjs = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{void dayjs;const[,setDate]=useState(getMutableDate());setDate(previous=>previous.add(1,"month").set("date",1))}`,
+    );
+    const replacedScalarDayjs = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState(dayjs());setDate(getMutableDate());setDate(previous=>previous.add(1,"month").set("date",1))}`,
+    );
+    const mutableScalarCalendarDateTime = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{void CalendarDateTime;const[,setDate]=useState(getMutableDate());setDate(previous=>previous.add({months:1}).set({day:1}))}`,
+    );
+    expect(mutableScalarDayjs.diagnostics.length).toBeGreaterThan(0);
+    expect(replacedScalarDayjs.diagnostics.length).toBeGreaterThan(0);
+    expect(mutableScalarCalendarDateTime.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("keeps unreassigned aliases of CalendarDateTime values pure", () => {
     const result = runRule(
       noSideEffectInStateUpdaterFunction,

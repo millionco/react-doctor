@@ -142,13 +142,49 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("stays silent when an awaited shared receiver call contributes to observed output order", () => {
+  it("stays silent when an owner-scoped receiver contributes a result property to owner-observed output", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Room { async replay(events) { const operations = []; for (const event of events) { const result = await this.api.processRemoteEvent(event); if (result.operation) operations.push(result.operation); } this.notify(operations); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags generic awaited reads collected before Promise.all", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function restore(payload, products) { const updates = []; for (const product of products) { const original = await payload.findByID(product.id); updates.push(payload.update({ id: product.id, data: original })); } await Promise.all(updates); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a parameter receiver whose result property is passed to a free observer", () => {
     const result = runRule(
       asyncAwaitInLoop,
       `async function replay(replica, events) { const operations = []; for (const event of events) { const result = await replica.processRemoteEvent(event); if (result.operation) operations.push(result.operation); } notify(operations); }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an owner method when the whole awaited result is collected", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Analyzer { async analyze(items) { const results = []; for (const item of items) { const result = await this.worker.analyze(item); results.push(result); } this.notify(results); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a direct owner receiver whose result property is collected", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Analyzer { async analyze(items) { const results = []; for (const item of items) { const result = await this.analyzeItem(item); results.push(result.value); } this.notify(results); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("follows a stable receiver alias when proving ordered state snapshots", () => {

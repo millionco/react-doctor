@@ -571,6 +571,14 @@ const findAssignedResourceKey = (
     : null;
 };
 
+const doesResourceKeyMatchUsageHandle = (
+  resourceKey: string | null,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean =>
+  resourceKey !== null &&
+  (resourceKey === usage.handleKey || resourceKey === findAssignedResourceKey(usage.node, context));
+
 const resolveStableMediaQueryListenerIdentityKey = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
@@ -1724,14 +1732,14 @@ const doesBoundCleanupReleaseUsage = (
   const releaseVerbName = releaseMember.property.name;
   if (usage.kind === "socket") {
     return (
-      usage.handleKey === releaseReceiverKey &&
+      doesResourceKeyMatchUsageHandle(releaseReceiverKey, usage, context) &&
       (SOCKET_RELEASE_VERB_NAMES.has(releaseVerbName) ||
         UNIVERSAL_RELEASE_VERB_NAMES.has(releaseVerbName))
     );
   }
   return (
     usage.kind === "subscribe" &&
-    usage.handleKey === releaseReceiverKey &&
+    doesResourceKeyMatchUsageHandle(releaseReceiverKey, usage, context) &&
     (releaseVerbName === "unsubscribe" ||
       releaseVerbName === "unsub" ||
       releaseVerbName === "close" ||
@@ -3401,9 +3409,11 @@ const doesReleaseCallMatchUsage = (
       return false;
     }
     if (
-      usage.handleKey !== null &&
-      resolveExpressionKey(callNode.arguments?.[0], context, new Set(), parameterSubstitutions) ===
-        usage.handleKey
+      doesResourceKeyMatchUsageHandle(
+        resolveExpressionKey(callNode.arguments?.[0], context, new Set(), parameterSubstitutions),
+        usage,
+        context,
+      )
     ) {
       return true;
     }
@@ -3417,8 +3427,7 @@ const doesReleaseCallMatchUsage = (
   if (
     isNodeOfType(callee, "Identifier") &&
     usage.kind === "subscribe" &&
-    usage.handleKey !== null &&
-    resolveExpressionKey(callee, context) === usage.handleKey &&
+    doesResourceKeyMatchUsageHandle(resolveExpressionKey(callee, context), usage, context) &&
     isCleanupReturningSubscribeLikeCallExpression(usage.node)
   ) {
     return true;
@@ -3462,16 +3471,14 @@ const doesReleaseCallMatchUsage = (
 
   if (usage.kind === "socket") {
     return (
-      usage.handleKey !== null &&
-      releaseReceiverKey === usage.handleKey &&
+      doesResourceKeyMatchUsageHandle(releaseReceiverKey, usage, context) &&
       (SOCKET_RELEASE_VERB_NAMES.has(releaseVerbName) ||
         UNIVERSAL_RELEASE_VERB_NAMES.has(releaseVerbName))
     );
   }
 
   if (
-    usage.handleKey !== null &&
-    releaseReceiverKey === usage.handleKey &&
+    doesResourceKeyMatchUsageHandle(releaseReceiverKey, usage, context) &&
     (releaseVerbName === "unsubscribe" ||
       releaseVerbName === "unsub" ||
       releaseVerbName === "close" ||

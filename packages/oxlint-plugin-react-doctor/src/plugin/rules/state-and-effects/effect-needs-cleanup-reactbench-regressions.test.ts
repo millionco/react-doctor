@@ -825,6 +825,70 @@ const Delayed = ({ delay, task }) => {
     expect(objectStorageResult.diagnostics).toHaveLength(0);
   });
 
+  it("accepts retained resources released through their exact local aliases", () => {
+    const socketResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Connection = ({ url }) => {
+  const socketRef = useRef(null);
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    socketRef.current = socket;
+    return () => socket.close();
+  }, [url]);
+  return null;
+};`,
+    );
+    const timerResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Poller = ({ pollInterval, refresh }) => {
+  const intervalRef = useRef(null);
+  useEffect(() => {
+    const intervalId = setInterval(refresh, pollInterval);
+    intervalRef.current = intervalId;
+    return () => clearInterval(intervalId);
+  }, [pollInterval, refresh]);
+  return null;
+};`,
+    );
+    const subscriptionResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Subscriber = ({ source }) => {
+  const subscriptionRef = useRef(null);
+  useEffect(() => {
+    const subscription = source.subscribe(() => {});
+    subscriptionRef.current = subscription;
+    return () => subscription.unsubscribe();
+  }, [source]);
+  return null;
+};`,
+    );
+    expect(socketResult.diagnostics).toHaveLength(0);
+    expect(timerResult.diagnostics).toHaveLength(0);
+    expect(subscriptionResult.diagnostics).toHaveLength(0);
+  });
+
+  it("does not confuse a retained resource with a different local cleanup alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const Connections = ({ primaryUrl, secondaryUrl }) => {
+  const primarySocketRef = useRef(null);
+  useEffect(() => {
+    const primarySocket = new WebSocket(primaryUrl);
+    const secondarySocket = new WebSocket(secondaryUrl);
+    primarySocketRef.current = primarySocket;
+    return () => secondarySocket.close();
+  }, [primaryUrl, secondaryUrl]);
+  return null;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("WebSocket");
+  });
+
   it("keeps conditional and mismatched timer retention conservative", () => {
     const conditionalStorageResult = runRule(
       effectNeedsCleanup,

@@ -10,7 +10,7 @@ describe("parseEvaluationArguments", () => {
       concurrency: 200,
       repositoriesPerSandbox: 10,
       projectRootsPerRepository: 1,
-      maxDurationMinutes: 30,
+      maxDurationMinutes: 45,
       reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       reactDoctorRef: "main",
     });

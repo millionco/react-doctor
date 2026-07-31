@@ -889,6 +889,43 @@ const Connections = ({ primaryUrl, secondaryUrl }) => {
     expect(result.diagnostics[0].message).toContain("WebSocket");
   });
 
+  it("accepts EventSource listeners released by closing their exact local owner", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+const JobEvents = ({ jobId }) => {
+  const eventSourceRef = useRef(null);
+  useEffect(() => {
+    const source = new EventSource(\`/api/jobs/\${jobId}/events\`);
+    eventSourceRef.current = source;
+    source.addEventListener("progress", () => {});
+    source.addEventListener("complete", () => {});
+    source.addEventListener("error", () => {});
+    return () => source.close();
+  }, [jobId]);
+  return null;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat close as owned listener cleanup for an opaque EventTarget", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+const Listener = ({ createTarget }) => {
+  useEffect(() => {
+    const target = createTarget();
+    target.addEventListener("change", () => {});
+    return () => target.close();
+  }, [createTarget]);
+  return null;
+};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("addEventListener");
+  });
+
   it("keeps conditional and mismatched timer retention conservative", () => {
     const conditionalStorageResult = runRule(
       effectNeedsCleanup,

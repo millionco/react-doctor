@@ -579,6 +579,28 @@ const doesResourceKeyMatchUsageHandle = (
   resourceKey !== null &&
   (resourceKey === usage.handleKey || resourceKey === findAssignedResourceKey(usage.node, context));
 
+const doesSocketOwnerReleaseListenerUsage = (
+  releaseReceiverKey: string | null,
+  releaseVerbName: string,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): boolean => {
+  if (
+    usage.kind !== "subscribe" ||
+    usage.registrationVerbName !== "addEventListener" ||
+    !SOCKET_RELEASE_VERB_NAMES.has(releaseVerbName) ||
+    usage.receiverKey === null ||
+    releaseReceiverKey !== usage.receiverKey ||
+    !isNodeOfType(usage.node, "CallExpression")
+  ) {
+    return false;
+  }
+  const registrationCallee = stripParenExpression(usage.node.callee);
+  if (!isNodeOfType(registrationCallee, "MemberExpression")) return false;
+  const registrationOwner = resolveStableValue(registrationCallee.object, context);
+  return registrationOwner !== null && isSocketConstruction(registrationOwner);
+};
+
 const resolveStableMediaQueryListenerIdentityKey = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
@@ -1730,6 +1752,9 @@ const doesBoundCleanupReleaseUsage = (
     return false;
   }
   const releaseVerbName = releaseMember.property.name;
+  if (doesSocketOwnerReleaseListenerUsage(releaseReceiverKey, releaseVerbName, usage, context)) {
+    return true;
+  }
   if (usage.kind === "socket") {
     return (
       doesResourceKeyMatchUsageHandle(releaseReceiverKey, usage, context) &&
@@ -3468,6 +3493,10 @@ const doesReleaseCallMatchUsage = (
   }
 
   if (isReactRefListenerReplacementRelease(callNode, usage, context)) return true;
+
+  if (doesSocketOwnerReleaseListenerUsage(releaseReceiverKey, releaseVerbName, usage, context)) {
+    return true;
+  }
 
   if (usage.kind === "socket") {
     return (

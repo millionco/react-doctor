@@ -484,13 +484,25 @@ const expressionIsDirectFreshContainer = (
   );
 };
 
+const identifierIsDeclaredInCurrentExecution = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  context: RuleContext,
+): boolean => {
+  const symbol = context.scopes.symbolFor(identifier);
+  return Boolean(
+    symbol &&
+    findDeferredExecutionBoundary(symbol.bindingIdentifier) ===
+      findDeferredExecutionBoundary(identifier),
+  );
+};
+
 const identifierIsAssignedOnlyFreshContainers = (
   identifier: EsTreeNodeOfType<"Identifier">,
   context: RuleContext,
   includeCurrentAssignment = false,
 ): boolean => {
   const symbol = context.scopes.symbolFor(identifier);
-  if (!symbol) return false;
+  if (!symbol || !identifierIsDeclaredInCurrentExecution(identifier, context)) return false;
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   const isEmptyInitializer =
     !initializer ||
@@ -513,7 +525,7 @@ const identifierIsAssignedOnlyFreshContainers = (
         assignment.operator !== "??=" &&
         assignment.operator !== "||=") ||
       assignment.left !== referenceRoot ||
-      !expressionIsDirectFreshContainer(assignment.right, context)
+      !expressionCreatesFreshContainer(assignment.right, context)
     ) {
       return false;
     }
@@ -533,13 +545,16 @@ const expressionIsFreshContainer = (expression: EsTreeNode, context: RuleContext
   const candidate = stripParenExpression(expression);
   if (expressionIsDirectFreshContainer(candidate, context)) return true;
   if (!isNodeOfType(candidate, "AssignmentExpression")) return false;
-  if (candidate.operator === "=") {
-    return expressionIsDirectFreshContainer(candidate.right, context);
-  }
   const left = stripParenExpression(candidate.left);
+  if (!isNodeOfType(left, "Identifier")) return false;
+  if (candidate.operator === "=") {
+    return Boolean(
+      identifierIsDeclaredInCurrentExecution(left, context) &&
+      expressionCreatesFreshContainer(candidate.right, context),
+    );
+  }
   return Boolean(
     (candidate.operator === "??=" || candidate.operator === "||=") &&
-    isNodeOfType(left, "Identifier") &&
     identifierIsAssignedOnlyFreshContainers(left, context, true),
   );
 };
@@ -560,6 +575,15 @@ const callReturnsOnlyFreshContainers = (
 ): boolean => {
   const calledFunction = resolveCalledLocalFunction(call, context);
   return Boolean(calledFunction && functionReturnsOnlyFreshContainers(calledFunction, context));
+};
+
+const expressionCreatesFreshContainer = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const candidate = stripParenExpression(expression);
+  return Boolean(
+    expressionIsDirectFreshContainer(candidate, context) ||
+    (isNodeOfType(candidate, "CallExpression") &&
+      callReturnsOnlyFreshContainers(candidate, context)),
+  );
 };
 
 const memberReceiverIsUpdaterLocal = (

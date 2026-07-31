@@ -237,6 +237,47 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(externalFactoryResult.diagnostics).toHaveLength(1);
   });
 
+  it("requires chained fresh-container assignments to target execution-local bindings", () => {
+    const externalDirectAssignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";let cache;const C=()=>{const[,setValue]=useState(0);setValue(previous=>{(cache=new Map()).set("value",previous);return previous+1})}`,
+    );
+    const externalLazyAssignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";let cache;const C=()=>{const[,setValue]=useState(0);setValue(previous=>{(cache??=new Map()).set("value",previous);return previous+1})}`,
+    );
+    const externalAssignmentAlias = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";let cache;const C=()=>{const[,setValue]=useState(0);setValue(previous=>{const next=(cache=new Map());next.set("value",previous);return previous+1})}`,
+    );
+    const externalAssignmentFactory = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";let cache;const C=()=>{const[,setValue]=useState(0);setValue(previous=>{const createDraft=()=>cache=new Map();createDraft().set("value",previous);return previous+1})}`,
+    );
+    expect(externalDirectAssignment.diagnostics).toHaveLength(1);
+    expect(externalLazyAssignment.diagnostics).toHaveLength(1);
+    expect(externalAssignmentAlias.diagnostics).toHaveLength(1);
+    expect(externalAssignmentFactory.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts execution-local assignments from proven fresh-container factories", () => {
+    const assignedFactoryResult = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{const createDraft=()=>new Map(previous);let draft=null;draft=createDraft();draft.set("value",1);return draft})}`,
+    );
+    const chainedFactoryResult = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{const createDraft=()=>new Map(previous);let draft;const next=(draft??=createDraft());next.set("value",1);return next})}`,
+    );
+    const externalFactoryResult = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";let cache;const C=()=>{const[,setValues]=useState(new Map());setValues(previous=>{const createDraft=()=>new Map(previous);cache=createDraft();cache.set("value",1);return previous})}`,
+    );
+    expect(assignedFactoryResult.diagnostics).toHaveLength(0);
+    expect(chainedFactoryResult.diagnostics).toHaveLength(0);
+    expect(externalFactoryResult.diagnostics).toHaveLength(1);
+  });
+
   it("flags persistence and submission calls while following pure local name lookalikes", () => {
     const importedPersistence = runRule(
       noSideEffectInStateUpdaterFunction,

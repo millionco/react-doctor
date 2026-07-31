@@ -43,6 +43,8 @@ const matrixMocks = vi.hoisted(() => ({
 const fileSystemMocks = vi.hoisted(() => ({
   baseAbortFailuresRemaining: 0,
   baseFinalizeFailuresRemaining: 0,
+  treatmentAbortFailuresRemaining: 0,
+  treatmentRenameFailuresRemaining: 0,
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -57,6 +59,14 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         fileSystemMocks.baseFinalizeFailuresRemaining -= 1;
         throw new Error("injected base finalize failure");
       }
+      if (
+        fileSystemMocks.treatmentRenameFailuresRemaining > 0 &&
+        path.basename(String(oldPath)).startsWith(".partial-pr-1-") &&
+        path.basename(String(newPath)) === "pr-1"
+      ) {
+        fileSystemMocks.treatmentRenameFailuresRemaining -= 1;
+        throw new Error("injected treatment rename failure");
+      }
       return original.rename(oldPath, newPath);
     },
     rm: async (targetPath: fs.PathLike, options?: fs.RmOptions) => {
@@ -66,6 +76,13 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       ) {
         fileSystemMocks.baseAbortFailuresRemaining -= 1;
         throw new Error("injected base abort failure");
+      }
+      if (
+        fileSystemMocks.treatmentAbortFailuresRemaining > 0 &&
+        path.basename(String(targetPath)).startsWith(".partial-pr-1-")
+      ) {
+        fileSystemMocks.treatmentAbortFailuresRemaining -= 1;
+        throw new Error("injected treatment abort failure");
       }
       return original.rm(targetPath, options);
     },
@@ -180,6 +197,8 @@ afterEach(() => {
   vi.clearAllMocks();
   fileSystemMocks.baseAbortFailuresRemaining = 0;
   fileSystemMocks.baseFinalizeFailuresRemaining = 0;
+  fileSystemMocks.treatmentAbortFailuresRemaining = 0;
+  fileSystemMocks.treatmentRenameFailuresRemaining = 0;
   matrixMocks.snapshotDeleted = false;
   matrixMocks.snapshotDelete.mockImplementation(async () => {
     matrixMocks.snapshotDeleted = true;
@@ -310,7 +329,20 @@ describe("runMatrixCorpusEvaluation", () => {
     );
   });
 
-  it("publishes blocked treatments after base finalize and abort initially fail", async () => {
+  it.each([
+    {
+      failureName: "rename and initial abort",
+      baseAbortFailures: 1,
+      baseFinalizeFailures: 1,
+      expectedError: "injected base finalize failure",
+    },
+    {
+      failureName: "post-rename pending cleanup",
+      baseAbortFailures: 1,
+      baseFinalizeFailures: 0,
+      expectedError: "injected base abort failure",
+    },
+  ])("publishes blocked treatments after base $failureName fails", async (failure) => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-base-finalize-"));
     temporaryDirectories.push(temporaryDirectory);
     const repository: CorpusRepository = {
@@ -363,8 +395,8 @@ describe("runMatrixCorpusEvaluation", () => {
         return [];
       },
     );
-    fileSystemMocks.baseFinalizeFailuresRemaining = 1;
-    fileSystemMocks.baseAbortFailuresRemaining = 1;
+    fileSystemMocks.baseFinalizeFailuresRemaining = failure.baseFinalizeFailures;
+    fileSystemMocks.baseAbortFailuresRemaining = failure.baseAbortFailures;
 
     await expect(
       runMatrixCorpusEvaluation({
@@ -382,7 +414,7 @@ describe("runMatrixCorpusEvaluation", () => {
           waveWidth: 2,
         },
       }),
-    ).rejects.toThrow("injected base finalize failure");
+    ).rejects.toThrow(failure.expectedError);
 
     for (const treatment of treatments) {
       expect(
@@ -395,6 +427,95 @@ describe("runMatrixCorpusEvaluation", () => {
       ).toMatchObject({ laneId: treatment.descriptor.id, status: "blocked" });
     }
     expect(fs.existsSync(group.baseArtifactPath)).toBe(false);
+    expect(fs.readdirSync(temporaryDirectory).some((entry) => entry.includes(".partial-"))).toBe(
+      false,
+    );
+  });
+
+  it("settles sibling treatments after one treatment rename and abort initially fail", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-treatment-finalize-"));
+    temporaryDirectories.push(temporaryDirectory);
+    const repository: CorpusRepository = {
+      org: "example",
+      name: "repository",
+      ref: "f".repeat(40),
+      rootDir: ".",
+    };
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = `${JSON.stringify([repository])}\n`;
+    fs.writeFileSync(corpusManifestPath, corpusContents);
+    const group = {
+      baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+      baseReactDoctorCommit: "a".repeat(40),
+      baseFullRuleSetHash: "3".repeat(64),
+      baseArtifactPath: path.join(temporaryDirectory, "base-scoped.ndjson"),
+      baselineOutputPath: path.join(temporaryDirectory, "baseline.ndjson"),
+      baselineProvenancePath: path.join(temporaryDirectory, "baseline.provenance.json"),
+      corpusManifestPath,
+      corpusManifestSha256: hashContents(corpusContents),
+      corpusProjectSetSha256: hashMatrixCorpusProjectSet([repository]),
+      evaluatorSourceHash: "6".repeat(64),
+      configContract: EVALUATION_CONFIG_CONTRACT,
+      scanContract: MATRIX_SCAN_CONTRACT,
+      reportContract: MATRIX_REPORT_CONTRACT,
+      projectRootPolicy: MATRIX_PROJECT_ROOT_POLICY,
+    };
+    const treatments = [
+      buildTreatment({ temporaryDirectory, id: "pr-1", group, mode: "incremental" }),
+      buildTreatment({ temporaryDirectory, id: "pr-2", group, mode: "incremental" }),
+    ];
+    matrixMocks.loadMatrixTreatments.mockResolvedValue(treatments);
+    matrixMocks.evaluateMatrixRepositoryBatch.mockImplementation(
+      async ({ lanes, onLaneRecord }) => {
+        for (const lane of lanes) {
+          await onLaneRecord(lane.id, {
+            schemaVersion: 1,
+            repository,
+            evaluation: {
+              reactDoctorRepository: lane.reactDoctorRepository,
+              reactDoctorCommit: lane.reactDoctorRef,
+              configContract: EVALUATION_CONFIG_CONTRACT,
+              ruleSetHash: lane.kind === "base" ? group.baseFullRuleSetHash : "7".repeat(64),
+              ruleKeys: lane.ruleKeys,
+              evaluatorSourceHash: group.evaluatorSourceHash,
+            },
+            report: { complete: true },
+          });
+        }
+        return [];
+      },
+    );
+    fileSystemMocks.treatmentRenameFailuresRemaining = 1;
+    fileSystemMocks.treatmentAbortFailuresRemaining = 1;
+
+    await expect(
+      runMatrixCorpusEvaluation({
+        repositoriesSources: [corpusManifestPath],
+        repositoryLimit: 1,
+        concurrency: 2,
+        repositoriesPerSandbox: 1,
+        projectRootsPerRepository: 1,
+        maxDurationMinutes: 20,
+        reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+        reactDoctorRef: "a".repeat(40),
+        ruleKeys: [],
+        matrix: {
+          treatmentDescriptorPaths: treatments.map((treatment) => treatment.descriptorPath),
+          waveWidth: 2,
+        },
+      }),
+    ).rejects.toThrow("injected treatment rename failure");
+
+    expect(fs.existsSync(treatments[0].descriptor.artifactDirectory)).toBe(false);
+    expect(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(treatments[1].descriptor.artifactDirectory, "provenance.json"),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({ laneId: "pr-2", status: "complete" });
+    expect(fs.existsSync(group.baseArtifactPath)).toBe(true);
     expect(fs.readdirSync(temporaryDirectory).some((entry) => entry.includes(".partial-"))).toBe(
       false,
     );

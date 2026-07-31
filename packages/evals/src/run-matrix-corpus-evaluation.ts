@@ -431,7 +431,18 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
         isBaselineAvailable = true;
       } catch (error) {
         isBaselineAvailable = false;
-        artifactFinalizationErrors.push(error, ...(await abortWriters([baseWriter])));
+        const cleanupResults = await Promise.allSettled([
+          rm(baseOutputPath, { force: true }),
+          rm(group.baselineProvenancePath, { force: true }),
+          rm(`${group.baselineProvenancePath}.tmp`, { force: true }),
+        ]);
+        artifactFinalizationErrors.push(
+          error,
+          ...(await abortWriters([baseWriter])),
+          ...cleanupResults.flatMap((result) =>
+            result.status === "rejected" ? [result.reason] : [],
+          ),
+        );
       }
       if (isBaselineAvailable) {
         try {

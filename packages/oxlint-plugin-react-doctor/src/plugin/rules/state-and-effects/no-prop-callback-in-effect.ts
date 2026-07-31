@@ -26,7 +26,7 @@ import {
 } from "./utils/effect/ast.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { isState } from "./utils/effect/react.js";
+import { isReducerState, isState } from "./utils/effect/react.js";
 import { getParentCallbackPropNames } from "./utils/resolve-parent-callback-provenance.js";
 import { isCustomHookStateResultReference } from "./utils/is-custom-hook-state-result-reference.js";
 
@@ -112,8 +112,8 @@ const isReactStateDependency = (
 ): boolean =>
   Boolean(
     analysis &&
-    getStateDependencyReferences(analysis, element, isPropName).some((reference) =>
-      isState(analysis, reference),
+    getStateDependencyReferences(analysis, element, isPropName).some(
+      (reference) => isState(analysis, reference) || isReducerState(analysis, reference),
     ),
   );
 

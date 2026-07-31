@@ -291,13 +291,17 @@ export const getEffectDepsRefs = (
   return getDownstreamRefs(analysis, deps as EsTreeNode);
 };
 
-export const isState = (analysis: ProgramAnalysis, ref: Reference): boolean =>
+const isHookStateValue = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  hookName: "useReducer" | "useState",
+): boolean =>
   Boolean(
     ref.resolved?.defs.some((def) => {
       const node = def.node as unknown as EsTreeNode;
       if (!isNodeOfType(node, "VariableDeclarator")) return false;
       if (!isNodeOfType(node.init, "CallExpression")) return false;
-      if (!isHookCallee(analysis, node.init.callee as EsTreeNode, "useState")) return false;
+      if (!isHookCallee(analysis, node.init.callee as EsTreeNode, hookName)) return false;
       if (!isNodeOfType(node.id, "ArrayPattern")) return false;
       const elements = node.id.elements ?? [];
       if (elements.length !== 1 && elements.length !== 2) return false;
@@ -307,6 +311,12 @@ export const isState = (analysis: ProgramAnalysis, ref: Reference): boolean =>
       );
     }),
   );
+
+export const isState = (analysis: ProgramAnalysis, ref: Reference): boolean =>
+  isHookStateValue(analysis, ref, "useState");
+
+export const isReducerState = (analysis: ProgramAnalysis, ref: Reference): boolean =>
+  isHookStateValue(analysis, ref, "useReducer");
 
 export const isStateSetter = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   Boolean(

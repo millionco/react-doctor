@@ -8,6 +8,26 @@ import { noPropCallbackInEffect } from "./no-prop-callback-in-effect.js";
 // externally driven and silence the onError-in-effect report.
 
 describe("no-prop-callback-in-effect — must-detect regressions", () => {
+  it("flags parent callback mirrors of useReducer state", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `import { useEffect, useReducer } from "react";
+      const Child = ({ onChange }) => {
+        const [state] = useReducer((currentState, action) => {
+          return action.type === "rename"
+            ? { ...currentState, name: action.name }
+            : currentState;
+        }, { name: "" });
+        useEffect(() => {
+          onChange(state);
+        }, [state, onChange]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("preserves local-state flow through direct React useEffectEvent wrappers", () => {
     const result = runRule(
       noPropCallbackInEffect,

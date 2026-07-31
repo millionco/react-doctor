@@ -256,6 +256,175 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not require cleanup on effect paths that return before starting async work", () => {
+    const directResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          if (!enabled) return;
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    const nestedResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          if (!enabled) return;
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => run();
+          start();
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(directResult.diagnostics).toHaveLength(0);
+    expect(nestedResult.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when a wrapper conditionally starts the guarded async work", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not require cleanup before a guarded async promise callback is registered", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          if (!enabled) return;
+          let cancelled = false;
+          loadRequest(userId).then(async (request) => {
+            const user = await request.read();
+            if (cancelled) return;
+            setUser(user);
+          });
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores cleanup functions returned before async work starts", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ cached, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          if (cached) return () => recordCacheHit();
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          run();
+          return () => { cancelled = true; };
+        }, [cached, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still requires cleanup on every path after async work starts", () => {
+    const directResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          run();
+          if (skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [skipCleanup, userId]);
+      };`,
+    );
+    const nestedResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => run();
+          start();
+          if (skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [skipCleanup, userId]);
+      };`,
+    );
+    expect(directResult.diagnostics).toHaveLength(1);
+    expect(nestedResult.diagnostics).toHaveLength(1);
+  });
+
+  it("still requires cleanup after every invocation site", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ startWithoutCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          if (startWithoutCleanup) {
+            run();
+            return;
+          }
+          run();
+          return () => { cancelled = true; };
+        }, [startWithoutCleanup, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag cleanup-backed local request predicates", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
@@ -1028,17 +1197,17 @@ describe("no-set-state-after-await-in-effect", () => {
         const [, setImage] = useState();
         useEffect(() => {
           let cancelled = false;
-          if (readCache(filePath) && reloadKey === 0) {
-            return () => {
-              recordCacheHit();
-            };
-          }
           const load = async () => {
             const loaded = await preloadImage(filePath);
             if (cancelled) return;
             setImage(loaded);
           };
           load();
+          if (readCache(filePath) && reloadKey === 0) {
+            return () => {
+              recordCacheHit();
+            };
+          }
           return () => {
             cancelled = true;
           };

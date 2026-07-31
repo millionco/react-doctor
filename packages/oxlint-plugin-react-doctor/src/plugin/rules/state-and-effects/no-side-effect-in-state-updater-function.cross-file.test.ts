@@ -34,6 +34,25 @@ const runConsumer = (dayjsImportSource: string) => {
   });
 };
 
+const writeConfigurationChain = (
+  directory: string,
+  fileCount: number,
+  finalFileContents: string,
+): void => {
+  for (let configurationIndex = 1; configurationIndex <= fileCount; configurationIndex++) {
+    writeFile(
+      `src/${directory}/configure-${configurationIndex}.ts`,
+      configurationIndex === fileCount
+        ? finalFileContents
+        : `import"./configure-${configurationIndex + 1}"`,
+    );
+  }
+  writeFile(
+    `src/${directory}/dayjs.ts`,
+    `import"./configure-1";import dayjs from"dayjs";export default dayjs`,
+  );
+};
+
 describe("no-side-effect-in-state-updater-function cross-file Day.js wrappers", () => {
   it("keeps a wrapper that only activates an immutable Day.js plugin quiet", () => {
     writeFile(
@@ -176,6 +195,90 @@ describe("no-side-effect-in-state-updater-function cross-file Day.js wrappers", 
       `import"./configure-dayjs";import dayjs from"dayjs";export default dayjs`,
     );
     expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(1);
+  });
+
+  it("fails closed when badMutable activation crosses the configuration depth frontier", () => {
+    const badMutableActivation = `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable)`;
+    writeConfigurationChain(
+      "configuration-at-cap",
+      CROSS_FILE_BARREL_FOLLOW_DEPTH - 1,
+      badMutableActivation,
+    );
+    writeConfigurationChain(
+      "configuration-over-cap",
+      CROSS_FILE_BARREL_FOLLOW_DEPTH,
+      badMutableActivation,
+    );
+    expect([
+      runConsumer("./configuration-at-cap/dayjs").diagnostics.length,
+      runConsumer("./configuration-over-cap/dayjs").diagnostics.length,
+    ]).toEqual([1, 1]);
+  });
+
+  it("preserves immutable Day.js proofs only through fully explored configuration chains", () => {
+    writeConfigurationChain(
+      "immutable-at-cap",
+      CROSS_FILE_BARREL_FOLLOW_DEPTH - 1,
+      `export const marker=1`,
+    );
+    writeConfigurationChain(
+      "immutable-over-cap",
+      CROSS_FILE_BARREL_FOLLOW_DEPTH,
+      `export const marker=1`,
+    );
+    expect([
+      runConsumer("./immutable-at-cap/dayjs").diagnostics.length,
+      runConsumer("./immutable-over-cap/dayjs").diagnostics.length,
+    ]).toEqual([0, 1]);
+  });
+
+  it("keeps a missing dependency beyond the configuration frontier quiet", () => {
+    writeConfigurationChain(
+      "missing-over-cap",
+      CROSS_FILE_BARREL_FOLLOW_DEPTH - 1,
+      `import"./missing";export const marker=1`,
+    );
+    expect(runConsumer("./missing-over-cap/dayjs").diagnostics).toHaveLength(0);
+  });
+
+  it("revisits configuration dependencies reached through a shallower path in either order", () => {
+    for (const importOrder of ["deep-first", "shallow-first"]) {
+      for (
+        let configurationIndex = 1;
+        configurationIndex < CROSS_FILE_BARREL_FOLLOW_DEPTH;
+        configurationIndex++
+      ) {
+        writeFile(
+          `src/${importOrder}/configure-${configurationIndex}.ts`,
+          configurationIndex === CROSS_FILE_BARREL_FOLLOW_DEPTH - 1
+            ? `import"./shared"`
+            : `import"./configure-${configurationIndex + 1}"`,
+        );
+      }
+      writeFile(`src/${importOrder}/shared.ts`, `export const marker=1`);
+      const dependencyImports =
+        importOrder === "deep-first"
+          ? `import"./configure-1";import"./shared"`
+          : `import"./shared";import"./configure-1"`;
+      writeFile(
+        `src/${importOrder}/dayjs.ts`,
+        `${dependencyImports};import dayjs from"dayjs";export default dayjs`,
+      );
+    }
+    expect([
+      runConsumer("./deep-first/dayjs").diagnostics.length,
+      runConsumer("./shallow-first/dayjs").diagnostics.length,
+    ]).toEqual([0, 0]);
+  });
+
+  it("keeps a clean cyclic Day.js configuration graph quiet", () => {
+    writeFile("src/configuration-cycle/a.ts", `import"./b"`);
+    writeFile("src/configuration-cycle/b.ts", `import"./a"`);
+    writeFile(
+      "src/configuration-cycle/dayjs.ts",
+      `import"./a";import dayjs from"dayjs";export default dayjs`,
+    );
+    expect(runConsumer("./configuration-cycle/dayjs").diagnostics).toHaveLength(0);
   });
 
   it("does not suppress a wrapper with named-imported badMutable configuration", () => {

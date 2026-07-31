@@ -381,7 +381,7 @@ const App = () => {
     }
     writeFixtureFile(
       `src/utils/configure-${CROSS_FILE_BARREL_FOLLOW_DEPTH}.ts`,
-      `import "./configure-beyond-proof"; import dayjs from "dayjs"; import badMutable from "dayjs/plugin/badMutable"; dayjs.extend(badMutable);\n`,
+      `import "./configure-beyond-proof"; import "./missing-beyond-proof"; import dayjs from "dayjs"; import badMutable from "dayjs/plugin/badMutable"; dayjs.extend(badMutable);\n`,
     );
     writeFixtureFile(
       "src/utils/configure-beyond-proof.ts",
@@ -414,6 +414,10 @@ const App = () => {
       ),
     ).toBe(true);
     expect(trace?.contentPaths.has(fixturePath("src/utils/configure-beyond-proof.ts"))).toBe(false);
+    expect(trace?.existencePaths.has(fixturePath("src/utils/configure-beyond-proof.ts"))).toBe(
+      true,
+    );
+    expect(trace?.existencePaths.has(fixturePath("src/utils/missing-beyond-proof.ts"))).toBe(true);
   });
 
   it("revisits a dependency reached later through a shallower path", () => {

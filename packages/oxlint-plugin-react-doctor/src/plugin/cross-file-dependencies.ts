@@ -213,12 +213,12 @@ const collectRuntimeStaticDependencyGraph = (
   const previousDepth = minimumDepthByFilePath.get(filePath);
   if (previousDepth !== undefined && previousDepth <= depth) return;
   minimumDepthByFilePath.set(filePath, depth);
-  if (depth >= DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH) return;
   for (const statement of (program as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
     const dependencySource = getRuntimeStaticDependencySource(statement);
     if (!dependencySource) continue;
     const dependencyFilePath = resolveModulePath(filePath, dependencySource);
     if (!dependencyFilePath) continue;
+    if (depth >= DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH) continue;
     const dependencyDepth = depth + 1;
     const previousDependencyDepth = minimumDepthByFilePath.get(dependencyFilePath);
     if (previousDependencyDepth !== undefined && previousDependencyDepth <= dependencyDepth) {

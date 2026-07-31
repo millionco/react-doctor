@@ -584,14 +584,19 @@ const programActivatesDayjsBadMutable = (
   program: EsTreeNode,
   scopes: RuleContext["scopes"],
   filename?: string,
-  visitedFilePaths: Set<string> = new Set(),
+  minimumDepthByFilePath: Map<string, number> = new Map(),
+  unresolvedFrontierFilePaths: Set<string> = new Set(),
   depth: number = 0,
-): boolean => {
-  if (filename) {
-    if (visitedFilePaths.has(filename)) return false;
-    visitedFilePaths.add(filename);
-  }
+): boolean | null => {
   if (programsActivatingDayjsBadMutable.has(program)) return true;
+  if (filename) {
+    const previousDepth = minimumDepthByFilePath.get(filename);
+    if (previousDepth !== undefined && previousDepth <= depth) {
+      return unresolvedFrontierFilePaths.size > 0 ? null : false;
+    }
+    minimumDepthByFilePath.set(filename, depth);
+    unresolvedFrontierFilePaths.delete(filename);
+  }
   const executedLocalFunctions = collectSynchronouslyInvokedLocalFunctions(program, scopes);
   let isBadMutableActivated = false;
   walkAst(program, (node) => {
@@ -622,28 +627,36 @@ const programActivatesDayjsBadMutable = (
     if (isBadMutableActivated) programsActivatingDayjsBadMutable.add(program);
     return isBadMutableActivated;
   }
-  if (depth >= CROSS_FILE_BARREL_FOLLOW_DEPTH) return false;
   for (const statement of program.body ?? []) {
     const dependencySource = getRuntimeStaticDependencySource(statement);
     if (!dependencySource) continue;
     const dependencyFilePath = resolveModulePath(filename, dependencySource);
-    if (!dependencyFilePath || visitedFilePaths.has(dependencyFilePath)) continue;
+    if (!dependencyFilePath) continue;
+    const dependencyDepth = depth + 1;
+    const previousDependencyDepth = minimumDepthByFilePath.get(dependencyFilePath);
+    if (previousDependencyDepth !== undefined && previousDependencyDepth <= dependencyDepth) {
+      continue;
+    }
+    if (depth >= CROSS_FILE_BARREL_FOLLOW_DEPTH) {
+      unresolvedFrontierFilePaths.add(dependencyFilePath);
+      continue;
+    }
     const dependencyProgram = parseSourceFile(dependencyFilePath);
-    if (
-      dependencyProgram &&
-      programActivatesDayjsBadMutable(
-        dependencyProgram,
-        analyzeScopes(dependencyProgram),
-        dependencyFilePath,
-        new Set(visitedFilePaths),
-        depth + 1,
-      )
-    ) {
+    if (!dependencyProgram) continue;
+    const dependencyActivation = programActivatesDayjsBadMutable(
+      dependencyProgram,
+      analyzeScopes(dependencyProgram),
+      dependencyFilePath,
+      minimumDepthByFilePath,
+      unresolvedFrontierFilePaths,
+      dependencyDepth,
+    );
+    if (dependencyActivation) {
       programsActivatingDayjsBadMutable.add(program);
       return true;
     }
   }
-  return false;
+  return unresolvedFrontierFilePaths.size > 0 ? null : false;
 };
 
 const expressionResolvesToDayjsFactory = (
@@ -660,7 +673,7 @@ const expressionResolvesToDayjsFactory = (
     if (visitedFilePaths.has(filename)) return false;
     visitedFilePaths.add(filename);
   }
-  if (programActivatesDayjsBadMutable(currentProgram, scopes, filename)) return false;
+  if (programActivatesDayjsBadMutable(currentProgram, scopes, filename) !== false) return false;
   const importedReference = resolveImportedApiReference(expression, scopes);
   if (!importedReference || importedReference.isNamespace) {
     return false;

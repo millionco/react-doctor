@@ -89,7 +89,10 @@ existing artifact. Paired sandboxes fetch each target repository once into one
 object store, then scan isolated base/treatment target worktrees with isolated
 detector installs, config files, and report paths. A project pair is emitted
 only after both sides succeed, so retries cannot leave a partial successful
-pair in either output.
+pair in either output. Paired writes use one single-writer queue and roll the
+baseline back if either sink fails. Any nonzero paired evaluator run still
+makes both output artifacts invalid and non-reusable; discard them instead of
+feeding them to the comparator or cache.
 
 Paired sandboxes request four CPU cores, eight GiB of memory, and twenty GiB of
 disk. `--paired-execution auto` is the default and runs the scans in parallel

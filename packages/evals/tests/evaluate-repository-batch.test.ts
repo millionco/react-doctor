@@ -222,8 +222,9 @@ describe("evaluateRepositoryBatch", () => {
         },
         paired: {
           runScansInParallel,
-          onBaselineRecord: async (record) => {
-            baselineRecords.push(record);
+          onPairedRecords: async ({ baseline, treatment }) => {
+            baselineRecords.push(baseline);
+            treatmentRecords.push(treatment);
           },
         },
       });
@@ -322,7 +323,7 @@ describe("evaluateRepositoryBatch", () => {
       }),
     });
     const onRecord = vi.fn(async () => undefined);
-    const onBaselineRecord = vi.fn(async () => undefined);
+    const onPairedRecords = vi.fn(async () => undefined);
 
     const failedRecords = await evaluateRepositoryBatch({
       daytona,
@@ -338,14 +339,14 @@ describe("evaluateRepositoryBatch", () => {
       evaluationDeadlineMilliseconds: globalThis.performance.now() + 60_000,
       evaluatorSourceHash: "f".repeat(64),
       onRecord,
-      paired: { runScansInParallel: true, onBaselineRecord },
+      paired: { runScansInParallel: true, onPairedRecords },
     });
 
     expect(executeCommand.mock.calls.filter(([command]) => command === SCAN_COMMAND)).toHaveLength(
       2,
     );
     expect(didBaselineScanSettle).toBe(true);
-    expect(onBaselineRecord).not.toHaveBeenCalled();
+    expect(onPairedRecords).not.toHaveBeenCalled();
     expect(onRecord).not.toHaveBeenCalled();
     expect(failedRecords).toEqual([
       {
@@ -359,5 +360,70 @@ describe("evaluateRepositoryBatch", () => {
         error: "treatment failed",
       },
     ]);
+  });
+
+  it("propagates paired sink failures instead of returning a retryable record", async () => {
+    const baselineProvenance = {
+      reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+      reactDoctorCommit: "a".repeat(40),
+      configContract: EVALUATION_CONFIG_CONTRACT,
+      ruleSetHash: "b".repeat(64),
+      ruleKeys: [],
+    };
+    const treatmentProvenance = {
+      ...baselineProvenance,
+      reactDoctorCommit: "c".repeat(40),
+      ruleSetHash: "d".repeat(64),
+    };
+    const executeCommand = vi.fn(async (command: string) => ({
+      exitCode: 0,
+      result: command.includes("rev-parse") ? "e".repeat(40) : "",
+    }));
+    const downloadFile = vi.fn(async (filePath: string) => {
+      if (filePath === BASE_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH) {
+        return Buffer.from(JSON.stringify(baselineProvenance));
+      }
+      if (filePath === TREATMENT_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH) {
+        return Buffer.from(JSON.stringify(treatmentProvenance));
+      }
+      const reportDirectory =
+        filePath === BASE_SANDBOX_REPORT_PATH
+          ? BASE_TARGET_WORK_DIRECTORY
+          : TREATMENT_TARGET_WORK_DIRECTORY;
+      return Buffer.from(JSON.stringify(buildReport(reportDirectory)));
+    });
+    const sandbox = Object.create(Sandbox.prototype);
+    Object.defineProperties(sandbox, {
+      id: { value: "sandbox-id" },
+      process: { value: { executeCommand } },
+      fs: { value: { downloadFile } },
+    });
+    const daytona = new Daytona({ apiKey: "test" });
+    const deleteSandbox = vi.fn(async () => undefined);
+    Object.defineProperty(daytona, "delete", { value: deleteSandbox });
+    const onPairedRecords = vi.fn(async () => {
+      throw new Error("artifact sink failed");
+    });
+
+    await expect(
+      evaluateRepositoryBatch({
+        daytona,
+        createSandbox: async () => sandbox,
+        repositoryGroups: [
+          {
+            org: "example",
+            name: "repository",
+            ref: "f".repeat(40),
+            rootDirectories: ["."],
+          },
+        ],
+        evaluationDeadlineMilliseconds: globalThis.performance.now() + 60_000,
+        evaluatorSourceHash: "f".repeat(64),
+        onRecord: vi.fn(async () => undefined),
+        paired: { runScansInParallel: true, onPairedRecords },
+      }),
+    ).rejects.toThrow("artifact sink failed");
+    expect(onPairedRecords).toHaveBeenCalledOnce();
+    expect(deleteSandbox).toHaveBeenCalledOnce();
   });
 });

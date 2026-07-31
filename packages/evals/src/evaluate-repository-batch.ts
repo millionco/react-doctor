@@ -56,7 +56,12 @@ export interface EvaluateRepositoryBatchInput {
 
 export interface PairedRepositoryBatchEvaluation {
   runScansInParallel: boolean;
-  onBaselineRecord: (record: CorpusEvaluationRecord) => Promise<void>;
+  onPairedRecords: (records: PairedEvaluationRecords) => Promise<void>;
+}
+
+export interface PairedEvaluationRecords {
+  baseline: CorpusEvaluationRecord;
+  treatment: CorpusEvaluationRecord;
 }
 
 interface EvaluateRepositoryGroupInput {
@@ -71,7 +76,7 @@ interface EvaluateRepositoryGroupInput {
 interface PairedRepositoryGroupEvaluation {
   baselineEvaluationProvenance: EvaluationProvenance;
   runScansInParallel: boolean;
-  onBaselineRecord: (record: CorpusEvaluationRecord) => Promise<void>;
+  onPairedRecords: (records: PairedEvaluationRecords) => Promise<void>;
 }
 
 interface ScanRepositoryInput {
@@ -193,8 +198,10 @@ const evaluateRepositoryGroup = async ({
 
   const failedRecords: CorpusEvaluationRecord[] = [];
   for (const repository of repositories) {
-    try {
-      if (paired) {
+    if (paired) {
+      let baselineReport: unknown;
+      let treatmentReport: unknown;
+      try {
         const scanBaseline = () =>
           scanRepository({
             sandbox,
@@ -219,8 +226,6 @@ const evaluateRepositoryGroup = async ({
             descriptionPrefix: "Scan treatment",
             scanTimeoutSeconds: PAIRED_SANDBOX_SCAN_TIMEOUT_SECONDS,
           });
-        let baselineReport: unknown;
-        let treatmentReport: unknown;
         if (paired.runScansInParallel) {
           const [baselineResult, treatmentResult] = await Promise.allSettled([
             scanBaseline(),
@@ -234,21 +239,28 @@ const evaluateRepositoryGroup = async ({
           baselineReport = await scanBaseline();
           treatmentReport = await scanTreatment();
         }
-        await paired.onBaselineRecord({
+      } catch (error) {
+        failedRecords.push(...buildFailureRecords([repository], error));
+        continue;
+      }
+      await paired.onPairedRecords({
+        baseline: {
           schemaVersion: EVALUATION_SCHEMA_VERSION,
           repository,
           evaluation: paired.baselineEvaluationProvenance,
           report: baselineReport,
-        });
-        await onRecord({
+        },
+        treatment: {
           schemaVersion: EVALUATION_SCHEMA_VERSION,
           repository,
           evaluation: evaluationProvenance,
           report: treatmentReport,
-        });
-        continue;
-      }
+        },
+      });
+      continue;
+    }
 
+    try {
       const report = await scanRepository({
         sandbox,
         repository,
@@ -349,7 +361,7 @@ export const evaluateRepositoryBatch = async ({
               ? {
                   baselineEvaluationProvenance,
                   runScansInParallel: paired.runScansInParallel,
-                  onBaselineRecord: paired.onBaselineRecord,
+                  onPairedRecords: paired.onPairedRecords,
                 }
               : undefined,
         })),

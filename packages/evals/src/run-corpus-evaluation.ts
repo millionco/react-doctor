@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
-import { createWriteStream } from "node:fs";
-import { finished } from "node:stream/promises";
+import { open } from "node:fs/promises";
 
 import { Daytona, DaytonaNotFoundError, Image } from "@daytona/sdk";
 import pLimit from "p-limit";
@@ -38,10 +36,12 @@ import {
 } from "./constants.js";
 import type { CorpusEvaluationRecord } from "./corpus.js";
 import { evaluateRepositoryBatch } from "./evaluate-repository-batch.js";
+import type { PairedEvaluationRecords } from "./evaluate-repository-batch.js";
 import { groupCorpusRepositories } from "./group-corpus-repositories.js";
 import { loadCorpusRepositories } from "./load-corpus-repositories.js";
 import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
 import { runEvaluationAttempts } from "./run-evaluation-attempts.js";
+import { createPairedNdjsonWriter } from "./utils/create-paired-ndjson-writer.js";
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
@@ -87,13 +87,15 @@ const shouldRunPairedScansInParallel = (options: EvaluationOptions): boolean => 
 };
 
 export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<void> => {
-  const baselineOutputStream = options.paired
-    ? createWriteStream(options.paired.baselineOutputPath, {
-        flags: "wx",
-        mode: EVALUATION_ARTIFACT_FILE_MODE,
+  const baselineFileHandle = options.paired
+    ? await open(options.paired.baselineOutputPath, "wx", EVALUATION_ARTIFACT_FILE_MODE)
+    : undefined;
+  const writePairedRecords = baselineFileHandle
+    ? createPairedNdjsonWriter({
+        baselineFileHandle,
+        treatmentOutput: process.stdout,
       })
     : undefined;
-  if (baselineOutputStream) await once(baselineOutputStream, "open");
   try {
     const loadedRepositories = await loadCorpusRepositories(options.repositoriesSources);
     const repositoryGroups = groupCorpusRepositories(loadedRepositories)
@@ -166,11 +168,22 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           process.stderr.write(`Processed ${completedProjects}/${projectCount} projects\n`);
         }
       };
-      const recordBaselineEvaluation = async (record: CorpusEvaluationRecord): Promise<void> => {
-        if (!baselineOutputStream) {
-          throw new Error("Paired baseline output stream is missing");
+      const recordPairedEvaluation = async ({
+        baseline,
+        treatment,
+      }: PairedEvaluationRecords): Promise<void> => {
+        if (!writePairedRecords) {
+          throw new Error("Paired record writer is missing");
         }
-        await writeNdjsonRecord(baselineOutputStream, record);
+        await writePairedRecords({
+          baselineRecord: baseline,
+          treatmentRecord: treatment,
+        });
+        completedProjects += 1;
+        if (treatment.error) failedProjects += 1;
+        if (completedProjects % PROGRESS_INTERVAL_PROJECTS === 0) {
+          process.stderr.write(`Processed ${completedProjects}/${projectCount} projects\n`);
+        }
       };
 
       const attemptConcurrencies = [
@@ -224,7 +237,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
             paired: options.paired
               ? {
                   runScansInParallel: runPairedScansInParallel,
-                  onBaselineRecord: recordBaselineEvaluation,
+                  onPairedRecords: recordPairedEvaluation,
                 }
               : undefined,
           }),
@@ -240,8 +253,11 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           );
         },
         onFinalFailure: async (record) => {
-          if (options.paired) await recordBaselineEvaluation(record);
-          await recordEvaluation(record);
+          if (options.paired) {
+            await recordPairedEvaluation({ baseline: record, treatment: record });
+          } else {
+            await recordEvaluation(record);
+          }
         },
       });
     } finally {
@@ -271,9 +287,6 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
       throw new Error(`Evaluation failed for ${failedProjects} projects`);
     }
   } finally {
-    if (baselineOutputStream) {
-      baselineOutputStream.end();
-      await finished(baselineOutputStream);
-    }
+    await baselineFileHandle?.close();
   }
 };

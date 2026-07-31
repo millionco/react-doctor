@@ -63,19 +63,43 @@ describe("SETUP_PAIRED_TARGET_REPOSITORY_COMMAND", () => {
         encoding: "utf8",
       }).trim(),
     ).toBe(targetRef);
-    const resolvedTargetRepositoryDirectory = fs.realpathSync(targetRepositoryDirectory);
-    const resolvedBaseCommonDirectory = fs.realpathSync(
-      execFileSync("git", ["-C", baseWorkDirectory, "rev-parse", "--git-common-dir"], {
-        encoding: "utf8",
-      }).trim(),
+    const baseCommonDirectory = execFileSync(
+      "git",
+      ["-C", baseWorkDirectory, "rev-parse", "--git-common-dir"],
+      { encoding: "utf8" },
+    ).trim();
+    const treatmentCommonDirectory = execFileSync(
+      "git",
+      ["-C", treatmentWorkDirectory, "rev-parse", "--git-common-dir"],
+      { encoding: "utf8" },
+    ).trim();
+    const resolvedBaseCommonDirectory = path.resolve(baseWorkDirectory, baseCommonDirectory);
+    const resolvedTreatmentCommonDirectory = path.resolve(
+      treatmentWorkDirectory,
+      treatmentCommonDirectory,
     );
-    const resolvedTreatmentCommonDirectory = fs.realpathSync(
-      execFileSync("git", ["-C", treatmentWorkDirectory, "rev-parse", "--git-common-dir"], {
-        encoding: "utf8",
-      }).trim(),
+    const commonDirectorySentinelName = "shared-common-directory-sentinel";
+    const commonDirectorySentinelContents = "shared\n";
+    fs.writeFileSync(
+      path.join(targetRepositoryDirectory, commonDirectorySentinelName),
+      commonDirectorySentinelContents,
     );
-    expect(resolvedBaseCommonDirectory).toBe(resolvedTargetRepositoryDirectory);
-    expect(resolvedTreatmentCommonDirectory).toBe(resolvedTargetRepositoryDirectory);
+    expect(
+      fs.readFileSync(path.join(resolvedBaseCommonDirectory, commonDirectorySentinelName), "utf8"),
+    ).toBe(commonDirectorySentinelContents);
+    expect(
+      fs.readFileSync(
+        path.join(resolvedTreatmentCommonDirectory, commonDirectorySentinelName),
+        "utf8",
+      ),
+    ).toBe(commonDirectorySentinelContents);
+    expect(
+      execFileSync(
+        "git",
+        ["--git-dir", resolvedBaseCommonDirectory, "rev-parse", "--is-bare-repository"],
+        { encoding: "utf8" },
+      ).trim(),
+    ).toBe("true");
 
     fs.writeFileSync(path.join(baseWorkDirectory, "doctor.config.ts"), "base\n");
     fs.writeFileSync(path.join(treatmentWorkDirectory, "doctor.config.ts"), "treatment\n");

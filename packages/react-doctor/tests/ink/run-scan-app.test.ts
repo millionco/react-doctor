@@ -62,13 +62,17 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   };
 });
 
-vi.mock("../../src/inspect.js", () => ({
-  inspect: vi.fn(async (directory: string): Promise<InspectResult> => {
+vi.mock("../../src/inspect.js", () => {
+  const inspect = vi.fn(async (directory: string): Promise<InspectResult> => {
     const result = mockState.inspectResults.get(directory);
     if (!result) throw new Error(`Missing inspect result for ${directory}`);
     return result;
-  }),
-}));
+  });
+  return {
+    inspect,
+    createInvocationInspect: () => inspect,
+  };
+});
 
 vi.mock("../../src/cli/utils/select-projects.js", () => ({
   discoverWorkspacePackages: vi.fn(() => []),

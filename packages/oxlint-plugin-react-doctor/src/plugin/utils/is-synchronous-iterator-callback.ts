@@ -256,9 +256,10 @@ export const isSynchronousIteratorCall = (
   );
 };
 
-export const isSynchronousIteratorCallback = (functionNode: EsTreeNode): boolean => {
-  const callNode = functionNode.parent;
-  if (!isNodeOfType(callNode, "CallExpression")) return false;
+export const isSynchronousIteratorCallbackCall = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  callbackArgument: EsTreeNode,
+): boolean => {
   const callee = stripParenExpression(callNode.callee);
   if (
     !isNodeOfType(callee, "MemberExpression") ||
@@ -272,10 +273,18 @@ export const isSynchronousIteratorCallback = (functionNode: EsTreeNode): boolean
     callee.object.name === "Array" &&
     callee.property.name === "from"
   ) {
-    return callNode.arguments[1] === functionNode;
+    return callNode.arguments[1] === callbackArgument;
   }
   return (
     SYNCHRONOUS_ITERATOR_METHOD_NAMES.has(callee.property.name) &&
-    callNode.arguments[0] === functionNode
+    callNode.arguments[0] === callbackArgument
+  );
+};
+
+export const isSynchronousIteratorCallback = (functionNode: EsTreeNode): boolean => {
+  const callNode = functionNode.parent;
+  return Boolean(
+    isNodeOfType(callNode, "CallExpression") &&
+    isSynchronousIteratorCallbackCall(callNode, functionNode),
   );
 };

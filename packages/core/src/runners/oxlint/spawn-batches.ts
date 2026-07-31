@@ -9,11 +9,13 @@ import {
   PROGRESS_TICK_INTERVAL_MS,
 } from "../../constants.js";
 import type { Diagnostic, ProjectInfo } from "../../types/index.js";
+import type { PreparedSourceMap } from "../../utils/prepare-lint-sources.js";
 import { isSplittableReactDoctorError, ReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
 import { remainingDeadlineBudgetMs } from "../../utils/remaining-deadline-budget-ms.js";
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
+import type { WorkerSlots } from "../../utils/create-worker-slots.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
 
@@ -47,6 +49,7 @@ export interface SpawnLintBatchesInput {
   readonly nodeBinaryPath: string;
   readonly project: ProjectInfo;
   readonly sourcePathByLintPath?: ReadonlyMap<string, string>;
+  readonly sourceMapByLintPath?: ReadonlyMap<string, PreparedSourceMap>;
   readonly onPartialFailure?: (reason: string) => void;
   readonly onAnalyzedFiles?: (filePaths: ReadonlyArray<string>) => void;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
@@ -91,6 +94,7 @@ export interface SpawnLintBatchesInput {
    * resource error replays once with a single worker.
    */
   readonly concurrency?: number;
+  readonly spawnSlots?: WorkerSlots;
 }
 
 interface BatchPassOutcome {
@@ -107,6 +111,13 @@ interface BatchPassOutcome {
    * point users at a failure class that no longer applies.
    */
   readonly firstNonOomDropReason: string | null;
+}
+
+interface BatchState {
+  deadlineMs: number | null;
+  deadlineSkippedFileCount: number;
+  didStart: boolean;
+  initialFileCount: number;
 }
 
 /**
@@ -144,6 +155,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     nodeBinaryPath,
     project,
     sourcePathByLintPath,
+    sourceMapByLintPath,
     onPartialFailure,
     onFileProgress,
     spawnTimeoutMs,
@@ -216,7 +228,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     const spawnLintBatch = async (
       batch: string[],
       depth: number,
-      batchState: { deadlineMs: number | null; deadlineSkippedFileCount: number },
+      batchState: BatchState,
     ): Promise<Diagnostic[]> => {
       // Past the --max-duration budget: skip instead of spawning, even inside a
       // binary-split retry, so a batch that started just before the deadline
@@ -228,15 +240,38 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       }
       const batchArgs = [...baseArgs, ...batch];
       try {
-        const stdout = await spawnOxlint(
-          batchArgs,
+        const spawnBatch = (): Promise<string | null> => {
+          if (isPastDeadline()) {
+            deadlineSkippedFiles.push(...batch);
+            batchState.deadlineSkippedFileCount += batch.length;
+            return Promise.resolve(null);
+          }
+          return spawnOxlint(
+            batchArgs,
+            rootDirectory,
+            nodeBinaryPath,
+            spawnTimeoutMs,
+            outputMaxBytes,
+            signal,
+            () => {
+              if (batchState.didStart) return;
+              batchState.didStart = true;
+              startedFileCount += batchState.initialFileCount;
+            },
+          );
+        };
+        const stdout =
+          input.spawnSlots === undefined
+            ? await spawnBatch()
+            : await input.spawnSlots.run(spawnBatch, signal);
+        if (stdout === null) return [];
+        return parseOxlintOutput(
+          stdout,
+          project,
           rootDirectory,
-          nodeBinaryPath,
-          spawnTimeoutMs,
-          outputMaxBytes,
-          signal,
+          sourcePathByLintPath,
+          sourceMapByLintPath,
         );
-        return parseOxlintOutput(stdout, project, rootDirectory, sourcePathByLintPath);
       } catch (error) {
         if (!isSplittableReactDoctorError(error)) throw error;
         // A splittable failure that surfaced only after the deadline passed is
@@ -302,16 +337,17 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           deadlineSkippedFiles.push(...batch);
           return [];
         }
-        startedFileCount += batch.length;
-        const batchState: { deadlineMs: number | null; deadlineSkippedFileCount: number } = {
+        const batchState: BatchState = {
           deadlineMs: null,
           deadlineSkippedFileCount: 0,
+          didStart: false,
+          initialFileCount: batch.length,
         };
         const batchDiagnostics = await spawnLintBatch(batch, 0, batchState);
         // A split retry can deadline-skip part of the batch, so count only the
         // files actually linted — not the whole batch — as scanned.
         scannedFileCount += batch.length - batchState.deadlineSkippedFileCount;
-        if (passOnFileProgress) {
+        if (passOnFileProgress && batchState.didStart) {
           displayedFileCount = Math.min(
             Math.max(displayedFileCount, scannedFileCount),
             totalFileCount,

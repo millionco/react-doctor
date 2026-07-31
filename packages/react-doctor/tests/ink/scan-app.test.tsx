@@ -123,8 +123,12 @@ describe("ScanApp", () => {
 
     const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
     await flush();
-    resizeTerminal(stdout, { rows: 30 });
-    await flush();
+    resizeTerminal(stdout, {
+      rows: TUI_REPORT_COMPACT_MAX_ROWS + TUI_REPORT_STATUS_ROWS,
+    });
+    await vi.waitFor(() => {
+      expect(lastFrame() ?? "").toContain("┌─────┐");
+    });
     const frame = lastFrame() ?? "";
     expect(frame).toContain("72");
     expect(frame).toContain("demo-app");

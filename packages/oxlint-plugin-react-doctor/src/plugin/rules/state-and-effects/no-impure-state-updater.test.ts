@@ -119,6 +119,19 @@ describe("no-impure-state-updater", () => {
        };`,
     ],
     [
+      "a wrapped state setter",
+      `import { useState } from "react";
+       const Counter = () => {
+         const [count, setCount] = useState(0);
+         const updateCount = (updater) => setCount(updater);
+         updateCount((previousCount) => {
+           localStorage.setItem("count", String(previousCount));
+           return previousCount + 1;
+         });
+         return count;
+       };`,
+    ],
+    [
       "a deep captured assignment",
       `import { useState } from "react";
        const cache = { nested: { value: 0 } };

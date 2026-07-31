@@ -311,7 +311,11 @@ describe("issue #115: --staged uses git INDEX content, not working tree", () => 
     expect(stagedFiles).toEqual(["src/App.tsx"]);
 
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-staged-snapshot-"));
-    const snapshot = await materializeStagedFiles(repoDir, stagedFiles, tempDirectory);
+    const snapshot = await materializeStagedFiles({
+      directory: repoDir,
+      stagedFiles,
+      tempDirectory,
+    });
     try {
       const snapshotted = fs.readFileSync(
         path.join(snapshot.tempDirectory, "src", "App.tsx"),
@@ -330,6 +334,30 @@ describe("issue #115: --staged uses git INDEX content, not working tree", () => 
     writeJson(path.join(repoDir, "package.json"), { name: "empty-staged" });
     initGitRepo(repoDir);
     await expect(getStagedSourceFiles(repoDir)).resolves.toEqual([]);
+  });
+});
+
+describe("getStagedSourceFiles separates an unreadable index from an empty one", () => {
+  it("throws instead of returning [] when git cannot read the index", async () => {
+    const repoDir = path.join(tempRoot, "staged-unreadable-index");
+    fs.mkdirSync(repoDir, { recursive: true });
+    writeJson(path.join(repoDir, "package.json"), { name: "unreadable-index" });
+    fs.writeFileSync(path.join(repoDir, "app.tsx"), "export const App = () => <div />;\n");
+    initGitRepo(repoDir);
+
+    // A corrupt index makes `git diff --cached` exit non-zero. Returning `[]`
+    // there is indistinguishable from "nothing staged", which passes a
+    // pre-commit gate without scanning anything.
+    const corruptIndexPath = path.join(repoDir, "corrupt-index");
+    fs.writeFileSync(corruptIndexPath, "not-a-git-index");
+    const previousIndexFile = process.env.GIT_INDEX_FILE;
+    process.env.GIT_INDEX_FILE = corruptIndexPath;
+    try {
+      await expect(getStagedSourceFiles(repoDir)).rejects.toThrow(/Could not read the git index/);
+    } finally {
+      if (previousIndexFile === undefined) delete process.env.GIT_INDEX_FILE;
+      else process.env.GIT_INDEX_FILE = previousIndexFile;
+    }
   });
 });
 

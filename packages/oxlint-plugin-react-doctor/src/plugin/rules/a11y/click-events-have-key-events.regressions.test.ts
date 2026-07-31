@@ -24,6 +24,155 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a conditional wrapper handler that only forwards focus", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ variant, forLabel }) => {
+        const handleContainerClick = (event) => {
+          if (event.target.closest(".chip")) return;
+          const input = globalThis.document.querySelector(\`#\${forLabel}\`);
+          input?.focus();
+        };
+        return (
+          <div onClick={variant === "chips" ? handleContainerClick : undefined}>
+            <Autocomplete id={forLabel} />
+          </div>
+        );
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a typed focus-forwarding handler in the nullish-first branch form", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ enabled, forLabel }) => {
+        const handleContainerClick = (event) => {
+          if (event.target.closest(".chip")) return;
+          const input = document.getElementById(forLabel);
+          input?.focus();
+        };
+        return (
+          <div
+            onClick={
+              enabled
+                ? undefined
+                : (handleContainerClick as React.MouseEventHandler<HTMLDivElement>)
+            }
+          />
+        );
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a guarded focus handler that performs another action", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ forLabel, submit }) => {
+        const handleContainerClick = (event) => {
+          if (event.target.closest(".chip")) return;
+          const input = document.querySelector(\`#\${forLabel}\`);
+          input?.focus();
+          submit();
+        };
+        return <div onClick={handleContainerClick} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an early guard whose return expression performs an action", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ forLabel, submit }) => {
+        const handleContainerClick = (event) => {
+          if (event.target.closest(".chip")) return submit();
+          const input = document.querySelector(\`#\${forLabel}\`);
+          input?.focus();
+        };
+        return <div onClick={handleContainerClick} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an early guard whose closest receiver performs an action", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ forLabel, getTarget }) => {
+        const handleContainerClick = () => {
+          if (getTarget().closest(".chip")) return;
+          const input = document.querySelector(\`#\${forLabel}\`);
+          input?.focus();
+        };
+        return <div onClick={handleContainerClick} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a focus handler whose selector construction can run code", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ buildSelector }) => {
+        const handleContainerClick = () => {
+          const input = document.querySelector(buildSelector());
+          input?.focus();
+        };
+        return <div onClick={handleContainerClick} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a focus handler that queries through a shadowed document", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ document, forLabel }) => {
+        const handleContainerClick = () => {
+          const input = document.querySelector(\`#\${forLabel}\`);
+          input?.focus();
+        };
+        return <div onClick={handleContainerClick} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a conditional handler when the other branch is actionable", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ shouldFocus, inputRef, open }) => (
+        <div onClick={shouldFocus ? () => inputRef.current?.focus() : open} />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a shadowed undefined handler as a nullish branch", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Field = ({ shouldFocus, inputRef, undefined }) => (
+        <div onClick={shouldFocus ? () => inputRef.current?.focus() : undefined} />
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a conditional handler that clicks a hidden input", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Upload = ({ enabled, inputRef }) => (
+        <div onClick={enabled ? () => inputRef.current?.click() : undefined} />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a named same-file propagation-guard handler", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,
@@ -422,4 +571,25 @@ describe("a11y/click-events-have-key-events regressions", () => {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it.each(["input!.focus();", "(input as HTMLElement).focus();", "(input)?.focus();"])(
+    "does not flag conditional focus forwarding through %s",
+    (focusStatement) => {
+      const result = runRule(
+        clickEventsHaveKeyEvents,
+        `const Cell = ({ event }) => (
+        <div
+          onClick={event.target.closest("button") ? null : () => {
+            if (event.target.closest("button")) return;
+            const input = document.querySelector("input");
+            ${focusStatement}
+          }}
+        >
+          Label
+        </div>
+      );`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
 });

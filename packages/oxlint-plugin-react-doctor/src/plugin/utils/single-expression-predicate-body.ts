@@ -8,7 +8,10 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 // block body. Null when the body carries more than one statement — the
 // predicate is then too complex to reason about structurally.
 export const singleExpressionPredicateBody = (
-  predicate: EsTreeNodeOfType<"ArrowFunctionExpression"> | EsTreeNodeOfType<"FunctionExpression">,
+  predicate:
+    | EsTreeNodeOfType<"ArrowFunctionExpression">
+    | EsTreeNodeOfType<"FunctionDeclaration">
+    | EsTreeNodeOfType<"FunctionExpression">,
 ): EsTreeNode | null => {
   let body: EsTreeNode = predicate.body;
   if (isNodeOfType(body, "BlockStatement")) {

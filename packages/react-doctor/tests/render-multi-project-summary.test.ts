@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import os from "node:os";
+import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic, InspectResult, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
@@ -188,5 +191,89 @@ describe("printMultiProjectSummary score projection", () => {
     const [topErrorSource, rescoreSource] = mockedComputeProjectedScore.mock.calls[0];
     expect(topErrorSource).toEqual([highProductionDiagnostic]);
     expect(rescoreSource).toEqual([lowProductionDiagnostic]);
+  });
+});
+
+describe("printMultiProjectSummary code frames", () => {
+  const temporaryDirectories: string[] = [];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const temporaryDirectory of temporaryDirectories.splice(0)) {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  const writeSourceTree = (marker: string): string => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-frame-root-"));
+    temporaryDirectories.push(directory);
+    fs.mkdirSync(path.join(directory, "src"), { recursive: true });
+    fs.writeFileSync(path.join(directory, "src/App.tsx"), `export const ${marker} = 1;\n`);
+    return directory;
+  };
+
+  const renderFramedOutput = async (scanOverrides: {
+    rootDirectory: string;
+    frameSourceRoot?: string;
+    filePath?: string;
+  }): Promise<string> => {
+    const lines: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((line?: unknown) => {
+      lines.push(String(line ?? ""));
+    });
+    const framedScan = {
+      config: null,
+      frameSourceRoot: scanOverrides.frameSourceRoot,
+      result: {
+        diagnostics: [
+          buildDiagnostic({
+            filePath: scanOverrides.filePath ?? "src/App.tsx",
+            line: 1,
+            column: 14,
+          }),
+        ],
+        score: { score: 40, label: "Needs work" },
+        skippedChecks: [],
+        project: { ...buildProject("app"), rootDirectory: scanOverrides.rootDirectory },
+        elapsedMilliseconds: 10,
+        scannedFileCount: 1,
+        analyzedFiles: ["src/App.tsx"],
+      } satisfies InspectResult,
+    };
+    await Effect.runPromise(
+      printMultiProjectSummary({
+        completedScans: [framedScan, buildScan("other", 80, [highProductionDiagnostic])],
+        verbose: true,
+        isOffline: true,
+        projectName: "workspace",
+        totalElapsedMilliseconds: 20,
+      }),
+    );
+    return lines.join("\n");
+  };
+
+  // `--staged` scans a snapshot of the index but reports real package paths, so
+  // the frame has to come from the snapshot. Reading the worktree would print
+  // whatever is uncommitted under index-derived line numbers.
+  it("reads the frame from frameSourceRoot rather than the reported project root", async () => {
+    const worktreeDirectory = writeSourceTree("FROM_WORKTREE");
+    const snapshotDirectory = writeSourceTree("FROM_SNAPSHOT");
+
+    const output = await renderFramedOutput({
+      rootDirectory: worktreeDirectory,
+      frameSourceRoot: snapshotDirectory,
+      filePath: path.join(worktreeDirectory, "src/App.tsx"),
+    });
+
+    expect(output).toContain("FROM_SNAPSHOT");
+    expect(output).not.toContain("FROM_WORKTREE");
+  });
+
+  it("falls back to the project root when no frameSourceRoot is set", async () => {
+    const worktreeDirectory = writeSourceTree("FROM_WORKTREE");
+
+    const output = await renderFramedOutput({ rootDirectory: worktreeDirectory });
+
+    expect(output).toContain("FROM_WORKTREE");
   });
 });

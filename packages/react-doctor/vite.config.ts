@@ -75,6 +75,7 @@ export default defineConfig({
         // workflow editor; inline it so end users get no extra install.
         alwaysBundle: ["commander", "ora", "yaml"],
         neverBundle: [
+          "@astrojs/compiler",
           // Sentry bundles its own OpenTelemetry instrumentation chain
           // and resolves native/optional deps via require() at runtime;
           // keep it external so those lookups run untouched.
@@ -159,6 +160,7 @@ export default defineConfig({
       deps: {
         alwaysBundle: ["commander", "ora", "yaml"],
         neverBundle: [
+          "@astrojs/compiler",
           "@sentry/node",
           "agent-install",
           "confbox",
@@ -186,6 +188,7 @@ export default defineConfig({
       entry: { lsp: "./src/lsp.ts" },
       deps: {
         neverBundle: [
+          "@astrojs/compiler",
           // Sentry telemetry for `experimental-lsp` — kept external for the
           // same reason as the CLI pack (it resolves its own OTel/native deps
           // via require() at runtime).

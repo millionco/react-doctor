@@ -89,9 +89,11 @@ export const postmessageOriginRisk = defineRule({
   scan: (file) => {
     if (!isProductionSourcePath(file.relativePath)) return [];
     if (WORKER_FILE_PATH_PATTERN.test(file.relativePath)) return [];
-    if (!file.content.includes("addEventListener") && !file.content.includes("onmessage")) {
-      return [];
-    }
+    const mayHaveOnMessageAssignment = file.content.includes("onmessage");
+    const mayHaveMessageListenerCall =
+      file.content.includes("addEventListener") &&
+      (file.content.includes("message") || file.content.includes("\\"));
+    if (!mayHaveOnMessageAssignment && !mayHaveMessageListenerCall) return [];
     const ast = parseSourceText({
       filename: file.absolutePath,
       sourceText: file.content,

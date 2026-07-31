@@ -9,9 +9,9 @@ export const DEFAULT_CORPUS_REPOSITORY_COUNT = 2_000;
 export const DEFAULT_CORPUS_CONCURRENCY = 200;
 export const DEFAULT_REPOSITORIES_PER_SANDBOX = 10;
 export const DEFAULT_PROJECT_ROOTS_PER_REPOSITORY = 1;
-export const DEFAULT_EVALUATION_MAX_DURATION_MINUTES = 30;
+export const DEFAULT_EVALUATION_MAX_DURATION_MINUTES = 45;
 export const EVALUATION_CLEANUP_RESERVE_MINUTES = 2;
-export const EVALUATION_RETRY_CONCURRENCIES: ReadonlyArray<number> = [50, 10];
+export const EVALUATION_RETRY_CONCURRENCIES: ReadonlyArray<number> = [50, 10, 2];
 export const EVALUATION_RETRY_ATTEMPT_RESERVE_MINUTES = 5;
 export const EVALUATION_RETRY_REPOSITORIES_PER_SANDBOX = 1;
 
@@ -42,6 +42,7 @@ export const REACT_DOCTOR_REPORT_MODES: ReadonlySet<string> = new Set([
 ]);
 export const REACT_DOCTOR_REPORT_FRAMEWORKS: ReadonlySet<string> = new Set([
   "nextjs",
+  "astro",
   "vite",
   "cra",
   "remix",

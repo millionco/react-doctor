@@ -53,6 +53,7 @@ const SIDE_EFFECT_CALL_NAME_PATTERN =
 const ASYNC_UPDATE_CALL_NAME_PATTERN = /^update[A-Z_]/;
 const CALLBACK_PROP_NAME_PATTERN = /^(?:on|set)[A-Z]/;
 const SAFE_GLOBAL_RECEIVER_NAMES = new Set(["Math", "JSON", "Object", "Array"]);
+const PLATFORM_APPEND_CONSTRUCTOR_NAMES = new Set(["FormData", "Headers", "URLSearchParams"]);
 const FRESH_CONTAINER_CONSTRUCTOR_NAMES = new Set([
   "Array",
   "DataView",
@@ -878,6 +879,22 @@ const memberReceiverIsFreshObjectLiteral = (
   );
 };
 
+const receiverIsPlatformAppendBuilder = (expression: EsTreeNode, context: RuleContext): boolean => {
+  let receiver = stripParenExpression(expression);
+  if (isNodeOfType(receiver, "Identifier")) {
+    const receiverSymbol = resolveConstIdentifierAlias(receiver, context.scopes);
+    if (!receiverSymbol?.initializer) return false;
+    receiver = stripParenExpression(receiverSymbol.initializer);
+  }
+  if (!isNodeOfType(receiver, "NewExpression")) return false;
+  const constructor = stripParenExpression(receiver.callee);
+  return Boolean(
+    isNodeOfType(constructor, "Identifier") &&
+    PLATFORM_APPEND_CONSTRUCTOR_NAMES.has(constructor.name) &&
+    context.scopes.isGlobalReference(constructor),
+  );
+};
+
 const receiverIsProvenEmptyCollection = (expression: EsTreeNode, context: RuleContext): boolean => {
   const receiver = stripParenExpression(expression);
   if (isNodeOfType(receiver, "ArrayExpression")) return receiver.elements.length === 0;
@@ -1061,6 +1078,10 @@ const callHasSideEffectName = (
     (identifierIsCallbackParameter(callee, context) || memberCalleeIsExternalCallback);
   const isAsyncUpdateCall =
     ASYNC_UPDATE_CALL_NAME_PATTERN.test(callName) && callStartsPromiseChain(call);
+  const isPlatformAppendMutation =
+    callName === "append" &&
+    isNodeOfType(callee, "MemberExpression") &&
+    receiverIsPlatformAppendBuilder(callee.object, context);
   if (isNodeOfType(callee, "MemberExpression")) {
     const globalReceiver = baseReceiverIdentifier(callee.object);
     const isGlobalObjectMember = Boolean(
@@ -1092,6 +1113,7 @@ const callHasSideEffectName = (
     !SIDE_EFFECT_CALL_NAME_PATTERN.test(callName) &&
     !SIDE_EFFECT_METHOD_NAMES.has(callName) &&
     !MUTATING_COLLECTION_METHODS.has(callName) &&
+    !isPlatformAppendMutation &&
     !isAsyncUpdateCall &&
     !isDiscardedExternalCallbackCall
   ) {

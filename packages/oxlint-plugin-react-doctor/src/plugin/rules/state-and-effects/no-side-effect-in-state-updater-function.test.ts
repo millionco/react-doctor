@@ -176,6 +176,29 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(externalMutableBuilders.diagnostics).toHaveLength(3);
   });
 
+  it("flags append mutations on external platform builders only", () => {
+    const externalPlatformBuilders = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const params=new URLSearchParams();const headers=new Headers();const headerAlias=headers;const data=new FormData();const C=()=>{const[,setValue]=useState("");setValue(previous=>{params.append("value",previous);headerAlias.append("x-value",previous);data.append("value",previous);return previous})}`,
+    );
+    const updaterLocalPlatformBuilders = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState("");setValue(previous=>{const params=new URLSearchParams();params.append("value",previous);const headers=new Headers();const headerAlias=headers;headerAlias.append("x-value",previous);const data=new FormData();data.append("value",previous);new Headers().append("x-direct",previous);return params.toString()})}`,
+    );
+    const customAppendLookalike = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const builder={append(_key,_value){}};const C=()=>{const[,setValue]=useState("");setValue(previous=>{builder.append("value",previous);return previous})}`,
+    );
+    const shadowedPlatformConstructor = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";class Headers{append(_key,_value){}}const headers=new Headers();const C=()=>{const[,setValue]=useState("");setValue(previous=>{headers.append("value",previous);return previous})}`,
+    );
+    expect(externalPlatformBuilders.diagnostics).toHaveLength(3);
+    expect(updaterLocalPlatformBuilders.diagnostics).toHaveLength(0);
+    expect(customAppendLookalike.diagnostics).toHaveLength(0);
+    expect(shadowedPlatformConstructor.diagnostics).toHaveLength(0);
+  });
+
   it("flags discarded setter callback props without treating local setter helpers as effects", () => {
     const directSetterProp = runRule(
       noSideEffectInStateUpdaterFunction,

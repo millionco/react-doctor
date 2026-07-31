@@ -16,7 +16,6 @@ import {
   EVALUATION_CONFIG_CONTRACT,
   EVALUATION_RETRY_CONCURRENCIES,
   MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND,
-  MATRIX_CLEANUP_VERIFICATION_TIMEOUT_SECONDS,
   MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS,
   MATRIX_PROVENANCE_DIRECTORY,
   MATRIX_REACT_DOCTOR_DIRECTORY,
@@ -35,6 +34,7 @@ import { createAtomicNdjsonWriter, createMatrixArtifactWriter } from "./matrix-a
 import type { MatrixArtifactWriter } from "./matrix-artifact.js";
 import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
 import { runMatrixEvaluationAttempts } from "./run-matrix-evaluation-attempts.js";
+import { abortWriters } from "./utils/abort-writers.js";
 import { assertMatrixBaseRecord } from "./utils/assert-matrix-base-record.js";
 import { createMatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
 import type { MatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
@@ -353,11 +353,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   } catch (error) {
     evaluationError = error;
   } finally {
-    const cleanupDeadlineMilliseconds = Math.min(
-      wholeRunDeadlineMilliseconds,
-      globalThis.performance.now() +
-        MATRIX_CLEANUP_VERIFICATION_TIMEOUT_SECONDS * MILLISECONDS_PER_SECOND,
-    );
+    const cleanupDeadlineMilliseconds = wholeRunDeadlineMilliseconds;
     try {
       await cleanupEvaluationSandboxes({
         daytona,
@@ -398,13 +394,29 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   }
 
   if (evaluationError !== undefined) {
-    await Promise.all([...artifactWriters.values()].map((writer) => writer.abort()));
-    if (baseWriter) await baseWriter.abort();
+    const abortErrors = await abortWriters([
+      ...artifactWriters.values(),
+      ...(baseWriter ? [baseWriter] : []),
+    ]);
+    const evaluationErrors = [
+      evaluationError,
+      ...abortErrors,
+      ...(cleanupError !== undefined ? [cleanupError] : []),
+    ];
+    if (evaluationErrors.length > 1) {
+      throw new AggregateError(
+        evaluationErrors,
+        `Matrix evaluation failed and cleanup was incomplete: ${evaluationErrors
+          .map(toErrorMessage)
+          .join("; ")}`,
+      );
+    }
     throw evaluationError;
   }
 
   const baseFailedRecordCount = baseLane ? (failedRecordCounts.get(baseLane.id) ?? 0) : 0;
   const baseCompletedRecordCount = baseLane ? (completedRecordCounts.get(baseLane.id) ?? 0) : 0;
+  const artifactFinalizationErrors: unknown[] = [];
   let isBaselineAvailable = cacheVerification.hit;
   if (baseWriter) {
     if (
@@ -412,47 +424,59 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
       baseFailedRecordCount !== 0 ||
       baseCompletedRecordCount !== projectCount
     ) {
-      await baseWriter.abort();
+      artifactFinalizationErrors.push(...(await abortWriters([baseWriter])));
     } else {
-      await baseWriter.finalize();
-      isBaselineAvailable = true;
-      if (baseLane?.ruleKeys.length === 0) {
+      try {
+        await baseWriter.finalize();
+        isBaselineAvailable = true;
+      } catch (error) {
+        isBaselineAvailable = false;
+        artifactFinalizationErrors.push(error, ...(await abortWriters([baseWriter])));
+      }
+      if (isBaselineAvailable) {
         try {
-          const baselineVerification = await createFullBaselineProvenance({
-            baselineOutputPath: baseOutputPath,
-            baselineProvenancePath: group.baselineProvenancePath,
-            corpusManifestPath: group.corpusManifestPath,
-            baseReactDoctorCommit: group.baseReactDoctorCommit,
-            baseReactDoctorRepository: group.baseReactDoctorRepository,
-            evaluatorSourceHash,
-            baseFullRuleSetHash: group.baseFullRuleSetHash,
-            deadlineMilliseconds: wholeRunDeadlineMilliseconds,
-          });
-          if (!baseEvaluation) throw new Error("Matrix base evaluation provenance is missing");
-          baseArtifactBinding = await createMatrixBaseArtifactBinding({
-            sourcePath: baseOutputPath,
-            provenanceSourcePath: group.baselineProvenancePath,
-            producer: baseEvaluation,
-            expected: baselineVerification,
-          });
+          if (baseLane?.ruleKeys.length !== 0) {
+            if (!baseEvaluation) throw new Error("Matrix base evaluation provenance is missing");
+            baseArtifactBinding = await createMatrixBaseArtifactBinding({
+              sourcePath: baseOutputPath,
+              producer: baseEvaluation,
+            });
+          } else {
+            const baselineVerification = await createFullBaselineProvenance({
+              baselineOutputPath: baseOutputPath,
+              baselineProvenancePath: group.baselineProvenancePath,
+              corpusManifestPath: group.corpusManifestPath,
+              baseReactDoctorCommit: group.baseReactDoctorCommit,
+              baseReactDoctorRepository: group.baseReactDoctorRepository,
+              evaluatorSourceHash,
+              baseFullRuleSetHash: group.baseFullRuleSetHash,
+              deadlineMilliseconds: wholeRunDeadlineMilliseconds,
+            });
+            if (!baseEvaluation) throw new Error("Matrix base evaluation provenance is missing");
+            baseArtifactBinding = await createMatrixBaseArtifactBinding({
+              sourcePath: baseOutputPath,
+              provenanceSourcePath: group.baselineProvenancePath,
+              producer: baseEvaluation,
+              expected: baselineVerification,
+            });
+          }
         } catch (error) {
           isBaselineAvailable = false;
-          evaluationError = error;
-          await Promise.all([
+          artifactFinalizationErrors.push(error);
+          const cleanupResults = await Promise.allSettled([
             rm(baseOutputPath, { force: true }),
-            rm(group.baselineProvenancePath, { force: true }),
-            rm(`${group.baselineProvenancePath}.tmp`, { force: true }),
+            ...(baseLane?.ruleKeys.length === 0
+              ? [
+                  rm(group.baselineProvenancePath, { force: true }),
+                  rm(`${group.baselineProvenancePath}.tmp`, { force: true }),
+                ]
+              : []),
           ]);
-        }
-      } else if (baseEvaluation) {
-        try {
-          baseArtifactBinding = await createMatrixBaseArtifactBinding({
-            sourcePath: baseOutputPath,
-            producer: baseEvaluation,
-          });
-        } catch (error) {
-          isBaselineAvailable = false;
-          evaluationError = error;
+          artifactFinalizationErrors.push(
+            ...cleanupResults.flatMap((result) =>
+              result.status === "rejected" ? [result.reason] : [],
+            ),
+          );
         }
       }
     }
@@ -460,18 +484,17 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   const finalizationResults = await Promise.allSettled(
     [...artifactWriters.values()].map((writer) => writer.finalize(baseArtifactBinding)),
   );
-  const artifactFinalizationFailure = finalizationResults.find(
-    (result) => result.status === "rejected",
+  const artifactWriterList = [...artifactWriters.values()];
+  const rejectedArtifactEntries = finalizationResults.flatMap((result, resultIndex) =>
+    result.status === "rejected"
+      ? [{ writer: artifactWriterList[resultIndex], error: result.reason }]
+      : [],
   );
-  if (artifactFinalizationFailure?.status === "rejected") {
-    const artifactWriterList = [...artifactWriters.values()];
-    await Promise.all(
-      finalizationResults.flatMap((result, resultIndex) =>
-        result.status === "rejected" ? [artifactWriterList[resultIndex].abort()] : [],
-      ),
+  if (rejectedArtifactEntries.length !== 0) {
+    artifactFinalizationErrors.push(
+      ...rejectedArtifactEntries.map(({ error }) => error),
+      ...(await abortWriters(rejectedArtifactEntries.map(({ writer }) => writer))),
     );
-    if (baseWriter && !isBaselineAvailable) await baseWriter.abort();
-    throw artifactFinalizationFailure.reason;
   }
   const blockedTreatmentIds = finalizationResults.flatMap((result) =>
     result.status === "fulfilled" && result.value.status === "blocked" ? [result.value.laneId] : [],
@@ -481,7 +504,15 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
       (failedRecordCounts.get(lane.id) ?? 0) !== 0 ||
       (completedRecordCounts.get(lane.id) ?? 0) !== projectCount,
   );
-  if (evaluationError !== undefined) throw evaluationError;
+  if (artifactFinalizationErrors.length !== 0) {
+    if (cleanupError !== undefined) artifactFinalizationErrors.push(cleanupError);
+    throw new AggregateError(
+      artifactFinalizationErrors,
+      `Matrix artifact finalization failed: ${artifactFinalizationErrors
+        .map(toErrorMessage)
+        .join("; ")}`,
+    );
+  }
   if (
     !didCompleteEvaluation ||
     failedLanes.length !== 0 ||

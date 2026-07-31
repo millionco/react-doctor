@@ -13,12 +13,15 @@ import {
 } from "../src/constants.js";
 import type { CorpusRepository } from "../src/corpus.js";
 import type { MatrixEvaluationLane } from "../src/build-matrix-evaluation-plan.js";
+import type { CleanupEvaluationSandboxesInput } from "../src/cleanup-evaluation-sandboxes.js";
 import type { LoadedMatrixTreatment } from "../src/matrix-treatment-descriptor.js";
 import type { MatrixBaselineCacheVerification } from "../src/verify-matrix-baseline-cache.js";
 
 const matrixMocks = vi.hoisted(() => ({
   DaytonaNotFoundError: class extends Error {},
-  cleanupEvaluationSandboxes: vi.fn(async () => undefined),
+  cleanupEvaluationSandboxes: vi.fn<(input: CleanupEvaluationSandboxesInput) => Promise<void>>(
+    async () => undefined,
+  ),
   evaluateMatrixRepositoryBatch: vi.fn(),
   loadMatrixTreatments: vi.fn(),
   snapshotCreate: vi.fn(async () => undefined),
@@ -36,6 +39,38 @@ const matrixMocks = vi.hoisted(() => ({
     reason: "missing",
   })),
 }));
+
+const fileSystemMocks = vi.hoisted(() => ({
+  baseAbortFailuresRemaining: 0,
+  baseFinalizeFailuresRemaining: 0,
+}));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...original,
+    rename: async (oldPath: fs.PathLike, newPath: fs.PathLike) => {
+      if (
+        fileSystemMocks.baseFinalizeFailuresRemaining > 0 &&
+        path.basename(String(oldPath)) === "artifact.ndjson"
+      ) {
+        fileSystemMocks.baseFinalizeFailuresRemaining -= 1;
+        throw new Error("injected base finalize failure");
+      }
+      return original.rename(oldPath, newPath);
+    },
+    rm: async (targetPath: fs.PathLike, options?: fs.RmOptions) => {
+      if (
+        fileSystemMocks.baseAbortFailuresRemaining > 0 &&
+        String(targetPath).includes(".ndjson.partial-")
+      ) {
+        fileSystemMocks.baseAbortFailuresRemaining -= 1;
+        throw new Error("injected base abort failure");
+      }
+      return original.rm(targetPath, options);
+    },
+  };
+});
 
 vi.mock("@daytona/sdk", () => {
   const image = {
@@ -87,6 +122,7 @@ import { hashMatrixCorpusProjectSet } from "../src/matrix-treatment-descriptor.j
 import { runMatrixCorpusEvaluation } from "../src/run-matrix-corpus-evaluation.js";
 
 const temporaryDirectories: string[] = [];
+const CLEANUP_LONGER_THAN_OLD_LIMIT_MS = 31_000;
 
 const hashContents = (contents: string): string =>
   createHash("sha256").update(contents).digest("hex");
@@ -140,7 +176,10 @@ const buildTreatment = ({
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.clearAllMocks();
+  fileSystemMocks.baseAbortFailuresRemaining = 0;
+  fileSystemMocks.baseFinalizeFailuresRemaining = 0;
   matrixMocks.snapshotDeleted = false;
   matrixMocks.snapshotDelete.mockImplementation(async () => {
     matrixMocks.snapshotDeleted = true;
@@ -188,6 +227,7 @@ describe("runMatrixCorpusEvaluation", () => {
       buildTreatment({ temporaryDirectory, id: "pr-2", group, mode: "incremental" }),
     ];
     matrixMocks.loadMatrixTreatments.mockResolvedValue(treatments);
+    fileSystemMocks.baseAbortFailuresRemaining = 1;
     matrixMocks.evaluateMatrixRepositoryBatch.mockImplementation(
       async ({ lanes, onLaneRecord }) => {
         const failures = [];
@@ -265,7 +305,97 @@ describe("runMatrixCorpusEvaluation", () => {
         fs.readFileSync(path.join(artifactDirectory, "candidate.ndjson"), "utf8").trim(),
       ).not.toBe("");
     }
-    expect(fs.readdirSync(temporaryDirectory).some((entry) => entry.startsWith(".partial-"))).toBe(
+    expect(fs.readdirSync(temporaryDirectory).some((entry) => entry.includes(".partial-"))).toBe(
+      false,
+    );
+  });
+
+  it("publishes blocked treatments after base finalize and abort initially fail", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-base-finalize-"));
+    temporaryDirectories.push(temporaryDirectory);
+    const repository: CorpusRepository = {
+      org: "example",
+      name: "repository",
+      ref: "f".repeat(40),
+      rootDir: ".",
+    };
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = `${JSON.stringify([repository])}\n`;
+    fs.writeFileSync(corpusManifestPath, corpusContents);
+    const group = {
+      baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+      baseReactDoctorCommit: "a".repeat(40),
+      baseFullRuleSetHash: "3".repeat(64),
+      baseArtifactPath: path.join(temporaryDirectory, "base-scoped.ndjson"),
+      baselineOutputPath: path.join(temporaryDirectory, "baseline.ndjson"),
+      baselineProvenancePath: path.join(temporaryDirectory, "baseline.provenance.json"),
+      corpusManifestPath,
+      corpusManifestSha256: hashContents(corpusContents),
+      corpusProjectSetSha256: hashMatrixCorpusProjectSet([repository]),
+      evaluatorSourceHash: "6".repeat(64),
+      configContract: EVALUATION_CONFIG_CONTRACT,
+      scanContract: MATRIX_SCAN_CONTRACT,
+      reportContract: MATRIX_REPORT_CONTRACT,
+      projectRootPolicy: MATRIX_PROJECT_ROOT_POLICY,
+    };
+    const treatments = [
+      buildTreatment({ temporaryDirectory, id: "pr-1", group, mode: "incremental" }),
+      buildTreatment({ temporaryDirectory, id: "pr-2", group, mode: "incremental" }),
+    ];
+    matrixMocks.loadMatrixTreatments.mockResolvedValue(treatments);
+    matrixMocks.evaluateMatrixRepositoryBatch.mockImplementation(
+      async ({ lanes, onLaneRecord }) => {
+        for (const lane of lanes) {
+          await onLaneRecord(lane.id, {
+            schemaVersion: 1,
+            repository,
+            evaluation: {
+              reactDoctorRepository: lane.reactDoctorRepository,
+              reactDoctorCommit: lane.reactDoctorRef,
+              configContract: EVALUATION_CONFIG_CONTRACT,
+              ruleSetHash: lane.kind === "base" ? group.baseFullRuleSetHash : "7".repeat(64),
+              ruleKeys: lane.ruleKeys,
+              evaluatorSourceHash: group.evaluatorSourceHash,
+            },
+            report: { complete: true },
+          });
+        }
+        return [];
+      },
+    );
+    fileSystemMocks.baseFinalizeFailuresRemaining = 1;
+    fileSystemMocks.baseAbortFailuresRemaining = 1;
+
+    await expect(
+      runMatrixCorpusEvaluation({
+        repositoriesSources: [corpusManifestPath],
+        repositoryLimit: 1,
+        concurrency: 2,
+        repositoriesPerSandbox: 1,
+        projectRootsPerRepository: 1,
+        maxDurationMinutes: 20,
+        reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+        reactDoctorRef: "a".repeat(40),
+        ruleKeys: [],
+        matrix: {
+          treatmentDescriptorPaths: treatments.map((treatment) => treatment.descriptorPath),
+          waveWidth: 2,
+        },
+      }),
+    ).rejects.toThrow("injected base finalize failure");
+
+    for (const treatment of treatments) {
+      expect(
+        JSON.parse(
+          fs.readFileSync(
+            path.join(treatment.descriptor.artifactDirectory, "provenance.json"),
+            "utf8",
+          ),
+        ),
+      ).toMatchObject({ laneId: treatment.descriptor.id, status: "blocked" });
+    }
+    expect(fs.existsSync(group.baseArtifactPath)).toBe(false);
+    expect(fs.readdirSync(temporaryDirectory).some((entry) => entry.includes(".partial-"))).toBe(
       false,
     );
   });
@@ -471,6 +601,19 @@ describe("runMatrixCorpusEvaluation", () => {
       matrixMocks.snapshotDeleted = true;
       throw new Error("transient delete response failure");
     });
+    let restorePerformanceNow: () => void = () => undefined;
+    matrixMocks.cleanupEvaluationSandboxes.mockImplementationOnce(
+      async ({ deadlineMilliseconds }) => {
+        const cleanupStartedAt = globalThis.performance.now();
+        expect(deadlineMilliseconds - cleanupStartedAt).toBeGreaterThan(
+          CLEANUP_LONGER_THAN_OLD_LIMIT_MS,
+        );
+        const performanceNowSpy = vi
+          .spyOn(globalThis.performance, "now")
+          .mockReturnValueOnce(cleanupStartedAt + CLEANUP_LONGER_THAN_OLD_LIMIT_MS);
+        restorePerformanceNow = () => performanceNowSpy.mockRestore();
+      },
+    );
 
     await expect(
       runMatrixCorpusEvaluation({
@@ -486,6 +629,7 @@ describe("runMatrixCorpusEvaluation", () => {
         matrix: { treatmentDescriptorPaths: [treatment.descriptorPath], waveWidth: 1 },
       }),
     ).resolves.toBeUndefined();
+    restorePerformanceNow();
 
     const artifactDirectory = treatment.descriptor.artifactDirectory;
     expect(

@@ -44,7 +44,6 @@ export const MATRIX_BASE_LANE_ID = "matrix-base";
 export const MATRIX_BASE_ARTIFACT_CONTRACT = "matrix-base-artifact-v1";
 export const MATRIX_FULL_PARITY_RULE_KEYS = ["react-doctor/react-compiler-no-manual-memoization"];
 export const MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS = 120;
-export const MATRIX_CLEANUP_VERIFICATION_TIMEOUT_SECONDS = 30;
 export const MATRIX_CLEANUP_VERIFICATION_POLL_INTERVAL_MS = 500;
 export const MATRIX_REACT_DOCTOR_DIRECTORY = "/workspace/react-doctor-matrix";
 export const MATRIX_PROVENANCE_DIRECTORY = "/workspace/react-doctor-matrix-provenance";

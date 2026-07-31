@@ -207,24 +207,33 @@ const collectImportedValueDependencies: CrossFileDependencyCollector = ({
 const collectRuntimeStaticDependencyGraph = (
   program: EsTreeNode,
   filePath: string,
-  visitedFilePaths: Set<string>,
+  minimumDepthByFilePath: Map<string, number>,
   depth: number,
 ): void => {
-  if (visitedFilePaths.has(filePath)) return;
-  visitedFilePaths.add(filePath);
+  const previousDepth = minimumDepthByFilePath.get(filePath);
+  if (previousDepth !== undefined && previousDepth <= depth) return;
+  minimumDepthByFilePath.set(filePath, depth);
   if (depth >= DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH) return;
   for (const statement of (program as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
     const dependencySource = getRuntimeStaticDependencySource(statement);
     if (!dependencySource) continue;
     const dependencyFilePath = resolveModulePath(filePath, dependencySource);
-    if (!dependencyFilePath || visitedFilePaths.has(dependencyFilePath)) continue;
+    if (!dependencyFilePath) continue;
+    const dependencyDepth = depth + 1;
+    const previousDependencyDepth = minimumDepthByFilePath.get(dependencyFilePath);
+    if (previousDependencyDepth !== undefined && previousDependencyDepth <= dependencyDepth) {
+      continue;
+    }
     const dependencyProgram = parseSourceFile(dependencyFilePath);
-    if (!dependencyProgram) continue;
+    if (!dependencyProgram) {
+      minimumDepthByFilePath.set(dependencyFilePath, dependencyDepth);
+      continue;
+    }
     collectRuntimeStaticDependencyGraph(
       dependencyProgram,
       dependencyFilePath,
-      new Set(visitedFilePaths),
-      depth + 1,
+      minimumDepthByFilePath,
+      dependencyDepth,
     );
   }
 };
@@ -244,7 +253,7 @@ const collectStateUpdaterDependencies: CrossFileDependencyCollector = (input) =>
     mayUseDayjsImmutableMethod = methodName === "add" || methodName === "set";
   });
   if (!mayUseDayjsImmutableMethod) return;
-  collectRuntimeStaticDependencyGraph(program, input.absoluteFilePath, new Set(), 0);
+  collectRuntimeStaticDependencyGraph(program, input.absoluteFilePath, new Map(), 0);
 };
 
 const collectBrowserGuardDependencies: CrossFileDependencyCollector = ({

@@ -8,7 +8,10 @@ import {
   collectCrossFileDependencyProbes,
 } from "./cross-file-dependencies.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
-import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "./constants/thresholds.js";
+import {
+  CROSS_FILE_BARREL_FOLLOW_DEPTH,
+  DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH,
+} from "./constants/thresholds.js";
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
 import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
 import { resetCrossFileExportCaches } from "./utils/resolve-cross-file-function-export.js";
@@ -22,6 +25,9 @@ import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alia
 // shadowing detectable must be present.
 
 let temporaryDirectory: string;
+
+const DAYJS_DEPENDENCY_DAG_WIDTH = 5;
+const DAYJS_DEPENDENCY_DAG_MAX_ANALYSIS_DURATION_MS = 2_000;
 
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-cross-file-deps-"));
@@ -408,6 +414,78 @@ const App = () => {
       ),
     ).toBe(true);
     expect(trace?.contentPaths.has(fixturePath("src/utils/configure-beyond-proof.ts"))).toBe(false);
+  });
+
+  it("revisits a dependency reached later through a shallower path", () => {
+    for (
+      let dependencyIndex = 1;
+      dependencyIndex < DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH;
+      dependencyIndex += 1
+    ) {
+      const nextImport =
+        dependencyIndex === DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH - 1
+          ? ""
+          : `import "./dependency-${dependencyIndex + 1}";`;
+      writeFixtureFile(
+        `src/dependency-${dependencyIndex}.ts`,
+        `${nextImport}\nexport const marker = ${dependencyIndex};\n`,
+      );
+    }
+    writeFixtureFile("src/shared.ts", `import "./dependency-1";\n`);
+    writeFixtureFile("src/long-2.ts", `import "./shared";\n`);
+    writeFixtureFile("src/long-1.ts", `import "./long-2";\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import "./long-1"; import "./shared"; const App=()=>{const[,setDate]=useState(dayjs());setDate(previous=>previous.add(1,"month"))};\n`,
+    );
+
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+
+    expect(
+      trace?.contentPaths.has(
+        fixturePath(`src/dependency-${DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH - 1}.ts`),
+      ),
+    ).toBe(true);
+  });
+
+  it("visits a reconvergent Day.js dependency graph without enumerating every path", () => {
+    for (let depth = 1; depth <= DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH; depth += 1) {
+      for (let fileIndex = 0; fileIndex < DAYJS_DEPENDENCY_DAG_WIDTH; fileIndex += 1) {
+        const imports =
+          depth === DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH
+            ? ""
+            : Array.from(
+                { length: DAYJS_DEPENDENCY_DAG_WIDTH },
+                (_unusedValue, dependencyIndex) =>
+                  `import "./layer-${depth + 1}-${dependencyIndex}";`,
+              ).join("\n");
+        writeFixtureFile(
+          `src/layer-${depth}-${fileIndex}.ts`,
+          `${imports}\nexport const marker = ${depth + fileIndex};\n`,
+        );
+      }
+    }
+    const rootImports = Array.from(
+      { length: DAYJS_DEPENDENCY_DAG_WIDTH },
+      (_unusedValue, dependencyIndex) => `import "./layer-1-${dependencyIndex}";`,
+    ).join("\n");
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `${rootImports}\nconst App=()=>{const[,setDate]=useState(dayjs());setDate(previous=>previous.add(1,"month"))};\n`,
+    );
+
+    const startedAt = performance.now();
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    const durationMs = performance.now() - startedAt;
+
+    for (let fileIndex = 0; fileIndex < DAYJS_DEPENDENCY_DAG_WIDTH; fileIndex += 1) {
+      expect(
+        trace?.contentPaths.has(
+          fixturePath(`src/layer-${DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH}-${fileIndex}.ts`),
+        ),
+      ).toBe(true);
+    }
+    expect(durationMs).toBeLessThan(DAYJS_DEPENDENCY_DAG_MAX_ANALYSIS_DURATION_MS);
   });
 
   it("does not traverse type-only Day.js configuration edges", () => {

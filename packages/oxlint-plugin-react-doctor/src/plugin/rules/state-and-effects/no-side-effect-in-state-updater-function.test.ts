@@ -1088,11 +1088,26 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);const helpers={saveValue:value=>{fetch("/track");return value+1}};const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}`,
     );
+    const escapedLocalHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({configure})=>{const[,setValue]=useState(0);const helpers={saveValue:value=>value+1};configure(helpers);const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}`,
+    );
+    const replacedLocalHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({saveValue})=>{const[,setValue]=useState(0);const helpers={saveValue:value=>value+1};helpers.saveValue=saveValue;const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}`,
+    );
+    const spreadLocalHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({overrides})=>{const[,setValue]=useState(0);const helpers={saveValue:value=>value+1,...overrides};const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}`,
+    );
     expect(moduleHelper.diagnostics).toHaveLength(1);
     expect(externalHelper.diagnostics).toHaveLength(1);
     expect(deferredFactoryHelper.diagnostics).toHaveLength(1);
     expect(nestedDeferredHelper.diagnostics).toHaveLength(1);
     expect(localSideEffectingHelper.diagnostics).toHaveLength(1);
+    expect(escapedLocalHelper.diagnostics).toHaveLength(1);
+    expect(replacedLocalHelper.diagnostics).toHaveLength(1);
+    expect(spreadLocalHelper.diagnostics).toHaveLength(1);
   });
 
   it("flags async update calls that start a promise chain without flagging plain update helpers", () => {

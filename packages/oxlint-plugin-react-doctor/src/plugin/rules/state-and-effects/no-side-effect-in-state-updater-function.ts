@@ -1581,6 +1581,7 @@ const memberReceiverIsLocalObjectLiteral = (
   updaterFunction: EsTreeNode,
   executedFunctions: ReadonlySet<EsTreeNode>,
   invocationReferenceNode: EsTreeNodeOfType<"CallExpression">,
+  canUseStateOwner: boolean,
   context: RuleContext,
 ): boolean => {
   const receiver = stripParenExpression(callee.object);
@@ -1589,10 +1590,13 @@ const memberReceiverIsLocalObjectLiteral = (
   const receiverOwner = receiverSymbol
     ? findEnclosingFunction(receiverSymbol.bindingIdentifier)
     : null;
-  const invocationCallee = stripParenExpression(invocationReferenceNode.callee);
-  const statePair = isNodeOfType(invocationCallee, "Identifier")
-    ? resolveReactUseStatePair(invocationCallee, context.scopes)
+  const invocationCallee = canUseStateOwner
+    ? stripParenExpression(invocationReferenceNode.callee)
     : null;
+  const statePair =
+    invocationCallee && isNodeOfType(invocationCallee, "Identifier")
+      ? resolveReactUseStatePair(invocationCallee, context.scopes)
+      : null;
   const stateOwner = statePair
     ? findEnclosingFunction(statePair.setterSymbol.bindingIdentifier)
     : null;
@@ -1816,6 +1820,7 @@ const callHasSideEffectName = (
         updaterFunction,
         executedFunctions,
         invocationReferenceNode,
+        false,
         context,
       ) &&
         !receiverIsUpdaterLocal(callee.object, updaterFunction, executedFunctions, context)));
@@ -1882,6 +1887,7 @@ const callHasSideEffectName = (
       updaterFunction,
       executedFunctions,
       invocationReferenceNode,
+      false,
       context,
     )
   ) {
@@ -2114,6 +2120,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
                   updaterFunction,
                   executedFunctions,
                   node,
+                  true,
                   context,
                 ))
             ) {

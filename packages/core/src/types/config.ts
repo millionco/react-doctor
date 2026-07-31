@@ -296,11 +296,17 @@ export interface ReactDoctorConfig {
    * Entries resolve exactly like `--project` values: workspace package
    * names (or directory basenames) first, then directory paths relative to
    * the scanned root. `"*"` selects every discovered workspace project.
-   * Invalid entries fail the run with the same error as the flag.
+   * Invalid entries fail the run with the same error as the flag — except
+   * under `--staged`, where they warn and fall back to a single scan at the
+   * root, because `--staged` runs in a commit hook and a stale entry there
+   * would block every commit.
    *
    * Precedence: an explicit `--project` flag overrides this list. Only the
    * config at the invocation root is consulted — `projects` inside a
-   * module's own config is ignored (modules can't redirect the scan).
+   * module's own config is ignored (modules can't redirect the scan). Under
+   * `--staged` this list applies only when you invoke react-doctor from the
+   * directory that declared it, so a per-package or positional run does not
+   * resolve an ancestor's entries against the package.
    */
   projects?: string[];
   textComponents?: string[];

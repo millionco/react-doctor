@@ -5,18 +5,16 @@ import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
 import {
   buildJsonReport,
-  DEFAULT_PROJECT_SCAN_CONCURRENCY,
   getBaselineDiffPlan,
   getChangedLineRanges,
   getDiffInfo,
   hasReactRuntime,
   highlighter,
-  mapWithConcurrency,
   mergeReactDoctorConfigs,
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
-import { inspect } from "../../inspect.js";
+import { createInvocationInspect } from "../../inspect.js";
 import { flushSentry } from "../../instrument.js";
 import type {
   DiffInfo,
@@ -70,11 +68,16 @@ import {
 } from "../utils/resolve-project-diff-include-paths.js";
 import { resolveProjectSourceFilePaths } from "../utils/resolve-project-source-file-paths.js";
 import { runExplain } from "../utils/run-explain.js";
+import { runProjectScanBatch } from "../utils/run-project-scan-batch.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
+import {
+  STAGED_PROJECT_FALLBACK_HINT,
+  selectStagedProjects,
+} from "../utils/select-staged-projects.js";
 import { resolveProjectRelativeDirectory } from "../utils/resolve-project-relative-directory.js";
-import { isSpinnerSilent, setSpinnerSilent, spinner } from "../utils/spinner.js";
+import { spinner } from "../utils/spinner.js";
 import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
@@ -90,6 +93,26 @@ interface CompletedScan {
   // The merged (root + module) config the scan ran under — surface
   // filtering of its diagnostics must use this, not the root config.
   config: ReactDoctorConfig | null;
+  frameSourceRoot?: string;
+}
+
+interface StagedProjectScanContext {
+  readonly projectDirectory: string;
+  readonly scanDirectory: string;
+  /** `scanDirectory` relative to the scan root; empty when they're the same. */
+  readonly treeRelativeDirectory: string;
+  readonly projectConfig: ReactDoctorConfig | null;
+  readonly projectConfigSourceDirectory: string | null;
+}
+
+interface StagedProjectScan extends StagedProjectScanContext {
+  /**
+   * The staged paths this project owns, relative to the **scan root** (the
+   * space `git diff --cached --relative` reports and the snapshot mirrors).
+   * Each staged path belongs to exactly one project, so nested packages never
+   * scan the same file twice.
+   */
+  readonly stagedFiles: ReadonlyArray<string>;
 }
 
 const filterCompletedScansByCategories = (
@@ -359,6 +382,7 @@ export const inspectAction = async (
     }
 
     const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
+    const inspectProject = createInvocationInspect(scanOptions.concurrency);
     // One `--max-duration` budget per invocation, shared by every project of a
     // workspace scan: fix the absolute deadline once here and hand it to each
     // project's `inspect()` (rather than restarting the budget per project).
@@ -370,8 +394,31 @@ export const inspectAction = async (
     const skipPrompts = shouldSkipPrompts({ yes: flags.yes, json: flags.json });
 
     if (flags.staged) {
-      const stagedFiles = await getStagedSourceFiles(resolvedDirectory);
-      if (stagedFiles.length === 0) {
+      // `--staged` scans the index. `--project`, or `doctor.config`'s
+      // `projects`, names the packages that own the staged paths, so each one
+      // materializes its own config and keeps its React identity. With neither,
+      // one scan at the scan root.
+      const hasConfigProjects = (userConfig?.projects ?? []).some(
+        (projectName) => projectName.trim().length > 0,
+      );
+      // `projects` entries resolve against the scan root, not the directory that
+      // declared them, so they only apply when react-doctor was invoked from the
+      // config's own directory. Without this a per-package or positional run
+      // would resolve an ancestor config's entries against the package.
+      const configProjectsApply =
+        hasConfigProjects && scanTarget.requestedDirectory === scanTarget.configSourceDirectory;
+      const projectDirectories = await selectStagedProjects({
+        rootDirectory: resolvedDirectory,
+        projectFlag: flags.project,
+        configProjects: configProjectsApply ? userConfig?.projects : undefined,
+      });
+
+      // Nothing to scan is not a failure: `--staged` is wired into commit hooks
+      // and `lint-staged`, so it must not fail a commit that stages no source.
+      const reportNothingToScan = (input: {
+        readonly reason: string;
+        readonly severity?: "dim" | "warn";
+      }): void => {
         if (isJsonMode) {
           writeJsonReport(
             buildJsonReport({
@@ -384,30 +431,146 @@ export const inspectAction = async (
             }),
           );
         } else if (!isScoreOnly) {
-          logger.dim("No staged source files found.");
+          if (input.severity === "warn") {
+            logger.warn(input.reason);
+            logger.break();
+          } else {
+            logger.dim(input.reason);
+          }
         }
+      };
+
+      const rootStagedFiles = await getStagedSourceFiles(resolvedDirectory);
+      if (rootStagedFiles.length === 0) {
+        reportNothingToScan({ reason: "No staged source files found." });
         return;
       }
 
+      const buildProjectScanContext = async (
+        projectDirectory: string,
+      ): Promise<StagedProjectScanContext | null> => {
+        const projectScanTarget =
+          projectDirectory === resolvedDirectory
+            ? scanTarget
+            : await resolveScanTarget(projectDirectory, { allowAmbiguous: true });
+        const scanDirectory = projectScanTarget.resolvedDirectory;
+        const treeRelativeDirectory = resolveProjectRelativeDirectory(
+          resolvedDirectory,
+          scanDirectory,
+        );
+        // A project outside the scan root owns none of the index paths — the
+        // index is keyed to the root, so there is nothing for it to scan.
+        if (treeRelativeDirectory === null) return null;
+        return {
+          projectDirectory,
+          scanDirectory,
+          treeRelativeDirectory,
+          projectConfig:
+            projectDirectory === resolvedDirectory
+              ? userConfig
+              : mergeReactDoctorConfigs(userConfig, projectScanTarget.userConfig ?? undefined),
+          // `plugins` is override-wins in the merge, so relative entries must
+          // resolve against the config file that supplied them.
+          projectConfigSourceDirectory:
+            projectScanTarget.userConfig?.plugins === undefined
+              ? scanTarget.configSourceDirectory
+              : projectScanTarget.configSourceDirectory,
+        };
+      };
+
+      const projectScanContexts: StagedProjectScanContext[] = [];
+      const seenScanDirectories = new Set<string>();
+      for (const projectDirectory of projectDirectories) {
+        const projectScanContext = await buildProjectScanContext(projectDirectory);
+        if (projectScanContext === null) {
+          // An explicit `--project` naming an outside directory is a mistake
+          // worth failing on; a config entry falls back with the others below.
+          if (flags.project) {
+            throw new CliInputError(
+              `Project "${toRelativePath(projectDirectory, resolvedDirectory)}" is outside ${resolvedDirectory}, so it holds none of the staged files. Run --staged from a directory that contains the project.`,
+            );
+          }
+          continue;
+        }
+        // Two entries can name one directory — as spellings of the same package,
+        // or via a `rootDir` redirect onto a shared target. Scanning it twice
+        // doubles its diagnostics into the summary, the report, and the gate.
+        if (seenScanDirectories.has(projectScanContext.scanDirectory)) continue;
+        seenScanDirectories.add(projectScanContext.scanDirectory);
+        projectScanContexts.push(projectScanContext);
+      }
+
+      // Every configured project resolved outside the scan root, so none of them
+      // can own an index path. Falling through would scan nothing and report
+      // "no staged files in the selected projects" — a clean gate for a reason
+      // that is really a misconfiguration. Warn and scan the root instead, the
+      // same way an unresolvable entry does.
+      if (projectScanContexts.length === 0) {
+        logger.warn(
+          `No configured project is inside ${resolvedDirectory}. ${STAGED_PROJECT_FALLBACK_HINT}`,
+        );
+        logger.break();
+        const rootScanContext = await buildProjectScanContext(resolvedDirectory);
+        if (rootScanContext !== null) projectScanContexts.push(rootScanContext);
+      }
+
+      // Assign each staged path to exactly one project, deepest first, so a
+      // nested package claims its own files before its parent does.
+      // Among the ancestors of one staged path, a longer tree-relative directory
+      // is always the deeper one.
+      const contextsByLongestPathFirst = [...projectScanContexts].sort(
+        (left, right) => right.treeRelativeDirectory.length - left.treeRelativeDirectory.length,
+      );
+      const ownedStagedFiles = new Map<string, string[]>();
+      for (const stagedFile of rootStagedFiles) {
+        const owner = contextsByLongestPathFirst.find(
+          (context) =>
+            context.treeRelativeDirectory.length === 0 ||
+            stagedFile.startsWith(`${context.treeRelativeDirectory}/`),
+        );
+        if (owner === undefined) continue;
+        const ownedFiles = ownedStagedFiles.get(owner.scanDirectory);
+        if (ownedFiles === undefined) ownedStagedFiles.set(owner.scanDirectory, [stagedFile]);
+        else ownedFiles.push(stagedFile);
+      }
+
+      const stagedProjectScans: StagedProjectScan[] = [];
+      for (const projectScanContext of projectScanContexts) {
+        const projectStagedFiles = ownedStagedFiles.get(projectScanContext.scanDirectory);
+        if (projectStagedFiles === undefined) continue;
+        stagedProjectScans.push({ ...projectScanContext, stagedFiles: projectStagedFiles });
+      }
+
+      if (stagedProjectScans.length === 0) {
+        reportNothingToScan({ reason: "No staged source files in the selected projects." });
+        return;
+      }
+
+      // Ownership is exclusive, so this is already duplicate-free. Everything
+      // downstream works from it rather than the whole index: `showStagedContent`
+      // spawns one `git show` per file, so an unowned path would cost a
+      // subprocess to write bytes no scan reads.
+      const selectedStagedFiles = stagedProjectScans.flatMap(
+        (projectScan) => projectScan.stagedFiles,
+      );
+      const stagedFileCount = selectedStagedFiles.length;
+      const unselectedStagedFileCount = rootStagedFiles.length - stagedFileCount;
       if (!isQuiet) {
-        logger.log(`Scanning ${highlighter.info(`${stagedFiles.length}`)} staged files...`);
+        logger.log(`Scanning ${highlighter.info(`${stagedFileCount}`)} staged files...`);
+        // Staged paths outside the selected projects are out of scope, not
+        // missed — a plain scan would skip them too. Say so anyway, so the
+        // count above can't read as the whole staged set.
+        if (unselectedStagedFileCount > 0) {
+          logger.dim(
+            `${unselectedStagedFileCount} more staged file${unselectedStagedFileCount === 1 ? "" : "s"} outside the selected projects.`,
+          );
+        }
         logger.break();
       }
 
-      const tempDirectory = fs.mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
-      // If materialization throws before `snapshot.cleanup` is wired up,
-      // remove the temp dir we just created so it can't leak.
-      const snapshot = await materializeStagedFiles(
-        resolvedDirectory,
-        stagedFiles,
-        tempDirectory,
-      ).catch((error: unknown) => {
-        fs.rmSync(tempDirectory, { recursive: true, force: true });
-        throw error;
-      });
-      // `--staged --scope lines`: only report issues on the staged hunks. The
-      // index diff (`--cached`) is keyed by the same relative paths the staged
-      // snapshot mirrors, so the ranges match the scan's diagnostics. A `null`
+      // `--staged --scope lines`: only report issues on the staged hunks. Ranges
+      // are computed once at the scan root (repo-relative paths), then re-keyed
+      // per project so they match project-relative diagnostic paths. A `null`
       // result (git diff failed) degrades to file-level rather than hiding
       // everything behind an empty filter.
       const stagedWantsLines = resolveScope(flags, userConfig).scope === "lines";
@@ -415,7 +578,7 @@ export const inspectAction = async (
         ? await getChangedLineRanges({
             directory: resolvedDirectory,
             cached: true,
-            files: snapshot.stagedFiles,
+            files: selectedStagedFiles,
           })
         : null;
       if (stagedWantsLines && stagedLineRanges === null && !isQuiet) {
@@ -424,50 +587,196 @@ export const inspectAction = async (
         );
         logger.break();
       }
-      try {
-        const scanResult = await inspect(snapshot.tempDirectory, {
+      // Every run that scans a package rather than the scan root, whether it
+      // selected one or several — a single selected package is the whole feature
+      // working, so gating this on more than one would hide the common case.
+      if (stagedProjectScans.some((projectScan) => projectScan.treeRelativeDirectory.length > 0)) {
+        recordCount(METRIC.stagedPerProject, 1, { projectCount: stagedProjectScans.length });
+      }
+      const tempDirectory = fs.mkdtempSync(path.join(tmpdir(), STAGED_FILES_TEMP_DIR_PREFIX));
+      const configSubdirectories = new Set<string>();
+      for (const projectScan of stagedProjectScans) {
+        configSubdirectories.add(projectScan.treeRelativeDirectory);
+        const projectRelativeDirectory = resolveProjectRelativeDirectory(
+          resolvedDirectory,
+          projectScan.projectDirectory,
+        );
+        if (projectRelativeDirectory !== null) {
+          configSubdirectories.add(projectRelativeDirectory);
+        }
+      }
+      // If materialization throws before `snapshot.cleanup` is wired up, remove
+      // the temp dir we just created so it can't leak.
+      const snapshot = await materializeStagedFiles({
+        directory: resolvedDirectory,
+        stagedFiles: selectedStagedFiles,
+        tempDirectory,
+        configSubdirectories: [...configSubdirectories],
+      }).catch((error: unknown) => {
+        fs.rmSync(tempDirectory, { recursive: true, force: true });
+        throw error;
+      });
+      const materializedStagedFiles = new Set(snapshot.stagedFiles);
+      // A project whose own staged files could not be snapshotted is dropped,
+      // not failed — see the empty case below for why none of the causes may
+      // block a commit.
+      const stagedProjectRuns = stagedProjectScans
+        .map((projectScan) => ({
+          projectScan,
+          includePaths: resolveProjectSourceFilePaths(
+            resolvedDirectory,
+            projectScan.scanDirectory,
+            projectScan.stagedFiles.filter((stagedFile) => materializedStagedFiles.has(stagedFile)),
+          ),
+        }))
+        .filter((projectRun) => projectRun.includePaths.length > 0);
+      // Derived from the projects that survived the drop above, not the ones
+      // selected: a lone survivor renders inline like any single-project scan
+      // instead of being suppressed in favour of an aggregate summary of one.
+      const isMultiProject = stagedProjectRuns.length > 1;
+      // Nothing at all came out of the index. An unreadable index already failed
+      // upstream — the divergence guard runs `git status` before any of this, and
+      // `getStagedSourceFiles` throws when `git diff --cached` reports failure —
+      // so what is left here is an oversized blob (`GIT_SHOW_MAX_BUFFER_BYTES`),
+      // a transient `git show` failure, or a path the snapshot refused. The
+      // committer can act on none of them, and failing would only teach them to
+      // reach for `--no-verify`, which drops every other hook with it. Warn and
+      // let the commit through. Nothing owns the snapshot yet, so tear it down.
+      if (stagedProjectRuns.length === 0) {
+        snapshot.cleanup();
+        reportNothingToScan({
+          reason: `Could not read any of the ${stagedFileCount} staged file${stagedFileCount === 1 ? "" : "s"} out of the index, so nothing was scanned. An unusually large staged file is the usual cause.`,
+          severity: "warn",
+        });
+        return;
+      }
+      if (snapshot.unmaterializedFiles.length > 0 && !isQuiet) {
+        // "not snapshotted", not "unreadable": the set also holds paths the
+        // snapshot refused because they resolved outside the temp tree.
+        const stagedFileLabel = `staged file${stagedFileCount === 1 ? "" : "s"}`;
+        logger.warn(
+          `Skipped ${snapshot.unmaterializedFiles.length} of ${stagedFileCount} ${stagedFileLabel}; they could not be snapshotted from the index.`,
+        );
+        logger.break();
+      }
+
+      const scanStagedProject = async (
+        projectRun: (typeof stagedProjectRuns)[number],
+      ): Promise<CompletedScan> => {
+        const { projectScan, includePaths } = projectRun;
+        const projectTempDirectory = path.join(
+          snapshot.tempDirectory,
+          projectScan.treeRelativeDirectory,
+        );
+        const scanResult = await inspectProject(projectTempDirectory, {
           ...scanOptions,
           deadlineEpochMs: scanDeadlineEpochMs,
-          includePaths: snapshot.stagedFiles,
-          configOverride: userConfig,
+          includePaths: [...includePaths],
+          configOverride: projectScan.projectConfig,
           // Resolve `config.plugins` from the real config directory — the
           // staged temp snapshot has no node_modules or plugin files, so
           // anchoring resolution there silently drops every custom plugin
           // from pre-commit scans.
-          configSourceDirectory: scanTarget.configSourceDirectory ?? undefined,
-          changedLineRanges: stagedLineRanges ?? undefined,
+          configSourceDirectory: projectScan.projectConfigSourceDirectory ?? undefined,
+          changedLineRanges:
+            stagedLineRanges === null
+              ? undefined
+              : resolveProjectChangedLineRanges(
+                  resolvedDirectory,
+                  projectScan.scanDirectory,
+                  stagedLineRanges,
+                ),
+          suppressRendering: isMultiProject,
+          concurrentScan: isMultiProject,
         });
 
         const remappedDiagnostics = scanResult.diagnostics.map((diagnostic) => ({
           ...diagnostic,
           filePath: path.isAbsolute(diagnostic.filePath)
-            ? diagnostic.filePath.replaceAll(snapshot.tempDirectory, () => resolvedDirectory)
+            ? diagnostic.filePath.replaceAll(projectTempDirectory, () => projectScan.scanDirectory)
             : diagnostic.filePath,
         }));
-        const remappedInspectResult: InspectResult = {
-          ...scanResult,
-          diagnostics: remappedDiagnostics,
-          project: { ...scanResult.project, rootDirectory: resolvedDirectory },
+        return {
+          directory: projectScan.scanDirectory,
+          result: {
+            ...scanResult,
+            diagnostics: remappedDiagnostics,
+            project: { ...scanResult.project, rootDirectory: projectScan.scanDirectory },
+          },
+          config: projectScan.projectConfig,
+          // `rootDirectory` is rewritten above so the report and the summary
+          // name real paths, but the scanned bytes are in the snapshot — code
+          // frames must read there or they show worktree lines at index
+          // numbers.
+          frameSourceRoot: projectTempDirectory,
         };
+      };
 
-        finalizeScans({
-          completedScans: [
-            { directory: resolvedDirectory, result: remappedInspectResult, config: userConfig },
-          ],
-          mode: "staged",
-          diff: null,
-          baselineIntended: false,
-          isJsonMode,
-          isScoreOnly,
-          flags,
-          categoryFilters,
-          userConfig,
-          resolvedDirectory,
-          startTime,
-        });
+      const stagedBatch = await runProjectScanBatch({
+        projects: stagedProjectRuns,
+        isQuiet,
+        isSilent: scanOptions.silent === true,
+        scanProject: scanStagedProject,
+      }).catch((error: unknown) => {
+        snapshot.cleanup();
+        throw error;
+      });
+      const completedScans = stagedBatch.completedScans;
+
+      // The snapshot has to outlive rendering: code frames read the scanned
+      // bytes out of it, so tearing it down first would silently degrade every
+      // frame to a bare `file:line`.
+      try {
+        if (!isQuiet && isMultiProject) {
+          const showShareLink =
+            !isShareOptedOut(completedScans, scanOptions.noScore) && !scanOptions.isCi;
+          await Effect.runPromise(
+            printMultiProjectSummary({
+              completedScans,
+              categoryFilters,
+              verbose: Boolean(flags.verbose),
+              outputDirectory: flags.outputDir,
+              isOffline: !showShareLink,
+              projectName: path.basename(resolvedDirectory),
+              totalElapsedMilliseconds: stagedBatch.elapsedMilliseconds,
+            }),
+          );
+        }
+
+        // `inspect()` dumps for a single scan, and the multi-project summary for
+        // a non-quiet monorepo scan. A quiet monorepo scan (`--json` /
+        // `--score`) has neither: rendering is suppressed and the summary is
+        // gated off, so without this `--output-dir` silently writes nothing.
+        if (flags.outputDir && isMultiProject && isQuiet) {
+          await Effect.runPromise(
+            printDiagnosticsDump(
+              filterDiagnosticsByCategories(
+                filterScansForSurface(completedScans, scanOptions.outputSurface ?? "cli"),
+                categoryFilters,
+              ),
+              flags.outputDir,
+              false,
+              "stderr",
+            ),
+          );
+        }
       } finally {
         snapshot.cleanup();
       }
+
+      finalizeScans({
+        completedScans,
+        mode: "staged",
+        diff: null,
+        baselineIntended: false,
+        isJsonMode,
+        isScoreOnly,
+        flags,
+        categoryFilters,
+        userConfig,
+        resolvedDirectory,
+        startTime,
+      });
       return;
     }
 
@@ -611,7 +920,6 @@ export const inspectAction = async (
       logger.break();
     }
 
-    const completedScans: CompletedScan[] = [];
     const isMultiProject = projectDirectories.length > 1;
 
     const scanProject = async (projectDirectory: string): Promise<CompletedScan | null> => {
@@ -698,7 +1006,7 @@ export const inspectAction = async (
       if (!isQuiet && !isMultiProject) {
         logger.dim("  ");
       }
-      const scanResult = await inspect(scanDirectory, {
+      const scanResult = await inspectProject(scanDirectory, {
         ...scanOptions,
         deadlineEpochMs: scanDeadlineEpochMs,
         includePaths,
@@ -730,43 +1038,13 @@ export const inspectAction = async (
       return { directory: scanDirectory, result: scanResult, config: projectConfig };
     };
 
-    // Multi-project scans run through the same bounded pool as
-    // `diagnose({ projects })` — per-project rendering is suppressed in favor
-    // of the aggregate summary, so concurrent scans don't garble output.
-    // Single-project runs keep their inline rendering on the same path.
-    const scanLoopStartTime = performance.now();
-    const projectCount = projectDirectories.length;
-    const batchSpinner =
-      isMultiProject && !isQuiet ? spinner(`Scanning ${projectCount} projects…`).start() : null;
-    // Concurrent pool members skip the per-scan toggle of the module-level
-    // spinner-silent flag (overlapping save/restore pairs would race), so
-    // the pool owner silences spinners once around the whole batch.
-    const ownsBatchSpinnerSilence = isMultiProject && scanOptions.silent === true;
-    const wasSpinnerSilent = isSpinnerSilent();
-    if (ownsBatchSpinnerSilence) setSpinnerSilent(true);
-    let finishedProjectCount = 0;
-    let scanOutcomes: ReadonlyArray<CompletedScan | null>;
-    try {
-      scanOutcomes = await mapWithConcurrency(
-        projectDirectories,
-        isMultiProject ? DEFAULT_PROJECT_SCAN_CONCURRENCY : 1,
-        async (projectDirectory) => {
-          const scanOutcome = await scanProject(projectDirectory);
-          finishedProjectCount += 1;
-          batchSpinner?.update(
-            `Scanning ${projectCount} projects… (${finishedProjectCount}/${projectCount})`,
-          );
-          return scanOutcome;
-        },
-      );
-    } finally {
-      if (ownsBatchSpinnerSilence) setSpinnerSilent(wasSpinnerSilent);
-      batchSpinner?.stop();
-    }
-    for (const scanOutcome of scanOutcomes) {
-      if (scanOutcome === null) continue;
-      completedScans.push(scanOutcome);
-    }
+    const projectBatch = await runProjectScanBatch({
+      projects: projectDirectories,
+      isQuiet,
+      isSilent: scanOptions.silent === true,
+      scanProject,
+    });
+    const completedScans = projectBatch.completedScans;
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
       const showShareLink =
@@ -779,7 +1057,7 @@ export const inspectAction = async (
           outputDirectory: flags.outputDir,
           isOffline: !showShareLink,
           projectName: path.basename(resolvedDirectory),
-          totalElapsedMilliseconds: performance.now() - scanLoopStartTime,
+          totalElapsedMilliseconds: projectBatch.elapsedMilliseconds,
         }),
       );
     }

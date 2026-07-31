@@ -223,6 +223,10 @@ export const detectStalePackages = (
     if (hasWebFramework) usedPackageNames.add("react-dom");
   }
 
+  if (declaredNames.has("astro") && declaredNames.has("sharp")) {
+    usedPackageNames.add("sharp");
+  }
+
   if (declaredNames.has("react") && declaredNames.has("react-dom")) {
     const packageJsonPath = resolve(config.rootDir, "package.json");
     try {

@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { PAGE_OR_LAYOUT_FILE_PATTERN } from "../../constants/nextjs.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { containsFetchCall } from "../../utils/contains-fetch-call.js";
@@ -23,7 +24,7 @@ export const nextjsNoClientFetchForServerData = defineRule({
     const filename = normalizeFilename(context.filename ?? "");
     const isPageOrLayoutFile =
       PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || isInProjectDirectory(context, "pages");
-    if (!isPageOrLayoutFile) return {};
+    if (!isPageOrLayoutFile) return EMPTY_RULE_VISITORS;
 
     let fileHasUseClient = false;
 

@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
@@ -18,7 +19,8 @@ export const noStaticMotionConfigNever = defineRule({
   recommendation:
     'Use `reducedMotion="user"`, or derive the value from an explicit user preference instead of permanently disabling reduced-motion support.',
   create: (context: RuleContext): RuleVisitors => {
-    if (!ROOT_MOTION_CONFIG_FILE_PATTERN.test(normalizeFilename(context.filename ?? ""))) return {};
+    if (!ROOT_MOTION_CONFIG_FILE_PATTERN.test(normalizeFilename(context.filename ?? "")))
+      return EMPTY_RULE_VISITORS;
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isProvenMotionReactComponent(node.name, "MotionConfig", context.scopes)) return;

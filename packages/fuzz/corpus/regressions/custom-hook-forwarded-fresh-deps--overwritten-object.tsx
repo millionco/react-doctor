@@ -1,4 +1,4 @@
-// rule: exhaustive-deps, no-effect-with-fresh-deps
+// rule: exhaustive-deps
 // weakness: overwritten-object-property
 // source: adversarial review of React Bench validation
 

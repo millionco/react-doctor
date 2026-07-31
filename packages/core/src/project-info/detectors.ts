@@ -228,6 +228,7 @@ const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   "@tanstack/react-start": "tanstack-start",
   "@remix-run/react": "remix",
   gatsby: "gatsby",
+  astro: "astro",
   vite: "vite",
   "react-scripts": "cra",
   expo: "expo",
@@ -236,6 +237,7 @@ const FRAMEWORK_PACKAGES: Record<string, Framework> = {
 
 const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
   nextjs: "Next.js",
+  astro: "Astro",
   "tanstack-start": "TanStack Start",
   vite: "Vite",
   cra: "Create React App",

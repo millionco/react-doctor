@@ -1,4 +1,5 @@
 import type { FileScan } from "./file-scan.js";
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import {
   collectJsxRuntimeImports,
   jsxAttributeIsNonReactDialectMarker,
@@ -25,7 +26,6 @@ export type RuleDefinition = Rule | (Omit<Rule, "create"> & { scan: FileScan });
 // `classList=` / `class:` / `bind:` marker upgrades the dialect mid-
 // file (some files import Solid via re-export and don't have an
 // obvious `solid-js` import).
-const VISITOR_NODE_NAME_PATTERN = /^[A-Z]/;
 type GenericVisitors = Record<string, unknown>;
 
 const wrapCreateForReactJsxOnly = <
@@ -41,12 +41,15 @@ const wrapCreateForReactJsxOnly = <
     // JSX visitor fires. If the original rule already declared one,
     // wrap it; otherwise inject a fresh one.
     const wrappedVisitors: GenericVisitors = {};
-    for (const [key, visitor] of Object.entries(innerVisitors)) {
+    for (const key in innerVisitors) {
+      if (!Object.hasOwn(innerVisitors, key)) continue;
+      const visitor = innerVisitors[key];
       if (typeof visitor !== "function") {
         wrappedVisitors[key] = visitor;
         continue;
       }
-      if (!VISITOR_NODE_NAME_PATTERN.test(key)) {
+      const firstCharacter = key.charAt(0);
+      if (firstCharacter < "A" || firstCharacter > "Z") {
         // Lifecycle hooks etc. — pass through unwrapped.
         wrappedVisitors[key] = visitor;
         continue;
@@ -91,7 +94,7 @@ const wrapCreateForReactJsxOnly = <
 
 export const defineRule = (rule: RuleDefinition): Rule => {
   if (!("create" in rule)) {
-    return { ...rule, create: () => ({}) };
+    return { ...rule, create: () => EMPTY_RULE_VISITORS };
   }
   const tags = rule.tags;
   let wrappedCreate = rule.create;
@@ -102,11 +105,11 @@ export const defineRule = (rule: RuleDefinition): Rule => {
   // (`react-dom/test-utils` imports, legacy lifecycle methods in test fixtures),
   // so a rule carrying both tags keeps firing there.
   const honorsTestNoise = tags?.includes("test-noise") && !tags?.includes("migration-hint");
-  if (honorsTestNoise) {
-    wrappedCreate = skipNonProductionFiles(wrappedCreate);
-  }
   if (tags?.includes("react-jsx-only")) {
     wrappedCreate = wrapCreateForReactJsxOnly(wrappedCreate as never) as never;
+  }
+  if (honorsTestNoise) {
+    wrappedCreate = skipNonProductionFiles(wrappedCreate);
   }
   if (wrappedCreate === rule.create) return rule;
   return {

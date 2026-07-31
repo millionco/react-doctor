@@ -4,8 +4,8 @@ import { isNodeOfType } from "./is-node-of-type.js";
 import { isTypeOnlyImport } from "./is-type-only-import.js";
 
 export interface JsxRuntimeImports {
-  hasNonReactRuntime: boolean;
-  hasReactRuntime: boolean;
+  readonly hasNonReactRuntime: boolean;
+  readonly hasReactRuntime: boolean;
 }
 
 // Non-React JSX dialects that use raw HTML attribute names (`class`,
@@ -36,6 +36,11 @@ const NON_REACT_JSX_DIALECT_PACKAGE_PREFIXES: ReadonlyArray<string> = [
 ];
 
 const REACT_JSX_DIALECT_PACKAGE_PREFIXES: ReadonlyArray<string> = ["react", "react-dom", "preact"];
+const runtimeImportsByProgram = new WeakMap<EsTreeNodeOfType<"Program">, JsxRuntimeImports>();
+const nonReactDialectMarkerByOpeningElement = new WeakMap<
+  EsTreeNodeOfType<"JSXOpeningElement">,
+  boolean
+>();
 
 const startsWithAny = (source: string, prefixes: ReadonlyArray<string>): boolean =>
   prefixes.some((prefix) => source === prefix || source.startsWith(`${prefix}/`));
@@ -43,6 +48,9 @@ const startsWithAny = (source: string, prefixes: ReadonlyArray<string>): boolean
 export const collectJsxRuntimeImports = (
   program: EsTreeNodeOfType<"Program">,
 ): JsxRuntimeImports => {
+  const cachedRuntimeImports = runtimeImportsByProgram.get(program);
+  if (cachedRuntimeImports) return cachedRuntimeImports;
+
   let hasNonReactRuntime = false;
   let hasReactRuntime = false;
   for (const statement of program.body) {
@@ -65,7 +73,9 @@ export const collectJsxRuntimeImports = (
       hasReactRuntime = true;
     }
   }
-  return { hasNonReactRuntime, hasReactRuntime };
+  const runtimeImports = { hasNonReactRuntime, hasReactRuntime };
+  runtimeImportsByProgram.set(program, runtimeImports);
+  return runtimeImports;
 };
 
 export const fileImportsNonReactJsxDialect = (program: EsTreeNodeOfType<"Program">): boolean => {
@@ -80,15 +90,24 @@ export const fileImportsNonReactJsxDialect = (program: EsTreeNodeOfType<"Program
 export const jsxAttributeIsNonReactDialectMarker = (
   openingNode: EsTreeNodeOfType<"JSXOpeningElement">,
 ): boolean => {
+  const cachedMarker = nonReactDialectMarkerByOpeningElement.get(openingNode);
+  if (cachedMarker !== undefined) return cachedMarker;
+  let isNonReactDialectMarker = false;
   for (const attribute of openingNode.attributes) {
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
     if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
     // `classList` (Solid), `class:hover` (svelte-jsx style — rare in
     // React), `bind:value` (svelte) — collectively non-React markers.
-    if (attribute.name.name === "classList") return true;
-    if (attribute.name.name.startsWith("class:") || attribute.name.name.startsWith("bind:")) {
-      return true;
+    const attributeName = attribute.name.name;
+    if (
+      attributeName === "classList" ||
+      attributeName.startsWith("class:") ||
+      attributeName.startsWith("bind:")
+    ) {
+      isNonReactDialectMarker = true;
+      break;
     }
   }
-  return false;
+  nonReactDialectMarkerByOpeningElement.set(openingNode, isNonReactDialectMarker);
+  return isNonReactDialectMarker;
 };

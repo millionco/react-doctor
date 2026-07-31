@@ -327,10 +327,13 @@ export class Git extends Context.Service<
       readonly directory: string;
       readonly ref: string;
     }) => Effect.Effect<GitBaselineDiffPlan | null, ReactDoctorError>;
-    /** Files staged for commit (null-separated, `--diff-filter=ACMR`). */
+    /**
+     * Files staged for commit (null-separated, `--diff-filter=ACMR`);
+     * `null` when git could not read the index, `[]` when nothing is staged.
+     */
     readonly stagedFilePaths: (
       directory: string,
-    ) => Effect.Effect<ReadonlyArray<string>, ReactDoctorError>;
+    ) => Effect.Effect<ReadonlyArray<string> | null, ReactDoctorError>;
     /** `git show :<path>` contents; `null` when the file isn't in the index. */
     readonly showStagedContent: (
       directory: string,
@@ -443,7 +446,13 @@ export class Git extends Context.Service<
               // default; ChildProcess's option flips the polarity.)
               ChildProcess.make(input.command, [...input.args], {
                 cwd: input.directory,
-                env: input.env,
+                env:
+                  input.command === "git"
+                    ? {
+                        ...input.env,
+                        GIT_DIR: undefined,
+                      }
+                    : input.env,
                 extendEnv: true,
               }),
             );
@@ -906,7 +915,7 @@ export class Git extends Context.Service<
             "--relative",
           ]).pipe(
             Effect.map((result) => {
-              if (result.status !== 0) return [] as ReadonlyArray<string>;
+              if (result.status !== 0) return null;
               return splitNullSeparated(result.stdout);
             }),
           ),

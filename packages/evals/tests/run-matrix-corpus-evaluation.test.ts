@@ -237,6 +237,11 @@ describe("runMatrixCorpusEvaluation", () => {
 
     expect(matrixMocks.evaluateMatrixRepositoryBatch).toHaveBeenCalledTimes(4);
     expect(
+      matrixMocks.evaluateMatrixRepositoryBatch.mock.calls[0][0].lanes.map(
+        (lane: MatrixEvaluationLane) => lane.id,
+      ),
+    ).toEqual(["pr-1", "pr-2", "matrix-base"]);
+    expect(
       matrixMocks.evaluateMatrixRepositoryBatch.mock.calls
         .slice(1)
         .map(([input]) => input.lanes.map((lane: MatrixEvaluationLane) => lane.id)),

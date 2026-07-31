@@ -61,10 +61,12 @@ const buildReport = (directory: string) => ({
 });
 
 describe("evaluateMatrixRepositoryBatch", () => {
-  it("fetches one target, runs bounded waves, and isolates one failed lane", async () => {
-    const lanes = [buildLane("matrix-base", 0), buildLane("pr-1", 1), buildLane("pr-2", 2)];
+  it("runs treatments together before the base and isolates one failed treatment", async () => {
+    const lanes = [buildLane("pr-1", 1), buildLane("pr-2", 2), buildLane("matrix-base", 0)];
     let activeScanCount = 0;
     let maximumActiveScanCount = 0;
+    const activeScanLaneIds = new Set<string>();
+    const concurrentScanLaneSets: string[][] = [];
     const scanEnvironments: Array<Record<string, string>> = [];
     const executeCommand = vi.fn(
       async (command: string, _cwd: string | undefined, environment: Record<string, string>) => {
@@ -73,9 +75,16 @@ describe("evaluateMatrixRepositoryBatch", () => {
         }
         if (command === SCAN_COMMAND) {
           scanEnvironments.push(environment);
+          const laneId = environment.REACT_DOCTOR_WORK_DIRECTORY.split("/").at(-1);
+          if (!laneId) throw new Error("scan lane is missing");
+          activeScanLaneIds.add(laneId);
           activeScanCount += 1;
           maximumActiveScanCount = Math.max(maximumActiveScanCount, activeScanCount);
+          if (activeScanLaneIds.size > 1) {
+            concurrentScanLaneSets.push([...activeScanLaneIds].sort());
+          }
           await new Promise((resolve) => setTimeout(resolve, MATRIX_SCAN_DELAY_MS));
+          activeScanLaneIds.delete(laneId);
           activeScanCount -= 1;
           if (environment.REACT_DOCTOR_WORK_DIRECTORY.endsWith("/pr-2")) {
             throw new Error("pr-2 failed");
@@ -133,6 +142,8 @@ describe("evaluateMatrixRepositoryBatch", () => {
     });
 
     expect(maximumActiveScanCount).toBe(2);
+    expect(concurrentScanLaneSets).toContainEqual(["pr-1", "pr-2"]);
+    expect(concurrentScanLaneSets.some((laneIds) => laneIds.includes("matrix-base"))).toBe(false);
     expect(
       executeCommand.mock.calls.filter(
         ([command]) => command === SETUP_MATRIX_TARGET_REPOSITORY_COMMAND,
@@ -143,7 +154,7 @@ describe("evaluateMatrixRepositoryBatch", () => {
       lanes[1].targetWorkDirectory,
       lanes[2].targetWorkDirectory,
     ]);
-    expect([...records.keys()]).toEqual(["matrix-base", "pr-1"]);
+    expect([...records.keys()]).toEqual(["pr-1", "matrix-base"]);
     expect(failures).toEqual([
       {
         laneId: "pr-2",

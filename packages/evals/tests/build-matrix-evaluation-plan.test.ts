@@ -89,11 +89,12 @@ describe("buildMatrixEvaluationPlan", () => {
       hasVerifiedFullBaseline: false,
     });
 
-    expect(plan.lanes[0]).toMatchObject({
+    expect(plan.lanes[2]).toMatchObject({
       id: "matrix-base",
       kind: "base",
       ruleKeys: ["react-doctor/alpha", "react-doctor/shared", "react-doctor/zeta"],
     });
+    expect(plan.lanes.map((lane) => lane.id)).toEqual(["pr-1", "pr-2", "matrix-base"]);
     expect(plan.lanes).toHaveLength(3);
     expect(plan.resources).toEqual({ cpu: 4, memory: 8, disk: 30 });
   });
@@ -111,7 +112,7 @@ describe("buildMatrixEvaluationPlan", () => {
       waveWidth: 2,
       hasVerifiedFullBaseline: false,
     });
-    expect(plan.lanes[0].ruleKeys).toEqual([]);
+    expect(plan.lanes.find((lane) => lane.kind === "base")?.ruleKeys).toEqual([]);
   });
 
   it("omits the base lane only after a verified full cache hit", () => {

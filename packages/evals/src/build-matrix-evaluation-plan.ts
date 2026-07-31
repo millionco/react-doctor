@@ -82,7 +82,7 @@ export const buildMatrixEvaluationPlan = ({
     ruleKeys: baseRuleKeys,
     ...buildLanePaths(MATRIX_BASE_LANE_ID),
   };
-  const lanes = hasVerifiedFullBaseline ? treatmentLanes : [baseLane, ...treatmentLanes];
+  const lanes = hasVerifiedFullBaseline ? treatmentLanes : [...treatmentLanes, baseLane];
   return {
     group: firstTreatment.descriptor.group,
     lanes,

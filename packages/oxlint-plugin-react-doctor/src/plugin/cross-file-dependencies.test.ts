@@ -312,11 +312,7 @@ export const App = ({ items }) => {
 });
 
 describe("forwarded Hook dependency collectors", () => {
-  const affectedRuleIds = [
-    "exhaustive-deps",
-    "no-effect-with-fresh-deps",
-    "rerender-memo-with-default-value",
-  ];
+  const affectedRuleIds = ["exhaustive-deps", "rerender-memo-with-default-value"];
 
   it("records direct and nested imported Hook modules for every affected rule", () => {
     writeFixtureFile(

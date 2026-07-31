@@ -4,13 +4,22 @@
 // verdict: pass
 
 import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
 import { useState } from "react";
 
+dayjs.extend(utc);
+
 export const MonthPicker = () => {
-  const [, setDate] = useState({ selectedMonth: dayjs() });
+  const [, setDate] = useState({
+    selectedMonth: dayjs(),
+    utcMonth: dayjs.utc(),
+    unixMonth: dayjs.unix(0),
+  });
   setDate((previous) => ({
     ...previous,
     selectedMonth: previous.selectedMonth.add(1, "month"),
+    utcMonth: previous.utcMonth.add(1, "month"),
+    unixMonth: previous.unixMonth.set("month", 1),
   }));
   return null;
 };

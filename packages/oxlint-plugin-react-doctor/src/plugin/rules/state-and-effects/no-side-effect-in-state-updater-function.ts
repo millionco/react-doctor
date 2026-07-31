@@ -93,6 +93,7 @@ const INTERNATIONALIZED_DATE_IMMUTABLE_METHOD_NAMES = new Set(["add", "set"]);
 const DAYJS_IMMUTABLE_METHOD_NAMES = new Set(["add", "set"]);
 const DAYJS_MODULE_NAME = "dayjs";
 const DAYJS_BAD_MUTABLE_MODULE_NAME = "dayjs/plugin/badMutable";
+const DAYJS_STATIC_FACTORY_METHOD_NAMES = new Set(["unix", "utc"]);
 
 interface ExecutedFunctionAnalysis {
   arrayParameterSymbolIds: Set<number>;
@@ -479,11 +480,8 @@ const baseReceiverIdentifier = (expression: EsTreeNode): EsTreeNodeOfType<"Ident
 
 const programActivatesDayjsBadMutable = (
   program: EsTreeNode,
-  dayjsExpression: EsTreeNode,
   scopes: RuleContext["scopes"],
 ): boolean => {
-  const dayjsSymbol = resolveConstIdentifierAlias(dayjsExpression, scopes);
-  if (!dayjsSymbol) return false;
   let isBadMutableActivated = false;
   walkAst(program, (node) => {
     if (isBadMutableActivated) return false;
@@ -493,9 +491,12 @@ const programActivatesDayjsBadMutable = (
       return;
     }
     const receiver = stripParenExpression(callee.object);
+    const dayjsReference = resolveImportedApiReference(receiver, scopes);
     if (
-      !isNodeOfType(receiver, "Identifier") ||
-      resolveConstIdentifierAlias(receiver, scopes)?.id !== dayjsSymbol.id
+      !dayjsReference ||
+      dayjsReference.source !== DAYJS_MODULE_NAME ||
+      dayjsReference.importedName !== "default" ||
+      dayjsReference.isNamespace
     ) {
       return;
     }
@@ -522,9 +523,10 @@ const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleCo
   }
   if (
     importedReference.source === DAYJS_MODULE_NAME &&
-    importedReference.importedName === "default"
+    (importedReference.importedName === "default" ||
+      DAYJS_STATIC_FACTORY_METHOD_NAMES.has(importedReference.importedName ?? ""))
   ) {
-    return !programActivatesDayjsBadMutable(currentProgram, expression, context.scopes);
+    return !programActivatesDayjsBadMutable(currentProgram, context.scopes);
   }
   if (!context.filename || importedReference.importedName === null) return false;
   const resolvedExport = resolveCrossFileValueExportWithFilePath(
@@ -538,14 +540,11 @@ const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleCo
   return Boolean(
     wrappedReference &&
     wrappedReference.source === DAYJS_MODULE_NAME &&
-    wrappedReference.importedName === "default" &&
+    (wrappedReference.importedName === "default" ||
+      DAYJS_STATIC_FACTORY_METHOD_NAMES.has(wrappedReference.importedName ?? "")) &&
     !wrappedReference.isNamespace &&
-    !programActivatesDayjsBadMutable(
-      resolvedExport.programNode,
-      resolvedExport.exportedNode,
-      wrapperScopes,
-    ) &&
-    !programActivatesDayjsBadMutable(currentProgram, expression, context.scopes),
+    !programActivatesDayjsBadMutable(resolvedExport.programNode, wrapperScopes) &&
+    !programActivatesDayjsBadMutable(currentProgram, context.scopes),
   );
 };
 
@@ -588,26 +587,55 @@ const receiverRootIsUpdaterParameter = (
 
 const resolveDirectUnreassignedExpression = (
   expression: EsTreeNode,
-  context: RuleContext,
+  scopes: RuleContext["scopes"],
   visitedSymbolIds: Set<number> = new Set(),
 ): EsTreeNode => {
   const candidate = stripParenExpression(expression);
   if (!isNodeOfType(candidate, "Identifier")) return candidate;
-  const symbol = context.scopes.symbolFor(candidate);
+  const symbol = scopes.symbolFor(candidate);
   if (!symbol || visitedSymbolIds.has(symbol.id)) return candidate;
   const initializer = getDirectUnreassignedInitializer(symbol);
   if (!initializer) return candidate;
   visitedSymbolIds.add(symbol.id);
-  return resolveDirectUnreassignedExpression(initializer, context, visitedSymbolIds);
+  return resolveDirectUnreassignedExpression(initializer, scopes, visitedSymbolIds);
 };
 
-const getObjectStateMemberInitialValues = (
+const hasPriorStateSetterCall = (
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+  setterSymbolId: number,
+  context: RuleContext,
+): boolean => {
+  const program = findProgramRoot(setterCall);
+  if (!program) return true;
+  const setterBoundary = findDeferredExecutionBoundary(setterCall);
+  let hasPriorCall = false;
+  walkAst(program, (node) => {
+    if (
+      hasPriorCall ||
+      node.range[0] >= setterCall.range[0] ||
+      !isNodeOfType(node, "CallExpression") ||
+      findDeferredExecutionBoundary(node) !== setterBoundary
+    ) {
+      return;
+    }
+    const callee = stripParenExpression(node.callee);
+    if (!isNodeOfType(callee, "Identifier")) return;
+    hasPriorCall =
+      resolveReactUseStatePair(callee, context.scopes)?.setterSymbol.id === setterSymbolId;
+  });
+  return hasPriorCall;
+};
+
+const getStateMemberInitialValues = (
   expression: EsTreeNodeOfType<"MemberExpression">,
   updaterFunction: EsTreeNode,
   setterCall: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): EsTreeNode[] | null => {
-  const propertyName = getStaticPropertyName(expression);
+  const propertyName = getStaticPropertyKeyName(expression, {
+    allowComputedString: true,
+    stringifyNonStringLiterals: true,
+  });
   const receiver = stripParenExpression(expression.object);
   const updaterParameterSymbol = getUpdaterParameterSymbol(updaterFunction, context);
   if (
@@ -622,6 +650,7 @@ const getObjectStateMemberInitialValues = (
   if (!isNodeOfType(setter, "Identifier")) return null;
   const pair = resolveReactUseStatePair(setter, context.scopes);
   if (!pair || !isNodeOfType(pair.declarator.init, "CallExpression")) return null;
+  if (hasPriorStateSetterCall(setterCall, pair.setterSymbol.id, context)) return null;
   const initialValueArgument = pair.declarator.init.arguments?.[0];
   if (!initialValueArgument || isNodeOfType(initialValueArgument, "SpreadElement")) return null;
   const initialValue = stripParenExpression(initialValueArgument);
@@ -633,10 +662,18 @@ const getObjectStateMemberInitialValues = (
   if (!possibleInitialValues) return null;
   const memberInitialValues: EsTreeNode[] = [];
   for (const possibleInitialValue of possibleInitialValues) {
-    const objectValue = stripParenExpression(possibleInitialValue);
-    if (!isNodeOfType(objectValue, "ObjectExpression")) return null;
+    const stateValue = stripParenExpression(possibleInitialValue);
+    if (isNodeOfType(stateValue, "ArrayExpression")) {
+      const arrayIndex = Number(propertyName);
+      if (!Number.isSafeInteger(arrayIndex) || arrayIndex < 0) return null;
+      const memberInitialValue = stateValue.elements[arrayIndex];
+      if (!memberInitialValue || isNodeOfType(memberInitialValue, "SpreadElement")) return null;
+      memberInitialValues.push(memberInitialValue);
+      continue;
+    }
+    if (!isNodeOfType(stateValue, "ObjectExpression")) return null;
     let memberInitialValue: EsTreeNode | null = null;
-    for (const property of objectValue.properties.toReversed()) {
+    for (const property of stateValue.properties.toReversed()) {
       if (!isNodeOfType(property, "Property") || property.kind !== "init") return null;
       const candidatePropertyName = getStaticPropertyKeyName(property);
       if (candidatePropertyName === null) return null;
@@ -654,14 +691,10 @@ const getObjectStateMemberInitialValues = (
 const expressionIsInternationalizedCalendarDateTime = (
   expression: EsTreeNode,
   updaterFunction: EsTreeNode,
+  setterCall: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
-  let candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Identifier")) {
-    const symbol = context.scopes.symbolFor(candidate);
-    if (!symbol || symbol.kind !== "const" || !symbol.initializer) return false;
-    candidate = stripParenExpression(symbol.initializer);
-  }
+  const candidate = resolveDirectUnreassignedExpression(expression, context.scopes);
   if (
     isNodeOfType(candidate, "NewExpression") &&
     newExpressionIsInternationalizedCalendarDateTime(candidate, context)
@@ -671,11 +704,29 @@ const expressionIsInternationalizedCalendarDateTime = (
   const fallback = isNodeOfType(candidate, "LogicalExpression")
     ? stripParenExpression(candidate.right)
     : null;
-  return Boolean(
+  if (
     isNodeOfType(candidate, "LogicalExpression") &&
     receiverRootIsUpdaterParameter(candidate.left, updaterFunction, context) &&
     isNodeOfType(fallback, "NewExpression") &&
-    newExpressionIsInternationalizedCalendarDateTime(fallback, context),
+    newExpressionIsInternationalizedCalendarDateTime(fallback, context)
+  ) {
+    return true;
+  }
+  if (!isNodeOfType(candidate, "MemberExpression")) return false;
+  const initialValues = getStateMemberInitialValues(
+    candidate,
+    updaterFunction,
+    setterCall,
+    context,
+  );
+  return Boolean(
+    initialValues?.every((initialValue) => {
+      const initialCandidate = resolveDirectUnreassignedExpression(initialValue, context.scopes);
+      return (
+        isNodeOfType(initialCandidate, "NewExpression") &&
+        newExpressionIsInternationalizedCalendarDateTime(initialCandidate, context)
+      );
+    }),
   );
 };
 
@@ -691,19 +742,19 @@ const callUsesProvenImmutableLibraryValueMethod = (
   if (
     methodName &&
     INTERNATIONALIZED_DATE_IMMUTABLE_METHOD_NAMES.has(methodName) &&
-    expressionIsInternationalizedCalendarDateTime(callee.object, updaterFunction, context)
+    expressionIsInternationalizedCalendarDateTime(
+      callee.object,
+      updaterFunction,
+      setterCall,
+      context,
+    )
   ) {
     return true;
   }
   if (!methodName || !DAYJS_IMMUTABLE_METHOD_NAMES.has(methodName)) return false;
-  const receiver = resolveDirectUnreassignedExpression(callee.object, context);
+  const receiver = resolveDirectUnreassignedExpression(callee.object, context.scopes);
   if (!isNodeOfType(receiver, "MemberExpression")) return false;
-  const initialValues = getObjectStateMemberInitialValues(
-    receiver,
-    updaterFunction,
-    setterCall,
-    context,
-  );
+  const initialValues = getStateMemberInitialValues(receiver, updaterFunction, setterCall, context);
   return Boolean(
     initialValues?.every((initialValue) => {
       const initialCall = stripParenExpression(initialValue);

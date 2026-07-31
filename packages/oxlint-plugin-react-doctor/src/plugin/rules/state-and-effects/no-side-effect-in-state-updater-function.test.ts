@@ -263,6 +263,34 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(dayjsValue.diagnostics).toHaveLength(0);
   });
 
+  it("keeps unreassigned aliases of CalendarDateTime values pure", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState([new CalendarDateTime(2025,1,29,14,30)]);setValue(previous=>{let current=previous[0]??new CalendarDateTime(2025,1,1);const alias=current;return[alias.set({hour:1})]})}`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps directly accessed CalendarDateTime state members pure", () => {
+    const arrayMember = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState([new CalendarDateTime(2025,1,29,14,30)]);setValue(previous=>[previous[0].set({hour:1})])}`,
+    );
+    const objectMember = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState({date:new CalendarDateTime(2025,1,29,14,30)});setValue(previous=>({...previous,date:previous.date.set({hour:1})}))}`,
+    );
+    expect([arrayMember.diagnostics.length, objectMember.diagnostics.length]).toEqual([0, 0]);
+  });
+
+  it("keeps official Day.js static factory values pure", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import utc from"dayjs/plugin/utc";import{useState}from"react";dayjs.extend(utc);const C=()=>{const[,setDate]=useState({utc:dayjs.utc(),unix:dayjs.unix(0)});setDate(previous=>({...previous,utc:previous.utc.add(1,"month"),unix:previous.unix.set("month",1)}))}`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("keeps lazy-initialized and aliased Day.js values pure", () => {
     const lazyInitializer = runRule(
       noSideEffectInStateUpdaterFunction,
@@ -301,12 +329,39 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>{let selectedMonth=previous.selectedMonth;selectedMonth=getMutableDate();return{...previous,selectedMonth:selectedMonth.add(1,"month")}})}`,
     );
+    const reassignedCalendarDateTimeAlias = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState([new CalendarDateTime(2025,1,29,14,30)]);setValue(previous=>{let current=previous[0]??new CalendarDateTime(2025,1,1);current=getMutableDate();return[current.set({hour:1})]})}`,
+    );
+    const unprovenCalendarDateTimeMember = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{void CalendarDateTime;const[,setValue]=useState({date:getMutableDate()});setValue(previous=>({...previous,date:previous.date.set({hour:1})}))}`,
+    );
+    const mutableStaticDayjsFactory = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";import utc from"dayjs/plugin/utc";import{useState}from"react";dayjs.extend(utc);dayjs.extend(badMutable);const C=()=>{const[,setDate]=useState({selectedMonth:dayjs.utc()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
+    );
+    const replacedCalendarDateTimeMember = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState({date:new CalendarDateTime(2025,1,29,14,30)});setValue({date:getMutableDate()});setValue(previous=>({...previous,date:previous.date.set({hour:1})}))}`,
+    );
+    const replacedDayjsMember = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate({selectedMonth:getMutableDate()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
+    );
     expect(localCalendarDateTime.diagnostics).toHaveLength(1);
     expect(unrelatedDateFactory.diagnostics).toHaveLength(1);
     expect(mutableDayjs.diagnostics).toHaveLength(1);
     expect(unusedBadMutable.diagnostics).toHaveLength(0);
     expect(mutableLazyAliasedDayjs.diagnostics).toHaveLength(1);
     expect(reassignedAlias.diagnostics).toHaveLength(1);
+    expect(reassignedCalendarDateTimeAlias.diagnostics).toHaveLength(1);
+    expect(unprovenCalendarDateTimeMember.diagnostics).toHaveLength(1);
+    expect(mutableStaticDayjsFactory.diagnostics).toHaveLength(1);
+    expect([
+      replacedCalendarDateTimeMember.diagnostics.length,
+      replacedDayjsMember.diagnostics.length,
+    ]).toEqual([1, 1]);
   });
 
   it("ignores setter-shaped mutators on updater-local built-ins and factory results", () => {

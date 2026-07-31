@@ -57,4 +57,16 @@ describe("no-side-effect-in-state-updater-function cross-file Day.js wrappers", 
     );
     expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(1);
   });
+
+  it("does not suppress a static factory wrapper when the caller activates badMutable", () => {
+    writeFile(
+      "src/utils/dayjs.ts",
+      `import dayjs from"dayjs";import utc from"dayjs/plugin/utc";dayjs.extend(utc);export const utcFactory=dayjs.utc`,
+    );
+    const source = `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";import{utcFactory}from"./utils/dayjs";import{useState}from"react";dayjs.extend(badMutable);const C=()=>{const[,setDate]=useState({selectedMonth:utcFactory()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`;
+    const result = runRule(noSideEffectInStateUpdaterFunction, source, {
+      filename: writeFile("src/component.tsx", source),
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

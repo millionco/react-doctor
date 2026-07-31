@@ -18,7 +18,12 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { getDownstreamRefs, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
+import {
+  getDownstreamRefs,
+  getRef,
+  getUpstreamRefs,
+  resolveToFunction,
+} from "./utils/effect/ast.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isState } from "./utils/effect/react.js";
@@ -134,13 +139,20 @@ const doesCallUseCustomHookStateDependency = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   dependencyReferences: readonly Reference[],
 ): boolean =>
-  getDownstreamRefs(analysis, callExpression).some((callReference) =>
-    [callReference, ...getUpstreamRefs(analysis, callReference)].some((upstreamReference) =>
-      dependencyReferences.some((dependencyReference) =>
-        isSameReference(upstreamReference, dependencyReference),
-      ),
-    ),
-  );
+  (callExpression.arguments ?? []).some((argument) => {
+    const argumentExpression = stripParenExpression(argument as EsTreeNode);
+    if (isFunctionLike(argumentExpression)) return false;
+    return getDownstreamRefs(analysis, argumentExpression).some(
+      (argumentReference) =>
+        !resolveToFunction(argumentReference) &&
+        [argumentReference, ...getUpstreamRefs(analysis, argumentReference)].some(
+          (upstreamReference) =>
+            dependencyReferences.some((dependencyReference) =>
+              isSameReference(upstreamReference, dependencyReference),
+            ),
+        ),
+    );
+  });
 
 const getRefHeldPropCallbackName = (
   callExpression: EsTreeNodeOfType<"CallExpression">,

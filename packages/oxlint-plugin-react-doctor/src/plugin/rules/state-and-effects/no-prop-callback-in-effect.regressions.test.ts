@@ -131,6 +131,39 @@ describe("no-prop-callback-in-effect — must-detect regressions", () => {
 });
 
 describe("no-prop-callback-in-effect — regressions", () => {
+  it("stays silent when custom-hook state is captured by callbacks handed to a prop", () => {
+    const updaterResult = runRule(
+      noPropCallbackInEffect,
+      `function NameCell({ id, onSetNameCellFns }) {
+        const { setValue } = useField();
+        const open = useCallback(() => setValue(""), [setValue]);
+        useEffect(() => {
+          onSetNameCellFns((previous) => ({ ...previous, [id]: { open } }));
+        }, [id, open, onSetNameCellFns]);
+        return null;
+      }`,
+    );
+    const handlerResult = runRule(
+      noPropCallbackInEffect,
+      `function GalleryDropZone({ onFileSelect }) {
+        const dragProps = useDragDrop();
+        const handleFileSelect = useCallback(
+          (file) => dragProps.onDrop(file),
+          [dragProps],
+        );
+        useEffect(() => {
+          onFileSelect?.(handleFileSelect);
+        }, [onFileSelect, handleFileSelect]);
+        return null;
+      }`,
+    );
+
+    expect(updaterResult.parseErrors).toEqual([]);
+    expect(handlerResult.parseErrors).toEqual([]);
+    expect(updaterResult.diagnostics).toEqual([]);
+    expect(handlerResult.diagnostics).toEqual([]);
+  });
+
   it("treats inline and named prop-derived dependencies identically", () => {
     const inlineResult = runRule(
       noPropCallbackInEffect,

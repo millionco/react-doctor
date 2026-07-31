@@ -473,8 +473,8 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
     if (baseWriter && !isBaselineAvailable) await baseWriter.abort();
     throw artifactFinalizationFailure.reason;
   }
-  const hasBlockedArtifact = finalizationResults.some(
-    (result) => result.status === "fulfilled" && result.value.status === "blocked",
+  const blockedTreatmentIds = finalizationResults.flatMap((result) =>
+    result.status === "fulfilled" && result.value.status === "blocked" ? [result.value.laneId] : [],
   );
   const failedLanes = plan.lanes.filter(
     (lane) =>
@@ -486,11 +486,19 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
     !didCompleteEvaluation ||
     failedLanes.length !== 0 ||
     !isBaselineAvailable ||
-    hasBlockedArtifact
+    blockedTreatmentIds.length !== 0
   ) {
-    throw new Error(
-      `Matrix evaluation failed for lanes: ${failedLanes.map((lane) => lane.id).join(", ")}`,
-    );
+    const failureReasons = [
+      failedLanes.length !== 0
+        ? `lanes: ${failedLanes.map((lane) => lane.id).join(", ")}`
+        : undefined,
+      blockedTreatmentIds.length !== 0
+        ? `blocked treatments: ${blockedTreatmentIds.join(", ")} (base artifact unavailable or failed verification)`
+        : undefined,
+      !didCompleteEvaluation ? "incomplete evaluation" : undefined,
+      !isBaselineAvailable ? "baseline unavailable" : undefined,
+    ].filter((reason) => reason !== undefined);
+    throw new Error(`Matrix evaluation failed for ${failureReasons.join("; ")}`);
   }
   if (cleanupError !== undefined) throw cleanupError;
 };

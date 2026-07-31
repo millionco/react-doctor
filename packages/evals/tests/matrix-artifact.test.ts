@@ -3,7 +3,27 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+const fileSystemMocks = vi.hoisted(() => ({ recordRenameFailuresRemaining: 0 }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...original,
+    rename: async (oldPath: fs.PathLike, newPath: fs.PathLike) => {
+      if (
+        fileSystemMocks.recordRenameFailuresRemaining > 0 &&
+        path.basename(String(oldPath)).startsWith(".partial-") &&
+        String(newPath).endsWith(".ndjson")
+      ) {
+        fileSystemMocks.recordRenameFailuresRemaining -= 1;
+        throw new Error("injected record rename failure");
+      }
+      return original.rename(oldPath, newPath);
+    },
+  };
+});
 
 import {
   EVALUATION_CONFIG_CONTRACT,
@@ -79,6 +99,7 @@ const buildTreatment = (
 });
 
 afterEach(() => {
+  fileSystemMocks.recordRenameFailuresRemaining = 0;
   for (const temporaryDirectory of temporaryDirectories.splice(0)) {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }
@@ -213,6 +234,38 @@ describe("createMatrixArtifactWriter", () => {
       .map((line) => JSON.parse(line));
     expect(records).toHaveLength(2);
     expect(records.map((record) => record.repository.name).sort()).toEqual(["one", "two"]);
+  });
+
+  it("removes a failed pending record so the project can be retried", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-spool-retry-"));
+    temporaryDirectories.push(temporaryDirectory);
+    const artifactDirectory = path.join(temporaryDirectory, "pr-1");
+    const writer = await createMatrixArtifactWriter({
+      evaluationId: "evaluation-id",
+      treatment: buildTreatment(temporaryDirectory, artifactDirectory),
+      expectedProjectCount: 1,
+      corpusManifestContents,
+    });
+    const record = {
+      schemaVersion: 1,
+      repository: { org: "a", name: "one", ref: "1".repeat(40), rootDir: "." },
+      error: "retryable",
+    };
+    fileSystemMocks.recordRenameFailuresRemaining = 1;
+
+    await expect(writer.write(record)).rejects.toThrow("injected record rename failure");
+    const pendingRecordsDirectory = path.join(
+      temporaryDirectory,
+      ".partial-pr-1-evaluation-id",
+      "records",
+    );
+    expect(fs.readdirSync(pendingRecordsDirectory)).toEqual([]);
+
+    await expect(writer.write(record)).resolves.toBeUndefined();
+    await writer.finalize();
+    expect(
+      fs.readFileSync(path.join(artifactDirectory, "candidate.ndjson"), "utf8").trim().split("\n"),
+    ).toHaveLength(1);
   });
 
   it("blocks publication when the bound base bytes change before finalization", async () => {

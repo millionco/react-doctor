@@ -499,8 +499,11 @@ export const hashMatrixCorpusProjectSet = (
 ): string => {
   const tuples = repositories
     .map((repository) => [repository.org, repository.name, repository.ref, repository.rootDir])
-    .sort((leftTuple, rightTuple) =>
-      JSON.stringify(leftTuple).localeCompare(JSON.stringify(rightTuple)),
-    );
+    .sort((leftTuple, rightTuple) => {
+      const leftKey = JSON.stringify(leftTuple);
+      const rightKey = JSON.stringify(rightTuple);
+      if (leftKey === rightKey) return 0;
+      return leftKey < rightKey ? -1 : 1;
+    });
   return hashContents(JSON.stringify(tuples));
 };

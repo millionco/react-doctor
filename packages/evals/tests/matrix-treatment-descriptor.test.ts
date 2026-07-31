@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   EVALUATION_CONFIG_CONTRACT,
@@ -422,6 +422,23 @@ describe("loadMatrixTreatments", () => {
     expect(hashMatrixCorpusProjectSet([first, second])).toBe(
       hashMatrixCorpusProjectSet([second, first]),
     );
+  });
+
+  it("hashes project tuples without consulting the process locale", () => {
+    const first = { org: "ä", name: "one", ref: "1".repeat(40), rootDir: "." };
+    const second = { org: "z", name: "two", ref: "2".repeat(40), rootDir: "app" };
+    const localeCompare = vi.spyOn(String.prototype, "localeCompare").mockImplementation(() => {
+      throw new Error("locale-sensitive comparison used");
+    });
+
+    try {
+      expect(hashMatrixCorpusProjectSet([first, second])).toBe(
+        hashMatrixCorpusProjectSet([second, first]),
+      );
+      expect(localeCompare).not.toHaveBeenCalled();
+    } finally {
+      localeCompare.mockRestore();
+    }
   });
 
   it("rejects the reserved base lane id", async () => {

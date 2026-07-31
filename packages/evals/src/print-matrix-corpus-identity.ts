@@ -2,17 +2,15 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
-import { loadCorpusRepositories } from "./load-corpus-repositories.js";
 import { hashMatrixCorpusProjectSet } from "./matrix-treatment-descriptor.js";
+import { parseMatrixCorpusManifest } from "./utils/parse-matrix-corpus-manifest.js";
 
 const [corpusManifestPath] = process.argv.slice(2);
 if (!corpusManifestPath || !isAbsolute(corpusManifestPath)) {
   throw new Error("Usage: nr matrix-corpus-identity <absolute-corpus-manifest-path>");
 }
-const [contents, repositories] = await Promise.all([
-  readFile(corpusManifestPath),
-  loadCorpusRepositories([corpusManifestPath]),
-]);
+const contents = await readFile(corpusManifestPath);
+const repositories = parseMatrixCorpusManifest(contents);
 process.stdout.write(
   `${JSON.stringify(
     {

@@ -78,11 +78,16 @@ const createRecordSpool = async (recordsDirectory: string): Promise<RecordSpool>
         },
         () => undefined,
       );
-      await writeFile(pendingRecordPath, serializeNdjsonRecord(record), {
-        flag: "wx",
-        mode: EVALUATION_ARTIFACT_FILE_MODE,
-      });
-      await rename(pendingRecordPath, recordPath);
+      try {
+        await writeFile(pendingRecordPath, serializeNdjsonRecord(record), {
+          flag: "wx",
+          mode: EVALUATION_ARTIFACT_FILE_MODE,
+        });
+        await rename(pendingRecordPath, recordPath);
+      } catch (error) {
+        await rm(pendingRecordPath, { force: true });
+        throw error;
+      }
     },
     materialize: async (outputPath) => {
       const outputStream = createWriteStream(outputPath, {

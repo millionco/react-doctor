@@ -14,6 +14,7 @@ import {
 import type { CorpusRepository } from "../src/corpus.js";
 import type { MatrixEvaluationLane } from "../src/build-matrix-evaluation-plan.js";
 import type { LoadedMatrixTreatment } from "../src/matrix-treatment-descriptor.js";
+import type { MatrixBaselineCacheVerification } from "../src/verify-matrix-baseline-cache.js";
 
 const matrixMocks = vi.hoisted(() => ({
   DaytonaNotFoundError: class extends Error {},
@@ -29,7 +30,7 @@ const matrixMocks = vi.hoisted(() => ({
     if (matrixMocks.snapshotDeleted) throw new matrixMocks.DaytonaNotFoundError();
     return { name: "snapshot" };
   }),
-  verifyMatrixBaselineCache: vi.fn(async () => ({
+  verifyMatrixBaselineCache: vi.fn<() => Promise<MatrixBaselineCacheVerification>>(async () => ({
     hit: false,
     invalid: false,
     reason: "missing",
@@ -262,6 +263,104 @@ describe("runMatrixCorpusEvaluation", () => {
     expect(fs.readdirSync(temporaryDirectory).some((entry) => entry.startsWith(".partial-"))).toBe(
       false,
     );
+  });
+
+  it("identifies blocked treatments when no lane failed", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-blocked-treatment-"));
+    temporaryDirectories.push(temporaryDirectory);
+    const repository: CorpusRepository = {
+      org: "example",
+      name: "repository",
+      ref: "f".repeat(40),
+      rootDir: ".",
+    };
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = `${JSON.stringify([repository])}\n`;
+    fs.writeFileSync(corpusManifestPath, corpusContents);
+    const baselineOutputPath = path.join(temporaryDirectory, "baseline.ndjson");
+    const baselineProvenancePath = path.join(temporaryDirectory, "baseline.provenance.json");
+    const baselineContents = "verified baseline\n";
+    const baselineProvenanceContents = '{"schemaVersion":1}\n';
+    fs.writeFileSync(baselineOutputPath, baselineContents);
+    fs.writeFileSync(baselineProvenancePath, baselineProvenanceContents);
+    const group = {
+      baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+      baseReactDoctorCommit: "a".repeat(40),
+      baseFullRuleSetHash: "3".repeat(64),
+      baseArtifactPath: path.join(temporaryDirectory, "base-scoped.ndjson"),
+      baselineOutputPath,
+      baselineProvenancePath,
+      corpusManifestPath,
+      corpusManifestSha256: hashContents(corpusContents),
+      corpusProjectSetSha256: hashMatrixCorpusProjectSet([repository]),
+      evaluatorSourceHash: "6".repeat(64),
+      configContract: EVALUATION_CONFIG_CONTRACT,
+      scanContract: MATRIX_SCAN_CONTRACT,
+      reportContract: MATRIX_REPORT_CONTRACT,
+      projectRootPolicy: MATRIX_PROJECT_ROOT_POLICY,
+    };
+    const treatment = buildTreatment({
+      temporaryDirectory,
+      id: "pr-1",
+      group,
+      mode: "incremental",
+    });
+    matrixMocks.loadMatrixTreatments.mockResolvedValue([treatment]);
+    matrixMocks.verifyMatrixBaselineCache.mockResolvedValueOnce({
+      hit: true,
+      invalid: false,
+      artifact: {
+        sha256: hashContents(baselineContents),
+        byteLength: Buffer.byteLength(baselineContents),
+        provenanceSha256: hashContents(baselineProvenanceContents),
+      },
+    });
+    matrixMocks.evaluateMatrixRepositoryBatch.mockImplementation(
+      async ({ lanes, onLaneRecord }) => {
+        for (const lane of lanes) {
+          await onLaneRecord(lane.id, {
+            schemaVersion: 1,
+            repository,
+            evaluation: {
+              reactDoctorRepository: lane.reactDoctorRepository,
+              reactDoctorCommit: lane.reactDoctorRef,
+              configContract: EVALUATION_CONFIG_CONTRACT,
+              ruleSetHash: "7".repeat(64),
+              ruleKeys: lane.ruleKeys,
+              evaluatorSourceHash: group.evaluatorSourceHash,
+            },
+            report: { complete: true },
+          });
+        }
+        fs.writeFileSync(baselineOutputPath, "changed after verification\n");
+        return [];
+      },
+    );
+
+    await expect(
+      runMatrixCorpusEvaluation({
+        repositoriesSources: [corpusManifestPath],
+        repositoryLimit: 1,
+        concurrency: 1,
+        repositoriesPerSandbox: 1,
+        projectRootsPerRepository: 1,
+        maxDurationMinutes: 20,
+        reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+        reactDoctorRef: "a".repeat(40),
+        ruleKeys: [],
+        matrix: { treatmentDescriptorPaths: [treatment.descriptorPath], waveWidth: 1 },
+      }),
+    ).rejects.toThrow(
+      "Matrix evaluation failed for blocked treatments: pr-1 (base artifact unavailable or failed verification)",
+    );
+    expect(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(treatment.descriptor.artifactDirectory, "provenance.json"),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({ laneId: "pr-1", status: "blocked" });
   });
 
   it("rejects an uppercase corpus ref before creating Daytona resources", async () => {

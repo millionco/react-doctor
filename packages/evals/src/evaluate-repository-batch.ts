@@ -4,9 +4,16 @@ import { DaytonaNotFoundError } from "@daytona/sdk";
 import type { Daytona, Sandbox } from "@daytona/sdk";
 
 import {
+  BASE_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+  BASE_REACT_DOCTOR_WORK_DIRECTORY,
+  BASE_SANDBOX_REPORT_PATH,
+  BASE_TARGET_WORK_DIRECTORY,
   DAYTONA_RUN_NAME,
   EVALUATION_SCHEMA_VERSION,
   REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+  REACT_DOCTOR_WORK_DIRECTORY,
+  PAIRED_SANDBOX_SCAN_TIMEOUT_SECONDS,
+  RESOLVE_PAIRED_TARGET_REPOSITORY_REF_COMMAND,
   RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
   SANDBOX_DELETE_TIMEOUT_SECONDS,
   SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
@@ -14,7 +21,13 @@ import {
   SANDBOX_SCAN_TIMEOUT_SECONDS,
   SANDBOX_SETUP_TIMEOUT_SECONDS,
   SCAN_COMMAND,
+  SETUP_PAIRED_TARGET_REPOSITORY_COMMAND,
   SETUP_TARGET_REPOSITORY_COMMAND,
+  TARGET_WORK_DIRECTORY,
+  TREATMENT_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+  TREATMENT_REACT_DOCTOR_WORK_DIRECTORY,
+  TREATMENT_SANDBOX_REPORT_PATH,
+  TREATMENT_TARGET_WORK_DIRECTORY,
 } from "./constants.js";
 import type {
   CorpusEvaluationRecord,
@@ -38,6 +51,12 @@ export interface EvaluateRepositoryBatchInput {
   evaluationDeadlineMilliseconds: number;
   evaluatorSourceHash: string;
   onRecord: (record: CorpusEvaluationRecord) => Promise<void>;
+  paired?: PairedRepositoryBatchEvaluation;
+}
+
+export interface PairedRepositoryBatchEvaluation {
+  runScansInParallel: boolean;
+  onBaselineRecord: (record: CorpusEvaluationRecord) => Promise<void>;
 }
 
 interface EvaluateRepositoryGroupInput {
@@ -46,6 +65,25 @@ interface EvaluateRepositoryGroupInput {
   evaluationProvenance: EvaluationProvenance;
   evaluationDeadlineMilliseconds: number;
   onRecord: (record: CorpusEvaluationRecord) => Promise<void>;
+  paired?: PairedRepositoryGroupEvaluation;
+}
+
+interface PairedRepositoryGroupEvaluation {
+  baselineEvaluationProvenance: EvaluationProvenance;
+  runScansInParallel: boolean;
+  onBaselineRecord: (record: CorpusEvaluationRecord) => Promise<void>;
+}
+
+interface ScanRepositoryInput {
+  sandbox: Sandbox;
+  repository: CorpusRepository;
+  reactDoctorWorkDirectory: string;
+  reactDoctorRuleKeys: ReadonlyArray<string>;
+  targetWorkDirectory: string;
+  reportPath: string;
+  evaluationDeadlineMilliseconds: number;
+  descriptionPrefix: string;
+  scanTimeoutSeconds: number;
 }
 
 const buildRepositories = (
@@ -70,19 +108,60 @@ const buildFailureRecords = (
   }));
 };
 
+const scanRepository = async ({
+  sandbox,
+  repository,
+  reactDoctorWorkDirectory,
+  reactDoctorRuleKeys,
+  targetWorkDirectory,
+  reportPath,
+  evaluationDeadlineMilliseconds,
+  descriptionPrefix,
+  scanTimeoutSeconds,
+}: ScanRepositoryInput): Promise<unknown> => {
+  const commandResult = await executeSandboxCommand({
+    sandbox,
+    command: SCAN_COMMAND,
+    environment: {
+      REACT_DOCTOR_WORK_DIRECTORY: reactDoctorWorkDirectory,
+      REACT_DOCTOR_RULE_KEYS: JSON.stringify(reactDoctorRuleKeys),
+      TARGET_CHECKOUT_DIRECTORY: targetWorkDirectory,
+      TARGET_ROOT_DIRECTORY: repository.rootDir,
+      SANDBOX_REPORT_PATH: reportPath,
+      SENTRY_DSN: "",
+      SENTRY_TRACES_SAMPLE_RATE: "0",
+    },
+    timeoutSeconds: getEvaluationTimeoutSeconds({
+      deadlineMilliseconds: evaluationDeadlineMilliseconds,
+      maximumTimeoutSeconds: scanTimeoutSeconds,
+    }),
+    description: `${descriptionPrefix} ${repository.org}/${repository.name}:${repository.rootDir}`,
+    acceptNonZeroExitCode: true,
+  });
+  const reportContents = await sandbox.fs.downloadFile(
+    reportPath,
+    getEvaluationTimeoutSeconds({
+      deadlineMilliseconds: evaluationDeadlineMilliseconds,
+      maximumTimeoutSeconds: SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
+    }),
+  );
+  return parseReactDoctorReport(reportContents.toString("utf8"), commandResult.exitCode);
+};
+
 const evaluateRepositoryGroup = async ({
   sandbox,
   repositoryGroup,
   evaluationProvenance,
   evaluationDeadlineMilliseconds,
   onRecord,
+  paired,
 }: EvaluateRepositoryGroupInput): Promise<ReadonlyArray<CorpusEvaluationRecord>> => {
   let repositories = buildRepositories(repositoryGroup);
   try {
     const repositoryUrl = `https://github.com/${repositoryGroup.org}/${repositoryGroup.name}.git`;
     await executeSandboxCommand({
       sandbox,
-      command: SETUP_TARGET_REPOSITORY_COMMAND,
+      command: paired ? SETUP_PAIRED_TARGET_REPOSITORY_COMMAND : SETUP_TARGET_REPOSITORY_COMMAND,
       environment: {
         TARGET_REPOSITORY: repositoryUrl,
         TARGET_REF: repositoryGroup.ref,
@@ -96,7 +175,9 @@ const evaluateRepositoryGroup = async ({
     const resolvedRef = (
       await executeSandboxCommand({
         sandbox,
-        command: RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
+        command: paired
+          ? RESOLVE_PAIRED_TARGET_REPOSITORY_REF_COMMAND
+          : RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
         environment: {},
         timeoutSeconds: getEvaluationTimeoutSeconds({
           deadlineMilliseconds: evaluationDeadlineMilliseconds,
@@ -113,32 +194,72 @@ const evaluateRepositoryGroup = async ({
   const failedRecords: CorpusEvaluationRecord[] = [];
   for (const repository of repositories) {
     try {
-      const commandResult = await executeSandboxCommand({
+      if (paired) {
+        const scanBaseline = () =>
+          scanRepository({
+            sandbox,
+            repository,
+            reactDoctorWorkDirectory: BASE_REACT_DOCTOR_WORK_DIRECTORY,
+            reactDoctorRuleKeys: paired.baselineEvaluationProvenance.ruleKeys,
+            targetWorkDirectory: BASE_TARGET_WORK_DIRECTORY,
+            reportPath: BASE_SANDBOX_REPORT_PATH,
+            evaluationDeadlineMilliseconds,
+            descriptionPrefix: "Scan base",
+            scanTimeoutSeconds: PAIRED_SANDBOX_SCAN_TIMEOUT_SECONDS,
+          });
+        const scanTreatment = () =>
+          scanRepository({
+            sandbox,
+            repository,
+            reactDoctorWorkDirectory: TREATMENT_REACT_DOCTOR_WORK_DIRECTORY,
+            reactDoctorRuleKeys: evaluationProvenance.ruleKeys,
+            targetWorkDirectory: TREATMENT_TARGET_WORK_DIRECTORY,
+            reportPath: TREATMENT_SANDBOX_REPORT_PATH,
+            evaluationDeadlineMilliseconds,
+            descriptionPrefix: "Scan treatment",
+            scanTimeoutSeconds: PAIRED_SANDBOX_SCAN_TIMEOUT_SECONDS,
+          });
+        let baselineReport: unknown;
+        let treatmentReport: unknown;
+        if (paired.runScansInParallel) {
+          const [baselineResult, treatmentResult] = await Promise.allSettled([
+            scanBaseline(),
+            scanTreatment(),
+          ]);
+          if (baselineResult.status === "rejected") throw baselineResult.reason;
+          if (treatmentResult.status === "rejected") throw treatmentResult.reason;
+          baselineReport = baselineResult.value;
+          treatmentReport = treatmentResult.value;
+        } else {
+          baselineReport = await scanBaseline();
+          treatmentReport = await scanTreatment();
+        }
+        await paired.onBaselineRecord({
+          schemaVersion: EVALUATION_SCHEMA_VERSION,
+          repository,
+          evaluation: paired.baselineEvaluationProvenance,
+          report: baselineReport,
+        });
+        await onRecord({
+          schemaVersion: EVALUATION_SCHEMA_VERSION,
+          repository,
+          evaluation: evaluationProvenance,
+          report: treatmentReport,
+        });
+        continue;
+      }
+
+      const report = await scanRepository({
         sandbox,
-        command: SCAN_COMMAND,
-        environment: {
-          TARGET_ROOT_DIRECTORY: repository.rootDir,
-          SENTRY_DSN: "",
-          SENTRY_TRACES_SAMPLE_RATE: "0",
-        },
-        timeoutSeconds: getEvaluationTimeoutSeconds({
-          deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          maximumTimeoutSeconds: SANDBOX_SCAN_TIMEOUT_SECONDS,
-        }),
-        description: `Scan ${repository.org}/${repository.name}:${repository.rootDir}`,
-        acceptNonZeroExitCode: true,
+        repository,
+        reactDoctorWorkDirectory: REACT_DOCTOR_WORK_DIRECTORY,
+        reactDoctorRuleKeys: evaluationProvenance.ruleKeys,
+        targetWorkDirectory: TARGET_WORK_DIRECTORY,
+        reportPath: SANDBOX_REPORT_PATH,
+        evaluationDeadlineMilliseconds,
+        descriptionPrefix: "Scan",
+        scanTimeoutSeconds: SANDBOX_SCAN_TIMEOUT_SECONDS,
       });
-      const reportContents = await sandbox.fs.downloadFile(
-        SANDBOX_REPORT_PATH,
-        getEvaluationTimeoutSeconds({
-          deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          maximumTimeoutSeconds: SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
-        }),
-      );
-      const report = parseReactDoctorReport(
-        reportContents.toString("utf8"),
-        commandResult.exitCode,
-      );
       await onRecord({
         schemaVersion: EVALUATION_SCHEMA_VERSION,
         repository,
@@ -159,6 +280,7 @@ export const evaluateRepositoryBatch = async ({
   evaluationDeadlineMilliseconds,
   evaluatorSourceHash,
   onRecord,
+  paired,
 }: EvaluateRepositoryBatchInput): Promise<ReadonlyArray<CorpusEvaluationRecord>> => {
   const sandboxName = `${DAYTONA_RUN_NAME}-${randomUUID()}`;
   let sandbox: Sandbox | undefined;
@@ -172,20 +294,41 @@ export const evaluateRepositoryBatch = async ({
         buildFailureRecords(buildRepositories(repositoryGroup), error),
       );
     }
+    const activeSandbox = sandbox;
 
     let evaluationProvenance: EvaluationProvenance;
+    let baselineEvaluationProvenance: EvaluationProvenance | undefined;
     try {
-      const provenanceContents = await sandbox.fs.downloadFile(
-        REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
-        getEvaluationTimeoutSeconds({
-          deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          maximumTimeoutSeconds: SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
-        }),
+      const provenanceTimeoutSeconds = getEvaluationTimeoutSeconds({
+        deadlineMilliseconds: evaluationDeadlineMilliseconds,
+        maximumTimeoutSeconds: SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
+      });
+      const provenancePaths = paired
+        ? [
+            BASE_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+            TREATMENT_REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+          ]
+        : [REACT_DOCTOR_EVALUATION_PROVENANCE_PATH];
+      const provenanceContents = await Promise.all(
+        provenancePaths.map((provenancePath) =>
+          activeSandbox.fs.downloadFile(provenancePath, provenanceTimeoutSeconds),
+        ),
       );
+      const treatmentProvenanceContents = provenanceContents.at(-1);
+      if (!treatmentProvenanceContents) {
+        throw new Error("React Doctor evaluation provenance is missing");
+      }
       evaluationProvenance = {
-        ...parseReactDoctorEvaluationProvenance(provenanceContents.toString("utf8")),
+        ...parseReactDoctorEvaluationProvenance(treatmentProvenanceContents.toString("utf8")),
         evaluatorSourceHash,
       };
+      const baselineProvenanceContents = paired ? provenanceContents[0] : undefined;
+      if (baselineProvenanceContents) {
+        baselineEvaluationProvenance = {
+          ...parseReactDoctorEvaluationProvenance(baselineProvenanceContents.toString("utf8")),
+          evaluatorSourceHash,
+        };
+      }
     } catch (error) {
       return repositoryGroups.flatMap((repositoryGroup) =>
         buildFailureRecords(buildRepositories(repositoryGroup), error),
@@ -196,11 +339,19 @@ export const evaluateRepositoryBatch = async ({
     for (const repositoryGroup of repositoryGroups) {
       failedRecords.push(
         ...(await evaluateRepositoryGroup({
-          sandbox,
+          sandbox: activeSandbox,
           repositoryGroup,
           evaluationProvenance,
           evaluationDeadlineMilliseconds,
           onRecord,
+          paired:
+            paired && baselineEvaluationProvenance
+              ? {
+                  baselineEvaluationProvenance,
+                  runScansInParallel: paired.runScansInParallel,
+                  onBaselineRecord: paired.onBaselineRecord,
+                }
+              : undefined,
         })),
       );
     }

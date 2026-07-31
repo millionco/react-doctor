@@ -9,14 +9,33 @@ import {
   EVALUATION_CONFIG_CONTRACT,
   MATERIALIZE_ALL_RULES_CONFIG_COMMAND,
   MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND,
-  REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
-  REACT_DOCTOR_WORK_DIRECTORY,
+  PREPARE_PAIRED_REACT_DOCTOR_COMMANDS,
   SCAN_COMMAND,
 } from "../src/constants.js";
 
 const temporaryDirectories: string[] = [];
 const INTEGRATION_TEST_TIMEOUT_MS = 30_000;
 const normalizeEmbeddedPath = (filePath: string): string => filePath.replaceAll("\\", "/");
+
+interface BuildCommandEnvironmentInput {
+  reactDoctorDirectory: string;
+  targetDirectory: string;
+  targetRootDirectory?: string;
+  ruleKeys?: ReadonlyArray<string>;
+}
+
+const buildCommandEnvironment = ({
+  reactDoctorDirectory,
+  targetDirectory,
+  targetRootDirectory = ".",
+  ruleKeys = [],
+}: BuildCommandEnvironmentInput): NodeJS.ProcessEnv => ({
+  ...process.env,
+  REACT_DOCTOR_WORK_DIRECTORY: normalizeEmbeddedPath(reactDoctorDirectory),
+  REACT_DOCTOR_RULE_KEYS: JSON.stringify(ruleKeys),
+  TARGET_CHECKOUT_DIRECTORY: normalizeEmbeddedPath(targetDirectory),
+  TARGET_ROOT_DIRECTORY: targetRootDirectory,
+});
 
 afterEach(() => {
   for (const temporaryDirectory of temporaryDirectories.splice(0)) {
@@ -25,6 +44,12 @@ afterEach(() => {
 });
 
 describe("MATERIALIZE_ALL_RULES_CONFIG_COMMAND", () => {
+  it("keeps paired snapshot build steps valid as Dockerfile RUN instructions", () => {
+    expect(PREPARE_PAIRED_REACT_DOCTOR_COMMANDS).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("\n")]),
+    );
+  });
+
   it("normalizes Windows paths before embedding them in JavaScript", () => {
     expect(normalizeEmbeddedPath("C:\\Users\\runner\\repo")).toBe("C:/Users/runner/repo");
   });
@@ -65,12 +90,12 @@ export const REACT_DOCTOR_RULES = [
       fs.writeFileSync(path.join(targetRootDirectory, "doctor.config.ts"), "export default {};");
       fs.writeFileSync(path.join(nestedProjectDirectory, "doctor.config.ts"), "export default {};");
 
-      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
-        "/workspace/react-doctor",
-        normalizeEmbeddedPath(reactDoctorDirectory),
-      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
-      execFileSync("sh", ["-c", command], {
-        env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
+      execFileSync("sh", ["-c", MATERIALIZE_ALL_RULES_CONFIG_COMMAND], {
+        env: buildCommandEnvironment({
+          reactDoctorDirectory,
+          targetDirectory,
+          targetRootDirectory: "app",
+        }),
       });
 
       expect(fs.readFileSync(path.join(targetRootDirectory, "doctor.config.ts"), "utf8")).toBe(
@@ -116,16 +141,12 @@ export const REACT_DOCTOR_RULES = [
 `,
       );
 
-      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
-        "/workspace/react-doctor",
-        normalizeEmbeddedPath(reactDoctorDirectory),
-      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
-      execFileSync("sh", ["-c", command], {
-        env: {
-          ...process.env,
-          REACT_DOCTOR_RULE_KEYS: JSON.stringify(["react-doctor/selected-rule"]),
-          TARGET_ROOT_DIRECTORY: ".",
-        },
+      execFileSync("sh", ["-c", MATERIALIZE_ALL_RULES_CONFIG_COMMAND], {
+        env: buildCommandEnvironment({
+          reactDoctorDirectory,
+          targetDirectory,
+          ruleKeys: ["react-doctor/selected-rule"],
+        }),
       });
 
       expect(fs.readFileSync(path.join(targetDirectory, "doctor.config.ts"), "utf8")).toBe(
@@ -176,16 +197,13 @@ export const REACT_DOCTOR_RULES = [
         ["-C", reactDoctorDirectory, "rev-parse", "HEAD"],
         { encoding: "utf8" },
       ).trim();
-      const command = MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND.replaceAll(
-        REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
-        normalizeEmbeddedPath(provenancePath),
-      ).replaceAll(REACT_DOCTOR_WORK_DIRECTORY, normalizeEmbeddedPath(reactDoctorDirectory));
-
-      execFileSync("sh", ["-c", command], {
+      execFileSync("sh", ["-c", MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND], {
         env: {
           ...process.env,
           REACT_DOCTOR_REPOSITORY: "https://github.com/millionco/react-doctor.git",
           REACT_DOCTOR_RULE_KEYS: JSON.stringify(["react-doctor/no-derived-useState"]),
+          REACT_DOCTOR_WORK_DIRECTORY: normalizeEmbeddedPath(reactDoctorDirectory),
+          REACT_DOCTOR_EVALUATION_PROVENANCE_PATH: normalizeEmbeddedPath(provenancePath),
         },
       });
 
@@ -223,16 +241,12 @@ export const REACT_DOCTOR_RULES = [
 `,
       );
 
-      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
-        "/workspace/react-doctor",
-        normalizeEmbeddedPath(reactDoctorDirectory),
-      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
-      execFileSync("sh", ["-c", command], {
-        env: {
-          ...process.env,
-          REACT_DOCTOR_RULE_KEYS: JSON.stringify(["react-doctor/scan-rule"]),
-          TARGET_ROOT_DIRECTORY: ".",
-        },
+      execFileSync("sh", ["-c", MATERIALIZE_ALL_RULES_CONFIG_COMMAND], {
+        env: buildCommandEnvironment({
+          reactDoctorDirectory,
+          targetDirectory,
+          ruleKeys: ["react-doctor/scan-rule"],
+        }),
       });
 
       expect(fs.readFileSync(path.join(targetDirectory, "doctor.config.ts"), "utf8")).toBe(
@@ -268,17 +282,13 @@ export const REACT_DOCTOR_RULES = [
         "export const REACT_COMPILER_RULES = {}; export const REACT_DOCTOR_RULES = [];",
       );
 
-      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
-        "/workspace/react-doctor",
-        normalizeEmbeddedPath(reactDoctorDirectory),
-      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
-      const result = spawnSync("sh", ["-c", command], {
+      const result = spawnSync("sh", ["-c", MATERIALIZE_ALL_RULES_CONFIG_COMMAND], {
         encoding: "utf8",
-        env: {
-          ...process.env,
-          REACT_DOCTOR_RULE_KEYS: JSON.stringify(["react-doctor/missing-rule"]),
-          TARGET_ROOT_DIRECTORY: ".",
-        },
+        env: buildCommandEnvironment({
+          reactDoctorDirectory,
+          targetDirectory,
+          ruleKeys: ["react-doctor/missing-rule"],
+        }),
       });
 
       expect(result.status).not.toBe(0);
@@ -310,12 +320,12 @@ export const REACT_DOCTOR_RULES = [
       fs.writeFileSync(symlinkTargetPath, "sentinel");
       fs.symlinkSync(symlinkTargetPath, path.join(targetRootDirectory, "doctor.config.ts"));
 
-      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
-        "/workspace/react-doctor",
-        normalizeEmbeddedPath(reactDoctorDirectory),
-      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
-      execFileSync("sh", ["-c", command], {
-        env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
+      execFileSync("sh", ["-c", MATERIALIZE_ALL_RULES_CONFIG_COMMAND], {
+        env: buildCommandEnvironment({
+          reactDoctorDirectory,
+          targetDirectory,
+          targetRootDirectory: "app",
+        }),
       });
 
       expect(fs.readFileSync(symlinkTargetPath, "utf8")).toBe("sentinel");
@@ -350,13 +360,13 @@ export const REACT_DOCTOR_RULES = [
       );
       fs.symlinkSync(outsideDirectory, path.join(targetDirectory, "app"));
 
-      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
-        "/workspace/react-doctor",
-        normalizeEmbeddedPath(reactDoctorDirectory),
-      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
-      const result = spawnSync("sh", ["-c", command], {
+      const result = spawnSync("sh", ["-c", MATERIALIZE_ALL_RULES_CONFIG_COMMAND], {
         encoding: "utf8",
-        env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
+        env: buildCommandEnvironment({
+          reactDoctorDirectory,
+          targetDirectory,
+          targetRootDirectory: "app",
+        }),
       });
 
       expect(result.status).not.toBe(0);
@@ -384,13 +394,13 @@ export const REACT_DOCTOR_RULES = [
         "export const REACT_COMPILER_RULES = {}; export const REACT_DOCTOR_RULES = [];",
       );
 
-      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
-        "/workspace/react-doctor",
-        normalizeEmbeddedPath(reactDoctorDirectory),
-      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
-      const result = spawnSync("sh", ["-c", command], {
+      const result = spawnSync("sh", ["-c", MATERIALIZE_ALL_RULES_CONFIG_COMMAND], {
         encoding: "utf8",
-        env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
+        env: buildCommandEnvironment({
+          reactDoctorDirectory,
+          targetDirectory,
+          targetRootDirectory: "app",
+        }),
       });
 
       expect(result.status).not.toBe(0);
@@ -429,12 +439,12 @@ export const REACT_DOCTOR_RULES = [
       fs.writeFileSync(path.join(outsideDirectory, "package.json"), "{}");
       fs.symlinkSync(outsideDirectory, path.join(targetRootDirectory, "linked-package"));
 
-      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
-        "/workspace/react-doctor",
-        normalizeEmbeddedPath(reactDoctorDirectory),
-      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
-      execFileSync("sh", ["-c", command], {
-        env: { ...process.env, TARGET_ROOT_DIRECTORY: "app" },
+      execFileSync("sh", ["-c", MATERIALIZE_ALL_RULES_CONFIG_COMMAND], {
+        env: buildCommandEnvironment({
+          reactDoctorDirectory,
+          targetDirectory,
+          targetRootDirectory: "app",
+        }),
       });
 
       expect(fs.existsSync(path.join(outsideDirectory, "doctor.config.ts"))).toBe(false);
@@ -449,10 +459,20 @@ export const REACT_DOCTOR_RULES = [
       temporaryDirectories.push(temporaryDirectory);
       const sentinelPath = path.join(temporaryDirectory, "scan-ran");
       const command = SCAN_COMMAND.replace(MATERIALIZE_ALL_RULES_CONFIG_COMMAND, "false").replace(
-        /node \/workspace\/react-doctor[\s\S]*$/,
+        /node "\$REACT_DOCTOR_WORK_DIRECTORY[\s\S]*$/,
         `touch "${sentinelPath}"`,
       );
-      const result = spawnSync("sh", ["-c", command], { encoding: "utf8" });
+      const result = spawnSync("sh", ["-c", command], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          REACT_DOCTOR_WORK_DIRECTORY: "/workspace/react-doctor",
+          REACT_DOCTOR_RULE_KEYS: "[]",
+          TARGET_CHECKOUT_DIRECTORY: "/workspace/target",
+          TARGET_ROOT_DIRECTORY: ".",
+          SANDBOX_REPORT_PATH: "/tmp/report.json",
+        },
+      });
 
       expect(result.status).not.toBe(0);
       expect(fs.existsSync(sentinelPath)).toBe(false);
@@ -464,10 +484,16 @@ export const REACT_DOCTOR_RULES = [
     { timeout: INTEGRATION_TEST_TIMEOUT_MS },
     () => {
       const command = SCAN_COMMAND.replace(MATERIALIZE_ALL_RULES_CONFIG_COMMAND, "true").replace(
-        "node /workspace/react-doctor/packages/react-doctor/bin/react-doctor.js",
+        'node "$REACT_DOCTOR_WORK_DIRECTORY/packages/react-doctor/bin/react-doctor.js"',
         "true",
       );
-      const environment = { ...process.env };
+      const environment = {
+        ...process.env,
+        REACT_DOCTOR_WORK_DIRECTORY: "/workspace/react-doctor",
+        REACT_DOCTOR_RULE_KEYS: "[]",
+        TARGET_CHECKOUT_DIRECTORY: "/workspace/target",
+        SANDBOX_REPORT_PATH: "/tmp/report.json",
+      };
       Reflect.deleteProperty(environment, "TARGET_ROOT_DIRECTORY");
 
       const result = spawnSync("sh", ["-c", command], { encoding: "utf8", env: environment });

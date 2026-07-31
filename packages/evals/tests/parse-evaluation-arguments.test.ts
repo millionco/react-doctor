@@ -65,6 +65,83 @@ describe("parseEvaluationArguments", () => {
     );
   });
 
+  it("accepts an isolated paired baseline with independent rules and execution policy", () => {
+    expect(
+      parseEvaluationArguments([
+        "--react-doctor-repository",
+        "https://github.com/example/treatment.git",
+        "--react-doctor-ref",
+        "c".repeat(40),
+        "--rule",
+        "react-doctor/treatment-rule",
+        "--paired-baseline-output",
+        "/tmp/baseline.ndjson",
+        "--paired-base-react-doctor-repository",
+        "https://github.com/example/base.git",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+        "--paired-base-rule",
+        "react-doctor/base-rule",
+        "--paired-base-rule",
+        "react-doctor/base-rule",
+        "--paired-execution",
+        "sequential",
+      ]),
+    ).toMatchObject({
+      concurrency: 50,
+      reactDoctorRepository: "https://github.com/example/treatment.git",
+      reactDoctorRef: "c".repeat(40),
+      ruleKeys: ["react-doctor/treatment-rule"],
+      paired: {
+        baselineOutputPath: "/tmp/baseline.ndjson",
+        baseReactDoctorRepository: "https://github.com/example/base.git",
+        baseReactDoctorRef: "b".repeat(40),
+        baseRuleKeys: ["react-doctor/base-rule"],
+        execution: "sequential",
+      },
+    });
+  });
+
+  it("requires paired output and base ref together", () => {
+    expect(() =>
+      parseEvaluationArguments(["--paired-base-react-doctor-ref", "b".repeat(40)]),
+    ).toThrow("requires --paired-baseline-output and --paired-base-react-doctor-ref");
+    expect(() =>
+      parseEvaluationArguments(["--paired-baseline-output", "/tmp/baseline.ndjson"]),
+    ).toThrow("requires --paired-baseline-output and --paired-base-react-doctor-ref");
+  });
+
+  it("rejects unsafe paired output, execution, and rule arguments", () => {
+    expect(() =>
+      parseEvaluationArguments([
+        "--paired-baseline-output",
+        "baseline.ndjson",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+      ]),
+    ).toThrow("absolute path");
+    expect(() =>
+      parseEvaluationArguments([
+        "--paired-baseline-output",
+        "/tmp/baseline.ndjson",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+        "--paired-execution",
+        "sometimes",
+      ]),
+    ).toThrow("auto, parallel, or sequential");
+    expect(() =>
+      parseEvaluationArguments([
+        "--paired-baseline-output",
+        "/tmp/baseline.ndjson",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+        "--paired-base-rule",
+        "react-doctor/rule;false",
+      ]),
+    ).toThrow("canonical plugin/rule key");
+  });
+
   it("rejects invalid scale and duration controls", () => {
     expect(() => parseEvaluationArguments(["--repository-limit", "0"])).toThrow("positive integer");
     expect(() => parseEvaluationArguments(["--repositories-per-sandbox", "0"])).toThrow(

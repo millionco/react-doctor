@@ -1,21 +1,31 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { createWriteStream } from "node:fs";
+import { finished } from "node:stream/promises";
 
 import { Daytona, DaytonaNotFoundError, Image } from "@daytona/sdk";
 import pLimit from "p-limit";
 
 import { cleanupEvaluationSandboxes } from "./cleanup-evaluation-sandboxes.js";
 import {
+  BUILD_PAIRED_REACT_DOCTOR_COMMANDS,
   BUILD_REACT_DOCTOR_COMMANDS,
   DAYTONA_RUN_NAME,
   EVALUATION_CLEANUP_RESERVE_MINUTES,
+  EVALUATION_ARTIFACT_FILE_MODE,
   EVALUATION_RETRY_CONCURRENCIES,
   MILLISECONDS_PER_MINUTE,
   MILLISECONDS_PER_SECOND,
+  PAIRED_SANDBOX_CPU_CORES,
+  PAIRED_SANDBOX_DISK_GIB,
+  PAIRED_SANDBOX_MEMORY_GIB,
+  PAIRED_SCAN_MINIMUM_PARALLEL_CPU_CORES,
   PERCENT_MULTIPLIER,
+  PREPARE_PAIRED_REACT_DOCTOR_COMMANDS,
   PREPARE_REACT_DOCTOR_COMMANDS,
   PROGRESS_INTERVAL_PROJECTS,
   REACT_DOCTOR_WORK_DIRECTORY,
+  REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
   SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
   SANDBOX_CPU_CORES,
   SANDBOX_CREATE_CONCURRENCY,
@@ -36,158 +46,234 @@ import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
+import { writeNdjsonRecord } from "./utils/write-ndjson-record.js";
+
+const buildEvaluationSnapshotImage = (options: EvaluationOptions): Image => {
+  if (options.paired) {
+    return Image.base(SANDBOX_IMAGE)
+      .env({
+        BASE_REACT_DOCTOR_REPOSITORY: options.paired.baseReactDoctorRepository,
+        BASE_REACT_DOCTOR_REF: options.paired.baseReactDoctorRef,
+        BASE_REACT_DOCTOR_RULE_KEYS: JSON.stringify(options.paired.baseRuleKeys),
+        TREATMENT_REACT_DOCTOR_REPOSITORY: options.reactDoctorRepository,
+        TREATMENT_REACT_DOCTOR_REF: options.reactDoctorRef,
+        TREATMENT_REACT_DOCTOR_RULE_KEYS: JSON.stringify(options.ruleKeys),
+      })
+      .runCommands(...PREPARE_PAIRED_REACT_DOCTOR_COMMANDS)
+      .runCommands(...BUILD_PAIRED_REACT_DOCTOR_COMMANDS);
+  }
+  return Image.base(SANDBOX_IMAGE)
+    .env({
+      REACT_DOCTOR_REPOSITORY: options.reactDoctorRepository,
+      REACT_DOCTOR_REF: options.reactDoctorRef,
+      REACT_DOCTOR_RULE_KEYS: JSON.stringify(options.ruleKeys),
+      REACT_DOCTOR_WORK_DIRECTORY,
+      REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+    })
+    .runCommands(...PREPARE_REACT_DOCTOR_COMMANDS)
+    .workdir(REACT_DOCTOR_WORK_DIRECTORY)
+    .runCommands(...BUILD_REACT_DOCTOR_COMMANDS);
+};
+
+const shouldRunPairedScansInParallel = (options: EvaluationOptions): boolean => {
+  if (!options.paired || options.paired.execution === "sequential") return false;
+  const hasAdequateCpu = PAIRED_SANDBOX_CPU_CORES >= PAIRED_SCAN_MINIMUM_PARALLEL_CPU_CORES;
+  if (options.paired.execution === "parallel" && !hasAdequateCpu) {
+    throw new Error(
+      `Parallel paired evaluation requires at least ${PAIRED_SCAN_MINIMUM_PARALLEL_CPU_CORES} sandbox CPU cores`,
+    );
+  }
+  return hasAdequateCpu;
+};
 
 export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<void> => {
-  const loadedRepositories = await loadCorpusRepositories(options.repositoriesSources);
-  const repositoryGroups = groupCorpusRepositories(loadedRepositories)
-    .slice(0, options.repositoryLimit)
-    .map((repositoryGroup) => ({
-      ...repositoryGroup,
-      rootDirectories: repositoryGroup.rootDirectories.slice(0, options.projectRootsPerRepository),
-    }));
-  const projectCount = repositoryGroups.reduce(
-    (totalProjectCount, repositoryGroup) =>
-      totalProjectCount + repositoryGroup.rootDirectories.length,
-    0,
-  );
-  const startedAt = globalThis.performance.now();
-  const evaluatorSourceHash = getEvaluatorSourceHash();
-  const evaluationDeadlineMilliseconds =
-    startedAt +
-    (options.maxDurationMinutes - EVALUATION_CLEANUP_RESERVE_MINUTES) * MILLISECONDS_PER_MINUTE;
-  let completedProjects = 0;
-  let failedProjects = 0;
-
-  process.stderr.write(
-    `Evaluating ${projectCount} projects from ${repositoryGroups.length} repositories in batches of ${options.repositoriesPerSandbox} at concurrency ${options.concurrency}\n`,
-  );
-
-  const daytona = new Daytona();
-  const evaluationId = randomUUID();
-  const snapshotName = `${DAYTONA_RUN_NAME}-snapshot-${evaluationId}`;
+  const baselineOutputStream = options.paired
+    ? createWriteStream(options.paired.baselineOutputPath, {
+        flags: "wx",
+        mode: EVALUATION_ARTIFACT_FILE_MODE,
+      })
+    : undefined;
+  if (baselineOutputStream) await once(baselineOutputStream, "open");
   try {
-    process.stderr.write(`Building React Doctor snapshot ${snapshotName}\n`);
-    await daytona.snapshot.create(
-      {
-        name: snapshotName,
-        image: Image.base(SANDBOX_IMAGE)
-          .env({
-            REACT_DOCTOR_REPOSITORY: options.reactDoctorRepository,
-            REACT_DOCTOR_REF: options.reactDoctorRef,
-            REACT_DOCTOR_RULE_KEYS: JSON.stringify(options.ruleKeys),
-          })
-          .runCommands(...PREPARE_REACT_DOCTOR_COMMANDS)
-          .workdir(REACT_DOCTOR_WORK_DIRECTORY)
-          .runCommands(...BUILD_REACT_DOCTOR_COMMANDS),
-        resources: {
-          cpu: SANDBOX_CPU_CORES,
-          memory: SANDBOX_MEMORY_GIB,
-          disk: SANDBOX_DISK_GIB,
-        },
-      },
-      {
-        timeout: getEvaluationTimeoutSeconds({
-          deadlineMilliseconds: evaluationDeadlineMilliseconds,
-          maximumTimeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
-        }),
-      },
+    const loadedRepositories = await loadCorpusRepositories(options.repositoriesSources);
+    const repositoryGroups = groupCorpusRepositories(loadedRepositories)
+      .slice(0, options.repositoryLimit)
+      .map((repositoryGroup) => ({
+        ...repositoryGroup,
+        rootDirectories: repositoryGroup.rootDirectories.slice(
+          0,
+          options.projectRootsPerRepository,
+        ),
+      }));
+    const projectCount = repositoryGroups.reduce(
+      (totalProjectCount, repositoryGroup) =>
+        totalProjectCount + repositoryGroup.rootDirectories.length,
+      0,
+    );
+    const startedAt = globalThis.performance.now();
+    const evaluatorSourceHash = getEvaluatorSourceHash();
+    const evaluationDeadlineMilliseconds =
+      startedAt +
+      (options.maxDurationMinutes - EVALUATION_CLEANUP_RESERVE_MINUTES) * MILLISECONDS_PER_MINUTE;
+    let completedProjects = 0;
+    let failedProjects = 0;
+    const runPairedScansInParallel = shouldRunPairedScansInParallel(options);
+
+    process.stderr.write(
+      `Evaluating ${projectCount} projects from ${repositoryGroups.length} repositories in batches of ${options.repositoriesPerSandbox} at concurrency ${options.concurrency}\n`,
     );
 
-    const recordEvaluation = async (record: CorpusEvaluationRecord): Promise<void> => {
-      if (!process.stdout.write(`${JSON.stringify(record)}\n`)) {
-        await once(process.stdout, "drain");
-      }
-      completedProjects += 1;
-      if (record.error) failedProjects += 1;
-      if (completedProjects % PROGRESS_INTERVAL_PROJECTS === 0) {
-        process.stderr.write(`Processed ${completedProjects}/${projectCount} projects\n`);
-      }
-    };
-
-    const attemptConcurrencies = [
-      options.concurrency,
-      ...EVALUATION_RETRY_CONCURRENCIES.map((concurrency) =>
-        Math.min(options.concurrency, concurrency),
-      ),
-    ];
-    const limitSandboxCreation = pLimit(Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY));
-    const createSandbox = (sandboxName: string, deadlineMilliseconds: number) =>
-      limitSandboxCreation(() =>
-        daytona.create(
-          {
-            name: sandboxName,
-            snapshot: snapshotName,
-            ephemeral: true,
-            autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
-            labels: {
-              evaluation: evaluationId,
-              project: DAYTONA_RUN_NAME,
-              purpose: "eval-repository",
-              run: DAYTONA_RUN_NAME,
-            },
-          },
-          {
-            timeout: getEvaluationTimeoutSeconds({
-              deadlineMilliseconds,
-              maximumTimeoutSeconds: SANDBOX_CREATE_TIMEOUT_SECONDS,
-            }),
-          },
-        ),
-      );
-    await runEvaluationAttempts({
-      repositoryGroups,
-      repositoriesPerSandbox: options.repositoriesPerSandbox,
-      attemptConcurrencies,
-      evaluateRepositoryBatch: (repositoryBatch, attemptIndex) =>
-        evaluateRepositoryBatch({
-          daytona,
-          createSandbox,
-          repositoryGroups: repositoryBatch,
-          evaluatorSourceHash,
-          evaluationDeadlineMilliseconds: getEvaluationAttemptDeadlineMilliseconds({
-            evaluationDeadlineMilliseconds,
-            attemptIndex,
-            totalAttempts: attemptConcurrencies.length,
-          }),
-          onRecord: recordEvaluation,
-        }),
-      beforeRetry: () => cleanupEvaluationSandboxes({ daytona, evaluationId }),
-      onBeforeRetryFailure: (error) => {
-        process.stderr.write(
-          `Failed to clean up Daytona sandboxes before retry: ${toErrorMessage(error)}\n`,
-        );
-      },
-      onRetry: (retry) => {
-        process.stderr.write(
-          `Retrying ${retry.failedProjectCount} projects at concurrency ${retry.concurrency} (attempt ${retry.attemptNumber}/${retry.totalAttempts})\n`,
-        );
-      },
-      onFinalFailure: recordEvaluation,
-    });
-  } finally {
+    const daytona = new Daytona();
+    const evaluationId = randomUUID();
+    const snapshotName = `${DAYTONA_RUN_NAME}-snapshot-${evaluationId}`;
     try {
-      await cleanupEvaluationSandboxes({ daytona, evaluationId });
+      process.stderr.write(`Building React Doctor snapshot ${snapshotName}\n`);
+      const snapshotStartedAt = globalThis.performance.now();
+      await daytona.snapshot.create(
+        {
+          name: snapshotName,
+          image: buildEvaluationSnapshotImage(options),
+          resources: options.paired
+            ? {
+                cpu: PAIRED_SANDBOX_CPU_CORES,
+                memory: PAIRED_SANDBOX_MEMORY_GIB,
+                disk: PAIRED_SANDBOX_DISK_GIB,
+              }
+            : {
+                cpu: SANDBOX_CPU_CORES,
+                memory: SANDBOX_MEMORY_GIB,
+                disk: SANDBOX_DISK_GIB,
+              },
+        },
+        {
+          timeout: getEvaluationTimeoutSeconds({
+            deadlineMilliseconds: evaluationDeadlineMilliseconds,
+            maximumTimeoutSeconds: SANDBOX_SETUP_TIMEOUT_SECONDS,
+          }),
+        },
+      );
+      const snapshotSetupSeconds =
+        (globalThis.performance.now() - snapshotStartedAt) / MILLISECONDS_PER_SECOND;
+      process.stderr.write(
+        `Snapshot ready in ${snapshotSetupSeconds.toFixed(SUMMARY_DECIMAL_PLACES)}s\n`,
+      );
+
+      const recordEvaluation = async (record: CorpusEvaluationRecord): Promise<void> => {
+        await writeNdjsonRecord(process.stdout, record);
+        completedProjects += 1;
+        if (record.error) failedProjects += 1;
+        if (completedProjects % PROGRESS_INTERVAL_PROJECTS === 0) {
+          process.stderr.write(`Processed ${completedProjects}/${projectCount} projects\n`);
+        }
+      };
+      const recordBaselineEvaluation = async (record: CorpusEvaluationRecord): Promise<void> => {
+        if (!baselineOutputStream) {
+          throw new Error("Paired baseline output stream is missing");
+        }
+        await writeNdjsonRecord(baselineOutputStream, record);
+      };
+
+      const attemptConcurrencies = [
+        options.concurrency,
+        ...EVALUATION_RETRY_CONCURRENCIES.map((concurrency) =>
+          Math.min(options.concurrency, concurrency),
+        ),
+      ];
+      const limitSandboxCreation = pLimit(
+        Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY),
+      );
+      const createSandbox = (sandboxName: string, deadlineMilliseconds: number) =>
+        limitSandboxCreation(() =>
+          daytona.create(
+            {
+              name: sandboxName,
+              snapshot: snapshotName,
+              ephemeral: true,
+              autoStopInterval: SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
+              labels: {
+                evaluation: evaluationId,
+                project: DAYTONA_RUN_NAME,
+                purpose: "eval-repository",
+                run: DAYTONA_RUN_NAME,
+              },
+            },
+            {
+              timeout: getEvaluationTimeoutSeconds({
+                deadlineMilliseconds,
+                maximumTimeoutSeconds: SANDBOX_CREATE_TIMEOUT_SECONDS,
+              }),
+            },
+          ),
+        );
+      await runEvaluationAttempts({
+        repositoryGroups,
+        repositoriesPerSandbox: options.repositoriesPerSandbox,
+        attemptConcurrencies,
+        evaluateRepositoryBatch: (repositoryBatch, attemptIndex) =>
+          evaluateRepositoryBatch({
+            daytona,
+            createSandbox,
+            repositoryGroups: repositoryBatch,
+            evaluatorSourceHash,
+            evaluationDeadlineMilliseconds: getEvaluationAttemptDeadlineMilliseconds({
+              evaluationDeadlineMilliseconds,
+              attemptIndex,
+              totalAttempts: attemptConcurrencies.length,
+            }),
+            onRecord: recordEvaluation,
+            paired: options.paired
+              ? {
+                  runScansInParallel: runPairedScansInParallel,
+                  onBaselineRecord: recordBaselineEvaluation,
+                }
+              : undefined,
+          }),
+        beforeRetry: () => cleanupEvaluationSandboxes({ daytona, evaluationId }),
+        onBeforeRetryFailure: (error) => {
+          process.stderr.write(
+            `Failed to clean up Daytona sandboxes before retry: ${toErrorMessage(error)}\n`,
+          );
+        },
+        onRetry: (retry) => {
+          process.stderr.write(
+            `Retrying ${retry.failedProjectCount} projects at concurrency ${retry.concurrency} (attempt ${retry.attemptNumber}/${retry.totalAttempts})\n`,
+          );
+        },
+        onFinalFailure: async (record) => {
+          if (options.paired) await recordBaselineEvaluation(record);
+          await recordEvaluation(record);
+        },
+      });
     } finally {
       try {
-        const snapshot = await daytona.snapshot.get(snapshotName);
-        await daytona.snapshot.delete(snapshot);
-      } catch (error) {
-        if (!(error instanceof DaytonaNotFoundError)) {
-          process.stderr.write(
-            `Failed to delete Daytona snapshot ${snapshotName}: ${toErrorMessage(error)}\n`,
-          );
+        await cleanupEvaluationSandboxes({ daytona, evaluationId });
+      } finally {
+        try {
+          const snapshot = await daytona.snapshot.get(snapshotName);
+          await daytona.snapshot.delete(snapshot);
+        } catch (error) {
+          if (!(error instanceof DaytonaNotFoundError)) {
+            process.stderr.write(
+              `Failed to delete Daytona snapshot ${snapshotName}: ${toErrorMessage(error)}\n`,
+            );
+          }
         }
       }
     }
-  }
 
-  const successfulProjects = completedProjects - failedProjects;
-  const completionRate = (successfulProjects / projectCount) * PERCENT_MULTIPLIER;
-  const elapsedSeconds = (globalThis.performance.now() - startedAt) / MILLISECONDS_PER_SECOND;
-  process.stderr.write(
-    `Completion: ${completionRate.toFixed(SUMMARY_DECIMAL_PLACES)}% (${successfulProjects}/${projectCount}), failures: ${failedProjects}, elapsed: ${elapsedSeconds.toFixed(SUMMARY_DECIMAL_PLACES)}s\n`,
-  );
-  if (failedProjects !== 0) {
-    throw new Error(`Evaluation failed for ${failedProjects} projects`);
+    const successfulProjects = completedProjects - failedProjects;
+    const completionRate = (successfulProjects / projectCount) * PERCENT_MULTIPLIER;
+    const elapsedSeconds = (globalThis.performance.now() - startedAt) / MILLISECONDS_PER_SECOND;
+    process.stderr.write(
+      `Completion: ${completionRate.toFixed(SUMMARY_DECIMAL_PLACES)}% (${successfulProjects}/${projectCount}), failures: ${failedProjects}, elapsed: ${elapsedSeconds.toFixed(SUMMARY_DECIMAL_PLACES)}s\n`,
+    );
+    if (failedProjects !== 0) {
+      throw new Error(`Evaluation failed for ${failedProjects} projects`);
+    }
+  } finally {
+    if (baselineOutputStream) {
+      baselineOutputStream.end();
+      await finished(baselineOutputStream);
+    }
   }
 };

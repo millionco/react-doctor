@@ -65,6 +65,44 @@ Verification streams the raw NDJSON bytes, requires full-baseline `ruleKeys: []`
 checks every record's producer, and independently requires the exact pinned
 corpus project set to match its manifest. Any mismatch is a cache miss.
 
+On a cache hit, keep the base out of Daytona: run the normal candidate-only
+command above against the validated cached baseline and do not pass any
+`--paired-*` option.
+
+On a cache miss, or for a required full-versus-scoped shadow run, evaluate both
+detectors in the same Daytona sandbox:
+
+```sh
+nr --silent eval \
+  --repositories <corpus-manifest-or-validated-input> \
+  --paired-baseline-output <absolute-new-baseline-path> \
+  --paired-base-react-doctor-repository <base-repository-url> \
+  --paired-base-react-doctor-ref <base-or-full-shadow-commit> \
+  --react-doctor-repository <treatment-repository-url> \
+  --react-doctor-ref <treatment-commit> \
+  --rule <treatment-plugin/rule> \
+  > <absolute-run-directory>/candidate.ndjson
+```
+
+The baseline output path is created exclusively and never overwrites an
+existing artifact. Paired sandboxes fetch each target repository once into one
+object store, then scan isolated base/treatment target worktrees with isolated
+detector installs, config files, and report paths. A project pair is emitted
+only after both sides succeed, so retries cannot leave a partial successful
+pair in either output.
+
+Paired sandboxes request four CPU cores, eight GiB of memory, and twenty GiB of
+disk. `--paired-execution auto` is the default and runs the scans in parallel
+only when the sandbox has at least four CPU cores. Use
+`--paired-execution sequential` for the controlled sequential benchmark or
+when parallel execution is undesirable. Paired evaluations default to 50
+sandboxes, below the observed capacity ceiling for four-core sandboxes; pass
+`--concurrency` only when the Daytona allocation supports a different envelope.
+Both modes share the same hard attempt deadline and exact evaluation-label
+cleanup. Each paired scan has a five-minute command cap so a small number of
+stuck sandboxes cannot consume the whole attempt budget; the ordinary evaluator
+retains its existing timeout.
+
 For rule-only pull requests, build the conservative impact manifest before the
 candidate run:
 

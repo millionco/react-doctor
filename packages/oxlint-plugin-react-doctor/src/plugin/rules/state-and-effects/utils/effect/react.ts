@@ -779,13 +779,7 @@ const isCleanupReturnArgument = (analysis: ProgramAnalysis, node: EsTreeNode): b
   return false;
 };
 
-const hasCleanupReturn = (
-  analysis: ProgramAnalysis,
-  node: EsTreeNode,
-  visited: WeakSet<object> = new WeakSet(),
-): boolean => {
-  if (visited.has(node)) return false;
-  visited.add(node);
+const hasCleanupReturn = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
   if (isNodeOfType(node, "ReturnStatement") && node.argument != null) {
     return isCleanupReturnArgument(analysis, node.argument as EsTreeNode);
   }
@@ -797,9 +791,9 @@ const hasCleanupReturn = (
     if (Array.isArray(value)) {
       for (let itemIndex = 0; itemIndex < value.length; itemIndex += 1) {
         const item = value[itemIndex];
-        if (isAstNode(item) && hasCleanupReturn(analysis, item, visited)) return true;
+        if (isAstNode(item) && hasCleanupReturn(analysis, item)) return true;
       }
-    } else if (isAstNode(value) && hasCleanupReturn(analysis, value, visited)) {
+    } else if (isAstNode(value) && hasCleanupReturn(analysis, value)) {
       return true;
     }
   }

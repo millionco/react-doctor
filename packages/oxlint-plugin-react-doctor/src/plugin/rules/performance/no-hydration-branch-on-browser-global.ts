@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -1908,8 +1909,8 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
   recommendation:
     "Render the same initial output on the server and client, then switch after mount or use useSyncExternalStore with a stable server snapshot.",
   create: (context: RuleContext): RuleVisitors => {
-    if (isTestlikeFilename(context.filename)) return {};
-    if (classifyReactNativeFileTarget(context) === "react-native") return {};
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    if (classifyReactNativeFileTarget(context) === "react-native") return EMPTY_RULE_VISITORS;
     let fileHasUseClientDirective = false;
     let fileHasExplicitReactRuntimeReference = false;
     let fileIsEmailTemplate = false;

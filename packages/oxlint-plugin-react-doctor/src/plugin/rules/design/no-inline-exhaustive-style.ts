@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { INLINE_STYLE_PROPERTY_THRESHOLD } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -66,7 +67,7 @@ export const noInlineExhaustiveStyle = defineRule({
   recommendation:
     "Move the styles to a CSS class, CSS module, Tailwind utilities, or a styled component. Big inline objects are hard to read and rebuild on every update.",
   create: (context: RuleContext): RuleVisitors => {
-    if (isGeneratedImageRenderContext(context)) return {};
+    if (isGeneratedImageRenderContext(context)) return EMPTY_RULE_VISITORS;
 
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {

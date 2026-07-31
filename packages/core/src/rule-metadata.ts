@@ -1,4 +1,4 @@
-import reactDoctorPlugin from "oxlint-plugin-react-doctor";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
 
 /**
  * Static, presentation-oriented metadata for a single rule, resolved
@@ -26,7 +26,7 @@ const lookupOwnRule = (
       defaultEnabled?: boolean;
     }
   | undefined =>
-  Object.hasOwn(reactDoctorPlugin.rules, rule) ? reactDoctorPlugin.rules[rule] : undefined;
+  Object.hasOwn(REACT_DOCTOR_RULE_REGISTRY, rule) ? REACT_DOCTOR_RULE_REGISTRY[rule] : undefined;
 
 /**
  * Returns presentation metadata for `<plugin>/<rule>`, or `null` when the

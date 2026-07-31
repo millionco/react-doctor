@@ -46,6 +46,10 @@ export default defineConfig({
         replacement: path.join(packageRoot, "src/schemas.ts"),
       },
       {
+        find: /^oxlint-plugin-react-doctor\/core$/,
+        replacement: path.join(packageRoot, "../oxlint-plugin-react-doctor/src/core.ts"),
+      },
+      {
         find: /^oxlint-plugin-react-doctor$/,
         replacement: path.join(packageRoot, "../oxlint-plugin-react-doctor/src/index.ts"),
       },

@@ -17,7 +17,13 @@ vi.mock("../src/cli/utils/handle-error.js", () => ({
   handleUserError: vi.fn(),
 }));
 
-vi.mock("../src/inspect.js", () => ({ inspect: vi.fn() }));
+vi.mock("../src/inspect.js", () => {
+  const inspect = vi.fn();
+  return {
+    inspect,
+    createInvocationInspect: () => inspect,
+  };
+});
 
 vi.mock("../src/cli/utils/get-staged-files.js", () => ({
   getStagedSourceFiles: vi.fn(),

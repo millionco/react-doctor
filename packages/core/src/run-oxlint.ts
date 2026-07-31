@@ -6,7 +6,7 @@ import {
   CROSS_FILE_RULE_IDS,
   collectCrossFileDependencyProbes,
   resetManifestCaches,
-} from "oxlint-plugin-react-doctor";
+} from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
 import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
@@ -28,6 +28,7 @@ import type {
   SidecarDependencyProbe,
   SidecarLintCache,
 } from "./runners/oxlint/sidecar-lint-cache.js";
+import type { WorkerSlots } from "./utils/create-worker-slots.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
@@ -133,6 +134,7 @@ interface RunOxlintOptions {
    * exhaustion (see `spawnLintBatches`).
    */
   concurrency?: number;
+  spawnSlots?: WorkerSlots;
   /**
    * Aborted when the orchestrator's lint-phase timeout fires; forwarded to
    * `spawnLintBatches` so in-flight oxlint subprocesses are torn down instead
@@ -405,11 +407,11 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
 
   validateRuleRegistration();
 
-  // A new scan starts here: drop the plugin's nearest-package.json memos so
+  // A new scan starts here: drop the plugin's filesystem-derived memos so
   // the in-process sidecar probe collection (`collectSidecarProbesForFiles`)
-  // never replays a previous scan's package-directory walk or manifest
-  // verdict in a long-lived host (LSP server). Within this scan the memos
-  // are sound — the filesystem is treated as frozen while the scan runs.
+  // never replays a previous scan's package-directory or tsconfig walk in a
+  // long-lived host. Within this scan the memos are sound — the filesystem is
+  // treated as frozen while the scan runs.
   resetManifestCaches();
 
   if (includePaths !== undefined && includePaths.length === 0) {
@@ -631,6 +633,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           spawnTimeoutMs,
           outputMaxBytes,
           concurrency: options.concurrency,
+          spawnSlots: options.spawnSlots,
           signal: options.signal,
           deadlineEpochMs: options.deadlineEpochMs,
         });
@@ -1014,6 +1017,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         spawnTimeoutMs,
         outputMaxBytes,
         concurrency: options.concurrency,
+        spawnSlots: options.spawnSlots,
         signal: options.signal,
         deadlineEpochMs: options.deadlineEpochMs,
       });

@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -20,7 +21,7 @@ export const tanstackStartNoUseEffectFetch = defineRule({
   recommendation:
     "Fetch data in the route `loader` instead. The router loads it before rendering and avoids waterfalls.",
   create: (context: RuleContext): RuleVisitors => {
-    if (!isInProjectDirectory(context, "routes")) return {};
+    if (!isInProjectDirectory(context, "routes")) return EMPTY_RULE_VISITORS;
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;

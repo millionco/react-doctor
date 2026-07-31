@@ -13,6 +13,7 @@ import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { getImportedName } from "./get-imported-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isPathInside } from "./is-path-inside.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { readStaticBoolean } from "./read-static-boolean.js";
 import {
@@ -21,6 +22,7 @@ import {
   readNearestPackageManifest,
 } from "./read-nearest-package-manifest.js";
 import type { PackageManifest } from "./read-nearest-package-manifest.js";
+import { resolveDeclaredWorkspaceDirectories } from "./resolve-declared-workspace-directories.js";
 import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
@@ -367,6 +369,36 @@ const getExportedBindings = (
   return exportedBindings;
 };
 
+const isViteDefineConfigCallback = (
+  initializer: Parameters<typeof walkAst>[0] | null,
+  callback: Parameters<typeof walkAst>[0],
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!initializer) return false;
+  const unwrappedInitializer = stripParenExpression(initializer);
+  if (
+    !isNodeOfType(unwrappedInitializer, "CallExpression") ||
+    !isNodeOfType(unwrappedInitializer.callee, "Identifier")
+  ) {
+    return false;
+  }
+  const callbackArgument = unwrappedInitializer.arguments[0];
+  if (!callbackArgument || stripParenExpression(callbackArgument) !== callback) return false;
+  const calleeSymbol = scopes.symbolFor(unwrappedInitializer.callee);
+  if (
+    calleeSymbol?.kind !== "import" ||
+    getImportedName(calleeSymbol.declarationNode) !== "defineConfig"
+  ) {
+    return false;
+  }
+  const importDeclaration = calleeSymbol.declarationNode.parent;
+  return Boolean(
+    importDeclaration &&
+    isNodeOfType(importDeclaration, "ImportDeclaration") &&
+    importDeclaration.source.value === "vite",
+  );
+};
+
 const isExportedConfigProperty = (
   property: Parameters<typeof walkAst>[0],
   exportedBindings: ReadonlySet<SymbolDescriptor>,
@@ -403,7 +435,18 @@ const isExportedConfigProperty = (
     if (isNodeOfType(ancestor, "VariableDeclarator") && isNodeOfType(ancestor.id, "Identifier")) {
       const binding = scopes.symbolFor(ancestor.id);
       if (binding && exportedBindings.has(binding)) {
-        return !didCrossNestedProperty && !containingFunction;
+        if (didCrossNestedProperty || didCrossFunctionBoundary) return false;
+        if (!containingFunction) return true;
+        const callbackReturnValue =
+          containingReturn && isNodeOfType(containingReturn, "ReturnStatement")
+            ? containingReturn.argument
+            : containingFunction.body;
+        return (
+          Boolean(
+            callbackReturnValue &&
+            isNodeOfType(stripParenExpression(callbackReturnValue), "ObjectExpression"),
+          ) && isViteDefineConfigCallback(ancestor.init, containingFunction, scopes)
+        );
       }
     }
     ancestor = ancestor.parent;
@@ -679,7 +722,7 @@ const findWorkspaceRoot = (packageDirectory: string): string | null => {
   }
 };
 
-const collectWorkspacePackages = (workspaceRoot: string): WorkspacePackage[] => {
+const collectWorkspacePackagesRecursively = (workspaceRoot: string): WorkspacePackage[] => {
   const packages: WorkspacePackage[] = [];
   const pendingDirectories = [workspaceRoot];
   while (pendingDirectories.length > 0) {
@@ -708,6 +751,20 @@ const collectWorkspacePackages = (workspaceRoot: string): WorkspacePackage[] => 
     }
   }
   return packages;
+};
+
+const collectWorkspacePackages = (
+  workspaceRoot: string,
+  rootManifest: PackageManifest,
+): WorkspacePackage[] => {
+  const declaredDirectories = resolveDeclaredWorkspaceDirectories(workspaceRoot, rootManifest);
+  if (declaredDirectories === null) return collectWorkspacePackagesRecursively(workspaceRoot);
+
+  return [workspaceRoot, ...declaredDirectories].flatMap((directory) => {
+    const manifest = readPackageManifest(directory);
+    if (!manifest) return [];
+    return [{ directory, manifest, status: getLocalFastRefreshStatus(directory, manifest) }];
+  });
 };
 
 const isPropertyNamed = (node: Parameters<typeof walkAst>[0], name: string): boolean =>
@@ -798,7 +855,7 @@ const buildWorkspaceFastRefreshIndex = (
 ): WorkspaceFastRefreshIndex => {
   const cached = cachedWorkspaceIndexByManifest.get(rootManifest);
   if (cached) return cached;
-  const workspacePackages = collectWorkspacePackages(workspaceRoot);
+  const workspacePackages = collectWorkspacePackages(workspaceRoot, rootManifest);
   const activePackages = workspacePackages.filter(
     (workspacePackage) => workspacePackage.status.isActive,
   );
@@ -826,16 +883,6 @@ const buildWorkspaceFastRefreshIndex = (
   const index = { aliasOwners, sourceEntryOwners };
   cachedWorkspaceIndexByManifest.set(rootManifest, index);
   return index;
-};
-
-const isPathInside = (filePath: string, directory: string): boolean => {
-  const relativePath = path.relative(directory, filePath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith(`..${path.sep}`) &&
-      relativePath !== ".." &&
-      !path.isAbsolute(relativePath))
-  );
 };
 
 const getWorkspaceOwnedStatus = (

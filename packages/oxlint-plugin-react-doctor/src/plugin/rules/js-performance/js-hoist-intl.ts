@@ -1,8 +1,8 @@
-import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -226,32 +226,80 @@ const getFunctionName = (functionNode: EsTreeNode): string | null => {
   return null;
 };
 
-// A named plain utility that MERGES a caller-supplied options parameter
-// into the Intl config (`new Intl.NumberFormat(locale, { …defaults,
-// ...options })`): the arbitrary options object cannot be used as a cache
-// key, so neither hoisting nor a keyed memo applies — the doc's "per-call
-// dynamic input that can't be cached" false-positive condition. A bare
-// locale parameter stays flagged: a `Map` keyed by locale is the
-// documented fix for that shape.
-const isUncacheableOptionsMergeUtility = (node: EsTreeNodeOfType<"NewExpression">): boolean => {
+const doesIdentifierResolveToFunctionParameter = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  enclosingFunction: EsTreeNodeOfType<
+    "ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration"
+  >,
+): boolean => {
+  const visitedBindings = new Set<EsTreeNode>();
+  let currentIdentifier: EsTreeNodeOfType<"Identifier"> | null = identifier;
+  while (currentIdentifier) {
+    const binding = findVariableInitializer(currentIdentifier, currentIdentifier.name, {
+      preferInitializerBeforeReference: true,
+    });
+    if (!binding || visitedBindings.has(binding.bindingIdentifier)) return false;
+    if (
+      (enclosingFunction.params ?? []).some(
+        (parameter) =>
+          binding.bindingIdentifier === parameter ||
+          isAstDescendant(binding.bindingIdentifier, parameter),
+      )
+    ) {
+      return true;
+    }
+    if (!binding.initializer) return false;
+
+    visitedBindings.add(binding.bindingIdentifier);
+    currentIdentifier = getRootIdentifier(binding.initializer);
+  }
+  return false;
+};
+
+const isIdentifierValueReference = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  const parent = identifier.parent;
+  if (!parent) return true;
+  if (
+    isNodeOfType(parent, "MemberExpression") &&
+    parent.property === identifier &&
+    !parent.computed
+  ) {
+    return false;
+  }
+  if (
+    isNodeOfType(parent, "Property") &&
+    parent.key === identifier &&
+    parent.value !== identifier &&
+    !parent.computed
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const hasDynamicIntlUtilityArguments = (node: EsTreeNodeOfType<"NewExpression">): boolean => {
   const enclosingFunction = findEnclosingFunction(node);
   if (!enclosingFunction || !isFunctionLike(enclosingFunction)) return false;
   const functionName = getFunctionName(enclosingFunction);
   if (!functionName || isComponentOrHookName(functionName)) return false;
-  const parameterNames = new Set<string>();
-  for (const parameter of enclosingFunction.params ?? []) {
-    collectPatternNames(parameter, parameterNames);
+
+  let didReferenceParameter = false;
+  for (const argument of node.arguments ?? []) {
+    walkAst(argument, (candidate: EsTreeNode) => {
+      if (didReferenceParameter) return false;
+      if (candidate !== argument && isFunctionLike(candidate)) return false;
+      if (!isNodeOfType(candidate, "Identifier")) return;
+      if (
+        isIdentifierValueReference(candidate) &&
+        doesIdentifierResolveToFunctionParameter(candidate, enclosingFunction)
+      ) {
+        didReferenceParameter = true;
+        return false;
+      }
+    });
+    if (didReferenceParameter) return true;
   }
-  if (parameterNames.size === 0) return false;
-  return (node.arguments ?? []).some((argument) => {
-    if (!isNodeOfType(argument, "ObjectExpression")) return false;
-    return (argument.properties ?? []).some(
-      (property) =>
-        isNodeOfType(property, "SpreadElement") &&
-        isNodeOfType(property.argument, "Identifier") &&
-        parameterNames.has(property.argument.name),
-    );
-  });
+  return false;
 };
 
 const isIntlNewExpression = (node: EsTreeNode, context: RuleContext): boolean => {
@@ -327,7 +375,7 @@ export const jsHoistIntl = defineRule({
       if (!inFunctionBody) return;
       if (isInsideCacheMemo(node)) return;
       if (isDiscardedProbeInsideTry(node)) return;
-      if (isUncacheableOptionsMergeUtility(node)) return;
+      if (hasDynamicIntlUtilityArguments(node)) return;
 
       const className =
         isNodeOfType(node.callee, "MemberExpression") &&

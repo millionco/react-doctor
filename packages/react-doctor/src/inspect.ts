@@ -7,19 +7,22 @@ import * as Effect from "effect/Effect";
 import {
   buildSkippedChecks,
   computeDiagnosticDelta,
+  createOxlintSpawnSlots,
   DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
   filterSourceFiles,
   highlighter,
   OXLINT_NODE_REQUIREMENT,
+  OxlintConcurrency,
   PerFileLintCacheEnabled,
   resolveScanTarget,
+  resolveScanConcurrency,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
   SidecarLintCacheEnabled,
 } from "@react-doctor/core";
 import type * as Layer from "effect/Layer";
-import type { Progress, Reporter } from "@react-doctor/core";
+import type { Progress, Reporter, WorkerSlots } from "@react-doctor/core";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
 import {
@@ -91,6 +94,11 @@ import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
 
 const silentConsole = makeNoopConsole();
+
+interface OxlintInvocationRuntime {
+  readonly concurrency: number;
+  readonly spawnSlots: WorkerSlots;
+}
 
 const runConsole = (effect: Effect.Effect<void>): void => {
   Effect.runSync(effect);
@@ -325,9 +333,10 @@ const buildRunEventConfig = (
   };
 };
 
-export const inspect = async (
+const inspectWithOxlintRuntime = async (
   directory: string,
-  inputOptions: ReactDoctorInspectOptions = {},
+  inputOptions: ReactDoctorInspectOptions,
+  oxlintRuntime: OxlintInvocationRuntime,
 ): Promise<InspectResult> => {
   const startTime = performance.now();
   // The CLI passes an absolute `deadlineEpochMs` shared across a workspace
@@ -403,6 +412,7 @@ export const inspect = async (
             startTime,
             deadlineEpochMs,
             rootSentrySpan,
+            oxlintRuntime,
           );
         } catch (error) {
           // Emit the canonical wide event on the failure path too: the scan threw
@@ -433,6 +443,26 @@ export const inspect = async (
     if (ownsSpinnerSilence) setSpinnerSilent(wasSpinnerSilent);
   }
 };
+
+export const createInvocationInspect = (
+  requestedOxlintConcurrency?: number,
+): ((directory: string, inputOptions?: ReactDoctorInspectOptions) => Promise<InspectResult>) => {
+  const concurrency = resolveScanConcurrency(
+    requestedOxlintConcurrency ?? Effect.runSync(OxlintConcurrency),
+  );
+  const oxlintRuntime: OxlintInvocationRuntime = {
+    concurrency,
+    spawnSlots: createOxlintSpawnSlots(concurrency),
+  };
+  return (directory, inputOptions = {}) =>
+    inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
+};
+
+export const inspect = async (
+  directory: string,
+  inputOptions: ReactDoctorInspectOptions = {},
+): Promise<InspectResult> =>
+  createInvocationInspect(inputOptions.concurrency)(directory, inputOptions);
 
 interface BaselineComparison {
   displayDiagnostics: ReadonlyArray<Diagnostic>;
@@ -468,6 +498,7 @@ interface RunBaselineComparisonInput {
   headAnalyzedFiles: ReadonlyArray<string>;
   /** Shared invocation deadline; bounds the base-ref lint like the head scan. */
   deadlineEpochMs: number | null;
+  oxlintRuntime: OxlintInvocationRuntime;
 }
 
 /**
@@ -524,7 +555,8 @@ const runBaselineComparison = async (
       shouldRunSupplyChain: params.options.supplyChain,
       shouldComputeScore: false,
       shouldShowProgressSpinners: false,
-      oxlintConcurrency: params.options.concurrency,
+      oxlintConcurrency: params.oxlintRuntime.concurrency,
+      oxlintSpawnSlots: params.oxlintRuntime.spawnSlots,
     });
     const baseProgram = runInspectEffect(
       {
@@ -612,6 +644,7 @@ const runInspectWithRuntime = async (
   startTime: number,
   deadlineEpochMs: number | null,
   rootSentrySpan: SentryRootSpan,
+  oxlintRuntime: OxlintInvocationRuntime,
 ): Promise<InspectResult> => {
   const isDiffMode = options.includePaths.length > 0;
   // Pre-check oxlint native binding the same way the legacy entry
@@ -689,7 +722,8 @@ const runInspectWithRuntime = async (
     shouldRunSupplyChain: options.supplyChain,
     shouldComputeScore: !options.noScore,
     shouldShowProgressSpinners,
-    oxlintConcurrency: options.concurrency,
+    oxlintConcurrency: oxlintRuntime.concurrency,
+    oxlintSpawnSlots: oxlintRuntime.spawnSlots,
     reporterLayer: options.uiLayers?.reporter,
     progressLayer: options.uiLayers?.progress,
   });
@@ -820,6 +854,7 @@ const runInspectWithRuntime = async (
       headFiles: options.baseline.headFiles,
       headAnalyzedFiles: output.analyzedFiles,
       deadlineEpochMs,
+      oxlintRuntime,
     });
     if (comparison) {
       inspectDiagnostics = comparison.displayDiagnostics;

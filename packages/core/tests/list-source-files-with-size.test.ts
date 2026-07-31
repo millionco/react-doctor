@@ -53,6 +53,7 @@ describe("listSourceFilesWithSize", () => {
     writeFile("widget.jsx", "export const Widget = () => null;\n");
     writeFile("index.html", "<script>console.log('hello');</script>\n");
     writeFile("legacy.HTML", "<script>console.log('hello');</script>\n");
+    writeFile("page.astro", "<p>Astro</p>\n");
     writeFile("ignored.TS", "export const ignored = true;\n");
     writeFile("notes.md", "# ignored\n");
 
@@ -61,6 +62,7 @@ describe("listSourceFilesWithSize", () => {
       listSourceFilesWithSize(temporaryDirectory).map((entry) => entry.path),
     );
     expect(sourceFiles).toContain("legacy.HTML");
+    expect(sourceFiles).toContain("page.astro");
     expect(sourceFiles).not.toContain("ignored.TS");
   });
 

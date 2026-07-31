@@ -44,6 +44,7 @@ export const spawnOxlint = (
   // bounded lint phase actually stops work instead of leaving subprocesses
   // running until their own per-batch spawn timeout.
   abortSignal?: AbortSignal,
+  onSpawn?: () => void,
 ): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     if (abortSignal?.aborted) {
@@ -52,6 +53,7 @@ export const spawnOxlint = (
       );
       return;
     }
+    onSpawn?.();
     const child = spawn(
       nodeBinaryPath,
       buildProfiledNodeArguments({

@@ -59,7 +59,16 @@ describe("remotion-no-css-animation", () => {
         import {interpolate, useCurrentFrame} from 'remotion';
         export const Scene = () => {
           const frame = useCurrentFrame();
-          return <div className="animate-none" style={{opacity: interpolate(frame, [0, 10], [0, 1])}} />;
+          return (
+            <div
+              className="animate-none"
+              style={{
+                animation: 'none',
+                animationName: \` NONE \`,
+                opacity: interpolate(frame, [0, 10], [0, 1]),
+              }}
+            />
+          );
         };
       `,
       0,
@@ -101,14 +110,19 @@ describe("remotion-no-css-transition", () => {
     );
   });
 
-  it("allows frame-driven styles and transition-none", () => {
+  it("allows frame-driven styles and explicit transition disabling", () => {
     expectDiagnosticCount(
       remotionNoCssTransition,
       `
         import {useCurrentFrame} from 'remotion';
         export const Scene = () => {
           useCurrentFrame();
-          return <div className="transition-none" style={{opacity: 1}} />;
+          return (
+            <div
+              className="transition-none"
+              style={{opacity: 1, transition: 'none', transitionProperty: \` NONE \`}}
+            />
+          );
         };
       `,
       0,

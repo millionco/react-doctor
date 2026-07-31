@@ -1,6 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
-import { isNodeOfType } from "./is-node-of-type.js";
 
 /**
  * Type-guard for the three "function-like" ESTree node shapes:
@@ -18,9 +17,8 @@ export const isFunctionLike = (
   | EsTreeNodeOfType<"ArrowFunctionExpression">
   | EsTreeNodeOfType<"FunctionExpression">
   | EsTreeNodeOfType<"FunctionDeclaration"> =>
-  Boolean(
-    node &&
-    (isNodeOfType(node, "ArrowFunctionExpression") ||
-      isNodeOfType(node, "FunctionExpression") ||
-      isNodeOfType(node, "FunctionDeclaration")),
-  );
+  node !== null &&
+  node !== undefined &&
+  (node.type === "ArrowFunctionExpression" ||
+    node.type === "FunctionExpression" ||
+    node.type === "FunctionDeclaration");

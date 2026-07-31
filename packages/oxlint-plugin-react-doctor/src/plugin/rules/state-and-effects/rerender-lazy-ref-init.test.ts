@@ -88,7 +88,7 @@ describe("rerender-lazy-ref-init", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does NOT flag trivial empty-container constructors (lazy-init is net-negative for them)", () => {
+  it("flags zero-argument constructors", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `
@@ -105,7 +105,7 @@ describe("rerender-lazy-ref-init", () => {
     );
 
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(5);
   });
 
   it("flags `new Set(props.items)` — a runtime argument iterates its input on every render", () => {
@@ -163,8 +163,6 @@ describe("rerender-lazy-ref-init", () => {
     `,
     );
 
-    // Hook results are already stable, and the suggested lazy-init fix
-    // would call a hook conditionally — illegal. Don't flag them.
     expect(idResult.diagnostics).toEqual([]);
     expect(contextResult.diagnostics).toEqual([]);
   });

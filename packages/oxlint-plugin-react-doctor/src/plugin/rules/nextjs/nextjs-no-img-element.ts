@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -167,7 +168,7 @@ export const nextjsNoImgElement = defineRule({
   recommendation:
     "Use `next/image` so users get optimized formats, responsive srcsets, and lazy loading instead of oversized image downloads.",
   create: (context: RuleContext): RuleVisitors => {
-    if (isGeneratedImageRenderContext(context)) return {};
+    if (isGeneratedImageRenderContext(context)) return EMPTY_RULE_VISITORS;
     const generatedImageOwnershipByFunction = new WeakMap<EsTreeNode, boolean>();
     const isExportedJsxGeneratedImageOwned =
       createExportedJsxGeneratedImageOwnershipAnalyzer(context);

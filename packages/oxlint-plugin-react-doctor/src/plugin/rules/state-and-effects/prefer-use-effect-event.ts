@@ -214,6 +214,19 @@ const getCallArgumentUse = (reference: EsTreeNode): CallArgumentUse | null => {
   return argumentIndex === -1 ? null : { callExpression: parent, argumentIndex };
 };
 
+const resolvePairedCallArgumentKey = (
+  argument: EsTreeNode | null | undefined,
+  context: RuleContext,
+): string | null => {
+  const expressionKey = resolveExpressionKey(argument, context);
+  if (expressionKey !== null) return expressionKey;
+  if (!argument) return null;
+  const unwrappedArgument = stripParenExpression(argument);
+  return isNodeOfType(unwrappedArgument, "Literal") && typeof unwrappedArgument.value === "boolean"
+    ? `boolean:${String(unwrappedArgument.value)}`
+    : null;
+};
+
 const isMatchingRegistrationAndRelease = (
   registration: CallArgumentUse,
   release: CallArgumentUse,
@@ -249,10 +262,11 @@ const isMatchingRegistrationAndRelease = (
   if (registrationArguments.length !== releaseArguments.length) return false;
   return registrationArguments.every((registrationArgument, argumentIndex) => {
     if (argumentIndex === registration.argumentIndex) return true;
-    const registrationArgumentKey = resolveExpressionKey(registrationArgument, context);
+    const registrationArgumentKey = resolvePairedCallArgumentKey(registrationArgument, context);
     return (
       registrationArgumentKey !== null &&
-      registrationArgumentKey === resolveExpressionKey(releaseArguments[argumentIndex], context)
+      registrationArgumentKey ===
+        resolvePairedCallArgumentKey(releaseArguments[argumentIndex], context)
     );
   });
 };

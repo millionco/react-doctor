@@ -1,4 +1,5 @@
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
+import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -7,6 +8,7 @@ import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-de
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -431,8 +433,8 @@ const isStaticPlaceholderReceiver = (receiver: EsTreeNode, depth = 0): boolean =
     if (depth >= TYPE_RESOLUTION_DEPTH_LIMIT) return false;
     const binding = findVariableInitializer(receiver, receiver.name);
     if (!binding?.initializer) return false;
-    if (isBindingReassignedOrMutated(receiver, receiver.name)) return false;
-    return isStaticPlaceholderReceiver(binding.initializer, depth + 1);
+    if (!isStaticPlaceholderReceiver(binding.initializer, depth + 1)) return false;
+    return !isBindingReassignedOrMutated(receiver, receiver.name);
   }
 
   if (isNodeOfType(receiver, "CallExpression")) {
@@ -538,10 +540,11 @@ const isFixedMemoReceiver = (receiver: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  if (isBindingReassignedOrMutated(node, node.name)) return false;
   const initializer = stripParenExpression(binding.initializer);
   if (!isUseMemoCall(initializer)) return false;
-  return useMemoReturnsArrayLiteral(initializer) || hasEmptyDependencyArray(initializer);
+  if (!useMemoReturnsArrayLiteral(initializer) && !hasEmptyDependencyArray(initializer))
+    return false;
+  return !isBindingReassignedOrMutated(node, node.name);
 };
 
 const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
@@ -820,8 +823,8 @@ const isStaticDefaultLiteralReceiver = (receiver: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  if (isBindingReassignedOrMutated(defaultExpression, defaultExpression.name)) return false;
-  return isSpreadFreeArrayLiteral(stripParenExpression(moduleBinding.initializer));
+  if (!isSpreadFreeArrayLiteral(stripParenExpression(moduleBinding.initializer))) return false;
+  return !isBindingReassignedOrMutated(defaultExpression, defaultExpression.name);
 };
 
 // `for (const [index, item] of items.entries()) { … }` — same tuple
@@ -862,6 +865,171 @@ const isLoopCounterDeclarator = (
   return isBindingReassignedOrMutated(referenceNode, indexName);
 };
 
+const findEnclosingWhileLoop = (
+  node: EsTreeNode,
+): EsTreeNodeOfType<"WhileStatement"> | EsTreeNodeOfType<"DoWhileStatement"> | null => {
+  let current = node.parent;
+  while (current) {
+    if (isNodeOfType(current, "WhileStatement") || isNodeOfType(current, "DoWhileStatement")) {
+      return current;
+    }
+    if (isFunctionLike(current) || isNodeOfType(current, "Program")) return null;
+    current = current.parent;
+  }
+  return null;
+};
+
+const isStaticMemberChain = (expression: EsTreeNode): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier") || isNodeOfType(candidate, "ThisExpression")) {
+    return true;
+  }
+  return Boolean(
+    isNodeOfType(candidate, "MemberExpression") &&
+    !candidate.computed &&
+    isNodeOfType(candidate.property, "Identifier") &&
+    isStaticMemberChain(candidate.object),
+  );
+};
+
+const findLengthBoundCollections = (expression: EsTreeNode): EsTreeNode[] => {
+  const collections: EsTreeNode[] = [];
+  walkAst(expression, (child: EsTreeNode): boolean | void => {
+    if (
+      isNodeOfType(child, "MemberExpression") &&
+      !child.computed &&
+      isStaticMemberChain(child.object) &&
+      isNodeOfType(child.property, "Identifier") &&
+      child.property.name === "length"
+    ) {
+      collections.push(child.object);
+    }
+  });
+  return collections;
+};
+
+const areSameBoundStaticMemberChains = (first: EsTreeNode, second: EsTreeNode): boolean =>
+  isStaticMemberChain(first) &&
+  isStaticMemberChain(second) &&
+  areExpressionsStructurallyEqual(first, second, {
+    areIdentifiersEqual: (firstIdentifier, secondIdentifier) => {
+      if (
+        !isNodeOfType(firstIdentifier, "Identifier") ||
+        !isNodeOfType(secondIdentifier, "Identifier") ||
+        firstIdentifier.name !== secondIdentifier.name
+      ) {
+        return false;
+      }
+      const firstBinding = findVariableInitializer(firstIdentifier, firstIdentifier.name);
+      const secondBinding = findVariableInitializer(secondIdentifier, secondIdentifier.name);
+      return firstBinding?.bindingIdentifier === secondBinding?.bindingIdentifier;
+    },
+  });
+
+const RELATIONAL_BOUND_OPERATORS = new Set(["<", "<=", ">", ">="]);
+
+const loopTestBoundsCounterByLength = (
+  expression: EsTreeNode,
+  indexName: string,
+  bindingIdentifier: EsTreeNode,
+): boolean => {
+  const readsCounter = (candidate: EsTreeNode): boolean => {
+    let didReadCounter = false;
+    walkAst(candidate, (child: EsTreeNode): boolean | void => {
+      if (didReadCounter) return false;
+      if (
+        isNodeOfType(child, "Identifier") &&
+        child.name === indexName &&
+        findVariableInitializer(child, indexName)?.bindingIdentifier === bindingIdentifier
+      ) {
+        didReadCounter = true;
+        return false;
+      }
+    });
+    return didReadCounter;
+  };
+  const readsLength = (candidate: EsTreeNode): boolean => {
+    let didReadLength = false;
+    walkAst(candidate, (child: EsTreeNode): boolean | void => {
+      if (didReadLength) return false;
+      if (
+        isNodeOfType(child, "MemberExpression") &&
+        !child.computed &&
+        isNodeOfType(child.property, "Identifier") &&
+        child.property.name === "length"
+      ) {
+        didReadLength = true;
+        return false;
+      }
+    });
+    return didReadLength;
+  };
+  let didFindLengthBound = false;
+  walkAst(expression, (child: EsTreeNode): boolean | void => {
+    if (didFindLengthBound) return false;
+    if (
+      !isNodeOfType(child, "BinaryExpression") ||
+      !RELATIONAL_BOUND_OPERATORS.has(child.operator)
+    ) {
+      return;
+    }
+    if (
+      (readsCounter(child.left) && readsLength(child.right)) ||
+      (readsCounter(child.right) && readsLength(child.left))
+    ) {
+      didFindLengthBound = true;
+      return false;
+    }
+  });
+  return didFindLengthBound;
+};
+
+const isDataIndexedWhileLoopCounter = (
+  referenceNode: EsTreeNode,
+  bindingIdentifier: EsTreeNode,
+  indexName: string,
+): boolean => {
+  if (!INDEX_PARAMETER_NAMES.has(indexName)) return false;
+  const loop = findEnclosingWhileLoop(referenceNode);
+  if (!loop) return false;
+  let doesTestReadCounter = false;
+  walkAst(loop.test, (child: EsTreeNode): boolean | void => {
+    if (doesTestReadCounter) return false;
+    if (!isNodeOfType(child, "Identifier") || child.name !== indexName) return;
+    if (findVariableInitializer(child, indexName)?.bindingIdentifier === bindingIdentifier) {
+      doesTestReadCounter = true;
+      return false;
+    }
+  });
+  if (!doesTestReadCounter) return false;
+  const lengthBoundCollections = findLengthBoundCollections(loop.test);
+  if (lengthBoundCollections.length === 0) return false;
+  let didFindIndexedCollectionRead = false;
+  walkAst(loop.body, (child: EsTreeNode): boolean | void => {
+    if (didFindIndexedCollectionRead) return false;
+    if (isFunctionLike(child)) return false;
+    if (
+      !isNodeOfType(child, "MemberExpression") ||
+      !child.computed ||
+      !isNodeOfType(child.property, "Identifier") ||
+      child.property.name !== indexName
+    ) {
+      return;
+    }
+    const binding = findVariableInitializer(child.property, indexName);
+    if (
+      binding?.bindingIdentifier === bindingIdentifier &&
+      lengthBoundCollections.some((collection) =>
+        areSameBoundStaticMemberChains(collection, child.object),
+      )
+    ) {
+      didFindIndexedCollectionRead = true;
+      return false;
+    }
+  });
+  return didFindIndexedCollectionRead;
+};
+
 interface PositionalIndexBinding {
   // The `.map` / `.flatMap` / `.forEach` / `Array.from` call whose
   // callback binds the index, when the index came from one.
@@ -873,6 +1041,7 @@ interface PositionalIndexBinding {
   // Slot of the index parameter within `bindingFunction`, or null when
   // the index isn't a direct parameter (entries tuples, counters).
   indexParameterPosition: number | null;
+  isDataIndexedLoopCounter?: boolean;
 }
 
 interface PositionalIndexUse {
@@ -953,6 +1122,16 @@ const resolvePositionalIndexBinding = (
     declarator.id === binding.bindingIdentifier &&
     declarator.init
   ) {
+    if (
+      isDataIndexedWhileLoopCounter(identifierNode, binding.bindingIdentifier, identifierNode.name)
+    ) {
+      return {
+        iteratorCall: null,
+        bindingFunction: null,
+        indexParameterPosition: null,
+        isDataIndexedLoopCounter: true,
+      };
+    }
     const initializer = stripParenExpression(declarator.init);
     if (isNodeOfType(initializer, "Literal") && typeof initializer.value === "number") {
       if (!INDEX_PARAMETER_NAMES.has(identifierNode.name)) return null;
@@ -1003,6 +1182,221 @@ const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpress
     isStaticDefaultLiteralReceiver(receiver) ||
     isStringDerivedReceiver(receiver)
   );
+};
+
+const isReactNamespaceIdentifier = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "Identifier")) return false;
+  const importBinding = getImportBindingForName(node, node.name);
+  const visibleBinding = findVariableInitializer(node, node.name);
+  if (!importBinding) return node.name === "React" && !visibleBinding;
+  return (
+    visibleBinding?.initializer?.type.startsWith("Import") === true &&
+    importBinding.source === "react" &&
+    (importBinding.isNamespace || importBinding.exportedName === "default")
+  );
+};
+
+const isReactChildrenObject = (node: EsTreeNode): boolean => {
+  const candidate = stripParenExpression(node);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const importBinding = getImportBindingForName(candidate, candidate.name);
+    const visibleBinding = findVariableInitializer(candidate, candidate.name);
+    return Boolean(
+      visibleBinding?.initializer?.type === "ImportSpecifier" &&
+      importBinding?.source === "react" &&
+      importBinding.exportedName === "Children",
+    );
+  }
+  return Boolean(
+    isNodeOfType(candidate, "MemberExpression") &&
+    !candidate.computed &&
+    isReactNamespaceIdentifier(candidate.object) &&
+    isNodeOfType(candidate.property, "Identifier") &&
+    candidate.property.name === "Children",
+  );
+};
+
+const isReactChildrenToArrayCall = (node: EsTreeNode): boolean => {
+  const candidate = stripParenExpression(node);
+  if (
+    !isNodeOfType(candidate, "CallExpression") ||
+    !isNodeOfType(candidate.callee, "MemberExpression") ||
+    candidate.callee.computed ||
+    !isReactChildrenObject(candidate.callee.object) ||
+    !isNodeOfType(candidate.callee.property, "Identifier") ||
+    candidate.callee.property.name !== "toArray"
+  ) {
+    return false;
+  }
+  const normalizedValueNode = candidate.arguments?.[0];
+  const normalizedValue = normalizedValueNode ? stripParenExpression(normalizedValueNode) : null;
+  if (
+    !normalizedValue ||
+    !isNodeOfType(normalizedValue, "Identifier") ||
+    normalizedValue.name !== "children"
+  ) {
+    return false;
+  }
+  const normalizedBinding = findVariableInitializer(normalizedValue, normalizedValue.name);
+  return Boolean(normalizedBinding && findEnclosingParameter(normalizedBinding.bindingIdentifier));
+};
+
+const isSameIdentifier = (first: EsTreeNode, second: EsTreeNode): boolean => {
+  const firstIdentifier = stripParenExpression(first);
+  const secondIdentifier = stripParenExpression(second);
+  if (
+    !isNodeOfType(firstIdentifier, "Identifier") ||
+    !isNodeOfType(secondIdentifier, "Identifier") ||
+    firstIdentifier.name !== secondIdentifier.name
+  ) {
+    return false;
+  }
+  const firstBinding = findVariableInitializer(firstIdentifier, firstIdentifier.name);
+  const secondBinding = findVariableInitializer(secondIdentifier, secondIdentifier.name);
+  return firstBinding?.bindingIdentifier === secondBinding?.bindingIdentifier;
+};
+
+const isReactChildrenArrayNormalization = (node: EsTreeNode): boolean => {
+  const candidate = stripParenExpression(node);
+  if (!isNodeOfType(candidate, "ConditionalExpression")) return false;
+  const test = stripParenExpression(candidate.test);
+  if (
+    !isNodeOfType(test, "CallExpression") ||
+    !isNodeOfType(test.callee, "MemberExpression") ||
+    test.callee.computed ||
+    !isNodeOfType(test.callee.object, "Identifier") ||
+    test.callee.object.name !== "Array" ||
+    findVariableInitializer(test.callee.object, "Array") ||
+    !isNodeOfType(test.callee.property, "Identifier") ||
+    test.callee.property.name !== "isArray"
+  ) {
+    return false;
+  }
+  const testedValueNode = test.arguments?.[0];
+  if (!testedValueNode) return false;
+  const testedValue = stripParenExpression(testedValueNode);
+  if (!isNodeOfType(testedValue, "Identifier")) return false;
+  const testedBinding = findVariableInitializer(testedValue, testedValue.name);
+  if (
+    testedValue.name !== "children" ||
+    !testedBinding ||
+    !findEnclosingParameter(testedBinding.bindingIdentifier)
+  ) {
+    return false;
+  }
+  const branchWrapsTestedValue = (branch: EsTreeNode): boolean => {
+    const unwrappedBranch = stripParenExpression(branch);
+    return (
+      isNodeOfType(unwrappedBranch, "ArrayExpression") &&
+      unwrappedBranch.elements?.length === 1 &&
+      Boolean(
+        unwrappedBranch.elements[0] && isSameIdentifier(unwrappedBranch.elements[0], testedValue),
+      )
+    );
+  };
+  return (
+    (isSameIdentifier(candidate.consequent, testedValue) &&
+      branchWrapsTestedValue(candidate.alternate)) ||
+    (isSameIdentifier(candidate.alternate, testedValue) &&
+      branchWrapsTestedValue(candidate.consequent))
+  );
+};
+
+const isMutatedEmptyArrayBinding = (
+  identifierNode: EsTreeNodeOfType<"Identifier">,
+  depth: number,
+): boolean => {
+  const binding = findVariableInitializer(identifierNode, identifierNode.name);
+  const initializer = binding?.initializer ? stripParenExpression(binding.initializer) : null;
+  if (
+    !binding ||
+    !initializer ||
+    !isNodeOfType(initializer, "ArrayExpression") ||
+    initializer.elements?.length !== 0
+  ) {
+    return false;
+  }
+  const program = findProgramRoot(identifierNode);
+  if (!program) return false;
+  let didFindReactChildPush = false;
+  walkAst(program, (child: EsTreeNode): boolean | void => {
+    if (didFindReactChildPush) return false;
+    if (
+      !isNodeOfType(child, "CallExpression") ||
+      !isNodeOfType(child.callee, "MemberExpression") ||
+      child.callee.computed ||
+      !isNodeOfType(child.callee.object, "Identifier") ||
+      child.callee.object.name !== identifierNode.name ||
+      !isNodeOfType(child.callee.property, "Identifier") ||
+      child.callee.property.name !== "push"
+    ) {
+      return;
+    }
+    const receiverBinding = findVariableInitializer(child.callee.object, identifierNode.name);
+    if (
+      receiverBinding?.bindingIdentifier === binding.bindingIdentifier &&
+      (child.arguments ?? []).some((argument) => {
+        const candidate = stripParenExpression(argument);
+        const canCarryReactChild =
+          isNodeOfType(candidate, "Identifier") ||
+          isNodeOfType(candidate, "JSXElement") ||
+          isNodeOfType(candidate, "JSXFragment");
+        if (!canCarryReactChild) return false;
+        let doesCarryReactChild = false;
+        walkAst(candidate, (argumentChild: EsTreeNode): boolean | void => {
+          if (doesCarryReactChild) return false;
+          if (!isNodeOfType(argumentChild, "Identifier")) return;
+          const argumentBinding = findVariableInitializer(argumentChild, argumentChild.name);
+          const declarator = argumentBinding?.bindingIdentifier.parent;
+          const declaration = declarator?.parent;
+          const forOfStatement = declaration?.parent;
+          if (
+            declarator &&
+            isNodeOfType(declarator, "VariableDeclarator") &&
+            declaration &&
+            isNodeOfType(declaration, "VariableDeclaration") &&
+            forOfStatement &&
+            isNodeOfType(forOfStatement, "ForOfStatement") &&
+            forOfStatement.left === declaration &&
+            isDynamicReactChildrenExpression(forOfStatement.right, depth + 1)
+          ) {
+            doesCarryReactChild = true;
+            return false;
+          }
+        });
+        return doesCarryReactChild;
+      })
+    ) {
+      didFindReactChildPush = true;
+      return false;
+    }
+  });
+  return didFindReactChildPush;
+};
+
+const isDynamicReactChildrenExpression = (expression: EsTreeNode, depth: number): boolean => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+  const candidate = stripParenExpression(expression);
+  if (isReactChildrenToArrayCall(candidate) || isReactChildrenArrayNormalization(candidate)) {
+    return true;
+  }
+  if (isNodeOfType(candidate, "Identifier")) {
+    if (isMutatedEmptyArrayBinding(candidate, depth)) return true;
+    const binding = findVariableInitializer(candidate, candidate.name);
+    return Boolean(
+      binding?.initializer && isDynamicReactChildrenExpression(binding.initializer, depth + 1),
+    );
+  }
+  if (
+    isNodeOfType(candidate, "CallExpression") &&
+    isNodeOfType(candidate.callee, "MemberExpression") &&
+    !candidate.callee.computed &&
+    isNodeOfType(candidate.callee.property, "Identifier") &&
+    candidate.callee.property.name === "filter"
+  ) {
+    return isDynamicReactChildrenExpression(candidate.callee.object, depth + 1);
+  }
+  return false;
 };
 
 // The key expression as a template literal — directly, or laundered one
@@ -1092,49 +1486,39 @@ const findBareItemNamesReferencedByTemplate = (
   return referencedItemNames;
 };
 
-const forLoopTestReadsDataLength = (test: EsTreeNode): boolean => {
-  let didFindLengthRead = false;
-  walkAst(test, (child: EsTreeNode): boolean | void => {
-    if (didFindLengthRead) return false;
-    if (
-      isNodeOfType(child, "MemberExpression") &&
-      isNodeOfType(child.property, "Identifier") &&
-      child.property.name === "length"
-    ) {
-      didFindLengthRead = true;
-      return false;
-    }
-  });
-  return didFindLengthRead;
-};
-
 // `for (let i = 0; i < count; i++) { children.push(<Col key={i} />) }` is
 // the imperative twin of the exempt `Array.from({length: count}).map(…)`
 // placeholder — the counter has no identity beyond its position.
-const isNumericForLoopCounter = (attributeNode: EsTreeNode, indexName: string): boolean => {
+const isNumericPlaceholderLoopCounter = (attributeNode: EsTreeNode, indexName: string): boolean => {
   const binding = findVariableInitializer(attributeNode, indexName);
   if (!binding) return false;
   const declarator = binding.bindingIdentifier.parent;
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
   const declaration = declarator.parent;
   if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return false;
-  const forStatement = declaration.parent;
   if (
-    !forStatement ||
-    !isNodeOfType(forStatement, "ForStatement") ||
-    forStatement.init !== declaration ||
     !declarator.init ||
     !isNodeOfType(declarator.init, "Literal") ||
     typeof declarator.init.value !== "number"
   ) {
     return false;
   }
+  const forStatement = declaration.parent;
+  if (
+    forStatement &&
+    isNodeOfType(forStatement, "ForStatement") &&
+    forStatement.init === declaration
+  ) {
+    return !(
+      forStatement.test &&
+      loopTestBoundsCounterByLength(forStatement.test, indexName, binding.bindingIdentifier)
+    );
+  }
+  const whileLoop = findEnclosingWhileLoop(attributeNode);
+  if (!whileLoop) return false;
   // `for (let i = 0; i < items.length; i++)` walks real list data — the
   // items carry identity, so an index key there still breaks on reorder.
-  if (forStatement.test && forLoopTestReadsDataLength(forStatement.test as EsTreeNode)) {
-    return false;
-  }
-  return true;
+  return !loopTestBoundsCounterByLength(whileLoop.test, indexName, binding.bindingIdentifier);
 };
 
 const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
@@ -1193,6 +1577,7 @@ const fragmentHasStatefulChildren = (
   openingElement: EsTreeNode,
   itemNames: ReadonlySet<string>,
   derivedNames: ReadonlySet<string>,
+  areBareItemsDynamicReactChildren: boolean,
 ): boolean => {
   const jsxElement = openingElement.parent;
   if (!jsxElement || !isNodeOfType(jsxElement, "JSXElement")) return false;
@@ -1203,7 +1588,9 @@ const fragmentHasStatefulChildren = (
   // elements appear, bare item reads are treated conservatively again.
   const bareIdentifierNames = hasTopLevelElementChildren
     ? derivedNames
-    : new Set([...derivedNames, ...itemNames]);
+    : areBareItemsDynamicReactChildren
+      ? derivedNames
+      : new Set([...derivedNames, ...itemNames]);
   return children.some((child) =>
     containsStatefulDescendant(child, {
       memberRootNames: itemNames,
@@ -1212,6 +1599,19 @@ const fragmentHasStatefulChildren = (
       callCalleeRootNames: itemNames,
     }),
   );
+};
+
+const elementHasDirectItemChild = (
+  openingElement: EsTreeNode,
+  itemNames: ReadonlySet<string>,
+): boolean => {
+  const jsxElement = openingElement.parent;
+  if (!jsxElement || !isNodeOfType(jsxElement, "JSXElement")) return false;
+  return (jsxElement.children ?? []).some((child) => {
+    if (!isNodeOfType(child, "JSXExpressionContainer")) return false;
+    const expression = stripParenExpression(child.expression);
+    return isNodeOfType(expression, "Identifier") && itemNames.has(expression.name);
+  });
 };
 
 // A callback that conditionally skips rows (`if (…) return null`)
@@ -1294,7 +1694,7 @@ export const noArrayIndexAsKey = defineRule({
       const indexUse = findPositionalIndexUse(node.value.expression, 0);
       if (!indexUse) return;
       const indexName = indexUse.identifier.name;
-      if (isNumericForLoopCounter(node, indexName)) return;
+      if (isNumericPlaceholderLoopCounter(node, indexName)) return;
       if (
         indexUse.binding.iteratorCall &&
         iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall)
@@ -1308,12 +1708,20 @@ export const noArrayIndexAsKey = defineRule({
       ) {
         return;
       }
-      if (hasAriaHiddenAncestor(node)) return;
+      if (hasAriaHiddenAncestor(node) && !indexUse.binding.isDataIndexedLoopCounter) {
+        return;
+      }
 
       const itemNames = findIteratorItemNamesOfBinding(indexUse.binding);
       const derivedNames = collectDerivedRowContentNames(
         indexUse.binding.bindingFunction,
         itemNames,
+      );
+      const iteratorCallee = indexUse.binding.iteratorCall?.callee;
+      const hasDynamicReactChildren = Boolean(
+        iteratorCallee &&
+        isNodeOfType(iteratorCallee, "MemberExpression") &&
+        isDynamicReactChildrenExpression(iteratorCallee.object, 0),
       );
 
       const openingElement = node.parent;
@@ -1321,7 +1729,16 @@ export const noArrayIndexAsKey = defineRule({
         const elementName = openingElement.name as EsTreeNode;
         if (isNodeOfType(elementName, "JSXIdentifier")) {
           if (elementName.name === "Fragment") {
-            if (!fragmentHasStatefulChildren(openingElement, itemNames, derivedNames)) return;
+            if (
+              !fragmentHasStatefulChildren(
+                openingElement,
+                itemNames,
+                derivedNames,
+                hasDynamicReactChildren,
+              )
+            ) {
+              return;
+            }
           } else if (PURE_SVG_PRIMITIVE_TAGS.has(elementName.name)) {
             // Pure SVG primitives (`<g>`, `<path>`, …) only re-diff
             // attributes on reorder — no observable consequence, UNLESS
@@ -1342,13 +1759,15 @@ export const noArrayIndexAsKey = defineRule({
               const primitiveItemNames = keyTemplate
                 ? findBareItemNamesReferencedByTemplate(keyTemplate, itemNames)
                 : EMPTY_NAME_SET;
-              const isStateful = containsStatefulDescendant(jsxElement as EsTreeNode, {
-                memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
-                bareIdentifierNames:
-                  primitiveItemNames.size > 0
-                    ? new Set([...derivedNames, ...primitiveItemNames])
-                    : derivedNames,
-              });
+              const isStateful =
+                (hasDynamicReactChildren && elementHasDirectItemChild(openingElement, itemNames)) ||
+                containsStatefulDescendant(jsxElement, {
+                  memberRootNames: isInlineTextRun ? itemNames : EMPTY_NAME_SET,
+                  bareIdentifierNames:
+                    primitiveItemNames.size > 0
+                      ? new Set([...derivedNames, ...primitiveItemNames])
+                      : derivedNames,
+                });
               if (!isStateful) return;
             }
           }
@@ -1359,7 +1778,12 @@ export const noArrayIndexAsKey = defineRule({
           isNodeOfType(elementName.property, "JSXIdentifier") &&
           elementName.object.name === "React" &&
           elementName.property.name === "Fragment" &&
-          !fragmentHasStatefulChildren(openingElement, itemNames, derivedNames)
+          !fragmentHasStatefulChildren(
+            openingElement,
+            itemNames,
+            derivedNames,
+            hasDynamicReactChildren,
+          )
         ) {
           return;
         }

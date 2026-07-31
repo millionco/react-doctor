@@ -10,9 +10,10 @@ describe("parseEvaluationArguments", () => {
       concurrency: 200,
       repositoriesPerSandbox: 10,
       projectRootsPerRepository: 1,
-      maxDurationMinutes: 30,
+      maxDurationMinutes: 45,
       reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       reactDoctorRef: "main",
+      ruleKeys: [],
     });
   });
 
@@ -32,9 +33,15 @@ describe("parseEvaluationArguments", () => {
         "--project-roots-per-repository",
         "3",
         "--max-duration-minutes",
-        "15",
+        "20",
         "--react-doctor-ref",
         "feature/eval",
+        "--rule",
+        "react-doctor/no-derived-useState",
+        "--rule",
+        "react-doctor/no-derived-useState",
+        "--rule",
+        "react-doctor/prefer-useReducer",
       ]),
     ).toMatchObject({
       repositoriesSources: ["repositories.json", "repositories.txt"],
@@ -42,13 +49,150 @@ describe("parseEvaluationArguments", () => {
       concurrency: 25,
       repositoriesPerSandbox: 5,
       projectRootsPerRepository: 3,
-      maxDurationMinutes: 15,
+      maxDurationMinutes: 20,
       reactDoctorRef: "feature/eval",
+      ruleKeys: ["react-doctor/no-derived-useState", "react-doctor/prefer-useReducer"],
     });
   });
 
   it("rejects invalid concurrency", () => {
     expect(() => parseEvaluationArguments(["--concurrency", "0"])).toThrow("positive integer");
+  });
+
+  it("rejects malformed rule keys", () => {
+    expect(() => parseEvaluationArguments(["--rule", "react-doctor/no-example;false"])).toThrow(
+      "canonical plugin/rule key",
+    );
+  });
+
+  it("accepts an isolated paired baseline with independent rules and execution policy", () => {
+    expect(
+      parseEvaluationArguments([
+        "--react-doctor-repository",
+        "https://github.com/example/treatment.git",
+        "--react-doctor-ref",
+        "c".repeat(40),
+        "--rule",
+        "react-doctor/treatment-rule",
+        "--paired-baseline-output",
+        "/tmp/baseline.ndjson",
+        "--paired-base-react-doctor-repository",
+        "https://github.com/example/base.git",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+        "--paired-base-rule",
+        "react-doctor/base-rule",
+        "--paired-base-rule",
+        "react-doctor/base-rule",
+        "--paired-execution",
+        "sequential",
+      ]),
+    ).toMatchObject({
+      concurrency: 50,
+      reactDoctorRepository: "https://github.com/example/treatment.git",
+      reactDoctorRef: "c".repeat(40),
+      ruleKeys: ["react-doctor/treatment-rule"],
+      paired: {
+        baselineOutputPath: "/tmp/baseline.ndjson",
+        baseReactDoctorRepository: "https://github.com/example/base.git",
+        baseReactDoctorRef: "b".repeat(40),
+        baseRuleKeys: ["react-doctor/base-rule"],
+        execution: "sequential",
+      },
+    });
+  });
+
+  it("requires paired output and base ref together", () => {
+    expect(() =>
+      parseEvaluationArguments(["--paired-base-react-doctor-ref", "b".repeat(40)]),
+    ).toThrow("requires --paired-baseline-output and --paired-base-react-doctor-ref");
+    expect(() =>
+      parseEvaluationArguments(["--paired-baseline-output", "/tmp/baseline.ndjson"]),
+    ).toThrow("requires --paired-baseline-output and --paired-base-react-doctor-ref");
+  });
+
+  it("accepts repeatable matrix descriptors and derives a bounded CPU plan", () => {
+    expect(
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--matrix-treatment",
+        "/tmp/pr-2.json",
+        "--matrix-wave-width",
+        "2",
+      ]),
+    ).toMatchObject({
+      concurrency: 50,
+      matrix: {
+        treatmentDescriptorPaths: ["/tmp/pr-1.json", "/tmp/pr-2.json"],
+        waveWidth: 2,
+      },
+    });
+  });
+
+  it("rejects unsafe matrix resource combinations", () => {
+    expect(() =>
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--matrix-wave-width",
+        "2",
+        "--concurrency",
+        "51",
+      ]),
+    ).toThrow("cannot exceed 50");
+    expect(() => parseEvaluationArguments(["--matrix-wave-width", "2"])).toThrow(
+      "requires --matrix-treatment",
+    );
+    expect(() =>
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--paired-baseline-output",
+        "/tmp/base.ndjson",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+      ]),
+    ).toThrow("cannot be combined");
+    expect(() =>
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--repositories",
+        "/tmp/other-corpus.json",
+      ]),
+    ).toThrow("descriptor-driven matrix evaluation");
+  });
+
+  it("rejects unsafe paired output, execution, and rule arguments", () => {
+    expect(() =>
+      parseEvaluationArguments([
+        "--paired-baseline-output",
+        "baseline.ndjson",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+      ]),
+    ).toThrow("absolute path");
+    expect(() =>
+      parseEvaluationArguments([
+        "--paired-baseline-output",
+        "/tmp/baseline.ndjson",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+        "--paired-execution",
+        "sometimes",
+      ]),
+    ).toThrow("auto, parallel, or sequential");
+    expect(() =>
+      parseEvaluationArguments([
+        "--paired-baseline-output",
+        "/tmp/baseline.ndjson",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+        "--paired-base-rule",
+        "react-doctor/rule;false",
+      ]),
+    ).toThrow("canonical plugin/rule key");
   });
 
   it("rejects invalid scale and duration controls", () => {
@@ -59,7 +203,7 @@ describe("parseEvaluationArguments", () => {
     expect(() => parseEvaluationArguments(["--project-roots-per-repository", "0"])).toThrow(
       "positive integer",
     );
-    expect(() => parseEvaluationArguments(["--max-duration-minutes", "12"])).toThrow(
+    expect(() => parseEvaluationArguments(["--max-duration-minutes", "17"])).toThrow(
       "cleanup and retry reserve",
     );
   });

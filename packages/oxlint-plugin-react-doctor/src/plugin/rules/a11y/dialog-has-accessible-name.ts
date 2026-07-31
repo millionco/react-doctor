@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
@@ -26,7 +27,7 @@ export const dialogHasAccessibleName = defineRule({
   recommendation:
     'Give every `<dialog>` / `role="dialog"` an accessible name with `aria-label` or `aria-labelledby` (referencing the dialog\'s title element).',
   create: (context): RuleVisitors => {
-    if (isTestlikeFilename(context.filename)) return {};
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;

@@ -1,8 +1,27 @@
 import { describe, expect, it } from "vite-plus/test";
+import { parseFixture } from "../../../test-utils/parse-fixture.js";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { clientLocalstorageNoVersion } from "./client-localstorage-no-version.js";
 
 describe("client/client-localstorage-no-version — regressions", () => {
+  it("defers scope analysis until a relevant storage write", () => {
+    let didReadScopes = false;
+    const visitors = clientLocalstorageNoVersion.create({
+      report: () => {},
+      get scopes(): never {
+        didReadScopes = true;
+        throw new Error("scopes should stay lazy");
+      },
+      get cfg(): never {
+        throw new Error("cfg should stay lazy");
+      },
+    });
+
+    visitors.Program(parseFixture(`const unrelated = true;`).program);
+
+    expect(didReadScopes).toBe(false);
+  });
+
   it("stays silent on a camelCase version suffix", () => {
     const result = runRule(
       clientLocalstorageNoVersion,

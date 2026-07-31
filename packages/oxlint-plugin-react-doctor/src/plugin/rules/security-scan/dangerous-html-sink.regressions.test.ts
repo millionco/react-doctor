@@ -3,6 +3,34 @@ import { runScanRule } from "../../../test-utils/run-scan-rule.js";
 import { dangerousHtmlSink } from "./dangerous-html-sink.js";
 
 describe("security-scan/dangerous-html-sink — regressions", () => {
+  it("stays silent on a root test-prefixed KaTeX error fixture", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "test-katex-error.tsx",
+      content: `import katex from "katex";
+        const renderMath = (math: string) => {
+          try {
+            return katex.renderToString(math, { throwOnError: false });
+          } catch (error) {
+            return String(error);
+          }
+        };
+        export const Fixture = ({ children }: Props) => (
+          <span dangerouslySetInnerHTML={{ __html: renderMath(String(children)) }} />
+        );`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still scans a test-prefixed production source below src", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/test-user-content.tsx",
+      content: `export const Preview = ({ html }: Props) => (
+        <span dangerouslySetInnerHTML={{ __html: html }} />
+      );`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent on an empty-string innerHTML clear", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/components/tooltip.ts",

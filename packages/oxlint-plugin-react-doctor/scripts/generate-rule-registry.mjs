@@ -13,12 +13,21 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { format } from "oxfmt";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const PLUGIN_RULES_ROOT = path.join(PACKAGE_ROOT, "src/plugin/rules");
+const CORE_REGISTRY_DATA_OUTPUT = path.join(
+  PACKAGE_ROOT,
+  "src/plugin/core-rule-registry-data.json",
+);
 const REGISTRY_OUTPUT = path.join(PACKAGE_ROOT, "src/plugin/rule-registry.ts");
+const SECURITY_SCAN_REGISTRY_OUTPUT = path.join(
+  PACKAGE_ROOT,
+  "src/plugin/security-scan-rule-registry.ts",
+);
 const GENERATED_LINE_WIDTH = 100;
 
 // Bucket directory → framework (each rule's `framework` field is derived,
@@ -320,6 +329,7 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
     ruleEntries.push({
       ruleId,
       identifier,
+      filePath,
       relativeImport,
       framework,
       category,
@@ -343,6 +353,17 @@ for (const entry of ruleEntries) {
   }
   seenRuleIds.add(entry.ruleId);
 }
+
+await Promise.all(
+  ruleEntries.map(async (entry) => {
+    const ruleModule = await import(pathToFileURL(entry.filePath).href);
+    const sourceRule = ruleModule[entry.identifier];
+    if (typeof sourceRule !== "object" || sourceRule === null) {
+      throw new Error(`Rule export not found: ${entry.identifier} in ${entry.filePath}`);
+    }
+    entry.sourceRule = sourceRule;
+  }),
+);
 
 const importLines = ruleEntries
   .map((entry) => `import { ${entry.identifier} } from "${entry.relativeImport}";`)
@@ -404,25 +425,28 @@ const formatRequiresLine = (entry) => {
 // `entry.rule.framework` / `.category` / `.severity` so we don't ship
 // the same value twice per entry. Saves ~3 lines × N rules on the
 // generated file and on the published bundle.
-const ruleLines = ruleEntries
-  .map(
-    (entry) =>
-      `  {\n` +
-      `    key: "react-doctor/${entry.ruleId}",\n` +
-      `    id: "${entry.ruleId}",\n` +
-      `    source: "react-doctor",\n` +
-      `    originallyExternal: ${entry.originallyExternal},\n` +
-      `    rule: {\n` +
-      `      ...${entry.identifier},\n` +
-      `      framework: "${entry.framework}",\n` +
-      `      category: "${entry.category}",\n` +
-      (entry.shouldSynthesizeDefaultDisabled ? `      defaultEnabled: false,\n` : "") +
-      formatAutoTagsLine(entry) +
-      formatRequiresLine(entry) +
-      `    },\n` +
-      `  },`,
-  )
-  .join("\n");
+const formatRuleLines = (entries) =>
+  entries
+    .map(
+      (entry) =>
+        `  {\n` +
+        `    key: "react-doctor/${entry.ruleId}",\n` +
+        `    id: "${entry.ruleId}",\n` +
+        `    source: "react-doctor",\n` +
+        `    originallyExternal: ${entry.originallyExternal},\n` +
+        `    rule: {\n` +
+        `      ...${entry.identifier},\n` +
+        `      framework: "${entry.framework}",\n` +
+        `      category: "${entry.category}",\n` +
+        (entry.shouldSynthesizeDefaultDisabled ? `      defaultEnabled: false,\n` : "") +
+        formatAutoTagsLine(entry) +
+        formatRequiresLine(entry) +
+        `    },\n` +
+        `  },`,
+    )
+    .join("\n");
+
+const ruleLines = formatRuleLines(ruleEntries);
 
 const generatedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm gen\` to regenerate.
 // Source of truth: every \`export const <name> = defineRule({ id: "...", ... })\`
@@ -447,4 +471,78 @@ export const ruleRegistry: Record<string, Rule> = Object.fromEntries(
 `;
 
 fs.writeFileSync(REGISTRY_OUTPUT, generatedSource);
+
+const recommendationOverrideByRuleId = {
+  "nextjs-no-client-side-redirect": "static-export-redirect",
+  "no-secrets-in-client-code": "client-secret",
+};
+
+const coreRuleEntries = ruleEntries.map((entry) => {
+  const sourceRule = entry.sourceRule;
+  const recommendationOverride = recommendationOverrideByRuleId[entry.ruleId];
+  if (typeof sourceRule.recommendationFor === "function" && recommendationOverride === undefined) {
+    throw new Error(`Missing core recommendation override for rule: ${entry.ruleId}`);
+  }
+  const tags = [...new Set([...entry.autoTags, ...(sourceRule.tags ?? [])])];
+  const requires = [...new Set([...entry.requiredCapabilities, ...(sourceRule.requires ?? [])])];
+  return {
+    key: `react-doctor/${entry.ruleId}`,
+    id: entry.ruleId,
+    source: "react-doctor",
+    originallyExternal: entry.originallyExternal,
+    rule: {
+      id: entry.ruleId,
+      title: sourceRule.title,
+      severity: entry.severity,
+      recommendation: sourceRule.recommendation,
+      recommendationOverride,
+      category: entry.category,
+      framework: entry.framework,
+      requires: requires.length > 0 ? requires : undefined,
+      disabledWhen: sourceRule.disabledWhen,
+      tags: tags.length > 0 ? tags : undefined,
+      defaultEnabled:
+        entry.shouldSynthesizeDefaultDisabled || sourceRule.defaultEnabled === false
+          ? false
+          : undefined,
+      matchByOccurrence: sourceRule.matchByOccurrence,
+      isScanRule: typeof sourceRule.scan === "function",
+    },
+  };
+});
+
+const coreRegistryData = await format(
+  CORE_REGISTRY_DATA_OUTPUT,
+  `${JSON.stringify(coreRuleEntries, null, 2)}\n`,
+  { printWidth: GENERATED_LINE_WIDTH },
+);
+fs.writeFileSync(CORE_REGISTRY_DATA_OUTPUT, coreRegistryData.code);
+
+const securityScanEntries = ruleEntries.filter(
+  (entry) => typeof entry.sourceRule.scan === "function",
+);
+const securityScanImportLines = securityScanEntries
+  .map((entry) => `import { ${entry.identifier} } from "${entry.relativeImport}";`)
+  .join("\n");
+const securityScanCapabilityImport = securityScanEntries.some(
+  (entry) => entry.requiredCapabilities.length > 0,
+)
+  ? `import type { Capability } from "./utils/capability.js";`
+  : "";
+const securityScanGeneratedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm gen\` to regenerate.
+
+${[securityScanCapabilityImport, securityScanImportLines].filter(Boolean).join("\n\n")}
+
+export const reactDoctorScanRules = [
+${formatRuleLines(securityScanEntries)}
+] as const;
+`;
+fs.writeFileSync(SECURITY_SCAN_REGISTRY_OUTPUT, securityScanGeneratedSource);
+
 console.log(`Wrote ${path.relative(PACKAGE_ROOT, REGISTRY_OUTPUT)} (${ruleEntries.length} rules)`);
+console.log(
+  `Wrote ${path.relative(PACKAGE_ROOT, CORE_REGISTRY_DATA_OUTPUT)} (${coreRuleEntries.length} rules)`,
+);
+console.log(
+  `Wrote ${path.relative(PACKAGE_ROOT, SECURITY_SCAN_REGISTRY_OUTPUT)} (${securityScanEntries.length} rules)`,
+);

@@ -337,6 +337,7 @@ export const SECRET_CLIENT_SOURCE_DIRECTORY_NAMES = new Set([
 ]);
 
 export const SECRET_FALSE_POSITIVE_SUFFIXES = new Set([
+  "alert",
   "modal",
   "label",
   "text",
@@ -396,3 +397,5 @@ export const SECRET_FALSE_POSITIVE_SUFFIXES = new Set([
   "schema",
   "constant",
 ]);
+
+export const SECRET_SENTINEL_BOUNDARY_WORDS = new Set(["start", "end"]);

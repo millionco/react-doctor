@@ -48,13 +48,32 @@ interface ResolvedInitiator {
   initiator: EsTreeNode;
   hasUpstreamRejectionHandling: boolean;
 }
-const isKnownNonThenableHandlerReturn = (
+const isKnownNonRejectingHandlerReturn = (
   expression: EsTreeNode,
   context: RuleContext,
   visitedBindingIdentifiers = new Set<EsTreeNode>(),
 ): boolean => {
   const strippedExpression = stripParenExpression(expression);
   if (isDefinitelyNonThenableValue(strippedExpression)) return true;
+  if (
+    isNodeOfType(strippedExpression, "CallExpression") &&
+    isNodeOfType(strippedExpression.callee, "MemberExpression")
+  ) {
+    const receiver = stripParenExpression(strippedExpression.callee.object);
+    if (
+      isNodeOfType(receiver, "Identifier") &&
+      receiver.name === "Promise" &&
+      context.scopes.isGlobalReference(receiver) &&
+      getStaticPropertyName(strippedExpression.callee) === "resolve"
+    ) {
+      const resolvedValue = strippedExpression.arguments[0];
+      return (
+        !resolvedValue ||
+        (!isNodeOfType(resolvedValue, "SpreadElement") &&
+          isKnownNonRejectingHandlerReturn(resolvedValue, context, visitedBindingIdentifiers))
+      );
+    }
+  }
   if (!isNodeOfType(strippedExpression, "Identifier")) return false;
   if (
     strippedExpression.name === "undefined" &&
@@ -67,7 +86,8 @@ const isKnownNonThenableHandlerReturn = (
   visitedBindingIdentifiers.add(symbol.bindingIdentifier);
   const initializer = getDirectUnreassignedInitializer(symbol);
   return Boolean(
-    initializer && isKnownNonThenableHandlerReturn(initializer, context, visitedBindingIdentifiers),
+    initializer &&
+    isKnownNonRejectingHandlerReturn(initializer, context, visitedBindingIdentifiers),
   );
 };
 const isKnownNonRejectingHandler = (
@@ -91,7 +111,7 @@ const isKnownNonRejectingHandler = (
     if (
       isNodeOfType(child, "ReturnStatement") &&
       child.argument &&
-      !isKnownNonThenableHandlerReturn(child.argument, context)
+      !isKnownNonRejectingHandlerReturn(child.argument, context)
     ) {
       const returnedExpression = stripParenExpression(child.argument);
       if (!isNodeOfType(returnedExpression, "CallExpression")) {
@@ -160,6 +180,51 @@ const handlerHasPotentiallyThrowingMemberRead = (
   return hasPotentiallyThrowingMemberRead;
 };
 
+const hasRejectionHandler = (
+  chain: EsTreeNode,
+  argument: EsTreeNode | undefined,
+  context: RuleContext,
+  allowTerminalCatchBlock: boolean,
+): boolean => {
+  if (!argument) return false;
+  if (
+    !handlerHasPotentiallyThrowingMemberRead(argument, context) &&
+    (chainCarriesRejectionHandler(chain, context.scopes) ||
+      isKnownNonRejectingHandler(argument, context))
+  ) {
+    return true;
+  }
+  if (!allowTerminalCatchBlock) return false;
+  const candidate = stripParenExpression(argument);
+  const handler = isNodeOfType(candidate, "Identifier")
+    ? resolveExactLocalFunction(candidate, context.scopes)
+    : candidate;
+  if (!handler || !isFunctionLike(handler)) {
+    return (
+      isNodeOfType(candidate, "MemberExpression") ||
+      (isNodeOfType(candidate, "Identifier") && candidate.name !== "undefined")
+    );
+  }
+  if (!isNodeOfType(handler.body, "BlockStatement")) return false;
+  let doesExplicitlyReject = false;
+  walkOwnFunctionScope(handler, (child: EsTreeNode) => {
+    if (doesExplicitlyReject) return false;
+    if (isNodeOfType(child, "ThrowStatement") || isNodeOfType(child, "AwaitExpression")) {
+      doesExplicitlyReject = true;
+      return false;
+    }
+    if (
+      isNodeOfType(child, "ReturnStatement") &&
+      child.argument &&
+      !isKnownNonRejectingHandlerReturn(child.argument, context)
+    ) {
+      doesExplicitlyReject = true;
+      return false;
+    }
+  });
+  return !doesExplicitlyReject;
+};
+
 const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): PromiseChainWalk => {
   let cursor = stripParenExpression(chainExpression);
   let hasCatch = false;
@@ -179,15 +244,18 @@ const walkPromiseChain = (chainExpression: EsTreeNode, context: RuleContext): Pr
       methodName === "catch"
         ? (cursor.arguments[0] as EsTreeNode | undefined)
         : (cursor.arguments[1] as EsTreeNode | undefined);
-    const hasAbsorbingRejectionHandler =
-      !handlerHasPotentiallyThrowingMemberRead(rejectionHandlerArgument, context) &&
-      (chainCarriesRejectionHandler(cursor, context.scopes) ||
-        isKnownNonRejectingHandler(rejectionHandlerArgument, context));
-    if (!didReachTerminalThen && methodName === "catch" && hasAbsorbingRejectionHandler) {
+    if (
+      !didReachTerminalThen &&
+      methodName === "catch" &&
+      hasRejectionHandler(cursor, rejectionHandlerArgument, context, true)
+    ) {
       hasCatch = true;
     }
     if (methodName === "then") {
-      if (!didReachTerminalThen && hasAbsorbingRejectionHandler) {
+      if (
+        !didReachTerminalThen &&
+        hasRejectionHandler(cursor, rejectionHandlerArgument, context, false)
+      ) {
         hasRejectionHandlerArgument = true;
       }
       didReachTerminalThen = true;

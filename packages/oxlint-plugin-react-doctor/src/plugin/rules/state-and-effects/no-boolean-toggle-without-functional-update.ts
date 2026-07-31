@@ -739,14 +739,25 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
   recommendation:
     "Toggle boolean state with the functional updater `setX(previous => !previous)` so deferred callbacks always read the latest committed value.",
   create: (context: RuleContext) => {
-    let deferredFunctions: ReadonlySet<EsTreeNode> = new Set();
+    let programRoot: EsTreeNodeOfType<"Program"> | null = null;
+    let deferredFunctions: ReadonlySet<EsTreeNode> | null = null;
     const registrationCallsByCallback = new Map<EsTreeNode, EsTreeNodeOfType<"CallExpression">[]>();
     const awaitProofsByFunction = new WeakMap<EsTreeNode, AwaitReachabilityProof[]>();
     const useStatePairByCalleeSymbolId = new Map<number, ReactUseStatePair | null>();
     const earlyGuardCandidatesByBlock = new WeakMap<EsTreeNode, EsTreeNode[]>();
+    const getDeferredFunctions = (): ReadonlySet<EsTreeNode> => {
+      if (deferredFunctions) return deferredFunctions;
+      if (!programRoot) return new Set();
+      deferredFunctions = collectDeferredFunctions(
+        programRoot,
+        context,
+        registrationCallsByCallback,
+      );
+      return deferredFunctions;
+    };
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        deferredFunctions = collectDeferredFunctions(node, context, registrationCallsByCallback);
+        programRoot = node;
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callee = stripParenExpression(node.callee);
@@ -775,8 +786,9 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
         ) {
           return;
         }
+        const currentDeferredFunctions = getDeferredFunctions();
         if (
-          !isInsideDeferredFunction(node, deferredFunctions) &&
+          !isInsideDeferredFunction(node, currentDeferredFunctions) &&
           !asyncFunctionHasAwaitBefore(node, context, awaitProofsByFunction)
         ) {
           return;
@@ -785,14 +797,14 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
           effectResubscribesWithCleanup(
             node,
             pair.stateSymbol.id,
-            deferredFunctions,
+            currentDeferredFunctions,
             registrationCallsByCallback,
             context,
           ) ||
           hasPromiseCommandNegation(
             node,
             pair.stateSymbol.id,
-            deferredFunctions,
+            currentDeferredFunctions,
             registrationCallsByCallback,
             context,
           ) ||

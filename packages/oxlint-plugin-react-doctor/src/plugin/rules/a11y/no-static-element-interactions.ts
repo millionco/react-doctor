@@ -8,6 +8,7 @@ import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activ
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isAbstractRole } from "../../utils/is-abstract-role.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
+import { isFocusForwardingOrBlockingHandler } from "../../utils/is-focus-forwarding-handler.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isInteractiveRole } from "../../utils/is-interactive-role.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -178,6 +179,7 @@ export const noStaticElementInteractions = defineRule({
           nonBlockerHandlerNamesLower.size === 1 && nonBlockerHandlerNamesLower.has("onclick")
             ? hasJsxPropIgnoreCase(node.attributes, "onClick")
             : null;
+        if (onClick && isFocusForwardingOrBlockingHandler(onClick, context.scopes)) return;
         if (
           onClick &&
           hasKeyboardActivatableDescendant(node.parent, onClick, context.scopes, context.settings)

@@ -148,3 +148,75 @@ describe("runOxlint HTML support", () => {
     expect(diagnostics.some((diagnostic) => diagnostic.rule === "parse-error")).toBe(false);
   });
 });
+
+describe("runOxlint Astro support", () => {
+  let rootDirectory: string;
+
+  beforeEach(() => {
+    rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-astro-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(rootDirectory, { recursive: true, force: true });
+  });
+
+  it("lints Astro templates at their original locations", async () => {
+    const astroSource = [
+      "---",
+      'const items = ["one", "two"];',
+      "debugger;",
+      "---",
+      '<label for="topic">Topic</label>',
+      '<input id="topic" class="field" />',
+      "<ul>{items.map((item) => <li>{item}</li>)}</ul>",
+      "<p>The build is ready — deploy it now</p>",
+    ].join("\n");
+    fs.mkdirSync(path.join(rootDirectory, "src"), { recursive: true });
+    fs.writeFileSync(path.join(rootDirectory, "src", "page.astro"), astroSource);
+    fs.writeFileSync(
+      path.join(rootDirectory, ".oxlintrc.json"),
+      JSON.stringify({ rules: { "no-debugger": "warn" } }),
+    );
+    let coverage: RunOxlintFileCoverage | null = null;
+
+    const diagnostics = await runOxlint({
+      rootDirectory,
+      project: buildTestProject({ rootDirectory, framework: "astro" }),
+      perFileLintCacheEnabled: false,
+      userConfig: {
+        rules: {
+          "react-doctor/design-no-em-dash-in-jsx-text": "warn",
+        },
+      },
+      onFileCoverage: (nextCoverage) => {
+        coverage = nextCoverage;
+      },
+    });
+
+    const emDashDiagnostic = diagnostics.find(
+      (diagnostic) => diagnostic.rule === "design-no-em-dash-in-jsx-text",
+    );
+    expect(emDashDiagnostic).toMatchObject({
+      filePath: "src/page.astro",
+      line: 8,
+      offset: Buffer.from(astroSource).indexOf("The build"),
+    });
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        filePath: "src/page.astro",
+        rule: "no-debugger",
+        line: 3,
+      }),
+    );
+    expect(diagnostics.some((diagnostic) => diagnostic.rule === "jsx-key")).toBe(false);
+    expect(diagnostics.some((diagnostic) => diagnostic.rule === "jsx-no-undef")).toBe(false);
+    expect(diagnostics.some((diagnostic) => diagnostic.rule === "no-unknown-property")).toBe(false);
+    expect(
+      diagnostics.some((diagnostic) => diagnostic.rule === "label-has-associated-control"),
+    ).toBe(false);
+    expect(coverage).toEqual({
+      candidateFiles: ["src/page.astro"],
+      analyzedFiles: ["src/page.astro"],
+    });
+  });
+});

@@ -127,6 +127,34 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent when an imported media-query snapshot is copied into a comparison ref", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import React from "react";
+        import { useMediaQuery } from "../hooks/useMediaQuery";
+
+        const Sidebar = ({ breakPoint, onBreakPoint }) => {
+          const broken = useMediaQuery(\`(max-width: \${breakPoint})\`);
+          const previousBrokenRef = React.useRef(broken);
+          const hasReportedRef = React.useRef(false);
+
+          React.useEffect(() => {
+            if (previousBrokenRef.current === broken) return;
+            previousBrokenRef.current = broken;
+            if (!hasReportedRef.current) {
+              hasReportedRef.current = true;
+              if (broken) onBreakPoint?.(true);
+              return;
+            }
+            onBreakPoint?.(broken);
+          }, [broken, onBreakPoint]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("stays silent for a direct imported visibility result", () => {
       const result = runRule(
         noPassDataToParent,

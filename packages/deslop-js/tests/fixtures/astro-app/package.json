@@ -1,0 +1,8 @@
+{
+  "name": "astro-app",
+  "dependencies": {
+    "astro": "^7.1.5",
+    "sharp": "^0.34.0",
+    "unused-dep": "^1.0.0"
+  }
+}

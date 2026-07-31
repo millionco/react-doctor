@@ -9,6 +9,7 @@ import { buildBenchmarkComparisons } from "../../../scripts/performance/build-be
 import { buildBenchmarkEnvironment } from "../../../scripts/performance/build-benchmark-environment.ts";
 import type { BuildBenchmarkEnvironmentInput } from "../../../scripts/performance/build-benchmark-environment.ts";
 import { clearBenchmarkRunArtifacts } from "../../../scripts/performance/clear-benchmark-run-artifacts.ts";
+import { BUILT_CLI_PERFORMANCE_TEST_TIMEOUT_MS } from "../../../scripts/performance/constants.ts";
 import { createStressProject } from "../../../scripts/performance/create-stress-project.ts";
 import { parsePerformanceArguments } from "../../../scripts/performance/parse-performance-arguments.ts";
 import { parseProcessResourceUsage } from "../../../scripts/performance/parse-process-resource-usage.ts";
@@ -389,40 +390,44 @@ describe("performance harness", () => {
   });
 
   describe.skipIf(!hasBuiltCli)("with the built CLI", () => {
-    it("runs the benchmark against a generated stress project with stable diagnostics", () => {
-      const directory = createTemporaryDirectory();
-      const projectDirectory = path.join(directory, "project");
-      const outputDirectory = path.join(directory, "results");
-      const stressProject = createStressProject({
-        directory: projectDirectory,
-        fileCount: 4,
-        componentsPerFileCount: 1,
-      });
-      const result = runPerformance({
-        directories: [projectDirectory],
-        samples: 2,
-        warmups: 0,
-        workerCounts: [1],
-        modes: ["lint"],
-        cacheCohorts: ["no-cache"],
-        outputDirectory,
-        comparePath: null,
-        cliPath: builtCliPath,
-        profile: false,
-        heapProfile: false,
-      });
+    it(
+      "runs the benchmark against a generated stress project with stable diagnostics",
+      { timeout: BUILT_CLI_PERFORMANCE_TEST_TIMEOUT_MS },
+      () => {
+        const directory = createTemporaryDirectory();
+        const projectDirectory = path.join(directory, "project");
+        const outputDirectory = path.join(directory, "results");
+        const stressProject = createStressProject({
+          directory: projectDirectory,
+          fileCount: 4,
+          componentsPerFileCount: 1,
+        });
+        const result = runPerformance({
+          directories: [projectDirectory],
+          samples: 2,
+          warmups: 0,
+          workerCounts: [1],
+          modes: ["lint"],
+          cacheCohorts: ["no-cache"],
+          outputDirectory,
+          comparePath: null,
+          cliPath: builtCliPath,
+          profile: false,
+          heapProfile: false,
+        });
 
-      expect(result.series).toHaveLength(1);
-      expect(result.series[0]?.samples).toHaveLength(2);
-      expect(result.series[0]?.diagnosticHash).toHaveLength(64);
-      expect(result.series[0]?.samples[0]?.diagnosticCount).toBeGreaterThan(0);
-      expect(result.series[0]?.samples[1]?.diagnosticHash).toBe(
-        result.series[0]?.samples[0]?.diagnosticHash,
-      );
-      expect(result.series[0]?.samples[0]?.scannedFileCount).toBe(
-        stressProject.generatedSourceFileCount,
-      );
-    });
+        expect(result.series).toHaveLength(1);
+        expect(result.series[0]?.samples).toHaveLength(2);
+        expect(result.series[0]?.diagnosticHash).toHaveLength(64);
+        expect(result.series[0]?.samples[0]?.diagnosticCount).toBeGreaterThan(0);
+        expect(result.series[0]?.samples[1]?.diagnosticHash).toBe(
+          result.series[0]?.samples[0]?.diagnosticHash,
+        );
+        expect(result.series[0]?.samples[0]?.scannedFileCount).toBe(
+          stressProject.generatedSourceFileCount,
+        );
+      },
+    );
 
     it("captures and aggregates profiles across the benchmark process tree", () => {
       const directory = createTemporaryDirectory();

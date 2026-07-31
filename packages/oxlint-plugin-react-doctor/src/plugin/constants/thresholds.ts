@@ -25,6 +25,9 @@ export const SPREAD_KEY_RESOLUTION_DEPTH = 3;
 // or-fewer literals twice is trivial cost, the rewrite is pure
 // ceremony at this scale.
 export const SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 8;
+// A nine-column UI schema remains a fixed tiny input where fusing
+// iterations adds ceremony without a material runtime benefit.
+export const JS_COMBINE_ITERATIONS_SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 9;
 // `Math.min(...array)` passes one call argument per element and engines
 // cap argument counts (the smallest common limits are in the tens of
 // thousands); 1024 keeps the suggested rewrite far under any of them.
@@ -46,6 +49,7 @@ export const MIN_OVERPRECISE_SVG_TOKEN_OCCURRENCES = 2;
 // giving up.
 export const CROSS_FILE_PARSE_MAX_BYTES = 2_000_000;
 export const CROSS_FILE_BARREL_FOLLOW_DEPTH = 4;
+export const DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH = CROSS_FILE_BARREL_FOLLOW_DEPTH * 2;
 export const KATEX_CROSS_FILE_PROOF_MAX_DEPTH = 2;
 export const CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH = 4;
 export const CREATE_REF_PROP_FLOW_MAX_DEPTH = 12;

@@ -262,6 +262,11 @@ export const METRIC = {
   cliError: "cli.error",
   cliEnvironmentError: "cli.env_error",
   stagedSnapshotDivergence: "staged.snapshot_divergence",
+  // The kill metric for per-package `--staged` scanning: one count per run that
+  // scanned a package instead of the scan root, with how many in an attribute.
+  // If it never fires, no repository points `--staged` at its packages and the
+  // ownership map earns nothing.
+  stagedPerProject: "staged.per_project",
   projectDetected: "project.detected",
   projectPathSelected: "project.path_selected",
   projectConfigSelected: "project.config_selected",

@@ -18,6 +18,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findReExportTargetsForName } from "../../utils/find-exported-function-body.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -1574,16 +1575,26 @@ const freshObjectMethodIsExternalCallback = (
   return expressionLooksLikeExternalCallback(unwrappedValue);
 };
 
-const memberReceiverIsFreshObjectLiteral = (
+const memberReceiverIsLocalObjectLiteral = (
   callee: EsTreeNodeOfType<"MemberExpression">,
+  updaterFunction: EsTreeNode,
+  executedFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
 ): boolean => {
   const receiver = stripParenExpression(callee.object);
   if (!isNodeOfType(receiver, "Identifier")) return false;
   const receiverSymbol = resolveConstIdentifierAlias(receiver, context.scopes);
+  const receiverOwner = receiverSymbol
+    ? findEnclosingFunction(receiverSymbol.bindingIdentifier)
+    : null;
+  const isShadowedGlobalObject =
+    GLOBAL_OBJECT_RECEIVER_NAMES.has(receiver.name) && !context.scopes.isGlobalReference(receiver);
   return Boolean(
     receiverSymbol?.initializer &&
-    isNodeOfType(stripParenExpression(receiverSymbol.initializer), "ObjectExpression"),
+    isNodeOfType(stripParenExpression(receiverSymbol.initializer), "ObjectExpression") &&
+    (isShadowedGlobalObject ||
+      (receiverOwner !== null && receiverOwner === findEnclosingFunction(updaterFunction)) ||
+      receiverIsUpdaterLocal(receiver, updaterFunction, executedFunctions, context)),
   );
 };
 
@@ -1790,7 +1801,7 @@ const callHasSideEffectName = (
     CALLBACK_PROP_NAME_PATTERN.test(getStaticPropertyName(callee) ?? "") &&
     (memberCalleeUsesExternalCallback ||
       receiverRootIsUpdaterParameter(callee.object, updaterFunction, context) ||
-      (!memberReceiverIsFreshObjectLiteral(callee, context) &&
+      (!memberReceiverIsLocalObjectLiteral(callee, updaterFunction, executedFunctions, context) &&
         !receiverIsUpdaterLocal(callee.object, updaterFunction, executedFunctions, context)));
   const isDiscardedExternalCallbackCall =
     isResultDiscardedCall(call) &&
@@ -1850,7 +1861,7 @@ const callHasSideEffectName = (
   }
   if (
     isNodeOfType(callee, "MemberExpression") &&
-    memberReceiverIsFreshObjectLiteral(callee, context)
+    memberReceiverIsLocalObjectLiteral(callee, updaterFunction, executedFunctions, context)
   ) {
     return false;
   }
@@ -2071,7 +2082,20 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
               return;
             }
             const resolvedFunction = resolveCalledLocalFunction(child, context, node);
-            if (resolvedFunction && executedFunctions.has(resolvedFunction)) return;
+            const resolvedCallee = stripParenExpression(child.callee);
+            if (
+              resolvedFunction &&
+              executedFunctions.has(resolvedFunction) &&
+              (!isNodeOfType(resolvedCallee, "MemberExpression") ||
+                memberReceiverIsLocalObjectLiteral(
+                  resolvedCallee,
+                  updaterFunction,
+                  executedFunctions,
+                  context,
+                ))
+            ) {
+              return;
+            }
             if (
               callHasImmediateSideEffectCallback(
                 child,

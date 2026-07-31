@@ -232,6 +232,24 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(localSetterMethod.diagnostics).toHaveLength(0);
   });
 
+  it("distinguishes module service objects from component-local object helpers", () => {
+    const moduleServices = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const storage={save:value=>value};const analytics={track:value=>value};const helpers={setMessages:value=>value};const C=()=>{const[,setValue]=useState(0);setValue(previous=>{storage.save(previous);analytics.track(previous);helpers.setMessages(previous);return previous+1})}`,
+    );
+    const componentHelpers = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const storage={save:value=>value};const analytics={track:value=>value};const helpers={setMessages:value=>value};const[,setValue]=useState(0);setValue(previous=>{storage.save(previous);analytics.track(previous);helpers.setMessages(previous);return previous+1})}`,
+    );
+    const updaterHelpers = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);setValue(previous=>{const storage={save:value=>value};const analytics={track:value=>value};const helpers={setMessages:value=>value};storage.save(previous);analytics.track(previous);helpers.setMessages(previous);return previous+1})}`,
+    );
+    expect(moduleServices.diagnostics).toHaveLength(3);
+    expect(componentHelpers.diagnostics).toHaveLength(0);
+    expect(updaterHelpers.diagnostics).toHaveLength(0);
+  });
+
   it("flags callbacks stored in prior state without flagging fresh local callbacks", () => {
     const priorStateCallback = runRule(
       noSideEffectInStateUpdaterFunction,

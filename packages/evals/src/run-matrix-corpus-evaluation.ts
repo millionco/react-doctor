@@ -16,9 +16,12 @@ import {
   EVALUATION_CONFIG_CONTRACT,
   EVALUATION_RETRY_CONCURRENCIES,
   MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND,
+  MATRIX_CLEANUP_VERIFICATION_TIMEOUT_SECONDS,
+  MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS,
   MATRIX_PROVENANCE_DIRECTORY,
   MATRIX_REACT_DOCTOR_DIRECTORY,
   MILLISECONDS_PER_MINUTE,
+  MILLISECONDS_PER_SECOND,
   PINNED_REPOSITORY_REF_PATTERN,
   SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
   SANDBOX_CREATE_CONCURRENCY,
@@ -41,6 +44,7 @@ import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
+import { verifyMatrixResourcesClean } from "./utils/verify-matrix-resources-clean.js";
 import { hashMatrixCorpusProjectSet, loadMatrixTreatments } from "./matrix-treatment-descriptor.js";
 import type { MatrixBaselineArtifactVerification } from "./verify-matrix-baseline-cache.js";
 import {
@@ -90,6 +94,7 @@ const createFullBaselineProvenance = async ({
   baseReactDoctorRepository,
   evaluatorSourceHash,
   baseFullRuleSetHash,
+  deadlineMilliseconds,
 }: {
   baselineOutputPath: string;
   baselineProvenancePath: string;
@@ -98,6 +103,7 @@ const createFullBaselineProvenance = async ({
   baseReactDoctorRepository: string;
   evaluatorSourceHash: string;
   baseFullRuleSetHash: string;
+  deadlineMilliseconds: number;
 }): Promise<MatrixBaselineArtifactVerification> => {
   const verifierPath = fileURLToPath(
     new URL(
@@ -105,54 +111,49 @@ const createFullBaselineProvenance = async ({
       import.meta.url,
     ),
   );
-  const { stdout } = await executeFile(process.execPath, [
-    verifierPath,
-    "create",
-    "--baseline",
-    baselineOutputPath,
-    "--provenance",
-    baselineProvenancePath,
-    "--corpus-manifest",
-    corpusManifestPath,
-    "--base-commit",
-    baseReactDoctorCommit,
-    "--repository",
-    baseReactDoctorRepository,
-    "--evaluator-source-hash",
-    evaluatorSourceHash,
-    "--config-contract",
-    EVALUATION_CONFIG_CONTRACT,
-    "--rule-set-hash",
-    baseFullRuleSetHash,
-  ]);
+  const { stdout } = await executeFile(
+    process.execPath,
+    [
+      verifierPath,
+      "create",
+      "--baseline",
+      baselineOutputPath,
+      "--provenance",
+      baselineProvenancePath,
+      "--corpus-manifest",
+      corpusManifestPath,
+      "--base-commit",
+      baseReactDoctorCommit,
+      "--repository",
+      baseReactDoctorRepository,
+      "--evaluator-source-hash",
+      evaluatorSourceHash,
+      "--config-contract",
+      EVALUATION_CONFIG_CONTRACT,
+      "--rule-set-hash",
+      baseFullRuleSetHash,
+    ],
+    {
+      timeout:
+        getEvaluationTimeoutSeconds({
+          deadlineMilliseconds,
+          maximumTimeoutSeconds: MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS,
+        }) * MILLISECONDS_PER_SECOND,
+    },
+  );
   return parseMatrixBaselineVerifierOutput(stdout);
-};
-
-const verifyMatrixResourcesClean = async ({
-  daytona,
-  evaluationId,
-  snapshotName,
-}: {
-  daytona: Daytona;
-  evaluationId: string;
-  snapshotName: string;
-}): Promise<void> => {
-  for await (const sandbox of daytona.list({ labels: { evaluation: evaluationId } })) {
-    throw new Error(`Matrix Daytona sandbox still exists after cleanup: ${sandbox.id}`);
-  }
-  try {
-    const snapshot = await daytona.snapshot.get(snapshotName);
-    throw new Error(`Matrix Daytona snapshot still exists after cleanup: ${snapshot.name}`);
-  } catch (error) {
-    if (!(error instanceof DaytonaNotFoundError)) throw error;
-  }
 };
 
 export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Promise<void> => {
   const matrixOptions = options.matrix;
   if (!matrixOptions) throw new Error("Matrix evaluation options are missing");
+  const startedAt = globalThis.performance.now();
+  const wholeRunDeadlineMilliseconds =
+    startedAt + options.maxDurationMinutes * MILLISECONDS_PER_MINUTE;
+  const evaluationDeadlineMilliseconds =
+    wholeRunDeadlineMilliseconds - EVALUATION_CLEANUP_RESERVE_MINUTES * MILLISECONDS_PER_MINUTE;
   const treatments = await loadMatrixTreatments(matrixOptions.treatmentDescriptorPaths);
-  await verifyMatrixImpactManifests(treatments);
+  await verifyMatrixImpactManifests(treatments, evaluationDeadlineMilliseconds);
   const group = treatments[0].descriptor.group;
   const evaluatorSourceHash = getEvaluatorSourceHash();
   if (group.evaluatorSourceHash !== evaluatorSourceHash) {
@@ -173,7 +174,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   }
   const repositoryGroups = groupCorpusRepositories(loadedRepositories);
   const projectCount = loadedRepositories.length;
-  const cacheVerification = await verifyMatrixBaselineCache(group);
+  const cacheVerification = await verifyMatrixBaselineCache(group, evaluationDeadlineMilliseconds);
   if (cacheVerification.invalid) {
     throw new Error(`Matrix baseline cache is invalid: ${cacheVerification.reason}`);
   }
@@ -240,10 +241,6 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   }
   const failedRecordCounts = new Map(plan.lanes.map((lane) => [lane.id, 0]));
   const completedRecordCounts = new Map(plan.lanes.map((lane) => [lane.id, 0]));
-  const startedAt = globalThis.performance.now();
-  const evaluationDeadlineMilliseconds =
-    startedAt +
-    (options.maxDurationMinutes - EVALUATION_CLEANUP_RESERVE_MINUTES) * MILLISECONDS_PER_MINUTE;
   const daytona = new Daytona();
   const snapshotName = `${DAYTONA_RUN_NAME}-snapshot-${evaluationId}`;
   let didCompleteEvaluation = false;
@@ -372,9 +369,21 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
         }
       }
       try {
-        await verifyMatrixResourcesClean({ daytona, evaluationId, snapshotName });
+        await verifyMatrixResourcesClean({
+          daytona,
+          evaluationId,
+          snapshotName,
+          deadlineMilliseconds: Math.min(
+            wholeRunDeadlineMilliseconds,
+            globalThis.performance.now() +
+              MATRIX_CLEANUP_VERIFICATION_TIMEOUT_SECONDS * MILLISECONDS_PER_SECOND,
+          ),
+        });
+        cleanupError = undefined;
       } catch (error) {
-        cleanupError ??= error;
+        cleanupError = cleanupError
+          ? new AggregateError([cleanupError, error], "Matrix Daytona cleanup was not verified")
+          : error;
       }
     }
   }
@@ -408,6 +417,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
             baseReactDoctorRepository: group.baseReactDoctorRepository,
             evaluatorSourceHash,
             baseFullRuleSetHash: group.baseFullRuleSetHash,
+            deadlineMilliseconds: wholeRunDeadlineMilliseconds,
           });
           if (!baseEvaluation) throw new Error("Matrix base evaluation provenance is missing");
           baseArtifactBinding = await createMatrixBaseArtifactBinding({

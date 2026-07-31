@@ -31,6 +31,7 @@ export interface MatrixArtifactProvenance {
   };
   descriptorSha256: string;
   impactManifestSha256: string;
+  rulesSha256: string;
   baseArtifact?: MaterializedMatrixBaseArtifactBinding;
   ruleKeys: ReadonlyArray<string>;
   evaluation?: EvaluationProvenance;
@@ -123,6 +124,8 @@ export const createMatrixArtifactWriter = async ({
   await mkdir(dirname(artifactDirectory), { recursive: true });
   await mkdir(pendingDirectory);
   const candidatePath = join(pendingDirectory, "candidate.ndjson");
+  const rulesPath = join(pendingDirectory, "rules.json");
+  const rulesContents = `${JSON.stringify(treatment.ruleKeys, null, 2)}\n`;
   const recordsDirectory = join(pendingDirectory, "records");
   const recordSpool = await createRecordSpool(recordsDirectory)
     .then(async (createdRecordSpool) => {
@@ -139,14 +142,10 @@ export const createMatrixArtifactWriter = async ({
             mode: EVALUATION_ARTIFACT_FILE_MODE,
           },
         ),
-        writeFile(
-          join(pendingDirectory, "rules.json"),
-          `${JSON.stringify(treatment.ruleKeys, null, 2)}\n`,
-          {
-            flag: "wx",
-            mode: EVALUATION_ARTIFACT_FILE_MODE,
-          },
-        ),
+        writeFile(rulesPath, rulesContents, {
+          flag: "wx",
+          mode: EVALUATION_ARTIFACT_FILE_MODE,
+        }),
       ]);
       return createdRecordSpool;
     })
@@ -199,6 +198,7 @@ export const createMatrixArtifactWriter = async ({
         },
         descriptorSha256: treatment.descriptorSha256,
         impactManifestSha256: treatment.descriptor.impactManifestSha256,
+        rulesSha256: await hashFile(rulesPath),
         baseArtifact: materializedBaseArtifact,
         ruleKeys: treatment.ruleKeys,
         evaluation,

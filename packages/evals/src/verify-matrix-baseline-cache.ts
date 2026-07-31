@@ -3,8 +3,13 @@ import { access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+import {
+  MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS,
+  MILLISECONDS_PER_SECOND,
+  SHA256_PATTERN,
+} from "./constants.js";
 import type { MatrixEvaluationGroup } from "./matrix-treatment-descriptor.js";
-import { SHA256_PATTERN } from "./constants.js";
+import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 
 export interface MatrixBaselineArtifactVerification {
   sha256: string;
@@ -56,6 +61,8 @@ export const parseMatrixBaselineVerifierOutput = (
 
 export const verifyMatrixBaselineCache = async (
   group: MatrixEvaluationGroup,
+  deadlineMilliseconds = globalThis.performance.now() +
+    MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS * MILLISECONDS_PER_SECOND,
 ): Promise<MatrixBaselineCacheVerification> => {
   const existenceResults = await Promise.allSettled([
     access(group.baselineOutputPath),
@@ -81,26 +88,36 @@ export const verifyMatrixBaselineCache = async (
     ),
   );
   try {
-    const { stdout } = await executeFile(process.execPath, [
-      verifierPath,
-      "verify",
-      "--baseline",
-      group.baselineOutputPath,
-      "--provenance",
-      group.baselineProvenancePath,
-      "--corpus-manifest",
-      group.corpusManifestPath,
-      "--base-commit",
-      group.baseReactDoctorCommit,
-      "--repository",
-      group.baseReactDoctorRepository,
-      "--evaluator-source-hash",
-      group.evaluatorSourceHash,
-      "--config-contract",
-      group.configContract,
-      "--rule-set-hash",
-      group.baseFullRuleSetHash,
-    ]);
+    const { stdout } = await executeFile(
+      process.execPath,
+      [
+        verifierPath,
+        "verify",
+        "--baseline",
+        group.baselineOutputPath,
+        "--provenance",
+        group.baselineProvenancePath,
+        "--corpus-manifest",
+        group.corpusManifestPath,
+        "--base-commit",
+        group.baseReactDoctorCommit,
+        "--repository",
+        group.baseReactDoctorRepository,
+        "--evaluator-source-hash",
+        group.evaluatorSourceHash,
+        "--config-contract",
+        group.configContract,
+        "--rule-set-hash",
+        group.baseFullRuleSetHash,
+      ],
+      {
+        timeout:
+          getEvaluationTimeoutSeconds({
+            deadlineMilliseconds,
+            maximumTimeoutSeconds: MATRIX_LOCAL_COMMAND_TIMEOUT_SECONDS,
+          }) * MILLISECONDS_PER_SECOND,
+      },
+    );
     const artifact = parseMatrixBaselineVerifierOutput(stdout);
     return {
       hit: true,

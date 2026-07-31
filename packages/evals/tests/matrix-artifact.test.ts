@@ -124,6 +124,7 @@ describe("createMatrixArtifactWriter", () => {
       recordCount: 1,
       failedRecordCount: 0,
       ruleKeys: ["react-doctor/example"],
+      rulesSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       baseArtifact: {
         path: "base.ndjson",
         provenancePath: "base-provenance.json",

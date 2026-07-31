@@ -315,7 +315,7 @@ describe("runMatrixCorpusEvaluation", () => {
     expect(matrixMocks.evaluateMatrixRepositoryBatch).not.toHaveBeenCalled();
   });
 
-  it("preserves complete artifacts when final snapshot cleanup fails", async () => {
+  it("clears a transient cleanup error after exact resource absence is proven", async () => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-cleanup-failure-"));
     temporaryDirectories.push(temporaryDirectory);
     const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
@@ -371,7 +371,10 @@ describe("runMatrixCorpusEvaluation", () => {
         return [];
       },
     );
-    matrixMocks.snapshotDelete.mockRejectedValueOnce(new Error("transient delete failure"));
+    matrixMocks.snapshotDelete.mockImplementationOnce(async () => {
+      matrixMocks.snapshotDeleted = true;
+      throw new Error("transient delete response failure");
+    });
 
     await expect(
       runMatrixCorpusEvaluation({
@@ -386,7 +389,7 @@ describe("runMatrixCorpusEvaluation", () => {
         ruleKeys: [],
         matrix: { treatmentDescriptorPaths: [treatment.descriptorPath], waveWidth: 1 },
       }),
-    ).rejects.toThrow("transient delete failure");
+    ).resolves.toBeUndefined();
 
     const artifactDirectory = treatment.descriptor.artifactDirectory;
     expect(
@@ -394,5 +397,41 @@ describe("runMatrixCorpusEvaluation", () => {
     ).toMatchObject({ status: "complete" });
     expect(fs.readFileSync(path.join(artifactDirectory, "base.ndjson"), "utf8")).not.toBe("");
     expect(fs.readFileSync(path.join(artifactDirectory, "candidate.ndjson"), "utf8")).not.toBe("");
+
+    fs.rmSync(group.baseArtifactPath);
+    matrixMocks.snapshotDeleted = false;
+    matrixMocks.snapshotDelete.mockRejectedValueOnce(new Error("persistent delete failure"));
+    matrixMocks.snapshotGet
+      .mockResolvedValueOnce({ name: "snapshot" })
+      .mockRejectedValueOnce(new Error("cleanup verification unavailable"));
+    const secondTreatment = buildTreatment({
+      temporaryDirectory,
+      id: "pr-2",
+      group,
+      mode: "incremental",
+    });
+    matrixMocks.loadMatrixTreatments.mockResolvedValue([secondTreatment]);
+    await expect(
+      runMatrixCorpusEvaluation({
+        repositoriesSources: [corpusManifestPath],
+        repositoryLimit: 1,
+        concurrency: 1,
+        repositoriesPerSandbox: 1,
+        projectRootsPerRepository: 1,
+        maxDurationMinutes: 20,
+        reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+        reactDoctorRef: "a".repeat(40),
+        ruleKeys: [],
+        matrix: { treatmentDescriptorPaths: [secondTreatment.descriptorPath], waveWidth: 1 },
+      }),
+    ).rejects.toThrow("Matrix Daytona cleanup was not verified");
+    expect(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(secondTreatment.descriptor.artifactDirectory, "provenance.json"),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({ status: "complete" });
   });
 });

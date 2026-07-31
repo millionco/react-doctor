@@ -141,6 +141,14 @@ describe("verifyMatrixBaselineCache", () => {
       group.baseFullRuleSetHash,
     ]);
 
+    await expect(
+      verifyMatrixBaselineCache(group, globalThis.performance.now()),
+    ).resolves.toMatchObject({
+      hit: false,
+      invalid: true,
+      reason: expect.stringContaining("Evaluation time budget exhausted"),
+    });
+
     const verification = await verifyMatrixBaselineCache(group);
     expect(verification).toMatchObject({
       hit: true,

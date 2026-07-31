@@ -96,11 +96,18 @@ describe("verifyMatrixImpactManifests", () => {
       ruleKeys: ["react-doctor/example"],
     };
 
-    await expect(verifyMatrixImpactManifests([treatment])).resolves.toBeUndefined();
+    const deadlineMilliseconds = globalThis.performance.now() + 10_000;
     await expect(
-      verifyMatrixImpactManifests([
-        { ...treatment, impactManifestContents: `${impactManifestContents} ` },
-      ]),
+      verifyMatrixImpactManifests([treatment], deadlineMilliseconds),
+    ).resolves.toBeUndefined();
+    await expect(
+      verifyMatrixImpactManifests(
+        [{ ...treatment, impactManifestContents: `${impactManifestContents} ` }],
+        deadlineMilliseconds,
+      ),
     ).rejects.toThrow("does not match the canonical generator");
+    await expect(
+      verifyMatrixImpactManifests([treatment], globalThis.performance.now()),
+    ).rejects.toThrow("Evaluation time budget exhausted");
   });
 });

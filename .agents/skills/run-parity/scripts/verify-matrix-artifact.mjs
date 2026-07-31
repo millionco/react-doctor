@@ -4,25 +4,100 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MATRIX_BASE_ARTIFACT_CONTRACT = "matrix-base-artifact-v1";
+const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
+const RULE_KEY_PATTERN = /^(?:react-doctor|react-hooks-js)\/[a-z0-9][a-zA-Z0-9-]*$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const DESCRIPTOR_KEYS = [
+  "schemaVersion",
+  "id",
+  "artifactDirectory",
+  "reactDoctorRepository",
+  "reactDoctorCommit",
+  "impactManifestPath",
+  "impactManifestSha256",
+  "group",
+];
+const GROUP_KEYS = [
+  "baseReactDoctorRepository",
+  "baseReactDoctorCommit",
+  "baseFullRuleSetHash",
+  "baseArtifactPath",
+  "baselineOutputPath",
+  "baselineProvenancePath",
+  "corpusManifestPath",
+  "corpusManifestSha256",
+  "corpusProjectSetSha256",
+  "evaluatorSourceHash",
+  "configContract",
+  "scanContract",
+  "reportContract",
+  "projectRootPolicy",
+];
+const IMPACT_MANIFEST_KEYS = [
+  "schemaVersion",
+  "mode",
+  "baseCommit",
+  "headCommit",
+  "changedPaths",
+  "runtimeChangedPaths",
+  "impactedRuleKeys",
+  "candidateRuleKeys",
+  "fallbackReasons",
+  "rules",
+];
 
-const hashFile = async (filePath) =>
-  createHash("sha256")
-    .update(await readFile(filePath))
-    .digest("hex");
+const hashBytes = (contents) => createHash("sha256").update(contents).digest("hex");
+
+const hashFile = async (filePath) => hashBytes(await readFile(filePath));
+
+const assertObject = (value, description) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${description} must be an object`);
+  }
+  return value;
+};
+
+const assertExactKeys = (value, expectedKeys, description) => {
+  const actualKeys = Object.keys(assertObject(value, description)).sort();
+  if (JSON.stringify(actualKeys) !== JSON.stringify([...expectedKeys].sort())) {
+    throw new Error(`${description} has unexpected fields`);
+  }
+};
+
+const assertSha256 = (value, description) => {
+  if (typeof value !== "string" || !SHA256_PATTERN.test(value)) {
+    throw new Error(`${description} must be a lowercase SHA-256 digest`);
+  }
+};
+
+const assertStringArray = (value, description) => {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`${description} must be a string array`);
+  }
+};
+
+const assertNonemptyString = (value, description) => {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${description} must be a nonempty string`);
+  }
+};
+
+const assertCommit = (value, description) => {
+  if (typeof value !== "string" || !COMMIT_PATTERN.test(value)) {
+    throw new Error(`${description} must be a lowercase 40-character commit`);
+  }
+};
 
 const assertFileBinding = async ({ artifactDirectory, binding, expectedPath, description }) => {
+  assertExactKeys(binding, ["path", "sha256", "byteLength"], `${description} binding`);
   if (
-    binding === null ||
-    typeof binding !== "object" ||
     binding.path !== expectedPath ||
-    typeof binding.sha256 !== "string" ||
-    !SHA256_PATTERN.test(binding.sha256) ||
     !Number.isSafeInteger(binding.byteLength) ||
     binding.byteLength <= 0
   ) {
     throw new Error(`${description} binding is invalid`);
   }
+  assertSha256(binding.sha256, `${description} binding sha256`);
   const filePath = join(artifactDirectory, expectedPath);
   const [fileStats, sha256] = await Promise.all([stat(filePath), hashFile(filePath)]);
   if (fileStats.size !== binding.byteLength || sha256 !== binding.sha256) {
@@ -30,25 +105,178 @@ const assertFileBinding = async ({ artifactDirectory, binding, expectedPath, des
   }
 };
 
+const loadBoundJson = async ({ artifactDirectory, path, expectedSha256, description }) => {
+  assertSha256(expectedSha256, `${description} sha256`);
+  const contents = await readFile(join(artifactDirectory, path));
+  if (hashBytes(contents) !== expectedSha256) {
+    throw new Error(`${description} bytes do not match provenance`);
+  }
+  return { contents, value: JSON.parse(contents.toString("utf8")) };
+};
+
 export const verifyMatrixArtifact = async (artifactDirectory) => {
   const resolvedDirectory = resolve(artifactDirectory);
-  const provenance = JSON.parse(await readFile(join(resolvedDirectory, "provenance.json"), "utf8"));
-  if (provenance.status !== "complete" || "baseArtifactPath" in provenance) {
+  const provenance = assertObject(
+    JSON.parse(await readFile(join(resolvedDirectory, "provenance.json"), "utf8")),
+    "Matrix artifact provenance",
+  );
+  const provenanceKeys = [
+    "schemaVersion",
+    "evaluationId",
+    "laneId",
+    "status",
+    "expectedProjectCount",
+    "recordCount",
+    "failedRecordCount",
+    "artifact",
+    "descriptorSha256",
+    "impactManifestSha256",
+    "rulesSha256",
+    "baseArtifact",
+    "ruleKeys",
+    ...(Object.hasOwn(provenance, "evaluation") ? ["evaluation"] : []),
+  ];
+  assertExactKeys(provenance, provenanceKeys, "Matrix artifact provenance");
+  if (
+    provenance.schemaVersion !== 1 ||
+    provenance.status !== "complete" ||
+    !Number.isSafeInteger(provenance.expectedProjectCount) ||
+    provenance.expectedProjectCount <= 0 ||
+    provenance.recordCount !== provenance.expectedProjectCount ||
+    provenance.failedRecordCount !== 0
+  ) {
     throw new Error("Matrix artifact is not complete canonical evidence");
   }
-  const baseArtifact = provenance.baseArtifact;
+  assertStringArray(provenance.ruleKeys, "Matrix provenance ruleKeys");
+  const baseArtifact = assertObject(provenance.baseArtifact, "Matrix base artifact binding");
+  const baseArtifactKeys = [
+    "contract",
+    "path",
+    "sha256",
+    "byteLength",
+    "producer",
+    "producerSha256",
+    "verified",
+    ...(Object.hasOwn(baseArtifact, "provenancePath") ? ["provenancePath"] : []),
+    ...(Object.hasOwn(baseArtifact, "provenanceSha256") ? ["provenanceSha256"] : []),
+  ];
+  assertExactKeys(baseArtifact, baseArtifactKeys, "Matrix base artifact binding");
   if (
-    baseArtifact === null ||
-    typeof baseArtifact !== "object" ||
     baseArtifact.contract !== MATRIX_BASE_ARTIFACT_CONTRACT ||
     baseArtifact.verified !== true ||
-    "sourcePath" in baseArtifact ||
-    "provenanceSourcePath" in baseArtifact ||
     typeof baseArtifact.producerSha256 !== "string" ||
-    baseArtifact.producerSha256 !==
-      createHash("sha256").update(JSON.stringify(baseArtifact.producer)).digest("hex")
+    baseArtifact.producerSha256 !== hashBytes(JSON.stringify(baseArtifact.producer))
   ) {
     throw new Error("Matrix base artifact binding is invalid");
+  }
+  const [
+    { value: descriptor },
+    { value: impactManifest },
+    { contents: rulesContents, value: rules },
+  ] = await Promise.all([
+    loadBoundJson({
+      artifactDirectory: resolvedDirectory,
+      path: "descriptor.json",
+      expectedSha256: provenance.descriptorSha256,
+      description: "Matrix descriptor",
+    }),
+    loadBoundJson({
+      artifactDirectory: resolvedDirectory,
+      path: "impact-manifest.json",
+      expectedSha256: provenance.impactManifestSha256,
+      description: "Matrix impact manifest",
+    }),
+    loadBoundJson({
+      artifactDirectory: resolvedDirectory,
+      path: "rules.json",
+      expectedSha256: provenance.rulesSha256,
+      description: "Matrix rules",
+    }),
+  ]);
+  assertExactKeys(descriptor, DESCRIPTOR_KEYS, "Matrix descriptor");
+  assertExactKeys(descriptor.group, GROUP_KEYS, "Matrix descriptor group");
+  assertExactKeys(impactManifest, IMPACT_MANIFEST_KEYS, "Matrix impact manifest");
+  for (const [field, value] of [
+    ["id", descriptor.id],
+    ["artifactDirectory", descriptor.artifactDirectory],
+    ["reactDoctorRepository", descriptor.reactDoctorRepository],
+    ["impactManifestPath", descriptor.impactManifestPath],
+  ]) {
+    assertNonemptyString(value, `Matrix descriptor ${field}`);
+  }
+  assertCommit(descriptor.reactDoctorCommit, "Matrix descriptor reactDoctorCommit");
+  assertCommit(descriptor.group.baseReactDoctorCommit, "Matrix descriptor baseReactDoctorCommit");
+  for (const field of [
+    "baseReactDoctorRepository",
+    "baseArtifactPath",
+    "baselineOutputPath",
+    "baselineProvenancePath",
+    "corpusManifestPath",
+    "configContract",
+    "scanContract",
+    "reportContract",
+    "projectRootPolicy",
+  ]) {
+    assertNonemptyString(descriptor.group[field], `Matrix descriptor group ${field}`);
+  }
+  for (const field of [
+    "baseFullRuleSetHash",
+    "corpusManifestSha256",
+    "corpusProjectSetSha256",
+    "evaluatorSourceHash",
+  ]) {
+    assertSha256(descriptor.group[field], `Matrix descriptor group ${field}`);
+  }
+  assertCommit(impactManifest.baseCommit, "Matrix impact baseCommit");
+  assertCommit(impactManifest.headCommit, "Matrix impact headCommit");
+  if (
+    descriptor.schemaVersion !== 1 ||
+    descriptor.id !== provenance.laneId ||
+    descriptor.impactManifestSha256 !== provenance.impactManifestSha256 ||
+    descriptor.reactDoctorCommit !== impactManifest.headCommit ||
+    descriptor.group.baseReactDoctorCommit !== impactManifest.baseCommit ||
+    impactManifest.schemaVersion !== 1 ||
+    (impactManifest.mode !== "incremental" && impactManifest.mode !== "full")
+  ) {
+    throw new Error("Matrix descriptor or impact manifest binding is invalid");
+  }
+  assertStringArray(impactManifest.candidateRuleKeys, "Matrix impact candidateRuleKeys");
+  assertStringArray(impactManifest.changedPaths, "Matrix impact changedPaths");
+  assertStringArray(impactManifest.runtimeChangedPaths, "Matrix impact runtimeChangedPaths");
+  assertStringArray(impactManifest.impactedRuleKeys, "Matrix impact impactedRuleKeys");
+  assertStringArray(impactManifest.fallbackReasons, "Matrix impact fallbackReasons");
+  if (
+    impactManifest.candidateRuleKeys.some((ruleKey) => !RULE_KEY_PATTERN.test(ruleKey)) ||
+    impactManifest.impactedRuleKeys.some((ruleKey) => !RULE_KEY_PATTERN.test(ruleKey))
+  ) {
+    throw new Error("Matrix impact rule keys must be canonical");
+  }
+  if (!Array.isArray(impactManifest.rules)) {
+    throw new Error("Matrix impact rules must be an array");
+  }
+  for (const rule of impactManifest.rules) {
+    assertExactKeys(rule, ["ruleKey", "baseFingerprint", "headFingerprint"], "Matrix impact rule");
+    if (
+      typeof rule.ruleKey !== "string" ||
+      !RULE_KEY_PATTERN.test(rule.ruleKey) ||
+      (rule.baseFingerprint !== null &&
+        (typeof rule.baseFingerprint !== "string" || !SHA256_PATTERN.test(rule.baseFingerprint))) ||
+      (rule.headFingerprint !== null &&
+        (typeof rule.headFingerprint !== "string" || !SHA256_PATTERN.test(rule.headFingerprint)))
+    ) {
+      throw new Error("Matrix impact rule is invalid");
+    }
+  }
+  assertStringArray(rules, "Matrix rules");
+  const canonicalRulesContents = `${JSON.stringify(rules, null, 2)}\n`;
+  const expectedRuleKeys =
+    impactManifest.mode === "incremental" ? impactManifest.candidateRuleKeys : [];
+  if (
+    rulesContents.toString("utf8") !== canonicalRulesContents ||
+    JSON.stringify(rules) !== JSON.stringify(provenance.ruleKeys) ||
+    JSON.stringify(rules) !== JSON.stringify(expectedRuleKeys)
+  ) {
+    throw new Error("Matrix rules do not match the bound candidate scope");
   }
   await Promise.all([
     assertFileBinding({
@@ -59,7 +287,11 @@ export const verifyMatrixArtifact = async (artifactDirectory) => {
     }),
     assertFileBinding({
       artifactDirectory: resolvedDirectory,
-      binding: baseArtifact,
+      binding: {
+        path: baseArtifact.path,
+        sha256: baseArtifact.sha256,
+        byteLength: baseArtifact.byteLength,
+      },
       expectedPath: "base.ndjson",
       description: "Matrix base artifact",
     }),

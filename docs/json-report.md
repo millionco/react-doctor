@@ -33,6 +33,12 @@ uses `mode: "baseline"` and includes the optional `baseline` block. Consumers
 must not infer coverage from an empty `diagnostics` array: use each project's
 `complete` and `analyzedFiles` fields.
 
+A `mode: "staged"` report's projects are the packages `--project` or the config's
+`projects` field selected. Whenever that resolves anywhere but the scan root —
+including a single package — `packageRoot` is not the report's `directory` and
+that project's paths are relative to its own `packageRoot`. Diagnostic ids stay
+relative to the report root, so they remain stable across both shapes.
+
 Baseline comparison identifies a finding by its plugin/rule, diagnostic
 message, and normalized diagnosed source range. The identity is independent of
 file and line, so unchanged findings remain pre-existing after a rename or

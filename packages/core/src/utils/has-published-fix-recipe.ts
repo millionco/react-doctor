@@ -1,4 +1,4 @@
-import reactDoctorPlugin from "oxlint-plugin-react-doctor";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic } from "../types/index.js";
 
 /**
@@ -16,4 +16,5 @@ import type { Diagnostic } from "../types/index.js";
  * a 404. Gate the directive on this predicate.
  */
 export const hasPublishedFixRecipe = (diagnostic: Pick<Diagnostic, "plugin" | "rule">): boolean =>
-  diagnostic.plugin === "react-doctor" && Object.hasOwn(reactDoctorPlugin.rules, diagnostic.rule);
+  diagnostic.plugin === "react-doctor" &&
+  Object.hasOwn(REACT_DOCTOR_RULE_REGISTRY, diagnostic.rule);

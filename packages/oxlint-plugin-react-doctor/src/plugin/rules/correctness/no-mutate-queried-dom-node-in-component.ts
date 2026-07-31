@@ -8,6 +8,7 @@ import {
 } from "../../utils/find-import-source-for-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getProgramBrowserGlobalSyntax } from "../../utils/get-program-browser-global-syntax.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -710,6 +711,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
 
     const visitFunction = (functionNode: EsTreeNode): void => {
       if (!componentOrHookDisplayNameForFunction(functionNode)) return;
+      if (!getProgramBrowserGlobalSyntax(functionNode).mayContainDocumentReference) return;
       analyzeComponent(functionNode, collectOwnedTokens(functionNode, context));
     };
 

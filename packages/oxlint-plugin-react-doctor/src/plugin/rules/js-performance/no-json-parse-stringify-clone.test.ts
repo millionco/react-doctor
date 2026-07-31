@@ -150,9 +150,7 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  // sofn-xyz/mailing settings: both
-  // mined clones inside getServerSideProps props MUST keep firing.
-  it("flags both clones in a getServerSideProps props object", () => {
+  it("does not flag JSON normalization in a getServerSideProps props object", () => {
     const result = runRule(
       noJsonParseStringifyClone,
       `
@@ -168,8 +166,391 @@ describe("no-json-parse-stringify-clone", () => {
         };
       });
       `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an aliased JSON normalization returned from getServerSideProps", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = withSessionSsr(async ({ req }) => {
+        const normalizedUser = (() => {
+          try {
+            return JSON.parse(JSON.stringify(req.session.user));
+          } catch {
+            return {};
+          }
+        })();
+        const serializedUser = normalizedUser;
+        return { props: { user: serializedUser } };
+      });
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag JSON normalization returned from getStaticProps", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export async function getStaticProps() {
+        const articles = await loadArticles();
+        return { ["props"]: { articles: JSON.parse(JSON.stringify(articles)) } };
+      }
+      `,
+      { filename: "/repo/pages/index.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag JSON normalization in a conditional page-data return", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async ({ preferProps }) => {
+        return preferProps
+          ? { props: { state: JSON.parse(JSON.stringify(state)) } }
+          : { redirect: { destination: "/", permanent: false } };
+      };
+
+      export async function getStaticProps({ missing }) {
+        return missing
+          ? { notFound: true }
+          : { props: { state: JSON.parse(JSON.stringify(state)) } };
+      }
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag JSON normalization in a typed concise page-data return", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = (
+        async () =>
+          ({
+            props: { state: JSON.parse(JSON.stringify(state)) },
+          } as GetServerSidePropsResult)
+      ) satisfies GetServerSideProps;
+
+      export const getStaticProps = async () =>
+        ({
+          props: { state: JSON.parse(JSON.stringify(state)) },
+        } satisfies GetStaticPropsResult);
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a clone in a conditional props object that is not returned", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async ({ missing }) => {
+        const response = missing
+          ? { notFound: true }
+          : { props: { state: JSON.parse(JSON.stringify(state)) } };
+        consume(response);
+        return { props: { state } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag JSON normalization in a returned page-result binding", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async ({ missing }) => {
+        const response = missing
+          ? { notFound: true }
+          : { props: { state: JSON.parse(JSON.stringify(state)) } };
+        return response;
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag JSON normalization nested in a returned props binding", () => {
+    const validSources = [
+      `
+      export const getServerSideProps = async () => {
+        const props = {
+          state: JSON.parse(JSON.stringify(state)),
+        };
+        return { props };
+      };
+      `,
+      `
+      export const getServerSideProps = async () => {
+        const pageProps = {
+          nested: [{ state: JSON.parse(JSON.stringify(state)) }],
+        };
+        return { props: pageProps };
+      };
+      `,
+    ];
+    for (const source of validSources) {
+      const result = runRule(noJsonParseStringifyClone, source, {
+        filename: "/repo/src/pages/settings.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("still flags a nested helper clone that is mutated before page serialization", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const buildState = () => {
+          const workingCopy = JSON.parse(JSON.stringify(state));
+          mutate(workingCopy);
+          return workingCopy;
+        };
+        return { props: { state: buildState() } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a clone passed through an opaque nested props value", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const props = {
+          state: consume(JSON.parse(JSON.stringify(state))),
+        };
+        return { props };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a clone passed through an opaque directly returned props value", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        return {
+          props: {
+            state: consume(JSON.parse(JSON.stringify(state))),
+          },
+        };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a props binding that also escapes through an opaque sibling value", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const serializedState = JSON.parse(JSON.stringify(state));
+        return {
+          props: {
+            serializedState,
+            escaped: consume(serializedState),
+          },
+        };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a mutated IIFE clone inside directly returned props", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        return {
+          props: {
+            state: (() => {
+              const workingCopy = JSON.parse(JSON.stringify(state));
+              mutate(workingCopy);
+              return workingCopy;
+            })(),
+          },
+        };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a nested IIFE clone binding that is mutated before page serialization", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const serializedState = (() => {
+          const workingCopy = JSON.parse(JSON.stringify(state));
+          mutate(workingCopy);
+          return workingCopy;
+        })();
+        return { props: { serializedState } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a clone passed through an opaque initializer before page serialization", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const serializedState = consume(JSON.parse(JSON.stringify(state)));
+        return { props: { serializedState } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags redundant JSON normalization before an API response", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export default async function handler(req, res) {
+        const apiKey = await prisma.apiKey.create();
+        const apiKeys = await prisma.apiKey.findMany();
+        res.status(201).json({ apiKey: JSON.parse(JSON.stringify(apiKey)) });
+        const serializedApiKeys = JSON.parse(JSON.stringify(apiKeys));
+        res.status(200).json({ apiKeys: serializedApiKeys });
+      }
+      `,
+      { filename: "/repo/src/pages/api/apiKeys/index.ts" },
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("still flags a clone not returned in Next.js page props", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const workingCopy = JSON.parse(JSON.stringify(state));
+        mutate(workingCopy);
+        return { props: { state } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a clone in a non-exported getServerSideProps lookalike", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      const getServerSideProps = async () => ({
+        props: { state: JSON.parse(JSON.stringify(state)) },
+      });
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a separately exported page-data boundary", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      const loadPage = async () => ({
+        props: { state: JSON.parse(JSON.stringify(state)) },
+      });
+      export { loadPage as getServerSideProps };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a clone that is mutated before being returned in page props", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const workingCopy = JSON.parse(JSON.stringify(state));
+        mutate(workingCopy);
+        return { props: { workingCopy } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a clone that escapes before being returned in page props", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => {
+        const serializedState = JSON.parse(JSON.stringify(state));
+        recordSnapshot(serializedState);
+        return { props: { serializedState } };
+      };
+      `,
+      { filename: "/repo/src/pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a page-data lookalike outside a Next.js pages directory", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = async () => ({
+        props: { state: JSON.parse(JSON.stringify(state)) },
+      });
+      `,
+      { filename: "/repo/src/server/load-state.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { parseOxlintOutput } from "../src/runners/oxlint/parse-output.js";
-import { prepareHtmlLintSources } from "../src/utils/prepare-html-lint-sources.js";
+import { prepareLintSources } from "../src/utils/prepare-lint-sources.js";
 import { buildProject } from "./helpers/oxlint-parse-harness.js";
 
 const temporaryDirectories: string[] = [];
@@ -27,9 +27,7 @@ describe("HTML diagnostic mapping", () => {
     ].join("\n");
     fs.writeFileSync(htmlPath, html);
     const temporaryDirectory = path.join(rootDirectory, "tmp");
-    const preparedSources = prepareHtmlLintSources(rootDirectory, temporaryDirectory, [
-      "index.html",
-    ]);
+    const preparedSources = prepareLintSources(rootDirectory, temporaryDirectory, ["index.html"]);
     expect(preparedSources.lintFiles).toHaveLength(1);
     const [lintPath] = preparedSources.lintFiles;
     if (lintPath === undefined) throw new Error("Expected a virtual HTML lint source");
@@ -90,12 +88,10 @@ describe("HTML diagnostic mapping", () => {
       '<script type="module">import "three";</script>',
     );
 
-    const inertSources = prepareHtmlLintSources(
-      rootDirectory,
-      path.join(rootDirectory, "tmp-inert"),
-      ["inert.html"],
-    );
-    const activeSources = prepareHtmlLintSources(
+    const inertSources = prepareLintSources(rootDirectory, path.join(rootDirectory, "tmp-inert"), [
+      "inert.html",
+    ]);
+    const activeSources = prepareLintSources(
       rootDirectory,
       path.join(rootDirectory, "tmp-active"),
       ["active.html"],

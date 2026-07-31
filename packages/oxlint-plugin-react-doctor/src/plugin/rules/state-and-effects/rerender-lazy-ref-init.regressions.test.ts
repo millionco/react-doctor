@@ -2,8 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { rerenderLazyRefInit } from "./rerender-lazy-ref-init.js";
 
-// Fuzz sweep over the trivial-constructor exemption: only zero-argument,
-// identifier-callee constructions of the built-in names are exempt.
 describe("rerender-lazy-ref-init — regressions", () => {
   it("flags a trivial-name construction with runtime arguments", () => {
     const result = runRule(
@@ -29,7 +27,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags `new Date(timestamp)` but not `new Date()`", () => {
+  it("flags `new Date()` with and without an argument", () => {
     const withArgument = runRule(
       rerenderLazyRefInit,
       `function C({ timestamp }) {
@@ -45,7 +43,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(withArgument.diagnostics).toHaveLength(1);
-    expect(zeroArgument.diagnostics).toEqual([]);
+    expect(zeroArgument.diagnostics).toHaveLength(1);
   });
 
   it("flags a member-expression callee even when the property matches a trivial name", () => {
@@ -60,7 +58,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent when only TYPE arguments are passed", () => {
+  it("flags a construction with only type arguments", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `function C() {
@@ -69,10 +67,10 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent on a TS-wrapped trivial construction", () => {
+  it("flags a TS-wrapped zero-argument construction", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `function C() {
@@ -81,7 +79,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a TS-wrapped expensive construction (wrapper transparency)", () => {
@@ -96,10 +94,6 @@ describe("rerender-lazy-ref-init — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  // The rule deliberately does NOT follow identifier bindings — an aliased
-  // built-in (`const M = Map`) still fires; the exemption stays name-based
-  // so a shadowing import (e.g. immutable's `Map`) stays exempt when
-  // constructed with zero arguments.
   it("still flags an aliased constructor binding", () => {
     const result = runRule(
       rerenderLazyRefInit,
@@ -113,7 +107,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("keeps the zero-argument exemption for a shadowing binding of a trivial name", () => {
+  it("flags a shadowing binding of a built-in constructor name", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `import { Map } from "immutable";
@@ -123,6 +117,6 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

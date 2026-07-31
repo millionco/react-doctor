@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
@@ -41,7 +42,8 @@ export const noEval = defineRule({
   recommendation:
     "Use `JSON.parse` for data, or rewrite the code so it doesn't build and run code from strings.",
   create: skipNonProductionFiles((context: RuleContext): RuleVisitors => {
-    if (SANDBOX_SURFACE_PATH_PATTERN.test(normalizeFilename(context.filename ?? ""))) return {};
+    if (SANDBOX_SURFACE_PATH_PATTERN.test(normalizeFilename(context.filename ?? "")))
+      return EMPTY_RULE_VISITORS;
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const executableGlobalName = getExecutableGlobalName(node.callee, context);

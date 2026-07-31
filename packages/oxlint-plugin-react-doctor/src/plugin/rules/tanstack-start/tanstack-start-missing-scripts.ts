@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { TANSTACK_ROOT_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -135,7 +136,7 @@ export const tanstackStartMissingScripts = defineRule({
   recommendation:
     "Render `<Scripts />` near the end of `<body>` in your __root route so TanStack Start can load client-side JavaScript.",
   create: (context: RuleContext): RuleVisitors => {
-    if (!TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(context.filename ?? "")) return {};
+    if (!TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(context.filename ?? "")) return EMPTY_RULE_VISITORS;
 
     const scriptsComponentDeclarations = new Set<EsTreeNode>();
     const tanstackRouterNamespaceDeclarations = new Set<EsTreeNode>();

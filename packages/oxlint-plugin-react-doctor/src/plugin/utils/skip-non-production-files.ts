@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import { isTestlikeFilename } from "./is-testlike-filename.js";
 import type { RuleContext } from "./rule-context.js";
 import type { RuleVisitors } from "./rule-visitors.js";
@@ -11,4 +12,4 @@ import type { RuleVisitors } from "./rule-visitors.js";
 export const skipNonProductionFiles =
   (create: (context: RuleContext) => RuleVisitors) =>
   (context: RuleContext): RuleVisitors =>
-    isTestlikeFilename(context.filename) ? {} : create(context);
+    isTestlikeFilename(context.filename) ? EMPTY_RULE_VISITORS : create(context);

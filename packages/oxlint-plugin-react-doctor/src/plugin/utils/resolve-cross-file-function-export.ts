@@ -5,6 +5,13 @@ import { findExportedValue } from "./find-exported-value.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { resolveModulePath } from "./resolve-module-path.js";
+import {
+  captureCrossFileProbes,
+  isProbeRecorderActive,
+  recordContentProbe,
+  recordExistenceProbe,
+} from "./cross-file-probe-recorder.js";
+import type { CrossFileProbeTrace } from "./cross-file-probe-recorder.js";
 
 export interface ResolvedCrossFileFunctionExport {
   readonly filePath: string;
@@ -17,6 +24,17 @@ export interface ResolvedCrossFileValueExport {
   readonly exportedNode: EsTreeNode;
   readonly programNode: EsTreeNode;
 }
+
+interface CrossFileValueExportLookup {
+  readonly result: ResolvedCrossFileValueExport | null;
+  readonly trace: CrossFileProbeTrace;
+}
+
+const crossFileValueExportByImport = new Map<string, CrossFileValueExportLookup>();
+
+export const resetCrossFileExportCaches = (): void => {
+  crossFileValueExportByImport.clear();
+};
 
 const resolveValueExportInFile = (
   filePath: string,
@@ -83,7 +101,28 @@ export const resolveCrossFileValueExportWithFilePath = (
   source: string,
   exportedName: string,
 ): ResolvedCrossFileValueExport | null => {
-  const resolvedFilePath = resolveModulePath(fromFilename, source);
-  if (!resolvedFilePath) return null;
-  return resolveValueExportInFile(resolvedFilePath, exportedName, new Set<string>());
+  if (!isProbeRecorderActive()) {
+    const resolvedFilePath = resolveModulePath(fromFilename, source);
+    if (!resolvedFilePath) return null;
+    return resolveValueExportInFile(resolvedFilePath, exportedName, new Set<string>());
+  }
+
+  const cacheKey = `${fromFilename}\0${source}\0${exportedName}`;
+  const cached = crossFileValueExportByImport.get(cacheKey);
+  if (cached !== undefined) {
+    for (const contentPath of cached.trace.contentPaths) recordContentProbe(contentPath);
+    for (const existencePath of cached.trace.existencePaths) recordExistenceProbe(existencePath);
+    return cached.result;
+  }
+
+  const captured = captureCrossFileProbes(() => {
+    const resolvedFilePath = resolveModulePath(fromFilename, source);
+    if (!resolvedFilePath) return null;
+    return resolveValueExportInFile(resolvedFilePath, exportedName, new Set<string>());
+  });
+  crossFileValueExportByImport.set(cacheKey, {
+    result: captured.value,
+    trace: captured.trace,
+  });
+  return captured.value;
 };

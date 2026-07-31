@@ -9,16 +9,13 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
-import { buildLocalDependencyGraph } from "./utils/build-local-dependency-graph.js";
-import { collectRenderReachableNames } from "./utils/collect-render-reachable-names.js";
-import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
-import { collectFunctionLikeLocalNames } from "./utils/collect-function-like-local-names.js";
 import { findTriggeredSideEffectCalleeName } from "./utils/find-triggered-side-effect-callee-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getRef } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isState } from "./utils/effect/react.js";
+import { getComponentRenderDependencyAnalysis } from "./utils/get-component-render-dependency-analysis.js";
 import { isStateWrittenOnlyFromEventHandlers } from "./utils/is-state-written-only-from-event-handlers.js";
 
 // HACK: §6 of "You Might Not Need an Effect" — sending a POST request:
@@ -113,17 +110,10 @@ export const noEventTriggerState = defineRule({
       // reachability machinery that `rerenderStateOnlyInHandlers`
       // uses to filter these out (transitive dep graph + walk from
       // render-reachable expressions).
-      const eventHandlerReferenceNames = collectFunctionLikeLocalNames(
+      const { renderReachableNames } = getComponentRenderDependencyAnalysis(
         componentBody,
         context.scopes,
       );
-      const dependencyGraph = buildLocalDependencyGraph(componentBody, eventHandlerReferenceNames);
-      const directRenderNames = collectRenderReachableNames(
-        componentBody,
-        context.scopes,
-        eventHandlerReferenceNames,
-      );
-      const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
 
       walkAst(componentBody, (effectCall: EsTreeNode) => {
         if (!isNodeOfType(effectCall, "CallExpression")) return;

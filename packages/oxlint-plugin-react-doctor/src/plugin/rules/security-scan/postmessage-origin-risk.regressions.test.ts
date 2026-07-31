@@ -18,6 +18,14 @@ describe("security-scan/postmessage-origin-risk — regressions", () => {
     expect(findings[0]?.title).toBeUndefined();
   });
 
+  it("flags a message listener whose event name contains a Unicode escape", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/widget.ts",
+      content: `window.addEventListener("mess\\u0061ge", (event) => {\n  handleCommand(event.data);\n});\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent when the handler validates event.origin before reading event.data", () => {
     const findings = runScanRule(postmessageOriginRisk, {
       relativePath: "src/widget.ts",

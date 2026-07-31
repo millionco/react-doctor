@@ -111,8 +111,8 @@ const readAbsolutePath = (value: unknown, description: string): string => {
 
 const readCommit = (value: unknown, description: string): string => {
   const commit = readString(value, description);
-  if (!PINNED_REPOSITORY_REF_PATTERN.test(commit)) {
-    throw new Error(`${description} must be a 40-character commit`);
+  if (!PINNED_REPOSITORY_REF_PATTERN.test(commit) || commit !== commit.toLowerCase()) {
+    throw new Error(`${description} must be a lowercase 40-character commit`);
   }
   return commit;
 };

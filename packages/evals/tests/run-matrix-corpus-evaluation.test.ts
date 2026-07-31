@@ -264,10 +264,10 @@ describe("runMatrixCorpusEvaluation", () => {
     );
   });
 
-  it("rejects an unpinned corpus before creating Daytona resources", async () => {
-    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-unpinned-corpus-"));
+  it("rejects an uppercase corpus ref before creating Daytona resources", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-uppercase-corpus-"));
     temporaryDirectories.push(temporaryDirectory);
-    const repository = { org: "example", name: "repository", ref: "HEAD", rootDir: "." };
+    const repository = { org: "example", name: "repository", ref: "F".repeat(40), rootDir: "." };
     const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
     const corpusContents = `${JSON.stringify([repository])}\n`;
     fs.writeFileSync(corpusManifestPath, corpusContents);
@@ -303,7 +303,7 @@ describe("runMatrixCorpusEvaluation", () => {
         ruleKeys: [],
         matrix: { treatmentDescriptorPaths: [treatment.descriptorPath], waveWidth: 1 },
       }),
-    ).rejects.toThrow("must pin every repository");
+    ).rejects.toThrow("lowercase commit");
     expect(matrixMocks.snapshotCreate).not.toHaveBeenCalled();
     expect(matrixMocks.evaluateMatrixRepositoryBatch).not.toHaveBeenCalled();
   });

@@ -23,6 +23,12 @@ describe("parseMatrixCorpusManifest", () => {
     ).toThrow("must pin every repository");
   });
 
+  it("rejects uppercase commit refs", () => {
+    expect(() =>
+      parseMatrixCorpusManifest(serialize([{ ...repositories[0], ref: "A".repeat(40) }])),
+    ).toThrow("lowercase commit");
+  });
+
   it("rejects duplicate project tuples", () => {
     expect(() => parseMatrixCorpusManifest(serialize([repositories[0], repositories[0]]))).toThrow(
       "repository 2 is duplicated",

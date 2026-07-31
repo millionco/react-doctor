@@ -16,8 +16,12 @@ export const parseMatrixCorpusManifest = (contents: Buffer): ReadonlyArray<Corpu
   const projectKeys = new Set<string>();
   for (const [repositoryIndex, value] of manifest.entries()) {
     const repository = parseCorpusRepository(value);
-    if (repository && !PINNED_REPOSITORY_REF_PATTERN.test(repository.ref)) {
-      throw new Error("Matrix corpus manifest must pin every repository");
+    if (
+      repository &&
+      (!PINNED_REPOSITORY_REF_PATTERN.test(repository.ref) ||
+        repository.ref !== repository.ref.toLowerCase())
+    ) {
+      throw new Error("Matrix corpus manifest must pin every repository with a lowercase commit");
     }
     if (
       !isRecord(value) ||

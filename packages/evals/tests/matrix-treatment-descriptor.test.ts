@@ -139,6 +139,28 @@ describe("loadMatrixTreatments", () => {
     await expect(loadMatrixTreatments([descriptorPath])).rejects.toThrow("sorted and unique");
   });
 
+  it("rejects uppercase descriptor and impact commits", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-commits-"));
+    temporaryDirectories.push(temporaryDirectory);
+    const uppercaseHeadPath = createTreatment({
+      temporaryDirectory,
+      id: "pr-head",
+      headCommit: "B".repeat(40),
+    });
+    const uppercaseBasePath = createTreatment({
+      temporaryDirectory,
+      id: "pr-base",
+      baseCommit: "A".repeat(40),
+    });
+
+    await expect(loadMatrixTreatments([uppercaseHeadPath])).rejects.toThrow(
+      "lowercase 40-character commit",
+    );
+    await expect(loadMatrixTreatments([uppercaseBasePath])).rejects.toThrow(
+      "lowercase 40-character commit",
+    );
+  });
+
   it("fails closed for malformed or under-scoped canonical manifests", async () => {
     const cases: ReadonlyArray<{
       name: string;

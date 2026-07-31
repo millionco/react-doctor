@@ -6,7 +6,10 @@ import {
   PAGE_FILE_PATTERN,
   PAGE_OR_LAYOUT_FILE_PATTERN,
 } from "./constants/nextjs.js";
-import { CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH } from "./constants/thresholds.js";
+import {
+  CROSS_FILE_BARREL_FOLLOW_DEPTH,
+  CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+} from "./constants/thresholds.js";
 import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
 import { classifyPackagePlatform } from "./utils/classify-package-platform.js";
@@ -17,6 +20,8 @@ import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { attachParentReferences } from "./utils/attach-parent-references.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
+import { getRuntimeStaticDependencySource } from "./utils/get-runtime-static-dependency-source.js";
+import { getStaticPropertyName } from "./utils/get-static-property-name.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
 import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
 import { isFunctionLike } from "./utils/is-function-like.js";
@@ -24,7 +29,7 @@ import { resolveInkVersion } from "./utils/resolve-ink-version.js";
 import { isNodeOfType } from "./utils/is-node-of-type.js";
 import { isReactApiCall } from "./utils/is-react-api-call.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
-import { resolveLang } from "./utils/parse-source-file.js";
+import { parseSourceFile, resolveLang } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
 import { resolveCrossFileExport } from "./utils/resolve-cross-file-export.js";
 import {
@@ -33,6 +38,7 @@ import {
 } from "./utils/resolve-cross-file-function-export.js";
 import type { ResolvedCrossFileValueExport } from "./utils/resolve-cross-file-function-export.js";
 import { resolveRelativeImportPath } from "./utils/resolve-relative-import-path.js";
+import { resolveModulePath } from "./utils/resolve-module-path.js";
 import { stripParenExpression } from "./utils/strip-paren-expression.js";
 import { walkAst } from "./utils/walk-ast.js";
 import { isCreateRefResultWriteOnly } from "./rules/react-builtins/is-create-ref-result-write-only.js";
@@ -195,6 +201,50 @@ const collectImportedValueDependencies: CrossFileDependencyCollector = ({
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileValueExportWithFilePath(absoluteFilePath, entry.source, entry.exportedName);
   }
+};
+
+const collectRuntimeStaticDependencyGraph = (
+  program: EsTreeNode,
+  filePath: string,
+  visitedFilePaths: Set<string>,
+  depth: number,
+): void => {
+  if (visitedFilePaths.has(filePath)) return;
+  visitedFilePaths.add(filePath);
+  if (depth >= CROSS_FILE_BARREL_FOLLOW_DEPTH) return;
+  for (const statement of (program as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
+    const dependencySource = getRuntimeStaticDependencySource(statement);
+    if (!dependencySource) continue;
+    const dependencyFilePath = resolveModulePath(filePath, dependencySource);
+    if (!dependencyFilePath || visitedFilePaths.has(dependencyFilePath)) continue;
+    const dependencyProgram = parseSourceFile(dependencyFilePath);
+    if (!dependencyProgram) continue;
+    collectRuntimeStaticDependencyGraph(
+      dependencyProgram,
+      dependencyFilePath,
+      new Set(visitedFilePaths),
+      depth + 1,
+    );
+  }
+};
+
+// The Day.js mutability proof follows every runtime edge once an `.add` or
+// `.set` call can reach it. The collector deliberately skips the narrower
+// state-updater gate but mirrors the same edge kinds, depth, and cycle guard.
+const collectStateUpdaterDependencies: CrossFileDependencyCollector = (input) => {
+  collectImportedValueDependencies(input);
+  const program = input.getProgram();
+  let mayUseDayjsImmutableMethod = false;
+  walkAst(program, (node) => {
+    if (mayUseDayjsImmutableMethod) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return;
+    const methodName = getStaticPropertyName(callee);
+    mayUseDayjsImmutableMethod = methodName === "add" || methodName === "set";
+  });
+  if (!mayUseDayjsImmutableMethod) return;
+  collectRuntimeStaticDependencyGraph(program, input.absoluteFilePath, new Set(), 0);
 };
 
 const collectBrowserGuardDependencies: CrossFileDependencyCollector = ({
@@ -491,7 +541,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
-    ["no-side-effect-in-state-updater-function", collectImportedValueDependencies],
+    ["no-side-effect-in-state-updater-function", collectStateUpdaterDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],

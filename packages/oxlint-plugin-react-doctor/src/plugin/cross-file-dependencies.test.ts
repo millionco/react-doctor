@@ -330,6 +330,68 @@ const App = () => {
     expect(trace?.contentPaths.has(fixturePath("jsconfig.json"))).toBe(true);
     expect(trace?.contentPaths.has(fixturePath("src/utils/dayjs.ts"))).toBe(true);
   });
+
+  it.each([
+    `import "./configure";`,
+    `import * as configuration from "./configure"; void configuration;`,
+    `export { marker } from "./configure";`,
+    `export * from "./configure";`,
+    `export * as configuration from "./configure";`,
+  ])("records runtime Day.js configuration reached through %s", (dependencyStatement) => {
+    writeFixtureFile(
+      "src/utils/configure.ts",
+      `import dayjs from "dayjs"; import badMutable from "dayjs/plugin/badMutable"; dayjs.extend(badMutable); export const marker = 1;\n`,
+    );
+    writeFixtureFile(
+      "src/utils/dayjs.ts",
+      `${dependencyStatement}\nimport dayjs from "dayjs"; export default dayjs;\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "./utils/dayjs";
+const App = () => {
+  const [, setDate] = useState(dayjs());
+  setDate((previous) => previous.add(1, "month"));
+};\n`,
+    );
+    const firstTrace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    const cachedTrace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    for (const trace of [firstTrace, cachedTrace]) {
+      expect(trace?.contentPaths.has(fixturePath("src/utils/configure.ts"))).toBe(true);
+    }
+  });
+
+  it("does not traverse type-only Day.js configuration edges", () => {
+    writeFixtureFile("src/utils/configure.ts", `export interface Configuration {}\n`);
+    writeFixtureFile(
+      "src/utils/dayjs.ts",
+      `export type { Configuration } from "./configure"; import dayjs from "dayjs"; export default dayjs;\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "./utils/dayjs";
+const App = () => {
+  const [, setDate] = useState(dayjs());
+  setDate((previous) => previous.add(1, "month"));
+};\n`,
+    );
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    expect(trace?.contentPaths.has(fixturePath("src/utils/configure.ts"))).toBe(false);
+  });
+
+  it("does not traverse runtime imports when no Day.js immutable method can run", () => {
+    writeFixtureFile("src/utils/configure.ts", `export const marker = 1;\n`);
+    writeFixtureFile(
+      "src/utils/dayjs.ts",
+      `import "./configure"; import dayjs from "dayjs"; export default dayjs;\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "./utils/dayjs"; export const selectedMonth = dayjs();\n`,
+    );
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    expect(trace?.contentPaths.has(fixturePath("src/utils/configure.ts"))).toBe(false);
+  });
 });
 
 describe("forwarded Hook dependency collectors", () => {

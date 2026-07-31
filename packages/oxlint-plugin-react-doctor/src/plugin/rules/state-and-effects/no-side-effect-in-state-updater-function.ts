@@ -24,6 +24,7 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getPropertyDescriptorValue } from "../../utils/get-property-descriptor-value.js";
+import { getRuntimeStaticDependencySource } from "../../utils/get-runtime-static-dependency-source.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -578,40 +579,6 @@ const expressionResolvesToDefaultImport = (
   );
 };
 
-const runtimeStaticDependencySource = (statement: EsTreeNode): string | null => {
-  if (isNodeOfType(statement, "ImportDeclaration")) {
-    if (
-      statement.importKind === "type" ||
-      (statement.specifiers.length > 0 &&
-        statement.specifiers.every(
-          (specifier) =>
-            isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type",
-        ))
-    ) {
-      return null;
-    }
-  } else if (isNodeOfType(statement, "ExportNamedDeclaration")) {
-    if (
-      statement.exportKind === "type" ||
-      !statement.source ||
-      (statement.specifiers.length > 0 &&
-        statement.specifiers.every(
-          (specifier) =>
-            isNodeOfType(specifier, "ExportSpecifier") && specifier.exportKind === "type",
-        ))
-    ) {
-      return null;
-    }
-  } else if (isNodeOfType(statement, "ExportAllDeclaration")) {
-    if (statement.exportKind === "type") return null;
-  } else {
-    return null;
-  }
-  return statement.source && typeof statement.source.value === "string"
-    ? statement.source.value
-    : null;
-};
-
 const programActivatesDayjsBadMutable = (
   program: EsTreeNode,
   scopes: RuleContext["scopes"],
@@ -656,7 +623,7 @@ const programActivatesDayjsBadMutable = (
   }
   if (depth >= CROSS_FILE_BARREL_FOLLOW_DEPTH) return false;
   for (const statement of program.body ?? []) {
-    const dependencySource = runtimeStaticDependencySource(statement);
+    const dependencySource = getRuntimeStaticDependencySource(statement);
     if (!dependencySource) continue;
     const dependencyFilePath = resolveModulePath(filename, dependencySource);
     if (!dependencyFilePath || visitedFilePaths.has(dependencyFilePath)) continue;

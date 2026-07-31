@@ -27,3 +27,25 @@ export const ReplacedCalendarDateTimeMember = () => {
   }));
   return null;
 };
+
+export const UnprovenCalendarDateTimeNullishFallback = () => {
+  const [, setValue] = useState({ date: getMutableDate() });
+  setValue((previous) => ({
+    ...previous,
+    date: (previous.date ?? new CalendarDateTime(2025, 1, 1, 0, 0)).set({
+      hour: 1,
+    }),
+  }));
+  return null;
+};
+
+export const UnprovenCalendarDateTimeFalsyFallback = () => {
+  const [, setValue] = useState({ date: getMutableDate() });
+  setValue((previous) => ({
+    ...previous,
+    date: (previous.date || new CalendarDateTime(2025, 1, 1, 0, 0)).set({
+      hour: 1,
+    }),
+  }));
+  return null;
+};

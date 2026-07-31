@@ -21,3 +21,38 @@ export const CalendarDateTimeDirectMember = () => {
   setValue((previous) => [previous[0].set({ minute: 30 })]);
   return null;
 };
+
+export const CalendarDateTimeFalsyFallback = () => {
+  const [, setValue] = useState({
+    date: new CalendarDateTime(2025, 1, 29, 14, 30),
+  });
+  setValue((previous) => ({
+    ...previous,
+    date: (previous.date || new CalendarDateTime(2025, 1, 1, 0, 0)).set({
+      minute: 30,
+    }),
+  }));
+  return null;
+};
+
+export const CalendarDateTimeDeadFalsyFallback = () => {
+  const [, setValue] = useState({
+    date: new CalendarDateTime(2025, 1, 29, 14, 30),
+  });
+  setValue((previous) => ({
+    ...previous,
+    date: (previous.date || getMutableDate()).set({ minute: 30 }),
+  }));
+  return null;
+};
+
+export const CalendarDateTimeNullishLeft = () => {
+  const [, setValue] = useState({
+    date: new CalendarDateTime(2025, 1, 29, 14, 30),
+  });
+  setValue((previous) => ({
+    ...previous,
+    date: (null ?? previous.date).set({ minute: 30 }),
+  }));
+  return null;
+};

@@ -7,11 +7,14 @@ import {
   STATE_UPDATER_INITIAL_PROPERTY_WRITE_RANK,
   STATE_UPDATER_INVOCATION_PROPERTY_WRITE_RANK,
 } from "../../constants/react.js";
+import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../../constants/thresholds.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
+import { collectSynchronouslyInvokedLocalFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
+import { findReExportTargetsForName } from "../../utils/find-exported-function-body.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
@@ -22,13 +25,17 @@ import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-tran
 import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isCpuTypedArray } from "../../utils/is-cpu-typed-array.js";
+import { isDefinitelyFalsyExpression } from "../../utils/is-definitely-falsy-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-path.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
+import { parseSourceFile } from "../../utils/parse-source-file.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { resolveCrossFileValueExportWithFilePath } from "../../utils/resolve-cross-file-function-export.js";
 import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
+import { resolveModulePath } from "../../utils/resolve-module-path.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -92,8 +99,14 @@ const GLOBAL_OBJECT_RECEIVER_NAMES = new Set(["globalThis", "self", "window"]);
 const INTERNATIONALIZED_DATE_IMMUTABLE_METHOD_NAMES = new Set(["add", "set"]);
 const DAYJS_IMMUTABLE_METHOD_NAMES = new Set(["add", "set"]);
 const DAYJS_MODULE_NAME = "dayjs";
+const DAYJS_SINGLETON_MODULE_NAMES = new Set([DAYJS_MODULE_NAME]);
 const DAYJS_BAD_MUTABLE_MODULE_NAME = "dayjs/plugin/badMutable";
+const DAYJS_BAD_MUTABLE_MODULE_NAMES = new Set([
+  DAYJS_BAD_MUTABLE_MODULE_NAME,
+  `${DAYJS_BAD_MUTABLE_MODULE_NAME}.js`,
+]);
 const DAYJS_STATIC_FACTORY_METHOD_NAMES = new Set(["unix", "utc"]);
+const programsActivatingDayjsBadMutable = new WeakSet<EsTreeNode>();
 
 interface ExecutedFunctionAnalysis {
   arrayParameterSymbolIds: Set<number>;
@@ -478,40 +491,183 @@ const baseReceiverIdentifier = (expression: EsTreeNode): EsTreeNodeOfType<"Ident
   return isNodeOfType(current, "Identifier") ? current : null;
 };
 
+const exportedNameResolvesToDefaultImport = (
+  program: EsTreeNode,
+  filename: string,
+  exportedName: string,
+  moduleNames: ReadonlySet<string>,
+  visitedFilePaths: Set<string>,
+  depth: number,
+): boolean => {
+  if (depth >= CROSS_FILE_BARREL_FOLLOW_DEPTH) return false;
+  const reExportTargets = findReExportTargetsForName(program, exportedName);
+  if (reExportTargets.length !== 1) return false;
+  const reExportTarget = reExportTargets[0];
+  if (!reExportTarget) return false;
+  if (reExportTarget.importedName === "default" && moduleNames.has(reExportTarget.source)) {
+    return true;
+  }
+  const reExportedFilePath = resolveModulePath(filename, reExportTarget.source);
+  if (!reExportedFilePath || visitedFilePaths.has(reExportedFilePath)) return false;
+  visitedFilePaths.add(reExportedFilePath);
+  const reExportedProgram = parseSourceFile(reExportedFilePath);
+  return Boolean(
+    reExportedProgram &&
+    exportedNameResolvesToDefaultImport(
+      reExportedProgram,
+      reExportedFilePath,
+      reExportTarget.importedName,
+      moduleNames,
+      visitedFilePaths,
+      depth + 1,
+    ),
+  );
+};
+
+const expressionResolvesToDefaultImport = (
+  expression: EsTreeNode,
+  scopes: RuleContext["scopes"],
+  moduleNames: ReadonlySet<string>,
+  filename?: string,
+  visitedFilePaths: Set<string> = new Set(),
+): boolean => {
+  const importedReference = resolveImportedApiReference(expression, scopes);
+  if (!importedReference || importedReference.isNamespace) return false;
+  if (moduleNames.has(importedReference.source) && importedReference.importedName === "default") {
+    return true;
+  }
+  if (!filename || importedReference.importedName === null) return false;
+  const resolvedExport = resolveCrossFileValueExportWithFilePath(
+    filename,
+    importedReference.source,
+    importedReference.importedName,
+  );
+  if (resolvedExport) {
+    if (visitedFilePaths.has(resolvedExport.filePath)) return false;
+    visitedFilePaths.add(resolvedExport.filePath);
+    return expressionResolvesToDefaultImport(
+      resolvedExport.exportedNode,
+      analyzeScopes(resolvedExport.programNode),
+      moduleNames,
+      resolvedExport.filePath,
+      visitedFilePaths,
+    );
+  }
+  const importedFilePath = resolveModulePath(filename, importedReference.source);
+  if (!importedFilePath || visitedFilePaths.has(importedFilePath)) return false;
+  visitedFilePaths.add(importedFilePath);
+  const importedProgram = parseSourceFile(importedFilePath);
+  return Boolean(
+    importedProgram &&
+    exportedNameResolvesToDefaultImport(
+      importedProgram,
+      importedFilePath,
+      importedReference.importedName,
+      moduleNames,
+      visitedFilePaths,
+      0,
+    ),
+  );
+};
+
+const runtimeStaticDependencySource = (statement: EsTreeNode): string | null => {
+  if (isNodeOfType(statement, "ImportDeclaration")) {
+    if (
+      statement.importKind === "type" ||
+      (statement.specifiers.length > 0 &&
+        statement.specifiers.every(
+          (specifier) =>
+            isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type",
+        ))
+    ) {
+      return null;
+    }
+  } else if (isNodeOfType(statement, "ExportNamedDeclaration")) {
+    if (
+      statement.exportKind === "type" ||
+      !statement.source ||
+      (statement.specifiers.length > 0 &&
+        statement.specifiers.every(
+          (specifier) =>
+            isNodeOfType(specifier, "ExportSpecifier") && specifier.exportKind === "type",
+        ))
+    ) {
+      return null;
+    }
+  } else if (isNodeOfType(statement, "ExportAllDeclaration")) {
+    if (statement.exportKind === "type") return null;
+  } else {
+    return null;
+  }
+  return statement.source && typeof statement.source.value === "string"
+    ? statement.source.value
+    : null;
+};
+
 const programActivatesDayjsBadMutable = (
   program: EsTreeNode,
   scopes: RuleContext["scopes"],
+  filename?: string,
+  visitedFilePaths: Set<string> = new Set(),
+  depth: number = 0,
 ): boolean => {
+  if (filename) {
+    if (visitedFilePaths.has(filename)) return false;
+    visitedFilePaths.add(filename);
+  }
+  if (programsActivatingDayjsBadMutable.has(program)) return true;
+  const executedLocalFunctions = collectSynchronouslyInvokedLocalFunctions(program, scopes);
   let isBadMutableActivated = false;
   walkAst(program, (node) => {
     if (isBadMutableActivated) return false;
     if (!isNodeOfType(node, "CallExpression")) return;
+    const executionBoundary = findDeferredExecutionBoundary(node);
+    if (executionBoundary && !executedLocalFunctions.has(executionBoundary)) return;
     const callee = stripParenExpression(node.callee);
     if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "extend") {
       return;
     }
     const receiver = stripParenExpression(callee.object);
-    const dayjsReference = resolveImportedApiReference(receiver, scopes);
     if (
-      !dayjsReference ||
-      dayjsReference.source !== DAYJS_MODULE_NAME ||
-      dayjsReference.importedName !== "default" ||
-      dayjsReference.isNamespace
+      !expressionResolvesToDefaultImport(receiver, scopes, DAYJS_SINGLETON_MODULE_NAMES, filename)
     ) {
       return;
     }
     const pluginArgument = node.arguments?.[0];
     if (!pluginArgument || isNodeOfType(pluginArgument, "SpreadElement")) return;
-    const pluginReference = resolveImportedApiReference(pluginArgument, scopes);
-    isBadMutableActivated = Boolean(
-      pluginReference &&
-      pluginReference.importedName === "default" &&
-      !pluginReference.isNamespace &&
-      (pluginReference.source === DAYJS_BAD_MUTABLE_MODULE_NAME ||
-        pluginReference.source === `${DAYJS_BAD_MUTABLE_MODULE_NAME}.js`),
+    isBadMutableActivated = expressionResolvesToDefaultImport(
+      pluginArgument,
+      scopes,
+      DAYJS_BAD_MUTABLE_MODULE_NAMES,
+      filename,
     );
   });
-  return isBadMutableActivated;
+  if (isBadMutableActivated || !filename || !isNodeOfType(program, "Program")) {
+    if (isBadMutableActivated) programsActivatingDayjsBadMutable.add(program);
+    return isBadMutableActivated;
+  }
+  if (depth >= CROSS_FILE_BARREL_FOLLOW_DEPTH) return false;
+  for (const statement of program.body ?? []) {
+    const dependencySource = runtimeStaticDependencySource(statement);
+    if (!dependencySource) continue;
+    const dependencyFilePath = resolveModulePath(filename, dependencySource);
+    if (!dependencyFilePath || visitedFilePaths.has(dependencyFilePath)) continue;
+    const dependencyProgram = parseSourceFile(dependencyFilePath);
+    if (
+      dependencyProgram &&
+      programActivatesDayjsBadMutable(
+        dependencyProgram,
+        analyzeScopes(dependencyProgram),
+        dependencyFilePath,
+        new Set(visitedFilePaths),
+        depth + 1,
+      )
+    ) {
+      programsActivatingDayjsBadMutable.add(program);
+      return true;
+    }
+  }
+  return false;
 };
 
 const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleContext): boolean => {
@@ -526,7 +682,7 @@ const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleCo
     (importedReference.importedName === "default" ||
       DAYJS_STATIC_FACTORY_METHOD_NAMES.has(importedReference.importedName ?? ""))
   ) {
-    return !programActivatesDayjsBadMutable(currentProgram, context.scopes);
+    return !programActivatesDayjsBadMutable(currentProgram, context.scopes, context.filename);
   }
   if (!context.filename || importedReference.importedName === null) return false;
   const resolvedExport = resolveCrossFileValueExportWithFilePath(
@@ -543,8 +699,12 @@ const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleCo
     (wrappedReference.importedName === "default" ||
       DAYJS_STATIC_FACTORY_METHOD_NAMES.has(wrappedReference.importedName ?? "")) &&
     !wrappedReference.isNamespace &&
-    !programActivatesDayjsBadMutable(resolvedExport.programNode, wrapperScopes) &&
-    !programActivatesDayjsBadMutable(currentProgram, context.scopes),
+    !programActivatesDayjsBadMutable(
+      resolvedExport.programNode,
+      wrapperScopes,
+      resolvedExport.filePath,
+    ) &&
+    !programActivatesDayjsBadMutable(currentProgram, context.scopes, context.filename),
   );
 };
 
@@ -701,16 +861,34 @@ const expressionIsInternationalizedCalendarDateTime = (
   ) {
     return true;
   }
-  const fallback = isNodeOfType(candidate, "LogicalExpression")
-    ? stripParenExpression(candidate.right)
-    : null;
   if (
     isNodeOfType(candidate, "LogicalExpression") &&
-    receiverRootIsUpdaterParameter(candidate.left, updaterFunction, context) &&
-    isNodeOfType(fallback, "NewExpression") &&
-    newExpressionIsInternationalizedCalendarDateTime(fallback, context)
+    (candidate.operator === "??" || candidate.operator === "||")
   ) {
-    return true;
+    if (
+      expressionIsInternationalizedCalendarDateTime(
+        candidate.left,
+        updaterFunction,
+        setterCall,
+        context,
+      )
+    ) {
+      return true;
+    }
+    const leftCandidate = resolveDirectUnreassignedExpression(candidate.left, context.scopes);
+    const leftAlwaysFallsThrough =
+      candidate.operator === "??"
+        ? isNullishExpression(leftCandidate)
+        : isDefinitelyFalsyExpression(leftCandidate, context.scopes);
+    return (
+      leftAlwaysFallsThrough &&
+      expressionIsInternationalizedCalendarDateTime(
+        candidate.right,
+        updaterFunction,
+        setterCall,
+        context,
+      )
+    );
   }
   if (!isNodeOfType(candidate, "MemberExpression")) return false;
   const initialValues = getStateMemberInitialValues(

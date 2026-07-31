@@ -58,6 +58,238 @@ describe("no-side-effect-in-state-updater-function cross-file Day.js wrappers", 
     expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(1);
   });
 
+  it("does not suppress a Day.js wrapper when the consumer activates badMutable", () => {
+    writeFile("src/utils/dayjs.ts", `import dayjs from"dayjs";export default dayjs`);
+    const directSource = `import dayjs from"../utils/dayjs";import badMutable from"dayjs/plugin/badMutable";import{useState}from"react";dayjs.extend(badMutable);const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`;
+    const aliasSource = `import dayjs from"../utils/dayjs";import badMutable from"dayjs/plugin/badMutable";import{useState}from"react";const configuredDayjs=dayjs;configuredDayjs.extend(badMutable);const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`;
+    writeFile("src/utils/bad-mutable.ts", `export{default}from"dayjs/plugin/badMutable"`);
+    const wrappedPluginSource = `import dayjs from"../utils/dayjs";import badMutable from"../utils/bad-mutable";import{useState}from"react";dayjs.extend(badMutable);const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`;
+    const directResult = runRule(noSideEffectInStateUpdaterFunction, directSource, {
+      filename: writeFile("src/consumers/direct.tsx", directSource),
+    });
+    const aliasResult = runRule(noSideEffectInStateUpdaterFunction, aliasSource, {
+      filename: writeFile("src/consumers/alias.tsx", aliasSource),
+    });
+    const wrappedPluginResult = runRule(noSideEffectInStateUpdaterFunction, wrappedPluginSource, {
+      filename: writeFile("src/consumers/wrapped-plugin.tsx", wrappedPluginSource),
+    });
+    expect([
+      directResult.diagnostics.length,
+      aliasResult.diagnostics.length,
+      wrappedPluginResult.diagnostics.length,
+    ]).toEqual([1, 1, 1]);
+  });
+
+  it("does not suppress Day.js with a transitively re-exported badMutable plugin", () => {
+    writeFile("src/plugins/one.ts", `export{default}from"dayjs/plugin/badMutable"`);
+    writeFile("src/plugins/two.ts", `export{default}from"./one"`);
+    const source = `import dayjs from"dayjs";import badMutable from"./plugins/two";import{useState}from"react";dayjs.extend(badMutable);const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`;
+    const result = runRule(noSideEffectInStateUpdaterFunction, source, {
+      filename: writeFile("src/component.tsx", source),
+    });
+    const unusedSource = `import dayjs from"dayjs";import badMutable from"../plugins/two";import{useState}from"react";void badMutable;const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`;
+    const unusedResult = runRule(noSideEffectInStateUpdaterFunction, unusedSource, {
+      filename: writeFile("src/consumers/unused.tsx", unusedSource),
+    });
+    expect([result.diagnostics.length, unusedResult.diagnostics.length]).toEqual([1, 0]);
+  });
+
+  it("does not suppress a wrapper with side-effect-imported badMutable configuration", () => {
+    writeFile(
+      "src/utils/configure-dayjs.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable)`,
+    );
+    writeFile(
+      "src/utils/dayjs.ts",
+      `import"./configure-dayjs";import dayjs from"dayjs";export default dayjs`,
+    );
+    expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(1);
+  });
+
+  it("does not suppress a wrapper with named-imported badMutable configuration", () => {
+    writeFile(
+      "src/utils/configure-dayjs.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable);export const marker=1`,
+    );
+    writeFile(
+      "src/utils/dayjs.ts",
+      `import{marker}from"./configure-dayjs";void marker;import dayjs from"dayjs";export default dayjs`,
+    );
+    expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(1);
+  });
+
+  it("only applies badMutable configuration from executed local functions", () => {
+    writeFile(
+      "src/config/inactive.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";export const enableBadMutable=()=>dayjs.extend(badMutable)`,
+    );
+    writeFile(
+      "src/config/active.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";const enableBadMutable=()=>dayjs.extend(badMutable);enableBadMutable()`,
+    );
+    writeFile(
+      "src/config/synchronous-callback.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";const enableBadMutable=()=>dayjs.extend(badMutable);[0].forEach(enableBadMutable)`,
+    );
+    writeFile(
+      "src/config/empty-callback.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";const enableBadMutable=()=>dayjs.extend(badMutable);[].forEach(enableBadMutable)`,
+    );
+    writeFile(
+      "src/wrappers/inactive.ts",
+      `import{enableBadMutable}from"../config/inactive";void enableBadMutable;import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/wrappers/active.ts",
+      `import"../config/active";import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/wrappers/synchronous-callback.ts",
+      `import"../config/synchronous-callback";import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/wrappers/empty-callback.ts",
+      `import"../config/empty-callback";import dayjs from"dayjs";export default dayjs`,
+    );
+    expect([
+      runConsumer("./wrappers/inactive").diagnostics.length,
+      runConsumer("./wrappers/active").diagnostics.length,
+      runConsumer("./wrappers/synchronous-callback").diagnostics.length,
+      runConsumer("./wrappers/empty-callback").diagnostics.length,
+    ]).toEqual([0, 1, 1, 0]);
+  });
+
+  it("follows runtime ESM imports without executing type-only imports", () => {
+    writeFile(
+      "src/config/default.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable);export default 1`,
+    );
+    writeFile(
+      "src/config/namespace.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable);export const marker=1`,
+    );
+    writeFile(
+      "src/config/type-only.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable);export interface Marker{value:string}`,
+    );
+    writeFile(
+      "src/config/cycle-a.ts",
+      `import{markerB}from"./cycle-b";export const markerA=markerB`,
+    );
+    writeFile(
+      "src/config/cycle-b.ts",
+      `import{markerA}from"./cycle-a";export const markerB=markerA`,
+    );
+    writeFile(
+      "src/wrappers/default.ts",
+      `import marker from"../config/default";void marker;import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/wrappers/namespace.ts",
+      `import*as configuration from"../config/namespace";void configuration.marker;import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/wrappers/type-declaration.ts",
+      `import type{Marker}from"../config/type-only";type Alias=Marker;import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/wrappers/type-specifier.ts",
+      `import{type Marker}from"../config/type-only";type Alias=Marker;import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/wrappers/cycle.ts",
+      `import{markerA}from"../config/cycle-a";void markerA;import dayjs from"dayjs";export default dayjs`,
+    );
+    expect([
+      runConsumer("./wrappers/default").diagnostics.length,
+      runConsumer("./wrappers/namespace").diagnostics.length,
+      runConsumer("./wrappers/type-declaration").diagnostics.length,
+      runConsumer("./wrappers/type-specifier").diagnostics.length,
+      runConsumer("./wrappers/cycle").diagnostics.length,
+    ]).toEqual([1, 1, 0, 0, 0]);
+  });
+
+  it("keeps runtime-import activation stable across cycle traversal order", () => {
+    const writeCycle = (directory: string) => {
+      writeFile(
+        `src/${directory}/configure.ts`,
+        `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable)`,
+      );
+      writeFile(
+        `src/${directory}/a.ts`,
+        `import dayjsB from"./b";void dayjsB;import"./configure";import dayjs from"dayjs";export default dayjs`,
+      );
+      writeFile(
+        `src/${directory}/b.ts`,
+        `import dayjsA from"./a";void dayjsA;import dayjs from"dayjs";export default dayjs`,
+      );
+    };
+    writeCycle("a-first");
+    writeCycle("b-first");
+    expect([
+      runConsumer("./a-first/a").diagnostics.length,
+      runConsumer("./a-first/b").diagnostics.length,
+      runConsumer("./a-first/a").diagnostics.length,
+      runConsumer("./b-first/b").diagnostics.length,
+      runConsumer("./b-first/a").diagnostics.length,
+      runConsumer("./b-first/b").diagnostics.length,
+    ]).toEqual([1, 1, 1, 1, 1, 1]);
+  });
+
+  it("revisits a runtime dependency reached later through a shorter path", () => {
+    writeFile("src/direct-depth/a.ts", `import"./b"`);
+    writeFile("src/direct-depth/b.ts", `import"./c"`);
+    writeFile("src/direct-depth/c.ts", `import"./d"`);
+    writeFile("src/direct-depth/d.ts", `import"./configure"`);
+    writeFile(
+      "src/direct-depth/configure.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable)`,
+    );
+    const source = `import"./direct-depth/a";import"./direct-depth/d";import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`;
+    const result = runRule(noSideEffectInStateUpdaterFunction, source, {
+      filename: writeFile("src/component.tsx", source),
+    });
+    const reversedSource = `import"./direct-depth/d";import"./direct-depth/a";import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`;
+    const reversedResult = runRule(noSideEffectInStateUpdaterFunction, reversedSource, {
+      filename: writeFile("src/reversed.tsx", reversedSource),
+    });
+    expect([result.diagnostics.length, reversedResult.diagnostics.length]).toEqual([1, 1]);
+  });
+
+  it("follows runtime re-exports without executing type-only re-exports", () => {
+    writeFile(
+      "src/reexports/configure.ts",
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";dayjs.extend(badMutable);export const marker=1;export interface Marker{value:string}`,
+    );
+    writeFile(
+      "src/reexports/named.ts",
+      `export{marker}from"./configure";import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/reexports/all.ts",
+      `export*from"./configure";import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/reexports/namespace.ts",
+      `export*as configuration from"./configure";import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/reexports/type-named.ts",
+      `export type{Marker}from"./configure";import dayjs from"dayjs";export default dayjs`,
+    );
+    writeFile(
+      "src/reexports/type-all.ts",
+      `export type*from"./configure";import dayjs from"dayjs";export default dayjs`,
+    );
+    expect([
+      runConsumer("./reexports/named").diagnostics.length,
+      runConsumer("./reexports/all").diagnostics.length,
+      runConsumer("./reexports/namespace").diagnostics.length,
+      runConsumer("./reexports/type-named").diagnostics.length,
+      runConsumer("./reexports/type-all").diagnostics.length,
+    ]).toEqual([1, 1, 1, 0, 0]);
+  });
+
   it("does not suppress a static factory wrapper when the caller activates badMutable", () => {
     writeFile(
       "src/utils/dayjs.ts",

@@ -1,6 +1,8 @@
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isSynchronousIteratorCall } from "./is-synchronous-iterator-callback.js";
 import { isFunctionLike } from "./is-function-like.js";
+import { resolveExactLocalFunction } from "./resolve-exact-local-function.js";
 import {
   stripParenExpression,
   TRANSPARENT_EXPRESSION_WRAPPER_TYPES,
@@ -130,3 +132,41 @@ export const collectSynchronouslyEffectInvokedFunctions = (
   effectCallback: EsTreeNode,
   scopes?: ScopeAnalysis,
 ): Set<EsTreeNode> => collectInvokedFunctions(effectCallback, false, scopes);
+
+export const collectSynchronouslyInvokedLocalFunctions = (
+  executionRoot: EsTreeNode,
+  scopes: ScopeAnalysis,
+): Set<EsTreeNode> => {
+  const invokedFunctions = new Set<EsTreeNode>();
+  const pendingExecutionRoots: EsTreeNode[] = [executionRoot];
+  const visitedExecutionRoots = new Set<EsTreeNode>();
+  const enqueue = (candidate: EsTreeNode | null): void => {
+    if (!candidate || !isFunctionLike(candidate) || candidate.generator) return;
+    if (invokedFunctions.has(candidate)) return;
+    invokedFunctions.add(candidate);
+    pendingExecutionRoots.push(candidate);
+  };
+  if (isFunctionLike(executionRoot) && !executionRoot.generator) {
+    invokedFunctions.add(executionRoot);
+  }
+  while (pendingExecutionRoots.length > 0) {
+    const currentRoot = pendingExecutionRoots.pop();
+    if (!currentRoot || visitedExecutionRoots.has(currentRoot)) continue;
+    visitedExecutionRoots.add(currentRoot);
+    walkAst(currentRoot, (node) => {
+      if (node !== currentRoot && isFunctionLike(node)) return false;
+      if (node.type !== "CallExpression") return;
+      enqueue(resolveExactLocalFunction(node.callee, scopes));
+      for (const argument of node.arguments) {
+        if (
+          argument.type === "SpreadElement" ||
+          !isSynchronousIteratorCall(node, argument, scopes)
+        ) {
+          continue;
+        }
+        enqueue(resolveExactLocalFunction(argument, scopes));
+      }
+    });
+  }
+  return invokedFunctions;
+};

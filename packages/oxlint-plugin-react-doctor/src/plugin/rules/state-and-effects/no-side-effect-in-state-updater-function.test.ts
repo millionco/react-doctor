@@ -259,7 +259,24 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
     );
-    expect(calendarDateTime.diagnostics).toHaveLength(0);
+    const calendarDateTimeFalsyFallback = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState({date:new CalendarDateTime(2025,1,29,14,30)});setValue(previous=>({...previous,date:(previous.date||new CalendarDateTime(2025,1,1)).set({hour:1})}))}`,
+    );
+    const calendarDateTimeDeadFalsyFallback = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState({date:new CalendarDateTime(2025,1,29,14,30)});setValue(previous=>({...previous,date:(previous.date||getMutableDate()).set({hour:1})}))}`,
+    );
+    const calendarDateTimeNullishLeft = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState({date:new CalendarDateTime(2025,1,29,14,30)});setValue(previous=>({...previous,date:(null??previous.date).set({hour:1})}))}`,
+    );
+    expect([
+      calendarDateTime.diagnostics.length,
+      calendarDateTimeFalsyFallback.diagnostics.length,
+      calendarDateTimeDeadFalsyFallback.diagnostics.length,
+      calendarDateTimeNullishLeft.diagnostics.length,
+    ]).toEqual([0, 0, 0, 0]);
     expect(dayjsValue.diagnostics).toHaveLength(0);
   });
 
@@ -337,6 +354,18 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{void CalendarDateTime;const[,setValue]=useState({date:getMutableDate()});setValue(previous=>({...previous,date:previous.date.set({hour:1})}))}`,
     );
+    const unprovenCalendarDateTimeNullishFallback = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState({date:getMutableDate()});setValue(previous=>({...previous,date:(previous.date??new CalendarDateTime(2025,1,1)).set({hour:1})}))}`,
+    );
+    const unprovenCalendarDateTimeFalsyFallback = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState({date:getMutableDate()});setValue(previous=>({...previous,date:(previous.date||new CalendarDateTime(2025,1,1)).set({hour:1})}))}`,
+    );
+    const unrelatedCalendarDateTimeLogicalOperator = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState({date:getMutableDate()});setValue(previous=>({...previous,date:(previous.date&&new CalendarDateTime(2025,1,1)).set({hour:1})}))}`,
+    );
     const mutableStaticDayjsFactory = runRule(
       noSideEffectInStateUpdaterFunction,
       `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";import utc from"dayjs/plugin/utc";import{useState}from"react";dayjs.extend(utc);dayjs.extend(badMutable);const C=()=>{const[,setDate]=useState({selectedMonth:dayjs.utc()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
@@ -357,6 +386,9 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(reassignedAlias.diagnostics).toHaveLength(1);
     expect(reassignedCalendarDateTimeAlias.diagnostics).toHaveLength(1);
     expect(unprovenCalendarDateTimeMember.diagnostics).toHaveLength(1);
+    expect(unprovenCalendarDateTimeNullishFallback.diagnostics).toHaveLength(1);
+    expect(unprovenCalendarDateTimeFalsyFallback.diagnostics).toHaveLength(1);
+    expect(unrelatedCalendarDateTimeLogicalOperator.diagnostics).toHaveLength(1);
     expect(mutableStaticDayjsFactory.diagnostics).toHaveLength(1);
     expect([
       replacedCalendarDateTimeMember.diagnostics.length,

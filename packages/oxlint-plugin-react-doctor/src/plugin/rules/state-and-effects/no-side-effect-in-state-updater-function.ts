@@ -758,7 +758,8 @@ const hasPriorStateSetterCall = (
       hasPriorCall ||
       node.range[0] >= setterCall.range[0] ||
       !isNodeOfType(node, "CallExpression") ||
-      findDeferredExecutionBoundary(node) !== setterBoundary
+      findDeferredExecutionBoundary(node) !== setterBoundary ||
+      isStaticallyUnreachable(node, setterBoundary ?? program)
     ) {
       return;
     }

@@ -333,6 +333,30 @@ describe("no-side-effect-in-state-updater-function", () => {
     ]).toEqual([0, 0, 0, 0, 0, 0]);
   });
 
+  it("ignores statically unreachable prior state setter calls", () => {
+    const runDayjsPriorSetter = (priorSetter: string) =>
+      runRule(
+        noSideEffectInStateUpdaterFunction,
+        `import dayjs from"dayjs";import{useState}from"react";const C=({condition})=>{const[,setDate]=useState(dayjs());${priorSetter};setDate(previous=>previous.add(1,"month").set("date",1))}`,
+      );
+    const unreachableIf = runDayjsPriorSetter(`if(false)setDate(getMutableDate())`);
+    const unreachableAlternate = runDayjsPriorSetter(
+      `if(true)void 0;else setDate(getMutableDate())`,
+    );
+    const unreachableAnd = runDayjsPriorSetter(`false&&setDate(getMutableDate())`);
+    const unreachableOr = runDayjsPriorSetter(`true||setDate(getMutableDate())`);
+    const reachableConditional = runDayjsPriorSetter(`if(condition)setDate(getMutableDate())`);
+    const reachableAnd = runDayjsPriorSetter(`true&&setDate(getMutableDate())`);
+    expect([
+      unreachableIf.diagnostics.length,
+      unreachableAlternate.diagnostics.length,
+      unreachableAnd.diagnostics.length,
+      unreachableOr.diagnostics.length,
+    ]).toEqual([0, 0, 0, 0]);
+    expect(reachableConditional.diagnostics.length).toBeGreaterThan(0);
+    expect(reachableAnd.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("does not trust scalar and chained immutable date lookalikes", () => {
     const mutableScalarDayjs = runRule(
       noSideEffectInStateUpdaterFunction,

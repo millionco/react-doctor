@@ -15,6 +15,7 @@ import { findDeferredExecutionBoundary } from "../../utils/find-deferred-executi
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
@@ -585,12 +586,27 @@ const receiverRootIsUpdaterParameter = (
   );
 };
 
-const getObjectStateMemberInitialValue = (
+const resolveDirectUnreassignedExpression = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): EsTreeNode => {
+  const candidate = stripParenExpression(expression);
+  if (!isNodeOfType(candidate, "Identifier")) return candidate;
+  const symbol = context.scopes.symbolFor(candidate);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return candidate;
+  const initializer = getDirectUnreassignedInitializer(symbol);
+  if (!initializer) return candidate;
+  visitedSymbolIds.add(symbol.id);
+  return resolveDirectUnreassignedExpression(initializer, context, visitedSymbolIds);
+};
+
+const getObjectStateMemberInitialValues = (
   expression: EsTreeNodeOfType<"MemberExpression">,
   updaterFunction: EsTreeNode,
   setterCall: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
-): EsTreeNode | null => {
+): EsTreeNode[] | null => {
   const propertyName = getStaticPropertyName(expression);
   const receiver = stripParenExpression(expression.object);
   const updaterParameterSymbol = getUpdaterParameterSymbol(updaterFunction, context);
@@ -609,14 +625,30 @@ const getObjectStateMemberInitialValue = (
   const initialValueArgument = pair.declarator.init.arguments?.[0];
   if (!initialValueArgument || isNodeOfType(initialValueArgument, "SpreadElement")) return null;
   const initialValue = stripParenExpression(initialValueArgument);
-  if (!isNodeOfType(initialValue, "ObjectExpression")) return null;
-  for (const property of initialValue.properties.toReversed()) {
-    if (!isNodeOfType(property, "Property") || property.kind !== "init") return null;
-    const candidatePropertyName = getStaticPropertyKeyName(property);
-    if (candidatePropertyName === null) return null;
-    if (candidatePropertyName === propertyName) return property.value;
+  const lazyInitializer = resolveLocalFunction(initialValue, context);
+  if (lazyInitializer?.async) return null;
+  const possibleInitialValues = lazyInitializer
+    ? collectFunctionReturnValues(lazyInitializer)
+    : [initialValue];
+  if (!possibleInitialValues) return null;
+  const memberInitialValues: EsTreeNode[] = [];
+  for (const possibleInitialValue of possibleInitialValues) {
+    const objectValue = stripParenExpression(possibleInitialValue);
+    if (!isNodeOfType(objectValue, "ObjectExpression")) return null;
+    let memberInitialValue: EsTreeNode | null = null;
+    for (const property of objectValue.properties.toReversed()) {
+      if (!isNodeOfType(property, "Property") || property.kind !== "init") return null;
+      const candidatePropertyName = getStaticPropertyKeyName(property);
+      if (candidatePropertyName === null) return null;
+      if (candidatePropertyName === propertyName) {
+        memberInitialValue = property.value;
+        break;
+      }
+    }
+    if (!memberInitialValue) return null;
+    memberInitialValues.push(memberInitialValue);
   }
-  return null;
+  return memberInitialValues;
 };
 
 const expressionIsInternationalizedCalendarDateTime = (
@@ -664,18 +696,23 @@ const callUsesProvenImmutableLibraryValueMethod = (
     return true;
   }
   if (!methodName || !DAYJS_IMMUTABLE_METHOD_NAMES.has(methodName)) return false;
-  const receiver = stripParenExpression(callee.object);
+  const receiver = resolveDirectUnreassignedExpression(callee.object, context);
   if (!isNodeOfType(receiver, "MemberExpression")) return false;
-  const initialValue = getObjectStateMemberInitialValue(
+  const initialValues = getObjectStateMemberInitialValues(
     receiver,
     updaterFunction,
     setterCall,
     context,
   );
-  if (!initialValue) return false;
-  const initialCall = stripParenExpression(initialValue);
-  if (!isNodeOfType(initialCall, "CallExpression")) return false;
-  return importedReferenceIsDayjsFactory(stripParenExpression(initialCall.callee), context);
+  return Boolean(
+    initialValues?.every((initialValue) => {
+      const initialCall = stripParenExpression(initialValue);
+      return (
+        isNodeOfType(initialCall, "CallExpression") &&
+        importedReferenceIsDayjsFactory(stripParenExpression(initialCall.callee), context)
+      );
+    }),
+  );
 };
 
 const expressionIsDirectFreshContainer = (
@@ -815,12 +852,17 @@ const memberReceiverIsUpdaterLocal = (
     return true;
   }
   if (!propertyName || !isNodeOfType(object, "Identifier")) return false;
-  const objectSymbol = context.scopes.symbolFor(object);
+  const objectSymbol = resolveConstIdentifierAlias(object, context.scopes);
   if (!objectSymbol || visitedSymbolIds.has(objectSymbol.id)) return false;
+  const isDeclaredInsideUpdater = [...executedFunctions].some((functionNode) =>
+    isAstDescendant(objectSymbol.bindingIdentifier, functionNode),
+  );
+  if (!isDeclaredInsideUpdater) return false;
   const initializer = objectSymbol.initializer
     ? stripParenExpression(objectSymbol.initializer)
     : null;
   if (!isNodeOfType(initializer, "ObjectExpression")) return false;
+  let effectiveValue: EsTreeNode | null = null;
   for (const property of initializer.properties.toReversed()) {
     if (
       !isNodeOfType(property, "Property") ||
@@ -828,30 +870,77 @@ const memberReceiverIsUpdaterLocal = (
     ) {
       continue;
     }
-    const value = stripParenExpression(property.value);
+    effectiveValue = property.value;
+    break;
+  }
+  let latestAssignmentOffset = -1;
+  const receiverBoundary = findDeferredExecutionBoundary(receiver);
+  if (!receiverBoundary) return false;
+  const objectReferences = collectConstAliasSymbols(objectSymbol, context.scopes).flatMap(
+    (aliasSymbol) => aliasSymbol.references,
+  );
+  for (const reference of objectReferences) {
+    const identifierRoot = findTransparentExpressionRoot(reference.identifier);
+    const referenceParent = identifierRoot.parent;
     if (
-      isNodeOfType(value, "NewExpression") ||
-      isNodeOfType(value, "ObjectExpression") ||
-      isNodeOfType(value, "ArrayExpression")
+      isNodeOfType(referenceParent, "VariableDeclarator") &&
+      referenceParent.init === identifierRoot &&
+      isNodeOfType(referenceParent.id, "Identifier") &&
+      context.scopes.symbolFor(referenceParent.id)?.kind === "const"
     ) {
-      return true;
+      continue;
     }
-    if (isNodeOfType(value, "CallExpression")) {
-      const callee = stripParenExpression(value.callee);
-      return Boolean(
-        isNodeOfType(callee, "Identifier") && /^(?:create|make)Local[A-Z_]/.test(callee.name),
-      );
+    if (
+      !referenceParent ||
+      !isNodeOfType(referenceParent, "MemberExpression") ||
+      referenceParent.object !== identifierRoot ||
+      getStaticPropertyName(referenceParent) !== propertyName
+    ) {
+      continue;
     }
-    if (!isNodeOfType(value, "Identifier")) return false;
-    return receiverIsUpdaterLocal(
+    const memberRoot = findTransparentExpressionRoot(referenceParent);
+    const assignment = memberRoot.parent;
+    if (
+      !assignment ||
+      !isNodeOfType(assignment, "AssignmentExpression") ||
+      assignment.left !== memberRoot ||
+      assignment.range[0] >= receiver.range[0] ||
+      findDeferredExecutionBoundary(assignment) !== receiverBoundary
+    ) {
+      continue;
+    }
+    if (assignment.operator !== "=" || !isNodeOnUnconditionalPath(assignment, receiverBoundary)) {
+      return false;
+    }
+    if (assignment.range[0] <= latestAssignmentOffset) continue;
+    effectiveValue = assignment.right;
+    latestAssignmentOffset = assignment.range[0];
+  }
+  if (!effectiveValue) return false;
+  const value = stripParenExpression(effectiveValue);
+  if (
+    isNodeOfType(value, "NewExpression") ||
+    isNodeOfType(value, "ObjectExpression") ||
+    isNodeOfType(value, "ArrayExpression")
+  ) {
+    return true;
+  }
+  if (isNodeOfType(value, "CallExpression")) {
+    const callee = stripParenExpression(value.callee);
+    return Boolean(
+      isNodeOfType(callee, "Identifier") && /^(?:create|make)Local[A-Z_]/.test(callee.name),
+    );
+  }
+  return Boolean(
+    isNodeOfType(value, "Identifier") &&
+    receiverIsUpdaterLocal(
       value,
       updaterFunction,
       executedFunctions,
       context,
       new Set([...visitedSymbolIds, objectSymbol.id]),
-    );
-  }
-  return false;
+    ),
+  );
 };
 
 const receiverIsUpdaterLocal = (
@@ -865,6 +954,21 @@ const receiverIsUpdaterLocal = (
   if (expressionIsFreshContainer(unwrappedReceiver, context)) return true;
   if (isNodeOfType(unwrappedReceiver, "CallExpression")) {
     return callReturnsOnlyFreshContainers(unwrappedReceiver, context);
+  }
+  if (isNodeOfType(unwrappedReceiver, "AssignmentExpression")) {
+    const assignmentTarget = stripParenExpression(unwrappedReceiver.left);
+    return Boolean(
+      unwrappedReceiver.operator === "=" &&
+      isNodeOfType(assignmentTarget, "MemberExpression") &&
+      expressionCreatesFreshContainer(unwrappedReceiver.right, context) &&
+      receiverIsUpdaterLocal(
+        assignmentTarget.object,
+        updaterFunction,
+        executedFunctions,
+        context,
+        visitedSymbolIds,
+      ),
+    );
   }
   if (isNodeOfType(unwrappedReceiver, "MemberExpression")) {
     return memberReceiverIsUpdaterLocal(

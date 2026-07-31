@@ -263,6 +263,19 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(dayjsValue.diagnostics).toHaveLength(0);
   });
 
+  it("keeps lazy-initialized and aliased Day.js values pure", () => {
+    const lazyInitializer = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState(()=>({selectedMonth:dayjs()}));setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
+    );
+    const blockLazyInitializer = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState(()=>{return{selectedMonth:dayjs()}});setDate(previous=>{const selectedMonth=previous.selectedMonth;const alias=selectedMonth;return{...previous,selectedMonth:alias.set("month",1)}})}`,
+    );
+    expect(lazyInitializer.diagnostics).toHaveLength(0);
+    expect(blockLazyInitializer.diagnostics).toHaveLength(0);
+  });
+
   it("does not trust immutable date lookalikes or Day.js with badMutable", () => {
     const localCalendarDateTime = runRule(
       noSideEffectInStateUpdaterFunction,
@@ -280,10 +293,20 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";import{useState}from"react";const C=()=>{void badMutable;const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
     );
+    const mutableLazyAliasedDayjs = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";import{useState}from"react";dayjs.extend(badMutable);const C=()=>{const[,setDate]=useState(()=>({selectedMonth:dayjs()}));setDate(previous=>{const selectedMonth=previous.selectedMonth;return{...previous,selectedMonth:selectedMonth.add(1,"month")}})}`,
+    );
+    const reassignedAlias = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>{let selectedMonth=previous.selectedMonth;selectedMonth=getMutableDate();return{...previous,selectedMonth:selectedMonth.add(1,"month")}})}`,
+    );
     expect(localCalendarDateTime.diagnostics).toHaveLength(1);
     expect(unrelatedDateFactory.diagnostics).toHaveLength(1);
     expect(mutableDayjs.diagnostics).toHaveLength(1);
     expect(unusedBadMutable.diagnostics).toHaveLength(0);
+    expect(mutableLazyAliasedDayjs.diagnostics).toHaveLength(1);
+    expect(reassignedAlias.diagnostics).toHaveLength(1);
   });
 
   it("ignores setter-shaped mutators on updater-local built-ins and factory results", () => {
@@ -361,6 +384,42 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(assignedFactoryResult.diagnostics).toHaveLength(0);
     expect(chainedFactoryResult.diagnostics).toHaveLength(0);
     expect(externalFactoryResult.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps fresh collections assigned to updater-local properties local", () => {
+    const chainedAssignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={...previous};(next.cache=new Map()).set("value",1);return next})}`,
+    );
+    const priorAssignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={...previous};next.cache=new Map();next.cache.set("value",1);return next})}`,
+    );
+    expect(chainedAssignment.diagnostics).toHaveLength(0);
+    expect(priorAssignment.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust external or conditionally assigned collection properties", () => {
+    const externalObject = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const cache={items:new Map()};const C=()=>{const[,setValue]=useState(0);setValue(previous=>{cache.items.set("value",previous);return previous+1})}`,
+    );
+    const externalAssignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const cache={};const C=()=>{const[,setValue]=useState(0);setValue(previous=>{cache.items=new Map();cache.items.set("value",previous);return previous+1})}`,
+    );
+    const conditionalAssignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={...previous};if(previous.ready)next.cache=new Map();next.cache.set("value",1);return next})}`,
+    );
+    const overwrittenAssignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={...previous};next.cache=new Map();next.cache=getExternalMap();next.cache.set("value",1);return next})}`,
+    );
+    expect(externalObject.diagnostics).toHaveLength(1);
+    expect(externalAssignment.diagnostics).toHaveLength(2);
+    expect(conditionalAssignment.diagnostics).toHaveLength(1);
+    expect(overwrittenAssignment.diagnostics).toHaveLength(1);
   });
 
   it("flags persistence and submission calls while following pure local name lookalikes", () => {

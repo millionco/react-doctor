@@ -55,6 +55,25 @@ describe("a11y/no-static-element-interactions regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags a conditional propagation shield without focus forwarding", () => {
+    const result = runRule(
+      noStaticElementInteractions,
+      `class ActionBar extends React.Component {
+        render() {
+          return (
+            <div
+              onClick={this.handleClick ? function (event) {
+                event.stopPropagation();
+              } : undefined}
+            />
+          );
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an inline wrapper that focuses a control by id", () => {
     const result = runRule(
       noStaticElementInteractions,

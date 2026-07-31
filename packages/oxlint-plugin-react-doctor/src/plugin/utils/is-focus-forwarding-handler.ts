@@ -7,9 +7,8 @@ import { stripParenExpression } from "./strip-paren-expression.js";
 
 // `.click()` is excluded because forwarding activation to a hidden control
 // leaves that action unreachable to keyboard users.
-const ALLOWED_FOCUS_FORWARDING_METHOD_NAMES: ReadonlySet<string> = new Set([
-  "focus",
-  "select",
+const FOCUS_FORWARDING_METHOD_NAMES: ReadonlySet<string> = new Set(["focus", "select"]);
+const EVENT_BLOCKER_METHOD_NAMES: ReadonlySet<string> = new Set([
   "stopPropagation",
   "preventDefault",
   "stopImmediatePropagation",
@@ -28,9 +27,16 @@ const getCalledMethodName = (node: EsTreeNode | null | undefined): string | null
   return isNodeOfType(property, "Identifier") ? property.name : null;
 };
 
-const isAllowedFocusForwardingCall = (node: EsTreeNode | null | undefined): boolean => {
+const isAllowedFocusForwardingCall = (
+  node: EsTreeNode | null | undefined,
+  shouldAllowEventBlocker: boolean,
+): boolean => {
   const methodName = getCalledMethodName(node);
-  return methodName !== null && ALLOWED_FOCUS_FORWARDING_METHOD_NAMES.has(methodName);
+  return (
+    methodName !== null &&
+    (FOCUS_FORWARDING_METHOD_NAMES.has(methodName) ||
+      (shouldAllowEventBlocker && EVENT_BLOCKER_METHOD_NAMES.has(methodName)))
+  );
 };
 
 const isGlobalDocumentExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
@@ -142,9 +148,10 @@ const isFocusCallOnVariable = (statement: EsTreeNode, variableName: string): boo
 const isAllowedFocusForwardingFunctionBody = (
   body: EsTreeNode | null | undefined,
   scopes: ScopeAnalysis,
+  shouldAllowEventBlocker: boolean,
 ): boolean => {
   if (!body) return false;
-  if (isAllowedFocusForwardingCall(body)) return true;
+  if (isAllowedFocusForwardingCall(body, shouldAllowEventBlocker)) return true;
   if (!isNodeOfType(body, "BlockStatement") || body.body.length === 0) return false;
   const statements = body.body as EsTreeNode[];
   const firstActionIndex = isEventTargetClosestReturnGuard(statements[0] as EsTreeNode) ? 1 : 0;
@@ -162,7 +169,7 @@ const isAllowedFocusForwardingFunctionBody = (
   return statements.every(
     (statement) =>
       isNodeOfType(statement, "ExpressionStatement") &&
-      isAllowedFocusForwardingCall(statement.expression as EsTreeNode),
+      isAllowedFocusForwardingCall(statement.expression as EsTreeNode, shouldAllowEventBlocker),
   );
 };
 
@@ -170,22 +177,28 @@ const isGlobalNullishExpression = (expression: EsTreeNode, scopes: ScopeAnalysis
   isNullishExpression(expression) &&
   (!isNodeOfType(expression, "Identifier") || scopes.isGlobalReference(expression));
 
+interface ResolvedHandlerFunction {
+  handlerFunction: EsTreeNode;
+  isConditional: boolean;
+}
+
 const resolveHandlerFunctionExpression = (
   handlerExpression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedSymbolIds = new Set<number>(),
-): EsTreeNode | null => {
+): ResolvedHandlerFunction | null => {
   const expression = stripParenExpression(handlerExpression);
   if (isNodeOfType(expression, "ConditionalExpression")) {
     const consequent = stripParenExpression(expression.consequent as EsTreeNode);
     const alternate = stripParenExpression(expression.alternate as EsTreeNode);
+    let resolvedHandler: ResolvedHandlerFunction | null = null;
     if (isGlobalNullishExpression(consequent, scopes)) {
-      return resolveHandlerFunctionExpression(alternate, scopes, visitedSymbolIds);
+      resolvedHandler = resolveHandlerFunctionExpression(alternate, scopes, visitedSymbolIds);
     }
     if (isGlobalNullishExpression(alternate, scopes)) {
-      return resolveHandlerFunctionExpression(consequent, scopes, visitedSymbolIds);
+      resolvedHandler = resolveHandlerFunctionExpression(consequent, scopes, visitedSymbolIds);
     }
-    return null;
+    return resolvedHandler ? { ...resolvedHandler, isConditional: true } : null;
   }
   if (isNodeOfType(expression, "Identifier")) {
     const symbol = scopes.symbolFor(expression);
@@ -205,7 +218,7 @@ const resolveHandlerFunctionExpression = (
     isNodeOfType(expression, "FunctionExpression") ||
     isNodeOfType(expression, "FunctionDeclaration")
   ) {
-    return expression;
+    return { handlerFunction: expression, isConditional: false };
   }
   return null;
 };
@@ -214,11 +227,12 @@ export const isFocusForwardingOrBlockingHandlerExpression = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
-  const handlerFunction = resolveHandlerFunctionExpression(expression, scopes);
-  if (!handlerFunction) return false;
+  const resolvedHandler = resolveHandlerFunctionExpression(expression, scopes);
+  if (!resolvedHandler) return false;
   return isAllowedFocusForwardingFunctionBody(
-    (handlerFunction as { body?: EsTreeNode }).body ?? null,
+    (resolvedHandler.handlerFunction as { body?: EsTreeNode }).body ?? null,
     scopes,
+    !resolvedHandler.isConditional,
   );
 };
 

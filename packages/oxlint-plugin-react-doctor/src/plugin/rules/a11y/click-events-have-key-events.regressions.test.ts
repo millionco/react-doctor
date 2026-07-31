@@ -56,6 +56,25 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags a conditional propagation shield without focus forwarding", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `class ActionBar extends React.Component {
+        render() {
+          return (
+            <div
+              onClick={this.handleClick ? function (event) {
+                event.stopPropagation();
+              } : undefined}
+            />
+          );
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a typed focus-forwarding handler in the nullish-first branch form", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,

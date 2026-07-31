@@ -320,6 +320,90 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("reports conditionally invoked async work without a matching cleanup guard", () => {
+    const conditionalResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          const run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+        }, [enabled, userId]);
+      };`,
+    );
+    const unrelatedCleanupResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          const run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          return () => recordCleanup();
+        }, [enabled, userId]);
+      };`,
+    );
+    const uncoveredGuardResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          if (enabled && skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(conditionalResult.diagnostics).toHaveLength(1);
+    expect(unrelatedCleanupResult.diagnostics).toHaveLength(1);
+    expect(uncoveredGuardResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not let a conditional invocation suppress an unsafe unconditional invocation", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          run();
+          if (skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not require cleanup before a guarded async promise callback is registered", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,

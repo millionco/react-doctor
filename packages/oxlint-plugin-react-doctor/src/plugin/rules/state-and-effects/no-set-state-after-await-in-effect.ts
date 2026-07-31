@@ -239,13 +239,52 @@ const doesFunctionInvokeTargetOnEveryPath = (
   return doNodesCoverEveryPathFromFunctionEntry(rootFunction, invocationSites, context);
 };
 
+const collectTargetInvocationSites = (
+  rootFunction: EsTreeNode,
+  targetFunction: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode>,
+): EsTreeNode[] => {
+  if (visitedFunctions.has(rootFunction)) return [];
+  visitedFunctions.add(rootFunction);
+  const invocationSites = new Set<EsTreeNode>();
+  walkOwnFunctionScope(rootFunction, (candidate: EsTreeNode) => {
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    for (const invokedFunction of collectDirectlyInvokedFunctions(candidate, context)) {
+      if (invokedFunction === targetFunction) {
+        invocationSites.add(candidate);
+        continue;
+      }
+      for (const invocationSite of collectTargetInvocationSites(
+        invokedFunction,
+        targetFunction,
+        context,
+        new Set(visitedFunctions),
+      )) {
+        invocationSites.add(invocationSite);
+      }
+    }
+  });
+  return [...invocationSites];
+};
+
+interface ConditionalEffectInvocationAnchor {
+  anchor: EsTreeNode;
+  targetInvocationSites: EsTreeNode[];
+}
+
+interface EffectInvocationAnchors {
+  conditional: ConditionalEffectInvocationAnchor[];
+  unconditional: EsTreeNode[];
+}
+
 const collectEffectInvocationAnchors = (
   effectCallback: EsTreeNode,
   invokedFunction: EsTreeNode,
   context: RuleContext,
-): EsTreeNode[] | null => {
-  const anchors = new Set<EsTreeNode>();
-  let hasConditionalWrapperInvocation = false;
+): EffectInvocationAnchors => {
+  const conditional = new Map<EsTreeNode, ConditionalEffectInvocationAnchor>();
+  const unconditional = new Set<EsTreeNode>();
   walkOwnFunctionScope(effectCallback, (candidate: EsTreeNode) => {
     if (!isNodeOfType(candidate, "CallExpression")) return;
     const directlyInvokedFunctions = collectDirectlyInvokedFunctions(candidate, context);
@@ -262,58 +301,97 @@ const collectEffectInvocationAnchors = (
       ),
     );
     if (alwaysInvokesTarget) {
-      anchors.add(candidate);
+      unconditional.add(candidate);
     } else {
-      hasConditionalWrapperInvocation = true;
+      const targetInvocationSites = directlyInvokedFunctions.flatMap((directlyInvokedFunction) =>
+        collectTargetInvocationSites(directlyInvokedFunction, invokedFunction, context, new Set()),
+      );
+      conditional.set(candidate, { anchor: candidate, targetInvocationSites });
     }
   });
-  return hasConditionalWrapperInvocation ? null : [...anchors];
+  return {
+    conditional: [...conditional.values()],
+    unconditional: [...unconditional],
+  };
 };
 
 const collectCleanupFunctionsAfterInvocations = (
   effectCallback: EsTreeNode,
   invokedFunction: EsTreeNode,
   context: RuleContext,
-): EsTreeNode[] | null => {
+): EsTreeNode[] => {
   if (!isFunctionLike(effectCallback)) return [];
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
     return resolveCleanupFunctions(effectCallback.body, effectCallback, context.scopes);
   }
-  const cleanupReturns = collectFunctionReturnStatements(effectCallback).flatMap(
-    (returnStatement) => {
-      if (!returnStatement.argument) return [];
-      const cleanupFunctions = resolveCleanupFunctions(
-        returnStatement.argument as EsTreeNode,
-        returnStatement,
-        context.scopes,
-      );
-      return cleanupFunctions.length > 0 ? [{ cleanupFunctions, returnStatement }] : [];
-    },
-  );
+  const returnStatements = collectFunctionReturnStatements(effectCallback);
+  const cleanupReturns = returnStatements.flatMap((returnStatement) => {
+    if (!returnStatement.argument) return [];
+    const cleanupFunctions = resolveCleanupFunctions(
+      returnStatement.argument as EsTreeNode,
+      returnStatement,
+      context.scopes,
+    );
+    return cleanupFunctions.length > 0 ? [{ cleanupFunctions, returnStatement }] : [];
+  });
   const invocationAnchors = collectEffectInvocationAnchors(
     effectCallback,
     invokedFunction,
     context,
   );
-  if (invocationAnchors === null) return null;
-  if (invocationAnchors.length === 0) return [];
   const reachableCleanupReturns = new Set<(typeof cleanupReturns)[number]>();
-  for (const invocationAnchor of invocationAnchors) {
-    const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
-      canNodeReachLaterNodeWithinFunction(
-        invocationAnchor,
-        returnStatement,
-        effectCallback,
-        context,
-      ),
+  if (invocationAnchors.unconditional.length > 0) {
+    for (const invocationAnchor of invocationAnchors.unconditional) {
+      const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
+        canNodeReachLaterNodeWithinFunction(
+          invocationAnchor,
+          returnStatement,
+          effectCallback,
+          context,
+        ),
+      );
+      if (
+        !doNodesCoverEveryPathAfterNode(
+          invocationAnchor,
+          cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
+          context,
+        )
+      ) {
+        return [];
+      }
+      for (const cleanupReturn of cleanupReturnsAfterInvocation) {
+        reachableCleanupReturns.add(cleanupReturn);
+      }
+    }
+    return [...reachableCleanupReturns].flatMap(({ cleanupFunctions }) => cleanupFunctions);
+  }
+  if (invocationAnchors.conditional.length === 0) return [];
+  for (const { anchor, targetInvocationSites } of invocationAnchors.conditional) {
+    if (targetInvocationSites.length === 0) return [];
+    const returnsAfterInvocation = returnStatements.filter((returnStatement) =>
+      canNodeReachLaterNodeWithinFunction(anchor, returnStatement, effectCallback, context),
     );
-    if (
-      !doNodesCoverEveryPathAfterNode(
-        invocationAnchor,
-        cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
-        context,
-      )
-    ) {
+    if (!doNodesCoverEveryPathAfterNode(anchor, returnsAfterInvocation, context)) return [];
+    const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
+      returnsAfterInvocation.includes(returnStatement),
+    );
+    const cleanupReturnStatements = new Set(
+      cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
+    );
+    const returnsWithoutCleanup = returnsAfterInvocation.filter(
+      (returnStatement) => !cleanupReturnStatements.has(returnStatement),
+    );
+    const areNoCleanupReturnsExclusiveWithInvocations = returnsWithoutCleanup.every(
+      (returnStatement) =>
+        targetInvocationSites.every((targetInvocationSite) =>
+          areNodesOnContradictoryGuardBranches(
+            targetInvocationSite,
+            returnStatement,
+            context.scopes,
+          ),
+        ),
+    );
+    if (!areNoCleanupReturnsExclusiveWithInvocations) {
       return [];
     }
     for (const cleanupReturn of cleanupReturnsAfterInvocation) {
@@ -1209,7 +1287,6 @@ const hasUnsafePostAwaitSetter = (
     asyncFunction,
     context,
   );
-  if (cleanupFunctions === null) return false;
   const cleanupWrites = collectCleanupGuardWrites(cleanupFunctions, context);
   const postSuspensionWrites = collectPostSuspensionWrittenReferenceKeys(
     asyncFunction,

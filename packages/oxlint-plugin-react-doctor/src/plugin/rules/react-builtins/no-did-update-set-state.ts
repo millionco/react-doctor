@@ -8,6 +8,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticThisOrAliasFieldName } from "../../utils/get-static-this-or-alias-field-name.js";
 import { getPropertyKeyName } from "../../utils/get-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
@@ -320,6 +321,8 @@ const isDirectRefParameterValue = (
 const getCallbackRefAssignedFields = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
+  classNode: EsTreeNode | null = null,
+  visitedHandlerNames: ReadonlySet<string> = new Set(),
 ): ReadonlySet<string> => {
   const parameters = (callback as { params?: EsTreeNode[] }).params ?? [];
   const firstParameter = parameters[0];
@@ -417,6 +420,30 @@ const getCallbackRefAssignedFields = (
     if (!isNodeOfType(node, "CallExpression")) return;
     const callee = stripParenExpression(node.callee);
     if (!isNodeOfType(callee, "MemberExpression")) return;
+    const handlerName = getStaticThisOrAliasFieldName(callee, thisAliasNames);
+    const [forwardedValue] = node.arguments;
+    if (
+      classNode &&
+      handlerName &&
+      !visitedHandlerNames.has(handlerName) &&
+      forwardedValue &&
+      !isNodeOfType(forwardedValue, "SpreadElement") &&
+      isDirectRefParameterValue(forwardedValue as EsTreeNode, parameterSymbolId, scopes)
+    ) {
+      const handler = getClassMemberCallback(classNode, handlerName);
+      if (handler) {
+        const nextVisitedHandlerNames = new Set([...visitedHandlerNames, handlerName]);
+        for (const fieldName of getCallbackRefAssignedFields(
+          handler,
+          scopes,
+          classNode,
+          nextVisitedHandlerNames,
+        )) {
+          assignedFieldNames.add(fieldName);
+        }
+      }
+      return;
+    }
     const receiver = stripParenExpression(callee.object as EsTreeNode);
     if (!isNodeOfType(receiver, "Identifier")) return;
     const receiverKind = receiverKinds.get(receiver.name);
@@ -490,7 +517,7 @@ const collectCallbackRefFieldsFromExpression = (
 ): void => {
   const unwrappedExpression = stripParenExpression(expression);
   if (FUNCTION_NODE_TYPES.has(unwrappedExpression.type)) {
-    for (const fieldName of getCallbackRefAssignedFields(unwrappedExpression, scopes)) {
+    for (const fieldName of getCallbackRefAssignedFields(unwrappedExpression, scopes, classNode)) {
       fieldNames.add(fieldName);
     }
     return;
@@ -499,7 +526,7 @@ const collectCallbackRefFieldsFromExpression = (
   if (handlerName) {
     const callback = getClassMemberCallback(classNode, handlerName);
     if (callback) {
-      for (const fieldName of getCallbackRefAssignedFields(callback, scopes)) {
+      for (const fieldName of getCallbackRefAssignedFields(callback, scopes, classNode)) {
         fieldNames.add(fieldName);
       }
     }

@@ -6,6 +6,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingClass } from "../../utils/find-enclosing-class.js";
 import { getNodeStartIndex } from "../../utils/get-node-start-index.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { getStaticThisOrAliasFieldName } from "../../utils/get-static-this-or-alias-field-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isImmediatelyInvokedFunction } from "../../utils/is-immediately-invoked-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -455,7 +456,13 @@ const argumentDerivesFromPostMountSource = (
     ) {
       registerLocalBinding(descendant.id.name, descendant);
     }
-    if (descendant !== lifecycleFunction && isFunctionLike(descendant)) return false;
+    if (
+      descendant !== lifecycleFunction &&
+      isFunctionLike(descendant) &&
+      !isImmediatelyInvokedFunction(descendant)
+    ) {
+      return false;
+    }
   });
   const doesExpressionDeriveFromPostMountSource = (expression: EsTreeNode): boolean => {
     const doesExpressionReadCallbackRefField = containsCallbackRefField(
@@ -666,15 +673,54 @@ const getEnclosingWriterFunction = (node: EsTreeNode, classNode: EsTreeNode): Es
   return ancestor && ancestor !== classNode ? ancestor : null;
 };
 
-const isInsideRefAttribute = (node: EsTreeNode): boolean => {
+const isDirectRefWrapperHandlerUse = (
+  node: EsTreeNode,
+  wrapperFunction: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const parameters = (wrapperFunction as { params?: EsTreeNode[] }).params ?? [];
+  const firstParameter = parameters[0];
+  if (!firstParameter) return false;
+  const parameterIdentifier = isNodeOfType(firstParameter, "AssignmentPattern")
+    ? firstParameter.left
+    : firstParameter;
+  if (!isNodeOfType(parameterIdentifier, "Identifier")) return false;
+  const parameterSymbolId = scopes.symbolFor(parameterIdentifier)?.id;
+  if (parameterSymbolId === undefined) return false;
   let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor && !isFunctionLike(ancestor)) {
+  while (ancestor && ancestor !== wrapperFunction) {
+    if (isFunctionLike(ancestor)) return false;
+    if (
+      isNodeOfType(ancestor, "CallExpression") &&
+      isInsideNode(node, ancestor.callee as EsTreeNode)
+    ) {
+      const [forwardedValue] = ancestor.arguments;
+      if (!forwardedValue || isNodeOfType(forwardedValue, "SpreadElement")) return false;
+      const unwrappedValue = stripParenExpression(forwardedValue as EsTreeNode);
+      return (
+        isNodeOfType(unwrappedValue, "Identifier") &&
+        scopes.symbolFor(unwrappedValue)?.id === parameterSymbolId
+      );
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const isInsideRefAttribute = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let wrapperFunction: EsTreeNode | null = null;
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) {
+      if (wrapperFunction) return false;
+      wrapperFunction = ancestor;
+    }
     if (
       isNodeOfType(ancestor, "JSXAttribute") &&
       isNodeOfType(ancestor.name, "JSXIdentifier") &&
       ancestor.name.name === "ref"
     ) {
-      return true;
+      return !wrapperFunction || isDirectRefWrapperHandlerUse(node, wrapperFunction, scopes);
     }
     ancestor = ancestor.parent;
   }
@@ -817,7 +863,10 @@ const hasExclusiveCallbackRefFieldWrite = (
     ) {
       return false;
     }
-    if (getStaticThisFieldName(node) === writerMemberName && !isInsideRefAttribute(node)) {
+    if (
+      getStaticThisOrAliasFieldName(node, thisAliasNames, classNode) === writerMemberName &&
+      !isInsideRefAttribute(node, scopes)
+    ) {
       didFindNonRefUsage = true;
       return false;
     }
@@ -834,7 +883,7 @@ const hasExclusiveCallbackRefFieldWrite = (
       symbol.references.some(
         (reference) =>
           !isInsideNode(reference.identifier, symbol.declarationNode) &&
-          !isInsideRefAttribute(reference.identifier),
+          !isInsideRefAttribute(reference.identifier, scopes),
       ),
     )
   ) {

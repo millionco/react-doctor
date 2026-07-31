@@ -3,6 +3,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../../constants/thresholds.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
 import { __clearTsconfigAliasCacheForTests } from "../../utils/resolve-tsconfig-alias.js";
 import { noSideEffectInStateUpdaterFunction } from "./no-side-effect-in-state-updater-function.js";
@@ -47,6 +48,31 @@ describe("no-side-effect-in-state-updater-function cross-file Day.js wrappers", 
     writeFile("src/utils/middle-dayjs.ts", `import dayjs from"./base-dayjs";export default dayjs`);
     writeFile("src/utils/dayjs.ts", `import dayjs from"./middle-dayjs";export default dayjs`);
     expect(runConsumer("./utils/dayjs").diagnostics).toHaveLength(0);
+  });
+
+  it("follows immutable Day.js factories through the full wrapper depth", () => {
+    for (let wrapperIndex = CROSS_FILE_BARREL_FOLLOW_DEPTH; wrapperIndex >= 1; wrapperIndex--) {
+      const importSource =
+        wrapperIndex === CROSS_FILE_BARREL_FOLLOW_DEPTH ? "dayjs" : `./wrapper-${wrapperIndex + 1}`;
+      writeFile(
+        `src/utils/wrapper-${wrapperIndex}.ts`,
+        `import dayjs from"${importSource}";export default dayjs`,
+      );
+    }
+    expect(runConsumer("./utils/wrapper-1").diagnostics).toHaveLength(0);
+  });
+
+  it("stops following immutable Day.js factories beyond the wrapper depth", () => {
+    const wrapperCount = CROSS_FILE_BARREL_FOLLOW_DEPTH + 1;
+    for (let wrapperIndex = wrapperCount; wrapperIndex >= 1; wrapperIndex--) {
+      const importSource =
+        wrapperIndex === wrapperCount ? "dayjs" : `./wrapper-${wrapperIndex + 1}`;
+      writeFile(
+        `src/utils/wrapper-${wrapperIndex}.ts`,
+        `import dayjs from"${importSource}";export default dayjs`,
+      );
+    }
+    expect(runConsumer("./utils/wrapper-1").diagnostics).toHaveLength(1);
   });
 
   it("follows aliased named Day.js factories through multiple wrappers", () => {

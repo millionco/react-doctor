@@ -683,13 +683,13 @@ const expressionResolvesToDayjsFactory = (
   scopes: RuleContext["scopes"],
   filename?: string,
   visitedFilePaths: Set<string> = new Set(),
+  depth: number = 0,
 ): boolean => {
+  if (depth > CROSS_FILE_BARREL_FOLLOW_DEPTH) return false;
   const currentProgram = findProgramRoot(expression);
   if (!currentProgram) return false;
   if (filename) {
-    if (visitedFilePaths.has(filename) || visitedFilePaths.size >= CROSS_FILE_BARREL_FOLLOW_DEPTH) {
-      return false;
-    }
+    if (visitedFilePaths.has(filename)) return false;
     visitedFilePaths.add(filename);
   }
   if (programActivatesDayjsBadMutable(currentProgram, scopes, filename)) return false;
@@ -717,6 +717,7 @@ const expressionResolvesToDayjsFactory = (
     wrapperScopes,
     resolvedExport.filePath,
     new Set(visitedFilePaths),
+    depth + 1,
   );
 };
 

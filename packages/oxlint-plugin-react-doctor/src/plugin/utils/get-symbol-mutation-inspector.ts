@@ -410,13 +410,6 @@ const getSuspensionCutoffIndex = (node: EsTreeNode): number => {
   return getNodeStartIndex(node);
 };
 
-const yieldExpressionSuspends = (node: EsTreeNodeOfType<"YieldExpression">): boolean => {
-  if (!node.delegate || !node.argument) return true;
-  const argument = stripParenExpression(node.argument);
-  if (isNodeOfType(argument, "ArrayExpression")) return argument.elements.length > 0;
-  return !isNodeOfType(argument, "Literal") || argument.value !== "";
-};
-
 const conditionalSuspensionPreventsOperation = (
   suspension: EsTreeNode,
   operationNode: EsTreeNode,

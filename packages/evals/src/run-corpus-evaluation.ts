@@ -41,6 +41,7 @@ import { groupCorpusRepositories } from "./group-corpus-repositories.js";
 import { loadCorpusRepositories } from "./load-corpus-repositories.js";
 import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
 import { runEvaluationAttempts } from "./run-evaluation-attempts.js";
+import { runMatrixCorpusEvaluation } from "./run-matrix-corpus-evaluation.js";
 import { createPairedNdjsonWriter } from "./utils/create-paired-ndjson-writer.js";
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
@@ -87,6 +88,7 @@ const shouldRunPairedScansInParallel = (options: EvaluationOptions): boolean => 
 };
 
 export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<void> => {
+  if (options.matrix) return runMatrixCorpusEvaluation(options);
   const baselineFileHandle = options.paired
     ? await open(options.paired.baselineOutputPath, "wx", EVALUATION_ARTIFACT_FILE_MODE)
     : undefined;

@@ -1,0 +1,297 @@
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  EVALUATION_CONFIG_CONTRACT,
+  MATRIX_PROJECT_ROOT_POLICY,
+  MATRIX_REPORT_CONTRACT,
+  MATRIX_SCAN_CONTRACT,
+} from "../src/constants.js";
+import type { CorpusRepository } from "../src/corpus.js";
+import type { MatrixEvaluationLane } from "../src/build-matrix-evaluation-plan.js";
+import type { LoadedMatrixTreatment } from "../src/matrix-treatment-descriptor.js";
+
+const matrixMocks = vi.hoisted(() => ({
+  cleanupEvaluationSandboxes: vi.fn(async () => undefined),
+  evaluateMatrixRepositoryBatch: vi.fn(),
+  loadCorpusRepositories: vi.fn(),
+  loadMatrixTreatments: vi.fn(),
+  snapshotCreate: vi.fn(async () => undefined),
+  snapshotDelete: vi.fn(async () => undefined),
+  snapshotGet: vi.fn(async () => ({ name: "snapshot" })),
+  verifyMatrixBaselineCache: vi.fn(async () => ({
+    hit: false,
+    invalid: false,
+    reason: "missing",
+  })),
+}));
+
+vi.mock("@daytona/sdk", () => {
+  const image = {
+    env: vi.fn(() => image),
+    runCommands: vi.fn(() => image),
+    workdir: vi.fn(() => image),
+  };
+  return {
+    Daytona: class {
+      snapshot = {
+        create: matrixMocks.snapshotCreate,
+        delete: matrixMocks.snapshotDelete,
+        get: matrixMocks.snapshotGet,
+      };
+    },
+    DaytonaNotFoundError: class extends Error {},
+    Image: { base: vi.fn(() => image) },
+  };
+});
+
+vi.mock("../src/cleanup-evaluation-sandboxes.js", () => ({
+  cleanupEvaluationSandboxes: matrixMocks.cleanupEvaluationSandboxes,
+}));
+
+vi.mock("../src/evaluate-matrix-repository-batch.js", () => ({
+  evaluateMatrixRepositoryBatch: matrixMocks.evaluateMatrixRepositoryBatch,
+}));
+
+vi.mock("../src/load-corpus-repositories.js", () => ({
+  loadCorpusRepositories: matrixMocks.loadCorpusRepositories,
+}));
+
+vi.mock("../src/matrix-treatment-descriptor.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  loadMatrixTreatments: matrixMocks.loadMatrixTreatments,
+}));
+
+vi.mock("../src/verify-matrix-baseline-cache.js", () => ({
+  verifyMatrixBaselineCache: matrixMocks.verifyMatrixBaselineCache,
+}));
+
+vi.mock("../src/utils/get-evaluator-source-hash.js", () => ({
+  getEvaluatorSourceHash: () => "6".repeat(64),
+}));
+
+import { hashMatrixCorpusProjectSet } from "../src/matrix-treatment-descriptor.js";
+import { runMatrixCorpusEvaluation } from "../src/run-matrix-corpus-evaluation.js";
+
+const temporaryDirectories: string[] = [];
+
+const hashContents = (contents: string): string =>
+  createHash("sha256").update(contents).digest("hex");
+
+const buildTreatment = ({
+  temporaryDirectory,
+  id,
+  group,
+  mode,
+}: {
+  temporaryDirectory: string;
+  id: string;
+  group: LoadedMatrixTreatment["descriptor"]["group"];
+  mode: "full" | "incremental";
+}): LoadedMatrixTreatment => {
+  const headCommit = id === "pr-1" ? "b".repeat(40) : "c".repeat(40);
+  const ruleKeys = mode === "full" ? [] : ["react-doctor/example"];
+  return {
+    descriptorPath: path.join(temporaryDirectory, `${id}.json`),
+    descriptorSha256: "1".repeat(64),
+    descriptorContents: `${JSON.stringify({ id })}\n`,
+    impactManifestContents: `${JSON.stringify({ mode })}\n`,
+    descriptor: {
+      schemaVersion: 1,
+      id,
+      artifactDirectory: path.join(temporaryDirectory, id),
+      reactDoctorRepository: "https://github.com/example/react-doctor.git",
+      reactDoctorCommit: headCommit,
+      impactManifestPath: path.join(temporaryDirectory, `${id}-impact.json`),
+      impactManifestSha256: "2".repeat(64),
+      group,
+    },
+    impactManifest: {
+      schemaVersion: 1,
+      mode,
+      baseCommit: group.baseReactDoctorCommit,
+      headCommit,
+      changedPaths: ["packages/oxlint-plugin-react-doctor/src/plugin/rules/example.ts"],
+      runtimeChangedPaths: ["packages/oxlint-plugin-react-doctor/src/plugin/rules/example.ts"],
+      impactedRuleKeys: ruleKeys,
+      candidateRuleKeys: ruleKeys,
+      fallbackReasons: mode === "full" ? ["Full parity required"] : [],
+      rules: ruleKeys.map((ruleKey) => ({
+        ruleKey,
+        baseFingerprint: "8".repeat(64),
+        headFingerprint: "9".repeat(64),
+      })),
+    },
+    ruleKeys,
+  };
+};
+
+afterEach(() => {
+  vi.clearAllMocks();
+  for (const temporaryDirectory of temporaryDirectories.splice(0)) {
+    fs.rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+describe("runMatrixCorpusEvaluation", () => {
+  it("publishes blocked treatments after a full base exhausts retries", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-base-failure-"));
+    temporaryDirectories.push(temporaryDirectory);
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = "{}\n";
+    fs.writeFileSync(corpusManifestPath, corpusContents);
+    const repository: CorpusRepository = {
+      org: "example",
+      name: "repository",
+      ref: "f".repeat(40),
+      rootDir: ".",
+    };
+    const group = {
+      baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+      baseReactDoctorCommit: "a".repeat(40),
+      baseFullRuleSetHash: "3".repeat(64),
+      baseArtifactPath: path.join(temporaryDirectory, "base-scoped.ndjson"),
+      baselineOutputPath: path.join(temporaryDirectory, "baseline.ndjson"),
+      baselineProvenancePath: path.join(temporaryDirectory, "baseline.provenance.json"),
+      corpusManifestPath,
+      corpusManifestSha256: hashContents(corpusContents),
+      corpusProjectSetSha256: hashMatrixCorpusProjectSet([repository]),
+      evaluatorSourceHash: "6".repeat(64),
+      configContract: EVALUATION_CONFIG_CONTRACT,
+      scanContract: MATRIX_SCAN_CONTRACT,
+      reportContract: MATRIX_REPORT_CONTRACT,
+      projectRootPolicy: MATRIX_PROJECT_ROOT_POLICY,
+    };
+    const treatments = [
+      buildTreatment({ temporaryDirectory, id: "pr-1", group, mode: "full" }),
+      buildTreatment({ temporaryDirectory, id: "pr-2", group, mode: "incremental" }),
+    ];
+    matrixMocks.loadMatrixTreatments.mockResolvedValue(treatments);
+    matrixMocks.loadCorpusRepositories.mockResolvedValue([repository]);
+    matrixMocks.evaluateMatrixRepositoryBatch.mockImplementation(
+      async ({ lanes, onLaneRecord }) => {
+        const failures = [];
+        for (const lane of lanes) {
+          if (lane.kind === "base") {
+            failures.push({
+              laneId: lane.id,
+              record: { schemaVersion: 1, repository, error: "base retries exhausted" },
+            });
+            continue;
+          }
+          await onLaneRecord(lane.id, {
+            schemaVersion: 1,
+            repository,
+            evaluation: {
+              reactDoctorRepository: lane.reactDoctorRepository,
+              reactDoctorCommit: lane.reactDoctorRef,
+              configContract: EVALUATION_CONFIG_CONTRACT,
+              ruleSetHash: "7".repeat(64),
+              ruleKeys: lane.ruleKeys,
+              evaluatorSourceHash: group.evaluatorSourceHash,
+            },
+            report: { complete: true },
+          });
+        }
+        return failures;
+      },
+    );
+
+    await expect(
+      runMatrixCorpusEvaluation({
+        repositoriesSources: [corpusManifestPath],
+        repositoryLimit: 1,
+        concurrency: 2,
+        repositoriesPerSandbox: 1,
+        projectRootsPerRepository: 1,
+        maxDurationMinutes: 20,
+        reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+        reactDoctorRef: "a".repeat(40),
+        ruleKeys: [],
+        matrix: {
+          treatmentDescriptorPaths: treatments.map((treatment) => treatment.descriptorPath),
+          waveWidth: 2,
+        },
+      }),
+    ).rejects.toThrow("Matrix evaluation failed for lanes: matrix-base");
+
+    expect(matrixMocks.evaluateMatrixRepositoryBatch).toHaveBeenCalledTimes(4);
+    expect(
+      matrixMocks.evaluateMatrixRepositoryBatch.mock.calls
+        .slice(1)
+        .map(([input]) => input.lanes.map((lane: MatrixEvaluationLane) => lane.id)),
+    ).toEqual([["matrix-base"], ["matrix-base"], ["matrix-base"]]);
+    expect(fs.existsSync(group.baseArtifactPath)).toBe(false);
+    expect(fs.existsSync(group.baselineOutputPath)).toBe(false);
+    expect(fs.existsSync(group.baselineProvenancePath)).toBe(false);
+    for (const treatment of treatments) {
+      const artifactDirectory = treatment.descriptor.artifactDirectory;
+      const provenance = JSON.parse(
+        fs.readFileSync(path.join(artifactDirectory, "provenance.json"), "utf8"),
+      );
+      expect(provenance).toMatchObject({
+        laneId: treatment.descriptor.id,
+        status: "blocked",
+        expectedProjectCount: 1,
+        recordCount: 1,
+        failedRecordCount: 0,
+        baseArtifactPath: group.baselineOutputPath,
+      });
+      expect(
+        fs.readFileSync(path.join(artifactDirectory, "candidate.ndjson"), "utf8").trim(),
+      ).not.toBe("");
+    }
+    expect(fs.readdirSync(temporaryDirectory).some((entry) => entry.startsWith(".partial-"))).toBe(
+      false,
+    );
+  });
+
+  it("rejects an unpinned corpus before creating Daytona resources", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-unpinned-corpus-"));
+    temporaryDirectories.push(temporaryDirectory);
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = "{}\n";
+    fs.writeFileSync(corpusManifestPath, corpusContents);
+    const repository = { org: "example", name: "repository", ref: "HEAD", rootDir: "." };
+    const group = {
+      baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+      baseReactDoctorCommit: "a".repeat(40),
+      baseFullRuleSetHash: "3".repeat(64),
+      baseArtifactPath: path.join(temporaryDirectory, "base-scoped.ndjson"),
+      baselineOutputPath: path.join(temporaryDirectory, "baseline.ndjson"),
+      baselineProvenancePath: path.join(temporaryDirectory, "baseline.provenance.json"),
+      corpusManifestPath,
+      corpusManifestSha256: hashContents(corpusContents),
+      corpusProjectSetSha256: hashMatrixCorpusProjectSet([repository]),
+      evaluatorSourceHash: "6".repeat(64),
+      configContract: EVALUATION_CONFIG_CONTRACT,
+      scanContract: MATRIX_SCAN_CONTRACT,
+      reportContract: MATRIX_REPORT_CONTRACT,
+      projectRootPolicy: MATRIX_PROJECT_ROOT_POLICY,
+    };
+    const treatment = buildTreatment({ temporaryDirectory, id: "pr-1", group, mode: "full" });
+    matrixMocks.loadMatrixTreatments.mockResolvedValue([treatment]);
+    matrixMocks.loadCorpusRepositories.mockResolvedValue([repository]);
+
+    await expect(
+      runMatrixCorpusEvaluation({
+        repositoriesSources: [corpusManifestPath],
+        repositoryLimit: 1,
+        concurrency: 1,
+        repositoriesPerSandbox: 1,
+        projectRootsPerRepository: 1,
+        maxDurationMinutes: 20,
+        reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+        reactDoctorRef: "a".repeat(40),
+        ruleKeys: [],
+        matrix: { treatmentDescriptorPaths: [treatment.descriptorPath], waveWidth: 1 },
+      }),
+    ).rejects.toThrow("must pin every repository");
+    expect(matrixMocks.snapshotCreate).not.toHaveBeenCalled();
+    expect(matrixMocks.evaluateMatrixRepositoryBatch).not.toHaveBeenCalled();
+  });
+});

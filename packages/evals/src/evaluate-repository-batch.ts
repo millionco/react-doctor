@@ -79,7 +79,7 @@ interface PairedRepositoryGroupEvaluation {
   onPairedRecords: (records: PairedEvaluationRecords) => Promise<void>;
 }
 
-interface ScanRepositoryInput {
+export interface ScanRepositoryInput {
   sandbox: Sandbox;
   repository: CorpusRepository;
   reactDoctorWorkDirectory: string;
@@ -91,7 +91,7 @@ interface ScanRepositoryInput {
   scanTimeoutSeconds: number;
 }
 
-const buildRepositories = (
+export const buildRepositories = (
   repositoryGroup: CorpusRepositoryGroup,
 ): ReadonlyArray<CorpusRepository> =>
   repositoryGroup.rootDirectories.map((rootDirectory) => ({
@@ -101,7 +101,7 @@ const buildRepositories = (
     rootDir: rootDirectory,
   }));
 
-const buildFailureRecords = (
+export const buildFailureRecords = (
   repositories: ReadonlyArray<CorpusRepository>,
   error: unknown,
 ): ReadonlyArray<CorpusEvaluationRecord> => {
@@ -113,7 +113,7 @@ const buildFailureRecords = (
   }));
 };
 
-const scanRepository = async ({
+export const scanRepository = async ({
   sandbox,
   repository,
   reactDoctorWorkDirectory,

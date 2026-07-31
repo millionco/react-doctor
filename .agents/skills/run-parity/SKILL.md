@@ -106,6 +106,68 @@ cleanup. Each paired scan has a five-minute command cap so a small number of
 stuck sandboxes cannot consume the whole attempt budget; the ordinary evaluator
 retains its existing timeout.
 
+For several pull requests with the same immutable base and corpus, use repeatable
+matrix treatment descriptors. Get the exact corpus identity and evaluator hash first:
+
+```sh
+cd packages/evals
+nr --silent matrix-corpus-identity <absolute-corpus-manifest-path>
+nr --silent source-hash
+```
+
+Each descriptor is an immutable JSON file with this exact shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "pr-1234",
+  "artifactDirectory": "/absolute/path/pr-1234",
+  "reactDoctorRepository": "https://github.com/millionco/react-doctor.git",
+  "reactDoctorCommit": "<40-character-head-commit>",
+  "impactManifestPath": "/absolute/path/pr-1234-impact.json",
+  "impactManifestSha256": "<sha256>",
+  "group": {
+    "baseReactDoctorRepository": "https://github.com/millionco/react-doctor.git",
+    "baseReactDoctorCommit": "<40-character-base-commit>",
+    "baseFullRuleSetHash": "<full-base-rule-set-sha256>",
+    "baseArtifactPath": "/absolute/path/base-union-scoped.ndjson",
+    "baselineOutputPath": "/absolute/cache/full-baseline.ndjson",
+    "baselineProvenancePath": "/absolute/cache/full-baseline.provenance.json",
+    "corpusManifestPath": "/absolute/path/corpus.json",
+    "corpusManifestSha256": "<matrix-corpus-identity manifestSha256>",
+    "corpusProjectSetSha256": "<matrix-corpus-identity projectSetSha256>",
+    "evaluatorSourceHash": "<source-hash>",
+    "configContract": "revision-local-rule-config-v1",
+    "scanContract": "react-doctor-json-full-v1",
+    "reportContract": "react-doctor-complete-report-v1",
+    "projectRootPolicy": "manifest-root-dir-v1"
+  }
+}
+```
+
+The referenced impact manifest must be the exact output from
+`find-impacted-rules.mjs`; its hash, base commit, head commit, mode, and candidate
+rule keys are revalidated. Every repeated descriptor must have the exact same
+group object, a unique safe id, and a distinct artifact directory.
+
+```sh
+nr --silent eval \
+  --matrix-treatment /absolute/path/pr-1234.json \
+  --matrix-treatment /absolute/path/pr-1235.json \
+  --matrix-wave-width 2
+```
+
+A validated full cache hit keeps the base out of Daytona. Otherwise, the matrix
+scans one full base when any treatment requires full parity, or one sorted union
+of incremental rule scopes. One target bare clone feeds isolated lane worktrees.
+The default two-lane wave uses four CPU cores and eight GiB per sandbox; the
+runner derives concurrency under the 400-CPU envelope and keeps sandbox creation
+at 20. Retries retain successful `(lane, project)` results and retry only failed
+work at 50, 10, then 2 concurrency. Each treatment is atomically published with
+its candidate NDJSON, exact descriptor, impact manifest, rules, hashes, counts,
+and provenance. A missing base marks successful treatments blocked rather than
+making an independent merge decision.
+
 For rule-only pull requests, build the conservative impact manifest before the
 candidate run:
 

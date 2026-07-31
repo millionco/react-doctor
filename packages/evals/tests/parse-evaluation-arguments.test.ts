@@ -111,6 +111,59 @@ describe("parseEvaluationArguments", () => {
     ).toThrow("requires --paired-baseline-output and --paired-base-react-doctor-ref");
   });
 
+  it("accepts repeatable matrix descriptors and derives a bounded CPU plan", () => {
+    expect(
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--matrix-treatment",
+        "/tmp/pr-2.json",
+        "--matrix-wave-width",
+        "2",
+      ]),
+    ).toMatchObject({
+      concurrency: 100,
+      matrix: {
+        treatmentDescriptorPaths: ["/tmp/pr-1.json", "/tmp/pr-2.json"],
+        waveWidth: 2,
+      },
+    });
+  });
+
+  it("rejects unsafe matrix resource combinations", () => {
+    expect(() =>
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--matrix-wave-width",
+        "2",
+        "--concurrency",
+        "101",
+      ]),
+    ).toThrow("400-CPU envelope");
+    expect(() => parseEvaluationArguments(["--matrix-wave-width", "2"])).toThrow(
+      "requires --matrix-treatment",
+    );
+    expect(() =>
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--paired-baseline-output",
+        "/tmp/base.ndjson",
+        "--paired-base-react-doctor-ref",
+        "b".repeat(40),
+      ]),
+    ).toThrow("cannot be combined");
+    expect(() =>
+      parseEvaluationArguments([
+        "--matrix-treatment",
+        "/tmp/pr-1.json",
+        "--repositories",
+        "/tmp/other-corpus.json",
+      ]),
+    ).toThrow("descriptor-driven matrix evaluation");
+  });
+
   it("rejects unsafe paired output, execution, and rule arguments", () => {
     expect(() =>
       parseEvaluationArguments([

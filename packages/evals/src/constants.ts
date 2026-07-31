@@ -5,6 +5,7 @@ export const DEFAULT_TARGET_REPOSITORY_REF = "HEAD";
 export const DEFAULT_TARGET_ROOT_DIRECTORY = ".";
 export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".ndjson", ".txt"];
 export const PINNED_REPOSITORY_REF_PATTERN = /^[0-9a-f]{40}$/i;
+export const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 export const EVALUATION_RULE_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*\/[A-Za-z0-9][A-Za-z0-9-]*$/;
 export const DEFAULT_CORPUS_REPOSITORY_COUNT = 2_000;
 export const DEFAULT_CORPUS_CONCURRENCY = 200;
@@ -28,6 +29,24 @@ export const PAIRED_SANDBOX_MEMORY_GIB = 8;
 export const PAIRED_SANDBOX_DISK_GIB = 20;
 export const PAIRED_SCAN_MINIMUM_PARALLEL_CPU_CORES = 4;
 export const DEFAULT_PAIRED_CORPUS_CONCURRENCY = 50;
+export const DEFAULT_MATRIX_WAVE_WIDTH = 2;
+export const MATRIX_MAXIMUM_TREATMENTS = 8;
+export const MATRIX_MAXIMUM_CPU_CORES = 400;
+export const MATRIX_CPU_CORES_PER_LANE = 2;
+export const MATRIX_MEMORY_GIB_PER_LANE = 4;
+export const MATRIX_DISK_GIB_PER_DETECTOR = 10;
+export const MATRIX_DESCRIPTOR_SCHEMA_VERSION = 1;
+export const MATRIX_DESCRIPTOR_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+export const MATRIX_SCAN_CONTRACT = "react-doctor-json-full-v1";
+export const MATRIX_REPORT_CONTRACT = "react-doctor-complete-report-v1";
+export const MATRIX_PROJECT_ROOT_POLICY = "manifest-root-dir-v1";
+export const MATRIX_BASE_LANE_ID = "matrix-base";
+export const MATRIX_BASE_ARTIFACT_CONTRACT = "matrix-base-artifact-v1";
+export const MATRIX_REACT_DOCTOR_DIRECTORY = "/workspace/react-doctor-matrix";
+export const MATRIX_PROVENANCE_DIRECTORY = "/workspace/react-doctor-matrix-provenance";
+export const MATRIX_TARGET_REPOSITORY_DIRECTORY = "/workspace/target-matrix.git";
+export const MATRIX_TARGET_WORKTREE_DIRECTORY = "/workspace/target-matrix-lanes";
+export const MATRIX_REPORT_DIRECTORY = "/tmp/react-doctor-matrix-reports";
 export const SANDBOX_AUTO_STOP_INTERVAL_MINUTES = 60;
 export const SANDBOX_CREATE_TIMEOUT_SECONDS = 600;
 export const SANDBOX_SETUP_TIMEOUT_SECONDS = 1_800;
@@ -224,6 +243,19 @@ git -C "${TARGET_REPOSITORY_DIRECTORY}" worktree add -q --detach "${BASE_TARGET_
 git -C "${TARGET_REPOSITORY_DIRECTORY}" worktree add -q --detach "${TREATMENT_TARGET_WORK_DIRECTORY}" "$resolved_ref"`;
 
 export const RESOLVE_PAIRED_TARGET_REPOSITORY_REF_COMMAND = `git -C "${TARGET_REPOSITORY_DIRECTORY}" rev-parse FETCH_HEAD`;
+
+export const SETUP_MATRIX_TARGET_REPOSITORY_COMMAND = `set -eu
+rm -rf "${MATRIX_TARGET_REPOSITORY_DIRECTORY}" "${MATRIX_TARGET_WORKTREE_DIRECTORY}" "${MATRIX_REPORT_DIRECTORY}"
+mkdir -p "${MATRIX_TARGET_WORKTREE_DIRECTORY}" "${MATRIX_REPORT_DIRECTORY}"
+git init -q --bare "${MATRIX_TARGET_REPOSITORY_DIRECTORY}"
+git -C "${MATRIX_TARGET_REPOSITORY_DIRECTORY}" remote add origin "$TARGET_REPOSITORY"
+git -C "${MATRIX_TARGET_REPOSITORY_DIRECTORY}" fetch -q --depth 1 origin "$TARGET_REF"
+resolved_ref=$(git -C "${MATRIX_TARGET_REPOSITORY_DIRECTORY}" rev-parse FETCH_HEAD)
+node --input-type=module -e 'for (const laneId of JSON.parse(process.env.MATRIX_ACTIVE_LANE_IDS)) process.stdout.write(laneId + "\\n")' | while IFS= read -r lane_id; do
+  git -C "${MATRIX_TARGET_REPOSITORY_DIRECTORY}" worktree add -q --detach "${MATRIX_TARGET_WORKTREE_DIRECTORY}/$lane_id" "$resolved_ref"
+done`;
+
+export const RESOLVE_MATRIX_TARGET_REPOSITORY_REF_COMMAND = `git -C "${MATRIX_TARGET_REPOSITORY_DIRECTORY}" rev-parse FETCH_HEAD`;
 
 export const MATERIALIZE_ALL_RULES_CONFIG_COMMAND = `node --input-type=module <<'REACT_DOCTOR_EVAL_CONFIG'
 import { randomUUID } from "node:crypto";

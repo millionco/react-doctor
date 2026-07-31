@@ -220,11 +220,11 @@ const containsBackdropDismissComparison = (node: EsTreeNode | null | undefined):
 const resolveBackdropHandlerFunctionExpression = (
   handlerExpression: EsTreeNode,
 ): EsTreeNode | null => {
-  let expression = handlerExpression;
+  let expression = stripParenExpression(handlerExpression);
   if (isNodeOfType(expression, "Identifier")) {
     const binding = findVariableInitializer(expression, expression.name);
     if (!binding?.initializer) return null;
-    expression = binding.initializer;
+    expression = stripParenExpression(binding.initializer);
   }
   if (
     isNodeOfType(expression, "ArrowFunctionExpression") ||

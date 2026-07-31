@@ -470,6 +470,24 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a backdrop handler behind transparent TypeScript wrappers", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Modal = ({ close }) => {
+        const dismissBackdrop = ((event) => {
+          if (event.target === event.currentTarget) close();
+        }) as React.MouseEventHandler<HTMLDivElement>;
+        return (
+          <div
+            onClick={dismissBackdrop as React.MouseEventHandler<HTMLDivElement>}
+          />
+        );
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag a wrapper li bubbling clicks from an inner nav link", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,

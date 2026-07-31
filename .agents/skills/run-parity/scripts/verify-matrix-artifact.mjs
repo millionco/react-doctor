@@ -62,6 +62,11 @@ const hashBytes = (contents) => createHash("sha256").update(contents).digest("he
 
 const hashFile = async (filePath) => hashBytes(await readFile(filePath));
 
+const compareCodeUnitStrings = (left, right) => {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+};
+
 const assertObject = (value, description) => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${description} must be an object`);
@@ -112,7 +117,7 @@ const assertProducer = (producer, description) => {
 
 const projectSetSha256 = (projectKeys) => {
   const tuples = [...projectKeys]
-    .sort((leftKey, rightKey) => leftKey.localeCompare(rightKey))
+    .sort(compareCodeUnitStrings)
     .map((projectKey) => JSON.parse(projectKey));
   return hashBytes(JSON.stringify(tuples));
 };

@@ -9,14 +9,18 @@ import { verifyMatrixArtifact } from "./verify-matrix-artifact.mjs";
 
 const hash = (contents) => createHash("sha256").update(contents).digest("hex");
 
+const compareCodeUnitStrings = (left, right) => {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+};
+
 const hashProjectSet = (repositories) =>
   hash(
     JSON.stringify(
       repositories
-        .map(({ org, name, ref, rootDir }) => [org, name, ref, rootDir])
-        .sort((leftTuple, rightTuple) =>
-          JSON.stringify(leftTuple).localeCompare(JSON.stringify(rightTuple)),
-        ),
+        .map(({ org, name, ref, rootDir }) => JSON.stringify([org, name, ref, rootDir]))
+        .sort(compareCodeUnitStrings)
+        .map((projectKey) => JSON.parse(projectKey)),
     ),
   );
 
@@ -68,15 +72,17 @@ const serializeRecords = (repositories, evaluation) =>
     )
     .join("\n") + "\n";
 
-const withArtifact = async (callback) => {
+const withArtifact = async (
+  callback,
+  repositories = [
+    { org: "example", name: "first", ref: "c".repeat(40), rootDir: "." },
+    { org: "example", name: "second", ref: "d".repeat(40), rootDir: "packages/app" },
+  ],
+) => {
   const directory = await mkdtemp(join(tmpdir(), "verify-matrix-artifact-"));
   const artifactDirectory = join(directory, "artifact");
   await mkdir(artifactDirectory);
   const rules = ["react-doctor/example"];
-  const repositories = [
-    { org: "example", name: "first", ref: "c".repeat(40), rootDir: "." },
-    { org: "example", name: "second", ref: "d".repeat(40), rootDir: "packages/app" },
-  ];
   const candidateProducer = {
     reactDoctorRepository: directory,
     reactDoctorCommit: "b".repeat(40),
@@ -222,6 +228,26 @@ test("accepts bundled canonical matrix evidence", async () => {
   await withArtifact(async ({ artifactDirectory }) => {
     await assert.doesNotReject(verifyMatrixArtifact(artifactDirectory));
   });
+});
+
+test("accepts mixed-case project tuples without consulting the process locale", async () => {
+  const localeCompare = String.prototype.localeCompare;
+  String.prototype.localeCompare = () => {
+    throw new Error("locale-sensitive comparison used");
+  };
+  try {
+    await withArtifact(
+      async ({ artifactDirectory }) => {
+        await assert.doesNotReject(verifyMatrixArtifact(artifactDirectory));
+      },
+      [
+        { org: "Z-owner", name: "first", ref: "c".repeat(40), rootDir: "." },
+        { org: "a-owner", name: "second", ref: "d".repeat(40), rootDir: "packages/app" },
+      ],
+    );
+  } finally {
+    String.prototype.localeCompare = localeCompare;
+  }
 });
 
 test("rejects tampered bundled corpus bytes", async () => {

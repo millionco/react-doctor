@@ -1,6 +1,8 @@
 import { KEYS } from "eslint-visitor-keys";
+import { visitorKeys } from "oxc-parser";
 
 export const RUNTIME_VISITOR_KEYS: Readonly<Record<string, ReadonlyArray<string> | undefined>> = {
+  ...visitorKeys,
   ...KEYS,
   ArrayPattern: ["decorators", ...KEYS.ArrayPattern],
   AssignmentPattern: ["decorators", ...KEYS.AssignmentPattern],

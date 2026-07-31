@@ -6,7 +6,7 @@ import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
 import { TRANSPARENT_EXPRESSION_WRAPPER_TYPES } from "../../../../utils/strip-paren-expression.js";
 import { getAstChildKeys } from "./get-ast-child-keys.js";
-import { getScopeForNode, type ProgramAnalysis } from "./get-program-analysis.js";
+import type { ProgramAnalysis } from "./get-program-analysis.js";
 
 // 1:1 port of upstream `src/util/ast.js` from
 // `eslint-plugin-react-you-might-not-need-an-effect`. Upstream uses
@@ -133,20 +133,7 @@ export const findDownstreamNodes = (topNode: EsTreeNode, type: string): EsTreeNo
 };
 
 export const getRef = (analysis: ProgramAnalysis, identifier: EsTreeNode): Reference | null => {
-  const refByIdentifier = analysis.referenceByIdentifier;
-  if (refByIdentifier.has(identifier)) return refByIdentifier.get(identifier) ?? null;
-  let resolvedReference: Reference | null = null;
-  const scope = getScopeForNode(identifier, analysis);
-  if (scope) {
-    for (const reference of scope.references) {
-      if (reference.identifier === identifier) {
-        resolvedReference = reference;
-        break;
-      }
-    }
-  }
-  refByIdentifier.set(identifier, resolvedReference);
-  return resolvedReference;
+  return analysis.referenceByIdentifier.get(identifier) ?? null;
 };
 
 // Memoize per (analysis, node). `analysis` is the per-Program singleton

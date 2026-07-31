@@ -39,13 +39,17 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "default": "./dist/core.js"
     }
   },
   "scripts": {
     "dev": "vp pack --watch",
     "build": "pnpm gen && node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
-    "gen": "node ./scripts/generate-rule-registry.mjs",
-    "gen:check": "node ./scripts/generate-rule-registry.mjs && git diff --exit-code -- src/plugin/rule-registry.ts",
+    "gen": "tsx ./scripts/generate-rule-registry.mjs",
+    "gen:check": "pnpm gen && git diff --exit-code -- src/plugin/core-rule-registry-data.json src/plugin/rule-registry.ts src/plugin/security-scan-rule-registry.ts",
     "gen:fixtures": "node ./scripts/extract-oxc-fixtures.mjs /tmp/oxc",
     "gen:fixture-tests": "node ./scripts/generate-fixture-tests.mjs",
     "gen:react-hooks-fixtures": "node ./scripts/extract-react-hooks-tests.mjs /tmp/react/packages/eslint-plugin-react-hooks/__tests__/ESLintRulesOfHooks-test.js src/plugin/rules/react-builtins/__upstream-fixtures__/rules-of-hooks.json && node ./scripts/extract-react-hooks-tests.mjs /tmp/react/packages/eslint-plugin-react-hooks/__tests__/ESLintRuleExhaustiveDeps-test.js src/plugin/rules/react-builtins/__upstream-fixtures__/exhaustive-deps.json",
@@ -60,7 +64,8 @@
     "oxc-parser": "^0.142.0"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0"
+    "@types/node": "^25.6.0",
+    "oxfmt": "0.46.0"
   },
   "engines": {
     "node": "^20.19.0 || >=22.13.0"

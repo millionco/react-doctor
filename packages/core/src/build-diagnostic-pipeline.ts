@@ -1,4 +1,4 @@
-import reactDoctorPlugin from "oxlint-plugin-react-doctor";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
 import type {
   Diagnostic,
   DiagnosticFileContext,
@@ -173,7 +173,7 @@ export const buildDiagnosticPipeline = (
 
   const shouldAutoSuppress = (diagnostic: Diagnostic): boolean => {
     if (diagnostic.plugin !== "react-doctor") return false;
-    const rule = reactDoctorPlugin.rules[diagnostic.rule];
+    const rule = REACT_DOCTOR_RULE_REGISTRY[diagnostic.rule];
     if (!rule?.tags?.includes("test-noise")) return false;
     if (rule.tags.includes("migration-hint")) return false;
     return getFileContext(diagnostic.filePath) !== "production";

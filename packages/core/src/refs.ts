@@ -12,6 +12,7 @@ import { readPositiveEnvMs } from "./utils/read-positive-env-ms.js";
 import { resolveAutoScanConcurrency } from "./utils/resolve-auto-scan-concurrency.js";
 import { resolveLintBatchOrdering } from "./utils/resolve-lint-batch-ordering.js";
 import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
+import type { WorkerSlots } from "./utils/create-worker-slots.js";
 
 /**
  * Per-batch oxlint wall-clock budget. Reads from the env var on
@@ -125,6 +126,13 @@ export class OxlintConcurrency extends Context.Reference<number>("react-doctor/O
     return resolveAutoScanConcurrency();
   },
 }) {}
+
+export class OxlintSpawnSlots extends Context.Reference<WorkerSlots | null>(
+  "react-doctor/OxlintSpawnSlots",
+  {
+    defaultValue: () => null,
+  },
+) {}
 
 /**
  * Three-state control for overlapping the dead-code pass with the lint pass —

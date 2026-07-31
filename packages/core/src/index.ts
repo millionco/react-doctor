@@ -89,6 +89,8 @@ export * from "./utils/assign-fix-groups.js";
 export * from "./utils/build-rule-docs-url.js";
 export * from "./utils/classify-package-role.js";
 export * from "./utils/compute-config-fingerprint.js";
+export * from "./utils/create-oxlint-spawn-slots.js";
+export * from "./utils/create-worker-slots.js";
 export * from "./utils/dedupe-diagnostics.js";
 export * from "./utils/define-config.js";
 export * from "./utils/detect-ai-training-environment.js";

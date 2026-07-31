@@ -17,6 +17,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "@react-doctor/core";
 import { spawnLintBatches } from "../src/runners/oxlint/spawn-batches.js";
+import { createOxlintSpawnSlots } from "../src/utils/create-oxlint-spawn-slots.js";
 
 const project: ProjectInfo = {
   rootDirectory: "/tmp/app",
@@ -155,6 +156,64 @@ describe("spawnLintBatches concurrency", () => {
     const peak = await runMarkedBatches(4, 1);
     expect(peak).toBe(1);
   });
+
+  it("shares one subprocess cap across concurrent project batch runners", async () => {
+    const markDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-shared-parallel-"));
+    const markFile = path.join(markDirectory, "marks.txt");
+    fs.writeFileSync(markFile, "");
+    const script = [
+      'const fs = require("fs");',
+      `const markFile = ${JSON.stringify(markFile)};`,
+      'fs.appendFileSync(markFile, "+");',
+      "const files = process.argv.slice(1);",
+      "setTimeout(() => {",
+      '  fs.appendFileSync(markFile, "-");',
+      "  const diagnostics = files.map((filename) => ({",
+      '    message: "Array index used as a key",',
+      '    code: "react-doctor(no-array-index-as-key)",',
+      '    severity: "warning",',
+      '    causes: [], url: "", help: "",',
+      "    filename,",
+      '    labels: [{ label: "", span: { offset: 0, length: 1, line: 1, column: 1 } }],',
+      "    related: [],",
+      "  }));",
+      "  process.stdout.write(JSON.stringify({ diagnostics, number_of_files: files.length, number_of_rules: 1 }));",
+      `}, ${SLEEP_MS});`,
+    ].join("\n");
+    const spawnSlots = createOxlintSpawnSlots(2);
+    const runProjectBatches = (projectName: string) =>
+      spawnLintBatches({
+        baseArgs: ["-e", script],
+        fileBatches: Array.from({ length: 3 }, (_unused, index) => [
+          `src/${projectName}-${index}.tsx`,
+        ]),
+        rootDirectory: process.cwd(),
+        nodeBinaryPath: process.execPath,
+        project,
+        concurrency: 3,
+        spawnSlots,
+      });
+
+    try {
+      const [firstDiagnostics, secondDiagnostics] = await Promise.all([
+        runProjectBatches("first"),
+        runProjectBatches("second"),
+      ]);
+      expect(computePeakConcurrency(fs.readFileSync(markFile, "utf8"))).toBe(2);
+      expect(firstDiagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+        "src/first-0.tsx",
+        "src/first-1.tsx",
+        "src/first-2.tsx",
+      ]);
+      expect(secondDiagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+        "src/second-0.tsx",
+        "src/second-1.tsx",
+        "src/second-2.tsx",
+      ]);
+    } finally {
+      fs.rmSync(markDirectory, { recursive: true, force: true });
+    }
+  });
 });
 
 /**
@@ -177,6 +236,81 @@ const EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT = [
   "}));",
   "process.stdout.write(JSON.stringify({ diagnostics, number_of_files: files.length, number_of_rules: 1 }));",
 ].join("\n");
+
+describe("spawnLintBatches shared slot timing", () => {
+  it("starts the subprocess timeout only after a queued slot is acquired", async () => {
+    const spawnSlots = createOxlintSpawnSlots(1);
+    const progressUpdates: Array<readonly [number, number]> = [];
+    let releaseHeldSlot = (): void => {};
+    const heldSlot = spawnSlots.run(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseHeldSlot = resolve;
+        }),
+    );
+    await Promise.resolve();
+
+    const diagnosticsPromise = spawnLintBatches({
+      baseArgs: ["-e", EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT],
+      fileBatches: [["src/queued-a.tsx", "src/queued-b.tsx"]],
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      spawnTimeoutMs: 2_000,
+      spawnSlots,
+      onFileProgress: (scannedFileCount, totalFileCount) => {
+        progressUpdates.push([scannedFileCount, totalFileCount]);
+      },
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 2_200));
+    expect(progressUpdates).toEqual([]);
+    releaseHeldSlot();
+    await heldSlot;
+
+    await expect(diagnosticsPromise).resolves.toMatchObject([
+      { filePath: "src/queued-a.tsx" },
+      { filePath: "src/queued-b.tsx" },
+    ]);
+    expect(progressUpdates.at(-1)).toEqual([2, 2]);
+  });
+
+  it("rechecks the scan deadline after a queued slot is acquired", async () => {
+    const spawnSlots = createOxlintSpawnSlots(1);
+    let releaseHeldSlot = (): void => {};
+    const heldSlot = spawnSlots.run(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseHeldSlot = resolve;
+        }),
+    );
+    await Promise.resolve();
+    const partialFailures: string[] = [];
+    const progressUpdates: Array<readonly [number, number]> = [];
+
+    const diagnosticsPromise = spawnLintBatches({
+      baseArgs: ["-e", EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT],
+      fileBatches: [["src/deadline-a.tsx", "src/deadline-b.tsx"]],
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      deadlineEpochMs: Date.now() + 50,
+      spawnSlots,
+      onPartialFailure: (reason) => partialFailures.push(reason),
+      onFileProgress: (scannedFileCount, totalFileCount) => {
+        progressUpdates.push([scannedFileCount, totalFileCount]);
+      },
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    releaseHeldSlot();
+    await heldSlot;
+
+    await expect(diagnosticsPromise).resolves.toEqual([]);
+    expect(partialFailures).toHaveLength(1);
+    expect(partialFailures[0]).toContain("2 file(s) skipped");
+    expect(partialFailures[0]).toContain("max scan duration reached");
+    expect(progressUpdates).toEqual([]);
+  });
+});
 
 const lintFileBatches = (fileBatches: string[][]) =>
   spawnLintBatches({

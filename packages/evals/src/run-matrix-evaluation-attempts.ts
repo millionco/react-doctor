@@ -1,6 +1,6 @@
 import pLimit from "p-limit";
 
-import type { CorpusRepositoryGroup } from "./corpus.js";
+import type { CorpusRepository, CorpusRepositoryGroup } from "./corpus.js";
 import type { MatrixEvaluationLane } from "./build-matrix-evaluation-plan.js";
 import type { MatrixEvaluationFailure } from "./evaluate-matrix-repository-batch.js";
 import { groupCorpusRepositories } from "./group-corpus-repositories.js";
@@ -33,6 +33,16 @@ interface MatrixEvaluationWork {
   lanes: ReadonlyArray<MatrixEvaluationLane>;
 }
 
+interface FailedMatrixProject {
+  repository: CorpusRepository;
+  failedLaneIds: Set<string>;
+}
+
+interface MatrixRetryLaneGroup {
+  repositories: CorpusRepository[];
+  lanes: ReadonlyArray<MatrixEvaluationLane>;
+}
+
 const buildRejectedWorkFailures = (
   work: MatrixEvaluationWork,
   error: unknown,
@@ -58,15 +68,55 @@ const buildRejectedWorkFailures = (
 const buildRetryWork = (
   failures: ReadonlyArray<MatrixEvaluationFailure>,
   lanesById: ReadonlyMap<string, MatrixEvaluationLane>,
-): ReadonlyArray<MatrixEvaluationWork> =>
-  failures.map((failure) => {
-    const lane = lanesById.get(failure.laneId);
-    if (!lane) throw new Error(`Unknown failed matrix lane: ${failure.laneId}`);
-    return {
-      repositoryGroups: groupCorpusRepositories([failure.record.repository]),
-      lanes: [lane],
+  repositoriesPerSandbox: number,
+): ReadonlyArray<MatrixEvaluationWork> => {
+  const failedProjects = new Map<string, FailedMatrixProject>();
+  for (const failure of failures) {
+    if (!lanesById.has(failure.laneId)) {
+      throw new Error(`Unknown failed matrix lane: ${failure.laneId}`);
+    }
+    const repository = failure.record.repository;
+    const projectKey = JSON.stringify([
+      repository.org,
+      repository.name,
+      repository.ref,
+      repository.rootDir,
+    ]);
+    const failedProject = failedProjects.get(projectKey) ?? {
+      repository,
+      failedLaneIds: new Set<string>(),
     };
-  });
+    failedProject.failedLaneIds.add(failure.laneId);
+    failedProjects.set(projectKey, failedProject);
+  }
+
+  const retryGroups = new Map<string, MatrixRetryLaneGroup>();
+  const orderedFailedProjects = [...failedProjects.entries()]
+    .sort(([firstKey], [secondKey]) => (firstKey < secondKey ? -1 : firstKey > secondKey ? 1 : 0))
+    .map(([, failedProject]) => failedProject);
+  for (const failedProject of orderedFailedProjects) {
+    const lanes = [...lanesById.values()].filter((lane) =>
+      failedProject.failedLaneIds.has(lane.id),
+    );
+    const laneSetKey = lanes.map((lane) => lane.id).join("\0");
+    const retryGroup = retryGroups.get(laneSetKey) ?? { repositories: [], lanes };
+    retryGroup.repositories.push(failedProject.repository);
+    retryGroups.set(laneSetKey, retryGroup);
+  }
+
+  return [...retryGroups.entries()]
+    .sort(([firstKey], [secondKey]) => (firstKey < secondKey ? -1 : firstKey > secondKey ? 1 : 0))
+    .flatMap(([, retryGroup]) => {
+      const repositoryBatches = partitionRepositoryGroups(
+        groupCorpusRepositories(retryGroup.repositories),
+        repositoriesPerSandbox,
+      );
+      return repositoryBatches.map((repositoryBatch) => ({
+        repositoryGroups: repositoryBatch,
+        lanes: retryGroup.lanes,
+      }));
+    });
+};
 
 export const runMatrixEvaluationAttempts = async ({
   repositoryGroups,
@@ -106,7 +156,7 @@ export const runMatrixEvaluationAttempts = async ({
     }
 
     await beforeRetry().catch(onBeforeRetryFailure);
-    pendingWork = buildRetryWork(failures, lanesById);
+    pendingWork = buildRetryWork(failures, lanesById, repositoriesPerSandbox);
     onRetry({
       attemptNumber: attemptIndex + 2,
       totalAttempts: attemptConcurrencies.length,

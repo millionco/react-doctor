@@ -17,6 +17,7 @@ import {
   EVALUATION_RETRY_ATTEMPT_RESERVE_MINUTES,
   EVALUATION_RETRY_CONCURRENCIES,
   MATRIX_CPU_CORES_PER_LANE,
+  MATRIX_MAXIMUM_CONCURRENCY,
   MATRIX_MAXIMUM_CPU_CORES,
   MATRIX_MAXIMUM_TREATMENTS,
 } from "./constants.js";
@@ -164,8 +165,9 @@ export const parseEvaluationArguments = (
   if (hasMatrixOption && waveWidth > treatmentDescriptorPaths.length + 1) {
     throw new Error("--matrix-wave-width cannot exceed the base and treatment lane count");
   }
-  const matrixDefaultConcurrency = Math.floor(
-    MATRIX_MAXIMUM_CPU_CORES / (waveWidth * MATRIX_CPU_CORES_PER_LANE),
+  const matrixDefaultConcurrency = Math.min(
+    MATRIX_MAXIMUM_CONCURRENCY,
+    Math.floor(MATRIX_MAXIMUM_CPU_CORES / (waveWidth * MATRIX_CPU_CORES_PER_LANE)),
   );
   let defaultConcurrency = DEFAULT_CORPUS_CONCURRENCY;
   if (hasPairedOption) defaultConcurrency = DEFAULT_PAIRED_CORPUS_CONCURRENCY;
@@ -173,6 +175,9 @@ export const parseEvaluationArguments = (
   const concurrency = Number(values.concurrency ?? defaultConcurrency);
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new Error("--concurrency must be a positive integer");
+  }
+  if (hasMatrixOption && concurrency > MATRIX_MAXIMUM_CONCURRENCY) {
+    throw new Error(`Matrix concurrency cannot exceed ${MATRIX_MAXIMUM_CONCURRENCY}`);
   }
   if (
     hasMatrixOption &&

@@ -122,7 +122,7 @@ describe("parseEvaluationArguments", () => {
         "2",
       ]),
     ).toMatchObject({
-      concurrency: 100,
+      concurrency: 50,
       matrix: {
         treatmentDescriptorPaths: ["/tmp/pr-1.json", "/tmp/pr-2.json"],
         waveWidth: 2,
@@ -138,9 +138,9 @@ describe("parseEvaluationArguments", () => {
         "--matrix-wave-width",
         "2",
         "--concurrency",
-        "101",
+        "51",
       ]),
-    ).toThrow("400-CPU envelope");
+    ).toThrow("cannot exceed 50");
     expect(() => parseEvaluationArguments(["--matrix-wave-width", "2"])).toThrow(
       "requires --matrix-treatment",
     );

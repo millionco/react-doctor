@@ -918,17 +918,19 @@ const memberReceiverIsUpdaterLocal = (
   }
   if (!effectiveValue) return false;
   const value = stripParenExpression(effectiveValue);
-  if (
-    isNodeOfType(value, "NewExpression") ||
-    isNodeOfType(value, "ObjectExpression") ||
-    isNodeOfType(value, "ArrayExpression")
-  ) {
-    return true;
-  }
+  if (expressionCreatesFreshContainer(value, context)) return true;
   if (isNodeOfType(value, "CallExpression")) {
     const callee = stripParenExpression(value.callee);
+    const receiverRoot = findTransparentExpressionRoot(receiver);
+    const containingMember = receiverRoot.parent;
+    const mutationMethodName =
+      isNodeOfType(containingMember, "MemberExpression") && containingMember.object === receiverRoot
+        ? getStaticPropertyName(containingMember)
+        : null;
     return Boolean(
-      isNodeOfType(callee, "Identifier") && /^(?:create|make)Local[A-Z_]/.test(callee.name),
+      !MUTATING_COLLECTION_METHODS.has(mutationMethodName ?? "") &&
+      isNodeOfType(callee, "Identifier") &&
+      /^(?:create|make)Local[A-Z_]/.test(callee.name),
     );
   }
   return Boolean(

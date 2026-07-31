@@ -395,8 +395,13 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={...previous};next.cache=new Map();next.cache.set("value",1);return next})}`,
     );
+    const localFactoryAssignment = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const createDraft=()=>new Map();const next={...previous};next.cache=createDraft();next.cache.set("value",1);return next})}`,
+    );
     expect(chainedAssignment.diagnostics).toHaveLength(0);
     expect(priorAssignment.diagnostics).toHaveLength(0);
+    expect(localFactoryAssignment.diagnostics).toHaveLength(0);
   });
 
   it("does not trust external or conditionally assigned collection properties", () => {
@@ -416,10 +421,15 @@ describe("no-side-effect-in-state-updater-function", () => {
       noSideEffectInStateUpdaterFunction,
       `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={...previous};next.cache=new Map();next.cache=getExternalMap();next.cache.set("value",1);return next})}`,
     );
+    const misleadingLocalFactoryName = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const externalCache=new Map();const C=()=>{const[,setValue]=useState({});setValue(previous=>{const createLocalCache=()=>externalCache;const next={...previous};next.cache=createLocalCache();next.cache.set("value",1);return next})}`,
+    );
     expect(externalObject.diagnostics).toHaveLength(1);
     expect(externalAssignment.diagnostics).toHaveLength(2);
     expect(conditionalAssignment.diagnostics).toHaveLength(1);
     expect(overwrittenAssignment.diagnostics).toHaveLength(1);
+    expect(misleadingLocalFactoryName.diagnostics).toHaveLength(1);
   });
 
   it("flags persistence and submission calls while following pure local name lookalikes", () => {

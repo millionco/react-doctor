@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -15,6 +16,13 @@ import type { LoadedMatrixTreatment } from "../src/matrix-treatment-descriptor.j
 import { createMatrixBaseArtifactBinding } from "../src/utils/matrix-base-artifact-binding.js";
 
 const temporaryDirectories: string[] = [];
+const corpusManifestContents = Buffer.from(
+  `${JSON.stringify([{ org: "a", name: "one", ref: "f".repeat(40), rootDir: "." }])}\n`,
+);
+const corpusManifestSha256 = crypto
+  .createHash("sha256")
+  .update(corpusManifestContents)
+  .digest("hex");
 
 const buildTreatment = (
   temporaryDirectory: string,
@@ -40,7 +48,7 @@ const buildTreatment = (
       baselineOutputPath: path.join(temporaryDirectory, "baseline.ndjson"),
       baselineProvenancePath: path.join(temporaryDirectory, "baseline.provenance.json"),
       corpusManifestPath: path.join(temporaryDirectory, "corpus.json"),
-      corpusManifestSha256: "4".repeat(64),
+      corpusManifestSha256,
       corpusProjectSetSha256: "5".repeat(64),
       evaluatorSourceHash: "6".repeat(64),
       configContract: EVALUATION_CONFIG_CONTRACT,
@@ -101,6 +109,7 @@ describe("createMatrixArtifactWriter", () => {
       evaluationId: "evaluation-id",
       treatment: buildTreatment(temporaryDirectory, artifactDirectory),
       expectedProjectCount: 1,
+      corpusManifestContents,
     });
     expect(fs.existsSync(artifactDirectory)).toBe(false);
     await writer.write({
@@ -125,6 +134,11 @@ describe("createMatrixArtifactWriter", () => {
       failedRecordCount: 0,
       ruleKeys: ["react-doctor/example"],
       rulesSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      corpusManifest: {
+        path: "corpus-manifest.json",
+        sha256: corpusManifestSha256,
+        byteLength: corpusManifestContents.byteLength,
+      },
       baseArtifact: {
         path: "base.ndjson",
         provenancePath: "base-provenance.json",
@@ -139,6 +153,7 @@ describe("createMatrixArtifactWriter", () => {
       "base-provenance.json",
       "base.ndjson",
       "candidate.ndjson",
+      "corpus-manifest.json",
       "descriptor.json",
       "impact-manifest.json",
       "provenance.json",
@@ -158,6 +173,7 @@ describe("createMatrixArtifactWriter", () => {
       evaluationId: "evaluation-id",
       treatment: buildTreatment(temporaryDirectory, path.join(temporaryDirectory, "pr-1")),
       expectedProjectCount: 1,
+      corpusManifestContents,
     });
 
     await writer.abort();
@@ -174,6 +190,7 @@ describe("createMatrixArtifactWriter", () => {
       evaluationId: "evaluation-id",
       treatment: buildTreatment(temporaryDirectory, artifactDirectory),
       expectedProjectCount: 2,
+      corpusManifestContents,
     });
     const firstRecord = {
       schemaVersion: 1,
@@ -220,6 +237,7 @@ describe("createMatrixArtifactWriter", () => {
       evaluationId: "evaluation-id",
       treatment: buildTreatment(temporaryDirectory, artifactDirectory),
       expectedProjectCount: 1,
+      corpusManifestContents,
     });
     await writer.write({
       schemaVersion: 1,

@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { diagnosticsByIdentity, readRun } from "./compare-parity.mjs";
+import { diagnosticsByIdentity, readRun, validateRepository } from "./compare-parity.mjs";
 
 const MATRIX_BASE_ARTIFACT_CONTRACT = "matrix-base-artifact-v1";
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
@@ -56,6 +56,7 @@ const PRODUCER_KEYS = [
   "ruleKeys",
   "evaluatorSourceHash",
 ];
+const PROJECT_KEYS = ["name", "org", "ref", "rootDir"];
 
 const hashBytes = (contents) => createHash("sha256").update(contents).digest("hex");
 
@@ -114,6 +115,38 @@ const projectSetSha256 = (projectKeys) => {
     .sort((leftKey, rightKey) => leftKey.localeCompare(rightKey))
     .map((projectKey) => JSON.parse(projectKey));
   return hashBytes(JSON.stringify(tuples));
+};
+
+const loadCorpusProjectKeys = async (filePath) => {
+  let repositories;
+  try {
+    repositories = JSON.parse(await readFile(filePath, "utf8"));
+  } catch {
+    throw new Error("Matrix corpus manifest is not valid JSON");
+  }
+  if (!Array.isArray(repositories) || repositories.length === 0) {
+    throw new Error("Matrix corpus manifest must be a nonempty array");
+  }
+  const projectKeys = new Set();
+  for (const [repositoryIndex, repository] of repositories.entries()) {
+    if (
+      !validateRepository(repository) ||
+      JSON.stringify(Object.keys(repository).sort()) !== JSON.stringify(PROJECT_KEYS)
+    ) {
+      throw new Error(`Matrix corpus manifest repository ${repositoryIndex + 1} is invalid`);
+    }
+    const projectKey = JSON.stringify([
+      repository.org,
+      repository.name,
+      repository.ref,
+      repository.rootDir,
+    ]);
+    if (projectKeys.has(projectKey)) {
+      throw new Error(`Matrix corpus manifest repository ${repositoryIndex + 1} is duplicated`);
+    }
+    projectKeys.add(projectKey);
+  }
+  return projectKeys;
 };
 
 const assertProducerMatches = ({ producer, expected, description }) => {
@@ -201,6 +234,7 @@ export const verifyMatrixArtifact = async (artifactDirectory) => {
     "recordCount",
     "failedRecordCount",
     "artifact",
+    "corpusManifest",
     "descriptorSha256",
     "impactManifestSha256",
     "rulesSha256",
@@ -242,6 +276,7 @@ export const verifyMatrixArtifact = async (artifactDirectory) => {
     throw new Error("Matrix base artifact binding is invalid");
   }
   assertProducer(baseArtifact.producer, "Matrix base artifact producer");
+  const corpusManifest = assertObject(provenance.corpusManifest, "Matrix corpus manifest binding");
   const [
     { value: descriptor },
     { value: impactManifest },
@@ -400,7 +435,25 @@ export const verifyMatrixArtifact = async (artifactDirectory) => {
       expectedPath: "base.ndjson",
       description: "Matrix base artifact",
     }),
+    assertFileBinding({
+      artifactDirectory: resolvedDirectory,
+      binding: corpusManifest,
+      expectedPath: "corpus-manifest.json",
+      description: "Matrix corpus manifest",
+    }),
   ]);
+  if (corpusManifest.sha256 !== descriptor.group.corpusManifestSha256) {
+    throw new Error("Matrix corpus manifest hash does not match the descriptor");
+  }
+  const corpusProjectKeys = await loadCorpusProjectKeys(
+    join(resolvedDirectory, "corpus-manifest.json"),
+  );
+  if (
+    corpusProjectKeys.size !== provenance.expectedProjectCount ||
+    projectSetSha256(corpusProjectKeys) !== descriptor.group.corpusProjectSetSha256
+  ) {
+    throw new Error("Matrix corpus manifest count or project set does not match provenance");
+  }
   const [candidateProjectKeys, baseProjectKeys] = await Promise.all([
     validateArtifactRun({
       filePath: join(resolvedDirectory, "candidate.ndjson"),
@@ -417,8 +470,12 @@ export const verifyMatrixArtifact = async (artifactDirectory) => {
       expectedProducer: baseArtifact.producer,
     }),
   ]);
-  if (!isDeepStrictEqual([...candidateProjectKeys].sort(), [...baseProjectKeys].sort())) {
-    throw new Error("Matrix base and candidate project sets do not match");
+  const expectedProjectKeys = [...corpusProjectKeys].sort();
+  if (
+    !isDeepStrictEqual([...candidateProjectKeys].sort(), expectedProjectKeys) ||
+    !isDeepStrictEqual([...baseProjectKeys].sort(), expectedProjectKeys)
+  ) {
+    throw new Error("Matrix base or candidate project set does not match the corpus manifest");
   }
   if (baseArtifact.provenancePath !== undefined) {
     if (

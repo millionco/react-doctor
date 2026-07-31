@@ -103,7 +103,7 @@ export const compareStrings = (left, right) => {
 export const projectKey = (repository) =>
   JSON.stringify([repository.org, repository.name, repository.ref, repository.rootDir]);
 
-const validateRepository = (repository) =>
+export const validateRepository = (repository) =>
   isRecord(repository) &&
   typeof repository.org === "string" &&
   GITHUB_OWNER_PATTERN.test(repository.org) &&

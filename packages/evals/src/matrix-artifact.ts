@@ -29,6 +29,11 @@ export interface MatrixArtifactProvenance {
     sha256: string;
     byteLength: number;
   };
+  corpusManifest: {
+    path: string;
+    sha256: string;
+    byteLength: number;
+  };
   descriptorSha256: string;
   impactManifestSha256: string;
   rulesSha256: string;
@@ -105,11 +110,17 @@ export const createMatrixArtifactWriter = async ({
   evaluationId,
   treatment,
   expectedProjectCount,
+  corpusManifestContents,
 }: {
   evaluationId: string;
   treatment: LoadedMatrixTreatment;
   expectedProjectCount: number;
+  corpusManifestContents: Buffer;
 }): Promise<MatrixArtifactWriter> => {
+  const corpusManifestSha256 = createHash("sha256").update(corpusManifestContents).digest("hex");
+  if (corpusManifestSha256 !== treatment.descriptor.group.corpusManifestSha256) {
+    throw new Error("Matrix corpus manifest contents do not match the descriptor");
+  }
   const artifactDirectory = treatment.descriptor.artifactDirectory;
   const pendingDirectory = join(
     dirname(artifactDirectory),
@@ -124,6 +135,7 @@ export const createMatrixArtifactWriter = async ({
   await mkdir(dirname(artifactDirectory), { recursive: true });
   await mkdir(pendingDirectory);
   const candidatePath = join(pendingDirectory, "candidate.ndjson");
+  const corpusManifestPath = join(pendingDirectory, "corpus-manifest.json");
   const rulesPath = join(pendingDirectory, "rules.json");
   const rulesContents = `${JSON.stringify(treatment.ruleKeys, null, 2)}\n`;
   const recordsDirectory = join(pendingDirectory, "records");
@@ -143,6 +155,10 @@ export const createMatrixArtifactWriter = async ({
           },
         ),
         writeFile(rulesPath, rulesContents, {
+          flag: "wx",
+          mode: EVALUATION_ARTIFACT_FILE_MODE,
+        }),
+        writeFile(corpusManifestPath, corpusManifestContents, {
           flag: "wx",
           mode: EVALUATION_ARTIFACT_FILE_MODE,
         }),
@@ -171,7 +187,14 @@ export const createMatrixArtifactWriter = async ({
       isClosed = true;
       await recordSpool.materialize(candidatePath);
       await rm(recordsDirectory, { recursive: true });
-      const candidateStats = await stat(candidatePath);
+      const [candidateStats, corpusManifestStats, copiedCorpusManifestSha256] = await Promise.all([
+        stat(candidatePath),
+        stat(corpusManifestPath),
+        hashFile(corpusManifestPath),
+      ]);
+      if (copiedCorpusManifestSha256 !== corpusManifestSha256) {
+        throw new Error("Matrix corpus manifest changed before artifact finalization");
+      }
       const didTreatmentComplete = failedRecordCount === 0 && recordCount === expectedProjectCount;
       const materializedBaseArtifact =
         didTreatmentComplete && baseArtifact
@@ -195,6 +218,11 @@ export const createMatrixArtifactWriter = async ({
           path: "candidate.ndjson",
           sha256: await hashFile(candidatePath),
           byteLength: candidateStats.size,
+        },
+        corpusManifest: {
+          path: "corpus-manifest.json",
+          sha256: corpusManifestSha256,
+          byteLength: corpusManifestStats.size,
         },
         descriptorSha256: treatment.descriptorSha256,
         impactManifestSha256: treatment.descriptor.impactManifestSha256,

@@ -166,14 +166,14 @@ The default two-lane wave uses four CPU cores and eight GiB per sandbox; the
 runner derives concurrency under the 400-CPU envelope and keeps sandbox creation
 at 20. Retries retain successful `(lane, project)` results and retry only failed
 work at 50, 10, then 2 concurrency. Each treatment is atomically published with
-its candidate NDJSON, exact descriptor, impact manifest, rules, hashes, counts,
-and provenance. A missing base marks successful treatments blocked rather than
-making an independent merge decision.
+its candidate NDJSON, exact corpus manifest, descriptor, impact manifest, rules,
+hashes, counts, and provenance. A missing base marks successful treatments
+blocked rather than making an independent merge decision.
 
 Treat each published treatment directory as self-contained evidence. Verify its
-status, canonical relative paths, producer binding, byte lengths, and hashes
-before comparison. Never follow a shared cache or scoped-base source path from
-provenance:
+status, canonical relative paths, producer binding, byte lengths, hashes, exact
+record counts, complete reports, and corpus project tuples before comparison.
+Never follow a shared cache or scoped-base source path from provenance:
 
 ```sh
 node .agents/skills/run-parity/scripts/verify-matrix-artifact.mjs \

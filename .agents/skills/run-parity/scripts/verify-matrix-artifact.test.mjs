@@ -95,6 +95,7 @@ const withArtifact = async (callback) => {
   };
   const candidate = serializeRecords(repositories, candidateProducer);
   const base = serializeRecords(repositories, baseProducer);
+  const corpusManifest = `${JSON.stringify(repositories, null, 2)}\n`;
   const rulesContents = `${JSON.stringify(rules, null, 2)}\n`;
   const impactManifest = {
     schemaVersion: 1,
@@ -131,7 +132,7 @@ const withArtifact = async (callback) => {
       baselineOutputPath: join(directory, "baseline.ndjson"),
       baselineProvenancePath: join(directory, "baseline.provenance.json"),
       corpusManifestPath: join(directory, "corpus.json"),
-      corpusManifestSha256: "4".repeat(64),
+      corpusManifestSha256: hash(corpusManifest),
       corpusProjectSetSha256: hashProjectSet(repositories),
       evaluatorSourceHash: "6".repeat(64),
       configContract: "revision-local-rule-config-v1",
@@ -144,6 +145,7 @@ const withArtifact = async (callback) => {
   await Promise.all([
     writeFile(join(artifactDirectory, "candidate.ndjson"), candidate),
     writeFile(join(artifactDirectory, "base.ndjson"), base),
+    writeFile(join(artifactDirectory, "corpus-manifest.json"), corpusManifest),
     writeFile(join(artifactDirectory, "rules.json"), rulesContents),
     writeFile(join(artifactDirectory, "impact-manifest.json"), impactManifestContents),
     writeFile(join(artifactDirectory, "descriptor.json"), descriptorContents),
@@ -160,6 +162,11 @@ const withArtifact = async (callback) => {
       path: "candidate.ndjson",
       sha256: hash(candidate),
       byteLength: Buffer.byteLength(candidate),
+    },
+    corpusManifest: {
+      path: "corpus-manifest.json",
+      sha256: hash(corpusManifest),
+      byteLength: Buffer.byteLength(corpusManifest),
     },
     descriptorSha256: hash(descriptorContents),
     impactManifestSha256: hash(impactManifestContents),
@@ -178,6 +185,21 @@ const withArtifact = async (callback) => {
   };
   const writeProvenance = () =>
     writeFile(join(artifactDirectory, "provenance.json"), JSON.stringify(provenance));
+  const writeDescriptor = async () => {
+    const contents = `${JSON.stringify(descriptor)}\n`;
+    await writeFile(join(artifactDirectory, "descriptor.json"), contents);
+    provenance.descriptorSha256 = hash(contents);
+  };
+  const replaceCorpusManifest = async (nextRepositories) => {
+    const contents = `${JSON.stringify(nextRepositories, null, 2)}\n`;
+    await writeFile(join(artifactDirectory, "corpus-manifest.json"), contents);
+    provenance.corpusManifest.sha256 = hash(contents);
+    provenance.corpusManifest.byteLength = Buffer.byteLength(contents);
+    descriptor.group.corpusManifestSha256 = hash(contents);
+    descriptor.group.corpusProjectSetSha256 = hashProjectSet(nextRepositories);
+    await writeDescriptor();
+    await writeProvenance();
+  };
   await writeProvenance();
   try {
     await callback({
@@ -189,6 +211,7 @@ const withArtifact = async (callback) => {
       candidateProducer,
       baseProducer,
       writeProvenance,
+      replaceCorpusManifest,
     });
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -198,6 +221,41 @@ const withArtifact = async (callback) => {
 test("accepts bundled canonical matrix evidence", async () => {
   await withArtifact(async ({ artifactDirectory }) => {
     await assert.doesNotReject(verifyMatrixArtifact(artifactDirectory));
+  });
+});
+
+test("rejects tampered bundled corpus bytes", async () => {
+  await withArtifact(async ({ artifactDirectory }) => {
+    await writeFile(join(artifactDirectory, "corpus-manifest.json"), "[]\n");
+    await assert.rejects(verifyMatrixArtifact(artifactDirectory), /bytes do not match provenance/);
+  });
+});
+
+test("accepts a rebound manifest ordering with the same bound project set", async () => {
+  await withArtifact(async ({ artifactDirectory, repositories, replaceCorpusManifest }) => {
+    await replaceCorpusManifest([...repositories].reverse());
+    await assert.doesNotReject(verifyMatrixArtifact(artifactDirectory));
+  });
+});
+
+test("rejects a rebound corpus manifest with an unpinned project", async () => {
+  await withArtifact(async ({ artifactDirectory, repositories, replaceCorpusManifest }) => {
+    await replaceCorpusManifest([{ ...repositories[0], ref: "main" }, repositories[1]]);
+    await assert.rejects(verifyMatrixArtifact(artifactDirectory), /repository 1 is invalid/);
+  });
+});
+
+test("rejects a rebound corpus manifest with a duplicate project", async () => {
+  await withArtifact(async ({ artifactDirectory, repositories, replaceCorpusManifest }) => {
+    await replaceCorpusManifest([repositories[0], repositories[0]]);
+    await assert.rejects(verifyMatrixArtifact(artifactDirectory), /repository 2 is duplicated/);
+  });
+});
+
+test("rejects a rebound corpus manifest whose count differs from provenance", async () => {
+  await withArtifact(async ({ artifactDirectory, repositories, replaceCorpusManifest }) => {
+    await replaceCorpusManifest(repositories.slice(0, 1));
+    await assert.rejects(verifyMatrixArtifact(artifactDirectory), /count or project set/);
   });
 });
 

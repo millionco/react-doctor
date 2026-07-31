@@ -22,7 +22,6 @@ import {
   MATRIX_REACT_DOCTOR_DIRECTORY,
   MILLISECONDS_PER_MINUTE,
   MILLISECONDS_PER_SECOND,
-  PINNED_REPOSITORY_REF_PATTERN,
   SANDBOX_AUTO_STOP_INTERVAL_MINUTES,
   SANDBOX_CREATE_CONCURRENCY,
   SANDBOX_CREATE_TIMEOUT_SECONDS,
@@ -32,7 +31,6 @@ import {
 import type { CorpusEvaluationRecord, EvaluationProvenance } from "./corpus.js";
 import { evaluateMatrixRepositoryBatch } from "./evaluate-matrix-repository-batch.js";
 import { groupCorpusRepositories } from "./group-corpus-repositories.js";
-import { loadCorpusRepositories } from "./load-corpus-repositories.js";
 import { createAtomicNdjsonWriter, createMatrixArtifactWriter } from "./matrix-artifact.js";
 import type { MatrixArtifactWriter } from "./matrix-artifact.js";
 import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
@@ -43,6 +41,7 @@ import type { MatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-bin
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
+import { parseMatrixCorpusManifest } from "./utils/parse-matrix-corpus-manifest.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 import { verifyMatrixResourcesClean } from "./utils/verify-matrix-resources-clean.js";
 import { hashMatrixCorpusProjectSet, loadMatrixTreatments } from "./matrix-treatment-descriptor.js";
@@ -163,12 +162,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   if (hashBytes(corpusContents) !== group.corpusManifestSha256) {
     throw new Error("Matrix corpus manifest hash does not match the descriptor group");
   }
-  const loadedRepositories = await loadCorpusRepositories([group.corpusManifestPath]);
-  if (
-    loadedRepositories.some((repository) => !PINNED_REPOSITORY_REF_PATTERN.test(repository.ref))
-  ) {
-    throw new Error("Matrix corpus manifest must pin every repository to a 40-character commit");
-  }
+  const loadedRepositories = parseMatrixCorpusManifest(corpusContents);
   if (hashMatrixCorpusProjectSet(loadedRepositories) !== group.corpusProjectSetSha256) {
     throw new Error("Matrix corpus project tuple set does not match the descriptor group");
   }
@@ -222,6 +216,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
         evaluationId,
         treatment,
         expectedProjectCount: projectCount,
+        corpusManifestContents: corpusContents,
       });
       artifactWriterEntries.push([treatment.descriptor.id, writer]);
     }

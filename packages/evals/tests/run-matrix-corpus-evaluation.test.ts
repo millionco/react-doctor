@@ -19,7 +19,6 @@ const matrixMocks = vi.hoisted(() => ({
   DaytonaNotFoundError: class extends Error {},
   cleanupEvaluationSandboxes: vi.fn(async () => undefined),
   evaluateMatrixRepositoryBatch: vi.fn(),
-  loadCorpusRepositories: vi.fn(),
   loadMatrixTreatments: vi.fn(),
   snapshotCreate: vi.fn(async () => undefined),
   snapshotDeleted: false,
@@ -63,10 +62,6 @@ vi.mock("../src/cleanup-evaluation-sandboxes.js", () => ({
 
 vi.mock("../src/evaluate-matrix-repository-batch.js", () => ({
   evaluateMatrixRepositoryBatch: matrixMocks.evaluateMatrixRepositoryBatch,
-}));
-
-vi.mock("../src/load-corpus-repositories.js", () => ({
-  loadCorpusRepositories: matrixMocks.loadCorpusRepositories,
 }));
 
 vi.mock("../src/matrix-treatment-descriptor.js", async (importOriginal) => ({
@@ -162,15 +157,15 @@ describe("runMatrixCorpusEvaluation", () => {
   it("publishes blocked treatments after a full base exhausts retries", async () => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-base-failure-"));
     temporaryDirectories.push(temporaryDirectory);
-    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
-    const corpusContents = "{}\n";
-    fs.writeFileSync(corpusManifestPath, corpusContents);
     const repository: CorpusRepository = {
       org: "example",
       name: "repository",
       ref: "f".repeat(40),
       rootDir: ".",
     };
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = `${JSON.stringify([repository])}\n`;
+    fs.writeFileSync(corpusManifestPath, corpusContents);
     const group = {
       baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       baseReactDoctorCommit: "a".repeat(40),
@@ -192,7 +187,6 @@ describe("runMatrixCorpusEvaluation", () => {
       buildTreatment({ temporaryDirectory, id: "pr-2", group, mode: "incremental" }),
     ];
     matrixMocks.loadMatrixTreatments.mockResolvedValue(treatments);
-    matrixMocks.loadCorpusRepositories.mockResolvedValue([repository]);
     matrixMocks.evaluateMatrixRepositoryBatch.mockImplementation(
       async ({ lanes, onLaneRecord }) => {
         const failures = [];
@@ -273,10 +267,10 @@ describe("runMatrixCorpusEvaluation", () => {
   it("rejects an unpinned corpus before creating Daytona resources", async () => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-unpinned-corpus-"));
     temporaryDirectories.push(temporaryDirectory);
-    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
-    const corpusContents = "{}\n";
-    fs.writeFileSync(corpusManifestPath, corpusContents);
     const repository = { org: "example", name: "repository", ref: "HEAD", rootDir: "." };
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = `${JSON.stringify([repository])}\n`;
+    fs.writeFileSync(corpusManifestPath, corpusContents);
     const group = {
       baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       baseReactDoctorCommit: "a".repeat(40),
@@ -295,7 +289,6 @@ describe("runMatrixCorpusEvaluation", () => {
     };
     const treatment = buildTreatment({ temporaryDirectory, id: "pr-1", group, mode: "full" });
     matrixMocks.loadMatrixTreatments.mockResolvedValue([treatment]);
-    matrixMocks.loadCorpusRepositories.mockResolvedValue([repository]);
 
     await expect(
       runMatrixCorpusEvaluation({
@@ -318,15 +311,15 @@ describe("runMatrixCorpusEvaluation", () => {
   it("clears a transient cleanup error after exact resource absence is proven", async () => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-cleanup-failure-"));
     temporaryDirectories.push(temporaryDirectory);
-    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
-    const corpusContents = "{}\n";
-    fs.writeFileSync(corpusManifestPath, corpusContents);
     const repository: CorpusRepository = {
       org: "example",
       name: "repository",
       ref: "f".repeat(40),
       rootDir: ".",
     };
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = `${JSON.stringify([repository])}\n`;
+    fs.writeFileSync(corpusManifestPath, corpusContents);
     const group = {
       baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       baseReactDoctorCommit: "a".repeat(40),
@@ -350,7 +343,6 @@ describe("runMatrixCorpusEvaluation", () => {
       mode: "incremental",
     });
     matrixMocks.loadMatrixTreatments.mockResolvedValue([treatment]);
-    matrixMocks.loadCorpusRepositories.mockResolvedValue([repository]);
     matrixMocks.evaluateMatrixRepositoryBatch.mockImplementation(
       async ({ lanes, onLaneRecord }) => {
         for (const lane of lanes) {

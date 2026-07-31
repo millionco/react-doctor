@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { EM_DASH_PROSE_MIN_WORD_COUNT } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -59,7 +60,8 @@ export const noEmDashInJsxText = defineRule({
   recommendation:
     "Replace em dashes in UI text with commas, colons, semicolons, or parentheses so the copy reads less like AI output.",
   create: (context: RuleContext): RuleVisitors => {
-    if (context.filename && LONG_FORM_CONTENT_PATH_PATTERN.test(context.filename)) return {};
+    if (context.filename && LONG_FORM_CONTENT_PATH_PATTERN.test(context.filename))
+      return EMPTY_RULE_VISITORS;
     return {
       JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
         if (node.parent && isNodeOfType(node.parent, "JSXAttribute")) return;

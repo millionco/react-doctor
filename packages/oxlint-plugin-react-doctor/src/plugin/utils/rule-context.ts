@@ -1,6 +1,11 @@
 import type { ReportDescriptor } from "./report-descriptor.js";
+import type { EsTreeNode } from "./es-tree-node.js";
 import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
+
+export interface BaseRuleSourceCode {
+  readonly ast?: EsTreeNode;
+}
 
 // The "base" context the host (oxlint at runtime, ESLint via the
 // adapter, our test harness) hands to a rule. Pure I/O surface — the
@@ -19,6 +24,7 @@ export interface BaseRuleContext {
    */
   getFilename?: () => string | undefined;
   readonly settings?: Readonly<Record<string, unknown>>;
+  readonly sourceCode?: BaseRuleSourceCode;
 }
 
 // The rule-facing context. `filename` is resolved by

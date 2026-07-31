@@ -10,7 +10,7 @@ describe("parseEvaluationArguments", () => {
       concurrency: 200,
       repositoriesPerSandbox: 10,
       projectRootsPerRepository: 1,
-      maxDurationMinutes: 30,
+      maxDurationMinutes: 45,
       reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       reactDoctorRef: "main",
     });
@@ -32,7 +32,7 @@ describe("parseEvaluationArguments", () => {
         "--project-roots-per-repository",
         "3",
         "--max-duration-minutes",
-        "15",
+        "20",
         "--react-doctor-ref",
         "feature/eval",
       ]),
@@ -42,7 +42,7 @@ describe("parseEvaluationArguments", () => {
       concurrency: 25,
       repositoriesPerSandbox: 5,
       projectRootsPerRepository: 3,
-      maxDurationMinutes: 15,
+      maxDurationMinutes: 20,
       reactDoctorRef: "feature/eval",
     });
   });
@@ -59,7 +59,7 @@ describe("parseEvaluationArguments", () => {
     expect(() => parseEvaluationArguments(["--project-roots-per-repository", "0"])).toThrow(
       "positive integer",
     );
-    expect(() => parseEvaluationArguments(["--max-duration-minutes", "12"])).toThrow(
+    expect(() => parseEvaluationArguments(["--max-duration-minutes", "17"])).toThrow(
       "cleanup and retry reserve",
     );
   });

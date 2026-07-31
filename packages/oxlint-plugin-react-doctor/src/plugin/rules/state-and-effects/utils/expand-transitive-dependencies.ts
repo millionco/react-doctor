@@ -1,6 +1,6 @@
 export const expandTransitiveDependencies = (
-  seedNames: Set<string>,
-  dependencyGraph: Map<string, Set<string>>,
+  seedNames: ReadonlySet<string>,
+  dependencyGraph: ReadonlyMap<string, ReadonlySet<string>>,
 ): Set<string> => {
   const reachable = new Set(seedNames);
   const queue: string[] = Array.from(seedNames);

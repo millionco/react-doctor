@@ -594,6 +594,36 @@ const Table = () => (
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("still flags a mutated placeholder receiver", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const List = ({ item }) => {
+  const placeholders = Array.from({ length: 3 });
+  placeholders.push(item);
+  return placeholders.map((placeholder, index) => (
+    <Row key={index} placeholder={placeholder} />
+  ));
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a mutated fixed memo receiver", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const List = ({ items }) => {
+  const rows = useMemo(() => items, []);
+  rows.reverse();
+  return rows.map((row, index) => <Row key={index} row={row} />);
+};
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags a useMemo receiver whose factory filters data with live deps", () => {
       const result = runRule(
         noArrayIndexAsKey,

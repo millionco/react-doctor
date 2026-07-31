@@ -204,6 +204,17 @@ test("keeps same-named files in nested projects as distinct identities", () => {
   assert.equal(JSON.parse(result.stdout).summary.unchanged, 2);
 });
 
+test("accepts complete Astro project reports", () => {
+  const report = buildReport();
+  report.projects[0].framework = "astro";
+  const record = buildRecord(buildRepository(), report);
+
+  const result = runComparison([record], [record]);
+
+  assert.equal(result.status, SUCCESS_EXIT_CODE, result.stderr);
+  assert.equal(JSON.parse(result.stdout).summary.unchanged, 1);
+});
+
 test("does not count duplicate diagnostic identities more than once", () => {
   const diagnostic = buildV3Diagnostic();
   const addedDiagnostic = buildV3Diagnostic({

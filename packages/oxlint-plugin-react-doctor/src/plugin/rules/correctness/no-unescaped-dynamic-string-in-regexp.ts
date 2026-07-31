@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
@@ -926,7 +927,7 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
   recommendation:
     "A dynamic literal string such as a search term or path segment dropped straight into `new RegExp(...)` lets its regex metacharacters act as operators, so values containing `.` or `(` over-match or throw. Escape the value with an `escapeRegExp` helper before constructing the pattern.",
   create: (context: RuleContext): RuleVisitors => {
-    if (TEST_CONTEXT_FILE_PATTERN.test(context.filename ?? "")) return {};
+    if (TEST_CONTEXT_FILE_PATTERN.test(context.filename ?? "")) return EMPTY_RULE_VISITORS;
     let regexpObjectIndex: RegExpObjectIndex | null = null;
     const reportUnescapedConstruction = (
       node: EsTreeNodeOfType<"CallExpression"> | EsTreeNodeOfType<"NewExpression">,

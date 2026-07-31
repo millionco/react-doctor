@@ -1580,6 +1580,7 @@ const memberReceiverIsLocalObjectLiteral = (
   callee: EsTreeNodeOfType<"MemberExpression">,
   updaterFunction: EsTreeNode,
   executedFunctions: ReadonlySet<EsTreeNode>,
+  invocationReferenceNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
   const receiver = stripParenExpression(callee.object);
@@ -1588,6 +1589,13 @@ const memberReceiverIsLocalObjectLiteral = (
   const receiverOwner = receiverSymbol
     ? findEnclosingFunction(receiverSymbol.bindingIdentifier)
     : null;
+  const invocationCallee = stripParenExpression(invocationReferenceNode.callee);
+  const statePair = isNodeOfType(invocationCallee, "Identifier")
+    ? resolveReactUseStatePair(invocationCallee, context.scopes)
+    : null;
+  const stateOwner = statePair
+    ? findEnclosingFunction(statePair.setterSymbol.bindingIdentifier)
+    : null;
   const isShadowedGlobalObject =
     GLOBAL_OBJECT_RECEIVER_NAMES.has(receiver.name) && !context.scopes.isGlobalReference(receiver);
   return Boolean(
@@ -1595,6 +1603,7 @@ const memberReceiverIsLocalObjectLiteral = (
     isNodeOfType(stripParenExpression(receiverSymbol.initializer), "ObjectExpression") &&
     (isShadowedGlobalObject ||
       (receiverOwner !== null && receiverOwner === findEnclosingFunction(updaterFunction)) ||
+      (receiverOwner !== null && receiverOwner === stateOwner) ||
       receiverIsUpdaterLocal(receiver, updaterFunction, executedFunctions, context)),
   );
 };
@@ -1802,7 +1811,13 @@ const callHasSideEffectName = (
     CALLBACK_PROP_NAME_PATTERN.test(getStaticPropertyName(callee) ?? "") &&
     (memberCalleeUsesExternalCallback ||
       receiverRootIsUpdaterParameter(callee.object, updaterFunction, context) ||
-      (!memberReceiverIsLocalObjectLiteral(callee, updaterFunction, executedFunctions, context) &&
+      (!memberReceiverIsLocalObjectLiteral(
+        callee,
+        updaterFunction,
+        executedFunctions,
+        invocationReferenceNode,
+        context,
+      ) &&
         !receiverIsUpdaterLocal(callee.object, updaterFunction, executedFunctions, context)));
   const isDiscardedExternalCallbackCall =
     isResultDiscardedCall(call) &&
@@ -1862,7 +1877,13 @@ const callHasSideEffectName = (
   }
   if (
     isNodeOfType(callee, "MemberExpression") &&
-    memberReceiverIsLocalObjectLiteral(callee, updaterFunction, executedFunctions, context)
+    memberReceiverIsLocalObjectLiteral(
+      callee,
+      updaterFunction,
+      executedFunctions,
+      invocationReferenceNode,
+      context,
+    )
   ) {
     return false;
   }
@@ -2092,6 +2113,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
                   resolvedCallee,
                   updaterFunction,
                   executedFunctions,
+                  node,
                   context,
                 ))
             ) {

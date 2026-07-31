@@ -1054,6 +1054,47 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(localPureHelper.diagnostics).toHaveLength(0);
   });
 
+  it("keeps component-local object helpers local across handlers and effects", () => {
+    const nestedHandler = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);const helpers={saveValue:value=>value+1};const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}`,
+    );
+    const nestedEffect = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useEffect,useState}from"react";const C=()=>{const[,setValue]=useState(0);const helpers={saveValue:value=>value+1};useEffect(()=>{setValue(previous=>helpers.saveValue(previous))},[]);return null}`,
+    );
+    expect(nestedHandler.diagnostics).toHaveLength(0);
+    expect(nestedEffect.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps object helpers outside the state owner conservatively external", () => {
+    const moduleHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const helpers={saveValue:value=>value+1};const C=()=>{const[,setValue]=useState(0);const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}`,
+    );
+    const externalHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({helpers})=>{const[,setValue]=useState(0);const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}`,
+    );
+    const deferredFactoryHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const makeComponent=()=>{const helpers={saveValue:value=>value+1};return()=>{const[,setValue]=useState(0);const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}}`,
+    );
+    const nestedDeferredHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useEffect,useState}from"react";const C=()=>{const[,setValue]=useState(0);useEffect(()=>{const helpers={saveValue:value=>value+1};queueMicrotask(()=>setValue(previous=>helpers.saveValue(previous)))},[]);return null}`,
+    );
+    const localSideEffectingHelper = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState(0);const helpers={saveValue:value=>{fetch("/track");return value+1}};const onClick=()=>setValue(previous=>helpers.saveValue(previous));return <button onClick={onClick}/>}`,
+    );
+    expect(moduleHelper.diagnostics).toHaveLength(1);
+    expect(externalHelper.diagnostics).toHaveLength(1);
+    expect(deferredFactoryHelper.diagnostics).toHaveLength(1);
+    expect(nestedDeferredHelper.diagnostics).toHaveLength(1);
+    expect(localSideEffectingHelper.diagnostics).toHaveLength(1);
+  });
+
   it("flags async update calls that start a promise chain without flagging plain update helpers", () => {
     const asyncUpdate = runRule(
       noSideEffectInStateUpdaterFunction,

@@ -8,6 +8,7 @@ import {
   collectCrossFileDependencyProbes,
 } from "./cross-file-dependencies.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
+import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "./constants/thresholds.js";
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
 import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
 import { resetCrossFileExportCaches } from "./utils/resolve-cross-file-function-export.js";
@@ -359,6 +360,54 @@ const App = () => {
     for (const trace of [firstTrace, cachedTrace]) {
       expect(trace?.contentPaths.has(fixturePath("src/utils/configure.ts"))).toBe(true);
     }
+  });
+
+  it("records the full configuration depth from the deepest Day.js wrapper", () => {
+    for (
+      let configurationIndex = 1;
+      configurationIndex < CROSS_FILE_BARREL_FOLLOW_DEPTH;
+      configurationIndex++
+    ) {
+      writeFixtureFile(
+        `src/utils/configure-${configurationIndex}.ts`,
+        `import "./configure-${configurationIndex + 1}";\nexport const marker = ${configurationIndex};\n`,
+      );
+    }
+    writeFixtureFile(
+      `src/utils/configure-${CROSS_FILE_BARREL_FOLLOW_DEPTH}.ts`,
+      `import "./configure-beyond-proof"; import dayjs from "dayjs"; import badMutable from "dayjs/plugin/badMutable"; dayjs.extend(badMutable);\n`,
+    );
+    writeFixtureFile(
+      "src/utils/configure-beyond-proof.ts",
+      `import dayjs from "dayjs"; import badMutable from "dayjs/plugin/badMutable"; dayjs.extend(badMutable);\n`,
+    );
+    for (let wrapperIndex = CROSS_FILE_BARREL_FOLLOW_DEPTH; wrapperIndex >= 1; wrapperIndex--) {
+      const importSource =
+        wrapperIndex === CROSS_FILE_BARREL_FOLLOW_DEPTH ? "dayjs" : `./wrapper-${wrapperIndex + 1}`;
+      const configurationImport =
+        wrapperIndex === CROSS_FILE_BARREL_FOLLOW_DEPTH ? `import "./configure-1";` : "";
+      writeFixtureFile(
+        `src/utils/wrapper-${wrapperIndex}.ts`,
+        `${configurationImport}\nimport dayjs from "${importSource}"; export default dayjs;\n`,
+      );
+    }
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "./utils/wrapper-1";
+const App = () => {
+  const [, setDate] = useState(dayjs());
+  setDate((previous) => previous.add(1, "month"));
+};\n`,
+    );
+
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+
+    expect(
+      trace?.contentPaths.has(
+        fixturePath(`src/utils/configure-${CROSS_FILE_BARREL_FOLLOW_DEPTH}.ts`),
+      ),
+    ).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/utils/configure-beyond-proof.ts"))).toBe(false);
   });
 
   it("does not traverse type-only Day.js configuration edges", () => {

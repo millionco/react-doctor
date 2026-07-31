@@ -9,6 +9,7 @@ import {
 import {
   CROSS_FILE_BARREL_FOLLOW_DEPTH,
   CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
+  DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH,
 } from "./constants/thresholds.js";
 import { INK_RULE_IDS } from "./constants/ink.js";
 import { REACT_ROUTER_RULE_IDS } from "./constants/react-router.js";
@@ -211,7 +212,7 @@ const collectRuntimeStaticDependencyGraph = (
 ): void => {
   if (visitedFilePaths.has(filePath)) return;
   visitedFilePaths.add(filePath);
-  if (depth >= CROSS_FILE_BARREL_FOLLOW_DEPTH) return;
+  if (depth >= DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH) return;
   for (const statement of (program as { body?: ReadonlyArray<EsTreeNode> }).body ?? []) {
     const dependencySource = getRuntimeStaticDependencySource(statement);
     if (!dependencySource) continue;
@@ -228,9 +229,8 @@ const collectRuntimeStaticDependencyGraph = (
   }
 };
 
-// The Day.js mutability proof follows every runtime edge once an `.add` or
-// `.set` call can reach it. The collector deliberately skips the narrower
-// state-updater gate but mirrors the same edge kinds, depth, and cycle guard.
+// The Day.js mutability proof can follow a full factory-wrapper chain, then a
+// fresh full configuration chain from every wrapper it reaches.
 const collectStateUpdaterDependencies: CrossFileDependencyCollector = (input) => {
   collectImportedValueDependencies(input);
   const program = input.getProgram();

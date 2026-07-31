@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const SUCCESS_EXIT_CODE = 0;
 const scriptPath = fileURLToPath(new URL("./compare-parity.mjs", import.meta.url));
+const scriptDirectory = fileURLToPath(new URL(".", import.meta.url));
 
 const buildRepository = (name = "project", rootDir = ".") => ({
   org: "example",
@@ -100,7 +101,12 @@ const buildRecord = (repository = buildRepository(), report = buildReport()) => 
   report,
 });
 
-const runComparison = (baselineRecords, candidateRecords, ruleKeys = null) => {
+const runComparison = (
+  baselineRecords,
+  candidateRecords,
+  ruleKeys = null,
+  useRelativeScriptPath = false,
+) => {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), "react-doctor-parity-"));
   try {
     const baselinePath = join(temporaryDirectory, "baseline.ndjson");
@@ -113,7 +119,7 @@ const runComparison = (baselineRecords, candidateRecords, ruleKeys = null) => {
       candidatePath,
       candidateRecords.map((record) => JSON.stringify(record)).join("\n") + "\n",
     );
-    const comparisonArguments = [scriptPath];
+    const comparisonArguments = [useRelativeScriptPath ? "./compare-parity.mjs" : scriptPath];
     if (ruleKeys !== null) {
       const ruleKeysPath = join(temporaryDirectory, "rules.json");
       writeFileSync(ruleKeysPath, JSON.stringify(ruleKeys));
@@ -122,11 +128,20 @@ const runComparison = (baselineRecords, candidateRecords, ruleKeys = null) => {
     comparisonArguments.push(baselinePath, candidatePath);
     return spawnSync(process.execPath, comparisonArguments, {
       encoding: "utf8",
+      cwd: useRelativeScriptPath ? scriptDirectory : undefined,
     });
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 };
+
+test("runs the comparator through a relative CLI script path", () => {
+  const record = buildRecord();
+  const result = runComparison([record], [record], null, true);
+
+  assert.equal(result.status, SUCCESS_EXIT_CODE, result.stderr);
+  assert.equal(JSON.parse(result.stdout).summary.unchanged, 1);
+});
 
 test("canonicalizes matching legacy and v3 diagnostics to report-relative identities", () => {
   const repository = buildRepository("workspace", "packages/ui");

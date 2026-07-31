@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix } from "node:path";
+import { join, posix, resolve as resolveFileSystemPath } from "node:path";
 import { createInterface } from "node:readline";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -789,6 +789,6 @@ const runCli = async () => {
   }
 };
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolveFileSystemPath(process.argv[1])) {
   await runCli();
 }

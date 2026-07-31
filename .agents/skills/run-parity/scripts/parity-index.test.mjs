@@ -1,12 +1,15 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { buildParityIndex, semanticHash } from "./build-parity-index.mjs";
 import { compareParityIndexes, validateParityIndex } from "./compare-parity-indexes.mjs";
 
 const selectedRuleKeys = new Set(["react-doctor/example", "react-doctor/other"]);
+const scriptDirectory = fileURLToPath(new URL(".", import.meta.url));
 
 const buildRepository = (name) => ({
   org: "example",
@@ -92,6 +95,37 @@ const buildIndex = async (records, rejectOutsideRuleScope = false, ruleKeys = se
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 };
+
+test("runs parity index CLIs through relative script paths", () => {
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), "react-doctor-parity-index-cli-"));
+  try {
+    const inputPath = join(temporaryDirectory, "run.ndjson");
+    const ruleKeysPath = join(temporaryDirectory, "rules.json");
+    const baselineIndexPath = join(temporaryDirectory, "baseline.index.json");
+    const candidateIndexPath = join(temporaryDirectory, "candidate.index.json");
+    writeFileSync(inputPath, `${JSON.stringify(buildRecord({ name: "first" }))}\n`);
+    writeFileSync(ruleKeysPath, JSON.stringify([...selectedRuleKeys]));
+
+    const buildResult = spawnSync(
+      process.execPath,
+      ["./build-parity-index.mjs", "--rules", ruleKeysPath, inputPath],
+      { cwd: scriptDirectory, encoding: "utf8" },
+    );
+    assert.equal(buildResult.status, 0, buildResult.stderr);
+    writeFileSync(baselineIndexPath, buildResult.stdout);
+    writeFileSync(candidateIndexPath, buildResult.stdout);
+
+    const compareResult = spawnSync(
+      process.execPath,
+      ["./compare-parity-indexes.mjs", baselineIndexPath, candidateIndexPath],
+      { cwd: scriptDirectory, encoding: "utf8" },
+    );
+    assert.equal(compareResult.status, 0, compareResult.stderr);
+    assert.equal(JSON.parse(compareResult.stdout).match, true);
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
 
 test("accepts canonical rule keys with camelCase rule segments", async () => {
   const diagnostic = buildDiagnostic({

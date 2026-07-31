@@ -298,21 +298,26 @@ const buildReverseDependencies = (dependencies) => {
   return reverseDependencies;
 };
 
-const collectImpactedRules = (graph, changedPaths) => {
+const collectRuleImpact = (graph, changedPaths) => {
   const pendingPaths = changedPaths.filter((sourcePath) => graph.sourceTree.has(sourcePath));
   const visitedPaths = new Set();
   const impactedRules = new Set();
+  const unscopedRuntimePaths = new Set();
   while (pendingPaths.length > 0) {
     const sourcePath = pendingPaths.pop();
     if (!sourcePath || visitedPaths.has(sourcePath)) continue;
     visitedPaths.add(sourcePath);
     const ruleKey = graph.ruleKeyBySourcePath.get(sourcePath);
-    if (ruleKey) impactedRules.add(ruleKey);
+    if (ruleKey) {
+      impactedRules.add(ruleKey);
+      continue;
+    }
+    if (!isIncrementalRuntimePath(sourcePath)) unscopedRuntimePaths.add(sourcePath);
     for (const importerPath of graph.reverseDependencies.get(sourcePath) ?? []) {
       pendingPaths.push(importerPath);
     }
   }
-  return impactedRules;
+  return { impactedRules, unscopedRuntimePaths };
 };
 
 const buildRuleFingerprint = (graph, ruleSourcePath) => {
@@ -373,18 +378,31 @@ const buildManifest = (repositoryDirectory, baseRef, headRef) => {
       fallbackReasons.push(`Global runtime change requires full parity: ${sourcePath}`);
     }
   }
+  const baseImpact = collectRuleImpact(baseGraph, runtimeChangedPaths);
+  const headImpact = collectRuleImpact(headGraph, runtimeChangedPaths);
   const directlyImpactedRuleKeys = new Set([
-    ...collectImpactedRules(baseGraph, runtimeChangedPaths),
-    ...collectImpactedRules(headGraph, runtimeChangedPaths),
+    ...baseImpact.impactedRules,
+    ...headImpact.impactedRules,
   ]);
+  for (const sourcePath of new Set([
+    ...baseImpact.unscopedRuntimePaths,
+    ...headImpact.unscopedRuntimePaths,
+  ])) {
+    fallbackReasons.push(`Plugin host dependency requires full parity: ${sourcePath}`);
+  }
+  if (runtimeChangedPaths.length === 0) {
+    fallbackReasons.push("No runtime rule impact requires full parity");
+  }
   const impactedRuleKeys = addDiagnosticInteractionClosure(directlyImpactedRuleKeys);
-  for (const sourcePath of runtimeChangedPaths.filter((path) => path.startsWith(RULES_ROOT))) {
+  for (const sourcePath of runtimeChangedPaths.filter(
+    (path) => path.startsWith(PLUGIN_SOURCE_ROOT) && isIncrementalRuntimePath(path),
+  )) {
     const mappedRuleKeys = new Set([
-      ...collectImpactedRules(baseGraph, [sourcePath]),
-      ...collectImpactedRules(headGraph, [sourcePath]),
+      ...collectRuleImpact(baseGraph, [sourcePath]).impactedRules,
+      ...collectRuleImpact(headGraph, [sourcePath]).impactedRules,
     ]);
     if (mappedRuleKeys.size === 0) {
-      fallbackReasons.push(`Changed rule runtime cannot be mapped to a rule: ${sourcePath}`);
+      fallbackReasons.push(`Changed plugin runtime cannot be mapped to a rule: ${sourcePath}`);
     }
   }
   for (const ruleKey of directlyImpactedRuleKeys) {

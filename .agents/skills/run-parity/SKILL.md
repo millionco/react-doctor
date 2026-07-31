@@ -91,7 +91,10 @@ The evaluator stamps every unselected revision-local rule `off`. When the
 scope contains no security-scan rule it also skips that whole-tree pass.
 Security-scan rule changes, global runner/config/report/registry changes,
 removed or renamed rule IDs, unresolved runtime edges, parse failures, and
-other uncertain dependency surfaces fall back to full parity.
+other uncertain dependency surfaces fall back to full parity. Plugin utilities
+that reach a host module without first crossing a mapped rule boundary also
+fall back to full parity. A manifest with no runtime rule impact uses full mode;
+never construct an empty incremental rule scope.
 
 Every run keeps its hard outer timeout. Short evaluator budgets cap aggregate
 retry reserve at 25% of the time remaining when an attempt starts, leaving at

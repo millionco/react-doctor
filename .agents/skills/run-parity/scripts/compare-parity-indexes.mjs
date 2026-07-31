@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from "node:fs";
+import { resolve as resolveFileSystemPath } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PARITY_INDEX_HASH_ALGORITHM,
@@ -326,6 +327,6 @@ const runCli = () => {
   }
 };
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolveFileSystemPath(process.argv[1])) {
   runCli();
 }

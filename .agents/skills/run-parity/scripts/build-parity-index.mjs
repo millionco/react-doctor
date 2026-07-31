@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import { resolve as resolveFileSystemPath } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   INVARIANT_DIAGNOSTIC_PLUGIN,
@@ -183,6 +184,6 @@ const runCli = async () => {
   }
 };
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolveFileSystemPath(process.argv[1])) {
   await runCli();
 }

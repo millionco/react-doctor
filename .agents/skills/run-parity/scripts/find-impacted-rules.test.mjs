@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
 const scriptPath = fileURLToPath(new URL("./find-impacted-rules.mjs", import.meta.url));
+const PLUGIN_ROOT = "packages/oxlint-plugin-react-doctor/src/plugin";
 const RULES_ROOT = "packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects";
 const UTILS_ROOT = "packages/oxlint-plugin-react-doctor/src/plugin/utils";
 
@@ -368,6 +369,73 @@ test("falls back to all rules for global runtime changes", () => {
   }
 });
 
+test("falls back to full parity when a changed utility is imported only by the plugin host", () => {
+  const repositoryDirectory = initializeRepository();
+  try {
+    writeRepositoryFile(
+      repositoryDirectory,
+      `${UTILS_ROOT}/host-only.ts`,
+      "export const hostOnly = 1;\n",
+    );
+    writeRepositoryFile(
+      repositoryDirectory,
+      `${PLUGIN_ROOT}/react-doctor-plugin.ts`,
+      `import { hostOnly } from "./utils/host-only.js";
+export const plugin = { hostOnly };
+`,
+    );
+    const baseRef = commit(repositoryDirectory, "base");
+    writeRepositoryFile(
+      repositoryDirectory,
+      `${UTILS_ROOT}/host-only.ts`,
+      "export const hostOnly = 2;\n",
+    );
+    const headRef = commit(repositoryDirectory, "head");
+
+    const manifest = runImpact(repositoryDirectory, baseRef, headRef);
+
+    assert.equal(manifest.mode, "full");
+    assert.deepEqual(manifest.impactedRuleKeys, ["react-doctor/first", "react-doctor/second"]);
+    assert.match(
+      manifest.fallbackReasons.join("\n"),
+      /Plugin host dependency requires full parity.*react-doctor-plugin\.ts/,
+    );
+  } finally {
+    rmSync(repositoryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("falls back to full parity when a changed utility reaches both a rule and a global host", () => {
+  const repositoryDirectory = initializeRepository();
+  try {
+    writeRepositoryFile(
+      repositoryDirectory,
+      `${PLUGIN_ROOT}/cross-file-dependencies.ts`,
+      `import { shared } from "./utils/shared.js";
+export const crossFileDependencies = shared;
+`,
+    );
+    const baseRef = commit(repositoryDirectory, "base");
+    writeRepositoryFile(
+      repositoryDirectory,
+      `${UTILS_ROOT}/shared.ts`,
+      "export const shared = { changed: true };\n",
+    );
+    const headRef = commit(repositoryDirectory, "head");
+
+    const manifest = runImpact(repositoryDirectory, baseRef, headRef);
+
+    assert.equal(manifest.mode, "full");
+    assert.deepEqual(manifest.impactedRuleKeys, ["react-doctor/first", "react-doctor/second"]);
+    assert.match(
+      manifest.fallbackReasons.join("\n"),
+      /Plugin host dependency requires full parity.*cross-file-dependencies\.ts/,
+    );
+  } finally {
+    rmSync(repositoryDirectory, { recursive: true, force: true });
+  }
+});
+
 test("falls back to all rules for non-literal runtime imports", () => {
   const repositoryDirectory = initializeRepository();
   try {
@@ -565,14 +633,14 @@ export const wrapped = buildRule({ id: ruleId, create: () => ({ changed: true })
     assert.equal(manifest.mode, "full");
     assert.match(
       manifest.fallbackReasons.join("\n"),
-      /Changed rule runtime cannot be mapped to a rule/,
+      /Changed plugin runtime cannot be mapped to a rule/,
     );
   } finally {
     rmSync(repositoryDirectory, { recursive: true, force: true });
   }
 });
 
-test("ignores test and documentation-only changes", () => {
+test("falls back to full parity for test and documentation-only changes", () => {
   const repositoryDirectory = initializeRepository();
   try {
     const baseRef = commit(repositoryDirectory, "base");
@@ -586,10 +654,14 @@ test("ignores test and documentation-only changes", () => {
 
     const manifest = runImpact(repositoryDirectory, baseRef, headRef);
 
-    assert.equal(manifest.mode, "incremental");
+    assert.equal(manifest.mode, "full");
     assert.deepEqual(manifest.runtimeChangedPaths, []);
-    assert.deepEqual(manifest.impactedRuleKeys, []);
+    assert.deepEqual(manifest.impactedRuleKeys, ["react-doctor/first", "react-doctor/second"]);
     assert.deepEqual(manifest.candidateRuleKeys, []);
+    assert.match(
+      manifest.fallbackReasons.join("\n"),
+      /No runtime rule impact requires full parity/,
+    );
   } finally {
     rmSync(repositoryDirectory, { recursive: true, force: true });
   }

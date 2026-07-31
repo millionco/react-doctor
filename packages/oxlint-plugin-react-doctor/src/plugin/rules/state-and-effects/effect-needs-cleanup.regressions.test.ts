@@ -8772,3 +8772,124 @@ export const Viewport = ({ onWheel }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("effect-needs-cleanup Supabase Realtime patterns (#1539)", () => {
+  it("does not flag Supabase channel with removeChannel cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase, roomId }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel(\`messages:\${roomId}\`)
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomId, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Supabase channel with removeAllChannels cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase }) => {
+  useEffect(() => {
+    const channel = supabase.channel("test").subscribe();
+    return () => {
+      supabase.removeAllChannels();
+    };
+  }, [supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Supabase channel with channel.unsubscribe() cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase, roomId }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel(\`messages:\${roomId}\`)
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [roomId, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Supabase channel without .on() using removeChannel", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase }) => {
+  useEffect(() => {
+    const channel = supabase.channel("test").subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags Supabase channel with no cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase, roomId }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel(\`messages:\${roomId}\`)
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+  }, [roomId, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("subscription");
+  });
+});
+
+describe("effect-needs-cleanup Jitsi dispose pattern (#1539)", () => {
+  it("does not flag Jitsi API with dispose cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const JitsiMeeting = ({ api }) => {
+  useEffect(() => {
+    api.addListener("videoConferenceJoined", () => {
+      console.log("joined");
+    });
+    return () => {
+      api.dispose();
+    };
+  }, [api]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});

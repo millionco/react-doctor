@@ -2683,7 +2683,7 @@ const PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB: ReadonlyMap<
 > = new Map([
   ["addEventListener", new Set(["removeEventListener", "abort"])],
   ["addListener", new Set(["removeListener", "off", "abort"])],
-  ["on", new Set(["off", "removeListener", "on"])],
+  ["on", new Set(["off", "removeListener", "on", "unsubscribe", "unsub", "removeChannel", "removeAllChannels"])],
   ["subscribe", new Set(["unsubscribe", "unsub"])],
   ["sub", new Set(["unsub", "unsubscribe"])],
   ["watch", new Set(["unwatch", "close"])],
@@ -3299,6 +3299,28 @@ const doesReleaseCallMatchUsage = (
       (SOCKET_RELEASE_VERB_NAMES.has(releaseVerbName) ||
         UNIVERSAL_RELEASE_VERB_NAMES.has(releaseVerbName))
     );
+  }
+
+  if (
+    usage.kind === "subscribe" &&
+    (releaseVerbName === "removeChannel" || releaseVerbName === "removeAllChannels") &&
+    (releaseVerbName === "removeAllChannels" ||
+      (usage.handleKey !== null &&
+        resolveExpressionKey(callNode.arguments?.[0], context) === usage.handleKey))
+  ) {
+    return true;
+  }
+
+  if (
+    usage.kind === "subscribe" &&
+    usage.registrationVerbName === "on" &&
+    usage.handleKey === null &&
+    (releaseVerbName === "unsubscribe" ||
+      releaseVerbName === "unsub" ||
+      releaseVerbName === "removeChannel" ||
+      releaseVerbName === "removeAllChannels")
+  ) {
+    return true;
   }
 
   if (

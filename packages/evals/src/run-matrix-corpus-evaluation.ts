@@ -38,6 +38,7 @@ import { runMatrixEvaluationAttempts } from "./run-matrix-evaluation-attempts.js
 import { assertMatrixBaseRecord } from "./utils/assert-matrix-base-record.js";
 import { createMatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
 import type { MatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
+import { deleteDaytonaSnapshotBeforeDeadline } from "./utils/delete-daytona-snapshot-before-deadline.js";
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
@@ -330,7 +331,12 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
           }),
           onLaneRecord: recordLaneEvaluation,
         }),
-      beforeRetry: () => cleanupEvaluationSandboxes({ daytona, evaluationId }),
+      beforeRetry: () =>
+        cleanupEvaluationSandboxes({
+          daytona,
+          evaluationId,
+          deadlineMilliseconds: evaluationDeadlineMilliseconds,
+        }),
       onBeforeRetryFailure: (error) => {
         process.stderr.write(
           `Failed to clean matrix sandboxes before retry: ${toErrorMessage(error)}\n`,
@@ -347,14 +353,26 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   } catch (error) {
     evaluationError = error;
   } finally {
+    const cleanupDeadlineMilliseconds = Math.min(
+      wholeRunDeadlineMilliseconds,
+      globalThis.performance.now() +
+        MATRIX_CLEANUP_VERIFICATION_TIMEOUT_SECONDS * MILLISECONDS_PER_SECOND,
+    );
     try {
-      await cleanupEvaluationSandboxes({ daytona, evaluationId });
+      await cleanupEvaluationSandboxes({
+        daytona,
+        evaluationId,
+        deadlineMilliseconds: cleanupDeadlineMilliseconds,
+      });
     } catch (error) {
       cleanupError = error;
     } finally {
       try {
-        const snapshot = await daytona.snapshot.get(snapshotName);
-        await daytona.snapshot.delete(snapshot);
+        await deleteDaytonaSnapshotBeforeDeadline({
+          snapshotClient: daytona.snapshot,
+          snapshotName,
+          deadlineMilliseconds: cleanupDeadlineMilliseconds,
+        });
       } catch (error) {
         if (!(error instanceof DaytonaNotFoundError)) {
           process.stderr.write(
@@ -368,11 +386,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
           daytona,
           evaluationId,
           snapshotName,
-          deadlineMilliseconds: Math.min(
-            wholeRunDeadlineMilliseconds,
-            globalThis.performance.now() +
-              MATRIX_CLEANUP_VERIFICATION_TIMEOUT_SECONDS * MILLISECONDS_PER_SECOND,
-          ),
+          deadlineMilliseconds: cleanupDeadlineMilliseconds,
         });
         cleanupError = undefined;
       } catch (error) {

@@ -26,6 +26,7 @@ import {
   getEvaluationTimeoutSeconds,
 } from "./utils/get-evaluation-timeout-seconds.js";
 import { parseReactDoctorEvaluationProvenance } from "./utils/parse-react-doctor-evaluation-provenance.js";
+import { runBeforeDeadline } from "./utils/run-before-deadline.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
 export interface MatrixEvaluationFailure {
@@ -212,7 +213,11 @@ export const evaluateMatrixRepositoryBatch = async ({
     let sandboxToDelete = sandbox;
     if (!sandboxToDelete && shouldRecoverSandbox) {
       try {
-        sandboxToDelete = await daytona.get(sandboxName);
+        sandboxToDelete = await runBeforeDeadline({
+          operation: () => daytona.get(sandboxName),
+          deadlineMilliseconds: evaluationDeadlineMilliseconds,
+          timeoutMessage: `Timed out recovering Daytona sandbox ${sandboxName}`,
+        });
       } catch (error) {
         if (!(error instanceof DaytonaNotFoundError)) {
           process.stderr.write(
@@ -223,7 +228,11 @@ export const evaluateMatrixRepositoryBatch = async ({
     }
     if (sandboxToDelete) {
       try {
-        await daytona.delete(sandboxToDelete, SANDBOX_DELETE_TIMEOUT_SECONDS);
+        await runBeforeDeadline({
+          operation: () => daytona.delete(sandboxToDelete, SANDBOX_DELETE_TIMEOUT_SECONDS),
+          deadlineMilliseconds: evaluationDeadlineMilliseconds,
+          timeoutMessage: `Timed out deleting Daytona sandbox ${sandboxToDelete.id}`,
+        });
       } catch (error) {
         process.stderr.write(
           `Failed to delete Daytona sandbox ${sandboxToDelete.id}: ${toErrorMessage(error)}\n`,

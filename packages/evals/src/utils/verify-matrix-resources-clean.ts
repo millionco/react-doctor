@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { DaytonaNotFoundError } from "@daytona/sdk";
 
 import { MATRIX_CLEANUP_VERIFICATION_POLL_INTERVAL_MS } from "../constants.js";
+import { runBeforeDeadline } from "./run-before-deadline.js";
 
 export interface MatrixResourceClient {
   list: (options: { labels: { evaluation: string } }) => AsyncIterable<{ id: string }>;
@@ -33,26 +34,6 @@ const inspectMatrixResources = async ({
   }
 };
 
-const inspectMatrixResourcesBeforeDeadline = async (
-  input: Omit<VerifyMatrixResourcesCleanInput, "deadlineMilliseconds">,
-  remainingMilliseconds: number,
-): Promise<boolean> => {
-  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      inspectMatrixResources(input),
-      new Promise<boolean>((_resolve, reject) => {
-        timeout = globalThis.setTimeout(
-          () => reject(new Error("Timed out verifying exact matrix Daytona resource cleanup")),
-          remainingMilliseconds,
-        );
-      }),
-    ]);
-  } finally {
-    if (timeout) globalThis.clearTimeout(timeout);
-  }
-};
-
 export const verifyMatrixResourcesClean = async ({
   daytona,
   evaluationId,
@@ -64,10 +45,11 @@ export const verifyMatrixResourcesClean = async ({
     if (remainingMilliseconds <= 0) {
       throw new Error("Timed out verifying exact matrix Daytona resource cleanup");
     }
-    const isClean = await inspectMatrixResourcesBeforeDeadline(
-      { daytona, evaluationId, snapshotName },
-      remainingMilliseconds,
-    );
+    const isClean = await runBeforeDeadline({
+      operation: () => inspectMatrixResources({ daytona, evaluationId, snapshotName }),
+      deadlineMilliseconds,
+      timeoutMessage: "Timed out verifying exact matrix Daytona resource cleanup",
+    });
     if (isClean) return;
     await delay(Math.min(MATRIX_CLEANUP_VERIFICATION_POLL_INTERVAL_MS, remainingMilliseconds));
   }

@@ -11,6 +11,7 @@ import {
 import { evaluateMatrixRepositoryBatch } from "../src/evaluate-matrix-repository-batch.js";
 
 const MATRIX_SCAN_DELAY_MS = 5;
+const CONTROL_PLANE_TEST_TIMEOUT_MS = 5;
 
 const buildLane = (id: string, index: number): MatrixEvaluationLane => ({
   id,
@@ -158,5 +159,36 @@ describe("evaluateMatrixRepositoryBatch", () => {
         },
       },
     ]);
+  });
+
+  it("does not hang when failed sandbox creation recovery never settles", async () => {
+    const lane = buildLane("pr-1", 0);
+    const daytona = new Daytona({ apiKey: "test" });
+    Object.defineProperty(daytona, "get", {
+      value: vi.fn(() => new Promise<never>(() => undefined)),
+    });
+
+    const failures = await evaluateMatrixRepositoryBatch({
+      daytona,
+      createSandbox: async () => {
+        throw new Error("create response lost");
+      },
+      repositoryGroups: [
+        {
+          org: "example",
+          name: "repository",
+          ref: "e".repeat(40),
+          rootDirectories: ["."],
+        },
+      ],
+      lanes: [lane],
+      waveWidth: 1,
+      evaluationDeadlineMilliseconds: globalThis.performance.now() + CONTROL_PLANE_TEST_TIMEOUT_MS,
+      evaluatorSourceHash: "b".repeat(64),
+      onLaneRecord: vi.fn(async () => undefined),
+    });
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0].record.error).toBe("create response lost");
   });
 });

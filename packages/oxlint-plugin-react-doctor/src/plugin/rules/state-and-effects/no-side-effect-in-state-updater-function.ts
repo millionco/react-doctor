@@ -626,7 +626,7 @@ const getObjectStateMemberInitialValues = (
   if (!initialValueArgument || isNodeOfType(initialValueArgument, "SpreadElement")) return null;
   const initialValue = stripParenExpression(initialValueArgument);
   const lazyInitializer = resolveLocalFunction(initialValue, context);
-  if (lazyInitializer?.async) return null;
+  if (lazyInitializer && (!isFunctionLike(lazyInitializer) || lazyInitializer.async)) return null;
   const possibleInitialValues = lazyInitializer
     ? collectFunctionReturnValues(lazyInitializer)
     : [initialValue];

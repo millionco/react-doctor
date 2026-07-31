@@ -1494,6 +1494,17 @@ const isStaticallyUnreachable = (node: EsTreeNode, boundary: EsTreeNode): boolea
         }
       }
     }
+    if (parent && isNodeOfType(parent, "ConditionalExpression")) {
+      const test = stripParenExpression(parent.test);
+      if (isNodeOfType(test, "Literal") && typeof test.value === "boolean") {
+        if (
+          (parent.consequent === current && !test.value) ||
+          (parent.alternate === current && test.value)
+        ) {
+          return true;
+        }
+      }
+    }
     if (parent && isNodeOfType(parent, "LogicalExpression") && parent.right === current) {
       const left = stripParenExpression(parent.left);
       if (

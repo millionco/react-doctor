@@ -345,16 +345,36 @@ describe("no-side-effect-in-state-updater-function", () => {
     );
     const unreachableAnd = runDayjsPriorSetter(`false&&setDate(getMutableDate())`);
     const unreachableOr = runDayjsPriorSetter(`true||setDate(getMutableDate())`);
+    const unreachableConditionalConsequent = runDayjsPriorSetter(
+      `false?setDate(getMutableDate()):void 0`,
+    );
+    const unreachableConditionalAlternate = runDayjsPriorSetter(
+      `true?void 0:setDate(getMutableDate())`,
+    );
+    const nestedUnreachableConditional = runDayjsPriorSetter(
+      `true?(false?setDate(getMutableDate()):void 0):setDate(getMutableDate())`,
+    );
     const reachableConditional = runDayjsPriorSetter(`if(condition)setDate(getMutableDate())`);
     const reachableAnd = runDayjsPriorSetter(`true&&setDate(getMutableDate())`);
+    const reachableConditionalConsequent = runDayjsPriorSetter(
+      `true?setDate(getMutableDate()):void 0`,
+    );
+    const reachableConditionalAlternate = runDayjsPriorSetter(
+      `false?void 0:setDate(getMutableDate())`,
+    );
     expect([
       unreachableIf.diagnostics.length,
       unreachableAlternate.diagnostics.length,
       unreachableAnd.diagnostics.length,
       unreachableOr.diagnostics.length,
-    ]).toEqual([0, 0, 0, 0]);
+      unreachableConditionalConsequent.diagnostics.length,
+      unreachableConditionalAlternate.diagnostics.length,
+      nestedUnreachableConditional.diagnostics.length,
+    ]).toEqual([0, 0, 0, 0, 0, 0, 0]);
     expect(reachableConditional.diagnostics.length).toBeGreaterThan(0);
     expect(reachableAnd.diagnostics.length).toBeGreaterThan(0);
+    expect(reachableConditionalConsequent.diagnostics.length).toBeGreaterThan(0);
+    expect(reachableConditionalAlternate.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("does not trust scalar and chained immutable date lookalikes", () => {
@@ -1515,6 +1535,29 @@ const C=()=>{
     );
     expect(unreachable.diagnostics).toHaveLength(0);
     expect(mapThisArg.diagnostics).toHaveLength(0);
+  });
+
+  it("does not inspect side effects in dead literal conditional arms", () => {
+    const deadConsequent = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({onChange})=>{const[,setX]=useState(0);setX(p=>{false?onChange(p):void 0;return p+1})}",
+    );
+    const deadAlternate = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({onChange})=>{const[,setX]=useState(0);setX(p=>{true?void 0:onChange(p);return p+1})}",
+    );
+    const nestedDeadArms = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({onChange})=>{const[,setX]=useState(0);setX(p=>{true?(false?onChange(p):void 0):onChange(p);return p+1})}",
+    );
+    const liveArms = runRule(
+      noSideEffectInStateUpdaterFunction,
+      "const C=({onChange})=>{const[,setX]=useState(0);setX(p=>{true?onChange(p):void 0;false?void 0:onChange(p);return p+1})}",
+    );
+    expect(deadConsequent.diagnostics).toHaveLength(0);
+    expect(deadAlternate.diagnostics).toHaveLength(0);
+    expect(nestedDeadArms.diagnostics).toHaveLength(0);
+    expect(liveArms.diagnostics).toHaveLength(2);
   });
 
   it("does not assume a locally defined custom map method invokes its callback synchronously", () => {

@@ -223,6 +223,43 @@ describe("loadMatrixTreatments", () => {
         message: "invalid invariants",
       },
       {
+        name: "removed-local-with-external-closure",
+        rewrite: (manifest) => ({
+          ...manifest,
+          impactedRuleKeys: ["react-doctor/example", "react-hooks-js/hooks"],
+          candidateRuleKeys: ["react-hooks-js/hooks"],
+          rules: [
+            {
+              ruleKey: "react-doctor/example",
+              baseFingerprint: "1".repeat(64),
+              headFingerprint: null,
+            },
+            {
+              ruleKey: "react-hooks-js/hooks",
+              baseFingerprint: null,
+              headFingerprint: null,
+            },
+          ],
+        }),
+        message: "invalid invariants",
+      },
+      {
+        name: "known-full-parity-rule",
+        rewrite: (manifest) => ({
+          ...manifest,
+          impactedRuleKeys: ["react-doctor/react-compiler-no-manual-memoization"],
+          candidateRuleKeys: ["react-doctor/react-compiler-no-manual-memoization"],
+          rules: [
+            {
+              ruleKey: "react-doctor/react-compiler-no-manual-memoization",
+              baseFingerprint: "1".repeat(64),
+              headFingerprint: "2".repeat(64),
+            },
+          ],
+        }),
+        message: "invalid invariants",
+      },
+      {
         name: "under-scoped-candidate",
         rewrite: (manifest) => ({
           ...manifest,

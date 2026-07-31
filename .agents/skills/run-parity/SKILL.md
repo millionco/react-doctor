@@ -147,8 +147,10 @@ Each descriptor is an immutable JSON file with this exact shape:
 
 The referenced impact manifest must be the exact output from
 `find-impacted-rules.mjs`; its hash, base commit, head commit, mode, and candidate
-rule keys are revalidated. Every repeated descriptor must have the exact same
-group object, a unique safe id, and a distinct artifact directory.
+rule keys are revalidated. Before Daytona starts, the matrix runner fetches the
+pinned base and head commits, reruns the current generator, and requires
+byte-identical manifest output. Every repeated descriptor must have the exact
+same group object, a unique safe id, and a distinct artifact directory.
 
 ```sh
 nr --silent eval \
@@ -167,6 +169,29 @@ work at 50, 10, then 2 concurrency. Each treatment is atomically published with
 its candidate NDJSON, exact descriptor, impact manifest, rules, hashes, counts,
 and provenance. A missing base marks successful treatments blocked rather than
 making an independent merge decision.
+
+Treat each published treatment directory as self-contained evidence. Verify its
+status, canonical relative paths, producer binding, byte lengths, and hashes
+before comparison. Never follow a shared cache or scoped-base source path from
+provenance:
+
+```sh
+node .agents/skills/run-parity/scripts/verify-matrix-artifact.mjs \
+  <treatment-artifact-directory>
+
+# Incremental treatment
+node .agents/skills/run-parity/scripts/compare-parity.mjs \
+  --rules <treatment-artifact-directory>/rules.json \
+  <treatment-artifact-directory>/base.ndjson \
+  <treatment-artifact-directory>/candidate.ndjson \
+  > <treatment-artifact-directory>/parity.json
+
+# Full treatment
+node .agents/skills/run-parity/scripts/compare-parity.mjs \
+  <treatment-artifact-directory>/base.ndjson \
+  <treatment-artifact-directory>/candidate.ndjson \
+  > <treatment-artifact-directory>/parity.json
+```
 
 For rule-only pull requests, build the conservative impact manifest before the
 candidate run:

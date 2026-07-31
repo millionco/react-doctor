@@ -17,9 +17,21 @@ export interface MatrixBaseArtifactBinding {
   provenanceSha256?: string;
 }
 
-export interface MaterializedMatrixBaseArtifactBinding extends MatrixBaseArtifactBinding {
+export interface MatrixBaseArtifactVerification {
+  sha256: string;
+  byteLength: number;
+  provenanceSha256?: string;
+}
+
+export interface MaterializedMatrixBaseArtifactBinding {
+  contract: string;
   path: string;
+  sha256: string;
+  byteLength: number;
+  producer: EvaluationProvenance;
+  producerSha256: string;
   provenancePath?: string;
+  provenanceSha256?: string;
   verified: boolean;
 }
 
@@ -36,16 +48,26 @@ export const createMatrixBaseArtifactBinding = async ({
   sourcePath,
   producer,
   provenanceSourcePath,
+  expected,
 }: {
   sourcePath: string;
   producer: EvaluationProvenance;
   provenanceSourcePath?: string;
+  expected?: MatrixBaseArtifactVerification;
 }): Promise<MatrixBaseArtifactBinding> => {
   const [sourceStats, sha256, provenanceSha256] = await Promise.all([
     stat(sourcePath),
     hashFile(sourcePath),
     provenanceSourcePath ? hashFile(provenanceSourcePath) : undefined,
   ]);
+  if (
+    expected &&
+    (sha256 !== expected.sha256 ||
+      sourceStats.size !== expected.byteLength ||
+      provenanceSha256 !== expected.provenanceSha256)
+  ) {
+    throw new Error("Matrix base artifact changed after verification");
+  }
   return {
     contract: MATRIX_BASE_ARTIFACT_CONTRACT,
     sourcePath,
@@ -91,9 +113,14 @@ export const materializeMatrixBaseArtifactBinding = async ({
       ]);
     }
     return {
-      ...binding,
+      contract: binding.contract,
       path: "base.ndjson",
+      sha256: binding.sha256,
+      byteLength: binding.byteLength,
+      producer: binding.producer,
+      producerSha256: binding.producerSha256,
       provenancePath: provenancePath ? "base-provenance.json" : undefined,
+      provenanceSha256: binding.provenanceSha256,
       verified,
     };
   } catch {
@@ -102,9 +129,14 @@ export const materializeMatrixBaseArtifactBinding = async ({
       provenancePath ? rm(provenancePath, { force: true }) : undefined,
     ]);
     return {
-      ...binding,
+      contract: binding.contract,
       path: "base.ndjson",
+      sha256: binding.sha256,
+      byteLength: binding.byteLength,
+      producer: binding.producer,
+      producerSha256: binding.producerSha256,
       provenancePath: provenancePath ? "base-provenance.json" : undefined,
+      provenanceSha256: binding.provenanceSha256,
       verified: false,
     };
   }

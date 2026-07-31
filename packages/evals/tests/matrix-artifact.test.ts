@@ -101,7 +101,6 @@ describe("createMatrixArtifactWriter", () => {
       evaluationId: "evaluation-id",
       treatment: buildTreatment(temporaryDirectory, artifactDirectory),
       expectedProjectCount: 1,
-      baseArtifactPath,
     });
     expect(fs.existsSync(artifactDirectory)).toBe(false);
     await writer.write({
@@ -132,6 +131,9 @@ describe("createMatrixArtifactWriter", () => {
         verified: true,
       },
     });
+    expect(provenance).not.toHaveProperty("baseArtifactPath");
+    expect(provenance.baseArtifact).not.toHaveProperty("sourcePath");
+    expect(provenance.baseArtifact).not.toHaveProperty("provenanceSourcePath");
     expect(fs.readdirSync(artifactDirectory).sort()).toEqual([
       "base-provenance.json",
       "base.ndjson",
@@ -155,7 +157,6 @@ describe("createMatrixArtifactWriter", () => {
       evaluationId: "evaluation-id",
       treatment: buildTreatment(temporaryDirectory, path.join(temporaryDirectory, "pr-1")),
       expectedProjectCount: 1,
-      baseArtifactPath: path.join(temporaryDirectory, "base.ndjson"),
     });
 
     await writer.abort();
@@ -172,7 +173,6 @@ describe("createMatrixArtifactWriter", () => {
       evaluationId: "evaluation-id",
       treatment: buildTreatment(temporaryDirectory, artifactDirectory),
       expectedProjectCount: 2,
-      baseArtifactPath: path.join(temporaryDirectory, "base.ndjson"),
     });
     const firstRecord = {
       schemaVersion: 1,
@@ -219,7 +219,6 @@ describe("createMatrixArtifactWriter", () => {
       evaluationId: "evaluation-id",
       treatment: buildTreatment(temporaryDirectory, artifactDirectory),
       expectedProjectCount: 1,
-      baseArtifactPath,
     });
     await writer.write({
       schemaVersion: 1,

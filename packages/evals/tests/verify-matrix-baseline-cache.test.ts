@@ -13,6 +13,7 @@ import {
   MATRIX_SCAN_CONTRACT,
 } from "../src/constants.js";
 import type { MatrixEvaluationGroup } from "../src/matrix-treatment-descriptor.js";
+import { createMatrixBaseArtifactBinding } from "../src/utils/matrix-base-artifact-binding.js";
 import { verifyMatrixBaselineCache } from "../src/verify-matrix-baseline-cache.js";
 
 const temporaryDirectories: string[] = [];
@@ -140,11 +141,32 @@ describe("verifyMatrixBaselineCache", () => {
       group.baseFullRuleSetHash,
     ]);
 
-    await expect(verifyMatrixBaselineCache(group)).resolves.toEqual({
+    const verification = await verifyMatrixBaselineCache(group);
+    expect(verification).toMatchObject({
       hit: true,
       invalid: false,
+      artifact: {
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        byteLength: expect.any(Number),
+        provenanceSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      },
     });
     fs.appendFileSync(group.baselineOutputPath, " ");
+    await expect(
+      createMatrixBaseArtifactBinding({
+        sourcePath: group.baselineOutputPath,
+        provenanceSourcePath: group.baselineProvenancePath,
+        producer: {
+          reactDoctorRepository: group.baseReactDoctorRepository,
+          reactDoctorCommit: group.baseReactDoctorCommit,
+          evaluatorSourceHash: group.evaluatorSourceHash,
+          configContract: group.configContract,
+          ruleSetHash: group.baseFullRuleSetHash,
+          ruleKeys: [],
+        },
+        expected: verification.artifact,
+      }),
+    ).rejects.toThrow("changed after verification");
     await expect(verifyMatrixBaselineCache(group)).resolves.toMatchObject({
       hit: false,
       invalid: true,

@@ -42,7 +42,12 @@ import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seco
 import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 import { hashMatrixCorpusProjectSet, loadMatrixTreatments } from "./matrix-treatment-descriptor.js";
-import { verifyMatrixBaselineCache } from "./verify-matrix-baseline-cache.js";
+import type { MatrixBaselineArtifactVerification } from "./verify-matrix-baseline-cache.js";
+import {
+  parseMatrixBaselineVerifierOutput,
+  verifyMatrixBaselineCache,
+} from "./verify-matrix-baseline-cache.js";
+import { verifyMatrixImpactManifests } from "./verify-matrix-impact-manifests.js";
 
 const executeFile = promisify(execFile);
 
@@ -93,14 +98,14 @@ const createFullBaselineProvenance = async ({
   baseReactDoctorRepository: string;
   evaluatorSourceHash: string;
   baseFullRuleSetHash: string;
-}): Promise<void> => {
+}): Promise<MatrixBaselineArtifactVerification> => {
   const verifierPath = fileURLToPath(
     new URL(
       "../../../.agents/skills/run-parity/scripts/baseline-cache-provenance.mjs",
       import.meta.url,
     ),
   );
-  await executeFile(process.execPath, [
+  const { stdout } = await executeFile(process.execPath, [
     verifierPath,
     "create",
     "--baseline",
@@ -120,12 +125,34 @@ const createFullBaselineProvenance = async ({
     "--rule-set-hash",
     baseFullRuleSetHash,
   ]);
+  return parseMatrixBaselineVerifierOutput(stdout);
+};
+
+const verifyMatrixResourcesClean = async ({
+  daytona,
+  evaluationId,
+  snapshotName,
+}: {
+  daytona: Daytona;
+  evaluationId: string;
+  snapshotName: string;
+}): Promise<void> => {
+  for await (const sandbox of daytona.list({ labels: { evaluation: evaluationId } })) {
+    throw new Error(`Matrix Daytona sandbox still exists after cleanup: ${sandbox.id}`);
+  }
+  try {
+    const snapshot = await daytona.snapshot.get(snapshotName);
+    throw new Error(`Matrix Daytona snapshot still exists after cleanup: ${snapshot.name}`);
+  } catch (error) {
+    if (!(error instanceof DaytonaNotFoundError)) throw error;
+  }
 };
 
 export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Promise<void> => {
   const matrixOptions = options.matrix;
   if (!matrixOptions) throw new Error("Matrix evaluation options are missing");
   const treatments = await loadMatrixTreatments(matrixOptions.treatmentDescriptorPaths);
+  await verifyMatrixImpactManifests(treatments);
   const group = treatments[0].descriptor.group;
   const evaluatorSourceHash = getEvaluatorSourceHash();
   if (group.evaluatorSourceHash !== evaluatorSourceHash) {
@@ -150,6 +177,9 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   if (cacheVerification.invalid) {
     throw new Error(`Matrix baseline cache is invalid: ${cacheVerification.reason}`);
   }
+  if (cacheVerification.hit && !cacheVerification.artifact) {
+    throw new Error("Matrix baseline cache verifier omitted its artifact binding");
+  }
   process.stderr.write(
     cacheVerification.hit
       ? `Validated full baseline cache ${group.baselineOutputPath}; skipping base scans\n`
@@ -164,6 +194,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
     ? await createMatrixBaseArtifactBinding({
         sourcePath: group.baselineOutputPath,
         provenanceSourcePath: group.baselineProvenancePath,
+        expected: cacheVerification.artifact,
         producer: {
           reactDoctorRepository: group.baseReactDoctorRepository,
           reactDoctorCommit: group.baseReactDoctorCommit,
@@ -190,7 +221,6 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
         evaluationId,
         treatment,
         expectedProjectCount: projectCount,
-        baseArtifactPath: baseOutputPath,
       });
       artifactWriterEntries.push([treatment.descriptor.id, writer]);
     }
@@ -218,6 +248,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
   const snapshotName = `${DAYTONA_RUN_NAME}-snapshot-${evaluationId}`;
   let didCompleteEvaluation = false;
   let evaluationError: unknown;
+  let cleanupError: unknown;
   let baseEvaluation: EvaluationProvenance | undefined;
   try {
     process.stderr.write(
@@ -327,7 +358,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
     try {
       await cleanupEvaluationSandboxes({ daytona, evaluationId });
     } catch (error) {
-      evaluationError ??= error;
+      cleanupError = error;
     } finally {
       try {
         const snapshot = await daytona.snapshot.get(snapshotName);
@@ -337,8 +368,13 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
           process.stderr.write(
             `Failed to delete Daytona snapshot ${snapshotName}: ${toErrorMessage(error)}\n`,
           );
-          evaluationError ??= error;
+          cleanupError ??= error;
         }
+      }
+      try {
+        await verifyMatrixResourcesClean({ daytona, evaluationId, snapshotName });
+      } catch (error) {
+        cleanupError ??= error;
       }
     }
   }
@@ -364,7 +400,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
       isBaselineAvailable = true;
       if (baseLane?.ruleKeys.length === 0) {
         try {
-          await createFullBaselineProvenance({
+          const baselineVerification = await createFullBaselineProvenance({
             baselineOutputPath: baseOutputPath,
             baselineProvenancePath: group.baselineProvenancePath,
             corpusManifestPath: group.corpusManifestPath,
@@ -378,6 +414,7 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
             sourcePath: baseOutputPath,
             provenanceSourcePath: group.baselineProvenancePath,
             producer: baseEvaluation,
+            expected: baselineVerification,
           });
         } catch (error) {
           isBaselineAvailable = false;
@@ -436,4 +473,5 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
       `Matrix evaluation failed for lanes: ${failedLanes.map((lane) => lane.id).join(", ")}`,
     );
   }
+  if (cleanupError !== undefined) throw cleanupError;
 };

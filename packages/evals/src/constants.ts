@@ -42,6 +42,7 @@ export const MATRIX_REPORT_CONTRACT = "react-doctor-complete-report-v1";
 export const MATRIX_PROJECT_ROOT_POLICY = "manifest-root-dir-v1";
 export const MATRIX_BASE_LANE_ID = "matrix-base";
 export const MATRIX_BASE_ARTIFACT_CONTRACT = "matrix-base-artifact-v1";
+export const MATRIX_FULL_PARITY_RULE_KEYS = ["react-doctor/react-compiler-no-manual-memoization"];
 export const MATRIX_REACT_DOCTOR_DIRECTORY = "/workspace/react-doctor-matrix";
 export const MATRIX_PROVENANCE_DIRECTORY = "/workspace/react-doctor-matrix-provenance";
 export const MATRIX_TARGET_REPOSITORY_DIRECTORY = "/workspace/target-matrix.git";

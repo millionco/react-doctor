@@ -8,6 +8,7 @@ import {
   MATRIX_BASE_LANE_ID,
   MATRIX_DESCRIPTOR_ID_PATTERN,
   MATRIX_DESCRIPTOR_SCHEMA_VERSION,
+  MATRIX_FULL_PARITY_RULE_KEYS,
   MATRIX_PROJECT_ROOT_POLICY,
   MATRIX_REPORT_CONTRACT,
   MATRIX_SCAN_CONTRACT,
@@ -382,11 +383,22 @@ const parseImpactManifest = (
   const expectedCandidateRuleKeys = rules
     .filter((rule) => !rule.ruleKey.startsWith("react-doctor/") || rule.headFingerprint !== null)
     .map((rule) => rule.ruleKey);
+  const hasRemovedLocalRule = rules.some(
+    (rule) =>
+      rule.ruleKey.startsWith("react-doctor/") &&
+      rule.baseFingerprint !== null &&
+      rule.headFingerprint === null,
+  );
+  const hasFullParityRule = rules.some((rule) =>
+    MATRIX_FULL_PARITY_RULE_KEYS.includes(rule.ruleKey),
+  );
   if (
     (manifest.mode === "incremental" &&
       (runtimeChangedPaths.length === 0 ||
         candidateRuleKeys.length === 0 ||
         fallbackReasons.length !== 0 ||
+        hasRemovedLocalRule ||
+        hasFullParityRule ||
         JSON.stringify(candidateRuleKeys) !== JSON.stringify(expectedCandidateRuleKeys))) ||
     (manifest.mode === "full" && (candidateRuleKeys.length !== 0 || fallbackReasons.length === 0))
   ) {

@@ -4,14 +4,55 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import type { MatrixEvaluationGroup } from "./matrix-treatment-descriptor.js";
+import { SHA256_PATTERN } from "./constants.js";
+
+export interface MatrixBaselineArtifactVerification {
+  sha256: string;
+  byteLength: number;
+  provenanceSha256: string;
+}
 
 export interface MatrixBaselineCacheVerification {
   hit: boolean;
   invalid: boolean;
   reason?: string;
+  artifact?: MatrixBaselineArtifactVerification;
 }
 
 const executeFile = promisify(execFile);
+
+export const parseMatrixBaselineVerifierOutput = (
+  output: string,
+): MatrixBaselineArtifactVerification => {
+  const verification: unknown = JSON.parse(output);
+  if (
+    typeof verification !== "object" ||
+    verification === null ||
+    !("provenance" in verification) ||
+    typeof verification.provenance !== "object" ||
+    verification.provenance === null ||
+    !("artifact" in verification.provenance) ||
+    typeof verification.provenance.artifact !== "object" ||
+    verification.provenance.artifact === null ||
+    !("sha256" in verification.provenance.artifact) ||
+    typeof verification.provenance.artifact.sha256 !== "string" ||
+    !SHA256_PATTERN.test(verification.provenance.artifact.sha256) ||
+    !("byteLength" in verification.provenance.artifact) ||
+    typeof verification.provenance.artifact.byteLength !== "number" ||
+    !Number.isSafeInteger(verification.provenance.artifact.byteLength) ||
+    verification.provenance.artifact.byteLength <= 0 ||
+    !("provenanceSha256" in verification) ||
+    typeof verification.provenanceSha256 !== "string" ||
+    !SHA256_PATTERN.test(verification.provenanceSha256)
+  ) {
+    throw new Error("Baseline verifier returned an invalid artifact binding");
+  }
+  return {
+    sha256: verification.provenance.artifact.sha256,
+    byteLength: verification.provenance.artifact.byteLength,
+    provenanceSha256: verification.provenanceSha256,
+  };
+};
 
 export const verifyMatrixBaselineCache = async (
   group: MatrixEvaluationGroup,
@@ -40,7 +81,7 @@ export const verifyMatrixBaselineCache = async (
     ),
   );
   try {
-    await executeFile(process.execPath, [
+    const { stdout } = await executeFile(process.execPath, [
       verifierPath,
       "verify",
       "--baseline",
@@ -60,7 +101,12 @@ export const verifyMatrixBaselineCache = async (
       "--rule-set-hash",
       group.baseFullRuleSetHash,
     ]);
-    return { hit: true, invalid: false };
+    const artifact = parseMatrixBaselineVerifierOutput(stdout);
+    return {
+      hit: true,
+      invalid: false,
+      artifact,
+    };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { hit: false, invalid: true, reason };

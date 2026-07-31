@@ -31,7 +31,6 @@ export interface MatrixArtifactProvenance {
   };
   descriptorSha256: string;
   impactManifestSha256: string;
-  baseArtifactPath: string;
   baseArtifact?: MaterializedMatrixBaseArtifactBinding;
   ruleKeys: ReadonlyArray<string>;
   evaluation?: EvaluationProvenance;
@@ -105,12 +104,10 @@ export const createMatrixArtifactWriter = async ({
   evaluationId,
   treatment,
   expectedProjectCount,
-  baseArtifactPath,
 }: {
   evaluationId: string;
   treatment: LoadedMatrixTreatment;
   expectedProjectCount: number;
-  baseArtifactPath: string;
 }): Promise<MatrixArtifactWriter> => {
   const artifactDirectory = treatment.descriptor.artifactDirectory;
   const pendingDirectory = join(
@@ -202,7 +199,6 @@ export const createMatrixArtifactWriter = async ({
         },
         descriptorSha256: treatment.descriptorSha256,
         impactManifestSha256: treatment.descriptor.impactManifestSha256,
-        baseArtifactPath,
         baseArtifact: materializedBaseArtifact,
         ruleKeys: treatment.ruleKeys,
         evaluation,

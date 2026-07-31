@@ -16,13 +16,20 @@ import type { MatrixEvaluationLane } from "../src/build-matrix-evaluation-plan.j
 import type { LoadedMatrixTreatment } from "../src/matrix-treatment-descriptor.js";
 
 const matrixMocks = vi.hoisted(() => ({
+  DaytonaNotFoundError: class extends Error {},
   cleanupEvaluationSandboxes: vi.fn(async () => undefined),
   evaluateMatrixRepositoryBatch: vi.fn(),
   loadCorpusRepositories: vi.fn(),
   loadMatrixTreatments: vi.fn(),
   snapshotCreate: vi.fn(async () => undefined),
-  snapshotDelete: vi.fn(async () => undefined),
-  snapshotGet: vi.fn(async () => ({ name: "snapshot" })),
+  snapshotDeleted: false,
+  snapshotDelete: vi.fn(async () => {
+    matrixMocks.snapshotDeleted = true;
+  }),
+  snapshotGet: vi.fn(async () => {
+    if (matrixMocks.snapshotDeleted) throw new matrixMocks.DaytonaNotFoundError();
+    return { name: "snapshot" };
+  }),
   verifyMatrixBaselineCache: vi.fn(async () => ({
     hit: false,
     invalid: false,
@@ -38,13 +45,14 @@ vi.mock("@daytona/sdk", () => {
   };
   return {
     Daytona: class {
+      list = async function* () {};
       snapshot = {
         create: matrixMocks.snapshotCreate,
         delete: matrixMocks.snapshotDelete,
         get: matrixMocks.snapshotGet,
       };
     },
-    DaytonaNotFoundError: class extends Error {},
+    DaytonaNotFoundError: matrixMocks.DaytonaNotFoundError,
     Image: { base: vi.fn(() => image) },
   };
 });
@@ -67,7 +75,12 @@ vi.mock("../src/matrix-treatment-descriptor.js", async (importOriginal) => ({
 }));
 
 vi.mock("../src/verify-matrix-baseline-cache.js", () => ({
+  parseMatrixBaselineVerifierOutput: vi.fn(),
   verifyMatrixBaselineCache: matrixMocks.verifyMatrixBaselineCache,
+}));
+
+vi.mock("../src/verify-matrix-impact-manifests.js", () => ({
+  verifyMatrixImpactManifests: vi.fn(async () => undefined),
 }));
 
 vi.mock("../src/utils/get-evaluator-source-hash.js", () => ({
@@ -132,6 +145,14 @@ const buildTreatment = ({
 
 afterEach(() => {
   vi.clearAllMocks();
+  matrixMocks.snapshotDeleted = false;
+  matrixMocks.snapshotDelete.mockImplementation(async () => {
+    matrixMocks.snapshotDeleted = true;
+  });
+  matrixMocks.snapshotGet.mockImplementation(async () => {
+    if (matrixMocks.snapshotDeleted) throw new matrixMocks.DaytonaNotFoundError();
+    return { name: "snapshot" };
+  });
   for (const temporaryDirectory of temporaryDirectories.splice(0)) {
     fs.rmSync(temporaryDirectory, { force: true, recursive: true });
   }
@@ -239,7 +260,6 @@ describe("runMatrixCorpusEvaluation", () => {
         expectedProjectCount: 1,
         recordCount: 1,
         failedRecordCount: 0,
-        baseArtifactPath: group.baselineOutputPath,
       });
       expect(
         fs.readFileSync(path.join(artifactDirectory, "candidate.ndjson"), "utf8").trim(),
@@ -293,5 +313,86 @@ describe("runMatrixCorpusEvaluation", () => {
     ).rejects.toThrow("must pin every repository");
     expect(matrixMocks.snapshotCreate).not.toHaveBeenCalled();
     expect(matrixMocks.evaluateMatrixRepositoryBatch).not.toHaveBeenCalled();
+  });
+
+  it("preserves complete artifacts when final snapshot cleanup fails", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-cleanup-failure-"));
+    temporaryDirectories.push(temporaryDirectory);
+    const corpusManifestPath = path.join(temporaryDirectory, "corpus.json");
+    const corpusContents = "{}\n";
+    fs.writeFileSync(corpusManifestPath, corpusContents);
+    const repository: CorpusRepository = {
+      org: "example",
+      name: "repository",
+      ref: "f".repeat(40),
+      rootDir: ".",
+    };
+    const group = {
+      baseReactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+      baseReactDoctorCommit: "a".repeat(40),
+      baseFullRuleSetHash: "3".repeat(64),
+      baseArtifactPath: path.join(temporaryDirectory, "base-scoped.ndjson"),
+      baselineOutputPath: path.join(temporaryDirectory, "baseline.ndjson"),
+      baselineProvenancePath: path.join(temporaryDirectory, "baseline.provenance.json"),
+      corpusManifestPath,
+      corpusManifestSha256: hashContents(corpusContents),
+      corpusProjectSetSha256: hashMatrixCorpusProjectSet([repository]),
+      evaluatorSourceHash: "6".repeat(64),
+      configContract: EVALUATION_CONFIG_CONTRACT,
+      scanContract: MATRIX_SCAN_CONTRACT,
+      reportContract: MATRIX_REPORT_CONTRACT,
+      projectRootPolicy: MATRIX_PROJECT_ROOT_POLICY,
+    };
+    const treatment = buildTreatment({
+      temporaryDirectory,
+      id: "pr-1",
+      group,
+      mode: "incremental",
+    });
+    matrixMocks.loadMatrixTreatments.mockResolvedValue([treatment]);
+    matrixMocks.loadCorpusRepositories.mockResolvedValue([repository]);
+    matrixMocks.evaluateMatrixRepositoryBatch.mockImplementation(
+      async ({ lanes, onLaneRecord }) => {
+        for (const lane of lanes) {
+          await onLaneRecord(lane.id, {
+            schemaVersion: 1,
+            repository,
+            evaluation: {
+              reactDoctorRepository: lane.reactDoctorRepository,
+              reactDoctorCommit: lane.reactDoctorRef,
+              configContract: EVALUATION_CONFIG_CONTRACT,
+              ruleSetHash: "7".repeat(64),
+              ruleKeys: lane.ruleKeys,
+              evaluatorSourceHash: group.evaluatorSourceHash,
+            },
+            report: { complete: true },
+          });
+        }
+        return [];
+      },
+    );
+    matrixMocks.snapshotDelete.mockRejectedValueOnce(new Error("transient delete failure"));
+
+    await expect(
+      runMatrixCorpusEvaluation({
+        repositoriesSources: [corpusManifestPath],
+        repositoryLimit: 1,
+        concurrency: 1,
+        repositoriesPerSandbox: 1,
+        projectRootsPerRepository: 1,
+        maxDurationMinutes: 20,
+        reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+        reactDoctorRef: "a".repeat(40),
+        ruleKeys: [],
+        matrix: { treatmentDescriptorPaths: [treatment.descriptorPath], waveWidth: 1 },
+      }),
+    ).rejects.toThrow("transient delete failure");
+
+    const artifactDirectory = treatment.descriptor.artifactDirectory;
+    expect(
+      JSON.parse(fs.readFileSync(path.join(artifactDirectory, "provenance.json"), "utf8")),
+    ).toMatchObject({ status: "complete" });
+    expect(fs.readFileSync(path.join(artifactDirectory, "base.ndjson"), "utf8")).not.toBe("");
+    expect(fs.readFileSync(path.join(artifactDirectory, "candidate.ndjson"), "utf8")).not.toBe("");
   });
 });

@@ -309,7 +309,7 @@ const assertExactValue = (actual, expected, description) => {
   }
 };
 
-export const verifyBaselineCacheProvenance = async ({
+const verifyBaselineCacheProvenanceDetails = async ({
   baselinePath,
   corpusManifestPath,
   provenancePath = getDefaultProvenancePath(baselinePath),
@@ -326,10 +326,10 @@ export const verifyBaselineCacheProvenance = async ({
     configContract,
     ruleSetHash,
   });
-  const provenanceContents = await readFile(provenancePath, "utf8");
+  const provenanceContents = await readFile(provenancePath);
   let provenance;
   try {
-    provenance = JSON.parse(provenanceContents);
+    provenance = JSON.parse(provenanceContents.toString("utf8"));
   } catch (error) {
     throw new Error(`Provenance is not valid JSON: ${error.message}`);
   }
@@ -351,8 +351,11 @@ export const verifyBaselineCacheProvenance = async ({
     },
     "Corpus provenance",
   );
-  return provenance;
+  return { provenance, provenanceSha256: hashBytes(provenanceContents) };
 };
+
+export const verifyBaselineCacheProvenance = async (input) =>
+  (await verifyBaselineCacheProvenanceDetails(input)).provenance;
 
 const parseCliArguments = (argumentsList) => {
   const [mode, ...optionArguments] = argumentsList;
@@ -397,11 +400,9 @@ const parseCliArguments = (argumentsList) => {
 
 const main = async () => {
   const { mode, input } = parseCliArguments(process.argv.slice(PROCESS_ARGUMENT_START_INDEX));
-  const provenance =
-    mode === "create"
-      ? await createBaselineCacheProvenance(input)
-      : await verifyBaselineCacheProvenance(input);
-  process.stdout.write(`${JSON.stringify(provenance)}\n`);
+  if (mode === "create") await createBaselineCacheProvenance(input);
+  const verification = await verifyBaselineCacheProvenanceDetails(input);
+  process.stdout.write(`${JSON.stringify(verification)}\n`);
 };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

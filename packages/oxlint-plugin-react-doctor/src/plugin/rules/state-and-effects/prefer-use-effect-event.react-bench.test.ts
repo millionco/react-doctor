@@ -80,4 +80,44 @@ describe("prefer-use-effect-event — React Bench regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent when boolean and string listener capture arguments do not match", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Modal = ({ isOpen, onClose }) => {
+        useEffect(() => {
+          if (!isOpen) return;
+          const handleKeyDown = (event) => {
+            if (event.key === "Escape") onClose();
+          };
+          document.addEventListener("keydown", handleKeyDown, false);
+          return () => document.removeEventListener("keydown", handleKeyDown, "false");
+        }, [isOpen, onClose]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not crash while recovering malformed sparse listener arguments", () => {
+    const result = runPreferUseEffectEvent(`
+      import { useEffect } from "react";
+
+      const Modal = ({ isOpen, onClose }) => {
+        useEffect(() => {
+          if (!isOpen) return;
+          const handleKeyDown = () => onClose();
+          document.addEventListener("keydown", handleKeyDown, , true);
+          return () => document.removeEventListener("keydown", handleKeyDown, , true);
+        }, [isOpen, onClose]);
+        return null;
+      };
+    `);
+
+    expect(result.parseErrors.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

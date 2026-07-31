@@ -215,14 +215,15 @@ const getCallArgumentUse = (reference: EsTreeNode): CallArgumentUse | null => {
 };
 
 const resolvePairedCallArgumentKey = (
-  argument: EsTreeNode,
+  argument: EsTreeNode | null | undefined,
   context: RuleContext,
 ): string | null => {
   const expressionKey = resolveExpressionKey(argument, context);
   if (expressionKey !== null) return expressionKey;
+  if (!argument) return null;
   const unwrappedArgument = stripParenExpression(argument);
   return isNodeOfType(unwrappedArgument, "Literal") && typeof unwrappedArgument.value === "boolean"
-    ? `literal:${String(unwrappedArgument.value)}`
+    ? `boolean:${String(unwrappedArgument.value)}`
     : null;
 };
 

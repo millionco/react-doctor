@@ -63,12 +63,19 @@ describe("SETUP_PAIRED_TARGET_REPOSITORY_COMMAND", () => {
         encoding: "utf8",
       }).trim(),
     ).toBe(targetRef);
-    expect(fs.readFileSync(path.join(baseWorkDirectory, ".git"), "utf8")).toContain(
-      targetRepositoryDirectory,
+    const resolvedTargetRepositoryDirectory = fs.realpathSync(targetRepositoryDirectory);
+    const resolvedBaseCommonDirectory = fs.realpathSync(
+      execFileSync("git", ["-C", baseWorkDirectory, "rev-parse", "--git-common-dir"], {
+        encoding: "utf8",
+      }).trim(),
     );
-    expect(fs.readFileSync(path.join(treatmentWorkDirectory, ".git"), "utf8")).toContain(
-      targetRepositoryDirectory,
+    const resolvedTreatmentCommonDirectory = fs.realpathSync(
+      execFileSync("git", ["-C", treatmentWorkDirectory, "rev-parse", "--git-common-dir"], {
+        encoding: "utf8",
+      }).trim(),
     );
+    expect(resolvedBaseCommonDirectory).toBe(resolvedTargetRepositoryDirectory);
+    expect(resolvedTreatmentCommonDirectory).toBe(resolvedTargetRepositoryDirectory);
 
     fs.writeFileSync(path.join(baseWorkDirectory, "doctor.config.ts"), "base\n");
     fs.writeFileSync(path.join(treatmentWorkDirectory, "doctor.config.ts"), "treatment\n");

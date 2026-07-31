@@ -544,6 +544,428 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(localFactoryAssignment.diagnostics).toHaveLength(0);
   });
 
+  it("accounts for later object properties that can override fresh containers", () => {
+    const earlierSpread = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={...previous,cache:new Map()};next.cache.set("value",1);return next})}`,
+    );
+    const laterSpread = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map(),...previous};next.cache.set("value",1);return next})}`,
+    );
+    const laterKnownProperty = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map(),other:previous};next.cache.set("value",1);return next})}`,
+    );
+    const laterUnknownProperty = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({key})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map(),[key]:previous.cache};next.cache.set("value",1);return next})}`,
+    );
+    expect(earlierSpread.diagnostics).toHaveLength(0);
+    expect(laterSpread.diagnostics).toHaveLength(1);
+    expect(laterKnownProperty.diagnostics).toHaveLength(0);
+    expect(laterUnknownProperty.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks property overwrites before mutating a fresh object property", () => {
+    const dynamicOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({key})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};next[key]=previous.cache;next.cache.set("value",1);return next})}`,
+    );
+    const dynamicThenFresh = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({key})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};next[key]=previous.cache;next.cache=new Map();next.cache.set("value",1);return next})}`,
+    );
+    const objectAssignOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};Object.assign(next,previous);next.cache.set("value",1);return next})}`,
+    );
+    const objectAssignThenFresh = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};Object.assign(next,previous,{cache:new Map()});next.cache.set("value",1);return next})}`,
+    );
+    const freshThenObjectAssign = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={};Object.assign(next,{cache:new Map()},previous);next.cache.set("value",1);return next})}`,
+    );
+    const definePropertyOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};Object.defineProperty(next,"cache",{value:previous.cache});next.cache.set("value",1);return next})}`,
+    );
+    const definePropertyFresh = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};Object.defineProperty(next,"cache",{value:new Map()});next.cache.set("value",1);return next})}`,
+    );
+    const helperOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=()=>Object.assign(next,previous);overwrite();next.cache.set("value",1);return next})}`,
+    );
+    expect(dynamicOverwrite.diagnostics).toHaveLength(1);
+    expect(dynamicThenFresh.diagnostics).toHaveLength(0);
+    expect(objectAssignOverwrite.diagnostics).toHaveLength(1);
+    expect(objectAssignThenFresh.diagnostics).toHaveLength(0);
+    expect(freshThenObjectAssign.diagnostics).toHaveLength(1);
+    expect(definePropertyOverwrite.diagnostics).toHaveLength(1);
+    expect(definePropertyFresh.diagnostics).toHaveLength(0);
+    expect(helperOverwrite.diagnostics).toHaveLength(1);
+  });
+
+  it("ignores overwrite mechanisms that provably leave the fresh property intact", () => {
+    const staticOtherProperty = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};next.other=previous;Object.assign(next,{other:previous});Object.defineProperty(next,"other",{value:previous});next.cache.set("value",1);return next})}`,
+    );
+    const shadowedObject = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({Object})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};Object.assign(next,previous);next.cache.set("value",1);return next})}`,
+    );
+    const conditionalFreshOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};if(condition)next.cache=new Map();next.cache.set("value",1);return next})}`,
+    );
+    const dynamicFreshOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({key})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};next[key]=new Map();next.cache.set("value",1);return next})}`,
+    );
+    expect(staticOtherProperty.diagnostics).toHaveLength(0);
+    expect(shadowedObject.diagnostics).toHaveLength(0);
+    expect(conditionalFreshOverwrite.diagnostics).toHaveLength(0);
+    expect(dynamicFreshOverwrite.diagnostics).toHaveLength(0);
+  });
+
+  it("replays only synchronously executed local helper mutations", () => {
+    const parameterOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>Object.assign(target,previous);overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const parameterFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};const freshen=target=>Object.assign(target,{cache:new Map()});freshen(next);next.cache.set("value",1);return next})}`,
+    );
+    const asyncBeforeSuspension = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async()=>{Object.assign(next,previous);await 0};overwrite();next.cache.set("value",1);return next})}`,
+    );
+    const asyncAfterSuspension = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async()=>{await 0;Object.assign(next,previous)};overwrite();next.cache.set("value",1);return next})}`,
+    );
+    const asyncAfterConditionalSuspension = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async()=>{if(condition)await 0;Object.assign(next,previous)};overwrite();next.cache.set("value",1);return next})}`,
+    );
+    const asyncAfterUnreachableSuspension = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async()=>{if(false)await 0;Object.assign(next,previous)};overwrite();next.cache.set("value",1);return next})}`,
+    );
+    const generatorBody = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(){Object.assign(next,previous)}overwrite();next.cache.set("value",1);return next})}`,
+    );
+    const parameterRebind = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{target={cache:previous.cache}};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const conditionalParameterRebind = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{if(condition)target={cache:new Map()};target.cache=previous.cache};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const defaultParameterOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=(target=next)=>Object.assign(target,previous);overwrite();next.cache.set("value",1);return next})}`,
+    );
+    expect(parameterOverwrite.diagnostics).toHaveLength(1);
+    expect(parameterFreshen.diagnostics).toHaveLength(0);
+    expect(asyncBeforeSuspension.diagnostics).toHaveLength(1);
+    expect(asyncAfterSuspension.diagnostics).toHaveLength(0);
+    expect(asyncAfterConditionalSuspension.diagnostics).toHaveLength(1);
+    expect(asyncAfterUnreachableSuspension.diagnostics).toHaveLength(1);
+    expect(generatorBody.diagnostics).toHaveLength(0);
+    expect(parameterRebind.diagnostics).toHaveLength(0);
+    expect(conditionalParameterRebind.diagnostics).toHaveLength(1);
+    expect(defaultParameterOverwrite.diagnostics).toHaveLength(1);
+  });
+
+  it("tracks helper replay across suspension, iteration, and generator boundaries", () => {
+    const conditionalSuspensionFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};const freshen=async target=>{if(condition)await 0;Object.assign(target,{cache:new Map()})};freshen(next);next.cache.set("value",1);return next})}`,
+    );
+    const trySuspensionFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};const freshen=async target=>{try{await 0}catch{}Object.assign(target,{cache:new Map()})};freshen(next);next.cache.set("value",1);return next})}`,
+    );
+    const repeatedHelperOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=()=>Object.assign(next,previous);for(let index=0;index<2;index++){next.cache.set("value",1);overwrite()}return next})}`,
+    );
+    const generatorNextOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(){Object.assign(next,previous);yield}overwrite().next();next.cache.set("value",1);return next})}`,
+    );
+    const generatorAfterYield = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(){yield;Object.assign(next,previous)}overwrite().next();next.cache.set("value",1);return next})}`,
+    );
+    const exhaustedGeneratorOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(){yield;Object.assign(next,previous)}[...overwrite()];next.cache.set("value",1);return next})}`,
+    );
+    const forOfGeneratorOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(){yield;Object.assign(next,previous)}for(const value of overwrite()){}next.cache.set("value",1);return next})}`,
+    );
+    const earlyExitGeneratorOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(){Object.assign(next,previous);yield;Object.assign(next,{cache:new Map()})}for(const value of overwrite()){break}next.cache.set("value",1);return next})}`,
+    );
+    expect(conditionalSuspensionFreshen.diagnostics).toHaveLength(1);
+    expect(trySuspensionFreshen.diagnostics).toHaveLength(1);
+    expect(repeatedHelperOverwrite.diagnostics).toHaveLength(1);
+    expect(generatorNextOverwrite.diagnostics).toHaveLength(1);
+    expect(generatorAfterYield.diagnostics).toHaveLength(0);
+    expect(exhaustedGeneratorOverwrite.diagnostics).toHaveLength(1);
+    expect(forOfGeneratorOverwrite.diagnostics).toHaveLength(1);
+    expect(earlyExitGeneratorOverwrite.diagnostics).toHaveLength(1);
+  });
+
+  it("evaluates suspension operands before stopping synchronous helper replay", () => {
+    const awaitOperandOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{await Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const yieldOperandOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(target){yield Object.assign(target,previous)}overwrite(next).next();next.cache.set("value",1);return next})}`,
+    );
+    const forAwaitOperandOverwrite = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{for await(const value of(Object.assign(target,previous),[])){}};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    expect(awaitOperandOverwrite.diagnostics).toHaveLength(1);
+    expect(yieldOperandOverwrite.diagnostics).toHaveLength(1);
+    expect(forAwaitOperandOverwrite.diagnostics).toHaveLength(1);
+  });
+
+  it("does not replay continuations dominated by a conditional suspension", () => {
+    const conditionalAwaitBranch = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{if(condition){await 0;Object.assign(target,previous)}};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const loopAwaitBranch = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({items})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{for(const item of items){await 0;Object.assign(target,previous)}};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const conditionalYieldBranch = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(target){if(condition){yield;Object.assign(target,previous)}}overwrite(next).next();next.cache.set("value",1);return next})}`,
+    );
+    expect(conditionalAwaitBranch.diagnostics).toHaveLength(0);
+    expect(loopAwaitBranch.diagnostics).toHaveLength(0);
+    expect(conditionalYieldBranch.diagnostics).toHaveLength(0);
+  });
+
+  it("preserves active parameter provenance through alias-preserving rebinds", () => {
+    const selfRebind = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{target=target;Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const originalAliasRebind = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{target=next;Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const conditionalExpressionRebind = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition,other})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{target=condition?target:other;Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const nullishRebind = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({other})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{target??=other;Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    expect(selfRebind.diagnostics).toHaveLength(1);
+    expect(originalAliasRebind.diagnostics).toHaveLength(1);
+    expect(conditionalExpressionRebind.diagnostics).toHaveLength(1);
+    expect(nullishRebind.diagnostics).toHaveLength(1);
+  });
+
+  it("clears active parameter provenance after an unconditional distinct rebind", () => {
+    const rebindAfterConditionalRebind = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{if(condition)target={};target={};Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const rebindAfterConditionalSuspension = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{if(condition)await 0;target={};Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const truthyAndRebind = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({other})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{target&&=other;Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    expect(rebindAfterConditionalRebind.diagnostics).toHaveLength(0);
+    expect(rebindAfterConditionalSuspension.diagnostics).toHaveLength(0);
+    expect(truthyAndRebind.diagnostics).toHaveLength(0);
+  });
+
+  it("stops replay after guaranteed suspension inside try statements", () => {
+    const afterTry = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await 0}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const inFinally = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await 0}finally{Object.assign(target,previous)}};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const inCatch = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({promise})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await promise}catch{Object.assign(target,previous)}};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const conditionallySkippedAwait = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{if(condition)throw 0;await 0}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const throwingAwaitOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await maybeThrow()}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const unresolvedAwaitOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await missingIdentifier}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const temporalDeadZoneOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await later}catch{}Object.assign(target,previous);const later=0};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const unresolvedVoidOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await void missingIdentifier}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const coerciveUnaryOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async(target,symbolValue)=>{try{await +symbolValue}catch{}Object.assign(target,previous)};overwrite(next,Symbol());next.cache.set("value",1);return next})}`,
+    );
+    const safePrefix = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{const marker=1;await 0}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const safeArrayOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await[]}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    const safeTemplateOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      'import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await``}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}',
+    );
+    const coerciveTemplateOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      'import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async(target,symbolValue)=>{try{await`${symbolValue}`}catch{}Object.assign(target,previous)};overwrite(next,Symbol());next.cache.set("value",1);return next})}',
+    );
+    const safeTypeofOperand = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=async target=>{try{await typeof missingIdentifier}catch{}Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    expect(afterTry.diagnostics).toHaveLength(0);
+    expect(inFinally.diagnostics).toHaveLength(0);
+    expect(inCatch.diagnostics).toHaveLength(0);
+    expect(conditionallySkippedAwait.diagnostics).toHaveLength(1);
+    expect(throwingAwaitOperand.diagnostics).toHaveLength(1);
+    expect(unresolvedAwaitOperand.diagnostics).toHaveLength(1);
+    expect(temporalDeadZoneOperand.diagnostics).toHaveLength(1);
+    expect(unresolvedVoidOperand.diagnostics).toHaveLength(1);
+    expect(coerciveUnaryOperand.diagnostics).toHaveLength(1);
+    expect(safePrefix.diagnostics).toHaveLength(0);
+    expect(safeArrayOperand.diagnostics).toHaveLength(0);
+    expect(safeTemplateOperand.diagnostics).toHaveLength(0);
+    expect(coerciveTemplateOperand.diagnostics).toHaveLength(1);
+    expect(safeTypeofOperand.diagnostics).toHaveLength(0);
+  });
+
+  it("does not suspend at a statically empty delegated yield", () => {
+    const emptyDelegatedYield = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};function* overwrite(){yield*[];Object.assign(next,previous)}overwrite().next();next.cache.set("value",1);return next})}`,
+    );
+    expect(emptyDelegatedYield.diagnostics).toHaveLength(1);
+  });
+
+  it("uses known object truthiness when replaying logical rebinds", () => {
+    const logicalOrFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};const freshen=target=>{target=target||{};Object.assign(target,{cache:new Map()})};freshen(next);next.cache.set("value",1);return next})}`,
+    );
+    const nullishFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};const freshen=target=>{target=target??{};Object.assign(target,{cache:new Map()})};freshen(next);next.cache.set("value",1);return next})}`,
+    );
+    const logicalAndDetach = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=target=>{target=target&&{};Object.assign(target,previous)};overwrite(next);next.cache.set("value",1);return next})}`,
+    );
+    expect(logicalOrFreshen.diagnostics).toHaveLength(0);
+    expect(nullishFreshen.diagnostics).toHaveLength(0);
+    expect(logicalAndDetach.diagnostics).toHaveLength(0);
+  });
+
+  it("fully replays regular generator iteration without marking it conditional", () => {
+    const forOfGeneratorFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};function* freshen(target){yield;Object.assign(target,{cache:new Map()})}for(const value of freshen(next)){}next.cache.set("value",1);return next})}`,
+    );
+    const conditionalBreakBeforeFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};function* freshen(target){yield;Object.assign(target,{cache:new Map()})}for(const value of freshen(next)){if(condition)break}next.cache.set("value",1);return next})}`,
+    );
+    const conditionalReturnBeforeFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};function* freshen(target){yield;Object.assign(target,{cache:new Map()})}for(const value of freshen(next)){if(condition)return next}next.cache.set("value",1);return next})}`,
+    );
+    const switchBreakBeforeFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({value})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};function* freshen(target){yield;Object.assign(target,{cache:new Map()})}for(const item of freshen(next)){switch(value){case 1:break}}next.cache.set("value",1);return next})}`,
+    );
+    const nestedLoopBreakBeforeFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};function* freshen(target){yield;Object.assign(target,{cache:new Map()})}for(const item of freshen(next)){while(condition){break}}next.cache.set("value",1);return next})}`,
+    );
+    const labeledBreakBeforeFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};function* freshen(target){yield;Object.assign(target,{cache:new Map()})}outer:for(const item of freshen(next)){if(condition)break outer}next.cache.set("value",1);return next})}`,
+    );
+    const outerBlockBreakBeforeFreshen = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};function* freshen(target){yield;Object.assign(target,{cache:new Map()})}outer:{for(const item of freshen(next)){if(condition)break outer}}next.cache.set("value",1);return next})}`,
+    );
+    const outerBlockBreakSkippingUsage = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=({condition})=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:previous.cache};function* freshen(target){yield;Object.assign(target,{cache:new Map()})}outer:{for(const item of freshen(next)){if(condition)break outer}next.cache.set("value",1)}return next})}`,
+    );
+    expect(forOfGeneratorFreshen.diagnostics).toHaveLength(0);
+    expect(conditionalBreakBeforeFreshen.diagnostics).toHaveLength(1);
+    expect(conditionalReturnBeforeFreshen.diagnostics).toHaveLength(0);
+    expect(switchBreakBeforeFreshen.diagnostics).toHaveLength(0);
+    expect(nestedLoopBreakBeforeFreshen.diagnostics).toHaveLength(0);
+    expect(labeledBreakBeforeFreshen.diagnostics).toHaveLength(1);
+    expect(outerBlockBreakBeforeFreshen.diagnostics).toHaveLength(1);
+    expect(outerBlockBreakSkippingUsage.diagnostics).toHaveLength(0);
+  });
+
+  it("uses default parameter provenance for explicit undefined arguments", () => {
+    const undefinedArgument = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=(target=next)=>Object.assign(target,previous);overwrite(undefined);next.cache.set("value",1);return next})}`,
+    );
+    const voidArgument = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=(target=next)=>Object.assign(target,previous);overwrite(void 0);next.cache.set("value",1);return next})}`,
+    );
+    const wrappedUndefinedArgument = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setValue]=useState({});setValue(previous=>{const next={cache:new Map()};const overwrite=(target=next)=>Object.assign(target,previous);overwrite(undefined as never);next.cache.set("value",1);return next})}`,
+    );
+    expect(undefinedArgument.diagnostics).toHaveLength(1);
+    expect(voidArgument.diagnostics).toHaveLength(1);
+    expect(wrappedUndefinedArgument.diagnostics).toHaveLength(1);
+  });
+
   it("does not trust external or conditionally assigned collection properties", () => {
     const externalObject = runRule(
       noSideEffectInStateUpdaterFunction,

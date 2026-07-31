@@ -3,6 +3,10 @@ import { analyzeScopes } from "../../semantic/scope-analysis.js";
 import { MUTATING_COLLECTION_METHODS, PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { SAFE_MUTABLE_CONSTRUCTOR_NAMES } from "../../constants/library.js";
 import {
+  OBJECT_PROPERTY_MUTATION_METHOD_NAMES,
+  REFLECT_PROPERTY_MUTATION_METHOD_NAMES,
+} from "../../constants/mutation-methods.js";
+import {
   STATE_UPDATER_CALL_PROPERTY_WRITE_RANK,
   STATE_UPDATER_INITIAL_PROPERTY_WRITE_RANK,
   STATE_UPDATER_INVOCATION_PROPERTY_WRITE_RANK,
@@ -19,8 +23,11 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
+import { getPropertyDescriptorValue } from "../../utils/get-property-descriptor-value.js";
+import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { getSymbolMutationInspector } from "../../utils/get-symbol-mutation-inspector.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { hasPossibleStaticPropertyMutationOrEscape } from "../../utils/has-static-property-write-before.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
@@ -106,6 +113,7 @@ const DAYJS_BAD_MUTABLE_MODULE_NAMES = new Set([
   `${DAYJS_BAD_MUTABLE_MODULE_NAME}.js`,
 ]);
 const DAYJS_STATIC_FACTORY_METHOD_NAMES = new Set(["unix", "utc"]);
+const OBJECT_DEFINE_PROPERTY_METHOD_NAMES = new Set(["defineProperty"]);
 const programsActivatingDayjsBadMutable = new WeakSet<EsTreeNode>();
 
 interface ExecutedFunctionAnalysis {
@@ -1163,6 +1171,123 @@ const expressionCreatesFreshContainer = (expression: EsTreeNode, context: RuleCo
   );
 };
 
+const getPropertyValueAfterMutation = (
+  currentValue: EsTreeNode | null,
+  mutationNode: EsTreeNode,
+  propertyName: string,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const mutationInspector = getSymbolMutationInspector(context.scopes);
+  const target = mutationInspector.getOutermostTarget(mutationNode);
+  const parent = target.parent;
+  if (!parent) return null;
+  if (
+    (isNodeOfType(parent, "AssignmentExpression") && parent.left === target) ||
+    (isNodeOfType(parent, "UpdateExpression") && parent.argument === target) ||
+    (isNodeOfType(parent, "UnaryExpression") &&
+      parent.operator === "delete" &&
+      parent.argument === target)
+  ) {
+    if (!isNodeOfType(target, "MemberExpression")) return null;
+    if (stripParenExpression(target.object) !== findTransparentExpressionRoot(mutationNode)) {
+      return currentValue;
+    }
+    const mutationPropertyName = getStaticPropertyName(target);
+    if (mutationPropertyName !== null && mutationPropertyName !== propertyName) {
+      return currentValue;
+    }
+    if (
+      mutationPropertyName === null &&
+      isNodeOfType(parent, "AssignmentExpression") &&
+      parent.operator === "=" &&
+      currentValue &&
+      expressionCreatesFreshContainer(currentValue, context) &&
+      expressionCreatesFreshContainer(parent.right, context)
+    ) {
+      return parent.right;
+    }
+    if (
+      mutationPropertyName === null ||
+      !isNodeOfType(parent, "AssignmentExpression") ||
+      parent.operator !== "="
+    ) {
+      return null;
+    }
+    return parent.right;
+  }
+  if (
+    !isNodeOfType(parent, "CallExpression") ||
+    parent.arguments[0] !== target ||
+    target !== findTransparentExpressionRoot(mutationNode)
+  ) {
+    return null;
+  }
+  if (
+    mutationInspector.isGlobalNamespaceMethod(
+      parent.callee,
+      "Object",
+      OBJECT_PROPERTY_MUTATION_METHOD_NAMES,
+    )
+  ) {
+    const callee = stripParenExpression(parent.callee);
+    if (!isNodeOfType(callee, "MemberExpression")) return null;
+    const methodName = getStaticPropertyName(callee);
+    if (methodName === "assign") {
+      let assignedValue = currentValue;
+      for (const source of parent.arguments.slice(1)) {
+        if (isNodeOfType(source, "SpreadElement")) {
+          assignedValue = null;
+          continue;
+        }
+        const sourceValue = getStaticObjectPropertyValue(source, propertyName);
+        if (sourceValue !== undefined) assignedValue = sourceValue;
+      }
+      return assignedValue;
+    }
+    if (methodName === "defineProperties") {
+      const descriptors = parent.arguments[1];
+      if (!descriptors || isNodeOfType(descriptors, "SpreadElement")) return null;
+      const descriptor = getStaticObjectPropertyValue(descriptors, propertyName);
+      if (descriptor === null) return null;
+      if (descriptor === undefined) return currentValue;
+      const descriptorValue = getPropertyDescriptorValue(descriptor);
+      return descriptorValue === undefined ? currentValue : descriptorValue;
+    }
+  }
+  const isObjectDefineProperty = mutationInspector.isGlobalNamespaceMethod(
+    parent.callee,
+    "Object",
+    OBJECT_DEFINE_PROPERTY_METHOD_NAMES,
+  );
+  const isReflectPropertyMutation = mutationInspector.isGlobalNamespaceMethod(
+    parent.callee,
+    "Reflect",
+    REFLECT_PROPERTY_MUTATION_METHOD_NAMES,
+  );
+  if (!isObjectDefineProperty && !isReflectPropertyMutation) return null;
+  const mutationProperty = parent.arguments[1];
+  if (
+    !mutationProperty ||
+    !isNodeOfType(mutationProperty, "Literal") ||
+    typeof mutationProperty.value !== "string"
+  ) {
+    return null;
+  }
+  if (mutationProperty.value !== propertyName) return currentValue;
+  const mutationValue = parent.arguments[2];
+  if (!mutationValue || isNodeOfType(mutationValue, "SpreadElement")) return null;
+  const propertyMutationCallee = stripParenExpression(parent.callee);
+  if (!isNodeOfType(propertyMutationCallee, "MemberExpression")) return null;
+  if (
+    isObjectDefineProperty ||
+    getStaticPropertyName(propertyMutationCallee) === "defineProperty"
+  ) {
+    const descriptorValue = getPropertyDescriptorValue(mutationValue);
+    return descriptorValue === undefined ? currentValue : descriptorValue;
+  }
+  return mutationValue;
+};
+
 const memberReceiverIsUpdaterLocal = (
   receiver: EsTreeNodeOfType<"MemberExpression">,
   updaterFunction: EsTreeNode,
@@ -1190,59 +1315,29 @@ const memberReceiverIsUpdaterLocal = (
     ? stripParenExpression(objectSymbol.initializer)
     : null;
   if (!isNodeOfType(initializer, "ObjectExpression")) return false;
-  let effectiveValue: EsTreeNode | null = null;
-  for (const property of initializer.properties.toReversed()) {
-    if (
-      !isNodeOfType(property, "Property") ||
-      getStaticPropertyKeyName(property, { allowComputedString: true }) !== propertyName
-    ) {
-      continue;
-    }
-    effectiveValue = property.value;
-    break;
+  let effectiveValue = getStaticObjectPropertyValue(initializer, propertyName) ?? null;
+  const mutationInspector = getSymbolMutationInspector(context.scopes);
+  if (mutationInspector.isMutationOrderAmbiguous(objectSymbol, receiver, propertyName)) {
+    return false;
   }
-  let latestAssignmentOffset = -1;
-  const receiverBoundary = findDeferredExecutionBoundary(receiver);
-  if (!receiverBoundary) return false;
-  const objectReferences = collectConstAliasSymbols(objectSymbol, context.scopes).flatMap(
-    (aliasSymbol) => aliasSymbol.references,
-  );
-  for (const reference of objectReferences) {
-    const identifierRoot = findTransparentExpressionRoot(reference.identifier);
-    const referenceParent = identifierRoot.parent;
+  for (const mutation of mutationInspector.getEventsBefore(objectSymbol, receiver)) {
+    const nextValue = getPropertyValueAfterMutation(
+      effectiveValue,
+      mutation.node,
+      propertyName,
+      context,
+    );
     if (
-      isNodeOfType(referenceParent, "VariableDeclarator") &&
-      referenceParent.init === identifierRoot &&
-      isNodeOfType(referenceParent.id, "Identifier") &&
-      context.scopes.symbolFor(referenceParent.id)?.kind === "const"
+      mutation.isConditional &&
+      (!effectiveValue ||
+        !nextValue ||
+        !expressionCreatesFreshContainer(effectiveValue, context) ||
+        !expressionCreatesFreshContainer(nextValue, context))
     ) {
+      effectiveValue = null;
       continue;
     }
-    if (
-      !referenceParent ||
-      !isNodeOfType(referenceParent, "MemberExpression") ||
-      referenceParent.object !== identifierRoot ||
-      getStaticPropertyName(referenceParent) !== propertyName
-    ) {
-      continue;
-    }
-    const memberRoot = findTransparentExpressionRoot(referenceParent);
-    const assignment = memberRoot.parent;
-    if (
-      !assignment ||
-      !isNodeOfType(assignment, "AssignmentExpression") ||
-      assignment.left !== memberRoot ||
-      assignment.range[0] >= receiver.range[0] ||
-      findDeferredExecutionBoundary(assignment) !== receiverBoundary
-    ) {
-      continue;
-    }
-    if (assignment.operator !== "=" || !isNodeOnUnconditionalPath(assignment, receiverBoundary)) {
-      return false;
-    }
-    if (assignment.range[0] <= latestAssignmentOffset) continue;
-    effectiveValue = assignment.right;
-    latestAssignmentOffset = assignment.range[0];
+    effectiveValue = nextValue;
   }
   if (!effectiveValue) return false;
   const value = stripParenExpression(effectiveValue);

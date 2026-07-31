@@ -12,9 +12,22 @@ export interface CorpusRepositoryGroup {
   rootDirectories: ReadonlyArray<string>;
 }
 
+export interface ReactDoctorEvaluationProvenance {
+  reactDoctorRepository: string;
+  reactDoctorCommit: string;
+  configContract: string;
+  ruleSetHash: string;
+  ruleKeys: ReadonlyArray<string>;
+}
+
+export interface EvaluationProvenance extends ReactDoctorEvaluationProvenance {
+  evaluatorSourceHash: string;
+}
+
 export interface CorpusEvaluationRecord {
   schemaVersion: number;
   repository: CorpusRepository;
+  evaluation?: EvaluationProvenance;
   report?: unknown;
   error?: string;
 }

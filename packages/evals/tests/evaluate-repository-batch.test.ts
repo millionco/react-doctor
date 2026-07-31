@@ -1,7 +1,11 @@
 import { Daytona, Sandbox } from "@daytona/sdk";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { SANDBOX_REPORT_PATH } from "../src/constants.js";
+import {
+  EVALUATION_CONFIG_CONTRACT,
+  REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+  SANDBOX_REPORT_PATH,
+} from "../src/constants.js";
 import { evaluateRepositoryBatch } from "../src/evaluate-repository-batch.js";
 
 const buildReport = () => ({
@@ -42,12 +46,25 @@ const buildReport = () => ({
 describe("evaluateRepositoryBatch", () => {
   it("downloads the report file instead of parsing truncated command output", async () => {
     const report = buildReport();
+    const evaluationProvenance = {
+      reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+      reactDoctorCommit: "c".repeat(40),
+      configContract: EVALUATION_CONFIG_CONTRACT,
+      ruleSetHash: "d".repeat(64),
+      ruleKeys: [],
+    };
     const executeCommand = vi
       .fn()
       .mockResolvedValueOnce({ exitCode: 0, result: "" })
       .mockResolvedValueOnce({ exitCode: 0, result: "a".repeat(40) })
       .mockResolvedValueOnce({ exitCode: 0, result: '{"ok":true' });
-    const downloadFile = vi.fn(async () => Buffer.from(JSON.stringify(report)));
+    const downloadFile = vi.fn(async (filePath: string) =>
+      Buffer.from(
+        JSON.stringify(
+          filePath === REACT_DOCTOR_EVALUATION_PROVENANCE_PATH ? evaluationProvenance : report,
+        ),
+      ),
+    );
     const sandbox = Object.create(Sandbox.prototype);
     Object.defineProperties(sandbox, {
       id: { value: "sandbox-id" },
@@ -70,6 +87,7 @@ describe("evaluateRepositoryBatch", () => {
         },
       ],
       evaluationDeadlineMilliseconds: globalThis.performance.now() + 60_000,
+      evaluatorSourceHash: "e".repeat(64),
       onRecord: async (record) => {
         records.push(record);
       },
@@ -86,8 +104,17 @@ describe("evaluateRepositoryBatch", () => {
           ref: "a".repeat(40),
           rootDir: ".",
         },
+        evaluation: {
+          ...evaluationProvenance,
+          evaluatorSourceHash: "e".repeat(64),
+        },
         report,
       },
     ]);
+    expect(downloadFile).toHaveBeenCalledWith(
+      REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+      expect.any(Number),
+    );
+    expect(downloadFile).toHaveBeenCalledWith(SANDBOX_REPORT_PATH, expect.any(Number));
   });
 });

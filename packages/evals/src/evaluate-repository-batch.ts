@@ -6,6 +6,7 @@ import type { Daytona, Sandbox } from "@daytona/sdk";
 import {
   DAYTONA_RUN_NAME,
   EVALUATION_SCHEMA_VERSION,
+  REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
   RESOLVE_TARGET_REPOSITORY_REF_COMMAND,
   SANDBOX_DELETE_TIMEOUT_SECONDS,
   SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
@@ -15,13 +16,19 @@ import {
   SCAN_COMMAND,
   SETUP_TARGET_REPOSITORY_COMMAND,
 } from "./constants.js";
-import type { CorpusEvaluationRecord, CorpusRepository, CorpusRepositoryGroup } from "./corpus.js";
+import type {
+  CorpusEvaluationRecord,
+  CorpusRepository,
+  CorpusRepositoryGroup,
+  EvaluationProvenance,
+} from "./corpus.js";
 import { executeSandboxCommand } from "./execute-sandbox-command.js";
 import {
   EvaluationDeadlineExceededError,
   getEvaluationTimeoutSeconds,
 } from "./utils/get-evaluation-timeout-seconds.js";
 import { parseReactDoctorReport } from "./utils/parse-react-doctor-report.js";
+import { parseReactDoctorEvaluationProvenance } from "./utils/parse-react-doctor-evaluation-provenance.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
 export interface EvaluateRepositoryBatchInput {
@@ -29,12 +36,14 @@ export interface EvaluateRepositoryBatchInput {
   createSandbox: (sandboxName: string, deadlineMilliseconds: number) => Promise<Sandbox>;
   repositoryGroups: ReadonlyArray<CorpusRepositoryGroup>;
   evaluationDeadlineMilliseconds: number;
+  evaluatorSourceHash: string;
   onRecord: (record: CorpusEvaluationRecord) => Promise<void>;
 }
 
 interface EvaluateRepositoryGroupInput {
   sandbox: Sandbox;
   repositoryGroup: CorpusRepositoryGroup;
+  evaluationProvenance: EvaluationProvenance;
   evaluationDeadlineMilliseconds: number;
   onRecord: (record: CorpusEvaluationRecord) => Promise<void>;
 }
@@ -64,6 +73,7 @@ const buildFailureRecords = (
 const evaluateRepositoryGroup = async ({
   sandbox,
   repositoryGroup,
+  evaluationProvenance,
   evaluationDeadlineMilliseconds,
   onRecord,
 }: EvaluateRepositoryGroupInput): Promise<ReadonlyArray<CorpusEvaluationRecord>> => {
@@ -132,6 +142,7 @@ const evaluateRepositoryGroup = async ({
       await onRecord({
         schemaVersion: EVALUATION_SCHEMA_VERSION,
         repository,
+        evaluation: evaluationProvenance,
         report,
       });
     } catch (error) {
@@ -146,6 +157,7 @@ export const evaluateRepositoryBatch = async ({
   createSandbox,
   repositoryGroups,
   evaluationDeadlineMilliseconds,
+  evaluatorSourceHash,
   onRecord,
 }: EvaluateRepositoryBatchInput): Promise<ReadonlyArray<CorpusEvaluationRecord>> => {
   const sandboxName = `${DAYTONA_RUN_NAME}-${randomUUID()}`;
@@ -161,12 +173,32 @@ export const evaluateRepositoryBatch = async ({
       );
     }
 
+    let evaluationProvenance: EvaluationProvenance;
+    try {
+      const provenanceContents = await sandbox.fs.downloadFile(
+        REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+        getEvaluationTimeoutSeconds({
+          deadlineMilliseconds: evaluationDeadlineMilliseconds,
+          maximumTimeoutSeconds: SANDBOX_REPORT_DOWNLOAD_TIMEOUT_SECONDS,
+        }),
+      );
+      evaluationProvenance = {
+        ...parseReactDoctorEvaluationProvenance(provenanceContents.toString("utf8")),
+        evaluatorSourceHash,
+      };
+    } catch (error) {
+      return repositoryGroups.flatMap((repositoryGroup) =>
+        buildFailureRecords(buildRepositories(repositoryGroup), error),
+      );
+    }
+
     const failedRecords: CorpusEvaluationRecord[] = [];
     for (const repositoryGroup of repositoryGroups) {
       failedRecords.push(
         ...(await evaluateRepositoryGroup({
           sandbox,
           repositoryGroup,
+          evaluationProvenance,
           evaluationDeadlineMilliseconds,
           onRecord,
         })),

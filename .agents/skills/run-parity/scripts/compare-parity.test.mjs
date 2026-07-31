@@ -100,7 +100,7 @@ const buildRecord = (repository = buildRepository(), report = buildReport()) => 
   report,
 });
 
-const runComparison = (baselineRecords, candidateRecords) => {
+const runComparison = (baselineRecords, candidateRecords, ruleKeys = null) => {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), "react-doctor-parity-"));
   try {
     const baselinePath = join(temporaryDirectory, "baseline.ndjson");
@@ -113,7 +113,14 @@ const runComparison = (baselineRecords, candidateRecords) => {
       candidatePath,
       candidateRecords.map((record) => JSON.stringify(record)).join("\n") + "\n",
     );
-    return spawnSync(process.execPath, [scriptPath, baselinePath, candidatePath], {
+    const comparisonArguments = [scriptPath];
+    if (ruleKeys !== null) {
+      const ruleKeysPath = join(temporaryDirectory, "rules.json");
+      writeFileSync(ruleKeysPath, JSON.stringify(ruleKeys));
+      comparisonArguments.push("--rules", ruleKeysPath);
+    }
+    comparisonArguments.push(baselinePath, candidatePath);
+    return spawnSync(process.execPath, comparisonArguments, {
       encoding: "utf8",
     });
   } finally {
@@ -171,6 +178,37 @@ test("canonicalizes matching legacy and v3 diagnostics to report-relative identi
   assert.equal(comparison.summary.unchanged, 1);
 });
 
+test("accepts canonical rule keys with camelCase rule segments", () => {
+  const diagnostic = buildV3Diagnostic({
+    id: "src/app.tsx::1:1::react-doctor/no-derived-useState::digest",
+    rule: "no-derived-useState",
+  });
+  const record = buildRecord(
+    buildRepository(),
+    buildReport({
+      diagnostics: [diagnostic],
+      projects: [
+        {
+          directory: "/workspace/target",
+          packageRoot: "/workspace/target",
+          framework: "nextjs",
+          project: {},
+          diagnostics: [diagnostic],
+          score: null,
+          skippedChecks: [],
+          analyzedFiles: ["src/app.tsx"],
+          analyzedFileCount: 1,
+          complete: true,
+          elapsedMilliseconds: 1,
+        },
+      ],
+    }),
+  );
+  const result = runComparison([record], [record], ["react-doctor/no-derived-useState"]);
+
+  assert.equal(result.status, SUCCESS_EXIT_CODE, result.stderr);
+});
+
 test("keeps same-named files in nested projects as distinct identities", () => {
   const firstDiagnostic = buildV3Diagnostic({
     id: "packages/first/package.json::0:0::react-doctor/example::first",
@@ -215,7 +253,7 @@ test("accepts complete Astro project reports", () => {
   assert.equal(JSON.parse(result.stdout).summary.unchanged, 1);
 });
 
-test("does not count duplicate diagnostic identities more than once", () => {
+test("preserves duplicate diagnostic multiplicity", () => {
   const diagnostic = buildV3Diagnostic();
   const addedDiagnostic = buildV3Diagnostic({
     id: "src/app.tsx::2:1::react-doctor/added::digest",
@@ -252,12 +290,310 @@ test("does not count duplicate diagnostic identities more than once", () => {
     candidateProjects: 1,
     comparedProjects: 1,
     skippedProjects: 0,
-    baselineDiagnostics: 1,
-    candidateDiagnostics: 2,
-    added: 1,
+    baselineDiagnostics: 2,
+    candidateDiagnostics: 4,
+    added: 2,
     removed: 0,
-    unchanged: 1,
+    unchanged: 2,
   });
+});
+
+test("compares only selected rule diagnostics against a full baseline", () => {
+  const selectedDiagnostic = buildV3Diagnostic();
+  const unselectedDiagnostic = buildV3Diagnostic({
+    id: "src/app.tsx::2:1::react-doctor/unselected::digest",
+    line: 2,
+    rule: "unselected",
+  });
+  const baselineReport = buildReport({
+    projects: [
+      {
+        ...buildReport().projects[0],
+        diagnostics: [selectedDiagnostic, unselectedDiagnostic],
+      },
+    ],
+    diagnostics: [selectedDiagnostic, unselectedDiagnostic],
+  });
+  const candidateReport = buildReport({
+    projects: [{ ...buildReport().projects[0], diagnostics: [selectedDiagnostic] }],
+    diagnostics: [selectedDiagnostic],
+  });
+
+  const result = runComparison(
+    [buildRecord(buildRepository(), baselineReport)],
+    [buildRecord(buildRepository(), candidateReport)],
+    ["react-doctor/example"],
+  );
+
+  assert.equal(result.status, SUCCESS_EXIT_CODE, result.stderr);
+  const comparison = JSON.parse(result.stdout);
+  assert.deepEqual(comparison.ruleScope, ["react-doctor/example"]);
+  assert.equal(comparison.summary.baselineDiagnostics, 1);
+  assert.equal(comparison.summary.candidateDiagnostics, 1);
+  assert.equal(comparison.summary.unchanged, 1);
+});
+
+test("compares always-on TypeScript and environment diagnostics within a rule scope", () => {
+  const selectedDiagnostic = buildV3Diagnostic();
+  const typescriptDiagnostic = buildV3Diagnostic({
+    id: "src/types.ts::1:1::TS/8011::digest",
+    normalizedFilePath: "src/types.ts",
+    filePath: "src/types.ts",
+    plugin: "TS",
+    rule: "8011",
+    message: "Type annotations can only be used in TypeScript files.",
+  });
+  const environmentDiagnostic = buildV3Diagnostic({
+    id: "package.json::0:0::react-doctor/require-pnpm-hardening::digest",
+    normalizedFilePath: "package.json",
+    filePath: "package.json",
+    line: 0,
+    column: 0,
+    rule: "require-pnpm-hardening",
+  });
+  const unselectedDiagnostic = buildV3Diagnostic({
+    id: "src/app.tsx::2:1::react-doctor/unselected::digest",
+    line: 2,
+    rule: "unselected",
+  });
+  const buildScopedReport = (diagnostics) =>
+    buildReport({
+      projects: [{ ...buildReport().projects[0], diagnostics }],
+      diagnostics,
+    });
+
+  const result = runComparison(
+    [
+      buildRecord(
+        buildRepository(),
+        buildScopedReport([
+          selectedDiagnostic,
+          typescriptDiagnostic,
+          environmentDiagnostic,
+          unselectedDiagnostic,
+        ]),
+      ),
+    ],
+    [
+      buildRecord(
+        buildRepository(),
+        buildScopedReport([selectedDiagnostic, typescriptDiagnostic, environmentDiagnostic]),
+      ),
+    ],
+    ["react-doctor/example"],
+  );
+
+  assert.equal(result.status, SUCCESS_EXIT_CODE, result.stderr);
+  const comparison = JSON.parse(result.stdout);
+  assert.equal(comparison.summary.baselineDiagnostics, 3);
+  assert.equal(comparison.summary.candidateDiagnostics, 3);
+  assert.equal(comparison.summary.unchanged, 3);
+  assert.ok(comparison.invariantRuleScope.includes("TS/*"));
+  assert.ok(comparison.invariantRuleScope.includes("react-doctor/require-pnpm-hardening"));
+});
+
+test("detects changed always-on diagnostics within a rule scope", () => {
+  const baselineInvariantDiagnostic = buildV3Diagnostic({
+    id: "src/types.ts::1:1::TS/8011::digest",
+    plugin: "TS",
+    rule: "8011",
+    message: "Baseline parser diagnostic",
+  });
+  const candidateInvariantDiagnostic = {
+    ...baselineInvariantDiagnostic,
+    message: "Candidate parser diagnostic",
+  };
+  const buildScopedReport = (diagnostic) =>
+    buildReport({
+      projects: [{ ...buildReport().projects[0], diagnostics: [diagnostic] }],
+      diagnostics: [diagnostic],
+    });
+
+  const result = runComparison(
+    [buildRecord(buildRepository(), buildScopedReport(baselineInvariantDiagnostic))],
+    [buildRecord(buildRepository(), buildScopedReport(candidateInvariantDiagnostic))],
+    ["react-doctor/example"],
+  );
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(JSON.parse(result.stdout).summary.added, 1);
+  assert.equal(JSON.parse(result.stdout).summary.removed, 1);
+});
+
+test("rejects candidate diagnostics outside the selected rule scope", () => {
+  const selectedDiagnostic = buildV3Diagnostic();
+  const unselectedDiagnostic = buildV3Diagnostic({
+    id: "src/app.tsx::2:1::react-doctor/unselected::digest",
+    line: 2,
+    rule: "unselected",
+  });
+  const baselineRecord = buildRecord();
+  const candidateReport = buildReport({
+    projects: [
+      {
+        ...buildReport().projects[0],
+        diagnostics: [selectedDiagnostic, unselectedDiagnostic],
+      },
+    ],
+    diagnostics: [selectedDiagnostic, unselectedDiagnostic],
+  });
+
+  const result = runComparison(
+    [baselineRecord],
+    [buildRecord(buildRepository(), candidateReport)],
+    ["react-doctor/example"],
+  );
+
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(JSON.parse(result.stdout).skippedProjects[0].candidateError, /outside rule scope/);
+});
+
+test("rejects candidate reports that omit a zero-hit analyzed file", () => {
+  const baselineReport = buildReport();
+  baselineReport.projects[0].analyzedFiles = ["src/app.tsx", "src/zero-hit.tsx"];
+  baselineReport.projects[0].analyzedFileCount = 2;
+  baselineReport.projects[0].scannedFileCount = 2;
+  const candidateReport = buildReport();
+  candidateReport.projects[0].scannedFileCount = 1;
+
+  const result = runComparison(
+    [buildRecord(buildRepository(), baselineReport)],
+    [buildRecord(buildRepository(), candidateReport)],
+    ["react-doctor/example"],
+  );
+
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(JSON.parse(result.stdout).skippedProjects[0].candidateError, /coverage differs/);
+});
+
+test("rejects candidate reports that omit a zero-hit project", () => {
+  const diagnosticProject = buildReport().projects[0];
+  const zeroHitProject = {
+    ...diagnosticProject,
+    directory: "/workspace/target/packages/zero-hit",
+    packageRoot: "/workspace/target/packages/zero-hit",
+    diagnostics: [],
+    analyzedFiles: ["src/index.ts"],
+  };
+  const baselineReport = buildReport({
+    projects: [diagnosticProject, zeroHitProject],
+    diagnostics: diagnosticProject.diagnostics,
+  });
+  const candidateReport = buildReport();
+
+  const result = runComparison(
+    [buildRecord(buildRepository(), baselineReport)],
+    [buildRecord(buildRepository(), candidateReport)],
+    ["react-doctor/example"],
+  );
+
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(JSON.parse(result.stdout).skippedProjects[0].candidateError, /coverage differs/);
+});
+
+for (const [name, mutateProject] of [
+  ["framework", (project) => (project.framework = "vite")],
+  [
+    "package root",
+    (project) => {
+      project.directory = "/workspace/target/packages/app";
+      project.packageRoot = "/workspace/target/packages/app";
+    },
+  ],
+]) {
+  test(`rejects candidate project ${name} drift`, () => {
+    const candidateReport = buildReport();
+    mutateProject(candidateReport.projects[0]);
+    const result = runComparison(
+      [buildRecord()],
+      [buildRecord(buildRepository(), candidateReport)],
+      ["react-doctor/example"],
+    );
+
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(JSON.parse(result.stdout).skippedProjects[0].candidateError, /coverage differs/);
+  });
+}
+
+test("accepts semantically identical coverage in a different file order", () => {
+  const baselineReport = buildReport();
+  baselineReport.projects[0].analyzedFiles = ["src/app.tsx", "src/other.tsx"];
+  baselineReport.projects[0].analyzedFileCount = 2;
+  baselineReport.projects[0].scannedFileCount = 2;
+  const candidateReport = structuredClone(baselineReport);
+  candidateReport.projects[0].analyzedFiles.reverse();
+
+  const result = runComparison(
+    [buildRecord(buildRepository(), baselineReport)],
+    [buildRecord(buildRepository(), candidateReport)],
+  );
+
+  assert.equal(result.status, SUCCESS_EXIT_CODE, result.stderr);
+});
+
+for (const [name, mutateDiagnostic] of [
+  ["help text", (diagnostic) => (diagnostic.help = "Different help.")],
+  ["category", (diagnostic) => (diagnostic.category = "Performance")],
+  ["tags", (diagnostic) => (diagnostic.tags = ["performance"])],
+  ["title", (diagnostic) => (diagnostic.title = "Different title")],
+  ["URL", (diagnostic) => (diagnostic.url = "https://example.com/rule")],
+  ["span", (diagnostic) => (diagnostic.length = 4)],
+  [
+    "related locations",
+    (diagnostic) =>
+      (diagnostic.relatedLocations = [
+        {
+          filePath: "src/helper.ts",
+          line: 2,
+          column: 3,
+          message: "Related",
+        },
+      ]),
+  ],
+  ["fix group", (diagnostic) => (diagnostic.fixGroupId = "group")],
+]) {
+  test(`detects a diagnostic ${name} change`, () => {
+    const baselineReport = buildReport();
+    const candidateReport = structuredClone(baselineReport);
+    mutateDiagnostic(candidateReport.projects[0].diagnostics[0]);
+    mutateDiagnostic(candidateReport.diagnostics[0]);
+    const result = runComparison(
+      [buildRecord(buildRepository(), baselineReport)],
+      [buildRecord(buildRepository(), candidateReport)],
+    );
+
+    assert.equal(result.status, 1, result.stderr);
+    const summary = JSON.parse(result.stdout).summary;
+    assert.equal(summary.added, 1);
+    assert.equal(summary.removed, 1);
+    assert.equal(summary.unchanged, 0);
+  });
+}
+
+test("canonicalizes related-location paths across report roots", () => {
+  const repository = buildRepository("workspace", "packages/ui");
+  const baselineReport = buildReport();
+  baselineReport.projects[0].diagnostics[0].relatedLocations = [
+    {
+      filePath: "src/helper.ts",
+      line: 2,
+      column: 3,
+      message: "Related",
+    },
+  ];
+  baselineReport.diagnostics[0].relatedLocations =
+    baselineReport.projects[0].diagnostics[0].relatedLocations;
+  const candidateReport = structuredClone(baselineReport);
+  candidateReport.projects[0].diagnostics[0].relatedLocations[0].filePath =
+    "/workspace/target/src/helper.ts";
+  candidateReport.diagnostics[0].relatedLocations[0].filePath = "/workspace/target/src/helper.ts";
+
+  const result = runComparison(
+    [buildRecord(repository, baselineReport)],
+    [buildRecord(repository, candidateReport)],
+  );
+
+  assert.equal(result.status, SUCCESS_EXIT_CODE, result.stderr);
 });
 
 test("classifies explicitly incomplete project reports as skipped", () => {
@@ -337,6 +673,26 @@ test("rejects malformed diagnostics and inconsistent flattened diagnostics", () 
   assert.equal(mismatchedResult.status, 2, mismatchedResult.stderr);
 });
 
+test("rejects malformed optional diagnostic fields", () => {
+  const report = buildReport();
+  report.projects[0].diagnostics[0].relatedLocations = [
+    {
+      filePath: "src/helper.ts",
+      line: "2",
+      column: 3,
+      message: "Related",
+    },
+  ];
+  report.diagnostics[0].relatedLocations = report.projects[0].diagnostics[0].relatedLocations;
+
+  const result = runComparison(
+    [buildRecord(buildRepository(), report)],
+    [buildRecord(buildRepository(), report)],
+  );
+
+  assert.equal(result.status, 2, result.stderr);
+});
+
 test("accepts semantically equal flattened diagnostics with reordered object keys", () => {
   const report = buildReport();
   const reorderedDiagnostic = Object.fromEntries(Object.entries(report.diagnostics[0]).reverse());
@@ -396,6 +752,18 @@ test("accepts complete v2 reports and requires baseline data", () => {
 
   assert.equal(completeResult.status, 0, completeResult.stderr);
   assert.equal(missingResult.status, 2, missingResult.stderr);
+});
+
+test("rejects legacy reports in scoped parity because coverage is unavailable", () => {
+  const legacyReport = buildReport({ schemaVersion: 1 });
+  const result = runComparison(
+    [buildRecord(buildRepository(), legacyReport)],
+    [buildRecord(buildRepository(), legacyReport)],
+    ["react-doctor/example"],
+  );
+
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /Scoped parity requires v3 project coverage/);
 });
 
 test("rejects malformed repository refs before comparison", () => {

@@ -13,6 +13,7 @@ describe("parseEvaluationArguments", () => {
       maxDurationMinutes: 45,
       reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
       reactDoctorRef: "main",
+      ruleKeys: [],
     });
   });
 
@@ -35,6 +36,12 @@ describe("parseEvaluationArguments", () => {
         "20",
         "--react-doctor-ref",
         "feature/eval",
+        "--rule",
+        "react-doctor/no-derived-useState",
+        "--rule",
+        "react-doctor/no-derived-useState",
+        "--rule",
+        "react-doctor/prefer-useReducer",
       ]),
     ).toMatchObject({
       repositoriesSources: ["repositories.json", "repositories.txt"],
@@ -44,11 +51,18 @@ describe("parseEvaluationArguments", () => {
       projectRootsPerRepository: 3,
       maxDurationMinutes: 20,
       reactDoctorRef: "feature/eval",
+      ruleKeys: ["react-doctor/no-derived-useState", "react-doctor/prefer-useReducer"],
     });
   });
 
   it("rejects invalid concurrency", () => {
     expect(() => parseEvaluationArguments(["--concurrency", "0"])).toThrow("positive integer");
+  });
+
+  it("rejects malformed rule keys", () => {
+    expect(() => parseEvaluationArguments(["--rule", "react-doctor/no-example;false"])).toThrow(
+      "canonical plugin/rule key",
+    );
   });
 
   it("rejects invalid scale and duration controls", () => {

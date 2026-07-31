@@ -8,6 +8,7 @@
   "sideEffects": false,
   "scripts": {
     "eval": "tsx src/cli.ts",
+    "source-hash": "tsx src/print-evaluator-source-hash.ts",
     "test": "vp test run",
     "typecheck": "tsc --noEmit"
   },

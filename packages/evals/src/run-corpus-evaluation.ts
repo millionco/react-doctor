@@ -33,6 +33,7 @@ import { loadCorpusRepositories } from "./load-corpus-repositories.js";
 import type { EvaluationOptions } from "./parse-evaluation-arguments.js";
 import { runEvaluationAttempts } from "./run-evaluation-attempts.js";
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
+import { getEvaluatorSourceHash } from "./utils/get-evaluator-source-hash.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
 import { toErrorMessage } from "./utils/to-error-message.js";
 
@@ -50,6 +51,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
     0,
   );
   const startedAt = globalThis.performance.now();
+  const evaluatorSourceHash = getEvaluatorSourceHash();
   const evaluationDeadlineMilliseconds =
     startedAt +
     (options.maxDurationMinutes - EVALUATION_CLEANUP_RESERVE_MINUTES) * MILLISECONDS_PER_MINUTE;
@@ -72,6 +74,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           .env({
             REACT_DOCTOR_REPOSITORY: options.reactDoctorRepository,
             REACT_DOCTOR_REF: options.reactDoctorRef,
+            REACT_DOCTOR_RULE_KEYS: JSON.stringify(options.ruleKeys),
           })
           .runCommands(...PREPARE_REACT_DOCTOR_COMMANDS)
           .workdir(REACT_DOCTOR_WORK_DIRECTORY)
@@ -140,6 +143,7 @@ export const runCorpusEvaluation = async (options: EvaluationOptions): Promise<v
           daytona,
           createSandbox,
           repositoryGroups: repositoryBatch,
+          evaluatorSourceHash,
           evaluationDeadlineMilliseconds: getEvaluationAttemptDeadlineMilliseconds({
             evaluationDeadlineMilliseconds,
             attemptIndex,

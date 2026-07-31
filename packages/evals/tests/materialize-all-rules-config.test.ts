@@ -5,7 +5,14 @@ import { execFileSync, spawnSync } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { MATERIALIZE_ALL_RULES_CONFIG_COMMAND, SCAN_COMMAND } from "../src/constants.js";
+import {
+  EVALUATION_CONFIG_CONTRACT,
+  MATERIALIZE_ALL_RULES_CONFIG_COMMAND,
+  MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND,
+  REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+  REACT_DOCTOR_WORK_DIRECTORY,
+  SCAN_COMMAND,
+} from "../src/constants.js";
 
 const temporaryDirectories: string[] = [];
 const INTEGRATION_TEST_TIMEOUT_MS = 30_000;
@@ -48,8 +55,8 @@ describe("MATERIALIZE_ALL_RULES_CONFIG_COMMAND", () => {
         path.join(pluginDirectory, "index.js"),
         `export const REACT_COMPILER_RULES = { "react-hooks-js/compiler-rule": "warn" };
 export const REACT_DOCTOR_RULES = [
-  { key: "react-doctor/default-rule" },
-  { key: "react-doctor/opt-in-rule" },
+  { key: "react-doctor/default-rule", rule: { isScanRule: false } },
+  { key: "react-doctor/opt-in-rule", rule: { isScanRule: false } },
 ];
 `,
       );
@@ -82,6 +89,201 @@ export const REACT_DOCTOR_RULES = [
         fs.readFileSync(path.join(targetRootDirectory, "doctor.config.ts"), "utf8"),
       );
       expect(fs.existsSync(path.join(ignoredProjectDirectory, "doctor.config.ts"))).toBe(false);
+    },
+  );
+
+  it(
+    "enables only explicitly selected revision-local rules",
+    { timeout: INTEGRATION_TEST_TIMEOUT_MS },
+    () => {
+      const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-eval-"));
+      temporaryDirectories.push(temporaryDirectory);
+      const reactDoctorDirectory = path.join(temporaryDirectory, "react-doctor");
+      const pluginDirectory = path.join(
+        reactDoctorDirectory,
+        "packages/oxlint-plugin-react-doctor/dist",
+      );
+      const targetDirectory = path.join(temporaryDirectory, "target");
+      fs.mkdirSync(pluginDirectory, { recursive: true });
+      fs.mkdirSync(targetDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(pluginDirectory, "index.js"),
+        `export const REACT_COMPILER_RULES = { "react-hooks-js/compiler-rule": "warn" };
+export const REACT_DOCTOR_RULES = [
+  { key: "react-doctor/selected-rule", rule: { isScanRule: false } },
+  { key: "react-doctor/unselected-rule", rule: { isScanRule: false } },
+];
+`,
+      );
+
+      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
+        "/workspace/react-doctor",
+        normalizeEmbeddedPath(reactDoctorDirectory),
+      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
+      execFileSync("sh", ["-c", command], {
+        env: {
+          ...process.env,
+          REACT_DOCTOR_RULE_KEYS: JSON.stringify(["react-doctor/selected-rule"]),
+          TARGET_ROOT_DIRECTORY: ".",
+        },
+      });
+
+      expect(fs.readFileSync(path.join(targetDirectory, "doctor.config.ts"), "utf8")).toBe(
+        `export default ${JSON.stringify({
+          adoptExistingLintConfig: false,
+          respectInlineDisables: false,
+          ignore: { tags: ["security-scan"] },
+          rules: {
+            "react-doctor/selected-rule": "error",
+            "react-doctor/unselected-rule": "off",
+            "react-hooks-js/compiler-rule": "off",
+          },
+          warnings: true,
+        })};\n`,
+      );
+    },
+  );
+
+  it(
+    "freezes the exact detector revision and revision-local rule configuration",
+    { timeout: INTEGRATION_TEST_TIMEOUT_MS },
+    () => {
+      const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-eval-"));
+      temporaryDirectories.push(temporaryDirectory);
+      const reactDoctorDirectory = path.join(temporaryDirectory, "react-doctor");
+      const pluginDirectory = path.join(
+        reactDoctorDirectory,
+        "packages/oxlint-plugin-react-doctor/dist",
+      );
+      const provenancePath = path.join(temporaryDirectory, "evaluation-provenance.json");
+      fs.mkdirSync(pluginDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(pluginDirectory, "index.js"),
+        `export const REACT_COMPILER_RULES = { "react-hooks-js/compiler-rule": "warn" };
+export const REACT_DOCTOR_RULES = [
+  { key: "react-doctor/no-derived-useState", rule: { isScanRule: false } },
+  { key: "react-doctor/security-rule", rule: { isScanRule: true } },
+];
+`,
+      );
+      execFileSync("git", ["-C", reactDoctorDirectory, "init", "-q"]);
+      execFileSync("git", ["-C", reactDoctorDirectory, "config", "user.email", "test@example.com"]);
+      execFileSync("git", ["-C", reactDoctorDirectory, "config", "user.name", "Test"]);
+      execFileSync("git", ["-C", reactDoctorDirectory, "add", "."]);
+      execFileSync("git", ["-C", reactDoctorDirectory, "commit", "-q", "-m", "fixture"]);
+      const expectedCommit = execFileSync(
+        "git",
+        ["-C", reactDoctorDirectory, "rev-parse", "HEAD"],
+        { encoding: "utf8" },
+      ).trim();
+      const command = MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND.replaceAll(
+        REACT_DOCTOR_EVALUATION_PROVENANCE_PATH,
+        normalizeEmbeddedPath(provenancePath),
+      ).replaceAll(REACT_DOCTOR_WORK_DIRECTORY, normalizeEmbeddedPath(reactDoctorDirectory));
+
+      execFileSync("sh", ["-c", command], {
+        env: {
+          ...process.env,
+          REACT_DOCTOR_REPOSITORY: "https://github.com/millionco/react-doctor.git",
+          REACT_DOCTOR_RULE_KEYS: JSON.stringify(["react-doctor/no-derived-useState"]),
+        },
+      });
+
+      expect(JSON.parse(fs.readFileSync(provenancePath, "utf8"))).toEqual({
+        reactDoctorRepository: "https://github.com/millionco/react-doctor.git",
+        reactDoctorCommit: expectedCommit,
+        configContract: EVALUATION_CONFIG_CONTRACT,
+        ruleSetHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        ruleKeys: ["react-doctor/no-derived-useState"],
+      });
+    },
+  );
+
+  it(
+    "keeps the security scan enabled when a scan rule is selected",
+    { timeout: INTEGRATION_TEST_TIMEOUT_MS },
+    () => {
+      const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-eval-"));
+      temporaryDirectories.push(temporaryDirectory);
+      const reactDoctorDirectory = path.join(temporaryDirectory, "react-doctor");
+      const pluginDirectory = path.join(
+        reactDoctorDirectory,
+        "packages/oxlint-plugin-react-doctor/dist",
+      );
+      const targetDirectory = path.join(temporaryDirectory, "target");
+      fs.mkdirSync(pluginDirectory, { recursive: true });
+      fs.mkdirSync(targetDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(pluginDirectory, "index.js"),
+        `export const REACT_COMPILER_RULES = {};
+export const REACT_DOCTOR_RULES = [
+  { key: "react-doctor/scan-rule", rule: { isScanRule: true } },
+  { key: "react-doctor/lint-rule", rule: { isScanRule: false } },
+];
+`,
+      );
+
+      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
+        "/workspace/react-doctor",
+        normalizeEmbeddedPath(reactDoctorDirectory),
+      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
+      execFileSync("sh", ["-c", command], {
+        env: {
+          ...process.env,
+          REACT_DOCTOR_RULE_KEYS: JSON.stringify(["react-doctor/scan-rule"]),
+          TARGET_ROOT_DIRECTORY: ".",
+        },
+      });
+
+      expect(fs.readFileSync(path.join(targetDirectory, "doctor.config.ts"), "utf8")).toBe(
+        `export default ${JSON.stringify({
+          adoptExistingLintConfig: false,
+          respectInlineDisables: false,
+          rules: {
+            "react-doctor/lint-rule": "off",
+            "react-doctor/scan-rule": "error",
+          },
+          warnings: true,
+        })};\n`,
+      );
+    },
+  );
+
+  it(
+    "rejects selected rules missing from the evaluated revision",
+    { timeout: INTEGRATION_TEST_TIMEOUT_MS },
+    () => {
+      const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-eval-"));
+      temporaryDirectories.push(temporaryDirectory);
+      const reactDoctorDirectory = path.join(temporaryDirectory, "react-doctor");
+      const pluginDirectory = path.join(
+        reactDoctorDirectory,
+        "packages/oxlint-plugin-react-doctor/dist",
+      );
+      const targetDirectory = path.join(temporaryDirectory, "target");
+      fs.mkdirSync(pluginDirectory, { recursive: true });
+      fs.mkdirSync(targetDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(pluginDirectory, "index.js"),
+        "export const REACT_COMPILER_RULES = {}; export const REACT_DOCTOR_RULES = [];",
+      );
+
+      const command = MATERIALIZE_ALL_RULES_CONFIG_COMMAND.replaceAll(
+        "/workspace/react-doctor",
+        normalizeEmbeddedPath(reactDoctorDirectory),
+      ).replaceAll("/workspace/target", normalizeEmbeddedPath(targetDirectory));
+      const result = spawnSync("sh", ["-c", command], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          REACT_DOCTOR_RULE_KEYS: JSON.stringify(["react-doctor/missing-rule"]),
+          TARGET_ROOT_DIRECTORY: ".",
+        },
+      });
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Unknown React Doctor eval rules");
+      expect(fs.existsSync(path.join(targetDirectory, "doctor.config.ts"))).toBe(false);
     },
   );
 

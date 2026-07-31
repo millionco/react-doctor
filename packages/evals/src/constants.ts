@@ -5,6 +5,7 @@ export const DEFAULT_TARGET_REPOSITORY_REF = "HEAD";
 export const DEFAULT_TARGET_ROOT_DIRECTORY = ".";
 export const REPOSITORY_SOURCE_EXTENSIONS: ReadonlyArray<string> = [".json", ".ndjson", ".txt"];
 export const PINNED_REPOSITORY_REF_PATTERN = /^[0-9a-f]{40}$/i;
+export const EVALUATION_RULE_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*\/[A-Za-z0-9][A-Za-z0-9-]*$/;
 export const DEFAULT_CORPUS_REPOSITORY_COUNT = 2_000;
 export const DEFAULT_CORPUS_CONCURRENCY = 200;
 export const DEFAULT_REPOSITORIES_PER_SANDBOX = 10;
@@ -13,7 +14,9 @@ export const DEFAULT_EVALUATION_MAX_DURATION_MINUTES = 45;
 export const EVALUATION_CLEANUP_RESERVE_MINUTES = 2;
 export const EVALUATION_RETRY_CONCURRENCIES: ReadonlyArray<number> = [50, 10, 2];
 export const EVALUATION_RETRY_ATTEMPT_RESERVE_MINUTES = 5;
+export const EVALUATION_MAXIMUM_RETRY_RESERVE_RATIO = 0.25;
 export const EVALUATION_RETRY_REPOSITORIES_PER_SANDBOX = 1;
+export const EVALUATION_CONFIG_CONTRACT = "revision-local-rule-config-v1";
 
 export const DAYTONA_RUN_NAME = "react-doctor";
 export const SANDBOX_IMAGE = "node:22-bookworm";
@@ -29,6 +32,8 @@ export const SANDBOX_DELETE_TIMEOUT_SECONDS = 120;
 export const SANDBOX_CLEANUP_CONCURRENCY = 50;
 export const SANDBOX_CREATE_CONCURRENCY = 20;
 export const SANDBOX_REPORT_PATH = "/tmp/react-doctor-report.json";
+export const REACT_DOCTOR_EVALUATION_PROVENANCE_PATH =
+  "/workspace/react-doctor-evaluation-provenance.json";
 
 export const EVALUATION_SCHEMA_VERSION = 1;
 export const REACT_DOCTOR_REPORT_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([1, 2, 3]);
@@ -69,10 +74,80 @@ export const PREPARE_REACT_DOCTOR_COMMANDS: ReadonlyArray<string> = [
   `git -C ${REACT_DOCTOR_WORK_DIRECTORY} fetch -q --depth 1 origin "$REACT_DOCTOR_REF"`,
   `git -C ${REACT_DOCTOR_WORK_DIRECTORY} checkout -q --detach FETCH_HEAD`,
 ];
+const EVALUATION_RULE_CONFIGURATION_SOURCE = `const availableRuleKeys = [
+  ...REACT_DOCTOR_RULES.map((registryEntry) => registryEntry.key),
+  ...Object.keys(REACT_COMPILER_RULES),
+].sort();
+const requestedRuleKeys = JSON.parse(process.env.REACT_DOCTOR_RULE_KEYS ?? "[]");
+if (!Array.isArray(requestedRuleKeys) || !requestedRuleKeys.every((ruleKey) => typeof ruleKey === "string")) {
+  throw new Error("REACT_DOCTOR_RULE_KEYS must be a JSON array of rule keys");
+}
+const availableRuleKeySet = new Set(availableRuleKeys);
+const requestedRuleKeySet = new Set(requestedRuleKeys);
+const unknownRuleKeys = requestedRuleKeys.filter((ruleKey) => !availableRuleKeySet.has(ruleKey));
+if (unknownRuleKeys.length > 0) {
+  throw new Error("Unknown React Doctor eval rules: " + unknownRuleKeys.join(", "));
+}
+const isScopedEvaluation = requestedRuleKeys.length > 0;
+const hasSelectedSecurityScanRule = REACT_DOCTOR_RULES.some(
+  (registryEntry) =>
+    registryEntry.rule.isScanRule === true && requestedRuleKeySet.has(registryEntry.key),
+);
+const rules = Object.fromEntries(
+  availableRuleKeys.map((ruleKey) => [
+    ruleKey,
+    !isScopedEvaluation || requestedRuleKeySet.has(ruleKey) ? "error" : "off",
+  ]),
+);
+const config = {
+  adoptExistingLintConfig: false,
+  respectInlineDisables: false,
+  ...(isScopedEvaluation && !hasSelectedSecurityScanRule
+    ? { ignore: { tags: ["security-scan"] } }
+    : {}),
+  rules,
+  warnings: true,
+};`;
+export const MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND = `node --input-type=module <<'REACT_DOCTOR_EVAL_PROVENANCE'
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const { REACT_COMPILER_RULES, REACT_DOCTOR_RULES } = await import(
+  pathToFileURL(
+    "${REACT_DOCTOR_WORK_DIRECTORY}/packages/oxlint-plugin-react-doctor/dist/index.js",
+  ).href
+);
+${EVALUATION_RULE_CONFIGURATION_SOURCE}
+const ruleSetHash = createHash("sha256")
+  .update(JSON.stringify({
+    configContract: "${EVALUATION_CONFIG_CONTRACT}",
+    config,
+  }))
+  .digest("hex");
+const provenance = {
+  reactDoctorRepository: process.env.REACT_DOCTOR_REPOSITORY,
+  reactDoctorCommit: execFileSync(
+    "git",
+    ["-C", "${REACT_DOCTOR_WORK_DIRECTORY}", "rev-parse", "HEAD"],
+    { encoding: "utf8" },
+  ).trim(),
+  configContract: "${EVALUATION_CONFIG_CONTRACT}",
+  ruleSetHash,
+  ruleKeys: [...requestedRuleKeySet].sort(),
+};
+fs.writeFileSync(
+  "${REACT_DOCTOR_EVALUATION_PROVENANCE_PATH}",
+  JSON.stringify(provenance) + "\\n",
+  { mode: 0o600 },
+);
+REACT_DOCTOR_EVAL_PROVENANCE`;
 export const BUILD_REACT_DOCTOR_COMMANDS: ReadonlyArray<string> = [
   "corepack enable",
   "npx --yes --package @antfu/ni ni --frozen",
   "./node_modules/.bin/turbo run build --filter=react-doctor",
+  MATERIALIZE_REACT_DOCTOR_EVALUATION_PROVENANCE_COMMAND,
 ];
 
 export const SETUP_TARGET_REPOSITORY_COMMAND = `set -eu
@@ -97,17 +172,7 @@ const { REACT_COMPILER_RULES, REACT_DOCTOR_RULES } = await import(
   ).href
 );
 
-const ruleKeys = [
-  ...REACT_DOCTOR_RULES.map((registryEntry) => registryEntry.key),
-  ...Object.keys(REACT_COMPILER_RULES),
-];
-const rules = Object.fromEntries(ruleKeys.map((ruleKey) => [ruleKey, "error"]));
-const config = {
-  adoptExistingLintConfig: false,
-  respectInlineDisables: false,
-  rules,
-  warnings: true,
-};
+${EVALUATION_RULE_CONFIGURATION_SOURCE}
 const configContents = "export default " + JSON.stringify(config) + ";\\n";
 const CONFIG_FILE_MODE = 0o600;
 const targetCheckoutDirectory = fs.realpathSync("/workspace/target");

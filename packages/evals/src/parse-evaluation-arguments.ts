@@ -10,6 +10,7 @@ import {
   DEFAULT_REPOSITORIES_PER_SANDBOX,
   DEFAULT_REPOSITORIES_SOURCES,
   EVALUATION_CLEANUP_RESERVE_MINUTES,
+  EVALUATION_RULE_KEY_PATTERN,
   EVALUATION_RETRY_ATTEMPT_RESERVE_MINUTES,
   EVALUATION_RETRY_CONCURRENCIES,
 } from "./constants.js";
@@ -23,6 +24,7 @@ export interface EvaluationOptions {
   maxDurationMinutes: number;
   reactDoctorRepository: string;
   reactDoctorRef: string;
+  ruleKeys: ReadonlyArray<string>;
 }
 
 export const parseEvaluationArguments = (
@@ -64,12 +66,16 @@ export const parseEvaluationArguments = (
         type: "string",
         default: DEFAULT_REACT_DOCTOR_REF,
       },
+      rule: {
+        type: "string",
+        multiple: true,
+      },
     },
   });
 
   if (positionals.length !== 0) {
     throw new Error(
-      "Usage: nr eval -- [--repositories <path-url-or-directory>]... [--repository-limit <count>] [--project-roots-per-repository <count>] [--concurrency <count>] [--repositories-per-sandbox <count>] [--max-duration-minutes <count>] [--react-doctor-ref <git-ref>]",
+      "Usage: nr eval -- [--repositories <path-url-or-directory>]... [--repository-limit <count>] [--project-roots-per-repository <count>] [--concurrency <count>] [--repositories-per-sandbox <count>] [--max-duration-minutes <count>] [--react-doctor-ref <git-ref>] [--rule <plugin/rule>]...",
     );
   }
 
@@ -103,6 +109,12 @@ export const parseEvaluationArguments = (
     );
   }
 
+  const ruleKeys = [...new Set(values.rule ?? [])];
+  const invalidRuleKey = ruleKeys.find((ruleKey) => !EVALUATION_RULE_KEY_PATTERN.test(ruleKey));
+  if (invalidRuleKey !== undefined) {
+    throw new Error(`--rule must be a canonical plugin/rule key: ${invalidRuleKey}`);
+  }
+
   return {
     repositoriesSources: values.repositories ?? DEFAULT_REPOSITORIES_SOURCES,
     repositoryLimit,
@@ -112,5 +124,6 @@ export const parseEvaluationArguments = (
     maxDurationMinutes,
     reactDoctorRepository: values["react-doctor-repository"],
     reactDoctorRef: values["react-doctor-ref"],
+    ruleKeys,
   };
 };

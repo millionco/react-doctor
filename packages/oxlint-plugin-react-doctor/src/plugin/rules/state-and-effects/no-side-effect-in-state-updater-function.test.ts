@@ -232,6 +232,60 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(localSetterMethod.diagnostics).toHaveLength(0);
   });
 
+  it("flags callbacks stored in prior state without flagging fresh local callbacks", () => {
+    const priorStateCallback = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setConfig]=useState({onClose:()=>{}});setConfig(previous=>{previous.onClose&&previous.onClose();return{...previous,onClose:()=>{}}})}`,
+    );
+    const aliasedPriorStateCallback = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setConfig]=useState({onClose:()=>{}});setConfig(previous=>{const current=previous;current.onClose?.();return{...previous,onClose:()=>{}}})}`,
+    );
+    const freshLocalCallback = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const C=()=>{const[,setConfig]=useState({});setConfig(previous=>{const local={onClose:()=>{}};local.onClose();return previous})}`,
+    );
+    expect(priorStateCallback.diagnostics).toHaveLength(1);
+    expect(aliasedPriorStateCallback.diagnostics).toHaveLength(1);
+    expect(freshLocalCallback.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps proven immutable date value methods pure inside updaters", () => {
+    const calendarDateTime = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{CalendarDateTime}from"@internationalized/date";import{useState}from"react";const C=()=>{const[,setValue]=useState([new CalendarDateTime(2025,1,29,14,30)]);setValue(previous=>{const current=previous[0]??new CalendarDateTime(2025,1,1);return[current.set({hour:1})]})}`,
+    );
+    const dayjsValue = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import{useState}from"react";const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
+    );
+    expect(calendarDateTime.diagnostics).toHaveLength(0);
+    expect(dayjsValue.diagnostics).toHaveLength(0);
+  });
+
+  it("does not trust immutable date lookalikes or Day.js with badMutable", () => {
+    const localCalendarDateTime = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";class CalendarDateTime{set(fields){Object.assign(this,fields);return this}}const C=()=>{const[,setValue]=useState([new CalendarDateTime()]);setValue(previous=>{const current=previous[0]??new CalendarDateTime();return[current.set({hour:1})]})}`,
+    );
+    const unrelatedDateFactory = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import createDate from"./mutable-date";import{useState}from"react";const C=()=>{const[,setDate]=useState({selectedMonth:createDate()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
+    );
+    const mutableDayjs = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";import{useState}from"react";dayjs.extend(badMutable);const C=()=>{const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
+    );
+    const unusedBadMutable = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import dayjs from"dayjs";import badMutable from"dayjs/plugin/badMutable";import{useState}from"react";const C=()=>{void badMutable;const[,setDate]=useState({selectedMonth:dayjs()});setDate(previous=>({...previous,selectedMonth:previous.selectedMonth.add(1,"month")}))}`,
+    );
+    expect(localCalendarDateTime.diagnostics).toHaveLength(1);
+    expect(unrelatedDateFactory.diagnostics).toHaveLength(1);
+    expect(mutableDayjs.diagnostics).toHaveLength(1);
+    expect(unusedBadMutable.diagnostics).toHaveLength(0);
+  });
+
   it("ignores setter-shaped mutators on updater-local built-ins and factory results", () => {
     const localBuiltIns = runRule(
       noSideEffectInStateUpdaterFunction,
@@ -258,6 +312,14 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(localFactoryResult.diagnostics).toHaveLength(0);
     expect(externalDate.diagnostics).toHaveLength(1);
     expect(externalFactoryResult.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps property writes on proven fresh parser results local", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `import{useState}from"react";const parseHSL=value=>({h:0,s:0,l:Number(value)});const C=()=>{const[,setTheme]=useState({color:"0"});setTheme(previous=>{const current=parseHSL(previous.color);current.h=1;return{...previous,color:String(current.h)}})}`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("requires chained fresh-container assignments to target execution-local bindings", () => {

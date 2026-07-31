@@ -1,4 +1,5 @@
 import type { FunctionCfg } from "../../semantic/control-flow-graph.js";
+import { analyzeScopes } from "../../semantic/scope-analysis.js";
 import { MUTATING_COLLECTION_METHODS, PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { SAFE_MUTABLE_CONSTRUCTOR_NAMES } from "../../constants/library.js";
 import {
@@ -11,6 +12,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findDeferredExecutionBoundary } from "../../utils/find-deferred-execution-boundary.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
@@ -24,10 +26,13 @@ import { isNodeOnUnconditionalPath } from "../../utils/is-node-on-unconditional-
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { resolveCrossFileValueExportWithFilePath } from "../../utils/resolve-cross-file-function-export.js";
+import { resolveImportedApiReference } from "../../utils/resolve-imported-api-reference.js";
 import { resolveReactUseStatePair } from "../../utils/resolve-react-use-state-pair.js";
 import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 
 const MESSAGE =
@@ -83,6 +88,10 @@ const GLOBAL_SCHEDULER_CALL_NAMES = new Set([
 ]);
 const GLOBAL_SIDE_EFFECT_CALL_NAMES = new Set(["fetch"]);
 const GLOBAL_OBJECT_RECEIVER_NAMES = new Set(["globalThis", "self", "window"]);
+const INTERNATIONALIZED_DATE_IMMUTABLE_METHOD_NAMES = new Set(["add", "set"]);
+const DAYJS_IMMUTABLE_METHOD_NAMES = new Set(["add", "set"]);
+const DAYJS_MODULE_NAME = "dayjs";
+const DAYJS_BAD_MUTABLE_MODULE_NAME = "dayjs/plugin/badMutable";
 
 interface ExecutedFunctionAnalysis {
   arrayParameterSymbolIds: Set<number>;
@@ -465,6 +474,208 @@ const baseReceiverIdentifier = (expression: EsTreeNode): EsTreeNodeOfType<"Ident
     current = stripParenExpression(current.object);
   }
   return isNodeOfType(current, "Identifier") ? current : null;
+};
+
+const programActivatesDayjsBadMutable = (
+  program: EsTreeNode,
+  dayjsExpression: EsTreeNode,
+  scopes: RuleContext["scopes"],
+): boolean => {
+  const dayjsSymbol = resolveConstIdentifierAlias(dayjsExpression, scopes);
+  if (!dayjsSymbol) return false;
+  let isBadMutableActivated = false;
+  walkAst(program, (node) => {
+    if (isBadMutableActivated) return false;
+    if (!isNodeOfType(node, "CallExpression")) return;
+    const callee = stripParenExpression(node.callee);
+    if (!isNodeOfType(callee, "MemberExpression") || getStaticPropertyName(callee) !== "extend") {
+      return;
+    }
+    const receiver = stripParenExpression(callee.object);
+    if (
+      !isNodeOfType(receiver, "Identifier") ||
+      resolveConstIdentifierAlias(receiver, scopes)?.id !== dayjsSymbol.id
+    ) {
+      return;
+    }
+    const pluginArgument = node.arguments?.[0];
+    if (!pluginArgument || isNodeOfType(pluginArgument, "SpreadElement")) return;
+    const pluginReference = resolveImportedApiReference(pluginArgument, scopes);
+    isBadMutableActivated = Boolean(
+      pluginReference &&
+      pluginReference.importedName === "default" &&
+      !pluginReference.isNamespace &&
+      (pluginReference.source === DAYJS_BAD_MUTABLE_MODULE_NAME ||
+        pluginReference.source === `${DAYJS_BAD_MUTABLE_MODULE_NAME}.js`),
+    );
+  });
+  return isBadMutableActivated;
+};
+
+const importedReferenceIsDayjsFactory = (expression: EsTreeNode, context: RuleContext): boolean => {
+  const currentProgram = findProgramRoot(expression);
+  if (!currentProgram) return false;
+  const importedReference = resolveImportedApiReference(expression, context.scopes);
+  if (!importedReference || importedReference.isNamespace) {
+    return false;
+  }
+  if (
+    importedReference.source === DAYJS_MODULE_NAME &&
+    importedReference.importedName === "default"
+  ) {
+    return !programActivatesDayjsBadMutable(currentProgram, expression, context.scopes);
+  }
+  if (!context.filename || importedReference.importedName === null) return false;
+  const resolvedExport = resolveCrossFileValueExportWithFilePath(
+    context.filename,
+    importedReference.source,
+    importedReference.importedName,
+  );
+  if (!resolvedExport) return false;
+  const wrapperScopes = analyzeScopes(resolvedExport.programNode);
+  const wrappedReference = resolveImportedApiReference(resolvedExport.exportedNode, wrapperScopes);
+  return Boolean(
+    wrappedReference &&
+    wrappedReference.source === DAYJS_MODULE_NAME &&
+    wrappedReference.importedName === "default" &&
+    !wrappedReference.isNamespace &&
+    !programActivatesDayjsBadMutable(
+      resolvedExport.programNode,
+      resolvedExport.exportedNode,
+      wrapperScopes,
+    ) &&
+    !programActivatesDayjsBadMutable(currentProgram, expression, context.scopes),
+  );
+};
+
+const newExpressionIsInternationalizedCalendarDateTime = (
+  expression: EsTreeNodeOfType<"NewExpression">,
+  context: RuleContext,
+): boolean => {
+  const importedReference = resolveImportedApiReference(expression.callee, context.scopes);
+  return Boolean(
+    importedReference &&
+    importedReference.source === "@internationalized/date" &&
+    importedReference.importedName === "CalendarDateTime" &&
+    !importedReference.isNamespace,
+  );
+};
+
+const getUpdaterParameterSymbol = (updaterFunction: EsTreeNode, context: RuleContext) => {
+  if (!isFunctionLike(updaterFunction)) return null;
+  const firstParameter = updaterFunction.params?.[0];
+  if (!firstParameter) return null;
+  const binding = isNodeOfType(firstParameter, "AssignmentPattern")
+    ? firstParameter.left
+    : firstParameter;
+  return isNodeOfType(binding, "Identifier") ? context.scopes.symbolFor(binding) : null;
+};
+
+const receiverRootIsUpdaterParameter = (
+  expression: EsTreeNode,
+  updaterFunction: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const rootIdentifier = baseReceiverIdentifier(expression);
+  const updaterParameterSymbol = getUpdaterParameterSymbol(updaterFunction, context);
+  return Boolean(
+    rootIdentifier &&
+    updaterParameterSymbol &&
+    resolveConstIdentifierAlias(rootIdentifier, context.scopes)?.id === updaterParameterSymbol.id,
+  );
+};
+
+const getObjectStateMemberInitialValue = (
+  expression: EsTreeNodeOfType<"MemberExpression">,
+  updaterFunction: EsTreeNode,
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const propertyName = getStaticPropertyName(expression);
+  const receiver = stripParenExpression(expression.object);
+  const updaterParameterSymbol = getUpdaterParameterSymbol(updaterFunction, context);
+  if (
+    propertyName === null ||
+    !isNodeOfType(receiver, "Identifier") ||
+    !updaterParameterSymbol ||
+    resolveConstIdentifierAlias(receiver, context.scopes)?.id !== updaterParameterSymbol.id
+  ) {
+    return null;
+  }
+  const setter = stripParenExpression(setterCall.callee);
+  if (!isNodeOfType(setter, "Identifier")) return null;
+  const pair = resolveReactUseStatePair(setter, context.scopes);
+  if (!pair || !isNodeOfType(pair.declarator.init, "CallExpression")) return null;
+  const initialValueArgument = pair.declarator.init.arguments?.[0];
+  if (!initialValueArgument || isNodeOfType(initialValueArgument, "SpreadElement")) return null;
+  const initialValue = stripParenExpression(initialValueArgument);
+  if (!isNodeOfType(initialValue, "ObjectExpression")) return null;
+  for (const property of initialValue.properties.toReversed()) {
+    if (!isNodeOfType(property, "Property") || property.kind !== "init") return null;
+    const candidatePropertyName = getStaticPropertyKeyName(property);
+    if (candidatePropertyName === null) return null;
+    if (candidatePropertyName === propertyName) return property.value;
+  }
+  return null;
+};
+
+const expressionIsInternationalizedCalendarDateTime = (
+  expression: EsTreeNode,
+  updaterFunction: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    const symbol = context.scopes.symbolFor(candidate);
+    if (!symbol || symbol.kind !== "const" || !symbol.initializer) return false;
+    candidate = stripParenExpression(symbol.initializer);
+  }
+  if (
+    isNodeOfType(candidate, "NewExpression") &&
+    newExpressionIsInternationalizedCalendarDateTime(candidate, context)
+  ) {
+    return true;
+  }
+  const fallback = isNodeOfType(candidate, "LogicalExpression")
+    ? stripParenExpression(candidate.right)
+    : null;
+  return Boolean(
+    isNodeOfType(candidate, "LogicalExpression") &&
+    receiverRootIsUpdaterParameter(candidate.left, updaterFunction, context) &&
+    isNodeOfType(fallback, "NewExpression") &&
+    newExpressionIsInternationalizedCalendarDateTime(fallback, context),
+  );
+};
+
+const callUsesProvenImmutableLibraryValueMethod = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  updaterFunction: EsTreeNode,
+  setterCall: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const methodName = getStaticPropertyName(callee);
+  if (
+    methodName &&
+    INTERNATIONALIZED_DATE_IMMUTABLE_METHOD_NAMES.has(methodName) &&
+    expressionIsInternationalizedCalendarDateTime(callee.object, updaterFunction, context)
+  ) {
+    return true;
+  }
+  if (!methodName || !DAYJS_IMMUTABLE_METHOD_NAMES.has(methodName)) return false;
+  const receiver = stripParenExpression(callee.object);
+  if (!isNodeOfType(receiver, "MemberExpression")) return false;
+  const initialValue = getObjectStateMemberInitialValue(
+    receiver,
+    updaterFunction,
+    setterCall,
+    context,
+  );
+  if (!initialValue) return false;
+  const initialCall = stripParenExpression(initialValue);
+  if (!isNodeOfType(initialCall, "CallExpression")) return false;
+  return importedReferenceIsDayjsFactory(stripParenExpression(initialCall.callee), context);
 };
 
 const expressionIsDirectFreshContainer = (
@@ -1058,12 +1269,22 @@ const callHasSideEffectName = (
   call: EsTreeNodeOfType<"CallExpression">,
   updaterFunction: EsTreeNode,
   executedFunctions: ReadonlySet<EsTreeNode>,
-  invocationReferenceNode: EsTreeNode,
+  invocationReferenceNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
   const callName = getCallName(call);
   if (!callName) return false;
   const callee = stripParenExpression(call.callee);
+  if (
+    callUsesProvenImmutableLibraryValueMethod(
+      call,
+      updaterFunction,
+      invocationReferenceNode,
+      context,
+    )
+  ) {
+    return false;
+  }
   const memberCalleeUsesExternalCallback =
     isNodeOfType(callee, "MemberExpression") &&
     freshObjectMethodIsExternalCallback(call, invocationReferenceNode, context);
@@ -1071,6 +1292,7 @@ const callHasSideEffectName = (
     isNodeOfType(callee, "MemberExpression") &&
     CALLBACK_PROP_NAME_PATTERN.test(getStaticPropertyName(callee) ?? "") &&
     (memberCalleeUsesExternalCallback ||
+      receiverRootIsUpdaterParameter(callee.object, updaterFunction, context) ||
       (!memberReceiverIsFreshObjectLiteral(callee, context) &&
         !receiverIsUpdaterLocal(callee.object, updaterFunction, executedFunctions, context)));
   const isDiscardedExternalCallbackCall =

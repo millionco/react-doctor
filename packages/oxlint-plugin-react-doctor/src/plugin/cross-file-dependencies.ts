@@ -188,6 +188,15 @@ const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
   }
 };
 
+const collectImportedValueDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
+  for (const entry of flattenImportEntries(staticImports)) {
+    resolveCrossFileValueExportWithFilePath(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
 const collectBrowserGuardDependencies: CrossFileDependencyCollector = ({
   absoluteFilePath,
   staticImports,
@@ -482,6 +491,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-event-handler", collectEffectValueHelperDependencies],
     ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
+    ["no-side-effect-in-state-updater-function", collectImportedValueDependencies],
     ["no-unguarded-browser-global-at-module-scope", collectBrowserGuardDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectBrowserRenderGuardDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],

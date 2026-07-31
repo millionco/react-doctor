@@ -311,6 +311,27 @@ export const App = ({ items }) => {
   });
 });
 
+describe("no-side-effect-in-state-updater-function collector", () => {
+  it("records an imported Day.js wrapper and its alias configuration", () => {
+    writeFixtureFile("jsconfig.json", `{ "compilerOptions": { "baseUrl": "src" } }\n`);
+    writeFixtureFile("src/utils/dayjs.ts", `import dayjs from "dayjs"; export default dayjs;\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "utils/dayjs";
+const App = () => {
+  const [, setDate] = useState({ selectedMonth: dayjs() });
+  setDate((previous) => ({
+    ...previous,
+    selectedMonth: previous.selectedMonth.add(1, "month"),
+  }));
+};\n`,
+    );
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    expect(trace?.contentPaths.has(fixturePath("jsconfig.json"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/utils/dayjs.ts"))).toBe(true);
+  });
+});
+
 describe("forwarded Hook dependency collectors", () => {
   const affectedRuleIds = ["exhaustive-deps", "rerender-memo-with-default-value"];
 

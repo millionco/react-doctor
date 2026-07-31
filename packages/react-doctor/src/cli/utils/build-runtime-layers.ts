@@ -8,13 +8,19 @@ import {
   Linter,
   LintPartialFailures,
   OxlintConcurrency,
+  OxlintSpawnSlots,
   Progress,
   Project,
   Reporter,
   Score,
   SupplyChain,
 } from "@react-doctor/core";
-import type { ProgressHandle, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
+import type {
+  ProgressHandle,
+  ProjectInfo,
+  ReactDoctorConfig,
+  WorkerSlots,
+} from "@react-doctor/core";
 import { spinner } from "./spinner.js";
 
 export interface BuildRuntimeLayersInput {
@@ -66,6 +72,7 @@ export interface BuildRuntimeLayersInput {
    * count) in place.
    */
   readonly oxlintConcurrency?: number;
+  readonly oxlintSpawnSlots?: WorkerSlots;
   readonly reporterLayer?: Layer.Layer<Reporter>;
   readonly progressLayer?: Layer.Layer<Progress>;
 }
@@ -161,7 +168,14 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   // resolved a concrete worker count (today: `--no-parallel` → serial);
   // otherwise leave the env-seeded default (parallel) so
   // `REACT_DOCTOR_PARALLEL` still applies to flag-less runs.
-  return input.oxlintConcurrency === undefined
-    ? baseLayers
-    : Layer.mergeAll(baseLayers, Layer.succeed(OxlintConcurrency, input.oxlintConcurrency));
+  const layersWithConcurrency =
+    input.oxlintConcurrency === undefined
+      ? baseLayers
+      : Layer.mergeAll(baseLayers, Layer.succeed(OxlintConcurrency, input.oxlintConcurrency));
+  return input.oxlintSpawnSlots === undefined
+    ? layersWithConcurrency
+    : Layer.mergeAll(
+        layersWithConcurrency,
+        Layer.succeed(OxlintSpawnSlots, input.oxlintSpawnSlots),
+      );
 };

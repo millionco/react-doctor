@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -55,8 +56,8 @@ export const noMatchMediaInStateInitializer = defineRule({
   recommendation:
     "Prefer CSS media queries for layout, or subscribe with `useSyncExternalStore` and provide a stable server snapshot.",
   create: (context: RuleContext): RuleVisitors => {
-    if (isTestlikeFilename(context.filename)) return {};
-    if (classifyReactNativeFileTarget(context) === "react-native") return {};
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    if (classifyReactNativeFileTarget(context) === "react-native") return EMPTY_RULE_VISITORS;
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {

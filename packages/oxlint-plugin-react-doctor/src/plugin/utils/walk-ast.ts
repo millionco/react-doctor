@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isAstNode } from "./is-ast-node.js";
+import { pushChildNodesInReverse } from "./push-child-nodes-in-reverse.js";
 import { RUNTIME_VISITOR_KEYS } from "./runtime-visitor-keys.js";
 
 // Visits every AST child of `node` (skipping `parent` back-references and
@@ -49,10 +50,6 @@ export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolea
   while (pendingNodes.length > 0) {
     const currentNode = pendingNodes.pop();
     if (currentNode === undefined || visitor(currentNode) === false) continue;
-    const childNodes: EsTreeNode[] = [];
-    forEachChildNode(currentNode, (childNode) => childNodes.push(childNode));
-    for (let childIndex = childNodes.length - 1; childIndex >= 0; childIndex -= 1) {
-      pendingNodes.push(childNodes[childIndex]);
-    }
+    pushChildNodesInReverse(currentNode, pendingNodes);
   }
 };

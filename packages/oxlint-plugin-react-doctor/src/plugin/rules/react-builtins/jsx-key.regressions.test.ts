@@ -202,6 +202,21 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
+  it("flags a named callback wrapped in a type assertion", () => {
+    expectFail(`
+      const renderRow = (item) => <Item name={item.name} />;
+      items.map(renderRow as (item: Item) => ReactNode);
+    `);
+  });
+
+  it("flags a callback assigned after its declaration", () => {
+    expectFail(`
+      let renderRow;
+      renderRow = (item) => <Item name={item.name} />;
+      items.map(renderRow);
+    `);
+  });
+
   it("does not flag a keyed element returned by a named callback", () => {
     expectPass(`
       const renderRow = (item) => <Item key={item.id} name={item.name} />;
@@ -594,6 +609,16 @@ describe("react-builtins/jsx-key — regressions", () => {
     expectFail(`
       const badges = [<Badge type="a" />, <Badge type="b" />];
       const App = () => <div>{badges}</div>;
+    `);
+  });
+
+  it("does not attribute a shadowed array's rendering use to the outer binding", () => {
+    expectPass(`
+      const badges = [<Badge type="a" />, <Badge type="b" />];
+      const App = () => {
+        const badges = [<Badge key="a" type="a" />, <Badge key="b" type="b" />];
+        return <div>{badges}</div>;
+      };
     `);
   });
 

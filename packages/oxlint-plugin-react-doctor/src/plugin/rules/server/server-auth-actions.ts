@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import {
   AUTH_CHECK_LOOKAHEAD_STATEMENTS,
   AUTH_FUNCTION_NAMES,
@@ -1636,7 +1637,7 @@ export const serverAuthActions = defineRule({
         )
       : isTestlikeFilename(context.filename);
     if (isNonProductionFile) {
-      return {};
+      return EMPTY_RULE_VISITORS;
     }
     const shouldSkipTestAppSource = Boolean(
       context.filename && TEST_APP_SOURCE_PATH_PATTERN.test(context.filename),

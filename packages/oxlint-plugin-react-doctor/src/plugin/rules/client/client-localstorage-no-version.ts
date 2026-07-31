@@ -58,14 +58,11 @@ export const clientLocalstorageNoVersion = defineRule({
   recommendation:
     'Put a version in the storage key (e.g. "myKey:v1"). If you change the data shape later, old saved data can be ignored instead of crashing the app.',
   create: (context: RuleContext) => {
-    let safelyValidatedStorageKeys: ReadonlySet<string> = new Set();
+    let programNode: EsTreeNodeOfType<"Program"> | null = null;
+    let safelyValidatedStorageKeys: ReadonlySet<string> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        safelyValidatedStorageKeys = collectSafelyValidatedLocalStorageKeys({
-          programNode: node,
-          scopes: context.scopes,
-          resolveKey: (keyNode) => resolveStringKey(keyNode, context),
-        });
+        programNode = node;
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isNodeOfType(node.callee, "MemberExpression")) return;
@@ -77,14 +74,19 @@ export const clientLocalstorageNoVersion = defineRule({
 
         const keyArg = node.arguments?.[0];
         if (!keyArg) return;
+        const valueArg = node.arguments?.[1];
+        if (!valueArg || !isJsonStringifyCall(valueArg)) return;
         const keyValue = resolveStringKey(keyArg, context);
         if (keyValue === null) return;
         if (isVersionedKey(keyValue)) return;
-        if (safelyValidatedStorageKeys.has(keyValue)) return;
-
-        const valueArg = node.arguments?.[1];
-        if (!valueArg) return;
-        if (!isJsonStringifyCall(valueArg)) return;
+        if (safelyValidatedStorageKeys === null && programNode) {
+          safelyValidatedStorageKeys = collectSafelyValidatedLocalStorageKeys({
+            programNode,
+            scopes: context.scopes,
+            resolveKey: (keyNode) => resolveStringKey(keyNode, context),
+          });
+        }
+        if (safelyValidatedStorageKeys?.has(keyValue)) return;
 
         context.report({
           node: keyArg,

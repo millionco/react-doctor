@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import reactDoctorPlugin from "oxlint-plugin-react-doctor";
+import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
 import type {
   CleanedDiagnostic,
   Diagnostic,
@@ -117,7 +117,7 @@ const lookupOwnString = (record: Record<string, string>, key: string): string | 
 // public-env prefix); everything else renders the static `recommendation`.
 // Core carries no rule-specific prose or rule-name matches here.
 const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string | undefined => {
-  const rule = reactDoctorPlugin.rules[ruleName];
+  const rule = REACT_DOCTOR_RULE_REGISTRY[ruleName];
   if (!rule) return undefined;
   if (rule.recommendationFor) {
     const capabilities = getCapabilities(project);
@@ -134,13 +134,13 @@ const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string |
 // scan summary. Used by `resolveDiagnosticCategory` below and by
 // `validateRuleRegistration` to assert per-rule metadata coverage.
 export const getRuleCategory = (ruleName: string): string | undefined =>
-  reactDoctorPlugin.rules[ruleName]?.category;
+  REACT_DOCTOR_RULE_REGISTRY[ruleName]?.category;
 
 // Short human headline for a rule (e.g. "Array index used as a key").
 // Only react-doctor rules carry one; adopted third-party rules return
 // undefined and renderers fall back to the `plugin/rule` id.
 const getRuleTitle = (ruleName: string): string | undefined =>
-  reactDoctorPlugin.rules[ruleName]?.title;
+  REACT_DOCTOR_RULE_REGISTRY[ruleName]?.title;
 
 // react-doctor rules carry their own `title`; adopted React Compiler
 // diagnostics get a fixed human headline instead of their bare id.
@@ -257,7 +257,7 @@ const resolveDiagnosticCategory = (plugin: string, rule: string): string => {
 // rules in other categories opt in via their `matchByOccurrence` flag.
 const resolveMatchByOccurrence = (rule: string, category: string): boolean =>
   OCCURRENCE_MATCHED_CATEGORIES.has(category) ||
-  Boolean(reactDoctorPlugin.rules[rule]?.matchByOccurrence);
+  Boolean(REACT_DOCTOR_RULE_REGISTRY[rule]?.matchByOccurrence);
 
 /**
  * Maps oxlint's non-primary labels (`labels[1..]`) into related source
@@ -441,7 +441,7 @@ export const parseOxlintOutput = (
     // HACK: Astro's canonical TSX conversion adds wrapper fragments and keeps
     // HTML attribute names. Only design-tagged rules consume this shadow;
     // native Astro linting still handles scripts and every other rule.
-    if (plugin !== "react-doctor" || !reactDoctorPlugin.rules[rule]?.tags?.includes("design")) {
+    if (plugin !== "react-doctor" || !REACT_DOCTOR_RULE_REGISTRY[rule]?.tags?.includes("design")) {
       return [];
     }
     const labels = mapPreparedSourceLabels(diagnostic.labels, preparedSourceMap);

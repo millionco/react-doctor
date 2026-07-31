@@ -1,5 +1,6 @@
 import { PASSIVE_EVENT_NAMES } from "../../constants/dom.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getDirectConstInitializer } from "../../utils/get-direct-const-initializer.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -16,7 +17,6 @@ import { isGeneratedDocsArchiveFilename } from "../../utils/is-generated-docs-ar
 import { isProvenPureImportedPredicateCall } from "../../utils/is-proven-pure-imported-predicate-call.js";
 import { isProvenPromiseExpression } from "../../utils/is-proven-promise-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { resolveMemberHandlerFunction } from "../../utils/resolve-member-handler-function.js";
@@ -32,7 +32,6 @@ const DEFERRED_CALLBACK_API_NAMES = new Set([
   "setTimeout",
 ]);
 const PROMISE_DEFERRED_METHOD_NAMES = new Set(["catch", "finally", "then"]);
-const EMPTY_VISITORS: RuleVisitors = {};
 
 // A handler that calls `event.preventDefault()` MUST run non-passively —
 // passive listeners silently ignore preventDefault(). Recommending
@@ -508,7 +507,7 @@ export const clientPassiveEventListeners = defineRule({
   recommendation:
     "Add `{ passive: true }` as the third argument: `addEventListener('touchmove', handler, { passive: true })`. Only do this if the handler doesn't call `event.preventDefault()`, since passive listeners ignore it (which breaks pull-to-refresh, custom gestures, and nested scrolling).",
   create: (context: RuleContext) => {
-    if (isGeneratedDocsArchiveFilename(context.filename)) return EMPTY_VISITORS;
+    if (isGeneratedDocsArchiveFilename(context.filename)) return EMPTY_RULE_VISITORS;
     const methodMutationAnalysis = createMethodMutationAnalysis(context);
     const addEventListenerCalls: EsTreeNodeOfType<"CallExpression">[] = [];
     const callsPreventDefaultByHandler = new WeakMap<EsTreeNode, boolean>();

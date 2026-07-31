@@ -52,6 +52,13 @@ Run oxlint as normal:
 npx oxlint .
 ```
 
+## Lightweight engine entry
+
+`oxlint-plugin-react-doctor/core` exposes rule metadata, cross-file collectors,
+and project scan rules without loading the full oxlint visitor registry. It is
+intended for engine integrations. Oxlint configurations should continue using
+the package's root entry.
+
 ## Available rules
 
 The full rule list lives in [`rule-registry.ts`](https://github.com/millionco/react-doctor/blob/main/packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts). All rules are namespaced under `react-doctor/*`.

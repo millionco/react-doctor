@@ -92,6 +92,14 @@ test("accepts multiple complete pinned evaluation records", () => {
   assert.equal(result.status, 0, result.stderr);
 });
 
+test("accepts a complete Astro project report", () => {
+  const record = buildRecord();
+  record.report.projects[0].framework = "astro";
+  const result = validateRecords([record]);
+
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("rejects duplicate project records", () => {
   const result = validateRecords([buildRecord(), buildRecord()]);
 

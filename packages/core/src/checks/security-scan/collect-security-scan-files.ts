@@ -3,8 +3,8 @@ import * as path from "node:path";
 import {
   classifySecurityScanFile,
   shouldReadSecurityScanContent,
-} from "oxlint-plugin-react-doctor";
-import type { ScannedFile } from "oxlint-plugin-react-doctor";
+} from "oxlint-plugin-react-doctor/core";
+import type { ScannedFile } from "oxlint-plugin-react-doctor/core";
 import { readDirectoryEntries } from "../../project-info/fs-utils.js";
 import { isLargeMinifiedFile } from "../../utils/is-large-minified-file.js";
 import {

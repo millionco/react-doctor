@@ -1,16 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isExpoManagedFileActive } from "../../utils/is-expo-managed-file.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 const BUNDLED_ASSET_SOURCE_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
 
@@ -81,7 +79,7 @@ export const rnPreferExpoImage = defineRule({
   recommendation:
     "Use `<Image>` from `expo-image` instead of `react-native`. Same props, plus caching, placeholders, and crossfades for faster image loading.",
   create: (context: RuleContext) => {
-    if (!isExpoManagedFileActive(context)) return EMPTY_VISITORS;
+    if (!isExpoManagedFileActive(context)) return EMPTY_RULE_VISITORS;
 
     const flaggedImports: FlaggedImageImport[] = [];
     const assetBindingNames = new Set<string>();

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { FRAMEWORK_TOKENS } from "oxlint-plugin-react-doctor";
+import { FRAMEWORK_TOKENS } from "oxlint-plugin-react-doctor/core";
 import * as Schema from "effect/Schema";
 
 export const Severity = Schema.Literals(["error", "warning"]);

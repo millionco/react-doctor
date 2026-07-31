@@ -42,12 +42,16 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/inspect.js", () => ({
-  inspect: vi.fn(async (): Promise<InspectResult> => {
+vi.mock("../src/inspect.js", () => {
+  const inspect = vi.fn(async (): Promise<InspectResult> => {
     if (mockState.result === undefined) throw new Error("mockState.result not set");
     return mockState.result;
-  }),
-}));
+  });
+  return {
+    inspect,
+    createInvocationInspect: () => inspect,
+  };
+});
 
 vi.mock("../src/cli/utils/select-projects.js", () => ({
   selectProjects: vi.fn(async () => mockState.projectDirectories),

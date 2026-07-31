@@ -7,11 +7,16 @@ import { collectFunctionReturnStatements } from "../../utils/collect-function-re
 import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
+import { resolveStaticLocalCallFunction } from "../../utils/get-order-independent-local-function.js";
+import { canNodeExecuteBefore } from "../../utils/has-static-property-write-before.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNodeReachableWithinFunction } from "../../utils/is-node-reachable-within-function.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -170,6 +175,52 @@ const walkWithoutNestedFunctions = (
   });
 };
 
+const findContainingEffectCallback = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  let currentFunction: EsTreeNode | null = functionNode;
+  while (currentFunction) {
+    const parent = currentFunction.parent;
+    if (
+      parent &&
+      isNodeOfType(parent, "CallExpression") &&
+      getEffectCallback(parent) === currentFunction &&
+      isReactApiCall(parent, EFFECT_HOOK_NAMES, context.scopes, {
+        allowGlobalReactNamespace: true,
+        allowUnboundBareCalls: true,
+      })
+    ) {
+      return currentFunction;
+    }
+    currentFunction = findEnclosingFunction(currentFunction);
+  }
+  return null;
+};
+
+const doesMutableInitializerExecuteBeforeCall = (
+  declarationNode: EsTreeNode,
+  call: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const declarationFunction = findEnclosingFunction(declarationNode);
+  const callFunction = findEnclosingFunction(call);
+  if (!declarationFunction || !callFunction) return false;
+  if (declarationFunction === callFunction) {
+    return canNodeExecuteBefore(declarationNode, call, context.scopes);
+  }
+  const effectCallback = findContainingEffectCallback(callFunction, context);
+  if (
+    effectCallback &&
+    declarationFunction !== effectCallback &&
+    isAstDescendant(effectCallback, declarationFunction)
+  ) {
+    return isNodeReachableWithinFunction(declarationNode, context);
+  }
+  if (!isAstDescendant(callFunction, declarationFunction)) return false;
+  return declarationNode.range[0] < callFunction.range[0];
+};
+
 const collectDirectlyInvokedFunctions = (
   call: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
@@ -179,8 +230,21 @@ const collectDirectlyInvokedFunctions = (
   if (isFunctionLike(callee)) {
     functions.add(callee);
   } else if (isNodeOfType(callee, "Identifier")) {
-    const resolvedFunction = resolveExactLocalFunction(callee, context.scopes);
-    if (resolvedFunction && isFunctionLike(resolvedFunction)) functions.add(resolvedFunction);
+    const symbol = context.scopes.symbolFor(callee);
+    const resolvedFunction = resolveStaticLocalCallFunction(call, context.scopes);
+    const isMutableBinding = symbol?.kind === "let" || symbol?.kind === "var";
+    const isImmutableInPractice = Boolean(
+      !isMutableBinding || symbol?.references.every((reference) => reference.flag === "read"),
+    );
+    const didInitializerExecuteBeforeCall =
+      !isMutableBinding ||
+      Boolean(
+        symbol?.initializer &&
+        doesMutableInitializerExecuteBeforeCall(symbol.declarationNode, call, context),
+      );
+    if (resolvedFunction && isImmutableInPractice && didInitializerExecuteBeforeCall) {
+      functions.add(resolvedFunction);
+    }
   }
   for (const argument of call.arguments ?? []) {
     const callback = stripParenExpression(argument);

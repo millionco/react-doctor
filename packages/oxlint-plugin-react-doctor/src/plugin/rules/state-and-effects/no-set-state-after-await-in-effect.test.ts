@@ -296,6 +296,252 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(nestedResult.diagnostics).toHaveLength(0);
   });
 
+  it("resolves unreassigned let and var async helpers invoked by an effect", () => {
+    const letResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          run();
+        }, [userId]);
+      };`,
+    );
+    const varResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          var run = async function () {
+            const user = await load(userId);
+            setUser(user);
+          };
+          run();
+        }, [userId]);
+      };`,
+    );
+    expect(letResult.diagnostics).toHaveLength(1);
+    expect(varResult.diagnostics).toHaveLength(1);
+  });
+
+  it("does not attribute a call to a let-bound helper replaced before invocation", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          run = () => {};
+          run();
+        }, [userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("requires a mutable helper initializer to execute before invocation", () => {
+    const letResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          run();
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+        }, [userId]);
+      };`,
+    );
+    const varResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          run();
+          var run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+        }, [userId]);
+      };`,
+    );
+    expect(letResult.diagnostics).toHaveLength(0);
+    expect(varResult.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps reassigned mutable helpers outside the initialized-helper contract", () => {
+    const laterWriteResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          run();
+          run = () => {};
+        }, [userId]);
+      };`,
+    );
+    const unreachableWriteResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => {
+            const user = await load(userId);
+            setUser(user);
+          };
+          const replace = () => {
+            run = () => {};
+          };
+          run();
+        }, [userId]);
+      };`,
+    );
+    expect(laterWriteResult.diagnostics).toHaveLength(0);
+    expect(unreachableWriteResult.diagnostics).toHaveLength(0);
+  });
+
+  it("tracks mutable helpers through wrappers and component scope", () => {
+    const sources = [
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => { await load(userId); setUser(userId); };
+          const start = () => run();
+          start();
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        let run = async () => { await load(userId); setUser(userId); };
+        useEffect(() => { run(); }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => { run(); }, [userId]);
+        var run = async () => { await load(userId); setUser(userId); };
+      };`,
+    ];
+    expect(
+      sources.map((source) => runRule(noSetStateAfterAwaitInEffect, source).diagnostics.length),
+    ).toEqual([1, 1, 1]);
+  });
+
+  it("requires nested mutable helpers to initialize before their wrapper declaration", () => {
+    const sources = [
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          const start = () => run();
+          start();
+          let run = async () => { await load(userId); setUser(userId); };
+        }, [userId]);
+      };`,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          const start = () => run();
+          let run = async () => { await load(userId); setUser(userId); };
+          start();
+        }, [userId]);
+      };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noSetStateAfterAwaitInEffect, source).diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("keeps assigned mutable helpers outside the initialized-helper contract", () => {
+    const sources = [
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run;
+          run = async () => { await load(userId); setUser(userId); };
+          run();
+        }, [userId]);
+      };`,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run;
+          if (enabled) run = async () => { await load(userId); setUser(userId); };
+          run();
+        }, [enabled, userId]);
+      };`,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => { await load(userId); setUser(userId); };
+          if (enabled) run = () => {};
+          run();
+        }, [enabled, userId]);
+      };`,
+    ];
+    for (const source of sources) {
+      expect(runRule(noSetStateAfterAwaitInEffect, source).diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("tracks initialized mutable helpers through const aliases but not assignment IIFEs", () => {
+    const aliasResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run = async () => { await load(userId); setUser(userId); };
+          const start = run;
+          start();
+        }, [userId]);
+      };`,
+    );
+    const assignmentIifeResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let run;
+          (run = async () => { await load(userId); setUser(userId); })();
+        }, [userId]);
+      };`,
+    );
+    expect(aliasResult.diagnostics).toHaveLength(1);
+    expect(assignmentIifeResult.diagnostics).toHaveLength(0);
+  });
+
+  it("bounds initialized mutable helper discovery across wide wrapper graphs", () => {
+    const helpers = Array.from(
+      { length: 400 },
+      (_, helperIndex) => `
+        let run${helperIndex} = async () => {
+          await load(userId);
+          setUser(userId);
+        };
+        const start${helperIndex} = () => run${helperIndex}();
+        start${helperIndex}();`,
+    ).join("\n");
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          ${helpers}
+        }, [userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet when a wrapper conditionally starts the guarded async work", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,

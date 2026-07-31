@@ -1,6 +1,7 @@
 import isUnicodeSupported from "is-unicode-supported";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
+import * as path from "node:path";
 import {
   CODE_FRAME_BATCH_MAX_SPAN_LINES,
   CODE_FRAME_LINES_ABOVE,
@@ -325,11 +326,18 @@ const formatClusterLocation = (
 const buildDiagnosticClusterLines = (
   cluster: DiagnosticCluster,
   resolveSourceRoot: SourceRootResolver,
+  resolveFrameSourceRoot: SourceRootResolver,
   renderCodeFrame: boolean,
   hyperlinks: boolean,
 ): ReadonlyArray<string> => {
   const lead = cluster.diagnostics[0]!;
   const isMultiSite = cluster.diagnostics.length > 1;
+  const sourceRoot = resolveSourceRoot(lead);
+  const frameSourceRoot = resolveFrameSourceRoot(lead);
+  const frameFilePath =
+    path.isAbsolute(lead.filePath) && sourceRoot !== frameSourceRoot
+      ? path.relative(sourceRoot, lead.filePath)
+      : lead.filePath;
   const lines: string[] = [
     "",
     highlighter.gray(
@@ -338,11 +346,11 @@ const buildDiagnosticClusterLines = (
   ];
   const codeFrame = renderCodeFrame
     ? buildCodeFrame({
-        filePath: lead.filePath,
+        filePath: frameFilePath,
         line: cluster.startLine,
         column: isMultiSite ? 0 : lead.column,
         endLine: isMultiSite ? cluster.endLine : undefined,
-        rootDirectory: resolveSourceRoot(lead),
+        rootDirectory: frameSourceRoot,
       })
     : null;
   if (codeFrame) {
@@ -371,6 +379,7 @@ const buildRuleDetailBlock = (
   ruleKey: string,
   ruleDiagnostics: Diagnostic[],
   resolveSourceRoot: SourceRootResolver,
+  resolveFrameSourceRoot: SourceRootResolver,
   renderEverySite: boolean,
   isAgentEnvironment: boolean,
   hyperlinks: boolean,
@@ -461,7 +470,13 @@ const buildRuleDetailBlock = (
   if (!skipSharedLocation) {
     for (const cluster of clusterNearbyDiagnostics(sites)) {
       lines.push(
-        ...buildDiagnosticClusterLines(cluster, resolveSourceRoot, renderCodeFrame, hyperlinks),
+        ...buildDiagnosticClusterLines(
+          cluster,
+          resolveSourceRoot,
+          resolveFrameSourceRoot,
+          renderCodeFrame,
+          hyperlinks,
+        ),
       );
     }
   }
@@ -579,6 +594,7 @@ interface TopErrorsSection {
 const buildTopErrorsSection = (
   diagnostics: Diagnostic[],
   resolveSourceRoot: SourceRootResolver,
+  resolveFrameSourceRoot: SourceRootResolver,
   hyperlinks: boolean,
   rulePriority?: ReadonlyMap<string, number>,
 ): TopErrorsSection => {
@@ -602,6 +618,7 @@ const buildTopErrorsSection = (
         ruleKey,
         ruleDiagnostics,
         resolveSourceRoot,
+        resolveFrameSourceRoot,
         false,
         false,
         hyperlinks,
@@ -663,11 +680,9 @@ export interface DiagnosticsOnboarding {
 export const printDiagnostics = (
   diagnostics: Diagnostic[],
   isVerbose: boolean,
-  // The directory each diagnostic's relative `filePath` is resolved
-  // against for the inline code frame. A bare string works for a
-  // single-project scan; multi-project scans pass a resolver so each
-  // diagnostic reads from its own project root (their relative paths
-  // would otherwise miss against a single shared root → no frame).
+  // The directory each diagnostic's relative `filePath` is reported from.
+  // A bare string works for a single-project scan; multi-project scans pass
+  // a resolver so hyperlinks target the diagnostic's own project.
   sourceRoot: string | SourceRootResolver,
   // Score-API rule priorities (see `buildRulePriorityMap`). When present,
   // rule groups, categories, and the top-errors selection order
@@ -686,6 +701,9 @@ export const printDiagnostics = (
   // output stays plain text (and tests render deterministically); the CLI turns
   // it on only for capable, human-driven terminals (see supports-hyperlinks).
   hyperlinks = false,
+  // Staged scans report worktree paths while their frames must read the index
+  // snapshot. Other scans use `sourceRoot` for both.
+  frameSourceRoot: string | SourceRootResolver = sourceRoot,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     // The beat played before each top-error block reveals; a no-op off onboarding.
@@ -693,6 +711,8 @@ export const printDiagnostics = (
     const animateCountUp = onboarding.animateCountUp ?? false;
     const resolveSourceRoot: SourceRootResolver =
       typeof sourceRoot === "function" ? sourceRoot : () => sourceRoot;
+    const resolveFrameSourceRoot: SourceRootResolver =
+      typeof frameSourceRoot === "function" ? frameSourceRoot : () => frameSourceRoot;
 
     // Detail block leads (the most actionable content — the specific
     // errors to fix). The category breakdown + total then land BELOW it as
@@ -708,6 +728,7 @@ export const printDiagnostics = (
       const topErrors = buildTopErrorsSection(
         diagnostics,
         resolveSourceRoot,
+        resolveFrameSourceRoot,
         hyperlinks,
         rulePriority,
       );
@@ -720,6 +741,7 @@ export const printDiagnostics = (
           ruleKey,
           ruleDiagnostics,
           resolveSourceRoot,
+          resolveFrameSourceRoot,
           true,
           isAgentEnvironment,
           hyperlinks,

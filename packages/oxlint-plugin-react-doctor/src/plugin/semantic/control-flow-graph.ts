@@ -1,7 +1,7 @@
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
-import { isNodeOfType } from "../utils/is-node-of-type.js";
+import { RUNTIME_VISITOR_KEYS } from "../utils/runtime-visitor-keys.js";
 
 // Per-function CFG. Mirrors the subset of `oxc_cfg` we need to answer:
 // "Is this AST node guaranteed to execute on every call to its
@@ -100,7 +100,8 @@ const mapDescendantsToBlock = (builder: CfgBuilder, node: EsTreeNode, block: Bas
     return;
   }
   const record = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
+  const childKeys = RUNTIME_VISITOR_KEYS[node.type] ?? Object.keys(record);
+  for (const key of childKeys) {
     if (key === "parent") continue;
     const child = record[key];
     if (Array.isArray(child)) {
@@ -136,8 +137,8 @@ const hasInternalControlFlow = (node: EsTreeNode): boolean => {
 };
 
 const getStaticBooleanValue = (expression: EsTreeNode): boolean | null => {
-  if (isNodeOfType(expression, "Literal")) return Boolean(expression.value);
-  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+  if (expression.type === "Literal") return Boolean(expression.value);
+  if (expression.type === "UnaryExpression" && expression.operator === "!") {
     const argumentValue = getStaticBooleanValue(expression.argument);
     return argumentValue === null ? null : !argumentValue;
   }
@@ -205,11 +206,11 @@ const buildStatement = (
     return current;
   }
 
-  if (isNodeOfType(statement, "BlockStatement")) {
+  if (statement.type === "BlockStatement") {
     return buildStatements(builder, statement.body as EsTreeNode[], current);
   }
 
-  if (isNodeOfType(statement, "LabeledStatement")) {
+  if (statement.type === "LabeledStatement") {
     // Push the label onto the stack with a placeholder; the body will
     // create the merge block for `break <label>`.
     const merge = createBlock(builder);
@@ -226,7 +227,7 @@ const buildStatement = (
     return merge;
   }
 
-  if (isNodeOfType(statement, "ReturnStatement")) {
+  if (statement.type === "ReturnStatement") {
     if (statement.argument) {
       mapDescendantsToBlock(builder, statement.argument as EsTreeNode, current);
     }
@@ -235,7 +236,7 @@ const buildStatement = (
     return createBlock(builder);
   }
 
-  if (isNodeOfType(statement, "ThrowStatement")) {
+  if (statement.type === "ThrowStatement") {
     if (statement.argument) {
       mapDescendantsToBlock(builder, statement.argument as EsTreeNode, current);
     }
@@ -256,7 +257,7 @@ const buildStatement = (
     return createBlock(builder);
   }
 
-  if (isNodeOfType(statement, "BreakStatement")) {
+  if (statement.type === "BreakStatement") {
     const targetLabel = statement.label ? statement.label.name : null;
     const target = findLabel(builder, targetLabel);
     if (target) addEdge(current, target.merge, "uncond");
@@ -264,14 +265,14 @@ const buildStatement = (
     return createBlock(builder);
   }
 
-  if (isNodeOfType(statement, "ContinueStatement")) {
+  if (statement.type === "ContinueStatement") {
     const targetLabel = statement.label ? statement.label.name : null;
     const target = findLabel(builder, targetLabel);
     if (target?.header) addEdge(current, target.header, "uncond");
     return createBlock(builder);
   }
 
-  if (isNodeOfType(statement, "IfStatement")) {
+  if (statement.type === "IfStatement") {
     // Map the test expression to the current block.
     mapDescendantsToBlock(builder, statement.test as EsTreeNode, current);
     const thenBlock = createBlock(builder);
@@ -290,8 +291,8 @@ const buildStatement = (
     return merge;
   }
 
-  if (isNodeOfType(statement, "WhileStatement") || isNodeOfType(statement, "DoWhileStatement")) {
-    const isDoWhile = isNodeOfType(statement, "DoWhileStatement");
+  if (statement.type === "WhileStatement" || statement.type === "DoWhileStatement") {
+    const isDoWhile = statement.type === "DoWhileStatement";
     const hasStaticallyTrueTest = isStaticallyTrueLoopTest(statement.test);
     mapDescendantsToBlock(builder, statement.test as EsTreeNode, current);
     const header = createBlock(builder);
@@ -319,7 +320,7 @@ const buildStatement = (
     return merge;
   }
 
-  if (isNodeOfType(statement, "ForStatement")) {
+  if (statement.type === "ForStatement") {
     if (statement.init) mapDescendantsToBlock(builder, statement.init as EsTreeNode, current);
     if (statement.test) mapDescendantsToBlock(builder, statement.test as EsTreeNode, current);
     const header = createBlock(builder);
@@ -337,7 +338,7 @@ const buildStatement = (
     return merge;
   }
 
-  if (isNodeOfType(statement, "ForInStatement") || isNodeOfType(statement, "ForOfStatement")) {
+  if (statement.type === "ForInStatement" || statement.type === "ForOfStatement") {
     mapDescendantsToBlock(builder, statement.right as EsTreeNode, current);
     mapDescendantsToBlock(builder, statement.left as EsTreeNode, current);
     const header = createBlock(builder);
@@ -353,7 +354,7 @@ const buildStatement = (
     return merge;
   }
 
-  if (isNodeOfType(statement, "SwitchStatement")) {
+  if (statement.type === "SwitchStatement") {
     mapDescendantsToBlock(builder, statement.discriminant as EsTreeNode, current);
     const merge = createBlock(builder);
     builder.switchStack.push({ merge, label: null });
@@ -378,7 +379,7 @@ const buildStatement = (
     return merge;
   }
 
-  if (isNodeOfType(statement, "TryStatement")) {
+  if (statement.type === "TryStatement") {
     const tryBlock = createBlock(builder);
     const merge = createBlock(builder);
     let catchBlock: BasicBlock | null = null;
@@ -443,7 +444,7 @@ const buildFunctionCfg = (
   builder.exit = exit;
 
   let bodyEnd: BasicBlock;
-  if (isNodeOfType(body, "BlockStatement")) {
+  if (body.type === "BlockStatement") {
     bodyEnd = buildStatements(builder, body.body as EsTreeNode[], entry);
   } else {
     // Arrow expression body: a single Expression
@@ -478,8 +479,10 @@ const computeUnconditionalSet = (cfg: FunctionCfg): Set<BasicBlock> => {
     const visited = new Set<BasicBlock>();
     const queue: BasicBlock[] = [];
     if (cfg.entry !== excluded) queue.push(cfg.entry);
-    while (queue.length > 0) {
-      const block = queue.shift()!;
+    let queueIndex = 0;
+    while (queueIndex < queue.length) {
+      const block = queue[queueIndex];
+      queueIndex += 1;
       if (visited.has(block)) continue;
       visited.add(block);
       for (const edge of block.successors) {
@@ -538,7 +541,7 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
 
   // Build CFG for the program itself (treat as a "function" for
   // top-level reasoning).
-  if (isNodeOfType(program, "Program")) {
+  if (program.type === "Program") {
     // Synthesize a body block matching BlockStatement shape so
     // buildFunctionCfg can iterate it.
     const synthBody = { type: "BlockStatement", body: program.body } as unknown as EsTreeNode;
@@ -565,7 +568,7 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
     let current: EsTreeNode | null | undefined = node;
     while (current) {
       if (isFunctionLike(current)) return current;
-      if (isNodeOfType(current, "Program")) return current;
+      if (current.type === "Program") return current;
       current = current.parent ?? null;
     }
     return null;

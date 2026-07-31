@@ -11,9 +11,9 @@ Your agent writes bad React, this catches it.
 
 React Doctor deterministically scans your codebase and finds issues across state & effects, performance, architecture, security, and accessibility.
 
-Works for all React frameworks and libraries - Next.js, Vite, TanStack, React Native, Expo, you name it.
+Works across React frameworks and React-enabled sites - Next.js, Vite, Astro, TanStack, React Native, Expo, you name it.
 
-Scans JavaScript and TypeScript source files plus JavaScript in standard inline `<script>` blocks in `.html` files.
+Scans JavaScript, TypeScript, and Astro source files plus JavaScript in standard inline `<script>` blocks in `.html` files.
 
 [Website →](https://react.doctor/docs)
 

@@ -19,7 +19,7 @@ export const SERVER_CONTEXT_PATTERN =
   /(?:^|\/)(?:api|backend|server|servers|middleware|route|routes|functions|lambdas|workers)(?:\/|$)|(?:^|\/)[^/]+\.server\.[cm]?[jt]sx?$/i;
 
 export const TEST_CONTEXT_PATTERN =
-  /(?:^|\/)(?:__fixtures__|__mocks__|__tests__|__integration__|fixtures|mocks|test|tests|testdata|test-data|e2e|playwright|cypress|specs?)(?:\/|$)|\.(?:test|spec|e2e|e2e-spec|integration-test|fixture|fixtures|stories|story)\.[cm]?[jt]sx?$|(?:^|\/)(?:playwright|cypress|vitest|jest|karma)[^/]*\.conf(?:ig)?\.[cm]?[jt]s$|(?:^|\/)(?:test_[^/]+|[^/]+_test|conftest)\.py$|\.env\.[^/]*(?:test|e2e)[^/]*$/i;
+  /(?:^|\/)(?:__fixtures__|__mocks__|__tests__|__integration__|fixtures|mocks|test|tests|testdata|test-data|e2e|playwright|cypress|specs?)(?:\/|$)|^(?:test|spec)-[^/]+\.[cm]?[jt]sx?$|\.(?:test|spec|e2e|e2e-spec|integration-test|fixture|fixtures|stories|story)\.[cm]?[jt]sx?$|(?:^|\/)(?:playwright|cypress|vitest|jest|karma)[^/]*\.conf(?:ig)?\.[cm]?[jt]s$|(?:^|\/)(?:test_[^/]+|[^/]+_test|conftest)\.py$|\.env\.[^/]*(?:test|e2e)[^/]*$/i;
 
 // Bundler / framework build configs (`vite.config.ts`, `next.config.mjs`,
 // `webpack.config.js`, …) execute in Node at build time and are never

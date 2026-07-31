@@ -1206,8 +1206,7 @@ const isExternalSubscriptionHookResultRef = (analysis: ProgramAnalysis, ref: Ref
       if (isNodeOfType(declarator.id, "Identifier")) {
         return (
           EXTERNAL_SUBSCRIPTION_PRIMITIVE_RESULT_HOOK_NAMES.has(hookName) &&
-          ref.resolved &&
-          !hasUnsafeExternalSubscriptionBindingUse(analysis, ref.resolved)
+          !hasMutableBindingWrite(ref)
         );
       }
       const bindingIdentifier = def.name as unknown as EsTreeNode;

@@ -1,7 +1,8 @@
-import reactDoctorPlugin, {
+import {
   ALL_REACT_DOCTOR_RULE_KEYS,
   FRAMEWORK_SPECIFIC_RULE_KEYS,
-} from "oxlint-plugin-react-doctor";
+  REACT_DOCTOR_RULE_REGISTRY,
+} from "oxlint-plugin-react-doctor/core";
 import { getRuleCategory } from "./parse-output.js";
 
 let didValidate = false;
@@ -28,10 +29,13 @@ export const validateRuleRegistration = (): void => {
     if (!getRuleCategory(ruleName)) {
       missingCategory.push(fullKey);
     }
-    if (!reactDoctorPlugin.rules[ruleName]?.recommendation) {
+    if (!REACT_DOCTOR_RULE_REGISTRY[ruleName]?.recommendation) {
       missingHelp.push(fullKey);
     }
-    if (FRAMEWORK_SPECIFIC_RULE_KEYS.has(fullKey) && !reactDoctorPlugin.rules[ruleName]?.requires) {
+    if (
+      FRAMEWORK_SPECIFIC_RULE_KEYS.has(fullKey) &&
+      !REACT_DOCTOR_RULE_REGISTRY[ruleName]?.requires
+    ) {
       missingMetadata.push(fullKey);
     }
   }

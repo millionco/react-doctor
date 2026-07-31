@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -108,7 +109,7 @@ export const anchorAmbiguousText = defineRule({
   recommendation: "Name where a link goes. Avoid 'click here', 'learn more', and 'link'.",
   category: "Accessibility",
   create: (context): RuleVisitors => {
-    if (isTestlikeFilename(context.filename)) return {};
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
     const settings = resolveSettings(context.settings);
     const ambiguousSet = new Set(settings.words.map((word) => word.toLowerCase()));
     return {

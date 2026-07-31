@@ -133,6 +133,132 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when an awaited local helper appends to a passed output array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { files.push(await read(entry)); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a later assignment carries the awaited value into the ordered output", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { let copy; const file = await read(entry); copy = file; files.push(copy); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an awaited local helper appends through a defaulted output parameter", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files = []) => { files.push(await read(entry)); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an awaited local helper appends to a captured output array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function load(entries) { const files = []; const collect = async (entry) => { files.push(await read(entry)); }; for (const entry of entries) { await collect(entry); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an awaited helper when its caller-local output has no order-observing escape", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { files.push(await read(entry)); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } consumeAsSet(files); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags when the only return of the output is inside a nested callback", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { files.push(await read(entry)); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } consume(files.map(() => { return files; })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a captured output array with no order-observing escape", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function load(entries) { const files = []; const collect = async (entry) => { files.push(await read(entry)); }; for (const entry of entries) { await collect(entry); } consumeAsSet(files); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an append that reads a shadowing binding instead of the awaited value", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { const file = await read(entry); { const file = entry; files.push(file); } }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a recursive awaited helper appends an await-derived file in traversal order", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { if (entry.isFile) { const file = await read(entry); files.push(withPath(file)); return; } for (const child of entry.children) { await collect(child, files); } }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a helper that pushes before awaiting independent work", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { files.push(entry); await send(entry); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a helper that sets distinct map keys after awaiting", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { const file = await read(entry); files.set(entry.id, file); }; async function load(entries) { const files = new Map(); for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an external append unrelated to the awaited result", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => { await send(entry); files.push(entry); }; async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an awaited local helper that only appends to its own local array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry) => { const files = []; files.push(await read(entry)); return files; }; async function load(entries) { for (const entry of entries) { await collect(entry); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an awaited local helper that only reads a passed output array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `const collect = async (entry, files) => read(entry, files.length); async function load(entries) { const files = []; for (const entry of entries) { await collect(entry, files); } return files; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags independent awaits in a loop", () => {
     const result = runRule(
       asyncAwaitInLoop,

@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -271,11 +272,17 @@ export const preferHtmlDialog = defineRule({
   recommendation:
     'Replace the wrapper with `<dialog>` and open it with `dialog.showModal()`. For the trigger, prefer `<button commandfor="id" command="show-modal">` (Chrome 135+), or a `useRef` with `dialogRef.current?.showModal()`.',
   create: (context): RuleVisitors => {
-    if (isTestlikeFilename(context.filename)) return {};
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    let programRoot: EsTreeNodeOfType<"Program"> | null = null;
     let focusTrapSignals: FocusTrapSignals | null = null;
+    const isFocusTrapped = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+      if (!programRoot) return false;
+      focusTrapSignals ??= collectFocusTrapSignals(programRoot);
+      return isElementFocusTrapped(node, focusTrapSignals);
+    };
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        focusTrapSignals = collectFocusTrapSignals(node);
+        programRoot = node;
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (!isNodeOfType(node.name, "JSXIdentifier")) return;
@@ -309,7 +316,7 @@ export const preferHtmlDialog = defineRule({
             roleCandidates.length > 0 &&
             roleCandidates.every((candidate) => ROLE_DIALOG_VALUES.has(candidate))
           ) {
-            if (focusTrapSignals && isElementFocusTrapped(node, focusTrapSignals)) return;
+            if (isFocusTrapped(node)) return;
             const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
             const isModal = ariaModalAttribute ? isAriaModalTrue(ariaModalAttribute) : false;
             context.report({
@@ -322,7 +329,7 @@ export const preferHtmlDialog = defineRule({
 
         const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
         if (ariaModalAttribute && isAriaModalTrue(ariaModalAttribute)) {
-          if (focusTrapSignals && isElementFocusTrapped(node, focusTrapSignals)) return;
+          if (isFocusTrapped(node)) return;
           context.report({ node: ariaModalAttribute, message: ARIA_MODAL_MESSAGE });
         }
       },

@@ -2,10 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import {
-  getImportedNameFromModule,
-  isImportedFromModule,
-} from "../../utils/find-import-source-for-name.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -72,12 +69,12 @@ for (const factory of STORE_FACTORIES) {
 //      default import that happens to expose the factory on itself.
 const resolveStoreFactoryForCallee = (callee: EsTreeNode): StoreApi | null => {
   if (isNodeOfType(callee, "Identifier")) {
-    const localName = callee.name;
-    for (const factoryBucket of STORE_FACTORY_LOOKUP.values()) {
-      for (const factory of factoryBucket) {
-        const canonicalName = getImportedNameFromModule(callee, localName, factory.module);
-        if (canonicalName === factory.exportedName) return factory;
-      }
+    const importBinding = getImportBindingForName(callee, callee.name);
+    if (!importBinding || importBinding.exportedName === null) return null;
+    const factoryBucket = STORE_FACTORY_LOOKUP.get(importBinding.exportedName);
+    if (!factoryBucket) return null;
+    for (const factory of factoryBucket) {
+      if (factory.module === importBinding.source) return factory;
     }
     return null;
   }
@@ -90,10 +87,10 @@ const resolveStoreFactoryForCallee = (callee: EsTreeNode): StoreApi | null => {
     const propertyName = propertyIdentifier.name;
     const factoryBucket = STORE_FACTORY_LOOKUP.get(propertyName);
     if (!factoryBucket) return null;
+    const importBinding = getImportBindingForName(namespaceIdentifier, namespaceIdentifier.name);
+    if (!importBinding) return null;
     for (const factory of factoryBucket) {
-      if (isImportedFromModule(namespaceIdentifier, namespaceIdentifier.name, factory.module)) {
-        return factory;
-      }
+      if (factory.module === importBinding.source) return factory;
     }
     return null;
   }

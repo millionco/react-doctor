@@ -7,6 +7,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
+import { getFunctionBindingSymbols } from "../../utils/get-function-binding-symbols.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
 import { isComponentFunction } from "../../utils/is-component-function.js";
@@ -194,7 +195,22 @@ const isListRenderingReference = (reference: EsTreeNode): boolean => {
   return false;
 };
 
-const renderedAsListCache = new WeakMap<EsTreeNode, boolean>();
+const renderedBindingIdentifiersByProgram = new WeakMap<EsTreeNode, WeakSet<EsTreeNode>>();
+
+const collectRenderedBindingIdentifiers = (
+  programRoot: EsTreeNode,
+  scopes: ScopeAnalysis,
+): WeakSet<EsTreeNode> => {
+  const renderedBindingIdentifiers = new WeakSet<EsTreeNode>();
+  walkAst(programRoot, (node) => {
+    if (!isNodeOfType(node, "Identifier") || !isListRenderingReference(node)) return;
+    const resolvedSymbol = scopes.symbolFor(node);
+    if (resolvedSymbol) {
+      renderedBindingIdentifiers.add(resolvedSymbol.bindingIdentifier);
+    }
+  });
+  return renderedBindingIdentifiers;
+};
 
 // A JSX array literal bound to a variable is only a keyed-list hazard when
 // some reference actually renders the array as sibling children (`{items}`,
@@ -204,29 +220,18 @@ const renderedAsListCache = new WeakMap<EsTreeNode, boolean>();
 // the raw elements as a list, so their keys are inert.
 const isArrayVariableRenderedAsList = (
   declarator: EsTreeNodeOfType<"VariableDeclarator">,
+  scopes: ScopeAnalysis,
 ): boolean => {
-  const cached = renderedAsListCache.get(declarator);
-  if (cached !== undefined) return cached;
   const bindingIdentifier = declarator.id;
   if (!isNodeOfType(bindingIdentifier, "Identifier")) return true;
   const programRoot = findProgramRoot(declarator);
   if (!programRoot) return true;
-  let didFindRenderingUse = false;
-  walkAst(programRoot, (node) => {
-    if (didFindRenderingUse) return false;
-    if (!isNodeOfType(node, "Identifier") || node === bindingIdentifier) return;
-    if (node.name !== bindingIdentifier.name) return;
-    const parent = node.parent;
-    if (parent && isNodeOfType(parent, "MemberExpression") && parent.property === node) return;
-    if (parent && isNodeOfType(parent, "Property") && parent.key === node && !parent.computed) {
-      return;
-    }
-    const resolved = findVariableInitializer(node, node.name);
-    if (!resolved || resolved.bindingIdentifier !== bindingIdentifier) return;
-    if (isListRenderingReference(node)) didFindRenderingUse = true;
-  });
-  renderedAsListCache.set(declarator, didFindRenderingUse);
-  return didFindRenderingUse;
+  let renderedBindingIdentifiers = renderedBindingIdentifiersByProgram.get(programRoot);
+  if (!renderedBindingIdentifiers) {
+    renderedBindingIdentifiers = collectRenderedBindingIdentifiers(programRoot, scopes);
+    renderedBindingIdentifiersByProgram.set(programRoot, renderedBindingIdentifiers);
+  }
+  return renderedBindingIdentifiers.has(bindingIdentifier);
 };
 
 interface IteratorContextArray {
@@ -240,7 +245,10 @@ type IteratorContext = IteratorContextArray | IteratorContextIterator;
 
 const namedCallbackIteratorCallCache = new WeakMap<EsTreeNode, EsTreeNode | null>();
 
-const findNamedCallbackIteratorCall = (functionNode: EsTreeNode): EsTreeNode | null => {
+const findNamedCallbackIteratorCall = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
   const cached = namedCallbackIteratorCallCache.get(functionNode);
   if (cached !== undefined) return cached;
   const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
@@ -248,42 +256,32 @@ const findNamedCallbackIteratorCall = (functionNode: EsTreeNode): EsTreeNode | n
     namedCallbackIteratorCallCache.set(functionNode, null);
     return null;
   }
-  const programRoot = findProgramRoot(functionNode);
-  if (!programRoot) {
+  const bindingSymbol =
+    getFunctionBindingSymbols(functionNode, scopes)[0] ?? scopes.symbolFor(bindingIdentifier);
+  if (!bindingSymbol) {
     namedCallbackIteratorCallCache.set(functionNode, null);
     return null;
   }
-  let iteratorCall: EsTreeNode | null = null;
-  walkAst(programRoot, (node) => {
-    if (iteratorCall) return false;
-    if (
-      !isNodeOfType(node, "Identifier") ||
-      node === bindingIdentifier ||
-      node.name !== bindingIdentifier.name
-    ) {
-      return;
-    }
-    const binding = findVariableInitializer(node, node.name);
-    if (!binding || binding.bindingIdentifier !== bindingIdentifier) return;
-    const callbackExpression = findTransparentExpressionRoot(node);
+  for (const reference of bindingSymbol.references) {
+    const callbackExpression = findTransparentExpressionRoot(reference.identifier);
     const callExpression = callbackExpression.parent;
-    if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return;
+    if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) continue;
     const callee = callExpression.callee;
     if (
       !isNodeOfType(callee, "MemberExpression") ||
       !isNodeOfType(callee.property, "Identifier") ||
       !ITERATOR_METHOD_NAMES.has(callee.property.name)
     ) {
-      return;
+      continue;
     }
     const callbackIndex = callee.property.name === "from" ? 1 : 0;
-    if (callExpression.arguments[callbackIndex] !== callbackExpression) return;
-    if (isNonChildrenJsxAttributeValue(callExpression)) return;
-    iteratorCall = callExpression;
-    return false;
-  });
-  namedCallbackIteratorCallCache.set(functionNode, iteratorCall);
-  return iteratorCall;
+    if (callExpression.arguments[callbackIndex] !== callbackExpression) continue;
+    if (isNonChildrenJsxAttributeValue(callExpression)) continue;
+    namedCallbackIteratorCallCache.set(functionNode, callExpression);
+    return callExpression;
+  }
+  namedCallbackIteratorCallCache.set(functionNode, null);
+  return null;
 };
 
 const findEnclosingIteratorContext = (
@@ -312,7 +310,7 @@ const findEnclosingIteratorContext = (
       const grandparent = parent.parent;
       if (grandparent && isNodeOfType(grandparent, "Property")) return null;
       if (isOutsideContainingFunction) return null;
-      const namedCallbackIteratorCall = findNamedCallbackIteratorCall(parent);
+      const namedCallbackIteratorCall = findNamedCallbackIteratorCall(parent, scopes);
       if (namedCallbackIteratorCall) {
         return { kind: "iterator", callExpression: namedCallbackIteratorCall };
       }
@@ -337,7 +335,7 @@ const findEnclosingIteratorContext = (
       // React never key-validates props, so the receiving component owns keying.
       if (isNonChildrenJsxAttributeValue(parent)) return null;
       const arrayDeclarator = findArrayVariableDeclarator(parent);
-      if (arrayDeclarator && !isArrayVariableRenderedAsList(arrayDeclarator)) return null;
+      if (arrayDeclarator && !isArrayVariableRenderedAsList(arrayDeclarator, scopes)) return null;
       return { kind: "array" };
     } else if (isNodeOfType(parent, "CallExpression")) {
       const callee = parent.callee;

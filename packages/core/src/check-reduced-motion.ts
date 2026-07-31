@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { MOTION_LIBRARY_PACKAGES } from "oxlint-plugin-react-doctor";
+import { MOTION_LIBRARY_PACKAGES } from "oxlint-plugin-react-doctor/core";
 import ts from "typescript";
 import type { Diagnostic } from "./types/index.js";
 import { getTypescriptScriptKind } from "./utils/get-typescript-script-kind.js";

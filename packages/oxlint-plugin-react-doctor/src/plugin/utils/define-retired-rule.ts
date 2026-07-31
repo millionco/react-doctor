@@ -1,4 +1,5 @@
 import { defineRule } from "./define-rule.js";
+import { EMPTY_RULE_VISITORS } from "./empty-rule-visitors.js";
 import type { Rule } from "./rule.js";
 
 export const defineRetiredRule = (
@@ -8,5 +9,5 @@ export const defineRetiredRule = (
     ...rule,
     defaultEnabled: false,
     lifecycle: "retired",
-    create: () => ({}),
+    create: () => EMPTY_RULE_VISITORS,
   });

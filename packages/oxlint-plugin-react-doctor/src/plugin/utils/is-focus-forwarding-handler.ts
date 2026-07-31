@@ -16,12 +16,13 @@ const ALLOWED_FOCUS_FORWARDING_METHOD_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 const DOM_LOOKUP_METHOD_NAMES: ReadonlySet<string> = new Set(["getElementById", "querySelector"]);
+const GLOBAL_OBJECT_NAMES: ReadonlySet<string> = new Set(["global", "globalThis", "window"]);
 
 const getCalledMethodName = (node: EsTreeNode | null | undefined): string | null => {
   if (!node) return null;
   const expression = isNodeOfType(node, "ChainExpression") ? (node.expression as EsTreeNode) : node;
   if (!isNodeOfType(expression, "CallExpression")) return null;
-  const callee = expression.callee as EsTreeNode;
+  const callee = stripParenExpression(expression.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   const property = callee.property as EsTreeNode;
   return isNodeOfType(property, "Identifier") ? property.name : null;
@@ -32,12 +33,65 @@ const isAllowedFocusForwardingCall = (node: EsTreeNode | null | undefined): bool
   return methodName !== null && ALLOWED_FOCUS_FORWARDING_METHOD_NAMES.has(methodName);
 };
 
-const isDomLookupCall = (node: EsTreeNode | null | undefined): boolean => {
-  const methodName = getCalledMethodName(node);
-  return methodName !== null && DOM_LOOKUP_METHOD_NAMES.has(methodName);
+const isGlobalDocumentExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier")) {
+    return candidate.name === "document" && scopes.isGlobalReference(candidate);
+  }
+  if (
+    !isNodeOfType(candidate, "MemberExpression") ||
+    !isNodeOfType(candidate.object, "Identifier") ||
+    !isNodeOfType(candidate.property, "Identifier") ||
+    candidate.property.name !== "document"
+  ) {
+    return false;
+  }
+  return (
+    GLOBAL_OBJECT_NAMES.has(candidate.object.name) && scopes.isGlobalReference(candidate.object)
+  );
 };
 
-const isClosestGuard = (node: EsTreeNode): boolean => getCalledMethodName(node) === "closest";
+const isStaticSelectorExpression = (expression: EsTreeNode): boolean => {
+  const candidate = stripParenExpression(expression);
+  if (isNodeOfType(candidate, "Identifier") || isNodeOfType(candidate, "Literal")) return true;
+  return (
+    isNodeOfType(candidate, "TemplateLiteral") &&
+    candidate.expressions.every((innerExpression) =>
+      isStaticSelectorExpression(innerExpression as EsTreeNode),
+    )
+  );
+};
+
+const getDomLookupVariableName = (statement: EsTreeNode, scopes: ScopeAnalysis): string | null => {
+  if (
+    !isNodeOfType(statement, "VariableDeclaration") ||
+    statement.kind !== "const" ||
+    statement.declarations.length !== 1
+  ) {
+    return null;
+  }
+  const declaration = statement.declarations[0];
+  if (!declaration || !isNodeOfType(declaration.id, "Identifier") || !declaration.init) return null;
+  const initializer = stripParenExpression(declaration.init);
+  if (
+    !isNodeOfType(initializer, "CallExpression") ||
+    initializer.arguments.length !== 1 ||
+    isNodeOfType(initializer.arguments[0], "SpreadElement") ||
+    !isStaticSelectorExpression(initializer.arguments[0] as EsTreeNode)
+  ) {
+    return null;
+  }
+  const callee = stripParenExpression(initializer.callee);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    !DOM_LOOKUP_METHOD_NAMES.has(callee.property.name) ||
+    !isGlobalDocumentExpression(callee.object as EsTreeNode, scopes)
+  ) {
+    return null;
+  }
+  return declaration.id.name;
+};
 
 const isEmptyReturn = (node: EsTreeNode): boolean => {
   if (isNodeOfType(node, "ReturnStatement")) return node.argument === null;
@@ -45,40 +99,76 @@ const isEmptyReturn = (node: EsTreeNode): boolean => {
   return isEmptyReturn(node.body[0] as EsTreeNode);
 };
 
-const isClosestReturnGuard = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "IfStatement") &&
-  node.alternate === null &&
-  isClosestGuard(node.test as EsTreeNode) &&
-  isEmptyReturn(node.consequent as EsTreeNode);
-
-const isDomLookupDeclaration = (node: EsTreeNode): boolean => {
-  if (!isNodeOfType(node, "VariableDeclaration") || node.declarations.length === 0) return false;
-  return node.declarations.every(
-    (declaration) =>
-      isNodeOfType(declaration.id, "Identifier") &&
-      isDomLookupCall(declaration.init as EsTreeNode | null),
+const isEventTargetClosestReturnGuard = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "IfStatement") || node.alternate || !isEmptyReturn(node.consequent)) {
+    return false;
+  }
+  const test = stripParenExpression(node.test);
+  const call = isNodeOfType(test, "ChainExpression") ? test.expression : test;
+  if (!isNodeOfType(call, "CallExpression") || call.arguments.length !== 1) return false;
+  const callee = stripParenExpression(call.callee);
+  const receiver = isNodeOfType(callee, "MemberExpression")
+    ? stripParenExpression(callee.object as EsTreeNode)
+    : null;
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "closest" &&
+    isNodeOfType(receiver, "MemberExpression") &&
+    isNodeOfType(receiver.object, "Identifier") &&
+    isNodeOfType(receiver.property, "Identifier") &&
+    receiver.property.name === "target" &&
+    isNodeOfType(call.arguments[0], "Literal") &&
+    typeof call.arguments[0].value === "string"
   );
 };
 
-const isAllowedFocusForwardingFunctionBody = (body: EsTreeNode | null | undefined): boolean => {
+const isFocusCallOnVariable = (statement: EsTreeNode, variableName: string): boolean => {
+  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+  const expression = stripParenExpression(statement.expression);
+  if (!isNodeOfType(expression, "CallExpression") || expression.arguments.length !== 0)
+    return false;
+  const callee = stripParenExpression(expression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(callee.object as EsTreeNode);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    receiver.name === variableName &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "focus"
+  );
+};
+
+const isAllowedFocusForwardingFunctionBody = (
+  body: EsTreeNode | null | undefined,
+  scopes: ScopeAnalysis,
+): boolean => {
   if (!body) return false;
   if (isAllowedFocusForwardingCall(body)) return true;
   if (!isNodeOfType(body, "BlockStatement") || body.body.length === 0) return false;
-  let hasAllowedCall = false;
-  for (const statement of body.body) {
-    const statementNode = statement as EsTreeNode;
-    if (isDomLookupDeclaration(statementNode) || isClosestReturnGuard(statementNode)) continue;
-    if (
-      isNodeOfType(statementNode, "ExpressionStatement") &&
-      isAllowedFocusForwardingCall(statementNode.expression as EsTreeNode)
-    ) {
-      hasAllowedCall = true;
-      continue;
-    }
-    return false;
+  const statements = body.body as EsTreeNode[];
+  const firstActionIndex = isEventTargetClosestReturnGuard(statements[0] as EsTreeNode) ? 1 : 0;
+  const domLookupStatement = statements[firstActionIndex];
+  const domLookupVariableName = domLookupStatement
+    ? getDomLookupVariableName(domLookupStatement, scopes)
+    : null;
+  if (domLookupVariableName) {
+    return (
+      statements.length === firstActionIndex + 2 &&
+      isFocusCallOnVariable(statements[firstActionIndex + 1] as EsTreeNode, domLookupVariableName)
+    );
   }
-  return hasAllowedCall;
+  if (firstActionIndex > 0) return false;
+  return statements.every(
+    (statement) =>
+      isNodeOfType(statement, "ExpressionStatement") &&
+      isAllowedFocusForwardingCall(statement.expression as EsTreeNode),
+  );
 };
+
+const isGlobalNullishExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  isNullishExpression(expression) &&
+  (!isNodeOfType(expression, "Identifier") || scopes.isGlobalReference(expression));
 
 const resolveHandlerFunctionExpression = (
   handlerExpression: EsTreeNode,
@@ -89,10 +179,10 @@ const resolveHandlerFunctionExpression = (
   if (isNodeOfType(expression, "ConditionalExpression")) {
     const consequent = stripParenExpression(expression.consequent as EsTreeNode);
     const alternate = stripParenExpression(expression.alternate as EsTreeNode);
-    if (isNullishExpression(consequent)) {
+    if (isGlobalNullishExpression(consequent, scopes)) {
       return resolveHandlerFunctionExpression(alternate, scopes, visitedSymbolIds);
     }
-    if (isNullishExpression(alternate)) {
+    if (isGlobalNullishExpression(alternate, scopes)) {
       return resolveHandlerFunctionExpression(consequent, scopes, visitedSymbolIds);
     }
     return null;
@@ -128,6 +218,7 @@ export const isFocusForwardingOrBlockingHandlerExpression = (
   if (!handlerFunction) return false;
   return isAllowedFocusForwardingFunctionBody(
     (handlerFunction as { body?: EsTreeNode }).body ?? null,
+    scopes,
   );
 };
 

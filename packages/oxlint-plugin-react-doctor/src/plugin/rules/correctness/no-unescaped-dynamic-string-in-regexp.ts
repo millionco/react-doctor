@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
@@ -32,6 +33,7 @@ const TEST_CONTEXT_FILE_PATTERN =
 // stay quiet. `term(?!in)` keeps `searchTerm` while excluding
 // `terminalSequence` / `terminate`-shaped names.
 const SEARCH_TERM_NAME_PATTERN = /search|query|highlight|filter|term(?!in)|keyword/i;
+const REGEX_SOURCE_WORDS = ["pattern", "regex", "regexp"];
 
 // An escape helper applied to the value makes the pattern safe. Also treat
 // `.replace(...)` / `.replaceAll(...)` as author-driven sanitization.
@@ -350,23 +352,91 @@ const isTypePositionIdentifier = (identifier: EsTreeNode): boolean => {
   return false;
 };
 
-const collectRawSearchTermIdentifiers = (
+const identifierNameHasPathSegmentSemantics = (identifierName: string): boolean => {
+  const identifierWords = identifierName
+    .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[\s_]+/)
+    .map((word) => word.toLowerCase());
+  if (identifierWords.some((word) => REGEX_SOURCE_WORDS.includes(word))) return false;
+  return (
+    identifierWords.some((word) => ["path", "folder", "directory", "root"].includes(word)) ||
+    (identifierWords.includes("top") && identifierWords.includes("level"))
+  );
+};
+
+const flattenPatternParts = (expression: EsTreeNode): Array<string | EsTreeNode> | null => {
+  const inner = stripParenExpression(expression);
+  const staticValue = literalStringValue(inner);
+  if (staticValue !== null) return [staticValue];
+  if (isNodeOfType(inner, "Identifier")) return [inner];
+  if (isNodeOfType(inner, "TemplateLiteral")) {
+    const parts: Array<string | EsTreeNode> = [];
+    for (let index = 0; index < inner.quasis.length; index += 1) {
+      const quasi = inner.quasis[index];
+      if (quasi) parts.push(quasi.value.cooked ?? quasi.value.raw);
+      const templateExpression = inner.expressions[index];
+      if (templateExpression) parts.push(stripParenExpression(templateExpression));
+    }
+    return parts;
+  }
+  if (isNodeOfType(inner, "BinaryExpression") && inner.operator === "+") {
+    const leftParts = flattenPatternParts(inner.left);
+    const rightParts = flattenPatternParts(inner.right);
+    return leftParts && rightParts ? [...leftParts, ...rightParts] : null;
+  }
+  if (
+    isNodeOfType(inner, "CallExpression") &&
+    isNodeOfType(inner.callee, "MemberExpression") &&
+    getStaticPropertyName(inner.callee) === "concat"
+  ) {
+    const receiverParts = flattenPatternParts(inner.callee.object);
+    if (!receiverParts) return null;
+    const parts = [...receiverParts];
+    for (const argument of inner.arguments) {
+      if (isNodeOfType(argument, "SpreadElement")) return null;
+      const argumentParts = flattenPatternParts(argument);
+      if (!argumentParts) return null;
+      parts.push(...argumentParts);
+    }
+    return parts;
+  }
+  return null;
+};
+
+const isIdentifierAnAnchoredPathSegment = (
+  argument: EsTreeNode,
+  identifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
+  if (!identifierNameHasPathSegmentSemantics(identifier.name)) return false;
+  const parts = flattenPatternParts(argument);
+  if (!parts) return false;
+  const identifierPartIndex = parts.findIndex((part) => part === identifier);
+  if (identifierPartIndex < 0) return false;
+  const precedingParts = parts.slice(0, identifierPartIndex);
+  if (precedingParts.some((part) => typeof part !== "string")) return false;
+  const staticPrefix = precedingParts.join("");
+  const followingPart = parts[identifierPartIndex + 1];
+  return staticPrefix === "^" && typeof followingPart === "string" && followingPart.startsWith("/");
+};
+
+const collectRawDynamicLiteralIdentifiers = (
   argument: EsTreeNode,
 ): EsTreeNodeOfType<"Identifier">[] => {
-  const rawSearchTermIdentifiers: EsTreeNodeOfType<"Identifier">[] = [];
+  const rawDynamicLiteralIdentifiers: EsTreeNodeOfType<"Identifier">[] = [];
   walkAst(argument, (child: EsTreeNode) => {
     if (isEscapingCall(child) || isRegexSourceAccess(child)) return false;
     if (isLiteralReturningGetterCall(child)) return false;
     if (
       isNodeOfType(child, "Identifier") &&
-      SEARCH_TERM_NAME_PATTERN.test(child.name) &&
+      (SEARCH_TERM_NAME_PATTERN.test(child.name) ||
+        isIdentifierAnAnchoredPathSegment(argument, child)) &&
       !isPropertyNamePosition(child) &&
       !isTypePositionIdentifier(child)
     ) {
-      rawSearchTermIdentifiers.push(child);
+      rawDynamicLiteralIdentifiers.push(child);
     }
   });
-  return rawSearchTermIdentifiers;
+  return rawDynamicLiteralIdentifiers;
 };
 
 const collectLeafIdentifiers = (node: EsTreeNode): EsTreeNodeOfType<"Identifier">[] => {
@@ -387,12 +457,48 @@ const compositeInitializerResolvesEscaped = (
   regexpObjectSymbolIds: ReadonlySet<number>,
   globalRegExpObjectNames: ReadonlySet<string>,
 ): boolean => {
+  if (isNodeOfType(strippedInitializer, "ConditionalExpression")) {
+    return [strippedInitializer.consequent, strippedInitializer.alternate].every((branch) =>
+      initializerLooksEscaped(
+        branch,
+        remainingHops,
+        scopes,
+        regexpObjectSymbolIds,
+        globalRegExpObjectNames,
+      ),
+    );
+  }
+  if (
+    isNodeOfType(strippedInitializer, "BinaryExpression") ||
+    isNodeOfType(strippedInitializer, "LogicalExpression")
+  ) {
+    return [strippedInitializer.left, strippedInitializer.right].every((operand) =>
+      initializerLooksEscaped(
+        operand,
+        remainingHops,
+        scopes,
+        regexpObjectSymbolIds,
+        globalRegExpObjectNames,
+      ),
+    );
+  }
+  if (isNodeOfType(strippedInitializer, "TemplateLiteral")) {
+    return strippedInitializer.expressions.every((expression) =>
+      initializerLooksEscaped(
+        expression,
+        remainingHops,
+        scopes,
+        regexpObjectSymbolIds,
+        globalRegExpObjectNames,
+      ),
+    );
+  }
   let didResolveAnyLeafEscaped = false;
   for (const leafIdentifier of collectLeafIdentifiers(strippedInitializer)) {
     if (
       identifierResolvesToEscapedValue(
         leafIdentifier,
-        remainingHops,
+        remainingHops - 1,
         scopes,
         regexpObjectSymbolIds,
         globalRegExpObjectNames,
@@ -445,7 +551,7 @@ const initializerLooksEscaped = (
     }
     return compositeInitializerResolvesEscaped(
       strippedInitializer,
-      remainingHops - 1,
+      remainingHops,
       scopes,
       regexpObjectSymbolIds,
       globalRegExpObjectNames,
@@ -819,9 +925,9 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
   category: "Correctness",
   tags: ["test-noise"],
   recommendation:
-    "A search/filter/highlight term dropped straight into `new RegExp(...)` lets its regex metacharacters act as operators, so a user typing `.` or `(` over-matches or throws. Escape the value with an `escapeRegExp` helper before constructing the pattern.",
+    "A dynamic literal string such as a search term or path segment dropped straight into `new RegExp(...)` lets its regex metacharacters act as operators, so values containing `.` or `(` over-match or throw. Escape the value with an `escapeRegExp` helper before constructing the pattern.",
   create: (context: RuleContext): RuleVisitors => {
-    if (TEST_CONTEXT_FILE_PATTERN.test(context.filename ?? "")) return {};
+    if (TEST_CONTEXT_FILE_PATTERN.test(context.filename ?? "")) return EMPTY_RULE_VISITORS;
     let regexpObjectIndex: RegExpObjectIndex | null = null;
     const reportUnescapedConstruction = (
       node: EsTreeNodeOfType<"CallExpression"> | EsTreeNodeOfType<"NewExpression">,
@@ -838,8 +944,8 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
         regexpObjectIndex = buildRegExpObjectIndex(programRoot, context.scopes);
       }
       const currentRegExpObjectIndex = regexpObjectIndex;
-      const rawSearchTermIdentifiers = collectRawSearchTermIdentifiers(firstArgument);
-      const hasUnescapedSearchTerm = rawSearchTermIdentifiers.some(
+      const rawDynamicLiteralIdentifiers = collectRawDynamicLiteralIdentifiers(firstArgument);
+      const hasUnescapedDynamicLiteral = rawDynamicLiteralIdentifiers.some(
         (identifier) =>
           !identifierResolvesToEscapedValue(
             identifier,
@@ -851,11 +957,11 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
           !isShapeTestedByDominatingGuard(node, identifier, context.scopes) &&
           !isParameterFedOnlyMetacharacterFreeLiterals(identifier, context.scopes),
       );
-      if (!hasUnescapedSearchTerm) return;
+      if (!hasUnescapedDynamicLiteral) return;
       context.report({
         node,
         message:
-          "This builds a `RegExp` from a dynamic search/filter term without escaping it, so regex metacharacters in the value act as operators and over-match or throw. Escape the value with an `escapeRegExp` helper first.",
+          "This builds a `RegExp` from a dynamic literal string without escaping it, so regex metacharacters in the value act as operators and over-match or throw. Escape the value with an `escapeRegExp` helper first.",
       });
     };
     return {

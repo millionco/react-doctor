@@ -13,6 +13,20 @@ const collectScopeSymbols = (scope: ScopeDescriptor, symbols: SymbolDescriptor[]
   for (const childScope of scope.children) collectScopeSymbols(childScope, symbols);
 };
 
+const buildEquivalentSymbolsByRootId = (scopes: ScopeAnalysis): Map<number, SymbolDescriptor[]> => {
+  const symbolsByRootId = new Map<number, SymbolDescriptor[]>();
+  const allSymbols: SymbolDescriptor[] = [];
+  collectScopeSymbols(scopes.rootScope, allSymbols);
+  for (const symbol of allSymbols) {
+    const rootSymbol = resolveConstIdentifierAlias(symbol.bindingIdentifier, scopes);
+    if (!rootSymbol) continue;
+    const equivalentSymbols = symbolsByRootId.get(rootSymbol.id) ?? [];
+    equivalentSymbols.push(symbol);
+    symbolsByRootId.set(rootSymbol.id, equivalentSymbols);
+  }
+  return symbolsByRootId;
+};
+
 export const getEquivalentSymbols = (
   identifier: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -21,16 +35,8 @@ export const getEquivalentSymbols = (
   if (!rootSymbol) return [];
   let symbolsByRootId = equivalentSymbolsByAnalysis.get(scopes);
   if (!symbolsByRootId) {
-    symbolsByRootId = new Map();
+    symbolsByRootId = buildEquivalentSymbolsByRootId(scopes);
     equivalentSymbolsByAnalysis.set(scopes, symbolsByRootId);
   }
-  const cachedSymbols = symbolsByRootId.get(rootSymbol.id);
-  if (cachedSymbols) return cachedSymbols;
-  const allSymbols: SymbolDescriptor[] = [];
-  collectScopeSymbols(scopes.rootScope, allSymbols);
-  const equivalentSymbols = allSymbols.filter(
-    (symbol) => resolveConstIdentifierAlias(symbol.bindingIdentifier, scopes)?.id === rootSymbol.id,
-  );
-  symbolsByRootId.set(rootSymbol.id, equivalentSymbols);
-  return equivalentSymbols;
+  return symbolsByRootId.get(rootSymbol.id) ?? [];
 };

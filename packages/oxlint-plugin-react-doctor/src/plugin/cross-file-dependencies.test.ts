@@ -10,6 +10,7 @@ import {
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
 import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
+import { resetCrossFileExportCaches } from "./utils/resolve-cross-file-function-export.js";
 import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alias.js";
 
 // The collectors' contract (see cross-file-dependencies.ts): for a given file,
@@ -25,6 +26,7 @@ beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-cross-file-deps-"));
   __clearParseSourceFileCacheForTests();
   __clearTsconfigAliasCacheForTests();
+  resetCrossFileExportCaches();
   resetManifestCaches();
 });
 
@@ -277,6 +279,36 @@ export const App = ({ items }) => {
       }
     }
   });
+
+  it("refreshes export resolutions after scan caches reset", () => {
+    writeFixtureFile("src/old.ts", "export const deriveVisible = (items) => items;\n");
+    writeFixtureFile("src/index.ts", `export { deriveVisible } from "./old";\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { deriveVisible } from "./index";
+export const App = ({ items }) => {
+  useEffect(() => deriveVisible(items), [items]);
+  return null;
+};\n`,
+    );
+
+    const firstTrace = collectFor(appPath, affectedRuleIds);
+    expect(firstTrace?.contentPaths.has(fixturePath("src/old.ts"))).toBe(true);
+
+    writeFixtureFile(
+      "src/fresh-target.ts",
+      "export const deriveVisible = (items) => items.filter(Boolean);\n",
+    );
+    writeFixtureFile("src/index.ts", `export { deriveVisible } from "./fresh-target";\n`);
+
+    const cachedTrace = collectFor(appPath, affectedRuleIds);
+    expect(cachedTrace).toEqual(firstTrace);
+
+    resetCrossFileExportCaches();
+    const refreshedTrace = collectFor(appPath, affectedRuleIds);
+    expect(refreshedTrace?.contentPaths.has(fixturePath("src/fresh-target.ts"))).toBe(true);
+    expect(refreshedTrace?.contentPaths.has(fixturePath("src/old.ts"))).toBe(false);
+  });
 });
 
 describe("forwarded Hook dependency collectors", () => {
@@ -325,7 +357,110 @@ describe("forwarded Hook dependency collectors", () => {
   });
 });
 
+describe("browser render guard collector", () => {
+  it("records package, alias, re-export, and imported Hook content on repeat collections", () => {
+    writeFixtureFile(
+      "package.json",
+      `{ "dependencies": { "next": "^15.0.0", "react": "^19.0.0" } }\n`,
+    );
+    writeFixtureFile(
+      "tsconfig.json",
+      `{ "compilerOptions": { "baseUrl": ".", "paths": { "@hooks": ["src/hooks/index"] } } }\n`,
+    );
+    writeFixtureFile(
+      "src/use-hydrated.ts",
+      `import { useSyncExternalStore } from "react";
+const subscribe = () => () => {};
+export const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => false);
+`,
+    );
+    writeFixtureFile(
+      "src/hooks/index.ts",
+      `export { useHydrated as useClientReady } from "../use-hydrated";\n`,
+    );
+    writeFixtureFile("src/nested-unrelated.ts", "export const nestedUnrelated = true;\n");
+    writeFixtureFile(
+      "src/unrelated.ts",
+      `import { nestedUnrelated } from "./nested-unrelated";
+export const unrelated = nestedUnrelated;
+`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { useClientReady as useHydrated } from "@hooks";
+import { unrelated } from "./unrelated";
+export const App = () => {
+  const hydrated = useHydrated();
+  return hydrated && <span>{document.title}{String(unrelated)}</span>;
+};
+`,
+    );
+    const expectedContentPaths = [
+      fixturePath("package.json"),
+      fixturePath("tsconfig.json"),
+      fixturePath("src/hooks/index.ts"),
+      fixturePath("src/use-hydrated.ts"),
+    ];
+
+    for (const trace of [
+      collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]),
+      collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]),
+    ]) {
+      for (const expectedPath of expectedContentPaths) {
+        expect(trace?.contentPaths.has(expectedPath)).toBe(true);
+      }
+      expect(trace?.contentPaths.has(fixturePath("src/unrelated.ts"))).toBe(true);
+      expect(trace?.contentPaths.has(fixturePath("src/nested-unrelated.ts"))).toBe(false);
+    }
+  });
+
+  it("records unresolved candidates and terminates on cyclic re-exports", () => {
+    writeFixtureFile("src/cycle-a.ts", `export { useHydrated } from "./cycle-b";\n`);
+    writeFixtureFile("src/cycle-b.ts", `export { useHydrated } from "./cycle-a";\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { useHydrated } from "./cycle-a";
+import { useMissingHydration } from "./missing-hydration";
+export const App = () => {
+  const hydrated = useHydrated() || useMissingHydration();
+  return hydrated && <span>{window.innerWidth}</span>;
+};
+`,
+    );
+    const trace = collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]);
+
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths.has(fixturePath("src/cycle-a.ts"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/cycle-b.ts"))).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("src/missing-hydration.ts"))).toBe(true);
+  });
+});
+
 describe("nextjs collectors", () => {
+  it("records the owning package manifest for the async dynamic API wrapper gate", () => {
+    writeFixtureFile(
+      "package.json",
+      `{ "dependencies": { "next": "^15.0.0", "react": "^19.0.0" } }\n`,
+    );
+    const pagePath = writeFixtureFile(
+      "app/page.tsx",
+      `import { cookies } from "next/headers";
+export default function Page() {
+  return cookies().get("session");
+}
+`,
+    );
+
+    for (const trace of [
+      collectFor(pagePath, ["nextjs-async-dynamic-api-not-awaited"]),
+      collectFor(pagePath, ["nextjs-async-dynamic-api-not-awaited"]),
+    ]) {
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths.has(fixturePath("package.json"))).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("app/package.json"))).toBe(true);
+    }
+  });
+
   it("records ancestor layout probes for a page file only", () => {
     writeFixtureFile("app/layout.tsx", "export default ({ children }) => children;\n");
     const pagePath = writeFixtureFile("app/products/page.tsx", "export default () => <div />;\n");

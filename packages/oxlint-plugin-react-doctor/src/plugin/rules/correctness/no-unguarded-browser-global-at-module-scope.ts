@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import * as path from "node:path";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -525,10 +526,10 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
   recommendation:
     'Reading `window`/`navigator`/`localStorage` at module scope throws `ReferenceError: window is not defined` when the module is imported during SSR. Move the read inside a function/effect, or guard it with `typeof window !== "undefined"`.',
   create: (context: RuleContext): RuleVisitors => {
-    if (/\.d\.[cm]?ts$/i.test(context.filename ?? "")) return {};
-    if (isTestlikeFilename(context.filename)) return {};
-    if (isNonSourceFilename(context.filename)) return {};
-    if (isBrowserOnlyModuleFilename(context.filename)) return {};
+    if (/\.d\.[cm]?ts$/i.test(context.filename ?? "")) return EMPTY_RULE_VISITORS;
+    if (isTestlikeFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    if (isNonSourceFilename(context.filename)) return EMPTY_RULE_VISITORS;
+    if (isBrowserOnlyModuleFilename(context.filename)) return EMPTY_RULE_VISITORS;
 
     let guardAliasNames: ReadonlySet<string> = NO_GUARD_ALIASES;
     let browserOnlyGuardEndOffsetsByGlobalName = new Map<string, number[]>();

@@ -433,8 +433,8 @@ const isStaticPlaceholderReceiver = (receiver: EsTreeNode, depth = 0): boolean =
     if (depth >= TYPE_RESOLUTION_DEPTH_LIMIT) return false;
     const binding = findVariableInitializer(receiver, receiver.name);
     if (!binding?.initializer) return false;
-    if (isBindingReassignedOrMutated(receiver, receiver.name)) return false;
-    return isStaticPlaceholderReceiver(binding.initializer, depth + 1);
+    if (!isStaticPlaceholderReceiver(binding.initializer, depth + 1)) return false;
+    return !isBindingReassignedOrMutated(receiver, receiver.name);
   }
 
   if (isNodeOfType(receiver, "CallExpression")) {
@@ -540,10 +540,11 @@ const isFixedMemoReceiver = (receiver: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  if (isBindingReassignedOrMutated(node, node.name)) return false;
   const initializer = stripParenExpression(binding.initializer);
   if (!isUseMemoCall(initializer)) return false;
-  return useMemoReturnsArrayLiteral(initializer) || hasEmptyDependencyArray(initializer);
+  if (!useMemoReturnsArrayLiteral(initializer) && !hasEmptyDependencyArray(initializer))
+    return false;
+  return !isBindingReassignedOrMutated(node, node.name);
 };
 
 const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
@@ -822,8 +823,8 @@ const isStaticDefaultLiteralReceiver = (receiver: EsTreeNode): boolean => {
   ) {
     return false;
   }
-  if (isBindingReassignedOrMutated(defaultExpression, defaultExpression.name)) return false;
-  return isSpreadFreeArrayLiteral(stripParenExpression(moduleBinding.initializer));
+  if (!isSpreadFreeArrayLiteral(stripParenExpression(moduleBinding.initializer))) return false;
+  return !isBindingReassignedOrMutated(defaultExpression, defaultExpression.name);
 };
 
 // `for (const [index, item] of items.entries()) { … }` — same tuple

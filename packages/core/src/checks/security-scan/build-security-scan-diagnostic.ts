@@ -1,4 +1,4 @@
-import type { ScanFinding, Rule } from "oxlint-plugin-react-doctor";
+import type { ScanFinding, Rule } from "oxlint-plugin-react-doctor/core";
 import type { Diagnostic } from "../../types/index.js";
 
 export interface SecurityScanRuleEntry {

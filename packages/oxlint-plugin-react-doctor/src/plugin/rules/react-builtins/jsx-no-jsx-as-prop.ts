@@ -353,6 +353,7 @@ export const jsxNoJsxAsProp = defineRule({
     let jsxSlotPropRegistry: Map<number, ReadonlySet<string>> | null = null;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
+        if (isTestlikeFile) return;
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
         jsxSlotPropRegistry = buildSameFileJsxSlotPropRegistry(node, memoRegistry, context.scopes);
       },

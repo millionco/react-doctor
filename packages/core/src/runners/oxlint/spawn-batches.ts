@@ -15,6 +15,7 @@ import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
 import { remainingDeadlineBudgetMs } from "../../utils/remaining-deadline-budget-ms.js";
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
+import type { WorkerSlots } from "../../utils/create-worker-slots.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
 
@@ -93,6 +94,7 @@ export interface SpawnLintBatchesInput {
    * resource error replays once with a single worker.
    */
   readonly concurrency?: number;
+  readonly spawnSlots?: WorkerSlots;
 }
 
 interface BatchPassOutcome {
@@ -109,6 +111,13 @@ interface BatchPassOutcome {
    * point users at a failure class that no longer applies.
    */
   readonly firstNonOomDropReason: string | null;
+}
+
+interface BatchState {
+  deadlineMs: number | null;
+  deadlineSkippedFileCount: number;
+  didStart: boolean;
+  initialFileCount: number;
 }
 
 /**
@@ -219,7 +228,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     const spawnLintBatch = async (
       batch: string[],
       depth: number,
-      batchState: { deadlineMs: number | null; deadlineSkippedFileCount: number },
+      batchState: BatchState,
     ): Promise<Diagnostic[]> => {
       // Past the --max-duration budget: skip instead of spawning, even inside a
       // binary-split retry, so a batch that started just before the deadline
@@ -231,14 +240,31 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       }
       const batchArgs = [...baseArgs, ...batch];
       try {
-        const stdout = await spawnOxlint(
-          batchArgs,
-          rootDirectory,
-          nodeBinaryPath,
-          spawnTimeoutMs,
-          outputMaxBytes,
-          signal,
-        );
+        const spawnBatch = (): Promise<string | null> => {
+          if (isPastDeadline()) {
+            deadlineSkippedFiles.push(...batch);
+            batchState.deadlineSkippedFileCount += batch.length;
+            return Promise.resolve(null);
+          }
+          return spawnOxlint(
+            batchArgs,
+            rootDirectory,
+            nodeBinaryPath,
+            spawnTimeoutMs,
+            outputMaxBytes,
+            signal,
+            () => {
+              if (batchState.didStart) return;
+              batchState.didStart = true;
+              startedFileCount += batchState.initialFileCount;
+            },
+          );
+        };
+        const stdout =
+          input.spawnSlots === undefined
+            ? await spawnBatch()
+            : await input.spawnSlots.run(spawnBatch, signal);
+        if (stdout === null) return [];
         return parseOxlintOutput(
           stdout,
           project,
@@ -311,16 +337,17 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           deadlineSkippedFiles.push(...batch);
           return [];
         }
-        startedFileCount += batch.length;
-        const batchState: { deadlineMs: number | null; deadlineSkippedFileCount: number } = {
+        const batchState: BatchState = {
           deadlineMs: null,
           deadlineSkippedFileCount: 0,
+          didStart: false,
+          initialFileCount: batch.length,
         };
         const batchDiagnostics = await spawnLintBatch(batch, 0, batchState);
         // A split retry can deadline-skip part of the batch, so count only the
         // files actually linted — not the whole batch — as scanned.
         scannedFileCount += batch.length - batchState.deadlineSkippedFileCount;
-        if (passOnFileProgress) {
+        if (passOnFileProgress && batchState.didStart) {
           displayedFileCount = Math.min(
             Math.max(displayedFileCount, scannedFileCount),
             totalFileCount,

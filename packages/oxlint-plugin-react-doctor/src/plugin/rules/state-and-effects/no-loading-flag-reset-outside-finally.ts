@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { analyzeScopes, type ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
@@ -2666,7 +2667,7 @@ export const noLoadingFlagResetOutsideFinally = defineRule({
   recommendation:
     "A trailing `setLoading(false)` after an `await` never runs if the awaited call rejects, so the flag stays stuck truthy; reset it in a `finally` block (or mirror the reset on every catch) so it clears on both paths.",
   create: (context: RuleContext): RuleVisitors => {
-    if (isTestFileFilename(context.filename)) return {};
+    if (isTestFileFilename(context.filename)) return EMPTY_RULE_VISITORS;
     currentLintedFilename = context.filename;
     crossFileResolutionsRemaining = CROSS_FILE_RESOLUTION_BUDGET_PER_FILE;
     crossFileResolutionMemo.clear();

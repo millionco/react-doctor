@@ -13,6 +13,7 @@ import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import { getImportedName } from "./get-imported-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isPathInside } from "./is-path-inside.js";
 import { parseSourceFile } from "./parse-source-file.js";
 import { readStaticBoolean } from "./read-static-boolean.js";
 import {
@@ -21,6 +22,7 @@ import {
   readNearestPackageManifest,
 } from "./read-nearest-package-manifest.js";
 import type { PackageManifest } from "./read-nearest-package-manifest.js";
+import { resolveDeclaredWorkspaceDirectories } from "./resolve-declared-workspace-directories.js";
 import type { RuleContext } from "./rule-context.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import { walkAst } from "./walk-ast.js";
@@ -679,7 +681,7 @@ const findWorkspaceRoot = (packageDirectory: string): string | null => {
   }
 };
 
-const collectWorkspacePackages = (workspaceRoot: string): WorkspacePackage[] => {
+const collectWorkspacePackagesRecursively = (workspaceRoot: string): WorkspacePackage[] => {
   const packages: WorkspacePackage[] = [];
   const pendingDirectories = [workspaceRoot];
   while (pendingDirectories.length > 0) {
@@ -708,6 +710,20 @@ const collectWorkspacePackages = (workspaceRoot: string): WorkspacePackage[] => 
     }
   }
   return packages;
+};
+
+const collectWorkspacePackages = (
+  workspaceRoot: string,
+  rootManifest: PackageManifest,
+): WorkspacePackage[] => {
+  const declaredDirectories = resolveDeclaredWorkspaceDirectories(workspaceRoot, rootManifest);
+  if (declaredDirectories === null) return collectWorkspacePackagesRecursively(workspaceRoot);
+
+  return [workspaceRoot, ...declaredDirectories].flatMap((directory) => {
+    const manifest = readPackageManifest(directory);
+    if (!manifest) return [];
+    return [{ directory, manifest, status: getLocalFastRefreshStatus(directory, manifest) }];
+  });
 };
 
 const isPropertyNamed = (node: Parameters<typeof walkAst>[0], name: string): boolean =>
@@ -798,7 +814,7 @@ const buildWorkspaceFastRefreshIndex = (
 ): WorkspaceFastRefreshIndex => {
   const cached = cachedWorkspaceIndexByManifest.get(rootManifest);
   if (cached) return cached;
-  const workspacePackages = collectWorkspacePackages(workspaceRoot);
+  const workspacePackages = collectWorkspacePackages(workspaceRoot, rootManifest);
   const activePackages = workspacePackages.filter(
     (workspacePackage) => workspacePackage.status.isActive,
   );
@@ -826,16 +842,6 @@ const buildWorkspaceFastRefreshIndex = (
   const index = { aliasOwners, sourceEntryOwners };
   cachedWorkspaceIndexByManifest.set(rootManifest, index);
   return index;
-};
-
-const isPathInside = (filePath: string, directory: string): boolean => {
-  const relativePath = path.relative(directory, filePath);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith(`..${path.sep}`) &&
-      relativePath !== ".." &&
-      !path.isAbsolute(relativePath))
-  );
 };
 
 const getWorkspaceOwnedStatus = (

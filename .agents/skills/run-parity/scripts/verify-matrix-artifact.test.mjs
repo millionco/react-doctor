@@ -9,13 +9,92 @@ import { verifyMatrixArtifact } from "./verify-matrix-artifact.mjs";
 
 const hash = (contents) => createHash("sha256").update(contents).digest("hex");
 
+const hashProjectSet = (repositories) =>
+  hash(
+    JSON.stringify(
+      repositories
+        .map(({ org, name, ref, rootDir }) => [org, name, ref, rootDir])
+        .sort((leftTuple, rightTuple) =>
+          JSON.stringify(leftTuple).localeCompare(JSON.stringify(rightTuple)),
+        ),
+    ),
+  );
+
+const buildReport = (rootDir) => ({
+  schemaVersion: 3,
+  ok: true,
+  version: "0.0.0-test",
+  directory: `/workspace/target/${rootDir}`,
+  mode: "full",
+  diff: null,
+  projects: [
+    {
+      directory: `/workspace/target/${rootDir}`,
+      packageRoot: `/workspace/target/${rootDir}`,
+      framework: "vite",
+      diagnostics: [],
+      skippedChecks: [],
+      project: null,
+      score: null,
+      scannedFileCount: 0,
+      elapsedMilliseconds: 1,
+      analyzedFiles: [],
+      analyzedFileCount: 0,
+      complete: true,
+    },
+  ],
+  diagnostics: [],
+  summary: {
+    errorCount: 0,
+    warningCount: 0,
+    affectedFileCount: 0,
+    totalDiagnosticCount: 0,
+    score: null,
+    scoreLabel: null,
+  },
+  elapsedMilliseconds: 1,
+  error: null,
+});
+
+const serializeRecords = (repositories, evaluation) =>
+  repositories
+    .map((repository) =>
+      JSON.stringify({
+        schemaVersion: 1,
+        repository,
+        evaluation,
+        report: buildReport(repository.rootDir),
+      }),
+    )
+    .join("\n") + "\n";
+
 const withArtifact = async (callback) => {
   const directory = await mkdtemp(join(tmpdir(), "verify-matrix-artifact-"));
   const artifactDirectory = join(directory, "artifact");
   await mkdir(artifactDirectory);
-  const candidate = "candidate\n";
-  const base = "base\n";
   const rules = ["react-doctor/example"];
+  const repositories = [
+    { org: "example", name: "first", ref: "c".repeat(40), rootDir: "." },
+    { org: "example", name: "second", ref: "d".repeat(40), rootDir: "packages/app" },
+  ];
+  const candidateProducer = {
+    reactDoctorRepository: directory,
+    reactDoctorCommit: "b".repeat(40),
+    configContract: "revision-local-rule-config-v1",
+    ruleSetHash: "7".repeat(64),
+    ruleKeys: rules,
+    evaluatorSourceHash: "6".repeat(64),
+  };
+  const baseProducer = {
+    reactDoctorRepository: directory,
+    reactDoctorCommit: "a".repeat(40),
+    configContract: "revision-local-rule-config-v1",
+    ruleSetHash: "3".repeat(64),
+    ruleKeys: [],
+    evaluatorSourceHash: "6".repeat(64),
+  };
+  const candidate = serializeRecords(repositories, candidateProducer);
+  const base = serializeRecords(repositories, baseProducer);
   const rulesContents = `${JSON.stringify(rules, null, 2)}\n`;
   const impactManifest = {
     schemaVersion: 1,
@@ -53,7 +132,7 @@ const withArtifact = async (callback) => {
       baselineProvenancePath: join(directory, "baseline.provenance.json"),
       corpusManifestPath: join(directory, "corpus.json"),
       corpusManifestSha256: "4".repeat(64),
-      corpusProjectSetSha256: "5".repeat(64),
+      corpusProjectSetSha256: hashProjectSet(repositories),
       evaluatorSourceHash: "6".repeat(64),
       configContract: "revision-local-rule-config-v1",
       scanContract: "react-doctor-json-full-v1",
@@ -62,7 +141,6 @@ const withArtifact = async (callback) => {
     },
   };
   const descriptorContents = `${JSON.stringify(descriptor)}\n`;
-  const producer = { ruleKeys: rules };
   await Promise.all([
     writeFile(join(artifactDirectory, "candidate.ndjson"), candidate),
     writeFile(join(artifactDirectory, "base.ndjson"), base),
@@ -75,8 +153,8 @@ const withArtifact = async (callback) => {
     evaluationId: "evaluation-id",
     laneId: "pr-1",
     status: "complete",
-    expectedProjectCount: 1,
-    recordCount: 1,
+    expectedProjectCount: repositories.length,
+    recordCount: repositories.length,
     failedRecordCount: 0,
     artifact: {
       path: "candidate.ndjson",
@@ -91,11 +169,12 @@ const withArtifact = async (callback) => {
       path: "base.ndjson",
       sha256: hash(base),
       byteLength: Buffer.byteLength(base),
-      producer,
-      producerSha256: hash(JSON.stringify(producer)),
+      producer: baseProducer,
+      producerSha256: hash(JSON.stringify(baseProducer)),
       verified: true,
     },
     ruleKeys: rules,
+    evaluation: candidateProducer,
   };
   const writeProvenance = () =>
     writeFile(join(artifactDirectory, "provenance.json"), JSON.stringify(provenance));
@@ -106,6 +185,9 @@ const withArtifact = async (callback) => {
       descriptor,
       impactManifest,
       provenance,
+      repositories,
+      candidateProducer,
+      baseProducer,
       writeProvenance,
     });
   } finally {
@@ -117,6 +199,88 @@ test("accepts bundled canonical matrix evidence", async () => {
   await withArtifact(async ({ artifactDirectory }) => {
     await assert.doesNotReject(verifyMatrixArtifact(artifactDirectory));
   });
+});
+
+test("rejects rehashed truncated artifacts despite claimed completion", async () => {
+  await withArtifact(
+    async ({
+      artifactDirectory,
+      provenance,
+      repositories,
+      candidateProducer,
+      baseProducer,
+      writeProvenance,
+    }) => {
+      const candidate = serializeRecords(repositories.slice(0, 1), candidateProducer);
+      const base = serializeRecords(repositories.slice(0, 1), baseProducer);
+      await Promise.all([
+        writeFile(join(artifactDirectory, "candidate.ndjson"), candidate),
+        writeFile(join(artifactDirectory, "base.ndjson"), base),
+      ]);
+      provenance.artifact.sha256 = hash(candidate);
+      provenance.artifact.byteLength = Buffer.byteLength(candidate);
+      provenance.baseArtifact.sha256 = hash(base);
+      provenance.baseArtifact.byteLength = Buffer.byteLength(base);
+      await writeProvenance();
+      await assert.rejects(verifyMatrixArtifact(artifactDirectory), /record count/);
+    },
+  );
+});
+
+test("rejects a rehashed matching pair rebound to another project set", async () => {
+  await withArtifact(
+    async ({ artifactDirectory, provenance, candidateProducer, baseProducer, writeProvenance }) => {
+      const reboundRepositories = [
+        { org: "attacker", name: "rebound", ref: "e".repeat(40), rootDir: "." },
+        { org: "attacker", name: "second", ref: "f".repeat(40), rootDir: "apps/web" },
+      ];
+      const candidate = serializeRecords(reboundRepositories, candidateProducer);
+      const base = serializeRecords(reboundRepositories, baseProducer);
+      await Promise.all([
+        writeFile(join(artifactDirectory, "candidate.ndjson"), candidate),
+        writeFile(join(artifactDirectory, "base.ndjson"), base),
+      ]);
+      provenance.artifact.sha256 = hash(candidate);
+      provenance.artifact.byteLength = Buffer.byteLength(candidate);
+      provenance.baseArtifact.sha256 = hash(base);
+      provenance.baseArtifact.byteLength = Buffer.byteLength(base);
+      await writeProvenance();
+      await assert.rejects(verifyMatrixArtifact(artifactDirectory), /project set/);
+    },
+  );
+});
+
+test("rejects complete records with producer provenance outside the descriptor", async () => {
+  await withArtifact(
+    async ({ artifactDirectory, provenance, repositories, candidateProducer, writeProvenance }) => {
+      const changedProducer = { ...candidateProducer, reactDoctorCommit: "9".repeat(40) };
+      const candidate = serializeRecords(repositories, changedProducer);
+      await writeFile(join(artifactDirectory, "candidate.ndjson"), candidate);
+      provenance.artifact.sha256 = hash(candidate);
+      provenance.artifact.byteLength = Buffer.byteLength(candidate);
+      provenance.evaluation = changedProducer;
+      await writeProvenance();
+      await assert.rejects(verifyMatrixArtifact(artifactDirectory), /matrix descriptor/);
+    },
+  );
+});
+
+test("rejects incomplete reports after artifact bytes are rebound", async () => {
+  await withArtifact(
+    async ({ artifactDirectory, provenance, repositories, candidateProducer, writeProvenance }) => {
+      const records = serializeRecords(repositories, candidateProducer)
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      records[0].report.projects[0].complete = false;
+      const candidate = `${records.map((record) => JSON.stringify(record)).join("\n")}\n`;
+      await writeFile(join(artifactDirectory, "candidate.ndjson"), candidate);
+      provenance.artifact.sha256 = hash(candidate);
+      provenance.artifact.byteLength = Buffer.byteLength(candidate);
+      await writeProvenance();
+      await assert.rejects(verifyMatrixArtifact(artifactDirectory), /incomplete record/);
+    },
+  );
 });
 
 test("rejects mutable source paths and changed bundled bytes", async () => {

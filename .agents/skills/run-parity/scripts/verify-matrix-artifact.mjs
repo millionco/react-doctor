@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
+
+import { diagnosticsByIdentity, readRun } from "./compare-parity.mjs";
 
 const MATRIX_BASE_ARTIFACT_CONTRACT = "matrix-base-artifact-v1";
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
@@ -45,6 +48,14 @@ const IMPACT_MANIFEST_KEYS = [
   "fallbackReasons",
   "rules",
 ];
+const PRODUCER_KEYS = [
+  "reactDoctorRepository",
+  "reactDoctorCommit",
+  "configContract",
+  "ruleSetHash",
+  "ruleKeys",
+  "evaluatorSourceHash",
+];
 
 const hashBytes = (contents) => createHash("sha256").update(contents).digest("hex");
 
@@ -86,6 +97,67 @@ const assertCommit = (value, description) => {
   if (typeof value !== "string" || !COMMIT_PATTERN.test(value)) {
     throw new Error(`${description} must be a lowercase 40-character commit`);
   }
+};
+
+const assertProducer = (producer, description) => {
+  assertExactKeys(producer, PRODUCER_KEYS, description);
+  assertNonemptyString(producer.reactDoctorRepository, `${description}.reactDoctorRepository`);
+  assertCommit(producer.reactDoctorCommit, `${description}.reactDoctorCommit`);
+  assertNonemptyString(producer.configContract, `${description}.configContract`);
+  assertSha256(producer.ruleSetHash, `${description}.ruleSetHash`);
+  assertStringArray(producer.ruleKeys, `${description}.ruleKeys`);
+  assertSha256(producer.evaluatorSourceHash, `${description}.evaluatorSourceHash`);
+};
+
+const projectSetSha256 = (projectKeys) => {
+  const tuples = [...projectKeys]
+    .sort((leftKey, rightKey) => leftKey.localeCompare(rightKey))
+    .map((projectKey) => JSON.parse(projectKey));
+  return hashBytes(JSON.stringify(tuples));
+};
+
+const assertProducerMatches = ({ producer, expected, description }) => {
+  for (const field of [
+    "reactDoctorRepository",
+    "reactDoctorCommit",
+    "configContract",
+    "evaluatorSourceHash",
+  ]) {
+    if (producer[field] !== expected[field]) {
+      throw new Error(`${description}.${field} does not match the matrix descriptor`);
+    }
+  }
+};
+
+const validateArtifactRun = async ({
+  filePath,
+  description,
+  expectedProjectCount,
+  expectedProjectSetSha256,
+  expectedProducer,
+}) => {
+  const projectKeys = new Set();
+  const recordCount = await readRun(filePath, async (record, projectKey) => {
+    if (projectKeys.has(projectKey)) {
+      throw new Error(`${description} contains a duplicate project record`);
+    }
+    projectKeys.add(projectKey);
+    const reportValidation = diagnosticsByIdentity(record, false);
+    if (reportValidation.error) {
+      throw new Error(`${description} contains an incomplete record: ${reportValidation.error}`);
+    }
+    assertProducer(record.evaluation, `${description} record producer`);
+    if (!isDeepStrictEqual(record.evaluation, expectedProducer)) {
+      throw new Error(`${description} record producer does not match provenance`);
+    }
+  });
+  if (recordCount !== expectedProjectCount) {
+    throw new Error(`${description} record count does not match provenance`);
+  }
+  if (projectSetSha256(projectKeys) !== expectedProjectSetSha256) {
+    throw new Error(`${description} project set does not match the matrix corpus`);
+  }
+  return projectKeys;
 };
 
 const assertFileBinding = async ({ artifactDirectory, binding, expectedPath, description }) => {
@@ -169,6 +241,7 @@ export const verifyMatrixArtifact = async (artifactDirectory) => {
   ) {
     throw new Error("Matrix base artifact binding is invalid");
   }
+  assertProducer(baseArtifact.producer, "Matrix base artifact producer");
   const [
     { value: descriptor },
     { value: impactManifest },
@@ -278,6 +351,38 @@ export const verifyMatrixArtifact = async (artifactDirectory) => {
   ) {
     throw new Error("Matrix rules do not match the bound candidate scope");
   }
+  assertProducer(provenance.evaluation, "Matrix candidate producer");
+  assertProducerMatches({
+    producer: provenance.evaluation,
+    expected: {
+      reactDoctorRepository: descriptor.reactDoctorRepository,
+      reactDoctorCommit: descriptor.reactDoctorCommit,
+      configContract: descriptor.group.configContract,
+      evaluatorSourceHash: descriptor.group.evaluatorSourceHash,
+    },
+    description: "Matrix candidate producer",
+  });
+  if (JSON.stringify(provenance.evaluation.ruleKeys) !== JSON.stringify(rules)) {
+    throw new Error("Matrix candidate producer ruleKeys do not match the candidate scope");
+  }
+  assertProducerMatches({
+    producer: baseArtifact.producer,
+    expected: {
+      reactDoctorRepository: descriptor.group.baseReactDoctorRepository,
+      reactDoctorCommit: descriptor.group.baseReactDoctorCommit,
+      configContract: descriptor.group.configContract,
+      evaluatorSourceHash: descriptor.group.evaluatorSourceHash,
+    },
+    description: "Matrix base artifact producer",
+  });
+  if (
+    (baseArtifact.producer.ruleKeys.length === 0 &&
+      baseArtifact.producer.ruleSetHash !== descriptor.group.baseFullRuleSetHash) ||
+    (baseArtifact.producer.ruleKeys.length > 0 &&
+      rules.some((ruleKey) => !baseArtifact.producer.ruleKeys.includes(ruleKey)))
+  ) {
+    throw new Error("Matrix base artifact producer rule scope does not match the descriptor");
+  }
   await Promise.all([
     assertFileBinding({
       artifactDirectory: resolvedDirectory,
@@ -296,6 +401,25 @@ export const verifyMatrixArtifact = async (artifactDirectory) => {
       description: "Matrix base artifact",
     }),
   ]);
+  const [candidateProjectKeys, baseProjectKeys] = await Promise.all([
+    validateArtifactRun({
+      filePath: join(resolvedDirectory, "candidate.ndjson"),
+      description: "Matrix candidate artifact",
+      expectedProjectCount: provenance.expectedProjectCount,
+      expectedProjectSetSha256: descriptor.group.corpusProjectSetSha256,
+      expectedProducer: provenance.evaluation,
+    }),
+    validateArtifactRun({
+      filePath: join(resolvedDirectory, "base.ndjson"),
+      description: "Matrix base artifact",
+      expectedProjectCount: provenance.expectedProjectCount,
+      expectedProjectSetSha256: descriptor.group.corpusProjectSetSha256,
+      expectedProducer: baseArtifact.producer,
+    }),
+  ]);
+  if (!isDeepStrictEqual([...candidateProjectKeys].sort(), [...baseProjectKeys].sort())) {
+    throw new Error("Matrix base and candidate project sets do not match");
+  }
   if (baseArtifact.provenancePath !== undefined) {
     if (
       baseArtifact.provenancePath !== "base-provenance.json" ||

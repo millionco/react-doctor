@@ -1500,6 +1500,27 @@ const CREDENTIAL_OPERATION_NAMES: ReadonlySet<string> = new Set([
   "magiclink",
 ]);
 
+const CREDENTIAL_ESTABLISHING_AUTH_SDK_METHODS: ReadonlySet<string> = new Set([
+  "signUp",
+  "signup",
+  "signIn",
+  "signin",
+  "signInWithPassword",
+  "signInWithOtp",
+  "signInWithOAuth",
+  "signInWithEmail",
+  "signInWithPhone",
+  "signInAnonymously",
+  "verifyOtp",
+  "verifyEmail",
+  "confirmOtp",
+  "resetPasswordForEmail",
+  "sendPasswordResetEmail",
+  "handleOAuthCallback",
+  "handleCallback",
+  "exchangeCodeForSession",
+]);
+
 // A credential-establishing action (login, signup, OAuth callback, OTP /
 // email verify, password reset) legitimately runs for anonymous callers —
 // no prior session can exist, so demanding an auth() gate on it is wrong.
@@ -1507,6 +1528,31 @@ const isCredentialEstablishingActionName = (actionName: string): boolean => {
   const tokens = mergeCredentialPhraseTokens(tokenizeIdentifierWords(actionName));
   const operationTokens = tokens.at(-1) === "action" ? tokens.slice(0, -1) : tokens;
   return CREDENTIAL_OPERATION_NAMES.has(operationTokens.join(""));
+};
+
+const containsCredentialEstablishingAuthCall = (
+  executionGraph: ExecutedFunctionGraph,
+  context: RuleContext,
+): boolean => {
+  for (const executedBody of executionGraph.bodies) {
+    let foundCredentialCall = false;
+    walkExecutedServerActionNodes(executedBody, context, (node) => {
+      if (foundCredentialCall) return false;
+      if (!isNodeOfType(node, "CallExpression")) return;
+      const callee = unwrapTypeWrappedCallee(node.callee);
+      if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
+      const methodName = getStaticPropertyName(callee);
+      if (!methodName || !CREDENTIAL_ESTABLISHING_AUTH_SDK_METHODS.has(methodName)) return;
+      const receiverObject = unwrapTypeWrappedCallee(callee.object);
+      if (!isNodeOfType(receiverObject, "MemberExpression") || receiverObject.computed) return;
+      const receiverProperty = getStaticPropertyName(receiverObject);
+      if (receiverProperty !== "auth") return;
+      foundCredentialCall = true;
+      return false;
+    });
+    if (foundCredentialCall) return true;
+  }
+  return false;
 };
 
 // Naming an exported action "public" (`getPostPublicAction`) declares the
@@ -1530,6 +1576,9 @@ const inspectServerAction = (
   if (hasPublicNameToken(candidate.displayName)) return;
 
   const executionGraph = collectExecutedFunctionBodies(candidate.functionNode, context);
+  
+  if (containsCredentialEstablishingAuthCall(executionGraph, context)) return;
+
   const rootNodes = collectAuthScanRoots(candidate.functionNode, context);
   if (
     containsAuthCheck(

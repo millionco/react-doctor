@@ -69,6 +69,68 @@ describe("server/server-auth-actions — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag Supabase signUp actions (credential-establishing SDK call)", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      import { createClient } from "@/lib/supabase/server";
+      export async function signUpPhoneOnlyAction(input) {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.signUp({
+          phone: input.phone,
+          password: input.password,
+        });
+        if (error) return { error: error.message };
+        await supabase.from("profiles").update({ phone: input.phone }).eq("id", data.user.id);
+        return { success: true };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag Supabase signIn actions (credential-establishing SDK call)", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      import { createClient } from "@/lib/supabase/server";
+      export async function loginWithEmailAction(input) {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: input.email,
+          password: input.password,
+        });
+        if (error) return { error: error.message };
+        return { success: true, user: data.user };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag Supabase verifyOtp actions (credential-establishing SDK call)", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      import { createClient } from "@/lib/supabase/server";
+      export async function verifyOtpAction(input) {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.verifyOtp({
+          phone: input.phone,
+          token: input.token,
+          type: "sms",
+        });
+        if (error) return { error: error.message };
+        return { success: true, session: data.session };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a privileged ungated action", () => {
     const result = runRule(
       serverAuthActions,

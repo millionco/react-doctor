@@ -32,3 +32,25 @@ export const MixedStarts = ({ enabled, id }: { enabled: boolean; id: string }) =
   }, [enabled, id]);
   return null;
 };
+
+export const ConditionalCleanupBypass = ({ enabled, id }: { enabled: boolean; id: string }) => {
+  const [, setValue] = useState<string>();
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const value = await load(id);
+      if (cancelled) return;
+      setValue(value);
+    };
+    const start = () => {
+      if (enabled) void run();
+    };
+    start();
+    if (enabled) return;
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, id]);
+  return null;
+};

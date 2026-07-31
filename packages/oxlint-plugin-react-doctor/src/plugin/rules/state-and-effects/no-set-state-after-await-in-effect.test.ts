@@ -320,6 +320,171 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("preserves conditional gates across nested wrappers", () => {
+    const safeResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const innerStart = () => run();
+          const start = () => {
+            if (enabled) innerStart();
+          };
+          start();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    const bypassResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const innerStart = () => run();
+          const start = () => {
+            if (enabled) innerStart();
+          };
+          start();
+          if (enabled && skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(safeResult.diagnostics).toHaveLength(0);
+    expect(bypassResult.diagnostics).toHaveLength(1);
+  });
+
+  it("correlates direct and wrapped conditional effect call sites with cleanup exits", () => {
+    const directResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          if (enabled) run();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    const wrappedResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => run();
+          if (enabled) start();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    const bypassResult = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, skipCleanup, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          if (enabled) run();
+          if (enabled && skipCleanup) return;
+          return () => { cancelled = true; };
+        }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(directResult.diagnostics).toHaveLength(0);
+    expect(wrappedResult.diagnostics).toHaveLength(0);
+    expect(bypassResult.diagnostics).toHaveLength(1);
+  });
+
+  it("bounds conditional invocation analysis on diamond wrapper graphs", () => {
+    const diamondDepth = 30;
+    const wrapperDeclarations = Array.from({ length: diamondDepth }, (_, wrapperIndex) =>
+      wrapperIndex === 0
+        ? "const start0 = () => run();"
+        : `const start${wrapperIndex} = () => {
+            if (enabled) start${wrapperIndex - 1}();
+            if (enabled) start${wrapperIndex - 1}();
+          };`,
+    ).join("\n");
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          ${wrapperDeclarations}
+          start${diamondDepth - 1}();
+          if (!enabled) return;
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not cache incomplete reachability across recursive wrapper cycles", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const a = (depth) => {
+            if (depth > 0) b(depth - 1);
+            else run();
+          };
+          const b = (depth) => a(depth);
+          if (enabled) {
+            a(0);
+            return () => { cancelled = true; };
+          }
+          b(0);
+          return;
+        }, [enabled, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports conditionally invoked async work without a matching cleanup guard", () => {
     const conditionalResult = runRule(
       noSetStateAfterAwaitInEffect,
@@ -399,6 +564,31 @@ describe("no-set-state-after-await-in-effect", () => {
           if (skipCleanup) return;
           return () => { cancelled = true; };
         }, [enabled, skipCleanup, userId]);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires cleanup for conditional starts before a guarded unconditional start", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `const C = ({ enabled, userId }) => {
+        const [, setUser] = useState(null);
+        useEffect(() => {
+          let cancelled = false;
+          const run = async () => {
+            const user = await load(userId);
+            if (cancelled) return;
+            setUser(user);
+          };
+          const start = () => {
+            if (enabled) run();
+          };
+          start();
+          if (enabled) return;
+          run();
+          return () => { cancelled = true; };
+        }, [enabled, userId]);
       };`,
     );
     expect(result.diagnostics).toHaveLength(1);

@@ -7,7 +7,6 @@ import { collectFunctionReturnStatements } from "../../utils/collect-function-re
 import { resolveCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { doNodesCoverEveryPathAfterNode } from "../../utils/do-nodes-cover-every-path-after-node.js";
-import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -213,106 +212,75 @@ const collectTransitivelyInvokedFunctions = (
   return invokedFunctions;
 };
 
-const doesFunctionInvokeTargetOnEveryPath = (
+const doesFunctionTransitivelyInvokeTarget = (
   rootFunction: EsTreeNode,
   targetFunction: EsTreeNode,
   context: RuleContext,
-  visitedFunctions: Set<EsTreeNode>,
+  memoizedResults: Map<EsTreeNode, boolean>,
 ): boolean => {
-  if (rootFunction === targetFunction) return true;
-  if (visitedFunctions.has(rootFunction)) return false;
-  visitedFunctions.add(rootFunction);
-  const invocationSites: EsTreeNode[] = [];
-  walkOwnFunctionScope(rootFunction, (candidate: EsTreeNode) => {
-    if (!isNodeOfType(candidate, "CallExpression")) return;
-    const invokesTarget = collectDirectlyInvokedFunctions(candidate, context).some(
-      (invokedFunction) =>
-        doesFunctionInvokeTargetOnEveryPath(
-          invokedFunction,
-          targetFunction,
-          context,
-          new Set(visitedFunctions),
-        ),
-    );
-    if (invokesTarget) invocationSites.push(candidate);
-  });
-  return doNodesCoverEveryPathFromFunctionEntry(rootFunction, invocationSites, context);
+  const memoizedResult = memoizedResults.get(rootFunction);
+  if (memoizedResult !== undefined) return memoizedResult;
+  const doesInvokeTarget = collectTransitivelyInvokedFunctions(rootFunction, context).has(
+    targetFunction,
+  );
+  memoizedResults.set(rootFunction, doesInvokeTarget);
+  return doesInvokeTarget;
 };
 
-const collectTargetInvocationSites = (
-  rootFunction: EsTreeNode,
+const doFunctionsHaveUnguardedTargetInvocationPath = (
+  rootFunctions: EsTreeNode[],
   targetFunction: EsTreeNode,
+  noCleanupReturn: EsTreeNode,
   context: RuleContext,
-  visitedFunctions: Set<EsTreeNode>,
-): EsTreeNode[] => {
-  if (visitedFunctions.has(rootFunction)) return [];
-  visitedFunctions.add(rootFunction);
-  const invocationSites = new Set<EsTreeNode>();
-  walkOwnFunctionScope(rootFunction, (candidate: EsTreeNode) => {
-    if (!isNodeOfType(candidate, "CallExpression")) return;
-    for (const invokedFunction of collectDirectlyInvokedFunctions(candidate, context)) {
-      if (invokedFunction === targetFunction) {
-        invocationSites.add(candidate);
-        continue;
+): boolean => {
+  const visitedFunctions = new Set<EsTreeNode>();
+  const pendingFunctions = [...rootFunctions];
+  while (pendingFunctions.length > 0) {
+    const currentFunction = pendingFunctions.pop();
+    if (!currentFunction) break;
+    if (currentFunction === targetFunction) return true;
+    if (visitedFunctions.has(currentFunction)) continue;
+    visitedFunctions.add(currentFunction);
+    walkOwnFunctionScope(currentFunction, (candidate: EsTreeNode) => {
+      if (
+        !isNodeOfType(candidate, "CallExpression") ||
+        areNodesOnContradictoryGuardBranches(candidate, noCleanupReturn, context.scopes)
+      ) {
+        return;
       }
-      for (const invocationSite of collectTargetInvocationSites(
-        invokedFunction,
-        targetFunction,
-        context,
-        new Set(visitedFunctions),
-      )) {
-        invocationSites.add(invocationSite);
-      }
-    }
-  });
-  return [...invocationSites];
+      pendingFunctions.push(...collectDirectlyInvokedFunctions(candidate, context));
+    });
+  }
+  return false;
 };
 
-interface ConditionalEffectInvocationAnchor {
+interface EffectInvocationAnchor {
   anchor: EsTreeNode;
-  targetInvocationSites: EsTreeNode[];
-}
-
-interface EffectInvocationAnchors {
-  conditional: ConditionalEffectInvocationAnchor[];
-  unconditional: EsTreeNode[];
+  targetReachableFunctions: EsTreeNode[];
 }
 
 const collectEffectInvocationAnchors = (
   effectCallback: EsTreeNode,
   invokedFunction: EsTreeNode,
   context: RuleContext,
-): EffectInvocationAnchors => {
-  const conditional = new Map<EsTreeNode, ConditionalEffectInvocationAnchor>();
-  const unconditional = new Set<EsTreeNode>();
+): EffectInvocationAnchor[] => {
+  const invocationAnchors: EffectInvocationAnchor[] = [];
+  const targetReachability = new Map<EsTreeNode, boolean>();
   walkOwnFunctionScope(effectCallback, (candidate: EsTreeNode) => {
     if (!isNodeOfType(candidate, "CallExpression")) return;
-    const directlyInvokedFunctions = collectDirectlyInvokedFunctions(candidate, context);
-    const canInvokeTarget = directlyInvokedFunctions.some((directlyInvokedFunction) =>
-      collectTransitivelyInvokedFunctions(directlyInvokedFunction, context).has(invokedFunction),
+    const targetReachableFunctions = collectDirectlyInvokedFunctions(candidate, context).filter(
+      (directlyInvokedFunction) =>
+        doesFunctionTransitivelyInvokeTarget(
+          directlyInvokedFunction,
+          invokedFunction,
+          context,
+          targetReachability,
+        ),
     );
-    if (!canInvokeTarget) return;
-    const alwaysInvokesTarget = directlyInvokedFunctions.some((directlyInvokedFunction) =>
-      doesFunctionInvokeTargetOnEveryPath(
-        directlyInvokedFunction,
-        invokedFunction,
-        context,
-        new Set(),
-      ),
-    );
-    if (alwaysInvokesTarget) {
-      unconditional.add(candidate);
-    } else {
-      const targetInvocationSites = directlyInvokedFunctions.flatMap((directlyInvokedFunction) =>
-        collectTargetInvocationSites(directlyInvokedFunction, invokedFunction, context, new Set()),
-      );
-      conditional.set(candidate, { anchor: candidate, targetInvocationSites });
-    }
+    if (targetReachableFunctions.length === 0) return;
+    invocationAnchors.push({ anchor: candidate, targetReachableFunctions });
   });
-  return {
-    conditional: [...conditional.values()],
-    unconditional: [...unconditional],
-  };
+  return invocationAnchors;
 };
 
 const collectCleanupFunctionsAfterInvocations = (
@@ -340,34 +308,7 @@ const collectCleanupFunctionsAfterInvocations = (
     context,
   );
   const reachableCleanupReturns = new Set<(typeof cleanupReturns)[number]>();
-  if (invocationAnchors.unconditional.length > 0) {
-    for (const invocationAnchor of invocationAnchors.unconditional) {
-      const cleanupReturnsAfterInvocation = cleanupReturns.filter(({ returnStatement }) =>
-        canNodeReachLaterNodeWithinFunction(
-          invocationAnchor,
-          returnStatement,
-          effectCallback,
-          context,
-        ),
-      );
-      if (
-        !doNodesCoverEveryPathAfterNode(
-          invocationAnchor,
-          cleanupReturnsAfterInvocation.map(({ returnStatement }) => returnStatement),
-          context,
-        )
-      ) {
-        return [];
-      }
-      for (const cleanupReturn of cleanupReturnsAfterInvocation) {
-        reachableCleanupReturns.add(cleanupReturn);
-      }
-    }
-    return [...reachableCleanupReturns].flatMap(({ cleanupFunctions }) => cleanupFunctions);
-  }
-  if (invocationAnchors.conditional.length === 0) return [];
-  for (const { anchor, targetInvocationSites } of invocationAnchors.conditional) {
-    if (targetInvocationSites.length === 0) return [];
+  for (const { anchor, targetReachableFunctions } of invocationAnchors) {
     const returnsAfterInvocation = returnStatements.filter((returnStatement) =>
       canNodeReachLaterNodeWithinFunction(anchor, returnStatement, effectCallback, context),
     );
@@ -382,14 +323,17 @@ const collectCleanupFunctionsAfterInvocations = (
       (returnStatement) => !cleanupReturnStatements.has(returnStatement),
     );
     const areNoCleanupReturnsExclusiveWithInvocations = returnsWithoutCleanup.every(
-      (returnStatement) =>
-        targetInvocationSites.every((targetInvocationSite) =>
-          areNodesOnContradictoryGuardBranches(
-            targetInvocationSite,
-            returnStatement,
-            context.scopes,
-          ),
-        ),
+      (returnStatement) => {
+        if (areNodesOnContradictoryGuardBranches(anchor, returnStatement, context.scopes)) {
+          return true;
+        }
+        return !doFunctionsHaveUnguardedTargetInvocationPath(
+          targetReachableFunctions,
+          invokedFunction,
+          returnStatement,
+          context,
+        );
+      },
     );
     if (!areNoCleanupReturnsExclusiveWithInvocations) {
       return [];

@@ -99,7 +99,11 @@ export const preferModuleScopePureFunction = defineRule({
     // helper. No further memo-call check needed here.
     const checkNamedFunction = (functionNode: EsTreeNode, bindingName: string): void => {
       if (isAssignedToComponentMember(functionNode)) return;
-      const component = enclosingComponentOrHookScope(functionNode, context.scopes.ownScopeFor);
+      const component = enclosingComponentOrHookScope(
+        functionNode,
+        context.scopes.ownScopeFor,
+        true,
+      );
       if (!component) return;
       const ownScope = context.scopes.ownScopeFor(functionNode);
       if (!ownScope) return;

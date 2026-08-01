@@ -8,8 +8,13 @@ import {
   collectCrossFileDependencyProbes,
 } from "./cross-file-dependencies.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
+import {
+  CROSS_FILE_BARREL_FOLLOW_DEPTH,
+  DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH,
+} from "./constants/thresholds.js";
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
 import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
+import { resetCrossFileExportCaches } from "./utils/resolve-cross-file-function-export.js";
 import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alias.js";
 
 // The collectors' contract (see cross-file-dependencies.ts): for a given file,
@@ -21,10 +26,14 @@ import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alia
 
 let temporaryDirectory: string;
 
+const DAYJS_DEPENDENCY_DAG_WIDTH = 5;
+const DAYJS_DEPENDENCY_DAG_MAX_ANALYSIS_DURATION_MS = 2_000;
+
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-cross-file-deps-"));
   __clearParseSourceFileCacheForTests();
   __clearTsconfigAliasCacheForTests();
+  resetCrossFileExportCaches();
   resetManifestCaches();
 });
 
@@ -277,14 +286,247 @@ export const App = ({ items }) => {
       }
     }
   });
+
+  it("refreshes export resolutions after scan caches reset", () => {
+    writeFixtureFile("src/old.ts", "export const deriveVisible = (items) => items;\n");
+    writeFixtureFile("src/index.ts", `export { deriveVisible } from "./old";\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { deriveVisible } from "./index";
+export const App = ({ items }) => {
+  useEffect(() => deriveVisible(items), [items]);
+  return null;
+};\n`,
+    );
+
+    const firstTrace = collectFor(appPath, affectedRuleIds);
+    expect(firstTrace?.contentPaths.has(fixturePath("src/old.ts"))).toBe(true);
+
+    writeFixtureFile(
+      "src/fresh-target.ts",
+      "export const deriveVisible = (items) => items.filter(Boolean);\n",
+    );
+    writeFixtureFile("src/index.ts", `export { deriveVisible } from "./fresh-target";\n`);
+
+    const cachedTrace = collectFor(appPath, affectedRuleIds);
+    expect(cachedTrace).toEqual(firstTrace);
+
+    resetCrossFileExportCaches();
+    const refreshedTrace = collectFor(appPath, affectedRuleIds);
+    expect(refreshedTrace?.contentPaths.has(fixturePath("src/fresh-target.ts"))).toBe(true);
+    expect(refreshedTrace?.contentPaths.has(fixturePath("src/old.ts"))).toBe(false);
+  });
+});
+
+describe("no-side-effect-in-state-updater-function collector", () => {
+  it("records an imported Day.js wrapper and its alias configuration", () => {
+    writeFixtureFile("jsconfig.json", `{ "compilerOptions": { "baseUrl": "src" } }\n`);
+    writeFixtureFile("src/utils/dayjs.ts", `import dayjs from "dayjs"; export default dayjs;\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "utils/dayjs";
+const App = () => {
+  const [, setDate] = useState({ selectedMonth: dayjs() });
+  setDate((previous) => ({
+    ...previous,
+    selectedMonth: previous.selectedMonth.add(1, "month"),
+  }));
+};\n`,
+    );
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    expect(trace?.contentPaths.has(fixturePath("jsconfig.json"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/utils/dayjs.ts"))).toBe(true);
+  });
+
+  it.each([
+    `import "./configure";`,
+    `import * as configuration from "./configure"; void configuration;`,
+    `export { marker } from "./configure";`,
+    `export * from "./configure";`,
+    `export * as configuration from "./configure";`,
+  ])("records runtime Day.js configuration reached through %s", (dependencyStatement) => {
+    writeFixtureFile(
+      "src/utils/configure.ts",
+      `import dayjs from "dayjs"; import badMutable from "dayjs/plugin/badMutable"; dayjs.extend(badMutable); export const marker = 1;\n`,
+    );
+    writeFixtureFile(
+      "src/utils/dayjs.ts",
+      `${dependencyStatement}\nimport dayjs from "dayjs"; export default dayjs;\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "./utils/dayjs";
+const App = () => {
+  const [, setDate] = useState(dayjs());
+  setDate((previous) => previous.add(1, "month"));
+};\n`,
+    );
+    const firstTrace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    const cachedTrace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    for (const trace of [firstTrace, cachedTrace]) {
+      expect(trace?.contentPaths.has(fixturePath("src/utils/configure.ts"))).toBe(true);
+    }
+  });
+
+  it("records the full configuration depth from the deepest Day.js wrapper", () => {
+    for (
+      let configurationIndex = 1;
+      configurationIndex < CROSS_FILE_BARREL_FOLLOW_DEPTH;
+      configurationIndex++
+    ) {
+      writeFixtureFile(
+        `src/utils/configure-${configurationIndex}.ts`,
+        `import "./configure-${configurationIndex + 1}";\nexport const marker = ${configurationIndex};\n`,
+      );
+    }
+    writeFixtureFile(
+      `src/utils/configure-${CROSS_FILE_BARREL_FOLLOW_DEPTH}.ts`,
+      `import "./configure-beyond-proof"; import "./missing-beyond-proof"; import dayjs from "dayjs"; import badMutable from "dayjs/plugin/badMutable"; dayjs.extend(badMutable);\n`,
+    );
+    writeFixtureFile(
+      "src/utils/configure-beyond-proof.ts",
+      `import dayjs from "dayjs"; import badMutable from "dayjs/plugin/badMutable"; dayjs.extend(badMutable);\n`,
+    );
+    for (let wrapperIndex = CROSS_FILE_BARREL_FOLLOW_DEPTH; wrapperIndex >= 1; wrapperIndex--) {
+      const importSource =
+        wrapperIndex === CROSS_FILE_BARREL_FOLLOW_DEPTH ? "dayjs" : `./wrapper-${wrapperIndex + 1}`;
+      const configurationImport =
+        wrapperIndex === CROSS_FILE_BARREL_FOLLOW_DEPTH ? `import "./configure-1";` : "";
+      writeFixtureFile(
+        `src/utils/wrapper-${wrapperIndex}.ts`,
+        `${configurationImport}\nimport dayjs from "${importSource}"; export default dayjs;\n`,
+      );
+    }
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "./utils/wrapper-1";
+const App = () => {
+  const [, setDate] = useState(dayjs());
+  setDate((previous) => previous.add(1, "month"));
+};\n`,
+    );
+
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+
+    expect(
+      trace?.contentPaths.has(
+        fixturePath(`src/utils/configure-${CROSS_FILE_BARREL_FOLLOW_DEPTH}.ts`),
+      ),
+    ).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/utils/configure-beyond-proof.ts"))).toBe(false);
+    expect(trace?.existencePaths.has(fixturePath("src/utils/configure-beyond-proof.ts"))).toBe(
+      true,
+    );
+    expect(trace?.existencePaths.has(fixturePath("src/utils/missing-beyond-proof.ts"))).toBe(true);
+  });
+
+  it("revisits a dependency reached later through a shallower path", () => {
+    for (
+      let dependencyIndex = 1;
+      dependencyIndex < DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH;
+      dependencyIndex += 1
+    ) {
+      const nextImport =
+        dependencyIndex === DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH - 1
+          ? ""
+          : `import "./dependency-${dependencyIndex + 1}";`;
+      writeFixtureFile(
+        `src/dependency-${dependencyIndex}.ts`,
+        `${nextImport}\nexport const marker = ${dependencyIndex};\n`,
+      );
+    }
+    writeFixtureFile("src/shared.ts", `import "./dependency-1";\n`);
+    writeFixtureFile("src/long-2.ts", `import "./shared";\n`);
+    writeFixtureFile("src/long-1.ts", `import "./long-2";\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import "./long-1"; import "./shared"; const App=()=>{const[,setDate]=useState(dayjs());setDate(previous=>previous.add(1,"month"))};\n`,
+    );
+
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+
+    expect(
+      trace?.contentPaths.has(
+        fixturePath(`src/dependency-${DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH - 1}.ts`),
+      ),
+    ).toBe(true);
+  });
+
+  it("visits a reconvergent Day.js dependency graph without enumerating every path", () => {
+    for (let depth = 1; depth <= DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH; depth += 1) {
+      for (let fileIndex = 0; fileIndex < DAYJS_DEPENDENCY_DAG_WIDTH; fileIndex += 1) {
+        const imports =
+          depth === DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH
+            ? ""
+            : Array.from(
+                { length: DAYJS_DEPENDENCY_DAG_WIDTH },
+                (_unusedValue, dependencyIndex) =>
+                  `import "./layer-${depth + 1}-${dependencyIndex}";`,
+              ).join("\n");
+        writeFixtureFile(
+          `src/layer-${depth}-${fileIndex}.ts`,
+          `${imports}\nexport const marker = ${depth + fileIndex};\n`,
+        );
+      }
+    }
+    const rootImports = Array.from(
+      { length: DAYJS_DEPENDENCY_DAG_WIDTH },
+      (_unusedValue, dependencyIndex) => `import "./layer-1-${dependencyIndex}";`,
+    ).join("\n");
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `${rootImports}\nconst App=()=>{const[,setDate]=useState(dayjs());setDate(previous=>previous.add(1,"month"))};\n`,
+    );
+
+    const startedAt = performance.now();
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    const durationMs = performance.now() - startedAt;
+
+    for (let fileIndex = 0; fileIndex < DAYJS_DEPENDENCY_DAG_WIDTH; fileIndex += 1) {
+      expect(
+        trace?.contentPaths.has(
+          fixturePath(`src/layer-${DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH}-${fileIndex}.ts`),
+        ),
+      ).toBe(true);
+    }
+    expect(durationMs).toBeLessThan(DAYJS_DEPENDENCY_DAG_MAX_ANALYSIS_DURATION_MS);
+  });
+
+  it("does not traverse type-only Day.js configuration edges", () => {
+    writeFixtureFile("src/utils/configure.ts", `export interface Configuration {}\n`);
+    writeFixtureFile(
+      "src/utils/dayjs.ts",
+      `export type { Configuration } from "./configure"; import dayjs from "dayjs"; export default dayjs;\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "./utils/dayjs";
+const App = () => {
+  const [, setDate] = useState(dayjs());
+  setDate((previous) => previous.add(1, "month"));
+};\n`,
+    );
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    expect(trace?.contentPaths.has(fixturePath("src/utils/configure.ts"))).toBe(false);
+  });
+
+  it("does not traverse runtime imports when no Day.js immutable method can run", () => {
+    writeFixtureFile("src/utils/configure.ts", `export const marker = 1;\n`);
+    writeFixtureFile(
+      "src/utils/dayjs.ts",
+      `import "./configure"; import dayjs from "dayjs"; export default dayjs;\n`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import dayjs from "./utils/dayjs"; export const selectedMonth = dayjs();\n`,
+    );
+    const trace = collectFor(appPath, ["no-side-effect-in-state-updater-function"]);
+    expect(trace?.contentPaths.has(fixturePath("src/utils/configure.ts"))).toBe(false);
+  });
 });
 
 describe("forwarded Hook dependency collectors", () => {
-  const affectedRuleIds = [
-    "exhaustive-deps",
-    "no-effect-with-fresh-deps",
-    "rerender-memo-with-default-value",
-  ];
+  const affectedRuleIds = ["exhaustive-deps", "rerender-memo-with-default-value"];
 
   it("records direct and nested imported Hook modules for every affected rule", () => {
     writeFixtureFile(
@@ -325,7 +567,110 @@ describe("forwarded Hook dependency collectors", () => {
   });
 });
 
+describe("browser render guard collector", () => {
+  it("records package, alias, re-export, and imported Hook content on repeat collections", () => {
+    writeFixtureFile(
+      "package.json",
+      `{ "dependencies": { "next": "^15.0.0", "react": "^19.0.0" } }\n`,
+    );
+    writeFixtureFile(
+      "tsconfig.json",
+      `{ "compilerOptions": { "baseUrl": ".", "paths": { "@hooks": ["src/hooks/index"] } } }\n`,
+    );
+    writeFixtureFile(
+      "src/use-hydrated.ts",
+      `import { useSyncExternalStore } from "react";
+const subscribe = () => () => {};
+export const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => false);
+`,
+    );
+    writeFixtureFile(
+      "src/hooks/index.ts",
+      `export { useHydrated as useClientReady } from "../use-hydrated";\n`,
+    );
+    writeFixtureFile("src/nested-unrelated.ts", "export const nestedUnrelated = true;\n");
+    writeFixtureFile(
+      "src/unrelated.ts",
+      `import { nestedUnrelated } from "./nested-unrelated";
+export const unrelated = nestedUnrelated;
+`,
+    );
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { useClientReady as useHydrated } from "@hooks";
+import { unrelated } from "./unrelated";
+export const App = () => {
+  const hydrated = useHydrated();
+  return hydrated && <span>{document.title}{String(unrelated)}</span>;
+};
+`,
+    );
+    const expectedContentPaths = [
+      fixturePath("package.json"),
+      fixturePath("tsconfig.json"),
+      fixturePath("src/hooks/index.ts"),
+      fixturePath("src/use-hydrated.ts"),
+    ];
+
+    for (const trace of [
+      collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]),
+      collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]),
+    ]) {
+      for (const expectedPath of expectedContentPaths) {
+        expect(trace?.contentPaths.has(expectedPath)).toBe(true);
+      }
+      expect(trace?.contentPaths.has(fixturePath("src/unrelated.ts"))).toBe(true);
+      expect(trace?.contentPaths.has(fixturePath("src/nested-unrelated.ts"))).toBe(false);
+    }
+  });
+
+  it("records unresolved candidates and terminates on cyclic re-exports", () => {
+    writeFixtureFile("src/cycle-a.ts", `export { useHydrated } from "./cycle-b";\n`);
+    writeFixtureFile("src/cycle-b.ts", `export { useHydrated } from "./cycle-a";\n`);
+    const appPath = writeFixtureFile(
+      "src/App.tsx",
+      `import { useHydrated } from "./cycle-a";
+import { useMissingHydration } from "./missing-hydration";
+export const App = () => {
+  const hydrated = useHydrated() || useMissingHydration();
+  return hydrated && <span>{window.innerWidth}</span>;
+};
+`,
+    );
+    const trace = collectFor(appPath, ["no-unguarded-browser-global-in-render-or-hook-init"]);
+
+    expect(trace).not.toBeNull();
+    expect(trace?.contentPaths.has(fixturePath("src/cycle-a.ts"))).toBe(true);
+    expect(trace?.contentPaths.has(fixturePath("src/cycle-b.ts"))).toBe(true);
+    expect(trace?.existencePaths.has(fixturePath("src/missing-hydration.ts"))).toBe(true);
+  });
+});
+
 describe("nextjs collectors", () => {
+  it("records the owning package manifest for the async dynamic API wrapper gate", () => {
+    writeFixtureFile(
+      "package.json",
+      `{ "dependencies": { "next": "^15.0.0", "react": "^19.0.0" } }\n`,
+    );
+    const pagePath = writeFixtureFile(
+      "app/page.tsx",
+      `import { cookies } from "next/headers";
+export default function Page() {
+  return cookies().get("session");
+}
+`,
+    );
+
+    for (const trace of [
+      collectFor(pagePath, ["nextjs-async-dynamic-api-not-awaited"]),
+      collectFor(pagePath, ["nextjs-async-dynamic-api-not-awaited"]),
+    ]) {
+      expect(trace).not.toBeNull();
+      expect(trace?.contentPaths.has(fixturePath("package.json"))).toBe(true);
+      expect(trace?.existencePaths.has(fixturePath("app/package.json"))).toBe(true);
+    }
+  });
+
   it("records ancestor layout probes for a page file only", () => {
     writeFixtureFile("app/layout.tsx", "export default ({ children }) => children;\n");
     const pagePath = writeFixtureFile("app/products/page.tsx", "export default () => <div />;\n");

@@ -1,0 +1,200 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+import React, { createRef, useRef } from 'react';
+import clsx from 'clsx';
+
+import { AppLayoutBuiltInErrorBoundary } from '../../../error-boundary/internal';
+import { createWidgetizedComponent } from '../../../internal/widgets';
+import { ActiveDrawersContext } from '../../utils/visibility-context';
+import { AppLayoutGlobalAiDrawerImplementation } from '../drawer/global-ai-drawer';
+import { AppLayoutInternals } from '../interfaces';
+import { AppLayoutNavigationImplementation as AppLayoutNavigation } from '../navigation';
+import { SkeletonPartProps } from '../skeleton/interfaces';
+import { BeforeMainSlotSkeleton } from '../skeleton/skeleton-parts';
+import { getPropsToMerge, mergeProps } from '../state/props-merger';
+import { AppLayoutToolbarImplementation as AppLayoutToolbar } from '../toolbar';
+
+import sharedStyles from '../../resize/styles.css.js';
+import styles from '../skeleton/styles.css.js';
+
+const FALLBACK_VERTICAL_OFFSETS = { toolbar: 0, notifications: 0, header: 0, drawers: 0 };
+const noop = () => {};
+
+export const BeforeMainSlotImplementationInternal = ({
+  toolbarProps,
+  appLayoutState,
+  appLayoutProps,
+  registered,
+}: SkeletonPartProps) => {
+  const wasAiDrawerOpenRef = useRef(false);
+  // Created once and reused for as long as the real widget state isn't ready yet, so the fallback
+  // appLayoutInternals object below doesn't force ref reattachment on every render.
+  const fallbackNavigationFocusControlRef = useRef<AppLayoutInternals['navigationFocusControl']>();
+  if (!fallbackNavigationFocusControlRef.current) {
+    fallbackNavigationFocusControlRef.current = {
+      refs: { toggle: createRef(), close: createRef(), slider: createRef() },
+      setFocus: noop,
+      loseFocus: noop,
+    };
+  }
+
+  const widgetizedState = appLayoutState.widgetizedState;
+  // toolbarProps is only populated once multi-layout registration resolves, which never happens
+  // during SSR (and briefly on the client before the registration effect runs). Falling back to
+  // this instance's own props keeps the toolbar/breadcrumbs/trigger rendering instead of waiting.
+  // Once actually registered, toolbarProps must be trusted as-is (including null), since a
+  // registered non-primary instance deliberately stays out of the shared toolbar so it doesn't
+  // duplicate the primary instance's.
+  const effectiveToolbarProps = registered
+    ? toolbarProps
+    : mergeProps(getPropsToMerge(appLayoutProps, appLayoutState), []);
+
+  const activeDrawer = widgetizedState?.activeDrawer;
+  const navigationOpen = widgetizedState ? widgetizedState.navigationOpen : !!effectiveToolbarProps?.navigationOpen;
+  const navigation = widgetizedState
+    ? widgetizedState.navigation
+    : appLayoutProps.navigationHide
+      ? null
+      : (appLayoutProps.navigation ?? <></>);
+  const expandedDrawerId = widgetizedState?.expandedDrawerId ?? null;
+  const setExpandedDrawerId = widgetizedState?.setExpandedDrawerId;
+  const navigationAnimationDisabled = widgetizedState ? widgetizedState.navigationAnimationDisabled : true;
+  const activeAiDrawerId = widgetizedState?.activeAiDrawerId;
+  const aiDrawerExpandedMode = widgetizedState ? widgetizedState.aiDrawerExpandedMode : false;
+  const aiDrawer = widgetizedState?.aiDrawer;
+  const activeAiDrawerSize = widgetizedState?.activeAiDrawerSize;
+  const minAiDrawerSize = widgetizedState?.minAiDrawerSize;
+  const maxAiDrawerSize = widgetizedState?.maxAiDrawerSize;
+  const onActiveAiDrawerResize = widgetizedState?.onActiveAiDrawerResize;
+  const aiDrawerFocusControl = widgetizedState?.aiDrawerFocusControl;
+  const ariaLabels = widgetizedState ? widgetizedState.ariaLabels : appLayoutProps.ariaLabels;
+  const isMobile = widgetizedState ? widgetizedState.isMobile : false;
+  const drawersOpenQueue = widgetizedState?.drawersOpenQueue;
+  const onActiveAiDrawerChange = widgetizedState?.onActiveAiDrawerChange;
+  const activeAiDrawer = widgetizedState?.activeAiDrawer;
+  const bottomDrawerReportedSize = widgetizedState?.bottomDrawerReportedSize;
+  const featureNotificationsProps = widgetizedState?.featureNotificationsProps;
+
+  const drawerExpandedMode = !!expandedDrawerId;
+  const toolsOpen = !!activeDrawer;
+  // Must use `toolbarProps` because all layouts have to apply this mode, not just the one with toolbar
+  const drawerExpandedModeInChildLayout = !!toolbarProps?.expandedDrawerId;
+  const { __embeddedViewMode: embeddedViewMode } = appLayoutProps as any;
+
+  // The toolbar and navigation below are always rendered through their real implementation (never
+  // swapped out for a separate skeleton component) so that once the widget state becomes ready,
+  // React updates their existing DOM in place instead of replacing it. Before that, this fallback
+  // subset of appLayoutInternals (derived straight from props) stands in for the real widget state.
+  const fallbackAppLayoutInternals: Pick<
+    AppLayoutInternals,
+    | 'ariaLabels'
+    | 'breadcrumbs'
+    | 'discoveredBreadcrumbs'
+    | 'verticalOffsets'
+    | 'isMobile'
+    | 'setToolbarHeight'
+    | 'aiDrawer'
+    | 'activeAiDrawer'
+    | 'onActiveAiDrawerChange'
+    | 'onNavigationToggle'
+    | 'navigationOpen'
+    | 'navigation'
+    | 'navigationFocusControl'
+    | 'placement'
+  > = widgetizedState
+    ? // safe: appLayoutInternals and widgetizedState are always populated together
+      appLayoutState.appLayoutInternals!
+    : {
+        ariaLabels,
+        breadcrumbs: appLayoutProps.breadcrumbs,
+        discoveredBreadcrumbs: null,
+        verticalOffsets: FALLBACK_VERTICAL_OFFSETS,
+        isMobile,
+        setToolbarHeight: noop,
+        aiDrawer,
+        activeAiDrawer,
+        onActiveAiDrawerChange,
+        onNavigationToggle: noop,
+        navigationOpen,
+        navigation,
+        navigationFocusControl: fallbackNavigationFocusControlRef.current,
+        placement: appLayoutProps.placement,
+      };
+
+  return (
+    <>
+      {!!effectiveToolbarProps && !embeddedViewMode && !aiDrawerExpandedMode && (
+        <AppLayoutToolbar
+          appLayoutInternals={fallbackAppLayoutInternals}
+          toolbarProps={effectiveToolbarProps}
+          featureNotificationsProps={featureNotificationsProps}
+        />
+      )}
+      {aiDrawer && (
+        <div
+          className={clsx(
+            styles['ai-drawer'],
+            (drawerExpandedMode || drawerExpandedModeInChildLayout) && !aiDrawerExpandedMode && styles.hidden
+          )}
+        >
+          <ActiveDrawersContext.Provider value={activeAiDrawer ? [activeAiDrawer.id] : []}>
+            {(!!activeAiDrawerId || (aiDrawer?.preserveInactiveContent && wasAiDrawerOpenRef.current)) && (
+              <>
+                {(wasAiDrawerOpenRef.current = true)}
+                <AppLayoutGlobalAiDrawerImplementation
+                  show={!!activeAiDrawerId}
+                  activeAiDrawer={aiDrawer ?? null}
+                  // safe: only rendered once aiDrawer (part of the ready widgetized state) is truthy
+                  appLayoutInternals={appLayoutState.appLayoutInternals!}
+                  aiDrawerProps={{
+                    activeAiDrawerSize: activeAiDrawerSize!,
+                    minAiDrawerSize: minAiDrawerSize!,
+                    maxAiDrawerSize: maxAiDrawerSize!,
+                    aiDrawer: aiDrawer!,
+                    ariaLabels,
+                    aiDrawerFocusControl,
+                    isMobile,
+                    drawersOpenQueue,
+                    onActiveAiDrawerChange,
+                    onActiveDrawerResize: ({ size }) => onActiveAiDrawerResize!(size),
+                    expandedDrawerId,
+                    setExpandedDrawerId: setExpandedDrawerId!,
+                  }}
+                />
+              </>
+            )}
+          </ActiveDrawersContext.Provider>
+        </div>
+      )}
+      {navigation && (
+        <div
+          className={clsx(
+            styles.navigation,
+            !navigationOpen && styles['panel-hidden'],
+            toolsOpen && styles['unfocusable-mobile'],
+            !navigationAnimationDisabled && sharedStyles['with-motion-horizontal'],
+            (drawerExpandedMode || drawerExpandedModeInChildLayout) && styles.hidden
+          )}
+        >
+          <AppLayoutBuiltInErrorBoundary>
+            <AppLayoutNavigation
+              appLayoutInternals={fallbackAppLayoutInternals}
+              bottomDrawerReportedSize={bottomDrawerReportedSize}
+            />
+          </AppLayoutBuiltInErrorBoundary>
+        </div>
+      )}
+    </>
+  );
+};
+
+export const BeforeMainSlotImplementation = (props: SkeletonPartProps) => (
+  <AppLayoutBuiltInErrorBoundary>
+    <BeforeMainSlotImplementationInternal {...props} />
+  </AppLayoutBuiltInErrorBoundary>
+);
+
+export const createWidgetizedAppLayoutBeforeMainSlot = createWidgetizedComponent(
+  BeforeMainSlotImplementation,
+  BeforeMainSlotSkeleton
+);

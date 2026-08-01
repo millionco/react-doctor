@@ -12,10 +12,10 @@ describe("js-performance/js-hoist-intl — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags an unconditional Intl allocation in a function body", () => {
+  it("still flags an unconditional Intl allocation with a static locale", () => {
     const result = runRule(
       jsHoistIntl,
-      `function fmt(locale, n) { return new Intl.NumberFormat(locale).format(n); }`,
+      `function fmt(n) { return new Intl.NumberFormat("en-US").format(n); }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
@@ -131,7 +131,7 @@ function getFormatter(locale) {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags an allocation guarded by an unrelated `.includes` if-test (no cache write)", () => {
+  it("stays silent on dynamic utility input behind a branch", () => {
     const result = runRule(
       jsHoistIntl,
       `function formatPrice(label, value, locale) {
@@ -142,7 +142,7 @@ function getFormatter(locale) {
 }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("still flags a `.set` that stores the formatted string, not the formatter", () => {
@@ -217,6 +217,67 @@ function getFormatter(locale) {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a plain utility formats with its caller locale", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function formatDateLocalized({ date, locale }) {
+  const value = new Date(date);
+  const month = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+  }).format(value);
+  const fullDate = new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(value);
+  const time = new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+  return { month, fullDate, time };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on the emitted Cloudscape utility with a locale alias", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function formatDateLocalized(_a) {
+  var date = _a.date, locale = _a.locale;
+  var month = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+  var fullDate = new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+  var time = new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+  return { month: month, fullDate: fullDate, time: time };
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on aliased destructured locale and direct options parameters", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function formatAmount({ locale: language }, value, options) {
+  return new Intl.NumberFormat(language, options).format(value);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a component spreading a props options object", () => {
     const result = runRule(
       jsHoistIntl,
@@ -224,6 +285,42 @@ function getFormatter(locale) {
   const text = new Intl.NumberFormat(locale, { ...options }).format(value);
   return text;
 };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a Hook using a dynamic locale outside useMemo", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function useFormattedDate(locale, value) {
+  return new Intl.DateTimeFormat(locale).format(value);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a parameter-shadowing static locale", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function formatAmount(locale, value) {
+  {
+    const locale = "en-US";
+    return new Intl.NumberFormat(locale).format(value);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a dynamic locale inside a nested hot callback", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function formatAmounts(locale, values) {
+  return values.map((value) => new Intl.NumberFormat(locale).format(value));
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

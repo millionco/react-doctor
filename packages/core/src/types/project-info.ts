@@ -1,4 +1,4 @@
-import type { FrameworkToken } from "oxlint-plugin-react-doctor";
+import type { FrameworkToken } from "oxlint-plugin-react-doctor/core";
 
 // Aliased to the plugin's capability vocabulary: `buildCapabilities` emits
 // `project.framework` as a capability token, so the two unions must be one.

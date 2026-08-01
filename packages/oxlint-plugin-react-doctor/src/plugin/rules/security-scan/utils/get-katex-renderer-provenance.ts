@@ -7,7 +7,7 @@ import { getStaticPropertyName } from "../../../utils/get-static-property-name.j
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { resolveConstIdentifierAlias } from "../../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
-import { getSymbolMutationInspector } from "./get-symbol-mutation-inspector.js";
+import { getSymbolMutationInspector } from "../../../utils/get-symbol-mutation-inspector.js";
 
 const isExpectedModuleName = (actualModuleName: string, expectedModuleName: string): boolean =>
   expectedModuleName === "katex"

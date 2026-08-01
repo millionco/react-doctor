@@ -21,6 +21,11 @@ interface AssignedExpressionDefinition {
   readonly isConditionalWithinBlock: boolean;
 }
 
+const assignedExpressionsByControlFlow = new WeakMap<
+  ControlFlowAnalysis,
+  WeakMap<SymbolDescriptor, WeakMap<EsTreeNode, EsTreeNode[]>>
+>();
+
 const isConditionalWithinBlock = (
   node: EsTreeNode,
   block: BasicBlock,
@@ -51,15 +56,11 @@ const applyDefinitions = (
   return currentDefinitions;
 };
 
-export const collectPossibleAssignedExpressions = (
+const computePossibleAssignedExpressions = (
   symbol: SymbolDescriptor,
   referenceNode: EsTreeNode,
-  controlFlow: ControlFlowAnalysis | undefined,
+  controlFlow: ControlFlowAnalysis,
 ): EsTreeNode[] => {
-  if (!REASSIGNABLE_BINDING_KINDS.has(symbol.kind)) {
-    return symbol.initializer ? [symbol.initializer] : [];
-  }
-  if (!controlFlow) return [];
   const referenceFunction = findEnclosingFunction(referenceNode);
   if (findEnclosingFunction(symbol.bindingIdentifier) !== referenceFunction) return [];
   if (!referenceFunction) return [];
@@ -165,4 +166,34 @@ export const collectPossibleAssignedExpressions = (
       definitionsBeforeReference,
     ),
   ].map((definition) => definition.expression);
+};
+
+export const collectPossibleAssignedExpressions = (
+  symbol: SymbolDescriptor,
+  referenceNode: EsTreeNode,
+  controlFlow: ControlFlowAnalysis | undefined,
+): EsTreeNode[] => {
+  if (!REASSIGNABLE_BINDING_KINDS.has(symbol.kind)) {
+    return symbol.initializer ? [symbol.initializer] : [];
+  }
+  if (!controlFlow) return [];
+  let assignedExpressionsBySymbol = assignedExpressionsByControlFlow.get(controlFlow);
+  if (!assignedExpressionsBySymbol) {
+    assignedExpressionsBySymbol = new WeakMap();
+    assignedExpressionsByControlFlow.set(controlFlow, assignedExpressionsBySymbol);
+  }
+  let assignedExpressionsByReference = assignedExpressionsBySymbol.get(symbol);
+  if (!assignedExpressionsByReference) {
+    assignedExpressionsByReference = new WeakMap();
+    assignedExpressionsBySymbol.set(symbol, assignedExpressionsByReference);
+  }
+  const cachedAssignedExpressions = assignedExpressionsByReference.get(referenceNode);
+  if (cachedAssignedExpressions) return cachedAssignedExpressions;
+  const assignedExpressions = computePossibleAssignedExpressions(
+    symbol,
+    referenceNode,
+    controlFlow,
+  );
+  assignedExpressionsByReference.set(referenceNode, assignedExpressions);
+  return assignedExpressions;
 };

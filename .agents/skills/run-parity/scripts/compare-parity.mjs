@@ -13,17 +13,20 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix } from "node:path";
+import { join, posix, resolve as resolveFileSystemPath } from "node:path";
 import { createInterface } from "node:readline";
 import { isDeepStrictEqual } from "node:util";
+import { fileURLToPath } from "node:url";
 
 const PARITY_SCHEMA_VERSION = 1;
 const PARITY_DIFFERENCE_EXIT_CODE = 1;
 const INVALID_INPUT_EXIT_CODE = 2;
 const JSON_INDENT_SPACES = 2;
 const EXPECTED_ARGUMENT_COUNT = 2;
+const SCOPED_ARGUMENT_COUNT = 4;
 const BASELINE_RECORD_FILE_SUFFIX = ".json";
 const PINNED_REF_PATTERN = /^[0-9a-f]{40}$/i;
+const RULE_KEY_PATTERN = /^[a-z0-9][a-z0-9-]*\/[A-Za-z0-9][A-Za-z0-9-]*$/;
 const REPORT_SCHEMA_VERSIONS = new Set([1, 2, 3]);
 const REPORT_MODES = new Set(["full", "diff", "staged", "baseline"]);
 const REPORT_FRAMEWORKS = new Set([
@@ -36,31 +39,71 @@ const REPORT_FRAMEWORKS = new Set([
   "react-native",
   "tanstack-start",
   "preact",
+  "astro",
   "unknown",
 ]);
 const GITHUB_OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GITHUB_REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+$/;
 const UNSAFE_ROOT_DIRECTORY_PATTERN = /["'`$;&|<>\\\r\n]/;
-
-const [baselinePath, candidatePath] = process.argv.slice(2);
-
-if (process.argv.slice(2).length !== EXPECTED_ARGUMENT_COUNT) {
-  process.stderr.write("Usage: compare-parity.mjs <baseline.ndjson> <candidate.ndjson>\n");
-  process.exit(INVALID_INPUT_EXIT_CODE);
-}
+export const INVARIANT_DIAGNOSTIC_PLUGIN = "TS";
+export const TYPESCRIPT_INVARIANT_RULE_SCOPE = `${INVARIANT_DIAGNOSTIC_PLUGIN}/*`;
+export const INVARIANT_DIAGNOSTIC_RULE_KEYS = new Set([
+  "react-doctor/expo-env-local-not-gitignored",
+  "react-doctor/expo-gitignore",
+  "react-doctor/expo-lockfile",
+  "react-doctor/expo-metro-config",
+  "react-doctor/expo-no-cli-dependencies",
+  "react-doctor/expo-no-conflicting-dependency-override",
+  "react-doctor/expo-no-redundant-dependency",
+  "react-doctor/expo-no-unimodules-packages",
+  "react-doctor/expo-package-json-conflict",
+  "react-doctor/expo-reanimated-v4-requires-new-arch",
+  "react-doctor/expo-router-no-react-navigation",
+  "react-doctor/expo-updates-no-unsafe-production-config",
+  "react-doctor/expo-vector-icons-conflict",
+  "react-doctor/no-vulnerable-react-server-components",
+  "react-doctor/require-pnpm-hardening",
+  "react-doctor/require-reduced-motion",
+  "react-doctor/rn-android-release-shrinking-disabled",
+  "react-doctor/rn-library-react-in-dependencies",
+  "react-doctor/rn-no-metro-babel-preset",
+  "react-doctor/rn-no-metro-babel-runtime-version",
+  "react-doctor/rn-react-compiler-plugin-first",
+  "react-doctor/rn-reanimated-worklets-plugin-last",
+]);
 
 const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 
-const compareStrings = (left, right) => {
+export const loadSelectedRuleKeys = (ruleKeysPath) => {
+  if (!ruleKeysPath) return null;
+  let parsedRuleKeys;
+  try {
+    parsedRuleKeys = JSON.parse(readFileSync(ruleKeysPath, "utf8"));
+  } catch {
+    throw new Error(`${ruleKeysPath} is not valid JSON`);
+  }
+  if (
+    !Array.isArray(parsedRuleKeys) ||
+    parsedRuleKeys.length === 0 ||
+    !parsedRuleKeys.every(
+      (ruleKey) => typeof ruleKey === "string" && RULE_KEY_PATTERN.test(ruleKey),
+    )
+  ) {
+    throw new Error(`${ruleKeysPath} must be a non-empty array of canonical plugin/rule keys`);
+  }
+  return new Set(parsedRuleKeys);
+};
+
+export const compareStrings = (left, right) => {
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;
 };
 
-const projectKey = (repository) =>
+export const projectKey = (repository) =>
   JSON.stringify([repository.org, repository.name, repository.ref, repository.rootDir]);
 
-const validateRepository = (repository) =>
+export const validateRepository = (repository) =>
   isRecord(repository) &&
   typeof repository.org === "string" &&
   GITHUB_OWNER_PATTERN.test(repository.org) &&
@@ -76,7 +119,7 @@ const validateRepository = (repository) =>
   repository.rootDir !== ".." &&
   !repository.rootDir.startsWith("../");
 
-const validateEvalRecord = (record) =>
+export const validateEvalRecord = (record) =>
   isRecord(record) &&
   record.schemaVersion === PARITY_SCHEMA_VERSION &&
   validateRepository(record.repository);
@@ -120,16 +163,75 @@ const getCanonicalDiagnosticPath = (report, project, diagnostic) => {
   return relativePath(report.directory, diagnosticPath);
 };
 
+const optionalProperty = (name, value) => (value === undefined ? {} : { [name]: value });
+
+const canonicalRelatedLocation = (report, project, location) => {
+  const projectRoot = getProjectRoot(report, project);
+  return {
+    filePath: relativePath(report.directory, resolvePath(projectRoot, location.filePath)),
+    line: location.line,
+    column: location.column,
+    ...optionalProperty("offset", location.offset),
+    ...optionalProperty("length", location.length),
+    ...optionalProperty("endLine", location.endLine),
+    ...optionalProperty("endColumn", location.endColumn),
+    message: location.message,
+  };
+};
+
+const canonicalDiagnostic = (report, project, diagnostic) => ({
+  filePath: getCanonicalDiagnosticPath(report, project, diagnostic),
+  plugin: diagnostic.plugin,
+  rule: diagnostic.rule,
+  severity: diagnostic.severity,
+  ...optionalProperty("title", diagnostic.title),
+  message: diagnostic.message,
+  help: diagnostic.help,
+  ...optionalProperty("url", diagnostic.url),
+  line: diagnostic.line,
+  column: diagnostic.column,
+  ...optionalProperty("offset", diagnostic.offset),
+  ...optionalProperty("length", diagnostic.length),
+  ...optionalProperty("endLine", diagnostic.endLine),
+  ...optionalProperty("endColumn", diagnostic.endColumn),
+  category: diagnostic.category,
+  tags: [...(diagnostic.tags ?? [])].sort(compareStrings),
+  ...optionalProperty("matchByOccurrence", diagnostic.matchByOccurrence),
+  ...optionalProperty("fileContext", diagnostic.fileContext),
+  ...optionalProperty("suppressionHint", diagnostic.suppressionHint),
+  ...optionalProperty(
+    "relatedLocations",
+    diagnostic.relatedLocations?.map((location) =>
+      canonicalRelatedLocation(report, project, location),
+    ),
+  ),
+  ...optionalProperty("fixGroupId", diagnostic.fixGroupId),
+});
+
 const diagnosticKey = (report, project, diagnostic) =>
-  JSON.stringify([
-    getCanonicalDiagnosticPath(report, project, diagnostic),
-    diagnostic.line,
-    diagnostic.column,
-    diagnostic.plugin,
-    diagnostic.rule,
-    diagnostic.severity,
-    diagnostic.message,
-  ]);
+  JSON.stringify(canonicalDiagnostic(report, project, diagnostic));
+
+export const diagnosticRuleKey = (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`;
+
+const isOptionalFiniteNumber = (value) =>
+  value === undefined || (typeof value === "number" && Number.isFinite(value) && value >= 0);
+
+const isOptionalString = (value) => value === undefined || typeof value === "string";
+
+const validateRelatedLocation = (location) =>
+  isRecord(location) &&
+  typeof location.filePath === "string" &&
+  typeof location.line === "number" &&
+  Number.isFinite(location.line) &&
+  location.line >= 0 &&
+  typeof location.column === "number" &&
+  Number.isFinite(location.column) &&
+  location.column >= 0 &&
+  isOptionalFiniteNumber(location.offset) &&
+  isOptionalFiniteNumber(location.length) &&
+  isOptionalFiniteNumber(location.endLine) &&
+  isOptionalFiniteNumber(location.endColumn) &&
+  typeof location.message === "string";
 
 const validateDiagnostic = (diagnostic, reportSchemaVersion) =>
   isRecord(diagnostic) &&
@@ -146,6 +248,22 @@ const validateDiagnostic = (diagnostic, reportSchemaVersion) =>
   typeof diagnostic.message === "string" &&
   typeof diagnostic.help === "string" &&
   typeof diagnostic.category === "string" &&
+  isOptionalString(diagnostic.title) &&
+  isOptionalString(diagnostic.url) &&
+  isOptionalFiniteNumber(diagnostic.offset) &&
+  isOptionalFiniteNumber(diagnostic.length) &&
+  isOptionalFiniteNumber(diagnostic.endLine) &&
+  isOptionalFiniteNumber(diagnostic.endColumn) &&
+  (diagnostic.matchByOccurrence === undefined ||
+    typeof diagnostic.matchByOccurrence === "boolean") &&
+  (diagnostic.fileContext === undefined ||
+    diagnostic.fileContext === "test" ||
+    diagnostic.fileContext === "story") &&
+  isOptionalString(diagnostic.suppressionHint) &&
+  (diagnostic.relatedLocations === undefined ||
+    (Array.isArray(diagnostic.relatedLocations) &&
+      diagnostic.relatedLocations.every(validateRelatedLocation))) &&
+  isOptionalString(diagnostic.fixGroupId) &&
   (reportSchemaVersion !== 3 ||
     (typeof diagnostic.id === "string" &&
       typeof diagnostic.normalizedFilePath === "string" &&
@@ -292,7 +410,34 @@ const validateReport = (report) => {
   return null;
 };
 
-const readRun = async (filePath, onRecord) => {
+const canonicalCoverageFilePath = (report, project, filePath) =>
+  relativePath(report.directory, resolvePath(getProjectRoot(report, project), filePath));
+
+export const coverageFingerprint = (record) => {
+  if (!record.report || record.report.schemaVersion !== 3) return null;
+  const report = record.report;
+  const projects = report.projects
+    .map((project) => ({
+      directory: relativePath(report.directory, resolvePath(report.directory, project.directory)),
+      packageRoot: relativePath(
+        report.directory,
+        resolvePath(report.directory, project.packageRoot),
+      ),
+      framework: project.framework,
+      analyzedFiles: project.analyzedFiles
+        .map((filePath) => canonicalCoverageFilePath(report, project, filePath))
+        .sort(compareStrings),
+      analyzedFileCount: project.analyzedFileCount,
+      ...optionalProperty("scannedFileCount", project.scannedFileCount),
+    }))
+    .sort((left, right) => compareStrings(JSON.stringify(left), JSON.stringify(right)));
+  return JSON.stringify({
+    reactDetected: report.reactDetected ?? null,
+    projects,
+  });
+};
+
+export const readRun = async (filePath, onRecord) => {
   const lines = createInterface({ input: createReadStream(filePath) });
   let lineNumber = 0;
   let recordCount = 0;
@@ -320,17 +465,11 @@ const baselineRecordPath = (temporaryDirectory, key) =>
     `${createHash("sha256").update(key).digest("hex")}${BASELINE_RECORD_FILE_SUFFIX}`,
   );
 
-const addCanonicalDiagnostic = (diagnostics, identity, diagnostic) => {
-  const existingDiagnostic = diagnostics.get(identity);
-  if (
-    !existingDiagnostic ||
-    compareStrings(JSON.stringify(diagnostic), JSON.stringify(existingDiagnostic)) < 0
-  ) {
-    diagnostics.set(identity, diagnostic);
-  }
-};
+const isInvariantDiagnostic = (diagnostic) =>
+  diagnostic.plugin === INVARIANT_DIAGNOSTIC_PLUGIN ||
+  INVARIANT_DIAGNOSTIC_RULE_KEYS.has(diagnosticRuleKey(diagnostic));
 
-const diagnosticsByIdentity = (record) => {
+export const diagnosticsByIdentity = (record, rejectOutsideRuleScope, selectedRuleKeys = null) => {
   if (Object.hasOwn(record, "error")) {
     if (
       typeof record.error !== "string" ||
@@ -347,14 +486,33 @@ const diagnosticsByIdentity = (record) => {
   const diagnostics = new Map();
   for (const project of record.report.projects) {
     for (const diagnostic of project.diagnostics) {
-      addCanonicalDiagnostic(
-        diagnostics,
-        diagnosticKey(record.report, project, diagnostic),
-        diagnostic,
-      );
+      const ruleKey = diagnosticRuleKey(diagnostic);
+      if (
+        selectedRuleKeys &&
+        !selectedRuleKeys.has(ruleKey) &&
+        !isInvariantDiagnostic(diagnostic)
+      ) {
+        if (rejectOutsideRuleScope) {
+          return { error: `Candidate emitted diagnostic outside rule scope: ${ruleKey}` };
+        }
+        continue;
+      }
+      const identity = diagnosticKey(record.report, project, diagnostic);
+      const occurrences = diagnostics.get(identity) ?? [];
+      occurrences.push(diagnostic);
+      diagnostics.set(identity, occurrences);
     }
   }
+  for (const occurrences of diagnostics.values()) {
+    occurrences.sort((left, right) => compareStrings(JSON.stringify(left), JSON.stringify(right)));
+  }
   return { diagnostics };
+};
+
+export const diagnosticCount = (diagnostics) => {
+  let count = 0;
+  for (const occurrences of diagnostics.values()) count += occurrences.length;
+  return count;
 };
 
 const summarizeRules = (entries) => {
@@ -408,129 +566,229 @@ const writeOutputArray = async (name, entries, hasFollowingProperty) => {
   await writeOutputChunk(`${closingPrefix}  ]${hasFollowingProperty ? "," : ""}\n`);
 };
 
-try {
-  const temporaryDirectory = mkdtempSync(join(tmpdir(), "react-doctor-parity-"));
-  const added = [];
-  const removed = [];
-  const skippedProjects = [];
-  let unchangedCount = 0;
-  let baselineDiagnosticCount = 0;
-  let candidateDiagnosticCount = 0;
-  let comparedProjectCount = 0;
-
-  const compareRecords = (baselineRecord, candidateRecord) => {
-    const repository = candidateRecord?.repository ?? baselineRecord?.repository;
-    const baseline = baselineRecord
-      ? diagnosticsByIdentity(baselineRecord)
-      : { error: "Missing baseline record" };
-    const candidate = candidateRecord
-      ? diagnosticsByIdentity(candidateRecord)
-      : { error: "Missing candidate record" };
-
-    if (baseline.error || candidate.error) {
-      skippedProjects.push({
-        repository,
-        baselineError: baseline.error,
-        candidateError: candidate.error,
-      });
-      return;
-    }
-
-    comparedProjectCount += 1;
-    baselineDiagnosticCount += baseline.diagnostics.size;
-    candidateDiagnosticCount += candidate.diagnostics.size;
-
-    const identities = new Set([...baseline.diagnostics.keys(), ...candidate.diagnostics.keys()]);
-    for (const identity of identities) {
-      const baselineDiagnostic = baseline.diagnostics.get(identity);
-      const candidateDiagnostic = candidate.diagnostics.get(identity);
-      if (baselineDiagnostic && candidateDiagnostic) {
-        unchangedCount += 1;
-      } else if (baselineDiagnostic) {
-        removed.push(buildDiagnosticEntry(repository, identity, baselineDiagnostic));
-      } else if (candidateDiagnostic) {
-        added.push(buildDiagnosticEntry(repository, identity, candidateDiagnostic));
-      }
-    }
-  };
-
-  let baselineProjectCount;
-  let candidateProjectCount;
+const compareParity = async ({ baselinePath, candidatePath, selectedRuleKeys = null }) => {
   try {
-    baselineProjectCount = await readRun(baselinePath, (record, key, line) => {
-      const recordPath = baselineRecordPath(temporaryDirectory, key);
-      if (existsSync(recordPath)) {
-        throw new Error(`${baselinePath} contains duplicate project ${key}`);
-      }
-      writeFileSync(recordPath, line);
-    });
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), "react-doctor-parity-"));
+    const added = [];
+    const removed = [];
+    const skippedProjects = [];
+    let unchangedCount = 0;
+    let baselineDiagnosticCount = 0;
+    let candidateDiagnosticCount = 0;
+    let comparedProjectCount = 0;
 
-    const candidateKeys = new Set();
-    candidateProjectCount = await readRun(candidatePath, (candidateRecord, key) => {
-      if (candidateKeys.has(key)) {
-        throw new Error(`${candidatePath} contains duplicate project ${key}`);
-      }
-      candidateKeys.add(key);
-      const recordPath = baselineRecordPath(temporaryDirectory, key);
-      if (!existsSync(recordPath)) {
-        compareRecords(undefined, candidateRecord);
+    const compareRecords = (baselineRecord, candidateRecord) => {
+      const repository = candidateRecord?.repository ?? baselineRecord?.repository;
+      const baseline = baselineRecord
+        ? diagnosticsByIdentity(baselineRecord, false, selectedRuleKeys)
+        : { error: "Missing baseline record" };
+      const candidate = candidateRecord
+        ? diagnosticsByIdentity(candidateRecord, true, selectedRuleKeys)
+        : { error: "Missing candidate record" };
+
+      if (baseline.error || candidate.error) {
+        skippedProjects.push({
+          repository,
+          baselineError: baseline.error,
+          candidateError: candidate.error,
+        });
         return;
       }
-      const baselineRecord = JSON.parse(readFileSync(recordPath, "utf8"));
-      unlinkSync(recordPath);
-      compareRecords(baselineRecord, candidateRecord);
-    });
 
-    if (baselineProjectCount === 0 || candidateProjectCount === 0) {
-      throw new Error("Parity inputs must each contain at least one eval record");
+      const baselineCoverageFingerprint = baselineRecord
+        ? coverageFingerprint(baselineRecord)
+        : null;
+      const candidateCoverageFingerprint = candidateRecord
+        ? coverageFingerprint(candidateRecord)
+        : null;
+      if (
+        selectedRuleKeys !== null &&
+        (baselineCoverageFingerprint === null || candidateCoverageFingerprint === null)
+      ) {
+        skippedProjects.push({
+          repository,
+          baselineError:
+            baselineCoverageFingerprint === null
+              ? "Scoped parity requires v3 project coverage"
+              : null,
+          candidateError:
+            candidateCoverageFingerprint === null
+              ? "Scoped parity requires v3 project coverage"
+              : null,
+        });
+        return;
+      }
+      if (
+        baselineCoverageFingerprint !== null &&
+        candidateCoverageFingerprint !== null &&
+        baselineCoverageFingerprint !== candidateCoverageFingerprint
+      ) {
+        skippedProjects.push({
+          repository,
+          baselineError: "Project coverage differs from candidate",
+          candidateError: "Project coverage differs from baseline",
+        });
+        return;
+      }
+
+      comparedProjectCount += 1;
+      baselineDiagnosticCount += diagnosticCount(baseline.diagnostics);
+      candidateDiagnosticCount += diagnosticCount(candidate.diagnostics);
+
+      const identities = new Set([...baseline.diagnostics.keys(), ...candidate.diagnostics.keys()]);
+      for (const identity of identities) {
+        const baselineDiagnostics = baseline.diagnostics.get(identity) ?? [];
+        const candidateDiagnostics = candidate.diagnostics.get(identity) ?? [];
+        const matchingCount = Math.min(baselineDiagnostics.length, candidateDiagnostics.length);
+        unchangedCount += matchingCount;
+        for (
+          let occurrenceIndex = matchingCount;
+          occurrenceIndex < baselineDiagnostics.length;
+          occurrenceIndex += 1
+        ) {
+          removed.push(
+            buildDiagnosticEntry(
+              repository,
+              JSON.stringify([identity, occurrenceIndex]),
+              baselineDiagnostics[occurrenceIndex],
+            ),
+          );
+        }
+        for (
+          let occurrenceIndex = matchingCount;
+          occurrenceIndex < candidateDiagnostics.length;
+          occurrenceIndex += 1
+        ) {
+          added.push(
+            buildDiagnosticEntry(
+              repository,
+              JSON.stringify([identity, occurrenceIndex]),
+              candidateDiagnostics[occurrenceIndex],
+            ),
+          );
+        }
+      }
+    };
+
+    let baselineProjectCount;
+    let candidateProjectCount;
+    try {
+      baselineProjectCount = await readRun(baselinePath, (record, key, line) => {
+        const recordPath = baselineRecordPath(temporaryDirectory, key);
+        if (existsSync(recordPath)) {
+          throw new Error(`${baselinePath} contains duplicate project ${key}`);
+        }
+        writeFileSync(recordPath, line);
+      });
+
+      const candidateKeys = new Set();
+      candidateProjectCount = await readRun(candidatePath, (candidateRecord, key) => {
+        if (candidateKeys.has(key)) {
+          throw new Error(`${candidatePath} contains duplicate project ${key}`);
+        }
+        candidateKeys.add(key);
+        const recordPath = baselineRecordPath(temporaryDirectory, key);
+        if (!existsSync(recordPath)) {
+          compareRecords(undefined, candidateRecord);
+          return;
+        }
+        const baselineRecord = JSON.parse(readFileSync(recordPath, "utf8"));
+        unlinkSync(recordPath);
+        compareRecords(baselineRecord, candidateRecord);
+      });
+
+      if (baselineProjectCount === 0 || candidateProjectCount === 0) {
+        throw new Error("Parity inputs must each contain at least one eval record");
+      }
+
+      for (const fileName of readdirSync(temporaryDirectory).sort(compareStrings)) {
+        if (!fileName.endsWith(BASELINE_RECORD_FILE_SUFFIX)) continue;
+        const recordPath = join(temporaryDirectory, fileName);
+        compareRecords(JSON.parse(readFileSync(recordPath, "utf8")), undefined);
+      }
+    } finally {
+      rmSync(temporaryDirectory, { recursive: true, force: true });
     }
 
-    for (const fileName of readdirSync(temporaryDirectory).sort(compareStrings)) {
-      if (!fileName.endsWith(BASELINE_RECORD_FILE_SUFFIX)) continue;
-      const recordPath = join(temporaryDirectory, fileName);
-      compareRecords(JSON.parse(readFileSync(recordPath, "utf8")), undefined);
+    added.sort(compareDiagnosticEntries);
+    removed.sort(compareDiagnosticEntries);
+    skippedProjects.sort(compareSkippedProjects);
+    const summary = {
+      baselineProjects: baselineProjectCount,
+      candidateProjects: candidateProjectCount,
+      comparedProjects: comparedProjectCount,
+      skippedProjects: skippedProjects.length,
+      baselineDiagnostics: baselineDiagnosticCount,
+      candidateDiagnostics: candidateDiagnosticCount,
+      added: added.length,
+      removed: removed.length,
+      unchanged: unchangedCount,
+    };
+    const rules = {
+      added: summarizeRules(added),
+      removed: summarizeRules(removed),
+    };
+
+    await writeOutputChunk("{\n");
+    await writeOutputProperty("schemaVersion", PARITY_SCHEMA_VERSION);
+    if (selectedRuleKeys) {
+      await writeOutputProperty("ruleScope", [...selectedRuleKeys].sort(compareStrings));
+      await writeOutputProperty("invariantRuleScope", [
+        TYPESCRIPT_INVARIANT_RULE_SCOPE,
+        ...[...INVARIANT_DIAGNOSTIC_RULE_KEYS].sort(compareStrings),
+      ]);
     }
-  } finally {
-    rmSync(temporaryDirectory, { recursive: true, force: true });
-  }
+    await writeOutputProperty("summary", summary);
+    await writeOutputProperty("rules", rules);
+    await writeOutputArray("added", added, true);
+    await writeOutputArray("removed", removed, true);
+    await writeOutputArray("skippedProjects", skippedProjects, false);
+    await writeOutputChunk("}\n");
+    process.stderr.write(
+      `Parity: +${added.length} -${removed.length}, unchanged ${unchangedCount}, skipped projects ${skippedProjects.length}\n`,
+    );
 
-  added.sort(compareDiagnosticEntries);
-  removed.sort(compareDiagnosticEntries);
-  skippedProjects.sort(compareSkippedProjects);
-  const summary = {
-    baselineProjects: baselineProjectCount,
-    candidateProjects: candidateProjectCount,
-    comparedProjects: comparedProjectCount,
-    skippedProjects: skippedProjects.length,
-    baselineDiagnostics: baselineDiagnosticCount,
-    candidateDiagnostics: candidateDiagnosticCount,
-    added: added.length,
-    removed: removed.length,
-    unchanged: unchangedCount,
-  };
-  const rules = {
-    added: summarizeRules(added),
-    removed: summarizeRules(removed),
-  };
-
-  await writeOutputChunk("{\n");
-  await writeOutputProperty("schemaVersion", PARITY_SCHEMA_VERSION);
-  await writeOutputProperty("summary", summary);
-  await writeOutputProperty("rules", rules);
-  await writeOutputArray("added", added, true);
-  await writeOutputArray("removed", removed, true);
-  await writeOutputArray("skippedProjects", skippedProjects, false);
-  await writeOutputChunk("}\n");
-  process.stderr.write(
-    `Parity: +${added.length} -${removed.length}, unchanged ${unchangedCount}, skipped projects ${skippedProjects.length}\n`,
-  );
-
-  if (skippedProjects.length > 0) {
+    if (skippedProjects.length > 0) {
+      process.exitCode = INVALID_INPUT_EXIT_CODE;
+    } else if (added.length > 0 || removed.length > 0) {
+      process.exitCode = PARITY_DIFFERENCE_EXIT_CODE;
+    }
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = INVALID_INPUT_EXIT_CODE;
-  } else if (added.length > 0 || removed.length > 0) {
-    process.exitCode = PARITY_DIFFERENCE_EXIT_CODE;
   }
-} catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = INVALID_INPUT_EXIT_CODE;
+};
+
+const runCli = async () => {
+  const comparisonArguments = process.argv.slice(2);
+  const hasRuleScope =
+    comparisonArguments.length === SCOPED_ARGUMENT_COUNT && comparisonArguments[0] === "--rules";
+  const [baselinePath, candidatePath] = hasRuleScope
+    ? comparisonArguments.slice(2)
+    : comparisonArguments;
+
+  if (
+    (!hasRuleScope && comparisonArguments.length !== EXPECTED_ARGUMENT_COUNT) ||
+    (hasRuleScope && (!baselinePath || !candidatePath))
+  ) {
+    process.stderr.write(
+      "Usage: compare-parity.mjs [--rules <rules.json>] <baseline.ndjson> <candidate.ndjson>\n",
+    );
+    process.exitCode = INVALID_INPUT_EXIT_CODE;
+    return;
+  }
+
+  try {
+    const selectedRuleKeys = loadSelectedRuleKeys(
+      hasRuleScope ? comparisonArguments[1] : undefined,
+    );
+    await compareParity({ baselinePath, candidatePath, selectedRuleKeys });
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = INVALID_INPUT_EXIT_CODE;
+  }
+};
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolveFileSystemPath(process.argv[1])) {
+  await runCli();
 }

@@ -9,6 +9,7 @@ import {
   GENERATED_IMAGE_RENDERER_MODULES,
   isGeneratedImageRendererCall,
 } from "./is-generated-image-renderer-call.js";
+import { isFunctionLike } from "./is-function-like.js";
 import { isNextjsMetadataImageRouteFilename } from "./is-nextjs-metadata-image-route-filename.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { normalizeFilename } from "./normalize-filename.js";
@@ -28,19 +29,6 @@ const isComponentIdentifierName = (name: string): boolean => {
   const firstCharacter = name[0];
   return Boolean(firstCharacter && firstCharacter === firstCharacter.toUpperCase());
 };
-
-const isFunctionLike = (
-  node: EsTreeNode | null | undefined,
-): node is
-  | EsTreeNodeOfType<"FunctionDeclaration">
-  | EsTreeNodeOfType<"FunctionExpression">
-  | EsTreeNodeOfType<"ArrowFunctionExpression"> =>
-  Boolean(
-    node &&
-    (isNodeOfType(node, "FunctionDeclaration") ||
-      isNodeOfType(node, "FunctionExpression") ||
-      isNodeOfType(node, "ArrowFunctionExpression")),
-  );
 
 const markFunctionReturnJsx = (
   functionNode: EsTreeNode,

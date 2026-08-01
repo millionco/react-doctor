@@ -24,6 +24,18 @@ describe("a11y/click-events-have-key-events regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a named function focus-forwarding click handler", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `function focusInput() {
+        document.querySelector("input")?.focus();
+      }
+      export const A = () => <div onClick={focusInput}><input /></div>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag a conditional wrapper handler that only forwards focus", () => {
     const result = runRule(
       clickEventsHaveKeyEvents,
@@ -42,6 +54,25 @@ describe("a11y/click-events-have-key-events regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a conditional propagation shield without focus forwarding", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `class ActionBar extends React.Component {
+        render() {
+          return (
+            <div
+              onClick={this.handleClick ? function (event) {
+                event.stopPropagation();
+              } : undefined}
+            />
+          );
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag a typed focus-forwarding handler in the nullish-first branch form", () => {
@@ -455,6 +486,24 @@ describe("a11y/click-events-have-key-events regressions", () => {
         return <div role="dialog" className="backdrop" onClick={handleBackdropClick} />;
       };`,
     );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a backdrop handler behind transparent TypeScript wrappers", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Modal = ({ close }) => {
+        const dismissBackdrop = ((event) => {
+          if (event.target === event.currentTarget) close();
+        }) as React.MouseEventHandler<HTMLDivElement>;
+        return (
+          <div
+            onClick={dismissBackdrop as React.MouseEventHandler<HTMLDivElement>}
+          />
+        );
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
 

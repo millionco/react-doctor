@@ -7,9 +7,12 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { hasKeyboardActivatableDescendant } from "../../utils/has-keyboard-activatable-descendant.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import {
+  isFocusForwardingOrBlockingHandler,
+  isFocusForwardingOrBlockingHandlerExpression,
+} from "../../utils/is-focus-forwarding-handler.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
-import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPresentationRole } from "../../utils/is-presentation-role.js";
 import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-handler.js";
@@ -147,229 +150,6 @@ const resolveMemberElementTag = (node: EsTreeNodeOfType<"JSXOpeningElement">): s
   return tag && HTML_TAGS.has(tag) ? tag : null;
 };
 
-// `.click()` is deliberately NOT here: forwarding a click to a hidden
-// file input (`fileInputRef.current?.click()`) is a real keyboard gap
-// because a display:none input can't be focused.
-const FOCUS_FORWARDING_METHOD_NAMES: ReadonlySet<string> = new Set([
-  "focus",
-  "select",
-  "stopPropagation",
-  "preventDefault",
-  "stopImmediatePropagation",
-]);
-const DOM_QUERY_METHOD_NAMES: ReadonlySet<string> = new Set(["getElementById", "querySelector"]);
-const GLOBAL_OBJECT_NAMES: ReadonlySet<string> = new Set(["global", "globalThis", "window"]);
-
-const isFocusForwardingCall = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return false;
-  const inner = isNodeOfType(node, "ChainExpression") ? (node.expression as EsTreeNode) : node;
-  if (!isNodeOfType(inner, "CallExpression")) return false;
-  const callee = inner.callee as EsTreeNode;
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  if (!isNodeOfType(callee.property, "Identifier")) return false;
-  return FOCUS_FORWARDING_METHOD_NAMES.has(callee.property.name);
-};
-
-const isGlobalDocumentExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Identifier")) {
-    return candidate.name === "document" && scopes.isGlobalReference(candidate);
-  }
-  if (
-    !isNodeOfType(candidate, "MemberExpression") ||
-    !isNodeOfType(candidate.object, "Identifier") ||
-    !isNodeOfType(candidate.property, "Identifier") ||
-    candidate.property.name !== "document"
-  ) {
-    return false;
-  }
-  return (
-    GLOBAL_OBJECT_NAMES.has(candidate.object.name) && scopes.isGlobalReference(candidate.object)
-  );
-};
-
-const isFocusForwardingFunctionBody = (body: EsTreeNode | null | undefined): boolean => {
-  if (!body) return false;
-  if (isFocusForwardingCall(body)) return true;
-  if (isNodeOfType(body, "BlockStatement")) {
-    const statements = body.body ?? [];
-    if (statements.length === 0) return false;
-    for (const statement of statements) {
-      if (!isNodeOfType(statement, "ExpressionStatement")) return false;
-      if (!isFocusForwardingCall(statement.expression as EsTreeNode)) return false;
-    }
-    return true;
-  }
-  return false;
-};
-
-const resolveHandlerFunction = (
-  attribute: EsTreeNodeOfType<"JSXAttribute">,
-):
-  | EsTreeNodeOfType<"ArrowFunctionExpression">
-  | EsTreeNodeOfType<"FunctionExpression">
-  | EsTreeNodeOfType<"FunctionDeclaration">
-  | null => {
-  if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
-  return resolveHandlerFunctionExpression(attribute.value.expression as EsTreeNode);
-};
-
-const resolveHandlerFunctionExpression = (
-  handlerExpression: EsTreeNode,
-):
-  | EsTreeNodeOfType<"ArrowFunctionExpression">
-  | EsTreeNodeOfType<"FunctionExpression">
-  | EsTreeNodeOfType<"FunctionDeclaration">
-  | null => {
-  let expression = stripParenExpression(handlerExpression);
-  if (isNodeOfType(expression, "Identifier")) {
-    const binding = findVariableInitializer(expression, expression.name);
-    if (!binding?.initializer) return null;
-    expression = stripParenExpression(binding.initializer);
-  }
-  if (
-    isNodeOfType(expression, "ArrowFunctionExpression") ||
-    isNodeOfType(expression, "FunctionExpression") ||
-    isNodeOfType(expression, "FunctionDeclaration")
-  ) {
-    return expression;
-  }
-  return null;
-};
-
-const isEmptyReturn = (statement: EsTreeNode): boolean =>
-  isNodeOfType(statement, "ReturnStatement") && statement.argument === null;
-
-const isClosestEarlyReturn = (statement: EsTreeNode): boolean => {
-  if (!isNodeOfType(statement, "IfStatement") || statement.alternate) return false;
-  const consequent = statement.consequent;
-  const hasEmptyReturn = isNodeOfType(consequent, "BlockStatement")
-    ? consequent.body.length === 1 && isEmptyReturn(consequent.body[0] as EsTreeNode)
-    : isEmptyReturn(consequent);
-  if (!hasEmptyReturn) return false;
-  const test = stripParenExpression(statement.test);
-  const call = isNodeOfType(test, "ChainExpression") ? test.expression : test;
-  if (!isNodeOfType(call, "CallExpression") || call.arguments.length !== 1) return false;
-  const callee = stripParenExpression(call.callee);
-  const receiver = isNodeOfType(callee, "MemberExpression")
-    ? stripParenExpression(callee.object as EsTreeNode)
-    : null;
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "closest" &&
-    isNodeOfType(receiver, "MemberExpression") &&
-    isNodeOfType(receiver.object, "Identifier") &&
-    isNodeOfType(receiver.property, "Identifier") &&
-    receiver.property.name === "target" &&
-    isNodeOfType(call.arguments[0], "Literal") &&
-    typeof call.arguments[0].value === "string"
-  );
-};
-
-const isStaticSelectorExpression = (expression: EsTreeNode): boolean => {
-  const candidate = stripParenExpression(expression);
-  if (isNodeOfType(candidate, "Identifier") || isNodeOfType(candidate, "Literal")) return true;
-  return (
-    isNodeOfType(candidate, "TemplateLiteral") &&
-    candidate.expressions.every((innerExpression) =>
-      isStaticSelectorExpression(innerExpression as EsTreeNode),
-    )
-  );
-};
-
-const getDomQueryVariableName = (statement: EsTreeNode, scopes: ScopeAnalysis): string | null => {
-  if (
-    !isNodeOfType(statement, "VariableDeclaration") ||
-    statement.kind !== "const" ||
-    statement.declarations.length !== 1
-  ) {
-    return null;
-  }
-  const declaration = statement.declarations[0];
-  if (!declaration || !isNodeOfType(declaration.id, "Identifier") || !declaration.init) return null;
-  const initializer = stripParenExpression(declaration.init);
-  if (
-    !isNodeOfType(initializer, "CallExpression") ||
-    initializer.arguments.length !== 1 ||
-    isNodeOfType(initializer.arguments[0], "SpreadElement") ||
-    !isStaticSelectorExpression(initializer.arguments[0] as EsTreeNode)
-  ) {
-    return null;
-  }
-  const callee = stripParenExpression(initializer.callee);
-  if (
-    !isNodeOfType(callee, "MemberExpression") ||
-    !isNodeOfType(callee.property, "Identifier") ||
-    !DOM_QUERY_METHOD_NAMES.has(callee.property.name) ||
-    !isGlobalDocumentExpression(callee.object as EsTreeNode, scopes)
-  ) {
-    return null;
-  }
-  return declaration.id.name;
-};
-
-const isFocusCallOnVariable = (statement: EsTreeNode, variableName: string): boolean => {
-  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
-  const expression = stripParenExpression(statement.expression as EsTreeNode);
-  if (!isNodeOfType(expression, "CallExpression")) return false;
-  const callee = stripParenExpression(expression.callee);
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  const receiver = stripParenExpression(callee.object as EsTreeNode);
-  return (
-    isNodeOfType(receiver, "Identifier") &&
-    receiver.name === variableName &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "focus" &&
-    expression.arguments.length === 0
-  );
-};
-
-const isConditionalFocusForwardingHandler = (
-  attribute: EsTreeNodeOfType<"JSXAttribute">,
-  scopes: ScopeAnalysis,
-): boolean => {
-  if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return false;
-  const expression = stripParenExpression(attribute.value.expression as EsTreeNode);
-  if (!isNodeOfType(expression, "ConditionalExpression")) return false;
-  const consequent = stripParenExpression(expression.consequent as EsTreeNode);
-  const alternate = stripParenExpression(expression.alternate as EsTreeNode);
-  const nullishBranch = isNullishExpression(consequent) ? consequent : alternate;
-  if (
-    !isNullishExpression(nullishBranch) ||
-    (isNodeOfType(nullishBranch, "Identifier") && !scopes.isGlobalReference(nullishBranch))
-  ) {
-    return false;
-  }
-  const handlerExpression = nullishBranch === consequent ? alternate : consequent;
-  const handlerFunction = resolveHandlerFunctionExpression(handlerExpression);
-  if (!handlerFunction || !isNodeOfType(handlerFunction.body, "BlockStatement")) return false;
-  const [guard, query, focus, ...rest] = handlerFunction.body.body;
-  if (!guard || !query || !focus || rest.length > 0 || !isClosestEarlyReturn(guard as EsTreeNode)) {
-    return false;
-  }
-  const queryVariableName = getDomQueryVariableName(query as EsTreeNode, scopes);
-  return Boolean(
-    queryVariableName && isFocusCallOnVariable(focus as EsTreeNode, queryVariableName),
-  );
-};
-
-// `onClick={() => inputRef.current?.focus()}` (and same-file named
-// handlers with that shape) only forward focus to a real control
-// keyboard users already reach via Tab — the wrapper isn't a
-// keyboard-inaccessible action.
-const isFocusForwardingHandler = (
-  attribute: EsTreeNodeOfType<"JSXAttribute">,
-  scopes: ScopeAnalysis,
-): boolean => {
-  if (isConditionalFocusForwardingHandler(attribute, scopes)) return true;
-  const handlerFunction = resolveHandlerFunction(attribute);
-  return Boolean(
-    handlerFunction &&
-    isFocusForwardingFunctionBody((handlerFunction as { body?: EsTreeNode }).body ?? null),
-  );
-};
-
 // Items of ARIA composite widgets receive keyboard interaction from the
 // composite container (roving tabindex or aria-activedescendant per the
 // APG), not from their own key handlers — the doc's
@@ -437,12 +217,38 @@ const containsBackdropDismissComparison = (node: EsTreeNode | null | undefined):
   return false;
 };
 
+const resolveBackdropHandlerFunctionExpression = (
+  handlerExpression: EsTreeNode,
+): EsTreeNode | null => {
+  let expression = stripParenExpression(handlerExpression);
+  if (isNodeOfType(expression, "Identifier")) {
+    const binding = findVariableInitializer(expression, expression.name);
+    if (!binding?.initializer) return null;
+    expression = stripParenExpression(binding.initializer);
+  }
+  if (
+    isNodeOfType(expression, "ArrowFunctionExpression") ||
+    isNodeOfType(expression, "FunctionExpression") ||
+    isNodeOfType(expression, "FunctionDeclaration")
+  ) {
+    return expression;
+  }
+  return null;
+};
+
+const resolveBackdropHandlerFunction = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): EsTreeNode | null => {
+  if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return null;
+  return resolveBackdropHandlerFunctionExpression(attribute.value.expression as EsTreeNode);
+};
+
 // A handler gated on `e.target === e.currentTarget` is the
 // click-outside/backdrop-dismiss idiom: it only reacts to clicks on the
 // backdrop itself, an action keyboard users perform via Escape instead
 // (the backdrop is never focusable).
 const isBackdropDismissHandler = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
-  const handlerFunction = resolveHandlerFunction(attribute);
+  const handlerFunction = resolveBackdropHandlerFunction(attribute);
   if (!handlerFunction) return false;
   return containsBackdropDismissComparison((handlerFunction as { body?: EsTreeNode }).body ?? null);
 };
@@ -498,18 +304,21 @@ export const clickEventsHaveKeyEvents = defineRule({
           return;
         }
         if (onClick && isPureEventBlockerHandler(onClick)) return;
-        if (onClick && isFocusForwardingHandler(onClick, context.scopes)) return;
-        const spreadHandlerFunction = spreadOnClickExpression
-          ? resolveHandlerFunctionExpression(spreadOnClickExpression)
+        if (onClick && isFocusForwardingOrBlockingHandler(onClick, context.scopes)) return;
+        if (
+          spreadOnClickExpression &&
+          isFocusForwardingOrBlockingHandlerExpression(spreadOnClickExpression, context.scopes)
+        ) {
+          return;
+        }
+        const spreadBackdropHandlerFunction = spreadOnClickExpression
+          ? resolveBackdropHandlerFunctionExpression(spreadOnClickExpression)
           : null;
         if (
-          spreadHandlerFunction &&
-          (isFocusForwardingFunctionBody(
-            (spreadHandlerFunction as { body?: EsTreeNode }).body ?? null,
-          ) ||
-            containsBackdropDismissComparison(
-              (spreadHandlerFunction as { body?: EsTreeNode }).body ?? null,
-            ))
+          spreadBackdropHandlerFunction &&
+          containsBackdropDismissComparison(
+            (spreadBackdropHandlerFunction as { body?: EsTreeNode }).body ?? null,
+          )
         ) {
           return;
         }

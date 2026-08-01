@@ -133,6 +133,150 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when an awaited shared receiver call bridges ordered state snapshots", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an owner-scoped receiver contributes a result property to owner-observed output", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Room { async replay(events) { const operations = []; for (const event of events) { const result = await this.api.processRemoteEvent(event); if (result.operation) operations.push(result.operation); } this.notify(operations); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags generic awaited reads collected before Promise.all", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function restore(payload, products) { const updates = []; for (const product of products) { const original = await payload.findByID(product.id); updates.push(payload.update({ id: product.id, data: original })); } await Promise.all(updates); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a parameter receiver whose result property is passed to a free observer", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { const operations = []; for (const event of events) { const result = await replica.processRemoteEvent(event); if (result.operation) operations.push(result.operation); } notify(operations); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an owner method when the whole awaited result is collected", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Analyzer { async analyze(items) { const results = []; for (const item of items) { const result = await this.worker.analyze(item); results.push(result); } this.notify(results); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a direct owner receiver whose result property is collected", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `class Analyzer { async analyze(items) { const results = []; for (const item of items) { const result = await this.analyzeItem(item); results.push(result.value); } this.notify(results); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("follows a stable receiver alias when proving ordered state snapshots", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(events) { const replica = this.api; for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("follows transparent TypeScript wrappers around a stable receiver", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `interface Replica { apply: (event: unknown) => Promise<unknown>; getText: () => string; } async function replay(replica: Replica, events: unknown[]) { for (const event of events) { const before = (replica as Replica).getText(); const result = await (replica as Replica).apply(event); const after = (replica as Replica).getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a bare awaited method whose name only suggests mutation", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { await replica.applyRemoteEvent(event); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags state snapshots around work that does not read the iteration binding", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { const before = replica.getText(); await replica.refresh(); const after = replica.getText(); consume(event, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags snapshots taken from different receivers", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(beforeReplica, replica, afterReplica, events) { for (const event of events) { const before = beforeReplica.getText(); const result = await replica.apply(event); const after = afterReplica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags when only the observation before the await uses the same receiver", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, otherReplica, events) { for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = otherReplica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags ordered output unrelated to the awaited result", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { const operations = []; for (const event of events) { await replica.processRemoteEvent(event); operations.push(event); } notify(operations); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags await-derived output that is not observed after the loop", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { const operations = []; for (const event of events) { const result = await replica.processRemoteEvent(event); operations.push(result.operation); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags output that can be reached without executing the await", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events, enabled) { const operations = []; for (const event of events) { let result = event; if (enabled) result = await replica.processRemoteEvent(event); operations.push(result); } notify(operations); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a receiver created independently inside each iteration", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(events) { for (const event of events) { const replica = createReplica(event); const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent when an awaited local helper appends to a passed output array", () => {
     const result = runRule(
       asyncAwaitInLoop,
@@ -586,6 +730,24 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     const result = runRule(
       asyncAwaitInLoop,
       `async function f(files) { for (const file of files) { for (const chunk of file.chunks) { validate(chunk); } await upload(file); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not use an ordered nested loop to exempt an outer sibling await", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events, batches) { for (const event of events) { await upload(event); for (const batch of batches) { const before = replica.getText(); const result = await replica.apply(event, batch); const after = replica.getText(); consume(result, before, after); } } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not use one ordered shared receiver await to exempt a sibling await", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function replay(replica, events) { for (const event of events) { const before = replica.getText(); const result = await replica.apply(event); const after = replica.getText(); consume(result, before, after); await upload(event); } }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

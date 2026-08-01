@@ -103,6 +103,27 @@ describe("security/no-secrets-in-client-code — regressions", () => {
     ).toHaveLength(0);
   });
 
+  it("stays silent on a user-facing API key alert (mailing shape)", () => {
+    expect(
+      runClient(`export const API_KEY_ALERT = "Unable to create API key. Try again.";`),
+    ).toHaveLength(0);
+  });
+
+  it("stays silent on a structured parser token boundary (datastoria shape)", () => {
+    expect(runClient(`const MATH_TOKEN_END = "ENDDATSTORIABACKSLASHMATH";`)).toHaveLength(0);
+  });
+
+  it("still flags known credential values under metadata-style names", () => {
+    expect(runClient(`const API_KEY_ALERT = "sk_live_x";`).length).toBeGreaterThan(0);
+    expect(runClient(`const MATH_TOKEN_END = "github_pat_x";`).length).toBeGreaterThan(0);
+  });
+
+  it("still flags high-entropy token values with a boundary suffix", () => {
+    expect(
+      runClient(`const MATH_TOKEN_END = "2AB3CD4EF5GH6JK7LM8NP9QR0ST1";`).length,
+    ).toBeGreaterThan(0);
+  });
+
   it("stays silent on camelCase segments in storage key names (mailing shape)", () => {
     expect(
       runClient(`const LOCAL_API_KEYS_STORAGE_KEY = "mailing.settings.localApiKeys";`),

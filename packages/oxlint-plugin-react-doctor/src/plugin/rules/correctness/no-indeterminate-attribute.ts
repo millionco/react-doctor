@@ -1,3 +1,4 @@
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -126,7 +127,7 @@ export const noIndeterminateAttribute = defineRule({
   recommendation:
     "Assign the checkbox element's `indeterminate` DOM property, usually through a ref, because the HTML attribute does not control its visual state.",
   create: (context): RuleVisitors => {
-    if (classifyReactNativeFileTarget(context) === "react-native") return {};
+    if (classifyReactNativeFileTarget(context) === "react-native") return EMPTY_RULE_VISITORS;
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

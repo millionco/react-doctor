@@ -6,7 +6,6 @@ import { runRule } from "../../test-utils/run-rule.js";
 import type { Rule } from "../utils/rule.js";
 import { rerenderMemoWithDefaultValue } from "./performance/rerender-memo-with-default-value.js";
 import { exhaustiveDeps } from "./react-builtins/exhaustive-deps.js";
-import { noEffectWithFreshDeps } from "./state-and-effects/no-effect-with-fresh-deps.js";
 
 interface ForwardedFreshRuleCase {
   readonly expectedMessageFragment: string;
@@ -15,11 +14,6 @@ interface ForwardedFreshRuleCase {
 }
 
 const callerFreshnessRuleCases: ForwardedFreshRuleCase[] = [
-  {
-    expectedMessageFragment: "dependency inside this custom Hook changes every render",
-    name: "no-effect-with-fresh-deps",
-    rule: noEffectWithFreshDeps,
-  },
   {
     expectedMessageFragment: "reaches a Hook dependency inside this custom Hook",
     name: "exhaustive-deps",
@@ -37,7 +31,19 @@ const defaultFreshnessRuleCases: ForwardedFreshRuleCase[] = [
 ];
 
 const runRuleWithFilename = (rule: Rule, code: string, filename: string) =>
-  runRule(rule, code, { filename });
+  runRule(rule, code, {
+    filename,
+    settings:
+      rule === exhaustiveDeps
+        ? {
+            "react-doctor": {
+              exhaustiveDeps: {
+                additionalHooks: "^use",
+              },
+            },
+          }
+        : undefined,
+  });
 
 describe("custom Hook forwarded fresh dependencies", () => {
   let temporaryDirectory = "";

@@ -1,14 +1,12 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isLegacyArchReactNativeFile } from "../../utils/is-legacy-arch-react-native-file.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-const EMPTY_VISITORS: RuleVisitors = {};
 
 const IOS_SHADOW_KEYS = new Set(["shadowColor", "shadowOffset", "shadowOpacity", "shadowRadius"]);
 const ANDROID_SHADOW_KEY = "elevation";
@@ -155,7 +153,7 @@ export const rnStylePreferBoxShadow = defineRule({
     // Architecture, so on older or legacy-arch apps the platform-specific
     // keys remain the only option.
     if (context.filename && isLegacyArchReactNativeFile(normalizeFilename(context.filename))) {
-      return EMPTY_VISITORS;
+      return EMPTY_RULE_VISITORS;
     }
     return {
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {

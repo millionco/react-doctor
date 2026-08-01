@@ -249,6 +249,9 @@ importers:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
+      oxfmt:
+        specifier: 0.46.0
+        version: 0.46.0
 
   packages/react-doctor:
     dependencies:

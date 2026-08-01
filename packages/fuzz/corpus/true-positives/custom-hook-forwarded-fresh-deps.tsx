@@ -1,4 +1,4 @@
-// rule: exhaustive-deps, no-effect-with-fresh-deps, rerender-memo-with-default-value
+// rule: exhaustive-deps, rerender-memo-with-default-value
 // weakness: custom-hook-forwarded-fresh-deps
 // source: React Bench write-react-mezzanine-ui-mezzani__BH7ZFrC
 

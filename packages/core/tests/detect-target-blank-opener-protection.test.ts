@@ -189,6 +189,40 @@ describe("detectTargetBlankOpenerProtection", () => {
     expect(capabilities.has("target-blank-needs-noreferrer")).toBe(true);
   });
 
+  it.each([
+    [
+      "nested-browser-target",
+      {
+        name: "nested-browser-target",
+        dependencies: { react: "^18.0.0" },
+        browserslist: ["chrome 80"],
+      },
+      false,
+    ],
+    [
+      "nested-electron-target",
+      {
+        name: "nested-electron-target",
+        dependencies: { react: "^18.0.0" },
+        devDependencies: { electron: "^0.36.0" },
+      },
+      true,
+    ],
+  ])(
+    "inherits target-blank policy from the enclosing package for %s",
+    (caseName, packageJson, needsNoreferrer) => {
+      const projectDirectory = setupProject(caseName, packageJson);
+      const nestedDirectory = path.join(projectDirectory, "src", "components");
+      fs.mkdirSync(nestedDirectory, { recursive: true });
+      fs.writeFileSync(path.join(nestedDirectory, "button.tsx"), "export const Button = null;\n");
+
+      const capabilities = getCapabilities(discoverProject(nestedDirectory));
+
+      expect(capabilities.has("target-blank-needs-explicit-protection")).toBe(true);
+      expect(capabilities.has("target-blank-needs-noreferrer")).toBe(needsNoreferrer);
+    },
+  );
+
   it("requires noopener once Electron adopted Chromium 49", () => {
     const packageJson: PackageJson = {
       name: "electron-0-37",

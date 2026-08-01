@@ -14,7 +14,7 @@ import {
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
-import { inspect } from "../../inspect.js";
+import { createInvocationInspect } from "../../inspect.js";
 import { flushSentry } from "../../instrument.js";
 import type {
   DiffInfo,
@@ -382,6 +382,7 @@ export const inspectAction = async (
     }
 
     const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
+    const inspectProject = createInvocationInspect(scanOptions.concurrency);
     // One `--max-duration` budget per invocation, shared by every project of a
     // workspace scan: fix the absolute deadline once here and hand it to each
     // project's `inspect()` (rather than restarting the budget per project).
@@ -586,7 +587,6 @@ export const inspectAction = async (
         );
         logger.break();
       }
-
       // Every run that scans a package rather than the scan root, whether it
       // selected one or several — a single selected package is the whole feature
       // working, so gating this on more than one would hide the common case.
@@ -668,7 +668,7 @@ export const inspectAction = async (
           snapshot.tempDirectory,
           projectScan.treeRelativeDirectory,
         );
-        const scanResult = await inspect(projectTempDirectory, {
+        const scanResult = await inspectProject(projectTempDirectory, {
           ...scanOptions,
           deadlineEpochMs: scanDeadlineEpochMs,
           includePaths: [...includePaths],
@@ -1006,7 +1006,7 @@ export const inspectAction = async (
       if (!isQuiet && !isMultiProject) {
         logger.dim("  ");
       }
-      const scanResult = await inspect(scanDirectory, {
+      const scanResult = await inspectProject(scanDirectory, {
         ...scanOptions,
         deadlineEpochMs: scanDeadlineEpochMs,
         includePaths,

@@ -1500,6 +1500,12 @@ const CREDENTIAL_OPERATION_NAMES: ReadonlySet<string> = new Set([
   "magiclink",
 ]);
 
+const CREDENTIAL_OPERATION_PREFIX_NAMES: ReadonlySet<string> = new Set([
+  ...CREDENTIAL_OPERATION_NAMES,
+  "createaccount",
+  "handleoauthcallback",
+]);
+
 const CREDENTIAL_ESTABLISHING_AUTH_SDK_METHODS: ReadonlySet<string> = new Set([
   "signUp",
   "signup",
@@ -1533,10 +1539,11 @@ const isCredentialEstablishingActionName = (actionName: string): boolean => {
 const hasCredentialEstablishingActionNameSignal = (actionName: string): boolean => {
   const tokens = mergeCredentialPhraseTokens(tokenizeIdentifierWords(actionName));
   const operationTokens = tokens.at(-1) === "action" ? tokens.slice(0, -1) : tokens;
-  return (
-    operationTokens.join("") === "createaccount" ||
-    operationTokens.some((token) => CREDENTIAL_OPERATION_NAMES.has(token))
-  );
+  for (let prefixLength = operationTokens.length; prefixLength > 0; prefixLength -= 1) {
+    const prefix = operationTokens.slice(0, prefixLength).join("");
+    if (CREDENTIAL_OPERATION_PREFIX_NAMES.has(prefix)) return true;
+  }
+  return false;
 };
 
 const containsCredentialEstablishingAuthCall = (

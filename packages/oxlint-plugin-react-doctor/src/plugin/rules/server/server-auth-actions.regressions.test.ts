@@ -110,12 +110,12 @@ describe("server/server-auth-actions — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("does not flag Supabase verifyOtp actions (credential-establishing SDK call)", () => {
+  it("does not flag extended Supabase verifyOtp actions (credential-establishing SDK call)", () => {
     const result = runRule(
       serverAuthActions,
       `"use server";
       import { createClient } from "@/lib/supabase/server";
-      export async function verifyOtpAction(input) {
+      export async function verifyOtpPhoneAction(input) {
         const supabase = await createClient();
         const { data, error } = await supabase.auth.verifyOtp({
           phone: input.phone,
@@ -124,6 +124,20 @@ describe("server/server-auth-actions — regressions", () => {
         });
         if (error) return { error: error.message };
         return { success: true, session: data.session };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag extended OAuth callback actions", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function handleOAuthCallbackAction(input) {
+        await auth.handleOAuthCallback(input.code);
+        await database.sessions.update(input.session);
       }`,
       { filename: "app/actions/auth.ts" },
     );
@@ -184,18 +198,31 @@ describe("server/server-auth-actions — regressions", () => {
   });
 
   it("still flags unrelated actions that happen to establish credentials", () => {
-    const result = runRule(
-      serverAuthActions,
+    const sources = [
       `"use server";
-      export async function purgeDataAction(input) {
-        const supabase = await createClient();
-        await supabase.auth.signUp(input);
-        await database.users.delete(input.userId);
-      }`,
-      { filename: "app/actions/admin.ts" },
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+       export async function purgeDataAction(input) {
+         const supabase = await createClient();
+         await supabase.auth.signUp(input);
+         await database.users.delete(input.userId);
+       }`,
+      `"use server";
+       export async function deleteAccountAfterSignupAction(input) {
+         const supabase = await createClient();
+         await supabase.auth.signUp(input);
+         await database.users.delete(input.userId);
+       }`,
+      `"use server";
+       export async function syncProfileForRegistrationAction(input) {
+         const supabase = await createClient();
+         await supabase.auth.signUp(input);
+         await database.users.delete(input.userId);
+       }`,
+    ];
+    for (const source of sources) {
+      const result = runRule(serverAuthActions, source, { filename: "app/actions/admin.ts" });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
   });
 
   it("still flags credential calls hidden in uncalled helpers", () => {

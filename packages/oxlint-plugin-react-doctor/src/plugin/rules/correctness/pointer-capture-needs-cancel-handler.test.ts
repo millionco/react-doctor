@@ -29,6 +29,43 @@ describe("pointer-capture-needs-cancel-handler", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("resolves React useCallback-wrapped pointer-down handlers", () => {
+    const result = runRule(
+      pointerCaptureNeedsCancelHandler,
+      `import React, { useCallback as memoizeHandler } from "react";
+       const Slider = () => {
+         const first = memoizeHandler(
+           (event) => (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId),
+           [],
+         );
+         const second = React.useCallback((event) => {
+           try {
+             event.currentTarget.setPointerCapture?.(event.pointerId);
+           } catch {}
+         }, []);
+         return <>
+           <button onPointerDown={first} onPointerMove={move} onPointerUp={finish} />
+           <button onPointerDown={second} onPointerMove={move} onPointerUp={finish} />
+         </>;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("resolves a local function passed to React useCallback", () => {
+    const result = runRule(
+      pointerCaptureNeedsCancelHandler,
+      `import { useCallback } from "react";
+       const Slider = () => {
+         const capture = (event) => event.currentTarget.setPointerCapture(event.pointerId);
+         const begin = useCallback(capture, []);
+         return <button onPointerDown={begin} onPointerMove={move} onPointerUp={finish} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("recognizes transparent wrappers around the captured pointer", () => {
     const result = runRule(
       pointerCaptureNeedsCancelHandler,
@@ -46,6 +83,59 @@ describe("pointer-capture-needs-cancel-handler", () => {
       `const capture = (event) => event.currentTarget.setPointerCapture(event.pointerId);
        const A = () => <div onPointerDown={capture} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} />;
        const B = () => <div onPointerDown={capture} onPointerMove={move} onPointerUp={finish} onLostPointerCapture={finish} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts cancellation cleanup with a useCallback-wrapped handler", () => {
+    const result = runRule(
+      pointerCaptureNeedsCancelHandler,
+      `import { useCallback } from "react";
+       const Slider = () => {
+         const capture = useCallback(
+           (event) => event.currentTarget.setPointerCapture(event.pointerId),
+           [],
+         );
+         return <>
+           <button onPointerDown={capture} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} />
+           <button onPointerDown={capture} onPointerMove={move} onPointerUp={finish} onLostPointerCapture={finish} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("ignores local useCallback lookalikes and unresolved handlers", () => {
+    const result = runRule(
+      pointerCaptureNeedsCancelHandler,
+      `import { importedCapture } from "./drag";
+       const useCallback = (callback) => callback;
+       const Slider = ({ captureFromProps }) => {
+         const localLookalike = useCallback(
+           (event) => event.currentTarget.setPointerCapture(event.pointerId),
+           [],
+         );
+         return <>
+           <button onPointerDown={localLookalike} onPointerMove={move} onPointerUp={finish} />
+           <button onPointerDown={importedCapture} onPointerMove={move} onPointerUp={finish} />
+           <button onPointerDown={captureFromProps} onPointerMove={move} onPointerUp={finish} />
+         </>;
+       };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps custom components quiet with a useCallback-wrapped handler", () => {
+    const result = runRule(
+      pointerCaptureNeedsCancelHandler,
+      `import { useCallback } from "react";
+       const Slider = () => {
+         const capture = useCallback(
+           (event) => event.currentTarget.setPointerCapture(event.pointerId),
+           [],
+         );
+         return <DragSurface onPointerDown={capture} onPointerMove={move} onPointerUp={finish} />;
+       };`,
     );
     expect(result.diagnostics).toEqual([]);
   });

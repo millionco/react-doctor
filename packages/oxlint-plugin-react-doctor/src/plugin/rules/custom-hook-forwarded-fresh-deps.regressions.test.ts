@@ -31,7 +31,19 @@ const defaultFreshnessRuleCases: ForwardedFreshRuleCase[] = [
 ];
 
 const runRuleWithFilename = (rule: Rule, code: string, filename: string) =>
-  runRule(rule, code, { filename });
+  runRule(rule, code, {
+    filename,
+    settings:
+      rule === exhaustiveDeps
+        ? {
+            "react-doctor": {
+              exhaustiveDeps: {
+                additionalHooks: "^use",
+              },
+            },
+          }
+        : undefined,
+  });
 
 describe("custom Hook forwarded fresh dependencies", () => {
   let temporaryDirectory = "";

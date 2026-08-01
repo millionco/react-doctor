@@ -8783,6 +8783,7 @@ export const SupabaseChannel = ({ supabase, roomId }) => {
     const channel = supabase
       .channel(\`messages:\${roomId}\`)
       .on("postgres_changes", { event: "INSERT" }, () => {})
+      .on("postgres_changes", { event: "UPDATE" }, () => {})
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -8850,6 +8851,80 @@ export const SupabaseChannel = ({ supabase }) => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag removeChannel cleanup through an immutable channel alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel("messages")
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+    const ownedChannel = channel;
+    return () => {
+      supabase.removeChannel(ownedChannel);
+    };
+  }, [supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      name: "different client removeChannel",
+      cleanup: "otherSupabase.removeChannel(channel)",
+    },
+    {
+      name: "different channel removeChannel",
+      cleanup: "supabase.removeChannel(otherChannel)",
+    },
+    {
+      name: "different client removeAllChannels",
+      cleanup: "otherSupabase.removeAllChannels()",
+    },
+  ])("flags a Supabase channel with $name cleanup", ({ cleanup }) => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const SupabaseChannel = ({ supabase, otherSupabase, otherChannel }) => {
+  useEffect(() => {
+    const channel = supabase
+      .channel("messages")
+      .on("postgres_changes", { event: "INSERT" }, () => {})
+      .subscribe();
+    return () => {
+      ${cleanup};
+    };
+  }, [otherChannel, otherSupabase, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat unrelated removeAllChannels calls as emitter cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = ({ emitter, supabase, handler }) => {
+  useEffect(() => {
+    emitter.on("message", handler);
+    return () => {
+      supabase.removeAllChannels();
+    };
+  }, [emitter, handler, supabase]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags Supabase channel with no cleanup", () => {

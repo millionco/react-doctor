@@ -15,6 +15,7 @@ import { resolveConstIdentifierRootSymbol } from "../../utils/resolve-const-iden
 import type { RuleContext } from "../../utils/rule-context.js";
 import { statementTerminates } from "../../utils/statement-terminates.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { symbolHasReactComponentTypeAnnotation } from "../../utils/symbol-has-react-component-type-annotation.js";
 
 const MESSAGE =
   "Spreading props after defaults can replace a declared default with explicit undefined before that value reaches a computation. Reapply the default with ?? or strip undefined keys before merging.";
@@ -215,6 +216,7 @@ const typeAllowsUndefinedForKey = (
   if (!typeNode) return false;
   const inner = unwrapTypeAnnotation(typeNode);
   if (!inner) return true;
+  if (isNodeOfType(inner, "TSAnyKeyword")) return true;
   if (isNodeOfType(inner, "TSTypeAliasDeclaration")) {
     return typeAllowsUndefinedForKey(inner.typeAnnotation, keyName, context, visitedTypeSymbolIds);
   }
@@ -266,17 +268,40 @@ const typeAllowsUndefinedForKey = (
   );
 };
 
+const getContextualFunctionParameterType = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const declarator = functionRoot.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== functionRoot ||
+    !isNodeOfType(declarator.id, "Identifier")
+  ) {
+    return null;
+  }
+  const functionSymbol = context.scopes.symbolFor(declarator.id);
+  if (!functionSymbol || !symbolHasReactComponentTypeAnnotation(functionSymbol, context.scopes)) {
+    return null;
+  }
+  const annotation = unwrapTypeAnnotation(declarator.id.typeAnnotation);
+  if (!annotation || !isNodeOfType(annotation, "TSTypeReference")) return null;
+  return annotation.typeArguments?.params[0] ?? null;
+};
+
 const getFunctionParameterType = (
   functionNode: EsTreeNode,
   parameterSymbolId: number,
   context: RuleContext,
 ): EsTreeNode | null => {
   if (!isFunctionLike(functionNode)) return null;
-  for (const parameter of functionNode.params) {
+  const contextualParameterType = getContextualFunctionParameterType(functionNode, context);
+  for (const [parameterIndex, parameter] of functionNode.params.entries()) {
     const pattern = isNodeOfType(parameter, "AssignmentPattern") ? parameter.left : parameter;
-    const patternType = unwrapTypeAnnotation(
-      "typeAnnotation" in pattern ? pattern.typeAnnotation : null,
-    );
+    const patternType =
+      unwrapTypeAnnotation("typeAnnotation" in pattern ? pattern.typeAnnotation : null) ??
+      (parameterIndex === 0 ? contextualParameterType : null);
     if (isNodeOfType(pattern, "Identifier")) {
       if (context.scopes.symbolFor(pattern)?.id === parameterSymbolId) return patternType;
       continue;
@@ -290,6 +315,22 @@ const getFunctionParameterType = (
       ) {
         return patternType;
       }
+      if (!isNodeOfType(property, "Property")) continue;
+      const bindingPattern = isNodeOfType(property.value, "AssignmentPattern")
+        ? property.value.left
+        : property.value;
+      if (
+        !isNodeOfType(bindingPattern, "Identifier") ||
+        context.scopes.symbolFor(bindingPattern)?.id !== parameterSymbolId
+      ) {
+        continue;
+      }
+      const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+      if (!propertyName || !patternType) return null;
+      const parameterProperty = getTypeProperty(patternType, propertyName, context, new Set());
+      return parameterProperty && isNodeOfType(parameterProperty, "TSPropertySignature")
+        ? unwrapTypeAnnotation(parameterProperty.typeAnnotation)
+        : null;
     }
   }
   return null;
@@ -326,6 +367,38 @@ const unwrapSafeFallback = (node: EsTreeNode): EsTreeNode => {
   return current;
 };
 
+const expressionFeedsJsxAttribute = (expression: EsTreeNode): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(expression);
+  const parent = expressionRoot.parent;
+  if (isNodeOfType(parent, "JSXSpreadAttribute")) {
+    return parent.argument === expressionRoot;
+  }
+  return Boolean(
+    isNodeOfType(parent, "JSXExpressionContainer") &&
+    parent.expression === expressionRoot &&
+    isNodeOfType(parent.parent, "JSXAttribute") &&
+    parent.parent.value === parent,
+  );
+};
+
+const expressionUsesOptionalMemberAccess = (expression: EsTreeNode): boolean => {
+  let current = expression;
+  while (current.parent) {
+    const parent = current.parent;
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
+      if (parent.optional) return true;
+      current = parent;
+      continue;
+    }
+    if (isNodeOfType(parent, "ChainExpression") || isNodeOfType(parent, "TSNonNullExpression")) {
+      current = parent;
+      continue;
+    }
+    return false;
+  }
+  return false;
+};
+
 const referenceFeedsComputation = (reference: EsTreeNode, context: RuleContext): boolean => {
   let current = unwrapSafeFallback(reference);
   let parent = current.parent;
@@ -348,6 +421,7 @@ const referenceFeedsComputation = (reference: EsTreeNode, context: RuleContext):
     current = parent;
     parent = current.parent;
   }
+  if (expressionFeedsJsxAttribute(current)) return true;
   if (!parent) return false;
   if (isNodeOfType(parent, "BinaryExpression")) {
     if (["===", "!==", "==", "!="].includes(parent.operator)) {
@@ -624,6 +698,7 @@ const scalarSymbolFeedsComputation = (
   visitedSymbolIds: Set<number>,
   lowerBoundStart = Number.NEGATIVE_INFINITY,
   upperBoundStart = Number.POSITIVE_INFINITY,
+  requiresOptionalMemberAccess = false,
 ): boolean => {
   if (visitedSymbolIds.has(symbolId)) return false;
   visitedSymbolIds.add(symbolId);
@@ -645,7 +720,12 @@ const scalarSymbolFeedsComputation = (
     const identifier = reference.identifier;
     const referenceStart = getNodeStart(identifier);
     if (referenceStart <= lowerBoundStart || referenceStart >= nextWriteStart) continue;
-    if (referenceFeedsComputation(identifier, context)) return true;
+    if (
+      (!requiresOptionalMemberAccess || expressionUsesOptionalMemberAccess(identifier)) &&
+      referenceFeedsComputation(identifier, context)
+    ) {
+      return true;
+    }
     const expressionRoot = findTransparentExpressionRoot(identifier);
     const parent = expressionRoot.parent;
     if (
@@ -662,6 +742,8 @@ const scalarSymbolFeedsComputation = (
           symbolById,
           new Set(visitedSymbolIds),
           getNodeStart(parent),
+          Number.POSITIVE_INFINITY,
+          requiresOptionalMemberAccess,
         )
       ) {
         return true;
@@ -683,6 +765,8 @@ const scalarSymbolFeedsComputation = (
           symbolById,
           new Set(visitedSymbolIds),
           getNodeStart(parent),
+          Number.POSITIVE_INFINITY,
+          requiresOptionalMemberAccess,
         )
       ) {
         return true;
@@ -711,10 +795,14 @@ const objectSymbolFeedsComputation = (
     if (isNodeOfType(parent, "MemberExpression") && parent.object === identifier) {
       const keyName = getStaticPropertyName(parent);
       const priorWrite = getMemberPriorWrite(parent, symbol, context, repairStartsBySymbolAndBlock);
+      const typeAllowsUndefined = Boolean(
+        keyName && typeAllowsUndefinedForKey(parameterType, keyName, context),
+      );
       if (
         keyName &&
         (candidateKeys === null || candidateKeys.has(keyName)) &&
-        typeAllowsUndefinedForKey(parameterType, keyName, context) &&
+        ((candidateKeys !== null && typeAllowsUndefined) ||
+          expressionUsesOptionalMemberAccess(parent)) &&
         !priorWrite?.isSafe &&
         !memberUseIsGuarded(parent, symbol, keyName, context, priorWrite) &&
         referenceFeedsComputation(parent, context)
@@ -724,7 +812,8 @@ const objectSymbolFeedsComputation = (
       if (
         keyName &&
         (candidateKeys === null || candidateKeys.has(keyName)) &&
-        typeAllowsUndefinedForKey(parameterType, keyName, context) &&
+        ((candidateKeys !== null && typeAllowsUndefined) ||
+          expressionUsesOptionalMemberAccess(parent)) &&
         !priorWrite?.isSafe &&
         !memberUseIsGuarded(parent, symbol, keyName, context, priorWrite)
       ) {
@@ -774,10 +863,12 @@ const objectSymbolFeedsComputation = (
     for (const property of parent.id.properties) {
       if (!isNodeOfType(property, "Property")) continue;
       const keyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+      const typeAllowsUndefined = Boolean(
+        keyName && typeAllowsUndefinedForKey(parameterType, keyName, context),
+      );
       if (
         !keyName ||
         (candidateKeys !== null && !candidateKeys.has(keyName)) ||
-        !typeAllowsUndefinedForKey(parameterType, keyName, context) ||
         isNodeOfType(property.value, "AssignmentPattern")
       ) {
         continue;
@@ -791,6 +882,9 @@ const objectSymbolFeedsComputation = (
             context,
             symbolById,
             new Set(visitedSymbolIds),
+            Number.NEGATIVE_INFINITY,
+            Number.POSITIVE_INFINITY,
+            candidateKeys === null || !typeAllowsUndefined,
           )
         ) {
           return true;
@@ -811,12 +905,20 @@ const objectExpressionFeedsComputation = (
 ): boolean => {
   const parent = objectExpression.parent;
   if (!parent) return false;
+  if (
+    expressionFeedsJsxAttribute(objectExpression) &&
+    candidateKeys !== null &&
+    [...candidateKeys].some((keyName) => typeAllowsUndefinedForKey(parameterType, keyName, context))
+  ) {
+    return true;
+  }
   if (isNodeOfType(parent, "MemberExpression") && parent.object === objectExpression) {
     const keyName = getStaticPropertyName(parent);
     return Boolean(
       keyName &&
       (candidateKeys === null || candidateKeys.has(keyName)) &&
-      typeAllowsUndefinedForKey(parameterType, keyName, context) &&
+      ((candidateKeys !== null && typeAllowsUndefinedForKey(parameterType, keyName, context)) ||
+        expressionUsesOptionalMemberAccess(parent)) &&
       referenceFeedsComputation(parent, context),
     );
   }
@@ -840,17 +942,30 @@ const objectExpressionFeedsComputation = (
   for (const property of parent.id.properties) {
     if (!isNodeOfType(property, "Property")) continue;
     const keyName = getStaticPropertyKeyName(property, { allowComputedString: true });
+    const typeAllowsUndefined = Boolean(
+      keyName && typeAllowsUndefinedForKey(parameterType, keyName, context),
+    );
     if (
       !keyName ||
       (candidateKeys !== null && !candidateKeys.has(keyName)) ||
-      !typeAllowsUndefinedForKey(parameterType, keyName, context) ||
       isNodeOfType(property.value, "AssignmentPattern") ||
       !isNodeOfType(property.value, "Identifier")
     ) {
       continue;
     }
     const symbol = context.scopes.symbolFor(property.value);
-    if (symbol && scalarSymbolFeedsComputation(symbol.id, context, symbolById, new Set())) {
+    if (
+      symbol &&
+      scalarSymbolFeedsComputation(
+        symbol.id,
+        context,
+        symbolById,
+        new Set(),
+        Number.NEGATIVE_INFINITY,
+        Number.POSITIVE_INFINITY,
+        candidateKeys === null || !typeAllowsUndefined,
+      )
+    ) {
       return true;
     }
   }
@@ -894,6 +1009,7 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
           const parameterSymbolId = resolveParameterSourceSymbol(propsSource, context);
           if (parameterSymbolId === null) continue;
           const defaultedKeys = new Set<string>();
+          let hasUnknownDefaultedKeys = false;
           for (const possibleDefaultsSpread of spreadProperties.slice(0, propsIndex)) {
             const defaultsSource = stripParenExpression(possibleDefaultsSpread.argument);
             if (!isDefaultsSource(defaultsSource)) continue;
@@ -902,14 +1018,21 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
               context,
               propertyWriteCache,
             );
-            if (!visiblePropertyWrites) continue;
+            if (!visiblePropertyWrites) {
+              hasUnknownDefaultedKeys = true;
+              continue;
+            }
             for (const [keyName, isSafe] of visiblePropertyWrites) {
               if (isSafe) defaultedKeys.add(keyName);
             }
           }
-          if (defaultedKeys.size === 0) continue;
+          if (defaultedKeys.size === 0 && !hasUnknownDefaultedKeys) continue;
           const lastExplicitWriteByKey = new Map<string, boolean>();
           const propsSpreadStart = getNodeStart(propsSpread);
+          const hasWriteAfterProps = node.properties.some(
+            (property) => getNodeStart(property) > propsSpreadStart,
+          );
+          if (hasUnknownDefaultedKeys && hasWriteAfterProps) continue;
           for (const property of node.properties) {
             if (getNodeStart(property) <= propsSpreadStart) continue;
             if (isNodeOfType(property, "Property")) {
@@ -937,10 +1060,14 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
               if (defaultedKeys.has(keyName)) lastExplicitWriteByKey.set(keyName, isSafe);
             }
           }
-          const candidateKeys = new Set(
-            [...defaultedKeys].filter((keyName) => lastExplicitWriteByKey.get(keyName) !== true),
-          );
-          if (candidateKeys.size === 0) continue;
+          const candidateKeys = hasUnknownDefaultedKeys
+            ? null
+            : new Set(
+                [...defaultedKeys].filter(
+                  (keyName) => lastExplicitWriteByKey.get(keyName) !== true,
+                ),
+              );
+          if (candidateKeys?.size === 0) continue;
           const parameterType = getFunctionParameterType(
             enclosingFunction,
             parameterSymbolId,

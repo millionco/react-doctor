@@ -198,7 +198,6 @@ export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "disconnect",
   "unobserve",
   "close",
-  // Supabase Realtime channel removal (parent-level cleanup for subscriptions).
   "removeChannel",
   "removeAllChannels",
 ]);

@@ -2952,6 +2952,10 @@ const UNIVERSAL_RELEASE_VERB_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 const SOCKET_RELEASE_VERB_NAMES: ReadonlySet<string> = new Set(["close"]);
+const SUPABASE_CHANNEL_RELEASE_VERB_NAMES: ReadonlySet<string> = new Set([
+  "removeChannel",
+  "removeAllChannels",
+]);
 
 const getReleaseVerbName = (node: EsTreeNode): string | null => {
   const callNode = isNodeOfType(node, "ChainExpression") ? node.expression : node;
@@ -2970,6 +2974,7 @@ const getReleaseVerbName = (node: EsTreeNode): string | null => {
     const methodName = callee.property.name;
     return GLOBAL_RELEASE_METHOD_NAMES.has(methodName) ||
       BOUND_RESOURCE_RELEASE_METHOD_NAMES.has(methodName) ||
+      SUPABASE_CHANNEL_RELEASE_VERB_NAMES.has(methodName) ||
       methodName === "on"
       ? methodName
       : null;

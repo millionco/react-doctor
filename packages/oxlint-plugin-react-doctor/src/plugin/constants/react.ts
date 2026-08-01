@@ -198,8 +198,6 @@ export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "disconnect",
   "unobserve",
   "close",
-  "removeChannel",
-  "removeAllChannels",
 ]);
 
 export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([

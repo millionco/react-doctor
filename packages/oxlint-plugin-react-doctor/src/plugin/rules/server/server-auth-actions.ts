@@ -1576,7 +1576,7 @@ const inspectServerAction = (
   if (hasPublicNameToken(candidate.displayName)) return;
 
   const executionGraph = collectExecutedFunctionBodies(candidate.functionNode, context);
-  
+
   if (containsCredentialEstablishingAuthCall(executionGraph, context)) return;
 
   const rootNodes = collectAuthScanRoots(candidate.functionNode, context);

@@ -131,6 +131,68 @@ describe("server/server-auth-actions — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("uses the executed auth SDK call when the action name is neutral", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function createAccountAction(input) {
+        const supabase = await createClient();
+        const { data, error } = await supabase.auth.signUp(input);
+        if (error) return { error: error.message };
+        await supabase.from("profiles").update({ ready: true }).eq("id", data.user.id);
+        return { success: true };
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags unrelated auth methods", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function deleteAccountAction(input) {
+        const supabase = await createClient();
+        await supabase.auth.signOut();
+        await supabase.from("profiles").delete().eq("id", input.id);
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags credential calls hidden in uncalled helpers", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function updateAccountAction(input) {
+        const establishCredentials = async () => {
+          await supabase.auth.signUp(input);
+        };
+        await supabase.from("profiles").update(input.profile).eq("id", input.id);
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags similarly named methods outside an auth receiver", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function updateAccountAction(input) {
+        await marketing.signUp(input.email);
+        await database.users.update(input.profile);
+      }`,
+      { filename: "app/actions/auth.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a privileged ungated action", () => {
     const result = runRule(
       serverAuthActions,

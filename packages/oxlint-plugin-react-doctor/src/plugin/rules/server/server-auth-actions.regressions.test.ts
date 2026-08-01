@@ -163,6 +163,21 @@ describe("server/server-auth-actions — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags unrelated actions that happen to establish credentials", () => {
+    const result = runRule(
+      serverAuthActions,
+      `"use server";
+      export async function purgeDataAction(input) {
+        const supabase = await createClient();
+        await supabase.auth.signUp(input);
+        await database.users.delete(input.userId);
+      }`,
+      { filename: "app/actions/admin.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags credential calls hidden in uncalled helpers", () => {
     const result = runRule(
       serverAuthActions,

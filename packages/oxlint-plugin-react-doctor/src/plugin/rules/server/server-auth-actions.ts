@@ -1530,6 +1530,15 @@ const isCredentialEstablishingActionName = (actionName: string): boolean => {
   return CREDENTIAL_OPERATION_NAMES.has(operationTokens.join(""));
 };
 
+const hasCredentialEstablishingActionNameSignal = (actionName: string): boolean => {
+  const tokens = mergeCredentialPhraseTokens(tokenizeIdentifierWords(actionName));
+  const operationTokens = tokens.at(-1) === "action" ? tokens.slice(0, -1) : tokens;
+  return (
+    operationTokens.join("") === "createaccount" ||
+    operationTokens.some((token) => CREDENTIAL_OPERATION_NAMES.has(token))
+  );
+};
+
 const containsCredentialEstablishingAuthCall = (
   executionGraph: ExecutedFunctionGraph,
   context: RuleContext,
@@ -1579,7 +1588,12 @@ const inspectServerAction = (
 
   const executionGraph = collectExecutedFunctionBodies(candidate.functionNode, context);
 
-  if (containsCredentialEstablishingAuthCall(executionGraph, context)) return;
+  if (
+    hasCredentialEstablishingActionNameSignal(candidate.displayName) &&
+    containsCredentialEstablishingAuthCall(executionGraph, context)
+  ) {
+    return;
+  }
 
   const rootNodes = collectAuthScanRoots(candidate.functionNode, context);
   if (

@@ -1547,6 +1547,8 @@ const containsCredentialEstablishingAuthCall = (
       if (!isNodeOfType(receiverObject, "MemberExpression") || receiverObject.computed) return;
       const receiverProperty = getStaticPropertyName(receiverObject);
       if (receiverProperty !== "auth") return;
+      const providerSource = buildDottedReceiverSource(receiverObject.object);
+      if (!AUTH_OBJECT_PATTERN.test(providerSource)) return;
       foundCredentialCall = true;
       return false;
     });

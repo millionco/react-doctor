@@ -179,18 +179,24 @@ describe("server/server-auth-actions — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("still flags similarly named methods outside an auth receiver", () => {
-    const result = runRule(
-      serverAuthActions,
+  it("still flags credential lookalikes outside a known auth provider", () => {
+    const sources = [
       `"use server";
-      export async function updateAccountAction(input) {
-        await marketing.signUp(input.email);
-        await database.users.update(input.profile);
-      }`,
-      { filename: "app/actions/auth.ts" },
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+       export async function updateAccountAction(input) {
+         await marketing.signUp(input.email);
+         await database.users.update(input.profile);
+       }`,
+      `"use server";
+       export async function updateAccountAction(input) {
+         await analytics.auth.signUp({ event: "campaign" });
+         await database.users.update(input.profile);
+       }`,
+    ];
+    for (const source of sources) {
+      const result = runRule(serverAuthActions, source, { filename: "app/actions/auth.ts" });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
   });
 
   it("still flags a privileged ungated action", () => {

@@ -148,6 +148,26 @@ describe("server/server-auth-actions — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("recognizes credential calls on direct auth namespaces", () => {
+    const sources = [
+      `"use server";
+       export async function createAccountAction(input) {
+         await auth.signUp(input);
+         await database.users.update(input.profile);
+       }`,
+      `"use server";
+       export async function createAccountAction(input) {
+         await authClient.resetPasswordForEmail(input.email);
+         await database.users.update(input.profile);
+       }`,
+    ];
+    for (const source of sources) {
+      const result = runRule(serverAuthActions, source, { filename: "app/actions/auth.ts" });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("still flags unrelated auth methods", () => {
     const result = runRule(
       serverAuthActions,

@@ -1552,11 +1552,17 @@ const containsCredentialEstablishingAuthCall = (
       if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
       const methodName = getStaticPropertyName(callee);
       if (!methodName || !CREDENTIAL_ESTABLISHING_AUTH_SDK_METHODS.has(methodName)) return;
-      const receiverObject = unwrapTypeWrappedCallee(callee.object);
-      if (!isNodeOfType(receiverObject, "MemberExpression") || receiverObject.computed) return;
-      const receiverProperty = getStaticPropertyName(receiverObject);
-      if (receiverProperty !== "auth") return;
-      const providerSource = buildDottedReceiverSource(receiverObject.object);
+      const authReceiver = unwrapTypeWrappedCallee(callee.object);
+      let providerSource: string;
+      if (isNodeOfType(authReceiver, "Identifier")) {
+        providerSource = authReceiver.name;
+      } else if (isNodeOfType(authReceiver, "MemberExpression") && !authReceiver.computed) {
+        const receiverProperty = getStaticPropertyName(authReceiver);
+        if (receiverProperty !== "auth") return;
+        providerSource = buildDottedReceiverSource(authReceiver.object);
+      } else {
+        return;
+      }
       if (!AUTH_OBJECT_PATTERN.test(providerSource)) return;
       foundCredentialCall = true;
       return false;

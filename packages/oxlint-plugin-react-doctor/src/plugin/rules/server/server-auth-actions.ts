@@ -1503,8 +1503,13 @@ const CREDENTIAL_OPERATION_NAMES: ReadonlySet<string> = new Set([
 const CREDENTIAL_OPERATION_PREFIX_NAMES: ReadonlySet<string> = new Set([
   ...CREDENTIAL_OPERATION_NAMES,
   "createaccount",
+  "emailverification",
   "handleoauthcallback",
+  "passwordreset",
+  "verifyauthcode",
 ]);
+
+const CREDENTIAL_ACTION_NAME_SEPARATOR_PATTERN = /[_$]+/g;
 
 const CREDENTIAL_ESTABLISHING_AUTH_SDK_METHODS: ReadonlySet<string> = new Set([
   "signUp",
@@ -1531,13 +1536,17 @@ const CREDENTIAL_ESTABLISHING_AUTH_SDK_METHODS: ReadonlySet<string> = new Set([
 // email verify, password reset) legitimately runs for anonymous callers —
 // no prior session can exist, so demanding an auth() gate on it is wrong.
 const isCredentialEstablishingActionName = (actionName: string): boolean => {
-  const tokens = mergeCredentialPhraseTokens(tokenizeIdentifierWords(actionName));
+  const tokens = mergeCredentialPhraseTokens(
+    tokenizeIdentifierWords(actionName.replace(CREDENTIAL_ACTION_NAME_SEPARATOR_PATTERN, " ")),
+  );
   const operationTokens = tokens.at(-1) === "action" ? tokens.slice(0, -1) : tokens;
   return CREDENTIAL_OPERATION_NAMES.has(operationTokens.join(""));
 };
 
 const hasCredentialEstablishingActionNameSignal = (actionName: string): boolean => {
-  const tokens = mergeCredentialPhraseTokens(tokenizeIdentifierWords(actionName));
+  const tokens = mergeCredentialPhraseTokens(
+    tokenizeIdentifierWords(actionName.replace(CREDENTIAL_ACTION_NAME_SEPARATOR_PATTERN, " ")),
+  );
   const operationTokens = tokens.at(-1) === "action" ? tokens.slice(0, -1) : tokens;
   for (let prefixLength = operationTokens.length; prefixLength > 0; prefixLength -= 1) {
     const prefix = operationTokens.slice(0, prefixLength).join("");

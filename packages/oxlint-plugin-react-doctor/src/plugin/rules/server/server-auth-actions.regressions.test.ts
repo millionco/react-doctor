@@ -145,6 +145,36 @@ describe("server/server-auth-actions — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("recognizes documented leading credential aliases", () => {
+    const sources = [
+      `"use server";
+       export async function verifyAuthCodePhoneAction(input) {
+         await auth.verifyOtp(input.code);
+         await database.sessions.update(input.session);
+       }`,
+      `"use server";
+       export async function emailVerificationAction(input) {
+         await auth.verifyEmail(input.token);
+         await database.sessions.update(input.session);
+       }`,
+      `"use server";
+       export async function passwordResetAction(input) {
+         await auth.resetPasswordForEmail(input.email);
+         await database.sessions.update(input.session);
+       }`,
+      `"use server";
+       export async function SIGN_UP_PHONE_ONLY_ACTION(input) {
+         await authClient.signUp(input);
+         await database.sessions.update(input.session);
+       }`,
+    ];
+    for (const source of sources) {
+      const result = runRule(serverAuthActions, source, { filename: "app/actions/auth.ts" });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("uses the executed auth SDK call when the action name is neutral", () => {
     const result = runRule(
       serverAuthActions,
@@ -215,6 +245,11 @@ describe("server/server-auth-actions — regressions", () => {
        export async function syncProfileForRegistrationAction(input) {
          const supabase = await createClient();
          await supabase.auth.signUp(input);
+         await database.users.delete(input.userId);
+       }`,
+      `"use server";
+       export async function DELETE_ACCOUNT_AFTER_SIGN_UP_ACTION(input) {
+         await authClient.signUp(input);
          await database.users.delete(input.userId);
        }`,
     ];

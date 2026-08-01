@@ -1,5 +1,112 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.3
+
+### Patch Changes
+
+- [#1519](https://github.com/millionco/react-doctor/pull/1519) [`83f3ff8`](https://github.com/millionco/react-doctor/commit/83f3ff8ac7c231603e9488e322039b021099a85b) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect Astro projects, run template design rules through Astro's compiler with source-mapped diagnostics, and keep Astro's default `sharp` image service out of unused-dependency findings.
+
+- [#1489](https://github.com/millionco/react-doctor/pull/1489) [`3d67ca1`](https://github.com/millionco/react-doctor/commit/3d67ca13a209401e90b132529437e453e13cf06e) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize default-exported React HoC feature components in `no-multi-comp`.
+
+- [#1475](https://github.com/millionco/react-doctor/pull/1475) [`1098b9c`](https://github.com/millionco/react-doctor/commit/1098b9c10ee33403665eac10dd834381b038af63) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect index keys in dynamic React child arrays and data-indexed while loops.
+
+- [#1493](https://github.com/millionco/react-doctor/pull/1493) [`c126684`](https://github.com/millionco/react-doctor/commit/c126684f01b3726745c6fce2b58a61e63691e5e6) Thanks [@aidenybai](https://github.com/aidenybai)! - Suppress js-combine-iterations for statically small fixed arrays
+
+- [#1526](https://github.com/millionco/react-doctor/pull/1526) [`992205a`](https://github.com/millionco/react-doctor/commit/992205a31b77a7fd6d81273908c349a2d8757bca) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect props that overwrite defaults with undefined before reaching JSX attributes.
+
+- [#1531](https://github.com/millionco/react-doctor/pull/1531) [`8402820`](https://github.com/millionco/react-doctor/commit/840282041174b4a95e894e812bddaeb9a7df5cc5) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize exported Vite `defineConfig` callback configs when proving Fast Refresh integrations.
+
+- [#1512](https://github.com/millionco/react-doctor/pull/1512) [`de6d280`](https://github.com/millionco/react-doctor/commit/de6d2802c47869fbde38340c3c9716b8ddf3a394) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting local effect helpers as live-state parent notifications when they only call prop-derived transforms or zero-argument lifecycle callbacks.
+
+- [#1499](https://github.com/millionco/react-doctor/pull/1499) [`0cc5efb`](https://github.com/millionco/react-doctor/commit/0cc5efbf210439d76b7c78a90e826a0ccdb49b08) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize compound and local stale-request guards after awaited effect work while rejecting mutated guards and conditional cleanup evidence.
+
+- [#1527](https://github.com/millionco/react-doctor/pull/1527) [`d81eeda`](https://github.com/millionco/react-doctor/commit/d81eedac8e006dec65db8c610ae966c2c5136be9) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize matching boolean capture modes when `prefer-use-effect-event` verifies paired event listener registration and cleanup.
+
+- [#1496](https://github.com/millionco/react-doctor/pull/1496) [`16972ae`](https://github.com/millionco/react-doctor/commit/16972aeb834ed29914ea9d948f0caa6efa23a7e4) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize terminal promise catch blocks that recover effect state.
+
+- [#1494](https://github.com/millionco/react-doctor/pull/1494) [`5f23826`](https://github.com/millionco/react-doctor/commit/5f23826cea5f828e821cec5dd60d7fa94d2c3e5a) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid loading-reset false positives when a `finally` reset is guarded by the current async operation or a cleanup-backed mounted ref.
+
+- [#1491](https://github.com/millionco/react-doctor/pull/1491) [`c6bdd2d`](https://github.com/millionco/react-doctor/commit/c6bdd2d42b8543727696ed53e956224a4adb4bc0) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize guarded Map member keys, nullable finder projections, and maximum-derived array lookups in no-non-null-assertion-on-maybe-undefined-result.
+
+- [#1506](https://github.com/millionco/react-doctor/pull/1506) [`57743f8`](https://github.com/millionco/react-doctor/commit/57743f827d17ec5e70fb33d386ea3f7f622c5479) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize callback-ref values and measured DOM state paired with mount flags as post-mount state sources.
+
+- [#1524](https://github.com/millionco/react-doctor/pull/1524) [`1938763`](https://github.com/millionco/react-doctor/commit/19387631f2c49342c51597445459ce621ff4df21) Thanks [@aidenybai](https://github.com/aidenybai)! - Resolve React `useCallback`-wrapped pointer-down handlers when checking pointer capture cancellation.
+
+- [#1513](https://github.com/millionco/react-doctor/pull/1513) [`29e35d5`](https://github.com/millionco/react-doctor/commit/29e35d59bd1ab5ee50caee836b2c29f06ab6ac08) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop reporting user-facing API key alerts and structured parser token boundaries as hardcoded client secrets.
+
+- [#1505](https://github.com/millionco/react-doctor/pull/1505) [`01ca0b3`](https://github.com/millionco/react-doctor/commit/01ca0b3f1ea0222615c9713a3cbf426b18edd44b) Thanks [@aidenybai](https://github.com/aidenybai)! - Skip root test-prefixed JavaScript and TypeScript files in production security scans.
+
+- [#1528](https://github.com/millionco/react-doctor/pull/1528) [`69d19b5`](https://github.com/millionco/react-doctor/commit/69d19b516fc323aad3e2f0cd4f3fd52a7b949031) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect URLSearchParams location mirrors in prefer-use-sync-external-store.
+
+- [#1533](https://github.com/millionco/react-doctor/pull/1533) [`2db2a97`](https://github.com/millionco/react-doctor/commit/2db2a972833dd2bf618af08be8d7bfb7beaa4f73) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce scan startup time and workspace contention by loading lightweight rule
+  metadata, sharing Oxlint subprocess capacity across projects, and reusing
+  semantic and filesystem analysis within each scan. Keep cached diagnostics
+  correct when imported browser guards, Next.js manifests, nested project
+  targets, or TypeScript path configuration change, and ignore explicitly
+  disabled inline CSS animations and transitions in Remotion rules.
+
+- [#1540](https://github.com/millionco/react-doctor/pull/1540) [`5268cb4`](https://github.com/millionco/react-doctor/commit/5268cb4c5df8ed9fd69b8d679c026bb0fcf561b7) Thanks [@skoshx](https://github.com/skoshx)! - fix(server-auth-actions): skip credential-establishing actions via SDK detection
+
+  The `server-auth-actions` rule now correctly skips server actions that perform credential-establishing operations (signup, signin, OTP verification, password reset) by detecting calls to auth SDK methods like `supabase.auth.signUp()`, `auth.signInWithPassword()`, and `auth.verifyOtp()`. These actions legitimately run for anonymous callers, so requiring authentication would be incorrect.
+
+  This resolves the documented false positive where credential-establishing endpoints were incorrectly flagged as unauthenticated privileged operations.
+
+  Closes [#1538](https://github.com/millionco/react-doctor/issues/1538)
+
+- [#1467](https://github.com/millionco/react-doctor/pull/1467) [`3728102`](https://github.com/millionco/react-doctor/commit/3728102af1143bfae5fbfa6fb3356491ee567289) Thanks [@aidenybai](https://github.com/aidenybai)! - Upgrade the Oxc toolchain to the latest releases.
+
+- [#1504](https://github.com/millionco/react-doctor/pull/1504) [`b10cd4c`](https://github.com/millionco/react-doctor/commit/b10cd4c6a198e4af9837354071436dbf22f86578) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting conditional wrappers whose click handler only forwards focus to a queried control.
+
+- [#1523](https://github.com/millionco/react-doctor/pull/1523) [`9418a1c`](https://github.com/millionco/react-doctor/commit/9418a1c01f462fd4ac9abae92fb9f2a0e5e26fb6) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid no-event-handler false positives for deferred ref focus and state-backed collection ref synchronization.
+
+- [#1474](https://github.com/millionco/react-doctor/pull/1474) [`444e177`](https://github.com/millionco/react-doctor/commit/444e177e2fa96816ec75e9f67d01ba524a597180) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect unescaped dynamic folder path segments in anchored `RegExp` patterns.
+
+- [#1515](https://github.com/millionco/react-doctor/pull/1515) [`8170ba2`](https://github.com/millionco/react-doctor/commit/8170ba24e8e5e5bbf44c32c2d1ecdd19ee9090b4) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting static wrappers whose click handler only forwards focus to a nested control.
+
+- [#1532](https://github.com/millionco/react-doctor/pull/1532) [`65539af`](https://github.com/millionco/react-doctor/commit/65539afe9b9bd32967057055c0f07f6117aead9a) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting parent callbacks used to synchronize external subscriptions, layout measurements, and imperative controllers.
+
+- [#1520](https://github.com/millionco/react-doctor/pull/1520) [`b07af9d`](https://github.com/millionco/react-doctor/commit/b07af9db5f89175c9637040bab67599ca773d5ad) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep `no-create-ref-in-function-component` quiet when `createRef()` values are initialized once behind a stable `useRef().current` guard.
+
+- [#1488](https://github.com/millionco/react-doctor/pull/1488) [`d6f02bb`](https://github.com/millionco/react-doctor/commit/d6f02bbcbf00f472b48761ae22b7efe77f694edc) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect browser-dependent hydration branches through render-time helpers, mutable aliases, state initializers, and compiled React output.
+
+- [#1492](https://github.com/millionco/react-doctor/pull/1492) [`9512488`](https://github.com/millionco/react-doctor/commit/9512488a5e99a6b0354dc6def2acd92494ac6084) Thanks [@aidenybai](https://github.com/aidenybai)! - Report zero-argument constructor allocations passed directly to `useRef`.
+
+- [#1495](https://github.com/millionco/react-doctor/pull/1495) [`adcee58`](https://github.com/millionco/react-doctor/commit/adcee586ad407574d98600bd0361efb18be69136) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize stable previous/current transitions and exact convergence guards in `componentDidUpdate`.
+
+- [#1497](https://github.com/millionco/react-doctor/pull/1497) [`1f6e181`](https://github.com/millionco/react-doctor/commit/1f6e181d389e0b731d1b5c3681e48f702e8e6c8e) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize predictable guarded ref initialization while preserving diagnostics for render-dependent and externally mutable values.
+
+- [#1525](https://github.com/millionco/react-doctor/pull/1525) [`6b64dfa`](https://github.com/millionco/react-doctor/commit/6b64dfaf9e973139d1df2d09f405c9d916e158a3) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect external collection mutations, setter callbacks, persistence calls, and async update calls inside React state updater functions.
+
+- [#1509](https://github.com/millionco/react-doctor/pull/1509) [`c672551`](https://github.com/millionco/react-doctor/commit/c672551e42ab3634de809a080cbf5ba1a1ebe432) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep `exhaustive-deps` quiet for unconfigured custom Hooks without dependency arrays.
+
+- [#1507](https://github.com/millionco/react-doctor/pull/1507) [`a81b3d6`](https://github.com/millionco/react-doctor/commit/a81b3d657314d0d9c21c6a71db6ca12fe3eb949f) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting Intl formatters in plain utilities when their locale or options come from caller input.
+
+- [#1514](https://github.com/millionco/react-doctor/pull/1514) [`660200e`](https://github.com/millionco/react-doctor/commit/660200e54a330df587e2a9357aac5f7602f18093) Thanks [@aidenybai](https://github.com/aidenybai)! - Require exported custom Hook callbacks to have same-file component prop provenance before reporting render-time callback invocations.
+
+- [#1490](https://github.com/millionco/react-doctor/pull/1490) [`8715808`](https://github.com/millionco/react-doctor/commit/8715808c20a3761330cafb0a97ee5419bbfdbcee) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize source-proven listener and timer teardown across stable aliases, local loops, and callback-ref replacement.
+
+- [#1510](https://github.com/millionco/react-doctor/pull/1510) [`3a0b9a0`](https://github.com/millionco/react-doctor/commit/3a0b9a0c5e88c2b330bc300342cc5fc91df70ca9) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting parent notifications that forward an immutable snapshot from an imported external-subscription hook after also copying it into a comparison ref.
+
+- [#1498](https://github.com/millionco/react-doctor/pull/1498) [`2992a03`](https://github.com/millionco/react-doctor/commit/2992a03f2ecb029dad5e5c021404adb8b3c548d8) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid flagging intentional JSON normalization at Next.js Pages Router props boundaries.
+
+- [#1521](https://github.com/millionco/react-doctor/pull/1521) [`443082a`](https://github.com/millionco/react-doctor/commit/443082ae30224a2b004e9aeaa4784582a60d53c0) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve sequential awaits when ordered operations mutate and observe one shared receiver.
+
+- [#1529](https://github.com/millionco/react-doctor/pull/1529) [`bf470d5`](https://github.com/millionco/react-doctor/commit/bf470d50fedfd03ddf977018a6a1969b565244ce) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect hoistable helpers inside compiled `forwardRef` component wrappers.
+
+- [#1522](https://github.com/millionco/react-doctor/pull/1522) [`b479d7d`](https://github.com/millionco/react-doctor/commit/b479d7d7771d59c642849e32c5a6c804197a50c6) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize ref-owned one-shot timer reschedules with helper-based replacement and unmount cleanup.
+
+- [#1541](https://github.com/millionco/react-doctor/pull/1541) [`a9a1f40`](https://github.com/millionco/react-doctor/commit/a9a1f40c8b45aae1e1bb29eecfb62588644f0918) Thanks [@skoshx](https://github.com/skoshx)! - Recognize exact-client Supabase `removeChannel` and `removeAllChannels` cleanup for fluent Realtime subscriptions.
+
+- [#1503](https://github.com/millionco/react-doctor/pull/1503) [`5dc936e`](https://github.com/millionco/react-doctor/commit/5dc936e111fda0d77bc7a8a36ece3b1ec6b9bf27) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting intentional uncontrolled state selected as the fallback to a controlled prop.
+
+- [#1511](https://github.com/millionco/react-doctor/pull/1511) [`fb5f881`](https://github.com/millionco/react-doctor/commit/fb5f881e74b5793cf9469d7a31dcda57aa1a5086) Thanks [@aidenybai](https://github.com/aidenybai)! - Treat custom Hook calls as opaque in `no-effect-with-fresh-deps`.
+
+- [#1508](https://github.com/millionco/react-doctor/pull/1508) [`a8115b8`](https://github.com/millionco/react-doctor/commit/a8115b8257314356820701c4094823bd945d98bf) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid `no-flush-sync` false positives for Softmaple Awareness integrations that synchronize editor selections with committed text.
+
+- [#1477](https://github.com/millionco/react-doctor/pull/1477) [`3bc63ea`](https://github.com/millionco/react-doctor/commit/3bc63ea399ee4d8983364fa97416fa27a89a27aa) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting intentionally sequential async traversal that appends await-derived values to an ordered output array.
+
+- [#1476](https://github.com/millionco/react-doctor/pull/1476) [`811a2ff`](https://github.com/millionco/react-doctor/commit/811a2ff33a52b7cdce8ab8d6a51cba5ff9d019d8) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid array-lookup reports for fresh array transforms and generated rest helpers with only small fixed omission lists.
+
 ## 0.9.2
 
 ### Patch Changes

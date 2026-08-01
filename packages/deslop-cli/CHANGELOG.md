@@ -1,5 +1,12 @@
 # deslop-cli
 
+## 0.9.3
+
+### Patch Changes
+
+- Updated dependencies [[`83f3ff8`](https://github.com/millionco/react-doctor/commit/83f3ff8ac7c231603e9488e322039b021099a85b), [`3728102`](https://github.com/millionco/react-doctor/commit/3728102af1143bfae5fbfa6fb3356491ee567289)]:
+  - deslop-js@0.9.3
+
 ## 0.9.2
 
 ### Patch Changes

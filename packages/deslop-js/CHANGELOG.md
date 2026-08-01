@@ -1,5 +1,13 @@
 # deslop-js
 
+## 0.9.3
+
+### Patch Changes
+
+- [#1519](https://github.com/millionco/react-doctor/pull/1519) [`83f3ff8`](https://github.com/millionco/react-doctor/commit/83f3ff8ac7c231603e9488e322039b021099a85b) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect Astro projects, run template design rules through Astro's compiler with source-mapped diagnostics, and keep Astro's default `sharp` image service out of unused-dependency findings.
+
+- [#1467](https://github.com/millionco/react-doctor/pull/1467) [`3728102`](https://github.com/millionco/react-doctor/commit/3728102af1143bfae5fbfa6fb3356491ee567289) Thanks [@aidenybai](https://github.com/aidenybai)! - Upgrade the Oxc toolchain to the latest releases.
+
 ## 0.9.2
 
 ## 0.9.1

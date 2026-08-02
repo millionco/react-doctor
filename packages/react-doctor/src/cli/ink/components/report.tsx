@@ -184,7 +184,9 @@ export const Report = ({
       },
     });
   }
-  const ciLandingActionIndex = landingActions.findIndex((action) => action.id === "add-to-ci");
+  const postReviewLandingActionIndex = landingActions.findIndex(
+    (action) => action.id !== "view-issues",
+  );
   const resolvedLandingSelectedIndex = Math.min(
     landingSelectedIndex,
     Math.max(0, landingActions.length - 1),
@@ -291,7 +293,7 @@ export const Report = ({
         onSelectedIndexChange={handleViewerSelectionChange}
         onQuit={onQuit}
         onBack={() => {
-          setLandingSelectedIndex(Math.max(0, ciLandingActionIndex));
+          setLandingSelectedIndex(Math.max(0, postReviewLandingActionIndex));
           setActiveReportScreen(LANDING_SCREEN);
         }}
         exitHint={`esc back · ${exitHint}`}

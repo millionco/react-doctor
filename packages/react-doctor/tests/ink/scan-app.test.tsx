@@ -401,6 +401,35 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("focuses agent handoff after review when CI setup is unavailable", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <ScanApp store={store} launchableAgents={["codex"]} onHandoff={() => {}} />,
+    );
+    await flush();
+
+    stdin.write("\r");
+    await flush();
+    stdin.write("\u001B");
+    await flush();
+
+    expect(lastFrame()).toContain("› Hand off to an agent");
+    expect(lastFrame()).toContain("  Review 1 issue");
+    unmount();
+  });
+
   it("quits while the report reveal is still running", async () => {
     const store = createScanStore();
     const onQuit = vi.fn();
@@ -910,7 +939,7 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
 
-    expect(lastFrame()).toContain("Add React Doctor to GitHub Actions first");
+    expect(lastFrame()).toContain("  Add React Doctor to GitHub Actions first");
     expect(lastFrame()).toContain(
       "Scan every pull request to prevent new React issues while you fix the backlog.",
     );
@@ -921,7 +950,7 @@ describe("ScanApp", () => {
     stdin.write("\u001B");
     await flush();
     expect(onAddToCi).not.toHaveBeenCalled();
-    expect(lastFrame()).toContain("Choose an agent");
+    expect(lastFrame()).toContain("  Choose an agent");
     expect(lastFrame()).toContain("› Codex");
     expect(lastFrame()).toContain("Cursor");
 

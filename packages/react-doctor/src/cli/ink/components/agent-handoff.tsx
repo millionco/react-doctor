@@ -1,7 +1,10 @@
 import { getSkillAgentConfig } from "agent-install";
 import { Box, Text } from "ink";
 import { useState } from "react";
-import { TUI_REPORT_ACTION_MENU_MARGIN_ROWS } from "../../utils/constants.js";
+import {
+  TUI_HORIZONTAL_PADDING_COLUMNS,
+  TUI_REPORT_ACTION_MENU_MARGIN_ROWS,
+} from "../../utils/constants.js";
 import type { CliAgentId } from "../../utils/launch-agent.js";
 import { ActionMenu } from "./action-menu.js";
 import type { ActionMenuAction } from "./action-menu.js";
@@ -23,7 +26,9 @@ export const AgentHandoff = ({ agents, onSelect, onBack, onQuit }: AgentHandoffP
 
   return (
     <Box flexDirection="column">
-      <Text bold>Choose an agent</Text>
+      <Box paddingLeft={TUI_HORIZONTAL_PADDING_COLUMNS}>
+        <Text bold>Choose an agent</Text>
+      </Box>
       <ActionMenu
         actions={actions}
         selectedIndex={selectedIndex}

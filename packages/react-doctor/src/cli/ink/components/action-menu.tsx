@@ -1,3 +1,4 @@
+import figures from "figures";
 import { Box, Text, useInput } from "ink";
 import type { ReactNode } from "react";
 import {
@@ -52,9 +53,8 @@ export const ActionMenu = ({
               index < actions.length - 1 ? TUI_REPORT_ACTION_MENU_ITEM_GAP_ROWS : undefined
             }
           >
-            <Text color={isSelected ? "cyan" : undefined} bold={isSelected} dimColor={!isSelected}>
-              {isSelected ? "› " : "  "}
-              {action.label}
+            <Text color={isSelected ? "cyan" : undefined} bold={isSelected}>
+              {isSelected ? figures.pointer : figures.pointerSmall} {action.label}
             </Text>
             {isSelected ? action.description : null}
           </Box>

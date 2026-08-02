@@ -133,7 +133,7 @@ describe("ScanApp", () => {
     expect(frame).toContain("demo-app");
     expect(frame).toContain("React Doctor");
     expect(frame).toContain("┌─────┐");
-    expect(frame).toContain("› Review 2 issues");
+    expect(frame).toContain("❯ Review 2 issues");
     expect(frame).not.toContain("Top 1 error to review first");
     expect(frame).not.toContain("Why Your users briefly see stale state on every prop");
     const frameLines = frame.split("\n");
@@ -329,7 +329,7 @@ describe("ScanApp", () => {
     await flush();
     resizeTerminal(stdout, { rows: 30 });
     await flush();
-    expect(lastFrame()).toContain("› Review 2 issues");
+    expect(lastFrame()).toContain("❯ Review 2 issues");
     expect(lastFrame()).toContain("58");
     stdin.write("\r");
     await flush();
@@ -369,7 +369,7 @@ describe("ScanApp", () => {
     resizeTerminal(stdout, { rows: 30 });
     await flush();
 
-    expect(lastFrame()).toContain("› Review 2 issues");
+    expect(lastFrame()).toContain("❯ Review 2 issues");
     stdin.write("\r");
     await flush();
 
@@ -383,8 +383,8 @@ describe("ScanApp", () => {
     stdin.write("\u001B");
     await flush();
     const returnedLandingFrame = lastFrame() ?? "";
-    expect(returnedLandingFrame).toContain("› Add to GitHub Actions (Recommended)");
-    expect(returnedLandingFrame).toContain("  Review 2 issues");
+    expect(returnedLandingFrame).toContain("❯ Add to GitHub Actions (Recommended)");
+    expect(returnedLandingFrame).toContain("› Review 2 issues");
     expect(returnedLandingFrame).not.toContain("Top 1 error to review first");
 
     stdin.write("k");
@@ -425,8 +425,8 @@ describe("ScanApp", () => {
     stdin.write("\u001B");
     await flush();
 
-    expect(lastFrame()).toContain("› Hand off to an agent");
-    expect(lastFrame()).toContain("  Review 1 issue");
+    expect(lastFrame()).toContain("❯ Hand off to an agent");
+    expect(lastFrame()).toContain("› Review 1 issue");
     unmount();
   });
 
@@ -659,7 +659,7 @@ describe("ScanApp", () => {
     await flush();
 
     expect(lastFrame()).toContain("┌─────┐");
-    expect(lastFrame()).toContain("› Review 30 issues");
+    expect(lastFrame()).toContain("❯ Review 30 issues");
     stdin.write("\r");
     await flush();
 
@@ -807,12 +807,12 @@ describe("ScanApp", () => {
     );
     await flush();
 
-    expect(lastFrame()).toContain("› Review 1 issue");
+    expect(lastFrame()).toContain("❯ Review 1 issue");
     expect(lastFrame()).toContain("Add to GitHub Actions (Recommended)");
-    expect(lastFrame()).toContain("› Review 1 issue\n\n  Add to GitHub Actions (Recommended)");
+    expect(lastFrame()).toContain("❯ Review 1 issue\n\n› Add to GitHub Actions (Recommended)");
     stdin.write("j");
     await flush();
-    expect(lastFrame()).toContain("› Add to GitHub Actions (Recommended)");
+    expect(lastFrame()).toContain("❯ Add to GitHub Actions (Recommended)");
     expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
     stdin.write("\r");
     await flush();
@@ -823,13 +823,13 @@ describe("ScanApp", () => {
     );
     expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
     expect(lastFrame()).toContain("Adds a workflow file and a `doctor` package script.");
-    expect(lastFrame()).toContain("› Yes, add the workflow");
+    expect(lastFrame()).toContain("❯ Yes, add the workflow");
     expect(lastFrame()).toContain("Open the GitHub Actions guide");
 
     stdin.write("\u001B");
     await flush();
     expect(onAddToCi).not.toHaveBeenCalled();
-    expect(lastFrame()).toContain("› Add to GitHub Actions (Recommended)");
+    expect(lastFrame()).toContain("❯ Add to GitHub Actions (Recommended)");
 
     stdin.write("\r");
     await flush();
@@ -935,7 +935,7 @@ describe("ScanApp", () => {
     await flush();
     stdin.write("j");
     await flush();
-    expect(lastFrame()).toContain("› Hand off to an agent");
+    expect(lastFrame()).toContain("❯ Hand off to an agent");
     stdin.write("\r");
     await flush();
 
@@ -944,14 +944,14 @@ describe("ScanApp", () => {
       "Scan every pull request to prevent new React issues while you fix the backlog.",
     );
     expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
-    expect(lastFrame()).toContain("› Add to GitHub Actions first (Recommended)");
+    expect(lastFrame()).toContain("❯ Add to GitHub Actions first (Recommended)");
     expect(lastFrame()).toContain("Continue without GitHub Actions");
 
     stdin.write("\u001B");
     await flush();
     expect(onAddToCi).not.toHaveBeenCalled();
     expect(lastFrame()).toContain("  Choose an agent");
-    expect(lastFrame()).toContain("› Codex");
+    expect(lastFrame()).toContain("❯ Codex");
     expect(lastFrame()).toContain("Cursor");
 
     stdin.write("\r");
@@ -1000,16 +1000,16 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
     expect(onAddToCi).toHaveBeenCalledOnce();
-    expect(lastFrame()).toContain("› Codex");
+    expect(lastFrame()).toContain("❯ Codex");
 
     stdin.write("\u001B");
     await flush();
     expect(lastFrame()).not.toContain("Add to GitHub Actions (Recommended)");
-    expect(lastFrame()).toContain("› Hand off to an agent");
+    expect(lastFrame()).toContain("❯ Hand off to an agent");
 
     stdin.write("\r");
     await flush();
-    expect(lastFrame()).toContain("› Codex");
+    expect(lastFrame()).toContain("❯ Codex");
     expect(lastFrame()).not.toContain("Add React Doctor to GitHub Actions first");
 
     stdin.write("\r");

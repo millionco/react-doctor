@@ -27,15 +27,17 @@ Space
 Enter
 Wait+Screen /Scanning.../
 Sleep 2s
-Wait+Screen /No issues found!/
+Wait+Screen /No issues found/
 Sleep 2s
+Type "q"
+Sleep 1s
 
 Hide
 Type "use-terminal-recording-tui-fixture"
 Enter
 Show
 
-Type "clear && react-doctor experimental-tui --no-score --no-supply-chain --project app-a"
+Type "clear && react-doctor --no-score --no-supply-chain --project app-a"
 Enter
 Wait+Screen /Add to GitHub Actions/
 Sleep 2s

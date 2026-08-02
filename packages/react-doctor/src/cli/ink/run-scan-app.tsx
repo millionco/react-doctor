@@ -41,6 +41,7 @@ import type { SurfaceFilterableScan } from "../utils/filter-scans-for-surface.js
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
+import { selectReportDiagnostics } from "../utils/select-report-diagnostics.js";
 import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
 import { ProjectSelect } from "./components/project-select.js";
 import { ScanApp } from "./scan-app.js";
@@ -193,6 +194,7 @@ const promptProjectSelection = (
 
 interface ScanReportInput {
   readonly result: InspectResult;
+  readonly diagnostics?: ReadonlyArray<Diagnostic>;
   readonly rootDirectory: string;
   readonly projectedScore: number | null;
   readonly isOffline: boolean;
@@ -209,6 +211,7 @@ const resolveLintFailureReason = (results: ReadonlyArray<InspectResult>): string
 
 const toScanReport = ({
   result,
+  diagnostics,
   rootDirectory,
   projectedScore,
   isOffline,
@@ -216,7 +219,7 @@ const toScanReport = ({
 }: ScanReportInput): ScanReport => {
   const lintFailureReason = resolveLintFailureReason([result]);
   return {
-    diagnostics: result.diagnostics,
+    diagnostics: diagnostics ?? result.diagnostics,
     score: result.score,
     projectedScore,
     projectName: result.project.projectName,
@@ -347,6 +350,7 @@ const mountScanApp = async (rootDirectory: string): Promise<MountedScanApp> => {
     { exitOnCtrlC: false },
   );
   const executePendingActions = async (): Promise<void> => {
+    if (pendingActions.didQuit) return;
     if (pendingActions.shouldSetUpCi) await performCiSetup(rootDirectory);
     if (pendingActions.handoffRequest) {
       await performTuiHandoff(pendingActions.handoffRequest, rootDirectory);
@@ -433,12 +437,18 @@ const runSingleProjectScan = async (
         progress: progressLayerForStore(context.store),
       },
     });
+    const reportDiagnostics = selectReportDiagnostics({
+      scan: { result, config: projectScan.config },
+      categoryFilters: input.options?.categoryFilters,
+      surface: input.options?.outputSurface,
+    });
     const projectedScore = result.score
-      ? await computeProjectedScore([...result.diagnostics], [...result.diagnostics], result.score)
+      ? await computeProjectedScore([...reportDiagnostics], [...result.diagnostics], result.score)
       : null;
     context.store.setReport(
       toScanReport({
         result,
+        diagnostics: reportDiagnostics,
         rootDirectory: projectScan.directory,
         projectedScore,
         isOffline: context.isOffline,
@@ -447,7 +457,7 @@ const runSingleProjectScan = async (
     );
     return {
       scans: [{ result, config: projectScan.config }],
-      diagnostics: result.diagnostics,
+      diagnostics: reportDiagnostics,
       scoreResult: result.score,
       projectName: result.project.projectName,
       scannedFileCount: result.scannedFileCount ?? 0,
@@ -494,19 +504,30 @@ const runMultiProjectScan = async (
       },
     );
 
-    const projects = results.map(({ directory, result }) =>
-      toScanReport({
-        result,
-        rootDirectory: directory,
-        projectedScore: null,
-        isOffline: context.isOffline,
-        noScoreMessage: context.noScoreMessage,
-      }),
-    );
+    const projectEntries = results.map(({ directory, result, config }) => {
+      const reportDiagnostics = selectReportDiagnostics({
+        scan: { result, config },
+        categoryFilters: input.options?.categoryFilters,
+        surface: input.options?.outputSurface,
+      });
+      return {
+        report: toScanReport({
+          result,
+          diagnostics: reportDiagnostics,
+          rootDirectory: directory,
+          projectedScore: null,
+          isOffline: context.isOffline,
+          noScoreMessage: context.noScoreMessage,
+        }),
+        score: result.score,
+        diagnostics: result.diagnostics,
+      };
+    });
+    const projects = projectEntries.map(({ report }) => report);
     const combinedDiagnostics = projects.flatMap((project) =>
       qualifyDiagnosticPaths(project.diagnostics, rootDirectory, project.rootDirectory),
     );
-    const lowestScoredReport = findLowestScoredReport(projects);
+    const lowestScoredReport = findLowestScoredReport(projectEntries);
     const projectedScore = lowestScoredReport
       ? await computeProjectedScore(
           combinedDiagnostics,

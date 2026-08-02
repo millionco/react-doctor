@@ -25,6 +25,7 @@ import { handleError, handleUserError } from "./utils/handle-error.js";
 import { isDebugFlagEnabled } from "./utils/is-debug-flag.js";
 import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
+import type { InspectFlags } from "./utils/inspect-flags.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
 import { printDebugTrace } from "./utils/print-debug-trace.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
@@ -252,10 +253,10 @@ const program = new Command()
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderRootHelpEpilog);
 
-program.action((directory = ".", _localOptions, command) =>
+program.action((directory = ".", flags: InspectFlags) =>
   runScanCommand({
     directory,
-    flags: command.optsWithGlobals(),
+    flags,
     invocationCommand: "inspect",
   }),
 );

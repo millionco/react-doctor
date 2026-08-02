@@ -11,6 +11,7 @@ import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 interface MockScanAppProps {
   readonly store?: ScanStore;
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
+  readonly onAddToCi?: () => void;
   readonly onQuit?: () => void;
 }
 
@@ -19,6 +20,7 @@ const mockState = vi.hoisted(() => ({
   scanTargets: new Map<string, ResolvedScanTarget>(),
   inspectResults: new Map<string, InspectResult>(),
   shouldRequestHandoff: false,
+  shouldSetUpCi: false,
   shouldQuit: false,
   lifecycleEvents: new Array<string>(),
   scanStores: new Array<ScanStore>(),
@@ -35,6 +37,7 @@ vi.mock("ink", async (importOriginal) => {
         if (mockState.shouldRequestHandoff) {
           node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
         }
+        if (mockState.shouldSetUpCi) node.props.onAddToCi?.();
         if (mockState.shouldQuit) node.props.onQuit?.();
       }
       return {
@@ -88,6 +91,13 @@ vi.mock("../../src/cli/utils/detect-launchable-agents.js", () => ({
 
 vi.mock("../../src/cli/utils/install-github-workflow.js", () => ({
   isReactDoctorWorkflowInstalled: vi.fn(() => true),
+}));
+
+vi.mock("../../src/cli/utils/set-up-github-actions.js", () => ({
+  setUpGitHubActions: vi.fn(async () => {
+    mockState.lifecycleEvents.push("ci");
+    return true;
+  }),
 }));
 
 vi.mock("../../src/cli/utils/render-summary.js", async (importOriginal) => {
@@ -146,6 +156,7 @@ describe("runScanApp", () => {
     mockState.scanTargets.clear();
     mockState.inspectResults.clear();
     mockState.shouldRequestHandoff = false;
+    mockState.shouldSetUpCi = false;
     mockState.shouldQuit = false;
     mockState.lifecycleEvents.length = 0;
     mockState.scanStores.length = 0;
@@ -290,6 +301,39 @@ describe("runScanApp", () => {
     expect(surfaceExcludedResult.shouldFail).toBe(false);
   });
 
+  it("applies the CLI surface and category filter to the TUI report", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(
+        rootDirectory,
+        rootDirectory,
+        { surfaces: { cli: { excludeRules: ["react-doctor/hidden-security"] } } },
+        rootDirectory,
+      ),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      diagnostics: [
+        buildDiagnostic({ rule: "visible-security", category: "Security" }),
+        buildDiagnostic({ rule: "hidden-security", category: "Security" }),
+        buildDiagnostic({ rule: "visible-performance", category: "Performance" }),
+      ],
+    });
+
+    await runScanApp({
+      directory: rootDirectory,
+      options: { categoryFilters: ["Security"] },
+      skipPrompts: true,
+    });
+
+    expect(mockState.scanStores[0]?.getSnapshot().report?.diagnostics).toEqual([
+      expect.objectContaining({ rule: "visible-security" }),
+    ]);
+  });
+
   it("does not print the scan footer after the user quits", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
@@ -304,6 +348,39 @@ describe("runScanApp", () => {
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(mockState.lifecycleEvents).not.toContain("footer");
+  });
+
+  it("discards queued CI setup when the user quits", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.shouldSetUpCi = true;
+    mockState.shouldQuit = true;
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.lifecycleEvents).not.toContain("ci");
+  });
+
+  it("runs queued CI setup after a completed selection", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.shouldSetUpCi = true;
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.lifecycleEvents).toContain("ci");
   });
 
   it("normalizes project-qualified diagnostic paths", async () => {

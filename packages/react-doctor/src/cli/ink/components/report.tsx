@@ -1,38 +1,32 @@
-import { Box, Text, useInput } from "ink";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { GITHUB_ACTIONS_SETUP_URL } from "@react-doctor/core";
 import type { ScoreResult } from "@react-doctor/core";
+import { buildHandoffPayload } from "../../utils/build-handoff-payload.js";
+import { METRIC } from "../../utils/constants.js";
 import type { CliAgentId } from "../../utils/launch-agent.js";
-import {
-  METRIC,
-  TUI_REPORT_COLUMN_GUTTER_COLUMNS,
-  TUI_REPORT_COMPACT_HEADER_ROWS,
-  TUI_REPORT_COMPACT_MAX_ROWS,
-  TUI_REPORT_COMPACT_STATUS_ROWS,
-  TUI_REPORT_DETAIL_ROWS,
-  TUI_REPORT_DETAIL_WIDTH_FRACTION,
-  TUI_REPORT_DIVIDER_ROWS,
-  TUI_REPORT_HEADER_ROWS,
-  TUI_HORIZONTAL_PADDING_COLUMNS,
-  TUI_REPORT_LIST_MARGIN_ROWS,
-  TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
-  TUI_REPORT_MIN_LIST_ROWS,
-  TUI_REPORT_MIN_WIDTH_CHARS,
-  TUI_REPORT_STACKED_MAX_LIST_ROWS,
-  TUI_REPORT_STATUS_ROWS,
-  TUI_REPORT_WIDE_MIN_COLUMNS,
-  TUI_REPORT_WIDE_MIN_ROWS,
-} from "../../utils/constants.js";
+import { openUrl } from "../../utils/open-url.js";
 import { recordCount } from "../../utils/record-metric.js";
-import type { ScanReport, TuiHandoffRequest } from "../scan-store.js";
+import { useReportReveal } from "../hooks/use-report-reveal.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { buildDiagnosticRows } from "../lib/diagnostic-rows.js";
+import { resolveReportLayout } from "../lib/resolve-report-layout.js";
+import type { ScanReport, TuiHandoffRequest } from "../scan-store.js";
+import type { ActionMenuAction } from "./action-menu.js";
+import { AgentHandoff } from "./agent-handoff.js";
+import { CiJustification } from "./ci-justification.js";
+import { CiSetup } from "./ci-setup.js";
+import type { CiSetupFeedback } from "./ci-setup.js";
 import { DiagnosticList } from "./diagnostic-list.js";
-import type { DiagnosticListLayout } from "./diagnostic-list.js";
+import { HandoffCiRecommendation } from "./handoff-ci-recommendation.js";
+import { ReportLanding } from "./report-landing.js";
+import { ReportIssueStream } from "./report-issue-stream.js";
 import { ScoreHeader } from "./score-header.js";
 
 export interface ReportProps {
   readonly report: ScanReport;
   readonly onExit: () => void;
+  readonly onQuit?: () => void;
   readonly launchableAgents?: ReadonlyArray<CliAgentId>;
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
   readonly canAddToCi?: boolean;
@@ -42,18 +36,28 @@ export interface ReportProps {
   readonly exitHint?: string;
 }
 
-const STACKED_FIXED_ROWS =
-  TUI_REPORT_HEADER_ROWS +
-  TUI_REPORT_LIST_MARGIN_ROWS +
-  TUI_REPORT_DIVIDER_ROWS +
-  TUI_REPORT_STATUS_ROWS;
-const SPLIT_CHROME_ROWS =
-  TUI_REPORT_HEADER_ROWS + TUI_REPORT_LIST_MARGIN_ROWS + TUI_REPORT_STATUS_ROWS;
 const EMPTY_LAUNCHABLE_AGENTS: ReadonlyArray<CliAgentId> = [];
+const LANDING_SCREEN = "landing";
+const ISSUES_SCREEN = "issues";
+const CI_SCREEN = "ci";
+const HANDOFF_CI_SCREEN = "handoff-ci";
+const HANDOFF_SCREEN = "handoff";
+
+type ReportScreen =
+  | typeof LANDING_SCREEN
+  | typeof ISSUES_SCREEN
+  | typeof CI_SCREEN
+  | typeof HANDOFF_CI_SCREEN
+  | typeof HANDOFF_SCREEN;
+
+const recordReportAction = (action: string): void => {
+  recordCount(METRIC.tuiReportActionSelected, 1, { action });
+};
 
 export const Report = ({
   report,
   onExit,
+  onQuit = onExit,
   launchableAgents = EMPTY_LAUNCHABLE_AGENTS,
   onHandoff,
   canAddToCi,
@@ -67,113 +71,237 @@ export const Report = ({
     () => buildDiagnosticRows(report.diagnostics, priorityScores ?? [report.score]),
     [report.diagnostics, report.score, priorityScores],
   );
-
-  useInput(
-    (input, key) => {
-      if (input === "q" || key.escape) onExit();
-    },
-    { isActive: diagnosticRows.length === 0 },
+  const reportLayout = resolveReportLayout({
+    columns,
+    diagnosticRowCount: diagnosticRows.length,
+    terminalRows,
+  });
+  const reportReveal = useReportReveal({ issueCount: diagnosticRows.length });
+  const [activeReportScreen, setActiveReportScreen] = useState<ReportScreen>(LANDING_SCREEN);
+  const [ciSetupFeedback, setCiSetupFeedback] = useState<CiSetupFeedback>();
+  const [landingSelectedIndex, setLandingSelectedIndex] = useState(0);
+  const [viewerSelectedIndex, setViewerSelectedIndex] = useState(0);
+  const [viewerReadRuleKeys, setViewerReadRuleKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
   );
-
-  const width = Math.max(TUI_REPORT_MIN_WIDTH_CHARS, columns - TUI_HORIZONTAL_PADDING_COLUMNS);
-  const isWide = columns >= TUI_REPORT_WIDE_MIN_COLUMNS && terminalRows >= TUI_REPORT_WIDE_MIN_ROWS;
-  const isCompact = !isWide && terminalRows <= TUI_REPORT_COMPACT_MAX_ROWS;
+  const [isCiSetupQueued, setIsCiSetupQueued] = useState(false);
+  const [shouldShowIssueStream, setShouldShowIssueStream] = useState(true);
   const didRecordCompactReport = useRef(false);
+  const didRecordIssueStream = useRef(false);
   const didRecordStackedReportCap = useRef(false);
+  const isCompact = reportLayout.layout === "compact";
+  const isWide = reportLayout.layout === "split";
+
   useEffect(() => {
     if (!isCompact || didRecordCompactReport.current) return;
     didRecordCompactReport.current = true;
     recordCount(METRIC.tuiCompactReportShown);
   }, [isCompact]);
-  const detailHeight = isWide
-    ? Math.max(0, terminalRows - TUI_REPORT_STATUS_ROWS)
-    : Math.max(
-        0,
-        Math.min(
-          TUI_REPORT_DETAIL_ROWS,
-          terminalRows - STACKED_FIXED_ROWS - TUI_REPORT_MIN_LIST_ROWS,
-        ),
-      );
-  const availableListHeight = Math.max(
-    TUI_REPORT_MIN_LIST_ROWS,
-    terminalRows - (isWide ? SPLIT_CHROME_ROWS : STACKED_FIXED_ROWS + detailHeight),
-  );
-  const isStackedReportCapped =
-    !isCompact && !isWide && availableListHeight > TUI_REPORT_STACKED_MAX_LIST_ROWS;
   useEffect(() => {
-    if (!isStackedReportCapped || didRecordStackedReportCap.current) return;
+    if (!reportLayout.isStackedReportCapped || didRecordStackedReportCap.current) return;
     didRecordStackedReportCap.current = true;
     recordCount(METRIC.tuiStackedReportCapped);
-  }, [isStackedReportCapped]);
-  let listHeight = availableListHeight;
-  if (isCompact) {
-    listHeight = Math.max(
-      TUI_REPORT_MIN_LIST_ROWS,
-      terminalRows - TUI_REPORT_COMPACT_HEADER_ROWS - TUI_REPORT_COMPACT_STATUS_ROWS,
-    );
-  } else if (!isWide) {
-    listHeight = Math.min(TUI_REPORT_STACKED_MAX_LIST_ROWS, availableListHeight);
-  }
-  const detailColumnWidth = Math.max(
-    TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
-    Math.floor(width * TUI_REPORT_DETAIL_WIDTH_FRACTION),
-  );
-  const listColumnWidth = Math.max(
-    TUI_REPORT_MIN_COLUMN_WIDTH_CHARS,
-    width - detailColumnWidth - TUI_REPORT_COLUMN_GUTTER_COLUMNS,
-  );
-  let layout: DiagnosticListLayout = "stacked";
-  if (isCompact) layout = "compact";
-  else if (isWide) layout = "split";
+  }, [reportLayout.isStackedReportCapped]);
+  useEffect(() => {
+    if (reportReveal.phase !== "streaming" || didRecordIssueStream.current) return;
+    didRecordIssueStream.current = true;
+    recordCount(METRIC.tuiIssueStreamShown);
+  }, [reportReveal.phase]);
 
-  const scoreHeader = (
+  const landingScoreHeader = (
     <ScoreHeader
+      variant="landing"
       score={report.score}
       projectedScore={report.projectedScore}
       projectName={report.projectName}
       issueCount={report.diagnostics.length}
       noScoreMessage={report.noScoreMessage}
-      width={isWide ? listColumnWidth : width}
-      compact={isCompact}
+      width={isWide ? reportLayout.listColumnWidth : reportLayout.width}
+    />
+  );
+  const viewerScoreHeader = (
+    <ScoreHeader
+      variant="viewer"
+      score={report.score}
+      projectedScore={report.projectedScore}
+      projectName={report.projectName}
+      issueCount={report.diagnostics.length}
+      noScoreMessage={report.noScoreMessage}
+      width={reportLayout.listColumnWidth}
     />
   );
 
-  if (diagnosticRows.length === 0) {
-    const lintFailureReason = report.lintFailureReason;
-    return (
-      <Box flexDirection="column">
-        {scoreHeader}
-        <Box marginTop={1}>
-          {lintFailureReason ? (
-            <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>
-          ) : (
-            <Text color="green">✔ No issues found. Nice work.</Text>
-          )}
-        </Box>
-        <Text dimColor>{exitHint}</Text>
-      </Box>
+  const isCiSetupAvailable = Boolean(canAddToCi && onAddToCi && !isCiSetupQueued);
+  const isHandoffAvailable =
+    diagnosticRows.length > 0 && launchableAgents.length > 0 && Boolean(onHandoff);
+  const issueLabel = diagnosticRows.length === 1 ? "issue" : "issues";
+  const markViewerRuleRead = (index: number): void => {
+    const ruleKey = diagnosticRows[index]?.ruleKey;
+    if (!ruleKey) return;
+    setViewerReadRuleKeys((previous) =>
+      previous.has(ruleKey) ? previous : new Set(previous).add(ruleKey),
+    );
+  };
+  const handleViewerSelectionChange = (index: number): void => {
+    setViewerSelectedIndex(index);
+    markViewerRuleRead(index);
+  };
+  const openReportScreen = (nextScreen: ReportScreen): void => {
+    setShouldShowIssueStream(false);
+    setCiSetupFeedback(undefined);
+    setActiveReportScreen(nextScreen);
+  };
+  const landingActions: ActionMenuAction[] = [];
+  if (report.diagnostics.length > 0) {
+    landingActions.push({
+      id: "view-issues",
+      label: `Review ${diagnosticRows.length} ${issueLabel}`,
+      onSelect: () => {
+        recordReportAction("view-issues");
+        markViewerRuleRead(viewerSelectedIndex);
+        openReportScreen(ISSUES_SCREEN);
+      },
+    });
+  }
+  if (isCiSetupAvailable) {
+    landingActions.push({
+      id: "add-to-ci",
+      label: "Add to GitHub Actions (Recommended)",
+      description: <CiJustification />,
+      onSelect: () => {
+        recordReportAction("add-to-ci");
+        openReportScreen(CI_SCREEN);
+      },
+    });
+  }
+  if (isHandoffAvailable) {
+    landingActions.push({
+      id: "handoff",
+      label: "Hand off to an agent",
+      onSelect: () => {
+        recordReportAction("handoff");
+        openReportScreen(isCiSetupAvailable ? HANDOFF_CI_SCREEN : HANDOFF_SCREEN);
+      },
+    });
+  }
+  const ciLandingActionIndex = landingActions.findIndex((action) => action.id === "add-to-ci");
+  const resolvedLandingSelectedIndex = Math.min(
+    landingSelectedIndex,
+    Math.max(0, landingActions.length - 1),
+  );
+
+  const issueStream =
+    reportReveal.phase === "streaming" ? (
+      <ReportIssueStream
+        rows={diagnosticRows}
+        selectedIndex={reportReveal.streamSelectedIndex}
+        width={reportLayout.width}
+      />
+    ) : null;
+
+  let activeScreenContent: ReactNode;
+  if (activeReportScreen === CI_SCREEN) {
+    activeScreenContent = (
+      <CiSetup
+        feedback={ciSetupFeedback}
+        onConfirm={() => {
+          onAddToCi?.();
+          onExit();
+        }}
+        onLearnMore={() => {
+          recordReportAction("ci-learn-more");
+          const didOpen = openUrl(GITHUB_ACTIONS_SETUP_URL);
+          setCiSetupFeedback({
+            didSucceed: didOpen,
+            message: didOpen
+              ? "✓ Opened the GitHub Actions guide in your browser"
+              : `Couldn't open a browser. Visit ${GITHUB_ACTIONS_SETUP_URL}`,
+          });
+        }}
+        onBack={() => {
+          setCiSetupFeedback(undefined);
+          setActiveReportScreen(LANDING_SCREEN);
+        }}
+        onQuit={onQuit}
+      />
+    );
+  } else if (activeReportScreen === HANDOFF_SCREEN) {
+    activeScreenContent = (
+      <AgentHandoff
+        agents={launchableAgents}
+        onSelect={(agentId) => {
+          if (!onHandoff) return;
+          onHandoff({
+            agentId,
+            prompt: buildHandoffPayload({
+              diagnostics: report.diagnostics,
+              projectName: report.projectName,
+              shouldSetUpCiFirst: isCiSetupAvailable,
+            }),
+          });
+          onExit();
+        }}
+        onBack={() => setActiveReportScreen(LANDING_SCREEN)}
+        onQuit={onQuit}
+      />
+    );
+  } else if (activeReportScreen === HANDOFF_CI_SCREEN) {
+    activeScreenContent = (
+      <HandoffCiRecommendation
+        onAddToCi={() => {
+          onAddToCi?.();
+          setIsCiSetupQueued(true);
+          setActiveReportScreen(HANDOFF_SCREEN);
+        }}
+        onContinue={() => setActiveReportScreen(HANDOFF_SCREEN)}
+        onQuit={onQuit}
+      />
+    );
+  } else if (activeReportScreen === LANDING_SCREEN) {
+    activeScreenContent = (
+      <ReportLanding
+        header={landingScoreHeader}
+        phase={reportReveal.phase}
+        issueCount={report.diagnostics.length}
+        lintFailureReason={report.lintFailureReason}
+        actions={landingActions}
+        selectedIndex={resolvedLandingSelectedIndex}
+        onSelectionChange={setLandingSelectedIndex}
+        onExit={onExit}
+        onQuit={onQuit}
+      />
+    );
+  } else {
+    activeScreenContent = (
+      <DiagnosticList
+        header={isWide ? viewerScoreHeader : null}
+        rows={diagnosticRows}
+        width={reportLayout.width}
+        listColumnWidth={reportLayout.listColumnWidth}
+        detailColumnWidth={reportLayout.detailColumnWidth}
+        listHeight={reportLayout.listHeight}
+        detailHeight={reportLayout.detailHeight}
+        layout={reportLayout.layout}
+        rootDirectory={report.rootDirectory}
+        projectName={report.projectName}
+        projectCount={projectCount}
+        initialSelectedIndex={viewerSelectedIndex}
+        readRuleKeys={viewerReadRuleKeys}
+        onSelectedIndexChange={handleViewerSelectionChange}
+        onQuit={onQuit}
+        onBack={() => {
+          setLandingSelectedIndex(Math.max(0, ciLandingActionIndex));
+          setActiveReportScreen(LANDING_SCREEN);
+        }}
+        exitHint={`esc back · ${exitHint}`}
+      />
     );
   }
 
   return (
-    <DiagnosticList
-      header={scoreHeader}
-      rows={diagnosticRows}
-      width={width}
-      listColumnWidth={listColumnWidth}
-      detailColumnWidth={detailColumnWidth}
-      listHeight={listHeight}
-      detailHeight={detailHeight}
-      layout={layout}
-      rootDirectory={report.rootDirectory}
-      projectName={report.projectName}
-      launchableAgents={launchableAgents}
-      onHandoff={onHandoff}
-      canAddToCi={canAddToCi}
-      onAddToCi={onAddToCi}
-      projectCount={projectCount}
-      onExit={onExit}
-      exitHint={exitHint}
-    />
+    <>
+      {activeReportScreen === LANDING_SCREEN && shouldShowIssueStream ? issueStream : null}
+      {activeScreenContent}
+    </>
   );
 };

@@ -10,7 +10,7 @@ import { easeOutCubic } from "../../utils/ease-out-cubic.js";
 export interface UseAnimatedScoreOptions {
   readonly score: number;
   readonly projectedScore: number | null;
-  readonly animate: boolean;
+  readonly shouldAnimate: boolean;
 }
 
 export interface AnimatedScore {
@@ -21,55 +21,58 @@ export interface AnimatedScore {
 export const useAnimatedScore = ({
   score,
   projectedScore,
-  animate,
+  shouldAnimate,
 }: UseAnimatedScoreOptions): AnimatedScore => {
   const projectionTarget = projectedScore ?? score;
   const hasProjection = projectionTarget > score;
-  const [displayScore, setDisplayScore] = useState(animate ? 0 : score);
+  const initialProjectedScore = !shouldAnimate && hasProjection ? projectionTarget : null;
+  const [displayScore, setDisplayScore] = useState(shouldAnimate ? 0 : score);
   const [displayProjectedScore, setDisplayProjectedScore] = useState<number | null>(
-    animate ? null : hasProjection ? projectionTarget : null,
+    initialProjectedScore,
   );
 
   useEffect(() => {
-    if (!animate) {
+    if (!shouldAnimate) {
       setDisplayScore(score);
       setDisplayProjectedScore(hasProjection ? projectionTarget : null);
       return;
     }
 
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const runProjection = (): void => {
-      let frame = 1;
-      const tick = (): void => {
-        const progress = easeOutCubic(frame / SCORE_PROJECTION_FRAME_COUNT);
+      let projectionFrame = 1;
+      const renderProjectionFrame = (): void => {
+        const progress = easeOutCubic(projectionFrame / SCORE_PROJECTION_FRAME_COUNT);
         setDisplayProjectedScore(score + (projectionTarget - score) * progress);
-        if (frame < SCORE_PROJECTION_FRAME_COUNT) {
-          frame += 1;
-          timeoutId = setTimeout(tick, SCORE_PROJECTION_FRAME_DELAY_MS);
+        if (projectionFrame < SCORE_PROJECTION_FRAME_COUNT) {
+          projectionFrame += 1;
+          timeoutId = setTimeout(renderProjectionFrame, SCORE_PROJECTION_FRAME_DELAY_MS);
         } else {
           setDisplayProjectedScore(projectionTarget);
         }
       };
-      tick();
+      renderProjectionFrame();
     };
 
-    let frame = 0;
-    const tick = (): void => {
-      const progress = easeOutCubic(frame / SCORE_HEADER_ANIMATION_FRAME_COUNT);
+    let scoreFrame = 0;
+    const renderScoreFrame = (): void => {
+      const progress = easeOutCubic(scoreFrame / SCORE_HEADER_ANIMATION_FRAME_COUNT);
       setDisplayScore(Math.round(score * progress));
-      if (frame < SCORE_HEADER_ANIMATION_FRAME_COUNT) {
-        frame += 1;
-        timeoutId = setTimeout(tick, SCORE_HEADER_ANIMATION_FRAME_DELAY_MS);
+      if (scoreFrame < SCORE_HEADER_ANIMATION_FRAME_COUNT) {
+        scoreFrame += 1;
+        timeoutId = setTimeout(renderScoreFrame, SCORE_HEADER_ANIMATION_FRAME_DELAY_MS);
         return;
       }
       setDisplayScore(score);
       if (hasProjection) runProjection();
     };
-    tick();
+    renderScoreFrame();
 
-    return () => clearTimeout(timeoutId);
-  }, [animate, score, projectionTarget, hasProjection]);
+    return () => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
+  }, [shouldAnimate, score, projectionTarget, hasProjection]);
 
   return { displayScore, displayProjectedScore };
 };

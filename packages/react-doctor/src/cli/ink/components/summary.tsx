@@ -5,6 +5,7 @@ import { Report } from "./report.js";
 export interface SummaryProps {
   readonly summary: MultiProjectSummary;
   readonly onExit: () => void;
+  readonly onQuit: () => void;
   readonly launchableAgents?: ReadonlyArray<CliAgentId>;
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
   readonly canAddToCi?: boolean;
@@ -14,6 +15,7 @@ export interface SummaryProps {
 export const Summary = ({
   summary,
   onExit,
+  onQuit,
   launchableAgents,
   onHandoff,
   canAddToCi,
@@ -35,6 +37,7 @@ export const Summary = ({
     <Report
       report={report}
       onExit={onExit}
+      onQuit={onQuit}
       launchableAgents={launchableAgents}
       onHandoff={onHandoff}
       canAddToCi={canAddToCi}

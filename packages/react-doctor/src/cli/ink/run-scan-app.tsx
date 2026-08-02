@@ -46,7 +46,12 @@ import { ProjectSelect } from "./components/project-select.js";
 import { ScanApp } from "./scan-app.js";
 import { progressLayerForStore, reporterLayerForStore } from "./scan-bridge-layers.js";
 import { createScanStore } from "./scan-store.js";
-import type { MultiProjectSummary, ScanReport, TuiHandoffRequest } from "./scan-store.js";
+import type {
+  MultiProjectSummary,
+  ScanReport,
+  ScanStore,
+  TuiHandoffRequest,
+} from "./scan-store.js";
 
 export interface RunScanAppInput {
   readonly directory: string;
@@ -224,17 +229,27 @@ const toScanReport = ({
   };
 };
 
-const findLowestScored = (
-  reports: ReadonlyArray<{ score: ScoreResult | null; diagnostics: ReadonlyArray<Diagnostic> }>,
-): { score: ScoreResult; diagnostics: ReadonlyArray<Diagnostic> } | null => {
-  let worst: { score: ScoreResult; diagnostics: ReadonlyArray<Diagnostic> } | null = null;
+interface ScoredDiagnosticReport {
+  readonly score: ScoreResult | null;
+  readonly diagnostics: ReadonlyArray<Diagnostic>;
+}
+
+interface AvailableScoreReport {
+  readonly score: ScoreResult;
+  readonly diagnostics: ReadonlyArray<Diagnostic>;
+}
+
+const findLowestScoredReport = (
+  reports: ReadonlyArray<ScoredDiagnosticReport>,
+): AvailableScoreReport | null => {
+  let lowestScoredReport: AvailableScoreReport | null = null;
   for (const report of reports) {
     if (report.score === null) continue;
-    if (worst === null || report.score.score < worst.score.score) {
-      worst = { score: report.score, diagnostics: report.diagnostics };
+    if (lowestScoredReport === null || report.score.score < lowestScoredReport.score.score) {
+      lowestScoredReport = { score: report.score, diagnostics: report.diagnostics };
     }
   }
-  return worst;
+  return lowestScoredReport;
 };
 
 interface ExitFooterInput {
@@ -293,32 +308,51 @@ const performCiSetup = async (rootDirectory: string): Promise<void> => {
   });
 };
 
-const mountScanApp = async (rootDirectory: string) => {
+interface PendingTuiActions {
+  shouldSetUpCi: boolean;
+  didQuit: boolean;
+  handoffRequest: TuiHandoffRequest | null;
+}
+
+interface MountedScanApp {
+  readonly store: ScanStore;
+  readonly instance: ReturnType<typeof render>;
+  readonly pendingActions: PendingTuiActions;
+  readonly executePendingActions: () => Promise<void>;
+}
+
+const mountScanApp = async (rootDirectory: string): Promise<MountedScanApp> => {
   const store = createScanStore();
   const launchableAgents = await detectLaunchableAgents();
-  const pending: { handoff: TuiHandoffRequest | null; ciSetup: boolean } = {
-    handoff: null,
-    ciSetup: false,
+  const pendingActions: PendingTuiActions = {
+    handoffRequest: null,
+    shouldSetUpCi: false,
+    didQuit: false,
   };
   const instance = render(
     <ScanApp
       store={store}
       launchableAgents={launchableAgents}
       onHandoff={(request) => {
-        pending.handoff = request;
+        pendingActions.handoffRequest = request;
       }}
       canAddToCi={isCiUnconfigured(rootDirectory)}
       onAddToCi={() => {
-        pending.ciSetup = true;
+        pendingActions.shouldSetUpCi = true;
+      }}
+      onQuit={() => {
+        pendingActions.didQuit = true;
       }}
     />,
     { exitOnCtrlC: false },
   );
-  const settle = async (): Promise<void> => {
-    if (pending.ciSetup) await performCiSetup(rootDirectory);
-    if (pending.handoff) await performTuiHandoff(pending.handoff, rootDirectory);
+  const executePendingActions = async (): Promise<void> => {
+    if (pendingActions.shouldSetUpCi) await performCiSetup(rootDirectory);
+    if (pendingActions.handoffRequest) {
+      await performTuiHandoff(pendingActions.handoffRequest, rootDirectory);
+    }
   };
-  return { store, instance, settle };
+  return { store, instance, pendingActions, executePendingActions };
 };
 
 interface ScanExecutionContext {
@@ -346,7 +380,8 @@ const runMountedScan = async (
   blockingLevel: BlockingLevel,
   executeScan: ExecuteTuiScan,
 ): Promise<RunScanAppResult> => {
-  const { store, instance, settle } = await mountScanApp(rootDirectory);
+  const { store, instance, pendingActions, executePendingActions } =
+    await mountScanApp(rootDirectory);
   const context: ScanExecutionContext = {
     store,
     ...presentation,
@@ -355,16 +390,20 @@ const runMountedScan = async (
   try {
     const completedScan = await executeScan(context);
     await instance.waitUntilExit();
-    await printExitFooter({
-      diagnostics: completedScan.diagnostics,
-      scoreResult: completedScan.scoreResult,
-      projectName: completedScan.projectName,
-      scannedFileCount: completedScan.scannedFileCount,
-      elapsedMilliseconds: completedScan.elapsedMilliseconds,
-      isOffline: context.isOffline,
-      lintFailureReason: resolveLintFailureReason(completedScan.scans.map(({ result }) => result)),
-    });
-    await settle();
+    if (!pendingActions.didQuit) {
+      await printExitFooter({
+        diagnostics: completedScan.diagnostics,
+        scoreResult: completedScan.scoreResult,
+        projectName: completedScan.projectName,
+        scannedFileCount: completedScan.scannedFileCount,
+        elapsedMilliseconds: completedScan.elapsedMilliseconds,
+        isOffline: context.isOffline,
+        lintFailureReason: resolveLintFailureReason(
+          completedScan.scans.map(({ result }) => result),
+        ),
+      });
+    }
+    await executePendingActions();
     return {
       shouldFail: shouldFailScanGate({ scans: completedScan.scans, blockingLevel }),
     };
@@ -467,9 +506,13 @@ const runMultiProjectScan = async (
     const combinedDiagnostics = projects.flatMap((project) =>
       qualifyDiagnosticPaths(project.diagnostics, rootDirectory, project.rootDirectory),
     );
-    const worst = findLowestScored(projects);
-    const projectedScore = worst
-      ? await computeProjectedScore(combinedDiagnostics, [...worst.diagnostics], worst.score)
+    const lowestScoredReport = findLowestScoredReport(projects);
+    const projectedScore = lowestScoredReport
+      ? await computeProjectedScore(
+          combinedDiagnostics,
+          [...lowestScoredReport.diagnostics],
+          lowestScoredReport.score,
+        )
       : null;
     const scannedFileCount = countUniqueScannedFiles(results.map(({ result }) => result));
     const elapsedMilliseconds = performance.now() - startTime;
@@ -477,7 +520,7 @@ const runMultiProjectScan = async (
 
     const summary: MultiProjectSummary = {
       projects,
-      aggregateScore: worst?.score ?? null,
+      aggregateScore: lowestScoredReport?.score ?? null,
       projectedScore,
       combinedDiagnostics,
       scannedFileCount,

@@ -2,13 +2,18 @@ import path from "node:path";
 import figures from "figures";
 import { Box, Text, useInput } from "ink";
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import type { WorkspacePackage } from "@react-doctor/core";
 import {
-  TUI_PRINTABLE_ASCII_MIN_CODE_POINT,
   TUI_PROJECT_SELECT_CHROME_ROWS,
+  TUI_PROJECT_SELECT_FILTER_ROWS,
+  TUI_PROJECT_SELECT_FOOTER_MARGIN_ROWS,
   TUI_PROJECT_SELECT_MIN_LIST_ROWS,
   TUI_PROJECT_NAME_GAP_COLUMNS,
 } from "../../utils/constants.js";
+import { clampNumber } from "../../utils/clamp-number.js";
+import { isPrintableInput } from "../../utils/is-printable-input.js";
+import { resolveVisibleStart } from "../../utils/resolve-visible-start.js";
 import { useExitOnCtrlC } from "../hooks/use-exit-on-ctrl-c.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { fuzzyMatch } from "../lib/fuzzy-match.js";
@@ -26,13 +31,6 @@ interface ScoredPackage {
   readonly matchedIndices: ReadonlyArray<number>;
 }
 
-const clamp = (value: number, min: number, max: number): number =>
-  Math.max(min, Math.min(max, value));
-
-const isPrintable = (input: string): boolean =>
-  input.length > 0 &&
-  [...input].every((character) => character.charCodeAt(0) >= TUI_PRINTABLE_ASCII_MIN_CODE_POINT);
-
 interface MatchedNameProps {
   readonly name: string;
   readonly matchedIndices: ReadonlyArray<number>;
@@ -47,16 +45,16 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
       </Text>
     );
   }
-  const matched = new Set(matchedIndices);
+  const matchedIndexSet = new Set(matchedIndices);
   return (
     <Text bold={isSelected} wrap="truncate-end">
-      {[...name].map((char, index) =>
-        matched.has(index) ? (
+      {[...name].map((character, index) =>
+        matchedIndexSet.has(index) ? (
           <Text key={index} color="yellow">
-            {char}
+            {character}
           </Text>
         ) : (
-          char
+          character
         ),
       )}
     </Text>
@@ -67,134 +65,172 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
   const { rows: terminalRows } = useStdoutDimensions();
   useExitOnCtrlC();
 
-  const [mode, setMode] = useState<SelectMode>("list");
-  const [query, setQuery] = useState("");
+  const [selectionMode, setSelectionMode] = useState<SelectMode>("list");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [checkedDirectories, setCheckedDirectories] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
-  const matches = useMemo<ReadonlyArray<ScoredPackage>>(() => {
-    const scored = packages.flatMap((workspacePackage) => {
-      const result = fuzzyMatch(query, workspacePackage.name);
+  const matchedPackages = useMemo<ReadonlyArray<ScoredPackage>>(() => {
+    const scoredPackages = packages.flatMap((workspacePackage) => {
+      const result = fuzzyMatch(searchQuery, workspacePackage.name);
       return result ? [{ workspacePackage, result }] : [];
     });
-    if (query.length > 0) scored.sort((a, b) => b.result.score - a.result.score);
-    return scored.map(({ workspacePackage, result }) => ({
+    if (searchQuery.length > 0) {
+      scoredPackages.sort(
+        (leftPackage, rightPackage) => rightPackage.result.score - leftPackage.result.score,
+      );
+    }
+    return scoredPackages.map(({ workspacePackage, result }) => ({
       workspacePackage,
       matchedIndices: result.matchedIndices,
     }));
-  }, [packages, query]);
+  }, [packages, searchQuery]);
 
-  const isSearching = mode === "search";
-  const hasFilterLine = isSearching || query.length > 0;
+  const isSearching = selectionMode === "search";
+  const hasFilterLine = isSearching || searchQuery.length > 0;
   const listHeight = Math.max(
     TUI_PROJECT_SELECT_MIN_LIST_ROWS,
     Math.min(
-      Math.max(matches.length, 1),
-      terminalRows - TUI_PROJECT_SELECT_CHROME_ROWS - (hasFilterLine ? 1 : 0),
+      Math.max(matchedPackages.length, TUI_PROJECT_SELECT_MIN_LIST_ROWS),
+      terminalRows -
+        TUI_PROJECT_SELECT_CHROME_ROWS -
+        (hasFilterLine ? TUI_PROJECT_SELECT_FILTER_ROWS : 0),
     ),
   );
 
-  const boundedSelected = matches.length === 0 ? 0 : clamp(selectedIndex, 0, matches.length - 1);
-  const current = matches[boundedSelected]?.workspacePackage;
+  const selectedPackageIndex =
+    matchedPackages.length === 0 ? 0 : clampNumber(selectedIndex, 0, matchedPackages.length - 1);
+  const selectedWorkspacePackage = matchedPackages[selectedPackageIndex]?.workspacePackage;
 
-  const setFilter = (next: string): void => {
-    setQuery(next);
+  const updateFilter = (nextSearchQuery: string): void => {
+    setSearchQuery(nextSearchQuery);
     setSelectedIndex(0);
-    setOffset(0);
+    setScrollOffset(0);
   };
 
-  const move = (delta: number): void => {
-    if (matches.length === 0) return;
-    const next = clamp(boundedSelected + delta, 0, matches.length - 1);
-    setSelectedIndex(next);
-    setOffset((current) => {
-      if (next < current) return next;
-      if (next >= current + listHeight) return next - listHeight + 1;
-      return current;
+  const moveSelection = (indexDelta: number): void => {
+    if (matchedPackages.length === 0) return;
+    const nextSelectedIndex = clampNumber(
+      selectedPackageIndex + indexDelta,
+      0,
+      matchedPackages.length - 1,
+    );
+    setSelectedIndex(nextSelectedIndex);
+    setScrollOffset((currentOffset) => {
+      if (nextSelectedIndex < currentOffset) return nextSelectedIndex;
+      if (nextSelectedIndex >= currentOffset + listHeight) {
+        return nextSelectedIndex - listHeight + 1;
+      }
+      return currentOffset;
     });
   };
 
-  const toggleChecked = (directory: string): void => {
-    setChecked((current) => {
-      const next = new Set(current);
-      if (next.has(directory)) next.delete(directory);
-      else next.add(directory);
-      return next;
+  const toggleCheckedDirectory = (directory: string): void => {
+    setCheckedDirectories((currentCheckedDirectories) => {
+      const updatedCheckedDirectories = new Set(currentCheckedDirectories);
+      if (updatedCheckedDirectories.has(directory)) updatedCheckedDirectories.delete(directory);
+      else updatedCheckedDirectories.add(directory);
+      return updatedCheckedDirectories;
     });
   };
 
-  const submit = (directories: ReadonlyArray<string>): void => {
+  const submitDirectories = (directories: ReadonlyArray<string>): void => {
     onSubmit([...directories]);
   };
 
-  const scanSelection = (): void => {
-    if (checked.size > 0) {
+  const submitSelection = (): void => {
+    if (checkedDirectories.size > 0) {
       const selectedDirectories: string[] = [];
       for (const workspacePackage of packages) {
-        if (checked.has(workspacePackage.directory)) {
+        if (checkedDirectories.has(workspacePackage.directory)) {
           selectedDirectories.push(workspacePackage.directory);
         }
       }
-      return submit(selectedDirectories);
+      return submitDirectories(selectedDirectories);
     }
-    if (current) submit([current.directory]);
+    if (selectedWorkspacePackage) submitDirectories([selectedWorkspacePackage.directory]);
   };
 
   useInput((input, key) => {
     if (isSearching) {
-      if (key.return) return setMode("list");
+      if (key.return) return setSelectionMode("list");
       if (key.escape) {
-        setFilter("");
-        return setMode("list");
+        updateFilter("");
+        return setSelectionMode("list");
       }
-      if (key.downArrow || (key.ctrl && input === "n")) return move(1);
-      if (key.upArrow || (key.ctrl && input === "p")) return move(-1);
-      if (key.backspace || key.delete) return setFilter(query.slice(0, -1));
-      if (isPrintable(input) && !key.ctrl && !key.meta) setFilter(query + input);
+      if (key.downArrow || (key.ctrl && input === "n")) return moveSelection(1);
+      if (key.upArrow || (key.ctrl && input === "p")) return moveSelection(-1);
+      if (key.backspace || key.delete) return updateFilter(searchQuery.slice(0, -1));
+      if (isPrintableInput(input) && !key.ctrl && !key.meta) updateFilter(searchQuery + input);
       return;
     }
 
-    if (input === "/") return setMode("search");
+    if (input === "/") return setSelectionMode("search");
     if (input === " ") {
-      if (current) toggleChecked(current.directory);
+      if (selectedWorkspacePackage) toggleCheckedDirectory(selectedWorkspacePackage.directory);
       return;
     }
     if (input === "a") {
-      if (matches.length === 0) return;
-      setChecked((current) => {
-        const next = new Set(current);
-        const shouldClearMatches = matches.every((match) =>
-          current.has(match.workspacePackage.directory),
+      if (matchedPackages.length === 0) return;
+      setCheckedDirectories((currentCheckedDirectories) => {
+        const updatedCheckedDirectories = new Set(currentCheckedDirectories);
+        const shouldClearMatches = matchedPackages.every((matchedPackage) =>
+          currentCheckedDirectories.has(matchedPackage.workspacePackage.directory),
         );
-        for (const match of matches) {
-          if (shouldClearMatches) next.delete(match.workspacePackage.directory);
-          else next.add(match.workspacePackage.directory);
+        for (const matchedPackage of matchedPackages) {
+          if (shouldClearMatches) {
+            updatedCheckedDirectories.delete(matchedPackage.workspacePackage.directory);
+          } else {
+            updatedCheckedDirectories.add(matchedPackage.workspacePackage.directory);
+          }
         }
-        return next;
+        return updatedCheckedDirectories;
       });
       return;
     }
-    if (input === "q") return submit([]);
+    if (input === "q") return submitDirectories([]);
     if (key.escape) {
-      if (query.length > 0) return setFilter("");
-      if (checked.size > 0) return setChecked(new Set());
-      return submit([]);
+      if (searchQuery.length > 0) return updateFilter("");
+      if (checkedDirectories.size > 0) return setCheckedDirectories(new Set());
+      return submitDirectories([]);
     }
-    if (key.return) return scanSelection();
-    if (key.downArrow || input === "j") return move(1);
-    if (key.upArrow || input === "k") return move(-1);
-    if (key.pageDown) return move(listHeight);
-    if (key.pageUp) return move(-listHeight);
+    if (key.return) return submitSelection();
+    if (key.downArrow || input === "j") return moveSelection(1);
+    if (key.upArrow || input === "k") return moveSelection(-1);
+    if (key.pageDown) return moveSelection(listHeight);
+    if (key.pageUp) return moveSelection(-listHeight);
   });
 
-  const maxOffset = Math.max(0, matches.length - listHeight);
-  const visibleStart = Math.min(offset, maxOffset);
-  const visibleMatches = matches.slice(visibleStart, visibleStart + listHeight);
+  const visibleStart = resolveVisibleStart({
+    itemCount: matchedPackages.length,
+    offset: scrollOffset,
+    selectedIndex: selectedPackageIndex,
+    viewportHeight: listHeight,
+  });
+  const visibleMatches = matchedPackages.slice(visibleStart, visibleStart + listHeight);
   const longestNameLength = Math.max(
     0,
     ...packages.map((workspacePackage) => workspacePackage.name.length),
   );
+  let filterLine: ReactNode = null;
+  if (isSearching) {
+    filterLine = (
+      <Text wrap="truncate-end">
+        <Text color="cyan">{"/ "}</Text>
+        {searchQuery.length > 0 ? <Text>{searchQuery}</Text> : null}
+        <Text inverse> </Text>
+      </Text>
+    );
+  } else if (searchQuery.length > 0) {
+    filterLine = (
+      <Text dimColor wrap="truncate-end">
+        {`filter: ${searchQuery}`}
+      </Text>
+    );
+  }
 
   return (
     <Box flexDirection="column">
@@ -202,30 +238,20 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
         <Text bold>Select projects to scan</Text>
         <Text dimColor>
           {"  "}
-          {checked.size}/{packages.length}
+          {checkedDirectories.size}/{packages.length}
         </Text>
       </Text>
-      {isSearching ? (
-        <Text wrap="truncate-end">
-          <Text color="cyan">{"/ "}</Text>
-          {query.length > 0 ? <Text>{query}</Text> : null}
-          <Text inverse> </Text>
-        </Text>
-      ) : query.length > 0 ? (
-        <Text dimColor wrap="truncate-end">
-          {`filter: ${query}`}
-        </Text>
-      ) : null}
+      {filterLine}
       <Box flexDirection="column" height={listHeight}>
-        {matches.length === 0 ? (
+        {matchedPackages.length === 0 ? (
           <Text dimColor>No matching projects</Text>
         ) : (
-          visibleMatches.map((match, index) => {
-            const matchIndex = visibleStart + index;
-            const isSelected = matchIndex === boundedSelected;
-            const isChecked = checked.has(match.workspacePackage.directory);
+          visibleMatches.map((matchedPackage, visiblePackageIndex) => {
+            const matchIndex = visibleStart + visiblePackageIndex;
+            const isSelected = matchIndex === selectedPackageIndex;
+            const isChecked = checkedDirectories.has(matchedPackage.workspacePackage.directory);
             return (
-              <Text key={match.workspacePackage.directory} wrap="truncate-end">
+              <Text key={matchedPackage.workspacePackage.directory} wrap="truncate-end">
                 <Text color={isSelected ? "cyan" : undefined}>
                   {isSelected ? `${figures.pointer} ` : "  "}
                 </Text>
@@ -233,30 +259,34 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
                   {isChecked ? `${figures.radioOn} ` : `${figures.radioOff} `}
                 </Text>
                 <MatchedName
-                  name={match.workspacePackage.name}
-                  matchedIndices={match.matchedIndices}
+                  name={matchedPackage.workspacePackage.name}
+                  matchedIndices={matchedPackage.matchedIndices}
                   isSelected={isSelected}
                 />
                 <Text dimColor>
                   {" ".repeat(
                     longestNameLength -
-                      match.workspacePackage.name.length +
+                      matchedPackage.workspacePackage.name.length +
                       TUI_PROJECT_NAME_GAP_COLUMNS,
                   )}
-                  {path.relative(rootDirectory, match.workspacePackage.directory) || "."}
+                  {path.relative(rootDirectory, matchedPackage.workspacePackage.directory) || "."}
                 </Text>
               </Text>
             );
           })
         )}
       </Box>
-      <Box marginTop={1}>
+      <Box marginTop={TUI_PROJECT_SELECT_FOOTER_MARGIN_ROWS}>
         <Text dimColor wrap="truncate-end">
-          {isSearching
-            ? "type to filter · enter confirm · esc clear"
-            : "space select · a all · / search · "}
-          {isSearching ? null : <Text color="cyan">enter</Text>}
-          {isSearching ? null : " to submit · q cancel"}
+          {isSearching ? (
+            "type to filter · enter confirm · esc clear"
+          ) : (
+            <>
+              {"space select · a all · / search · "}
+              <Text color="cyan">enter</Text>
+              {" to submit · q cancel"}
+            </>
+          )}
         </Text>
       </Box>
     </Box>

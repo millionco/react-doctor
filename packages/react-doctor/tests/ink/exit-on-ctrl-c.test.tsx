@@ -1,6 +1,7 @@
 import { Text } from "ink";
 import { render } from "ink-testing-library";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { CANONICAL_GITHUB_URL, DOCS_URL } from "@react-doctor/core";
 import { useExitOnCtrlC } from "../../src/cli/ink/hooks/use-exit-on-ctrl-c.js";
 
 const Harness = () => {
@@ -17,6 +18,7 @@ describe("useExitOnCtrlC", () => {
 
   it("force-exits with code 130 on Ctrl+C", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const { stdin, unmount } = render(<Harness />);
     await flush();
@@ -25,6 +27,8 @@ describe("useExitOnCtrlC", () => {
     await flush();
 
     expect(exitSpy).toHaveBeenCalledWith(130);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(`Docs: ${DOCS_URL}`));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(`GitHub: ${CANONICAL_GITHUB_URL}`));
     unmount();
   });
 

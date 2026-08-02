@@ -66,6 +66,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "figures": "^6.1.0",
     "ink": "^7.1.0",
+    "ink-link": "^5.0.0",
     "ink-spinner": "^5.0.0",
     "jiti": "^2.7.0",
     "magicast": "^0.5.3",

@@ -1,6 +1,8 @@
 import { useInput } from "ink";
 import { useRef, useState } from "react";
 import { TUI_HALF_PAGE_DIVISOR } from "../../utils/constants.js";
+import { clampNumber } from "../../utils/clamp-number.js";
+import { resolveVisibleStart } from "../../utils/resolve-visible-start.js";
 
 export interface ScrollViewport {
   readonly selectedIndex: number;
@@ -11,12 +13,21 @@ export interface ScrollViewport {
 export interface UseScrollViewportOptions {
   readonly itemCount: number;
   readonly height: number;
+  readonly initialSelectedIndex?: number;
   readonly isActive?: boolean;
   readonly isSelectable?: (index: number) => boolean;
+  readonly onSelectedIndexChange?: (index: number) => void;
 }
 
 export const useScrollViewport = (options: UseScrollViewportOptions): ScrollViewport => {
-  const { itemCount, height, isActive = true, isSelectable } = options;
+  const {
+    itemCount,
+    height,
+    initialSelectedIndex = 0,
+    isActive = true,
+    isSelectable,
+    onSelectedIndexChange,
+  } = options;
 
   const canSelect = (index: number): boolean =>
     index >= 0 && index < itemCount && (isSelectable ? isSelectable(index) : true);
@@ -36,21 +47,22 @@ export const useScrollViewport = (options: UseScrollViewportOptions): ScrollView
   };
 
   const [selectedIndex, setSelectedIndex] = useState(() => {
-    const first = seekSelectable(0, 1);
+    const first = seekSelectable(clampNumber(initialSelectedIndex, 0, itemCount - 1), 1);
     return first === -1 ? 0 : first;
   });
   const [offset, setOffset] = useState(0);
   const awaitingSecondG = useRef(false);
 
-  const clampIndex = (index: number): number => Math.max(0, Math.min(itemCount - 1, index));
-
   const moveTo = (rawIndex: number, step: number): void => {
-    const next = nearestSelectable(clampIndex(rawIndex), step);
-    setSelectedIndex(next);
-    setOffset((current) => {
-      if (next < current) return next;
-      if (next >= current + height) return next - height + 1;
-      return current;
+    const nextSelectedIndex = nearestSelectable(clampNumber(rawIndex, 0, itemCount - 1), step);
+    setSelectedIndex(nextSelectedIndex);
+    onSelectedIndexChange?.(nextSelectedIndex);
+    setOffset((currentOffset) => {
+      if (nextSelectedIndex < currentOffset) return nextSelectedIndex;
+      if (nextSelectedIndex >= currentOffset + height) {
+        return nextSelectedIndex - height + 1;
+      }
+      return currentOffset;
     });
   };
 
@@ -82,11 +94,15 @@ export const useScrollViewport = (options: UseScrollViewportOptions): ScrollView
     { isActive },
   );
 
-  const maxOffset = Math.max(0, itemCount - height);
-  const visibleStart = Math.min(offset, maxOffset);
   const resolvedSelected = canSelect(selectedIndex)
     ? selectedIndex
-    : nearestSelectable(clampIndex(selectedIndex), 1);
+    : nearestSelectable(clampNumber(selectedIndex, 0, itemCount - 1), 1);
+  const visibleStart = resolveVisibleStart({
+    itemCount,
+    offset,
+    selectedIndex: resolvedSelected,
+    viewportHeight: height,
+  });
   return {
     selectedIndex: resolvedSelected,
     visibleStart,

@@ -6,7 +6,7 @@ export interface StatusBarProps {
   readonly errorCount: number;
   readonly warningCount: number;
   readonly position: number;
-  readonly groupCount: number;
+  readonly issueCount: number;
   readonly unreadCount?: number;
   readonly projectCount?: number;
   readonly keyHints?: ReactNode;
@@ -19,7 +19,7 @@ export const StatusBar = ({
   errorCount,
   warningCount,
   position,
-  groupCount,
+  issueCount,
   unreadCount,
   projectCount,
   keyHints = <Text dimColor>↑/↓ to move</Text>,
@@ -29,12 +29,16 @@ export const StatusBar = ({
   const counts = (
     <>
       <Text bold>
-        {total} {total === 1 ? "issue" : "issues"}
+        {total} {total === 1 ? "finding" : "findings"}
       </Text>
       <Text dimColor>{"  "}</Text>
-      <Text color="red">{errorCount} errors</Text>
+      <Text color="red">
+        {errorCount} {errorCount === 1 ? "error" : "errors"}
+      </Text>
       <Text dimColor>{"  "}</Text>
-      <Text color="yellow">{warningCount} warnings</Text>
+      <Text color="yellow">
+        {warningCount} {warningCount === 1 ? "warning" : "warnings"}
+      </Text>
     </>
   );
 
@@ -44,7 +48,7 @@ export const StatusBar = ({
         {counts}
         <Text dimColor>
           {"  ·  "}
-          {position}/{groupCount}
+          issue {position}/{issueCount}
           {"  ·  "}
         </Text>
         {keyHints}
@@ -58,7 +62,7 @@ export const StatusBar = ({
         {counts}
         <Text dimColor>
           {"  ·  "}
-          {position}/{groupCount}
+          issue {position}/{issueCount}
         </Text>
         {projectCount !== undefined ? (
           <Text dimColor>
@@ -70,7 +74,7 @@ export const StatusBar = ({
       <Text wrap="truncate-end">
         {unreadCount !== undefined ? (
           <Text color={unreadCount > 0 ? "cyan" : undefined} dimColor={unreadCount === 0}>
-            {unreadCount} unread{"  ·  "}
+            {unreadCount} {unreadCount === 1 ? "issue" : "issues"} unread{"  ·  "}
           </Text>
         ) : null}
         {keyHints}

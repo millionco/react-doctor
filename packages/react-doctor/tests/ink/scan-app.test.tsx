@@ -1,14 +1,16 @@
 import { render } from "ink-testing-library";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { GITHUB_ACTIONS_SETUP_URL } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import {
+  TUI_DEFAULT_TERMINAL_COLUMNS,
   TUI_REPORT_COMPACT_MAX_ROWS,
   TUI_REPORT_STACKED_MAX_LIST_ROWS,
   TUI_REPORT_STATUS_ROWS,
-  TUI_REPORT_WIDE_MIN_COLUMNS,
-  TUI_REPORT_WIDE_MIN_ROWS,
+  TUI_REPORT_VIEWPORT_MARGIN_ROWS,
 } from "../../src/cli/utils/constants.js";
 import * as launchAgent from "../../src/cli/utils/launch-agent.js";
+import * as openUrlModule from "../../src/cli/utils/open-url.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
 import { createScanStore } from "../../src/cli/ink/scan-store.js";
 import { severityVariant } from "../../src/cli/ink/lib/severity-variants.js";
@@ -37,7 +39,6 @@ interface TerminalDimensions {
   readonly rows?: number;
 }
 
-// ink-testing-library needs a tick for effects (useInput wiring) to flush.
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));
 
 const resizeTerminal = (stdout: TerminalStdout, dimensions: TerminalDimensions): void => {
@@ -90,10 +91,8 @@ describe("ScanApp", () => {
     unmount();
   });
 
-  it("renders the score header and the full sorted rule list once settled", async () => {
+  it("renders the score and actions before opening the sorted issue list", async () => {
     const store = createScanStore();
-    // All in one category so the grouped list shows a single "Correctness"
-    // header with both rules under it (fits the small test viewport).
     const diagnostics = [
       makeDiagnostic({ rule: "rules-of-hooks", severity: "error", category: "Correctness" }),
       makeDiagnostic({
@@ -121,7 +120,7 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    const { frames, lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
     await flush();
     resizeTerminal(stdout, {
       rows: TUI_REPORT_COMPACT_MAX_ROWS + TUI_REPORT_STATUS_ROWS,
@@ -134,17 +133,68 @@ describe("ScanApp", () => {
     expect(frame).toContain("demo-app");
     expect(frame).toContain("React Doctor");
     expect(frame).toContain("┌─────┐");
-    expect(frame).toContain(`› ${severityVariant("error").icon} react-doctor/rules-of-hooks`);
-    // No `title` on the test diagnostics → the row falls back to `plugin/rule`.
-    // The detail headline is the title alone; category + severity ride a dim tag.
-    expect(frame).toContain("react-doctor/rules-of-hooks");
-    expect(frame).toContain("Correctness · error");
-    // The second rule groups its two sites into one row with a count badge.
-    expect(frame).toContain("×2");
+    expect(frame).toContain("› Review 2 issues");
+    expect(frame).not.toContain("Top 1 error to review first");
+    expect(frame).not.toContain("Why Your users briefly see stale state on every prop");
+    const frameLines = frame.split("\n");
+    const scoreBarIndex = frameLines.findIndex((line) => line.includes("█"));
+    expect(frameLines[scoreBarIndex + 1]).toContain("React Doctor (https://react.doctor)");
+
+    const viewerFrameStart = frames.length;
+    stdin.write("\r");
+    await flush();
+    const issueFrame = lastFrame() ?? "";
+    const unreadFrames = frames
+      .slice(viewerFrameStart)
+      .filter((frame) => frame.includes("issue unread"));
+    expect(unreadFrames.length).toBeGreaterThan(0);
+    expect(unreadFrames.every((frame) => frame.includes("1 issue unread"))).toBe(true);
+    expect(issueFrame).toContain(
+      `› ${severityVariant("error").icon} Correctness: react-doctor/rules-of-hooks`,
+    );
+    expect(issueFrame).toContain("react-doctor/rules-of-hooks");
+    expect(issueFrame).toContain("Correctness · error");
+    expect(issueFrame).toContain("×2");
     unmount();
   });
 
-  it("shows the score projection and per-category breakdown", async () => {
+  it("keeps detailed findings out of the landing screen", async () => {
+    const store = createScanStore();
+    const diagnostics = Array.from({ length: 4 }, (_, diagnosticIndex) =>
+      makeDiagnostic({
+        rule: `preview-rule-${diagnosticIndex}`,
+        title: `Preview error ${diagnosticIndex}`,
+        severity: "error",
+        filePath: "src/cli/ink/scan-app.tsx",
+        line: diagnosticIndex + 1,
+      }),
+    );
+    store.setReport({
+      diagnostics,
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: process.cwd(),
+      scannedFileCount: diagnostics.length,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).not.toContain("Top 3 errors to review first");
+    expect(lastFrame()).not.toContain("src/cli/ink/scan-app.tsx:1");
+
+    resizeTerminal(stdout, { columns: 160, rows: 30 });
+    await flush();
+    stdin.write("\r");
+    await flush();
+    expect(lastFrame()).toContain("Preview error 0");
+    expect(lastFrame()).toContain("src/cli/ink/scan-app.tsx:1");
+    unmount();
+  });
+
+  it("shows the score projection before category details in the viewer", async () => {
     const store = createScanStore();
     store.setReport({
       diagnostics: [
@@ -161,15 +211,18 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
     await flush();
     resizeTerminal(stdout, { rows: 30 });
     await flush();
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("You could improve");
-    expect(frame).toContain("+16%");
-    expect(frame).toContain("Correctness");
-    expect(frame).toContain("Bugs");
+    expect(frame).toContain("Potential score 88 after priority fixes +16");
+    expect(frame).not.toContain("Correctness: react-doctor/rules-of-hooks");
+    expect(frame).not.toContain("Bugs");
+    stdin.write("\r");
+    await flush();
+    expect(lastFrame()).toContain("Correctness");
+    expect(lastFrame()).toContain("Bugs");
     unmount();
   });
 
@@ -215,9 +268,6 @@ describe("ScanApp", () => {
 
   it("renders a flat monorepo summary: aggregate score, combined list, folder-qualified paths", async () => {
     const store = createScanStore();
-    // Combined diagnostics carry folder-qualified paths (rewritten relative to
-    // the monorepo root in `runScanApp`) so the flat list shows each finding's
-    // project without a per-folder drill-in.
     const webScore: ScoreResult = {
       score: 58,
       label: "Needs work",
@@ -275,28 +325,28 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
     await flush();
     resizeTerminal(stdout, { rows: 30 });
     await flush();
+    expect(lastFrame()).toContain("› Review 2 issues");
+    expect(lastFrame()).toContain("58");
+    stdin.write("\r");
+    await flush();
     const frame = lastFrame() ?? "";
-    // Aggregate score is the worst project's (58, not 91).
-    expect(frame).toContain("58");
-    // Both projects' findings appear in one flat list (by rule title).
     expect(frame).toContain("react-doctor/rules-of-hooks");
     expect(frame).toContain("react-doctor/no-array-index-key");
     expect(frame.indexOf("react-doctor/no-array-index-key")).toBeLessThan(
       frame.indexOf("react-doctor/rules-of-hooks"),
     );
-    // The selected row's full, folder-qualified path shows in the detail pane.
     expect(frame).toContain("apps/api/src/Cart.tsx");
-    // The project count rides the status bar instead of a navigable list.
     expect(frame).toContain("2 projects");
     unmount();
   });
 
   it("moves the selection with j/k and quits on q", async () => {
     const store = createScanStore();
+    const onQuit = vi.fn();
     store.setReport({
       diagnostics: [
         makeDiagnostic({ rule: "rules-of-hooks", severity: "error", category: "Correctness" }),
@@ -312,28 +362,47 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdin, stdout, unmount } = render(
+      <ScanApp store={store} canAddToCi onAddToCi={() => {}} onQuit={onQuit} />,
+    );
     await flush();
     resizeTerminal(stdout, { rows: 30 });
     await flush();
 
-    // First row selected by default → detail pane shows the first rule's title
-    // with a dim `category · severity` tag beneath it.
+    expect(lastFrame()).toContain("› Review 2 issues");
+    stdin.write("\r");
+    await flush();
+
     expect(lastFrame() ?? "").toContain("react-doctor/rules-of-hooks");
     expect(lastFrame() ?? "").toContain("Correctness · error");
 
     stdin.write("j");
     await flush();
-    // After moving down, the detail pane reflects the second rule.
     expect(lastFrame() ?? "").toContain("no-array-index-key");
 
-    // `q` is handled without throwing (exit is wired through useApp()).
+    stdin.write("\u001B");
+    await flush();
+    const returnedLandingFrame = lastFrame() ?? "";
+    expect(returnedLandingFrame).toContain("› Add to GitHub Actions (Recommended)");
+    expect(returnedLandingFrame).toContain("  Review 2 issues");
+    expect(returnedLandingFrame).not.toContain("Top 1 error to review first");
+
+    stdin.write("k");
+    await flush();
+    stdin.write("\r");
+    await flush();
+    expect(lastFrame()).toContain("issue 2/2");
+    expect(lastFrame()).toContain("› ⚠ State & Effects: react-doctor/no-array-index-key");
+    expect(lastFrame()).toContain("0 issues unread");
+
     stdin.write("q");
     await flush();
+    expect(onQuit).toHaveBeenCalledOnce();
     unmount();
   });
 
-  it("shows fix actions on a dedicated theme-safe screen", async () => {
+  it("copies the selected issue context without opening an action menu", async () => {
+    const copyToClipboard = vi.spyOn(launchAgent, "copyToClipboard").mockResolvedValue(true);
     const store = createScanStore();
     store.setReport({
       diagnostics: [
@@ -358,18 +427,15 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
 
-    expect(lastFrame()).toContain("Fix react-doctor/rules-of-hooks");
-    expect(lastFrame()).toContain("› Copy prompt");
-    expect(lastFrame()).toContain("Codex");
-    expect(lastFrame()).not.toContain("Correctness · error");
-
-    stdin.write("j");
-    await flush();
-    expect(lastFrame()).toContain("› Codex");
-
-    stdin.write("\u001B");
-    await flush();
+    expect(lastFrame()).toContain("enter copy context");
     expect(lastFrame()).toContain("Correctness · error");
+
+    stdin.write("\r");
+    await flush();
+    expect(copyToClipboard).toHaveBeenCalledOnce();
+    expect(copyToClipboard.mock.calls[0]?.[0]).toContain("react-doctor/rules-of-hooks");
+    expect(lastFrame()).toContain("✓ Copied issue context");
+    expect(lastFrame()).not.toContain("Codex");
     unmount();
   });
 
@@ -399,11 +465,38 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
 
-    expect(lastFrame()).toContain("✓ Copied fix prompt");
+    expect(lastFrame()).toContain("✓ Copied issue context");
     unmount();
   });
 
-  it("uses the side-by-side layout on a wide terminal", async () => {
+  it("shows a retry when copying issue context fails", async () => {
+    vi.spyOn(launchAgent, "copyToClipboard").mockResolvedValue(false);
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { rows: TUI_REPORT_COMPACT_MAX_ROWS });
+    await flush();
+    stdin.write("\r");
+    await flush();
+    stdin.write("\r");
+    await flush();
+
+    expect(lastFrame()).toContain("Copy failed · enter retry");
+    unmount();
+  });
+
+  it("fills a wide terminal with the side-by-side issue browser", async () => {
     const store = createScanStore();
     store.setReport({
       diagnostics: [
@@ -411,7 +504,7 @@ describe("ScanApp", () => {
         makeDiagnostic({ rule: "no-array-index-key", severity: "warning", category: "Bugs" }),
       ],
       score: SCORE,
-      projectedScore: null,
+      projectedScore: 88,
       projectName: "demo-app",
       rootDirectory: "/tmp/demo-app",
       scannedFileCount: 2,
@@ -420,21 +513,30 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
-    const terminalRows = TUI_REPORT_WIDE_MIN_ROWS * 2;
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    const terminalRows = TUI_REPORT_COMPACT_MAX_ROWS * 2;
     await flush();
     resizeTerminal(stdout, {
-      columns: TUI_REPORT_WIDE_MIN_COLUMNS,
+      columns: TUI_DEFAULT_TERMINAL_COLUMNS * 2,
       rows: terminalRows,
     });
     await flush();
 
-    const frame = lastFrame() ?? "";
-    expect(frame.split("\n").length).toBeLessThanOrEqual(terminalRows + TUI_REPORT_STATUS_ROWS - 1);
-    // The split layout draws a vertical divider between the list and the detail,
-    // so a row's title and its detail headline share a line.
-    expect(frame).toContain("│");
-    expect(frame).toMatch(/react-doctor\/rules-of-hooks.*│/);
+    const landingFrame = lastFrame() ?? "";
+    const faceStart = landingFrame.split("\n").findIndex((line) => line.includes("┌─────┐"));
+    expect(landingFrame.split("\n")[faceStart + 1]).toContain("│ • • │");
+    expect(landingFrame.split("\n")[faceStart + 2]).toContain("│  ─  │");
+    expect(landingFrame.split("\n")[faceStart + 3]).toContain("└─────┘");
+
+    stdin.write("\r");
+    await flush();
+    const issueFrame = lastFrame() ?? "";
+    expect(issueFrame.split("\n").length).toBe(terminalRows - TUI_REPORT_VIEWPORT_MARGIN_ROWS);
+    expect(issueFrame).toContain("┌─────┐");
+    expect(issueFrame).toContain("React Doctor (https://react.doctor)");
+    expect(issueFrame).not.toContain("Potential score");
+    expect(issueFrame).toContain("│");
+    expect(issueFrame).toMatch(/react-doctor\/rules-of-hooks.*│/);
     unmount();
   });
 
@@ -461,11 +563,14 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
     resizeTerminal(stdout, {
-      columns: TUI_REPORT_WIDE_MIN_COLUMNS - 1,
+      columns: TUI_DEFAULT_TERMINAL_COLUMNS,
       rows: TUI_REPORT_COMPACT_MAX_ROWS * 2,
     });
+    await flush();
+
+    stdin.write("\r");
     await flush();
 
     const frame = lastFrame() ?? "";
@@ -501,20 +606,113 @@ describe("ScanApp", () => {
     resizeTerminal(stdout, { rows: TUI_REPORT_COMPACT_MAX_ROWS });
     await flush();
 
+    expect(lastFrame()).toContain("┌─────┐");
+    expect(lastFrame()).toContain("› Review 30 issues");
+    stdin.write("\r");
+    await flush();
+
     expect((lastFrame() ?? "").split("\n").length).toBeLessThanOrEqual(TUI_REPORT_COMPACT_MAX_ROWS);
     expect(lastFrame()).not.toContain("┌─────┐");
     expect(lastFrame()).not.toContain("Your users briefly see stale state");
-    expect(lastFrame()).toContain("30 issues");
+    expect(lastFrame()).toContain("30 findings");
 
     stdin.write("G");
     await flush();
 
-    expect(lastFrame()).toContain("30/30");
+    expect(lastFrame()).toContain("issue 30/30");
     expect(lastFrame()).toContain("react-doctor/rule-29");
     unmount();
   });
 
-  it("offers CI setup as an explicit shortcut without running it on exit", async () => {
+  it("keeps the selected finding visible when the terminal shrinks", async () => {
+    const store = createScanStore();
+    const diagnostics = Array.from({ length: 20 }, (_, diagnosticIndex) =>
+      makeDiagnostic({
+        rule: `resize-rule-${String(diagnosticIndex).padStart(2, "0")}`,
+        title: `Resize finding ${diagnosticIndex}`,
+        severity: diagnosticIndex === 0 ? "error" : "warning",
+        category: "Correctness",
+      }),
+    );
+    store.setReport({
+      diagnostics,
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: process.cwd(),
+      scannedFileCount: diagnostics.length,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { columns: 160, rows: 44 });
+    await flush();
+    stdin.write("\r");
+    await flush();
+    for (let diagnosticIndex = 0; diagnosticIndex < 12; diagnosticIndex += 1) {
+      stdin.write("j");
+      await flush();
+    }
+    resizeTerminal(stdout, { columns: 60, rows: 8 });
+    await flush();
+
+    expect(lastFrame()).toContain("› ⚠ Correctness: Resize finding 12");
+    expect(lastFrame()).toContain("issue 13/20");
+    unmount();
+  });
+
+  it("fits the compact viewer inside a very narrow terminal", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: process.cwd(),
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { columns: 15, rows: 12 });
+    await flush();
+    stdin.write("\r");
+    await flush();
+
+    const lineWidths = (lastFrame() ?? "").split("\n").map((line) => [...line].length);
+    expect(Math.max(...lineWidths)).toBeLessThanOrEqual(15);
+    unmount();
+  });
+
+  it("shows only usable controls when a clean report has no actions", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: { score: 100, label: "Perfect" },
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: process.cwd(),
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    await flush();
+
+    expect(lastFrame()).toContain("✔ No issues found. Nice work.");
+    expect(lastFrame()).toContain("q quit");
+    expect(lastFrame()).not.toContain("↑/↓ move");
+    expect(lastFrame()).not.toContain("enter select");
+    unmount();
+  });
+
+  it("justifies CI setup before confirming the workflow change", async () => {
     const store = createScanStore();
     const onAddToCi = vi.fn();
     store.setReport({
@@ -534,10 +732,218 @@ describe("ScanApp", () => {
     );
     await flush();
 
-    expect(lastFrame()).toContain("a add CI");
-    stdin.write("q");
+    expect(lastFrame()).toContain("› Review 1 issue");
+    expect(lastFrame()).toContain("Add to GitHub Actions (Recommended)");
+    expect(lastFrame()).toContain("› Review 1 issue\n\n  Add to GitHub Actions (Recommended)");
+    stdin.write("j");
+    await flush();
+    expect(lastFrame()).toContain("› Add to GitHub Actions (Recommended)");
+    expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
+    stdin.write("\r");
+    await flush();
+
+    expect(lastFrame()).toContain("Add React Doctor to GitHub Actions?");
+    expect(lastFrame()).toContain(
+      "Scan every pull request to prevent new React issues while you fix the backlog.",
+    );
+    expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
+    expect(lastFrame()).toContain("Adds a workflow file and a `doctor` package script.");
+    expect(lastFrame()).toContain("› Yes, add the workflow");
+    expect(lastFrame()).toContain("Open the GitHub Actions guide");
+
+    stdin.write("\u001B");
     await flush();
     expect(onAddToCi).not.toHaveBeenCalled();
+    expect(lastFrame()).toContain("› Add to GitHub Actions (Recommended)");
+
+    stdin.write("\r");
+    await flush();
+    stdin.write("\r");
+    await flush();
+    expect(onAddToCi).toHaveBeenCalledOnce();
+    unmount();
+  });
+
+  it("opens the CI documentation from the setup confirmation", async () => {
+    const openUrl = vi.spyOn(openUrlModule, "openUrl").mockReturnValue(true);
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <ScanApp store={store} canAddToCi onAddToCi={() => {}} />,
+    );
+    await flush();
+
+    stdin.write("j");
+    await flush();
+    stdin.write("\r");
+    await flush();
+    stdin.write("j");
+    await flush();
+    stdin.write("\r");
+    await flush();
+    expect(openUrl).toHaveBeenLastCalledWith(GITHUB_ACTIONS_SETUP_URL);
+    expect(lastFrame()).toContain("Opened the GitHub Actions guide in your browser");
+    unmount();
+  });
+
+  it("shows the CI guide URL when a browser cannot be opened", async () => {
+    vi.spyOn(openUrlModule, "openUrl").mockReturnValue(false);
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <ScanApp store={store} canAddToCi onAddToCi={() => {}} />,
+    );
+    await flush();
+    stdin.write("j");
+    await flush();
+    stdin.write("\r");
+    await flush();
+    stdin.write("j");
+    await flush();
+    stdin.write("\r");
+    await flush();
+
+    expect(lastFrame()).toContain(`Couldn't open a browser. Visit ${GITHUB_ACTIONS_SETUP_URL}`);
+    unmount();
+  });
+
+  it("recommends CI before handoff and continues to the agent picker when dismissed", async () => {
+    const onAddToCi = vi.fn();
+    const onHandoff = vi.fn();
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <ScanApp
+        store={store}
+        launchableAgents={["codex", "cursor"]}
+        onHandoff={onHandoff}
+        canAddToCi
+        onAddToCi={onAddToCi}
+      />,
+    );
+    await flush();
+
+    stdin.write("j");
+    await flush();
+    stdin.write("j");
+    await flush();
+    expect(lastFrame()).toContain("› Hand off to an agent");
+    stdin.write("\r");
+    await flush();
+
+    expect(lastFrame()).toContain("Add React Doctor to GitHub Actions first");
+    expect(lastFrame()).toContain(
+      "Scan every pull request to prevent new React issues while you fix the backlog.",
+    );
+    expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
+    expect(lastFrame()).toContain("› Add to GitHub Actions first (Recommended)");
+    expect(lastFrame()).toContain("Continue without GitHub Actions");
+
+    stdin.write("\u001B");
+    await flush();
+    expect(onAddToCi).not.toHaveBeenCalled();
+    expect(lastFrame()).toContain("Choose an agent");
+    expect(lastFrame()).toContain("› Codex");
+    expect(lastFrame()).toContain("Cursor");
+
+    stdin.write("\r");
+    await flush();
+    expect(onHandoff).toHaveBeenCalledOnce();
+    const request = onHandoff.mock.calls[0]?.[0];
+    expect(request?.agentId).toBe("codex");
+    expect(request?.prompt).toContain("First, configure React Doctor in GitHub Actions");
+    expect(request?.prompt).toContain("Verify both before fixing the backlog.");
+    unmount();
+  });
+
+  it("queues CI setup before launching the selected agent", async () => {
+    const onAddToCi = vi.fn();
+    const onHandoff = vi.fn();
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <ScanApp
+        store={store}
+        launchableAgents={["codex"]}
+        onHandoff={onHandoff}
+        canAddToCi
+        onAddToCi={onAddToCi}
+      />,
+    );
+    await flush();
+
+    stdin.write("j");
+    await flush();
+    stdin.write("j");
+    await flush();
+    stdin.write("\r");
+    await flush();
+    stdin.write("\r");
+    await flush();
+    expect(onAddToCi).toHaveBeenCalledOnce();
+    expect(lastFrame()).toContain("› Codex");
+
+    stdin.write("\u001B");
+    await flush();
+    expect(lastFrame()).not.toContain("Add to GitHub Actions (Recommended)");
+    expect(lastFrame()).toContain("› Hand off to an agent");
+
+    stdin.write("\r");
+    await flush();
+    expect(lastFrame()).toContain("› Codex");
+    expect(lastFrame()).not.toContain("Add React Doctor to GitHub Actions first");
+
+    stdin.write("\r");
+    await flush();
+    expect(onHandoff).toHaveBeenCalledOnce();
+    expect(onHandoff.mock.calls[0]?.[0].prompt).not.toContain(
+      "First, configure React Doctor in GitHub Actions",
+    );
+    expect(onAddToCi).toHaveBeenCalledOnce();
     unmount();
   });
 });

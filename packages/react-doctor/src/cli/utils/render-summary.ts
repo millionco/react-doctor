@@ -1,13 +1,8 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import {
-  CANONICAL_GITHUB_URL,
-  DOCS_URL,
-  highlighter,
-  SHARE_BASE_URL,
-  TOP_ERRORS_DISPLAY_COUNT,
-} from "@react-doctor/core";
+import { highlighter, SHARE_BASE_URL, TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+import { buildFooterLinkLines } from "./build-footer-link-lines.js";
 import { buildSectionDivider } from "./build-section-divider.js";
 import { colorizeByScore } from "./colorize-by-score.js";
 import { SCORE_PROJECTION_BAR_ROWS_ABOVE_CURSOR } from "./constants.js";
@@ -18,21 +13,7 @@ import {
   printNoScoreHeader,
   printScoreHeader,
 } from "./render-score-header.js";
-import { resolveMeasureWidth } from "./resolve-measure-width.js";
-import { wrapTextToWidth } from "./wrap-indented-text.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
-
-const FOOTER_DESCRIPTION_INDENT = "  ";
-
-// Prints a dimmed link description, wrapped to the measure but never past the
-// terminal's right edge. Dim is applied per line so the SGR survives the wrap.
-const printFooterDescription = (description: string): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const wrapWidth = resolveMeasureWidth(FOOTER_DESCRIPTION_INDENT.length);
-    for (const line of wrapTextToWidth(description, wrapWidth)) {
-      yield* Console.log(highlighter.dim(`${FOOTER_DESCRIPTION_INDENT}${line}`));
-    }
-  });
 
 const buildShareUrl = (
   diagnostics: Diagnostic[],
@@ -65,21 +46,10 @@ export const printFooter = (input: PrintFooterInput): Effect.Effect<void> =>
     yield* Console.log("");
     yield* Console.log(buildSectionDivider());
     yield* Console.log("");
-    if (!input.isOffline) {
-      const shareUrl = buildShareUrl(input.diagnostics, input.scoreResult, input.projectName);
-      yield* Console.log(`  ${highlighter.bold("Share:")} ${highlighter.info(shareUrl)}`);
-      yield* printFooterDescription("Tell others how you did on socials");
-      yield* Console.log("");
-    }
-    yield* Console.log(`  ${highlighter.bold("Docs:")} ${highlighter.info(DOCS_URL)}`);
-    yield* printFooterDescription(
-      "Learn more about fixing issues, setting up CI/CD, and configuring rules with a config file",
-    );
-    yield* Console.log("");
-    yield* Console.log(
-      `  ${highlighter.bold("GitHub:")} ${highlighter.info(CANONICAL_GITHUB_URL)}`,
-    );
-    yield* printFooterDescription("Report issues and star the repository!");
+    const shareUrl = input.isOffline
+      ? null
+      : buildShareUrl(input.diagnostics, input.scoreResult, input.projectName);
+    for (const line of buildFooterLinkLines({ shareUrl })) yield* Console.log(line);
   });
 
 // Writes the full diagnostics dump (diagnostics.json + one .txt per rule) and

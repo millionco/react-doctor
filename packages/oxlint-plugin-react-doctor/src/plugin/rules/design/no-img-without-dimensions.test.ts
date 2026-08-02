@@ -159,6 +159,30 @@ describe("no-img-without-dimensions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("expands static is selector branches", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,
+      `:is(.gallery, .feed) img { width: 100%; height: 178px; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("expands static where selector branches", () => {
+    const result = runRuleWithSiblingCss(
+      `const Hero = () => <section><img src="/hero.jpg" alt="" /></section>;`,
+      `:where(main, section) > img { width: 100%; aspect-ratio: 16 / 9; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat interaction-only is branches as initial layout", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `:is(section:hover) img { width: 100%; height: 178px; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows a full-size image in a definitively stretched flex item", () => {
     const result = runRuleWithSiblingCss(
       `const Map = () => <main><div className="body"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,

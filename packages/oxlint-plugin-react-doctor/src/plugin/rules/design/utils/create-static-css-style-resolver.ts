@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { CROSS_FILE_PARSE_MAX_BYTES } from "../../../constants/thresholds.js";
+import {
+  CROSS_FILE_PARSE_MAX_BYTES,
+  STATIC_CSS_SELECTOR_EXPANSION_MAX_COUNT,
+} from "../../../constants/thresholds.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../../utils/get-authoritative-jsx-attribute.js";
 import { getStringLiteralAttributeValue } from "../../../utils/get-string-literal-attribute-value.js";
@@ -161,8 +164,6 @@ const parseCompoundSelector = (source: string): StaticCssCompoundSelector | null
 };
 
 const parseSelector = (source: string): StaticCssSelector | null => {
-  const selectorFunctionMatch = /^:(?:is|where)\((.*)\)$/i.exec(source.trim());
-  if (selectorFunctionMatch) return parseSelector(selectorFunctionMatch[1]);
   const normalizedSource = source
     .trim()
     .replace(/\s*>\s*/g, ">")
@@ -188,15 +189,74 @@ const parseSelector = (source: string): StaticCssSelector | null => {
   return { combinators, compounds };
 };
 
-const parsePotentiallyMatchingSelector = (source: string): StaticCssSelector | null => {
+const expandStaticSelectorFunctions = (source: string): string[] | null => {
+  const pendingSources = [source];
+  const expandedSources: string[] = [];
+  while (pendingSources.length > 0) {
+    const currentSource = pendingSources.pop();
+    if (currentSource === undefined) break;
+    const functionMatch = /:(?:is|where)\(/i.exec(currentSource);
+    if (!functionMatch) {
+      expandedSources.push(currentSource);
+      continue;
+    }
+    const bodyStartIndex = functionMatch.index + functionMatch[0].length;
+    let parenthesisDepth = 1;
+    let quote: string | null = null;
+    let closingParenthesisIndex = -1;
+    for (let index = bodyStartIndex; index < currentSource.length; index += 1) {
+      const character = currentSource[index];
+      if (quote !== null) {
+        if (character === "\\") index += 1;
+        else if (character === quote) quote = null;
+        continue;
+      }
+      if (character === '"' || character === "'") quote = character;
+      else if (character === "(") parenthesisDepth += 1;
+      else if (character === ")") {
+        parenthesisDepth -= 1;
+        if (parenthesisDepth === 0) {
+          closingParenthesisIndex = index;
+          break;
+        }
+      }
+    }
+    if (closingParenthesisIndex < 0) return null;
+    const branches = splitTopLevel(
+      currentSource.slice(bodyStartIndex, closingParenthesisIndex),
+      ",",
+    )
+      .map((branch) => branch.trim())
+      .filter(Boolean);
+    if (
+      branches.length === 0 ||
+      pendingSources.length + expandedSources.length + branches.length >
+        STATIC_CSS_SELECTOR_EXPANSION_MAX_COUNT
+    ) {
+      return null;
+    }
+    const prefix = currentSource.slice(0, functionMatch.index);
+    const suffix = currentSource.slice(closingParenthesisIndex + 1);
+    for (const branch of branches) pendingSources.push(`${prefix}${branch}${suffix}`);
+  }
+  return expandedSources;
+};
+
+const parseSelectors = (source: string): StaticCssSelector[] =>
+  (expandStaticSelectorFunctions(source) ?? []).flatMap((expandedSource) => {
+    const selector = parseSelector(expandedSource);
+    return selector ? [selector] : [];
+  });
+
+const parsePotentiallyMatchingSelectors = (source: string): StaticCssSelector[] => {
   if (/:+(?:has|not)\(/i.test(source) || CSS_INTERACTION_PSEUDO_CLASS_PATTERN.test(source)) {
-    return null;
+    return [];
   }
   const withoutDynamicPseudoClasses = source.replace(
     /:(?:any-link|checked|default|disabled|empty|enabled|indeterminate|link|optional|required|target|valid|visited)\b/gi,
     "",
   );
-  return parseSelector(withoutDynamicPseudoClasses);
+  return parseSelectors(withoutDynamicPseudoClasses);
 };
 
 const addAmbiguousDeclarations = (
@@ -243,12 +303,12 @@ const parseStylesheet = (source: string): ParsedStylesheets => {
       const selectors: StaticCssSelector[] = [];
       for (const selectorSource of splitTopLevel(prelude, ",")) {
         if (CSS_PSEUDO_ELEMENT_PATTERN.test(selectorSource)) continue;
-        const selector = parseSelector(selectorSource);
-        if (selector) selectors.push(selector);
+        const parsedSelectors = parseSelectors(selectorSource);
+        if (parsedSelectors.length > 0) selectors.push(...parsedSelectors);
         else {
-          const potentiallyMatchingSelector = parsePotentiallyMatchingSelector(selectorSource);
-          if (potentiallyMatchingSelector) {
-            ambiguousRules.push({ declarations, selectors: [potentiallyMatchingSelector] });
+          const potentiallyMatchingSelectors = parsePotentiallyMatchingSelectors(selectorSource);
+          if (potentiallyMatchingSelectors.length > 0) {
+            ambiguousRules.push({ declarations, selectors: potentiallyMatchingSelectors });
           }
         }
       }

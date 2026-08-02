@@ -401,6 +401,29 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("quits while the report reveal is still running", async () => {
+    const store = createScanStore();
+    const onQuit = vi.fn();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { stdin, unmount } = render(<ScanApp store={store} onQuit={onQuit} />);
+    stdin.write("q");
+    await flush();
+
+    expect(onQuit).toHaveBeenCalledOnce();
+    unmount();
+  });
+
   it("copies the selected issue context without opening an action menu", async () => {
     const copyToClipboard = vi.spyOn(launchAgent, "copyToClipboard").mockResolvedValue(true);
     const store = createScanStore();

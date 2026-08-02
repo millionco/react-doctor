@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  TUI_REPORT_COMPACT_STATUS_ROWS,
   TUI_REPORT_LIST_MARGIN_ROWS,
+  TUI_REPORT_MIN_LIST_ROWS,
   TUI_REPORT_STATUS_ROWS,
   TUI_REPORT_VIEWER_SCORE_HEADER_ROWS,
   TUI_REPORT_VIEWPORT_MARGIN_ROWS,
@@ -41,5 +43,26 @@ describe("resolveReportLayout", () => {
         TUI_REPORT_VIEWER_SCORE_HEADER_ROWS -
         TUI_REPORT_LIST_MARGIN_ROWS,
     );
+  });
+
+  it("keeps one issue visible in an extremely short compact viewport", () => {
+    const layout = resolveReportLayout({
+      columns: 40,
+      diagnosticRowCount: 3,
+      terminalRows: TUI_REPORT_VIEWPORT_MARGIN_ROWS + TUI_REPORT_COMPACT_STATUS_ROWS,
+    });
+
+    expect(layout.layout).toBe("compact");
+    expect(layout.listHeight).toBe(TUI_REPORT_MIN_LIST_ROWS);
+  });
+
+  it("does not allocate an issue row when the report is clean", () => {
+    const layout = resolveReportLayout({
+      columns: 40,
+      diagnosticRowCount: 0,
+      terminalRows: TUI_REPORT_VIEWPORT_MARGIN_ROWS + TUI_REPORT_COMPACT_STATUS_ROWS,
+    });
+
+    expect(layout.listHeight).toBe(0);
   });
 });

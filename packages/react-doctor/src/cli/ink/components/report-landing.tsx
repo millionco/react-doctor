@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import type { ReactNode } from "react";
 import { TUI_REPORT_ACTION_MENU_MARGIN_ROWS } from "../../utils/constants.js";
 import type { ReportReveal } from "../hooks/use-report-reveal.js";
@@ -29,6 +29,12 @@ export const ReportLanding = ({
   onQuit,
 }: ReportLandingProps) => {
   const showScore = phase === "actions" || phase === "score";
+  useInput(
+    (input) => {
+      if (input === "q") onQuit();
+    },
+    { isActive: phase !== "actions" },
+  );
 
   return (
     <Box flexDirection="column">

@@ -71,7 +71,7 @@ export const resolveReportLayout = ({
   if (isCompact) {
     listHeight = Math.min(
       diagnosticRowCount,
-      Math.max(0, reportRows - TUI_REPORT_COMPACT_STATUS_ROWS),
+      Math.max(TUI_REPORT_MIN_LIST_ROWS, reportRows - TUI_REPORT_COMPACT_STATUS_ROWS),
     );
   } else if (isWide) {
     listHeight = availableListHeight;

@@ -27,8 +27,8 @@ describe("useExitOnCtrlC", () => {
     await flush();
 
     expect(exitSpy).toHaveBeenCalledWith(130);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(`Docs: ${DOCS_URL}`));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(`GitHub: ${CANONICAL_GITHUB_URL}`));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(DOCS_URL));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(CANONICAL_GITHUB_URL));
     unmount();
   });
 

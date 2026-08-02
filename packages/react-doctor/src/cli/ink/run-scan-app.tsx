@@ -241,6 +241,7 @@ const toScanReport = ({
     isOffline,
     noScoreMessage,
     emptyStateMessage,
+    skippedChecks: result.skippedChecks,
     ...(lintFailureReason ? { lintFailureReason } : {}),
   };
 };

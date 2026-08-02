@@ -31,6 +31,7 @@ export const Summary = ({
     elapsedMilliseconds: summary.elapsedMilliseconds,
     isOffline: summary.isOffline,
     noScoreMessage: summary.noScoreMessage,
+    skippedChecks: [...new Set(summary.projects.flatMap((project) => project.skippedChecks ?? []))],
     ...(summary.emptyStateMessage ? { emptyStateMessage: summary.emptyStateMessage } : {}),
     ...(summary.lintFailureReason ? { lintFailureReason: summary.lintFailureReason } : {}),
   };

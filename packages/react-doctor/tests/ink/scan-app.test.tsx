@@ -266,6 +266,29 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("does not show a clean state when a non-lint check is incomplete", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      skippedChecks: ["dead-code"],
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain(
+      "No issues detected, but dead-code checks failed — results are incomplete.",
+    );
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
   it("renders a flat monorepo summary: aggregate score, combined list, folder-qualified paths", async () => {
     const store = createScanStore();
     const webScore: ScoreResult = {

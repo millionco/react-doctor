@@ -214,6 +214,9 @@ describe("runScanApp", () => {
       skipPrompts: true,
     });
 
+    expect(mockState.scanStores[0]?.getSnapshot().summary?.projects[1]?.skippedChecks).toEqual([
+      "lint",
+    ]);
     expect(resolveScanTarget).toHaveBeenCalledWith(rootDirectory, {
       allowAmbiguous: true,
     });

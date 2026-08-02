@@ -274,6 +274,7 @@ export const Report = ({
         issueCount={report.diagnostics.length}
         emptyStateMessage={report.emptyStateMessage}
         lintFailureReason={report.lintFailureReason}
+        skippedChecks={report.skippedChecks}
         actions={landingActions}
         selectedIndex={resolvedLandingSelectedIndex}
         onSelectionChange={setLandingSelectedIndex}

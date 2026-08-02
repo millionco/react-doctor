@@ -26,6 +26,7 @@ export interface ScanReport {
   readonly noScoreMessage: string;
   readonly emptyStateMessage?: string;
   readonly lintFailureReason?: string;
+  readonly skippedChecks?: ReadonlyArray<string>;
 }
 
 export interface MultiProjectSummary {

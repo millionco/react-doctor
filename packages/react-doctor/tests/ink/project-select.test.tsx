@@ -225,7 +225,7 @@ describe("ProjectSelect", () => {
     await flush();
 
     expect(lastFrame()).toContain("package-15");
-    expect(lastFrame()).toMatch(/[›❯] ◯ package-15/);
+    expect(lastFrame()).toMatch(/[›❯>] (?:◯|\( \)) package-15/);
     expect(lastFrame()?.split("\n")).toHaveLength(5);
     unmount();
   });

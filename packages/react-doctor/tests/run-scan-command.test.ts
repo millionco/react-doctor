@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../src/cli/commands/inspect.js", () => ({
@@ -65,7 +66,7 @@ describe("runScanCommand", () => {
       blocking: "warning",
     });
     expect(recordCount).toHaveBeenCalledWith(METRIC.cliInvoked, 1, { command: "inspect" });
-    expect(runProjectMigrations).toHaveBeenCalledWith("/tmp/project");
+    expect(runProjectMigrations).toHaveBeenCalledWith(path.resolve("/tmp/project"));
     expect(inspectAction).not.toHaveBeenCalled();
   });
 

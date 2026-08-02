@@ -392,7 +392,7 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
     expect(lastFrame()).toContain("issue 2/2");
-    expect(lastFrame()).toContain("› ⚠ State & Effects: react-doctor/no-array-index-key");
+    expect(lastFrame()).toMatch(/› [⚠!] State & Effects: react-doctor\/no-array-index-key/);
     expect(lastFrame()).toContain("0 issues unread");
 
     stdin.write("q");
@@ -681,7 +681,7 @@ describe("ScanApp", () => {
     resizeTerminal(stdout, { columns: 60, rows: 8 });
     await flush();
 
-    expect(lastFrame()).toContain("› ⚠ Correctness: Resize finding 12");
+    expect(lastFrame()).toMatch(/› [⚠!] Correctness: Resize finding 12/);
     expect(lastFrame()).toContain("issue 13/20");
     unmount();
   });

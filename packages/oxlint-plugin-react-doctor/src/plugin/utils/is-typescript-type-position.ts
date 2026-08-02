@@ -5,6 +5,7 @@ const TYPESCRIPT_EXPRESSION_WRAPPER_TYPES = new Set([
   "TSInstantiationExpression",
   "TSNonNullExpression",
   "TSSatisfiesExpression",
+  "TSTypeAssertion",
 ]);
 
 export const isTypeScriptTypePosition = (node: EsTreeNode): boolean => {

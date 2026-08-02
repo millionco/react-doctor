@@ -45,6 +45,23 @@ export const MultiSelectField = <Value,>({ onPendingChange }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags child-produced hook data wrapped in an angle-bracket assertion", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+export const MultiSelectField = ({ onPendingChange }) => {
+  const values = <string[]>useSelectedValues();
+  useEffect(() => {
+    onPendingChange(values);
+  }, [onPendingChange, values]);
+  return null;
+};`,
+      { filename: "fixture.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a callback parameter is passed through a parent callback", () => {
     const result = runRule(
       noPassDataToParent,

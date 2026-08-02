@@ -59,7 +59,7 @@ interface GitSourceFilePaths {
 }
 
 const parseGitSourceFilePaths = (output: string): GitSourceFilePaths => {
-  const trackedPaths: string[] = [];
+  const trackedPaths = new Set<string>();
   const untrackedPaths: string[] = [];
   for (const entry of output.split("\0")) {
     if (entry.length === 0) continue;
@@ -67,10 +67,10 @@ const parseGitSourceFilePaths = (output: string): GitSourceFilePaths => {
     if (trackedPath === undefined) {
       untrackedPaths.push(entry);
     } else {
-      trackedPaths.push(trackedPath);
+      trackedPaths.add(trackedPath);
     }
   }
-  return { trackedPaths, untrackedPaths };
+  return { trackedPaths: [...trackedPaths], untrackedPaths };
 };
 
 const listGitSourceFilePaths = (rootDirectory: string): GitSourceFilePaths | null => {

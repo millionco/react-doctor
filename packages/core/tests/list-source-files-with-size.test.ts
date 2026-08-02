@@ -195,6 +195,31 @@ describe("listSourceFilesWithSize", () => {
     );
   };
 
+  it("git discovery lists a file with unresolved conflicts once", () => {
+    writeNestedFile("src/app.tsx", "export const App = () => <main>base</main>;\n");
+    runGit("init", "--quiet");
+    runGit("switch", "--quiet", "-c", "base");
+    commitAll();
+    runGit("switch", "--quiet", "-c", "conflict");
+    writeNestedFile("src/app.tsx", "export const App = () => <main>conflict</main>;\n");
+    commitAll();
+    runGit("switch", "--quiet", "base");
+    writeNestedFile("src/app.tsx", "export const App = () => <main>current</main>;\n");
+    commitAll();
+
+    const mergeResult = spawnSync("git", ["merge", "conflict"], { cwd: temporaryDirectory });
+    expect(mergeResult.status).not.toBe(0);
+
+    const stagedPaths = spawnSync("git", ["ls-files", "--stage", "src/app.tsx"], {
+      cwd: temporaryDirectory,
+      encoding: "utf-8",
+    });
+    expect(stagedPaths.stdout.match(/src\/app\.tsx/g)?.length).toBeGreaterThan(1);
+    expect(
+      listSourceFiles(temporaryDirectory).filter((filePath) => filePath === "src/app.tsx"),
+    ).toHaveLength(1);
+  });
+
   const writeEmitQuartet = (): void => {
     writeNestedFile("src/store.js", "export const store = 1;\n//# sourceMappingURL=store.js.map\n");
     writeNestedFile(

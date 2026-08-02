@@ -49,7 +49,7 @@ export const ReportLanding = ({
           <Text color="yellow">⚠ {incompleteMessage}</Text>
         </Box>
       ) : null}
-      {issueCount === 0 ? (
+      {issueCount === 0 && !incompleteMessage ? (
         <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
           {lintFailureReason ? (
             <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>

@@ -289,6 +289,27 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("does not show a clean state when projects were skipped", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      incompleteMessage: "2 projects were skipped because scanning failed.",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("2 projects were skipped because scanning failed.");
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
   it("renders a flat monorepo summary: aggregate score, combined list, folder-qualified paths", async () => {
     const store = createScanStore();
     const webScore: ScoreResult = {

@@ -2545,6 +2545,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-collapse-request-error-to-empty-state": {
     code: 'import { useState } from "react";\nexport const Search = () => { const [items, setItems] = useState([]); const load = async () => { try { setItems(await (await fetch("/api/items")).json()); } catch { setItems([]); } }; if (!items.length) return <p>No results found</p>; return <ResultList items={items} />; };',
   },
+  "no-unowned-async-error-clear": {
+    code: 'import { useEffect, useState } from "react";\nexport const Request = ({ currentId, send }) => { const [ownerId, setOwnerId] = useState(null); useEffect(() => { if (ownerId !== currentId) setOwnerId(null); }, [currentId, ownerId]); const respond = async (request) => { await send(request); if (request.failed) setOwnerId(request.requestId); else setOwnerId(null); }; return <button onClick={() => respond({ requestId: currentId })}>Send</button>; };',
+  },
   "no-focus-in-animation-completion-handler": {
     code: 'import { useRef } from "react";\nexport const Dialog = () => { const inputRef = useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };',
   },

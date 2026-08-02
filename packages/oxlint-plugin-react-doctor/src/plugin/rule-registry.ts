@@ -473,6 +473,7 @@ import { noUnguardedThrowingParseCall } from "./rules/correctness/no-unguarded-t
 import { noUniformFeatureCardGrid } from "./rules/design/no-uniform-feature-card-grid.js";
 import { noUninformativeAriaLabel } from "./rules/a11y/no-uninformative-aria-label.js";
 import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js";
+import { noUnownedAsyncErrorClear } from "./rules/state-and-effects/no-unowned-async-error-clear.js";
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnsafeJsonParse } from "./rules/correctness/no-unsafe-json-parse.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
@@ -6398,6 +6399,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noUnknownProperty.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-unowned-async-error-clear",
+    id: "no-unowned-async-error-clear",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnownedAsyncErrorClear,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noUnownedAsyncErrorClear.requires ?? [])])],
     },
   },
   {

@@ -7679,6 +7679,24 @@
     }
   },
   {
+    "key": "react-doctor/no-unowned-async-error-clear",
+    "id": "no-unowned-async-error-clear",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-unowned-async-error-clear",
+      "title": "Stale async response clears newer request state",
+      "severity": "warn",
+      "recommendation": "Guard async completion by request identity, perform an ownership-aware functional state update, or key the state-owning component by request ID.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react"],
+      "tags": ["react-jsx-only"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-unsafe",
     "id": "no-unsafe",
     "source": "react-doctor",

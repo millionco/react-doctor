@@ -1,4 +1,6 @@
+import path from "node:path";
 import { inspectAction } from "./inspect.js";
+import { runProjectMigrations } from "../utils/cli-migrations.js";
 import { METRIC } from "../utils/constants.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { isNonInteractiveEnvironment } from "../utils/is-non-interactive-environment.js";
@@ -29,6 +31,7 @@ export const runScanCommand = async (input: RunScanCommandInput): Promise<void> 
     return;
   }
 
+  await runProjectMigrations(path.resolve(input.directory));
   recordCount(METRIC.cliInvoked, 1, { command: input.invocationCommand });
   const { runScanApp } = await import("../ink/run-scan-app.js");
   const { shouldFail } = await runScanApp({

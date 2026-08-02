@@ -37,7 +37,10 @@ import { hasLintHardFailure } from "../utils/has-lint-hard-failure.js";
 import { setUpGitHubActions } from "../utils/set-up-github-actions.js";
 import { recordCount } from "../utils/record-metric.js";
 import { METRIC } from "../utils/constants.js";
-import type { SurfaceFilterableScan } from "../utils/filter-scans-for-surface.js";
+import {
+  filterScansForSurface,
+  type SurfaceFilterableScan,
+} from "../utils/filter-scans-for-surface.js";
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
@@ -442,8 +445,12 @@ const runSingleProjectScan = async (
       categoryFilters: input.options?.categoryFilters,
       surface: input.options?.outputSurface,
     });
+    const scoreDiagnostics = filterScansForSurface(
+      [{ result, config: projectScan.config }],
+      "score",
+    );
     const projectedScore = result.score
-      ? await computeProjectedScore([...reportDiagnostics], [...result.diagnostics], result.score)
+      ? await computeProjectedScore([...reportDiagnostics], scoreDiagnostics, result.score)
       : null;
     context.store.setReport(
       toScanReport({
@@ -520,7 +527,7 @@ const runMultiProjectScan = async (
           noScoreMessage: context.noScoreMessage,
         }),
         score: result.score,
-        diagnostics: result.diagnostics,
+        diagnostics: filterScansForSurface([{ result, config }], "score"),
       };
     });
     const projects = projectEntries.map(({ report }) => report);

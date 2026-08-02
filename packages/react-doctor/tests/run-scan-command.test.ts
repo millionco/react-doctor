@@ -4,6 +4,10 @@ vi.mock("../src/cli/commands/inspect.js", () => ({
   inspectAction: vi.fn(async () => {}),
 }));
 
+vi.mock("../src/cli/utils/cli-migrations.js", () => ({
+  runProjectMigrations: vi.fn(async () => []),
+}));
+
 vi.mock("../src/cli/ink/run-scan-app.js", () => ({
   runScanApp: vi.fn(async () => ({ shouldFail: false })),
 }));
@@ -27,6 +31,7 @@ vi.mock("../src/cli/utils/should-use-tui.js", () => ({
 import { inspectAction } from "../src/cli/commands/inspect.js";
 import { runScanCommand } from "../src/cli/commands/scan.js";
 import { runScanApp } from "../src/cli/ink/run-scan-app.js";
+import { runProjectMigrations } from "../src/cli/utils/cli-migrations.js";
 import { METRIC } from "../src/cli/utils/constants.js";
 import { recordCount } from "../src/cli/utils/record-metric.js";
 import { resolveCliInspectOptions } from "../src/cli/utils/resolve-cli-inspect-options.js";
@@ -60,6 +65,7 @@ describe("runScanCommand", () => {
       blocking: "warning",
     });
     expect(recordCount).toHaveBeenCalledWith(METRIC.cliInvoked, 1, { command: "inspect" });
+    expect(runProjectMigrations).toHaveBeenCalledWith("/tmp/project");
     expect(inspectAction).not.toHaveBeenCalled();
   });
 
@@ -71,6 +77,7 @@ describe("runScanCommand", () => {
 
     expect(inspectAction).toHaveBeenCalledWith("/tmp/project", flags, "inspect");
     expect(runScanApp).not.toHaveBeenCalled();
+    expect(runProjectMigrations).not.toHaveBeenCalled();
     expect(recordCount).not.toHaveBeenCalled();
   });
 

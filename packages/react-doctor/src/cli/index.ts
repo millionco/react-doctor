@@ -464,10 +464,10 @@ program
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")
-  .action((directory = ".", flags: InspectFlags) =>
+  .action((directory = ".", _localOptions, command) =>
     runScanCommand({
       directory,
-      flags,
+      flags: command.optsWithGlobals(),
       invocationCommand: "experimental-tui",
     }),
   );

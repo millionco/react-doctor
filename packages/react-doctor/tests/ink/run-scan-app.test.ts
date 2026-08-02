@@ -5,6 +5,7 @@ import type { InspectResult, ResolvedScanTarget } from "@react-doctor/core";
 import { Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
+import { computeProjectedScore } from "../../src/cli/utils/compute-score-projection.js";
 import { inspect } from "../../src/inspect.js";
 import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 
@@ -310,12 +311,18 @@ describe("runScanApp", () => {
       buildScanTarget(
         rootDirectory,
         rootDirectory,
-        { surfaces: { cli: { excludeRules: ["react-doctor/hidden-security"] } } },
+        {
+          surfaces: {
+            cli: { excludeRules: ["react-doctor/hidden-security"] },
+            score: { excludeRules: ["react-doctor/hidden-security"] },
+          },
+        },
         rootDirectory,
       ),
     );
     mockState.inspectResults.set(rootDirectory, {
       ...buildInspectResult(rootDirectory),
+      score: { score: 72, label: "Fair" },
       diagnostics: [
         buildDiagnostic({ rule: "visible-security", category: "Security" }),
         buildDiagnostic({ rule: "hidden-security", category: "Security" }),
@@ -332,6 +339,14 @@ describe("runScanApp", () => {
     expect(mockState.scanStores[0]?.getSnapshot().report?.diagnostics).toEqual([
       expect.objectContaining({ rule: "visible-security" }),
     ]);
+    expect(vi.mocked(computeProjectedScore)).toHaveBeenCalledWith(
+      [expect.objectContaining({ rule: "visible-security" })],
+      [
+        expect.objectContaining({ rule: "visible-security" }),
+        expect.objectContaining({ rule: "visible-performance" }),
+      ],
+      { score: 72, label: "Fair" },
+    );
   });
 
   it("does not print the scan footer after the user quits", async () => {

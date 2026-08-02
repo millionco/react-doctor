@@ -35,6 +35,7 @@ export const useReportReveal = ({
   const [didRevealActions, setDidRevealActions] = useState(false);
   const didNotifyRevealComplete = useRef(false);
   const isStreaming = shouldAnimate && streamStep < streamStepCount;
+  const didReachActions = shouldAnimate ? didRevealActions : stdout?.isTTY === true;
 
   useEffect(() => {
     if (!shouldAnimate) return;
@@ -56,10 +57,10 @@ export const useReportReveal = ({
   }, [isStreaming, shouldAnimate]);
 
   useEffect(() => {
-    if (!didRevealActions || didNotifyRevealComplete.current) return;
+    if (!didReachActions || didNotifyRevealComplete.current) return;
     didNotifyRevealComplete.current = true;
     onRevealComplete?.();
-  }, [didRevealActions, onRevealComplete]);
+  }, [didReachActions, onRevealComplete]);
 
   if (!shouldAnimate) {
     return { phase: "actions", streamSelectedIndex: 0 };

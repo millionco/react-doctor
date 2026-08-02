@@ -295,7 +295,7 @@ export const Report = ({
   } else {
     activeScreenContent = (
       <DiagnosticList
-        header={viewerScoreHeader}
+        header={reportLayout.showsViewerScoreHeader ? viewerScoreHeader : null}
         rows={diagnosticRows}
         width={reportLayout.width}
         listColumnWidth={reportLayout.listColumnWidth}

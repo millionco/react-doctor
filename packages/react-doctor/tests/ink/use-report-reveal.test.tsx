@@ -16,11 +16,12 @@ const previousForceOnboarding = process.env[FORCE_ONBOARDING_ENV_VAR];
 const previousTerminalName = process.env.TERM;
 
 interface RevealProbeProps {
+  readonly issueCount: number;
   readonly onRevealComplete: () => void;
 }
 
-const RevealProbe = ({ onRevealComplete }: RevealProbeProps) => {
-  const reveal = useReportReveal({ issueCount: 2, onRevealComplete });
+const RevealProbe = ({ issueCount, onRevealComplete }: RevealProbeProps) => {
+  const reveal = useReportReveal({ issueCount, onRevealComplete });
   return <Text>{reveal.phase}</Text>;
 };
 
@@ -37,14 +38,14 @@ describe("useReportReveal", () => {
     process.env[FORCE_ONBOARDING_ENV_VAR] = "1";
     process.env.TERM = "xterm-256color";
     const onRevealComplete = vi.fn();
-    const renderedView = render(<RevealProbe onRevealComplete={onRevealComplete} />);
+    const renderedView = render(<RevealProbe issueCount={2} onRevealComplete={onRevealComplete} />);
     Object.defineProperty(renderedView.stdout, "isTTY", { value: true, configurable: true });
     Object.defineProperty(renderedView.stdout, "columns", {
       value: TUI_DEFAULT_TERMINAL_COLUMNS,
       configurable: true,
     });
 
-    renderedView.rerender(<RevealProbe onRevealComplete={onRevealComplete} />);
+    renderedView.rerender(<RevealProbe issueCount={2} onRevealComplete={onRevealComplete} />);
 
     await vi.waitFor(() => expect(renderedView.lastFrame()).toContain("streaming"));
     expect(onRevealComplete).not.toHaveBeenCalled();
@@ -53,6 +54,19 @@ describe("useReportReveal", () => {
         TUI_REPORT_ISSUE_STREAM_FRAME_DELAY_MS * TUI_REPORT_ISSUE_STREAM_MAX_STEPS +
         ONBOARDING_SECTION_DELAY_MS * 2,
     });
+    expect(renderedView.lastFrame()).toContain("actions");
+    renderedView.unmount();
+  });
+
+  it("completes onboarding when a clean interactive report opens on its actions", async () => {
+    process.env.TERM = "xterm-256color";
+    const onRevealComplete = vi.fn();
+    const renderedView = render(<RevealProbe issueCount={0} onRevealComplete={onRevealComplete} />);
+    Object.defineProperty(renderedView.stdout, "isTTY", { value: true, configurable: true });
+
+    renderedView.rerender(<RevealProbe issueCount={0} onRevealComplete={onRevealComplete} />);
+
+    await vi.waitFor(() => expect(onRevealComplete).toHaveBeenCalledOnce());
     expect(renderedView.lastFrame()).toContain("actions");
     renderedView.unmount();
   });

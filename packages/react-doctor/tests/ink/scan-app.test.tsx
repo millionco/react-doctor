@@ -692,7 +692,7 @@ describe("ScanApp", () => {
     await flush();
 
     expect((lastFrame() ?? "").split("\n").length).toBeLessThanOrEqual(TUI_REPORT_COMPACT_MAX_ROWS);
-    expect(lastFrame()).not.toContain("┌─────┐");
+    expect(lastFrame()).toContain("React Doctor (https://react.doctor)");
     expect(lastFrame()).not.toContain("Your users briefly see stale state");
     expect(lastFrame()).toContain("30 findings");
 

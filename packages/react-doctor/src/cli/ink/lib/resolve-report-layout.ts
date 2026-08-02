@@ -33,6 +33,7 @@ export interface ReportLayout {
   readonly layout: DiagnosticListLayout;
   readonly listColumnWidth: number;
   readonly listHeight: number;
+  readonly showsViewerScoreHeader: boolean;
   readonly width: number;
 }
 
@@ -51,6 +52,10 @@ export const resolveReportLayout = ({
   const reportRows = Math.max(0, terminalRows - TUI_REPORT_VIEWPORT_MARGIN_ROWS);
   const isWide = columns >= TUI_REPORT_WIDE_MIN_COLUMNS && terminalRows >= TUI_REPORT_WIDE_MIN_ROWS;
   const isCompact = !isWide && terminalRows <= TUI_REPORT_COMPACT_MAX_ROWS;
+  const minimumRowsWithCompactViewerScoreHeader =
+    TUI_REPORT_VIEWER_SCORE_HEADER_ROWS + TUI_REPORT_COMPACT_STATUS_ROWS + TUI_REPORT_MIN_LIST_ROWS;
+  const showsViewerScoreHeader =
+    !isCompact || reportRows >= minimumRowsWithCompactViewerScoreHeader;
   const detailHeight = Math.max(
     0,
     isWide
@@ -72,9 +77,13 @@ export const resolveReportLayout = ({
 
   let listHeight = availableListHeight;
   if (isCompact) {
+    const viewerScoreHeaderRows = showsViewerScoreHeader ? TUI_REPORT_VIEWER_SCORE_HEADER_ROWS : 0;
     listHeight = Math.min(
       diagnosticRowCount,
-      Math.max(TUI_REPORT_MIN_LIST_ROWS, reportRows - TUI_REPORT_COMPACT_STATUS_ROWS),
+      Math.max(
+        TUI_REPORT_MIN_LIST_ROWS,
+        reportRows - TUI_REPORT_COMPACT_STATUS_ROWS - viewerScoreHeaderRows,
+      ),
     );
   } else if (isWide) {
     listHeight = availableListHeight;
@@ -106,6 +115,7 @@ export const resolveReportLayout = ({
     layout,
     listColumnWidth,
     listHeight,
+    showsViewerScoreHeader,
     width,
   };
 };

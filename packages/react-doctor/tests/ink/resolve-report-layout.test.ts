@@ -58,6 +58,25 @@ describe("resolveReportLayout", () => {
 
     expect(layout.layout).toBe("compact");
     expect(layout.listHeight).toBe(TUI_REPORT_MIN_LIST_ROWS);
+    expect(layout.showsViewerScoreHeader).toBe(false);
+  });
+
+  it("reserves score header rows when they fit in a compact viewport", () => {
+    const terminalRows = TUI_REPORT_COMPACT_MAX_ROWS;
+    const layout = resolveReportLayout({
+      columns: TUI_DEFAULT_TERMINAL_COLUMNS,
+      diagnosticRowCount: 100,
+      terminalRows,
+    });
+
+    expect(layout.layout).toBe("compact");
+    expect(layout.showsViewerScoreHeader).toBe(true);
+    expect(layout.listHeight).toBe(
+      terminalRows -
+        TUI_REPORT_VIEWPORT_MARGIN_ROWS -
+        TUI_REPORT_COMPACT_STATUS_ROWS -
+        TUI_REPORT_VIEWER_SCORE_HEADER_ROWS,
+    );
   });
 
   it("reserves score header rows in a stacked viewport", () => {

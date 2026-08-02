@@ -199,6 +199,7 @@ export const DiagnosticList = ({
   if (isCompact) {
     return (
       <Box flexDirection="column" width={width}>
+        {header}
         {listColumn}
         {statusBar}
       </Box>

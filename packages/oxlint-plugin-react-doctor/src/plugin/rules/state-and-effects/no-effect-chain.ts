@@ -1,6 +1,5 @@
 import {
   EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
-  EXTERNAL_SYNC_DOM_MEMBER_PROPERTY_NAMES,
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
 } from "../../constants/dom.js";
@@ -52,6 +51,15 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
+
+const COMMITTED_DOM_MEMBER_METHOD_NAMES = new Set([
+  ...EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
+  "clearRect",
+  "drawImage",
+  "fillRect",
+  "strokeRect",
+]);
+const COMMITTED_DOM_MEMBER_PROPERTY_NAMES = new Set(["scrollLeft", "scrollTop"]);
 
 // HACK: §7 of "You Might Not Need an Effect" — chains of computations:
 //
@@ -2094,7 +2102,7 @@ const isCommittedDomSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolea
     const target = stripParenExpression(node.left);
     return Boolean(
       isNodeOfType(target, "MemberExpression") &&
-      EXTERNAL_SYNC_DOM_MEMBER_PROPERTY_NAMES.has(getStaticPropertyName(target) ?? "") &&
+      COMMITTED_DOM_MEMBER_PROPERTY_NAMES.has(getStaticPropertyName(target) ?? "") &&
       isDerivedFromProvenDomRefCurrent(target.object, scopes),
     );
   }
@@ -2102,7 +2110,7 @@ const isCommittedDomSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolea
     const target = stripParenExpression(node.argument);
     return Boolean(
       isNodeOfType(target, "MemberExpression") &&
-      EXTERNAL_SYNC_DOM_MEMBER_PROPERTY_NAMES.has(getStaticPropertyName(target) ?? "") &&
+      COMMITTED_DOM_MEMBER_PROPERTY_NAMES.has(getStaticPropertyName(target) ?? "") &&
       isDerivedFromProvenDomRefCurrent(target.object, scopes),
     );
   }
@@ -2110,7 +2118,7 @@ const isCommittedDomSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolea
   const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const propertyName = getStaticPropertyName(callee);
-  if (propertyName === null || !EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES.has(propertyName)) {
+  if (propertyName === null || !COMMITTED_DOM_MEMBER_METHOD_NAMES.has(propertyName)) {
     return false;
   }
   return (
@@ -2302,12 +2310,17 @@ const cleanupFunctionHasExternalWork = (
   }
   const nextVisitedFunctions = new Set(visitedFunctions).add(cleanupFunction);
   let hasExternalWork = false;
-  walkInsideStatementBlocks(cleanupFunction.body, (child) => {
+  walkAst(cleanupFunction.body, (child) => {
     if (hasExternalWork) return false;
+    if (isFunctionLike(child)) return false;
     if (isNodeOfType(child, "CallExpression")) {
-      if (getStateNameForSetterCall(child, setterSymbolIdToStateName, scopes)) return;
-      if (isNodeOfType(child.callee, "Identifier") && isSetterIdentifier(child.callee.name)) {
-        return;
+      if (getStateNameForSetterCall(child, setterSymbolIdToStateName, scopes)) return false;
+      if (
+        isNodeOfType(child.callee, "Identifier") &&
+        isSetterIdentifier(child.callee.name) &&
+        !EXTERNAL_SYNC_DIRECT_CALLEE_NAMES.has(child.callee.name)
+      ) {
+        return false;
       }
       const invokedFunction = resolveSynchronouslyInvokedFunction(child.callee, scopes);
       if (
@@ -2319,7 +2332,7 @@ const cleanupFunctionHasExternalWork = (
           nextVisitedFunctions,
         )
       ) {
-        return;
+        return false;
       }
       hasExternalWork = true;
       return false;

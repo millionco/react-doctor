@@ -74,9 +74,6 @@ export const EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS = new Set([
 
 export const EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES = new Set([
   "blur",
-  "clearRect",
-  "drawImage",
-  "fillRect",
   "focus",
   "getBoundingClientRect",
   "getClientRects",
@@ -90,9 +87,6 @@ export const EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES = new Set([
   "select",
   "setRangeText",
   "setSelectionRange",
-  "strokeRect",
 ]);
-
-export const EXTERNAL_SYNC_DOM_MEMBER_PROPERTY_NAMES = new Set(["scrollLeft", "scrollTop"]);
 
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);

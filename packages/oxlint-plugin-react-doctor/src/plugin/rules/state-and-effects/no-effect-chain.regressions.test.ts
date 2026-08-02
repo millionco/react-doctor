@@ -702,6 +702,71 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports through cleanup state values computed by ordinary helpers", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const getIdleMode = () => "idle";
+      function Interaction({ active, source }) {
+        const [mode, setMode] = useState("idle");
+        const [cursor, setCursor] = useState("default");
+        useEffect(() => {
+          if (active) {
+            setMode(source);
+            return () => setMode(getIdleMode());
+          }
+        }, [active, source]);
+        useEffect(() => setCursor(mode === "idle" ? "default" : "pointer"), [mode]);
+        return cursor;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps explicit resource work beside cleanup state restoration quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      const getIdleMode = () => "idle";
+      function Interaction({ source }) {
+        const [mode, setMode] = useState("idle");
+        const [cursor, setCursor] = useState("default");
+        useEffect(() => {
+          const subscription = source.subscribe();
+          setMode("active");
+          return () => {
+            setMode(getIdleMode());
+            subscription.unsubscribe();
+          };
+        }, [source]);
+        useEffect(() => setCursor(mode === "idle" ? "default" : "pointer"), [mode]);
+        return cursor;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("keeps deferred cleanup work on its lifecycle path quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `import { useEffect, useState } from "react";
+      function Interaction({ source }) {
+        const [mode, setMode] = useState("idle");
+        const [cursor, setCursor] = useState("default");
+        useEffect(() => {
+          setMode(source);
+          return () => setTimeout(() => release(source), 0);
+        }, [source]);
+        useEffect(() => setCursor(mode === "idle" ? "default" : "pointer"), [mode]);
+        return cursor;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not treat an empty nested cleanup as external synchronization", () => {
     const result = runRule(
       noEffectChain,

@@ -8,6 +8,7 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasLetterOrDecimalDigit } from "../../utils/has-letter-or-decimal-digit.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isInteractiveRole } from "../../utils/is-interactive-role.js";
@@ -20,7 +21,7 @@ import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 
 const MESSAGE =
-  "Blind users can't tell what this control does because screen readers find no label, so add visible text, `aria-label`, or `aria-labelledby`.";
+  "Blind users can't tell what this control does because its name is missing or only a symbol, so add visible text, `aria-label`, or `aria-labelledby`.";
 
 interface ControlHasAssociatedLabelSettings {
   depth?: number;
@@ -582,9 +583,13 @@ const expressionProvidesLabel = (
   const expression = stripParenExpression(rawExpression);
   if (isNodeOfType(expression, "JSXEmptyExpression")) return false;
   if (isNodeOfType(expression, "Literal")) {
-    if (typeof expression.value === "string") return expression.value.trim().length > 0;
+    if (typeof expression.value === "string") return hasLetterOrDecimalDigit(expression.value);
     if (typeof expression.value === "number") return true;
     return false;
+  }
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    const staticValue = getStaticTemplateLiteralValue(expression);
+    return staticValue === null || hasLetterOrDecimalDigit(staticValue);
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
     return (
@@ -611,7 +616,7 @@ const checkChildForLabel = (
   if (isNodeOfType(child, "JSXExpressionContainer")) {
     return expressionProvidesLabel(child.expression as EsTreeNode, currentDepth, context);
   }
-  if (isNodeOfType(child, "JSXText")) return child.value.trim().length > 0;
+  if (isNodeOfType(child, "JSXText")) return hasLetterOrDecimalDigit(child.value);
   if (isNodeOfType(child, "JSXFragment")) {
     return child.children.some((nestedChild) =>
       checkChildForLabel(nestedChild as EsTreeNode, currentDepth + 1, context),

@@ -948,6 +948,44 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("reports controls whose only child text is a symbol or emoji", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Player = ({ playing, onToggle }) => (
+          <nav>
+            <button>×</button>
+            <button>{"＋"}</button>
+            <button>{\`➕\`}</button>
+            <button>{playing ? "Ⅱ" : "▶"}</button>
+            <button>⏮</button>
+            <button role="switch" onClick={onToggle}>🔊</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(6);
+  });
+
+  it("accepts concise text, numeric, and explicitly named symbol controls", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Pager = () => (
+          <nav>
+            <button>Close</button>
+            <button>1</button>
+            <button aria-label="Add photo">＋</button>
+            <button title="Previous track">⏮</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("accepts icon buttons carrying either an aria-label or a native title", () => {
     const result = runRule(
       controlHasAssociatedLabel,

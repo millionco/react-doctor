@@ -392,7 +392,7 @@ describe("runScanApp", () => {
     expect(mockState.lifecycleEvents).not.toContain("footer");
   });
 
-  it("discards queued CI setup when the user quits", async () => {
+  it("runs confirmed CI setup even when the user quits", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
     mockState.shouldSetUpCi = true;
@@ -406,7 +406,8 @@ describe("runScanApp", () => {
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
-    expect(mockState.lifecycleEvents).not.toContain("ci");
+    expect(mockState.lifecycleEvents).toContain("ci");
+    expect(mockState.lifecycleEvents).not.toContain("footer");
   });
 
   it("runs queued CI setup after a completed selection", async () => {

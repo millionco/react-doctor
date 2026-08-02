@@ -22,7 +22,7 @@ export type DiagnosticListLayout = "compact" | "split" | "stacked";
 
 export interface ReportLayoutInput {
   readonly columns: number;
-  readonly diagnosticRowCount: number;
+  readonly diagnosticEntryCount: number;
   readonly terminalRows: number;
 }
 
@@ -45,7 +45,7 @@ const STACKED_FIXED_ROWS =
 
 export const resolveReportLayout = ({
   columns,
-  diagnosticRowCount,
+  diagnosticEntryCount,
   terminalRows,
 }: ReportLayoutInput): ReportLayout => {
   const width = Math.max(TUI_REPORT_MIN_WIDTH_CHARS, columns - TUI_HORIZONTAL_PADDING_COLUMNS);
@@ -79,17 +79,15 @@ export const resolveReportLayout = ({
   if (isCompact) {
     const viewerScoreHeaderRows = showsViewerScoreHeader ? TUI_REPORT_VIEWER_SCORE_HEADER_ROWS : 0;
     listHeight = Math.min(
-      diagnosticRowCount,
+      diagnosticEntryCount,
       Math.max(
         TUI_REPORT_MIN_LIST_ROWS,
         reportRows - TUI_REPORT_COMPACT_STATUS_ROWS - viewerScoreHeaderRows,
       ),
     );
-  } else if (isWide) {
-    listHeight = availableListHeight;
   } else if (!isWide) {
     listHeight = Math.min(
-      diagnosticRowCount,
+      diagnosticEntryCount,
       TUI_REPORT_STACKED_MAX_LIST_ROWS,
       availableListHeight,
     );

@@ -1,5 +1,6 @@
 import figures from "figures";
 import { Box, Text, useInput } from "ink";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import {
   TUI_REPORT_ACTION_MENU_ITEM_GAP_ROWS,
@@ -15,28 +16,32 @@ export interface ActionMenuAction {
 
 export interface ActionMenuProps {
   readonly actions: ReadonlyArray<ActionMenuAction>;
-  readonly selectedIndex: number;
-  readonly onSelectionChange: (index: number) => void;
+  readonly selectedIndex?: number;
+  readonly onSelectionChange?: (index: number) => void;
   readonly onEscape: () => void;
   readonly onQuit: () => void;
 }
 
 export const ActionMenu = ({
   actions,
-  selectedIndex,
+  selectedIndex: controlledSelectedIndex,
   onSelectionChange,
   onEscape,
   onQuit,
 }: ActionMenuProps) => {
+  const [internalSelectedIndex, setInternalSelectedIndex] = useState(0);
+  const selectedIndex = controlledSelectedIndex ?? internalSelectedIndex;
+  const changeSelection = onSelectionChange ?? setInternalSelectedIndex;
+
   useInput((input, key) => {
     if (input === "q") return onQuit();
     if (key.escape) return onEscape();
     if (actions.length === 0) return;
     if (key.upArrow || input === "k") {
-      return onSelectionChange(Math.max(0, selectedIndex - 1));
+      return changeSelection(Math.max(0, selectedIndex - 1));
     }
     if (key.downArrow || input === "j") {
-      return onSelectionChange(Math.min(actions.length - 1, selectedIndex + 1));
+      return changeSelection(Math.min(actions.length - 1, selectedIndex + 1));
     }
     if (key.return) actions[selectedIndex]?.onSelect();
   });

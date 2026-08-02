@@ -1,6 +1,5 @@
 import { getSkillAgentConfig } from "agent-install";
 import { Box, Text } from "ink";
-import { useState } from "react";
 import {
   TUI_HORIZONTAL_PADDING_COLUMNS,
   TUI_REPORT_ACTION_MENU_MARGIN_ROWS,
@@ -17,7 +16,6 @@ export interface AgentHandoffProps {
 }
 
 export const AgentHandoff = ({ agents, onSelect, onBack, onQuit }: AgentHandoffProps) => {
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const actions: ReadonlyArray<ActionMenuAction> = agents.map((agentId) => ({
     id: agentId,
     label: getSkillAgentConfig(agentId).displayName,
@@ -29,13 +27,7 @@ export const AgentHandoff = ({ agents, onSelect, onBack, onQuit }: AgentHandoffP
       <Box paddingLeft={TUI_HORIZONTAL_PADDING_COLUMNS}>
         <Text bold>Choose an agent</Text>
       </Box>
-      <ActionMenu
-        actions={actions}
-        selectedIndex={selectedIndex}
-        onSelectionChange={setSelectedIndex}
-        onEscape={onBack}
-        onQuit={onQuit}
-      />
+      <ActionMenu actions={actions} onEscape={onBack} onQuit={onQuit} />
       <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
         <Text dimColor>↑/↓ move · enter select · esc back · q quit</Text>
       </Box>

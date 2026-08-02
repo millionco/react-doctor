@@ -16,8 +16,8 @@ import { resolveReportLayout } from "../../src/cli/ink/lib/resolve-report-layout
 describe("resolveReportLayout", () => {
   it("fills the split viewport after reserving the header and footer", () => {
     const terminalRows = 40;
-    const diagnosticRowCount = 8;
-    const layout = resolveReportLayout({ columns: 160, diagnosticRowCount, terminalRows });
+    const diagnosticEntryCount = 8;
+    const layout = resolveReportLayout({ columns: 160, diagnosticEntryCount, terminalRows });
 
     expect(layout.layout).toBe("split");
     expect(layout.detailHeight).toBe(
@@ -36,7 +36,7 @@ describe("resolveReportLayout", () => {
     const terminalRows = 24;
     const layout = resolveReportLayout({
       columns: 160,
-      diagnosticRowCount: 100,
+      diagnosticEntryCount: 100,
       terminalRows,
     });
 
@@ -52,7 +52,7 @@ describe("resolveReportLayout", () => {
   it("keeps one issue visible in an extremely short compact viewport", () => {
     const layout = resolveReportLayout({
       columns: 40,
-      diagnosticRowCount: 3,
+      diagnosticEntryCount: 3,
       terminalRows: TUI_REPORT_VIEWPORT_MARGIN_ROWS + TUI_REPORT_COMPACT_STATUS_ROWS,
     });
 
@@ -65,7 +65,7 @@ describe("resolveReportLayout", () => {
     const terminalRows = TUI_REPORT_COMPACT_MAX_ROWS;
     const layout = resolveReportLayout({
       columns: TUI_DEFAULT_TERMINAL_COLUMNS,
-      diagnosticRowCount: 100,
+      diagnosticEntryCount: 100,
       terminalRows,
     });
 
@@ -83,7 +83,7 @@ describe("resolveReportLayout", () => {
     const terminalRows = TUI_REPORT_COMPACT_MAX_ROWS + TUI_REPORT_DETAIL_ROWS;
     const layout = resolveReportLayout({
       columns: TUI_DEFAULT_TERMINAL_COLUMNS,
-      diagnosticRowCount: 100,
+      diagnosticEntryCount: 100,
       terminalRows,
     });
 
@@ -102,7 +102,7 @@ describe("resolveReportLayout", () => {
   it("does not allocate an issue row when the report is clean", () => {
     const layout = resolveReportLayout({
       columns: 40,
-      diagnosticRowCount: 0,
+      diagnosticEntryCount: 0,
       terminalRows: TUI_REPORT_VIEWPORT_MARGIN_ROWS + TUI_REPORT_COMPACT_STATUS_ROWS,
     });
 

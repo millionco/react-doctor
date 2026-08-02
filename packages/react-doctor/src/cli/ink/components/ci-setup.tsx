@@ -1,5 +1,4 @@
 import { Box, Text } from "ink";
-import { useState } from "react";
 import { GITHUB_ACTIONS_SETUP_URL } from "@react-doctor/core";
 import { TUI_REPORT_ACTION_MENU_MARGIN_ROWS } from "../../utils/constants.js";
 import { CiJustification } from "./ci-justification.js";
@@ -33,7 +32,6 @@ export const CiSetup = ({ feedback, onConfirm, onLearnMore, onBack, onQuit }: Ci
       onSelect: onLearnMore,
     },
   ];
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   return (
     <Box flexDirection="column">
@@ -41,13 +39,7 @@ export const CiSetup = ({ feedback, onConfirm, onLearnMore, onBack, onQuit }: Ci
         <Text color="cyan">?</Text> Add React Doctor to GitHub Actions?
       </Text>
       <CiJustification />
-      <ActionMenu
-        actions={actions}
-        selectedIndex={selectedIndex}
-        onSelectionChange={setSelectedIndex}
-        onEscape={onBack}
-        onQuit={onQuit}
-      />
+      <ActionMenu actions={actions} onEscape={onBack} onQuit={onQuit} />
       {feedback ? (
         <Text color={feedback.didSucceed ? "green" : "yellow"}>
           {feedback.didSucceed ? (

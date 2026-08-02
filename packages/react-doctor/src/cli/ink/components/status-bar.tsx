@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type { ReactNode } from "react";
+import { pluralize } from "../../utils/pluralize.js";
 
 export interface StatusBarProps {
   readonly total: number;
@@ -28,17 +29,11 @@ export const StatusBar = ({
 }: StatusBarProps) => {
   const counts = (
     <>
-      <Text bold>
-        {total} {total === 1 ? "finding" : "findings"}
-      </Text>
+      <Text bold>{pluralize(total, "finding")}</Text>
       <Text dimColor>{"  "}</Text>
-      <Text color="red">
-        {errorCount} {errorCount === 1 ? "error" : "errors"}
-      </Text>
+      <Text color="red">{pluralize(errorCount, "error")}</Text>
       <Text dimColor>{"  "}</Text>
-      <Text color="yellow">
-        {warningCount} {warningCount === 1 ? "warning" : "warnings"}
-      </Text>
+      <Text color="yellow">{pluralize(warningCount, "warning")}</Text>
     </>
   );
 
@@ -67,14 +62,14 @@ export const StatusBar = ({
         {projectCount !== undefined ? (
           <Text dimColor>
             {"  ·  "}
-            {projectCount} {projectCount === 1 ? "project" : "projects"}
+            {pluralize(projectCount, "project")}
           </Text>
         ) : null}
       </Text>
       <Text wrap="truncate-end">
         {unreadCount !== undefined ? (
           <Text color={unreadCount > 0 ? "cyan" : undefined} dimColor={unreadCount === 0}>
-            {unreadCount} {unreadCount === 1 ? "issue" : "issues"} unread{"  ·  "}
+            {pluralize(unreadCount, "issue")} unread{"  ·  "}
           </Text>
         ) : null}
         {keyHints}

@@ -11,20 +11,21 @@ const resolveOpenCommand = (url: string): { command: string; args: string[] } =>
   return { command: "xdg-open", args: [url] };
 };
 
-// Best-effort: launches the user's default browser to `url` and returns
-// whether the spawn succeeded synchronously. Detached + ignore-stdio so the
-// child doesn't keep the CLI's event loop alive, and so its output never
-// scribbles over the prompt we re-render afterwards. `xdg-open` may not be
-// installed on minimal Linux images; callers should fall back to printing the
-// URL if this returns false.
-export const openUrl = (url: string): boolean => {
-  try {
-    const { command, args } = resolveOpenCommand(url);
-    const child = spawn(command, args, { detached: true, stdio: "ignore" });
-    child.on("error", () => {});
-    child.unref();
-    return true;
-  } catch {
-    return false;
-  }
-};
+// Best-effort: launches the user's default browser to `url`, resolving with
+// whether the opener process actually spawned (an `xdg-open` missing from a
+// minimal Linux image fails asynchronously with ENOENT). Detached +
+// ignore-stdio so the child doesn't keep the CLI's event loop alive, and so
+// its output never scribbles over the prompt we re-render afterwards. Callers
+// should fall back to printing the URL when this resolves false.
+export const openUrl = (url: string): Promise<boolean> =>
+  new Promise((resolve) => {
+    try {
+      const { command, args } = resolveOpenCommand(url);
+      const child = spawn(command, args, { detached: true, stdio: "ignore" });
+      child.once("spawn", () => resolve(true));
+      child.once("error", () => resolve(false));
+      child.unref();
+    } catch {
+      resolve(false);
+    }
+  });

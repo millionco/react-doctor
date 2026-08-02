@@ -13,7 +13,6 @@ export interface HandoffPayloadInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly projectName: string;
   readonly outputDirectory?: string | null;
-  readonly shouldSetUpCiFirst?: boolean;
 }
 
 export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
@@ -27,17 +26,10 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     outputDirectory = writeDiagnosticsDirectory([...input.diagnostics], input.outputDirectory);
   } catch {}
 
-  const lines: string[] = [];
-  if (input.shouldSetUpCiFirst) {
-    lines.push(
-      "First, configure React Doctor in GitHub Actions and add a `doctor` package script with the project’s package manager. Verify both before fixing the backlog.",
-      "",
-    );
-  }
-  lines.push(
+  const lines: string[] = [
     `Review and fix the top ${topGroups.length} React Doctor ${topGroups.length === 1 ? "finding" : "findings"} in ${input.projectName}. Leave the rest for a follow-up.`,
     "",
-  );
+  ];
 
   topGroups.forEach(([ruleKey, ruleDiagnostics], index) => {
     const representative = ruleDiagnostics[0]!;

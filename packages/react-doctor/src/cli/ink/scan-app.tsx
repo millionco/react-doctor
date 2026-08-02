@@ -28,7 +28,6 @@ export const ScanApp = ({
   const snapshot = useScanStore(store);
   const { exit } = useApp();
   useExitOnCtrlC();
-  const handleExit = (): void => exit();
   const handleQuit = (): void => {
     onQuit?.();
     exit();
@@ -42,7 +41,7 @@ export const ScanApp = ({
         onHandoff={onHandoff}
         canAddToCi={canAddToCi}
         onAddToCi={onAddToCi}
-        onExit={handleExit}
+        onExit={exit}
         onQuit={handleQuit}
       />
     );
@@ -56,7 +55,7 @@ export const ScanApp = ({
         onHandoff={onHandoff}
         canAddToCi={canAddToCi}
         onAddToCi={onAddToCi}
-        onExit={handleExit}
+        onExit={exit}
         onQuit={handleQuit}
       />
     );

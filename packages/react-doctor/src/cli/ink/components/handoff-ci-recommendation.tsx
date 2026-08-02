@@ -1,5 +1,4 @@
 import { Box, Text } from "ink";
-import { useState } from "react";
 import {
   TUI_HORIZONTAL_PADDING_COLUMNS,
   TUI_REPORT_ACTION_MENU_MARGIN_ROWS,
@@ -27,7 +26,6 @@ export const HandoffCiRecommendation = ({
     },
     { id: "continue", label: "Continue without GitHub Actions", onSelect: onContinue },
   ];
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   return (
     <Box flexDirection="column">
@@ -35,13 +33,7 @@ export const HandoffCiRecommendation = ({
         <Text bold>Add React Doctor to GitHub Actions first</Text>
       </Box>
       <CiJustification />
-      <ActionMenu
-        actions={actions}
-        selectedIndex={selectedIndex}
-        onSelectionChange={setSelectedIndex}
-        onEscape={onContinue}
-        onQuit={onQuit}
-      />
+      <ActionMenu actions={actions} onEscape={onContinue} onQuit={onQuit} />
       <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
         <Text dimColor>↑/↓ move · enter select · esc skip · q quit</Text>
       </Box>

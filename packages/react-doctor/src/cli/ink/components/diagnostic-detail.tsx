@@ -1,7 +1,8 @@
 import { getCategoryImpact } from "@react-doctor/core";
 import { Box, Text } from "ink";
+import { useMemo } from "react";
+import { buildCodeFrame } from "../../utils/build-code-frame.js";
 import { TUI_DETAIL_INDENT_COLUMNS, TUI_REPORT_SECTION_GAP_ROWS } from "../../utils/constants.js";
-import { useDiagnosticCodeFrame } from "../hooks/use-diagnostic-code-frame.js";
 import type { DiagnosticRow } from "../lib/diagnostic-rows.js";
 import { severityVariant } from "../lib/severity-variants.js";
 import { TuiLink } from "./tui-link.js";
@@ -12,7 +13,16 @@ export interface DiagnosticDetailProps {
 }
 
 export const DiagnosticDetail = ({ row, rootDirectory }: DiagnosticDetailProps) => {
-  const codeFrame = useDiagnosticCodeFrame({ row, rootDirectory });
+  const codeFrame = useMemo(() => {
+    if (!row) return null;
+    const { representative } = row;
+    return buildCodeFrame({
+      filePath: representative.filePath,
+      line: representative.line,
+      column: representative.column,
+      rootDirectory,
+    });
+  }, [row, rootDirectory]);
 
   if (!row) return null;
   const variant = severityVariant(row.severity);

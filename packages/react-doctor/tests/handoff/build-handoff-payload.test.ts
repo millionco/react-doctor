@@ -19,22 +19,6 @@ const makeDiagnostic = (overrides: Partial<Diagnostic>): Diagnostic => ({
 });
 
 describe("buildHandoffPayload", () => {
-  it("puts GitHub Actions setup before issue fixes when requested", () => {
-    const diagnostics = [makeDiagnostic({})];
-    const payload = buildHandoffPayload({
-      diagnostics,
-      projectName: "demo",
-      shouldSetUpCiFirst: true,
-    });
-
-    expect(payload.indexOf("First, configure React Doctor in GitHub Actions")).toBeLessThan(
-      payload.indexOf("Review and fix the top 1 React Doctor finding"),
-    );
-
-    const directory = payload.match(/Full results for all 1 issue[^:]*: (\S+)/)?.[1];
-    if (directory) fs.rmSync(directory, { recursive: true, force: true });
-  });
-
   it("lists only the top N rules and points at the full-results directory", () => {
     const diagnostics: Diagnostic[] = [];
     for (let ruleIndex = 0; ruleIndex < 5; ruleIndex += 1) {

@@ -9,6 +9,7 @@ import {
   TUI_SCORE_RIGHT_EDGE_SAFETY_COLUMNS,
 } from "../../utils/constants.js";
 import { canAnimateOnboarding } from "../../utils/onboarding-pacing.js";
+import { pluralize } from "../../utils/pluralize.js";
 import { useAnimatedScore } from "../hooks/use-animated-score.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { scoreColorName } from "../lib/score-color.js";
@@ -58,30 +59,32 @@ export const ScoreHeader = ({
           <ReactDoctorLink />
         </Text>
         <Text dimColor wrap="truncate-end">
-          {noScoreMessage ??
-            `${issueCount} ${issueCount === 1 ? "finding" : "findings"} · ${projectName}`}
+          {noScoreMessage ?? `${pluralize(issueCount, "finding")} · ${projectName}`}
         </Text>
       </Box>
     );
   }
 
   const scoreColor = scoreColorName(score.score);
+  const scoreSummaryLine = (
+    <Text wrap="truncate-end">
+      <Text color={scoreColor} bold>
+        {displayScore}
+      </Text>
+      <Text dimColor> / {PERFECT_SCORE} </Text>
+      <Text color={scoreColor}>{score.label}</Text>
+      <Text dimColor>
+        {"  ·  "}
+        {projectName}
+      </Text>
+    </Text>
+  );
   const minimumWidthWithFace =
     TUI_SCORE_FACE_OFFSET_COLUMNS + SCORE_BAR_MIN_WIDTH_CHARS + TUI_SCORE_RIGHT_EDGE_SAFETY_COLUMNS;
   if (availableWidth < minimumWidthWithFace) {
     return (
       <Box flexDirection="column" width={availableWidth}>
-        <Text wrap="truncate-end">
-          <Text color={scoreColor} bold>
-            {displayScore}
-          </Text>
-          <Text dimColor> / {PERFECT_SCORE} </Text>
-          <Text color={scoreColor}>{score.label}</Text>
-          <Text dimColor>
-            {"  ·  "}
-            {projectName}
-          </Text>
-        </Text>
+        {scoreSummaryLine}
         <Text wrap="truncate-end">
           <ReactDoctorLink />
         </Text>
@@ -112,17 +115,7 @@ export const ScoreHeader = ({
           <Text color={scoreColor}>{`┌─────┐\n│ ${eyes} │\n│ ${mouth} │\n└─────┘`}</Text>
         </Box>
         <Box flexDirection="column">
-          <Text wrap="truncate-end">
-            <Text color={scoreColor} bold>
-              {displayScore}
-            </Text>
-            <Text dimColor> / {PERFECT_SCORE} </Text>
-            <Text color={scoreColor}>{score.label}</Text>
-            <Text dimColor>
-              {"  ·  "}
-              {projectName}
-            </Text>
-          </Text>
+          {scoreSummaryLine}
           <Text wrap="truncate-end">
             <Text color={scoreColor}>{"█".repeat(filledBarWidth)}</Text>
             <Text color={scoreColor} dimColor>

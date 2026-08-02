@@ -71,7 +71,7 @@ export const askAddToGitHubActions = async (
     if (ciChoice === CI_NO_CHOICE) return "no";
 
     // CI_LEARN_MORE_CHOICE: open the docs and loop back to the question.
-    const opened = openUrl(GITHUB_ACTIONS_SETUP_URL);
+    const opened = await openUrl(GITHUB_ACTIONS_SETUP_URL);
     logger.log(
       opened
         ? `Opened ${highlighter.info(GITHUB_ACTIONS_SETUP_URL)} in your browser.`

@@ -876,7 +876,7 @@ describe("ScanApp", () => {
   });
 
   it("opens the CI documentation from the setup confirmation", async () => {
-    const openUrl = vi.spyOn(openUrlModule, "openUrl").mockReturnValue(true);
+    const openUrl = vi.spyOn(openUrlModule, "openUrl").mockResolvedValue(true);
     const store = createScanStore();
     store.setReport({
       diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
@@ -909,7 +909,7 @@ describe("ScanApp", () => {
   });
 
   it("shows the CI guide URL when a browser cannot be opened", async () => {
-    vi.spyOn(openUrlModule, "openUrl").mockReturnValue(false);
+    vi.spyOn(openUrlModule, "openUrl").mockResolvedValue(false);
     const store = createScanStore();
     store.setReport({
       diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
@@ -995,8 +995,7 @@ describe("ScanApp", () => {
     expect(onHandoff).toHaveBeenCalledOnce();
     const request = onHandoff.mock.calls[0]?.[0];
     expect(request?.agentId).toBe("codex");
-    expect(request?.prompt).toContain("First, configure React Doctor in GitHub Actions");
-    expect(request?.prompt).toContain("Verify both before fixing the backlog.");
+    expect(request?.prompt).not.toContain("First, configure React Doctor in GitHub Actions");
     unmount();
   });
 

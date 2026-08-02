@@ -8,6 +8,7 @@ import type { CliAgentId } from "../../utils/launch-agent.js";
 import { openUrl } from "../../utils/open-url.js";
 import { isOnboardingForced, shouldRecordOnboarding } from "../../utils/onboarding-pacing.js";
 import { markOnboardingComplete } from "../../utils/onboarding-state.js";
+import { pluralize } from "../../utils/pluralize.js";
 import { recordCount } from "../../utils/record-metric.js";
 import { useReportReveal } from "../hooks/use-report-reveal.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
@@ -40,18 +41,8 @@ export interface ReportProps {
 }
 
 const EMPTY_LAUNCHABLE_AGENTS: ReadonlyArray<CliAgentId> = [];
-const LANDING_SCREEN = "landing";
-const ISSUES_SCREEN = "issues";
-const CI_SCREEN = "ci";
-const HANDOFF_CI_SCREEN = "handoff-ci";
-const HANDOFF_SCREEN = "handoff";
 
-type ReportScreen =
-  | typeof LANDING_SCREEN
-  | typeof ISSUES_SCREEN
-  | typeof CI_SCREEN
-  | typeof HANDOFF_CI_SCREEN
-  | typeof HANDOFF_SCREEN;
+type ReportScreen = "landing" | "issues" | "ci" | "handoff-ci" | "handoff";
 
 const recordReportAction = (action: string): void => {
   recordCount(METRIC.tuiReportActionSelected, 1, { action });
@@ -94,14 +85,14 @@ export const Report = ({
   );
   const reportLayout = resolveReportLayout({
     columns,
-    diagnosticRowCount: diagnosticListEntries.length,
+    diagnosticEntryCount: diagnosticListEntries.length,
     terminalRows,
   });
   const reportReveal = useReportReveal({
     issueCount: diagnosticRows.length,
     onRevealComplete: completeReportOnboarding,
   });
-  const [activeReportScreen, setActiveReportScreen] = useState<ReportScreen>(LANDING_SCREEN);
+  const [activeReportScreen, setActiveReportScreen] = useState<ReportScreen>("landing");
   const [ciSetupFeedback, setCiSetupFeedback] = useState<CiSetupFeedback>();
   const [landingSelectedIndex, setLandingSelectedIndex] = useState(0);
   const [viewerSelectedRowIndex, setViewerSelectedRowIndex] = useState<number | null>(null);
@@ -132,33 +123,18 @@ export const Report = ({
     recordCount(METRIC.tuiIssueStreamShown);
   }, [reportReveal.phase]);
 
-  const landingScoreHeader = (
-    <ScoreHeader
-      variant="landing"
-      score={report.score}
-      projectedScore={report.projectedScore}
-      projectName={report.projectName}
-      issueCount={report.diagnostics.length}
-      noScoreMessage={report.noScoreMessage}
-      width={isWide ? reportLayout.listColumnWidth : reportLayout.width}
-    />
-  );
-  const viewerScoreHeader = (
-    <ScoreHeader
-      variant="viewer"
-      score={report.score}
-      projectedScore={report.projectedScore}
-      projectName={report.projectName}
-      issueCount={report.diagnostics.length}
-      noScoreMessage={report.noScoreMessage}
-      width={isWide ? reportLayout.listColumnWidth : reportLayout.width}
-    />
-  );
+  const scoreHeaderProps = {
+    score: report.score,
+    projectedScore: report.projectedScore,
+    projectName: report.projectName,
+    issueCount: report.diagnostics.length,
+    noScoreMessage: report.noScoreMessage,
+    width: isWide ? reportLayout.listColumnWidth : reportLayout.width,
+  };
 
   const isCiSetupAvailable = Boolean(canAddToCi && onAddToCi && !isCiSetupQueued);
   const isHandoffAvailable =
     diagnosticRows.length > 0 && launchableAgents.length > 0 && Boolean(onHandoff);
-  const issueLabel = diagnosticRows.length === 1 ? "issue" : "issues";
   const firstDiagnosticEntry = diagnosticListEntries.find((entry) => entry.kind === "item");
   const resolvedViewerSelectedRowIndex =
     viewerSelectedRowIndex ??
@@ -183,14 +159,14 @@ export const Report = ({
   if (report.diagnostics.length > 0) {
     landingActions.push({
       id: "view-issues",
-      label: `Review ${diagnosticRows.length} ${issueLabel}`,
+      label: `Review ${pluralize(diagnosticRows.length, "issue")}`,
       onSelect: () => {
         recordReportAction("view-issues");
         if (resolvedViewerSelectedRowIndex !== null) {
           setViewerSelectedRowIndex(resolvedViewerSelectedRowIndex);
           markViewerRuleRead(resolvedViewerSelectedRowIndex);
         }
-        openReportScreen(ISSUES_SCREEN);
+        openReportScreen("issues");
       },
     });
   }
@@ -201,7 +177,7 @@ export const Report = ({
       description: <CiJustification />,
       onSelect: () => {
         recordReportAction("add-to-ci");
-        openReportScreen(CI_SCREEN);
+        openReportScreen("ci");
       },
     });
   }
@@ -211,7 +187,7 @@ export const Report = ({
       label: "Hand off to an agent",
       onSelect: () => {
         recordReportAction("handoff");
-        openReportScreen(isCiSetupAvailable ? HANDOFF_CI_SCREEN : HANDOFF_SCREEN);
+        openReportScreen(isCiSetupAvailable ? "handoff-ci" : "handoff");
       },
     });
   }
@@ -233,7 +209,7 @@ export const Report = ({
     ) : null;
 
   let activeScreenContent: ReactNode;
-  if (activeReportScreen === CI_SCREEN) {
+  if (activeReportScreen === "ci") {
     activeScreenContent = (
       <CiSetup
         feedback={ciSetupFeedback}
@@ -243,22 +219,23 @@ export const Report = ({
         }}
         onLearnMore={() => {
           recordReportAction("ci-learn-more");
-          const didOpen = openUrl(GITHUB_ACTIONS_SETUP_URL);
-          setCiSetupFeedback({
-            didSucceed: didOpen,
-            message: didOpen
-              ? "✓ Opened the GitHub Actions guide in your browser"
-              : `Couldn't open a browser. Visit ${GITHUB_ACTIONS_SETUP_URL}`,
+          void openUrl(GITHUB_ACTIONS_SETUP_URL).then((didOpen) => {
+            setCiSetupFeedback({
+              didSucceed: didOpen,
+              message: didOpen
+                ? "✓ Opened the GitHub Actions guide in your browser"
+                : `Couldn't open a browser. Visit ${GITHUB_ACTIONS_SETUP_URL}`,
+            });
           });
         }}
         onBack={() => {
           setCiSetupFeedback(undefined);
-          setActiveReportScreen(LANDING_SCREEN);
+          setActiveReportScreen("landing");
         }}
         onQuit={onQuit}
       />
     );
-  } else if (activeReportScreen === HANDOFF_SCREEN) {
+  } else if (activeReportScreen === "handoff") {
     activeScreenContent = (
       <AgentHandoff
         agents={launchableAgents}
@@ -269,31 +246,30 @@ export const Report = ({
             prompt: buildHandoffPayload({
               diagnostics: report.diagnostics,
               projectName: report.projectName,
-              shouldSetUpCiFirst: isCiSetupAvailable,
             }),
           });
           onExit();
         }}
-        onBack={() => setActiveReportScreen(LANDING_SCREEN)}
+        onBack={() => setActiveReportScreen("landing")}
         onQuit={onQuit}
       />
     );
-  } else if (activeReportScreen === HANDOFF_CI_SCREEN) {
+  } else if (activeReportScreen === "handoff-ci") {
     activeScreenContent = (
       <HandoffCiRecommendation
         onAddToCi={() => {
           onAddToCi?.();
           setIsCiSetupQueued(true);
-          setActiveReportScreen(HANDOFF_SCREEN);
+          setActiveReportScreen("handoff");
         }}
-        onContinue={() => setActiveReportScreen(HANDOFF_SCREEN)}
+        onContinue={() => setActiveReportScreen("handoff")}
         onQuit={onQuit}
       />
     );
-  } else if (activeReportScreen === LANDING_SCREEN) {
+  } else if (activeReportScreen === "landing") {
     activeScreenContent = (
       <ReportLanding
-        header={landingScoreHeader}
+        header={<ScoreHeader variant="landing" {...scoreHeaderProps} />}
         phase={reportReveal.phase}
         issueCount={report.diagnostics.length}
         emptyStateMessage={report.emptyStateMessage}
@@ -307,7 +283,11 @@ export const Report = ({
   } else {
     activeScreenContent = (
       <DiagnosticList
-        header={reportLayout.showsViewerScoreHeader ? viewerScoreHeader : null}
+        header={
+          reportLayout.showsViewerScoreHeader ? (
+            <ScoreHeader variant="viewer" {...scoreHeaderProps} />
+          ) : null
+        }
         rows={diagnosticRows}
         entries={diagnosticListEntries}
         width={reportLayout.width}
@@ -325,7 +305,7 @@ export const Report = ({
         onQuit={onQuit}
         onBack={() => {
           setLandingSelectedIndex(Math.max(0, postReviewLandingActionIndex));
-          setActiveReportScreen(LANDING_SCREEN);
+          setActiveReportScreen("landing");
         }}
         exitHint={`esc back · ${exitHint}`}
       />
@@ -334,7 +314,7 @@ export const Report = ({
 
   return (
     <>
-      {activeReportScreen === LANDING_SCREEN && shouldShowIssueStream ? issueStream : null}
+      {activeReportScreen === "landing" && shouldShowIssueStream ? issueStream : null}
       {activeScreenContent}
     </>
   );

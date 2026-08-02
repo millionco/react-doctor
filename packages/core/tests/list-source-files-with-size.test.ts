@@ -207,7 +207,11 @@ describe("listSourceFilesWithSize", () => {
     writeNestedFile("src/app.tsx", "export const App = () => <main>current</main>;\n");
     commitAll();
 
-    const mergeResult = spawnSync("git", ["merge", "conflict"], { cwd: temporaryDirectory });
+    const mergeResult = spawnSync(
+      "git",
+      ["-c", "user.email=test@example.com", "-c", "user.name=test", "merge", "conflict"],
+      { cwd: temporaryDirectory },
+    );
     expect(mergeResult.status).not.toBe(0);
 
     const stagedPaths = spawnSync("git", ["ls-files", "--stage", "src/app.tsx"], {

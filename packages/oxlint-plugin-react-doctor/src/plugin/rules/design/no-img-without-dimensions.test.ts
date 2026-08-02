@@ -1,6 +1,22 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noImgWithoutDimensions } from "./no-img-without-dimensions.js";
+
+const runRuleWithSiblingCss = (code: string, css: string, shouldImportStylesheet = true) => {
+  const directoryPath = fs.mkdtempSync(path.join(os.tmpdir(), "rd-img-css-"));
+  const filename = path.join(directoryPath, "app.tsx");
+  const source = `${shouldImportStylesheet ? 'import "./styles.css";\n' : ""}${code}`;
+  fs.writeFileSync(filename, source);
+  fs.writeFileSync(path.join(directoryPath, "styles.css"), css);
+  try {
+    return runRule(noImgWithoutDimensions, source, { filename });
+  } finally {
+    fs.rmSync(directoryPath, { force: true, recursive: true });
+  }
+};
 
 describe("no-img-without-dimensions", () => {
   it("respects important Tailwind box sizing over inline dimensions", () => {
@@ -56,6 +72,87 @@ describe("no-img-without-dimensions", () => {
        const E = () => <img src="/photo.jpg" alt="" className="w-[640px] h-[50vh]" />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows definite image boxes from a sibling stylesheet", () => {
+    const fixedDimensions = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,
+      `.feed img { width: 100%; height: 178px; object-fit: cover; }`,
+    );
+    const aspectRatio = runRuleWithSiblingCss(
+      `const Hero = () => <main><img src="/hero.jpg" alt="" /></main>;`,
+      `main > img { width: 100%; aspect-ratio: 16 / 9; }`,
+    );
+    const positionSpecificDimensions = runRuleWithSiblingCss(
+      `const Gallery = () => <div className="grid"><img src="/one.jpg" alt="" /><img src="/two.jpg" alt="" /></div>;`,
+      `.grid img { width: 100%; } .grid img:nth-child(1), .grid img:nth-child(2) { height: 245px; }`,
+    );
+    expect(fixedDimensions.diagnostics).toHaveLength(0);
+    expect(aspectRatio.diagnostics).toHaveLength(0);
+    expect(positionSpecificDimensions.diagnostics).toHaveLength(0);
+  });
+
+  it("allows a full-size image in a definitively stretched flex item", () => {
+    const result = runRuleWithSiblingCss(
+      `const Map = () => <main><div className="body"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,
+      `main { width: 100vw; height: 100vh; }
+       .body { display: flex; height: calc(100vh - 48px); }
+       aside { flex: 1; }
+       aside > img { width: 100%; height: 100%; object-fit: cover; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows a full-size image through a definite React root height chain", () => {
+    const result = runRuleWithSiblingCss(
+      `const Map = () => <main><div className="content"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,
+      `html, body, #root { height: 100%; }
+       main { width: 100%; height: 100%; }
+       .content { display: flex; height: calc(100% - 49px); }
+       aside { width: 37%; height: 100%; }
+       aside img { width: 100%; height: 100%; object-fit: cover; }
+       @media (max-width: 600px) { section { width: 64%; } }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports sibling CSS that does not reserve image height", () => {
+    const autoHeight = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: auto; }`,
+    );
+    const widthOnly = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 100%; object-fit: cover; }`,
+    );
+    const indefiniteParentHeight = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 100%; height: 100%; }`,
+    );
+    const unusedStylesheet = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }`,
+      false,
+    );
+    expect(autoHeight.diagnostics).toHaveLength(1);
+    expect(widthOnly.diagnostics).toHaveLength(1);
+    expect(indefiniteParentHeight.diagnostics).toHaveLength(1);
+    expect(unusedStylesheet.diagnostics).toHaveLength(1);
+  });
+
+  it("reports when conditional or unsupported CSS can remove the reservation", () => {
+    const conditionalOverride = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }
+       @media (max-width: 600px) { section img { height: auto; } }`,
+    );
+    const unsupportedOverride = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }
+       :where(section img) { height: auto; }`,
+    );
+    expect(conditionalOverride.diagnostics).toHaveLength(1);
+    expect(unsupportedOverride.diagnostics).toHaveLength(1);
   });
 
   it("allows an image inside a reserved wrapper", () => {

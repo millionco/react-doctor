@@ -50,6 +50,7 @@ const CROSS_FILE_PRIMITIVE_FILES = [
   "utils/is-barrel-index-module.ts",
   "utils/read-nearest-package-manifest.ts",
   "utils/get-fast-refresh-file-status.ts",
+  "rules/design/utils/create-static-css-style-resolver.ts",
 ].map((relativePath) => path.resolve(PLUGIN_SOURCE_DIRECTORY, relativePath));
 const primitiveFileSet = new Set(CROSS_FILE_PRIMITIVE_FILES);
 
@@ -178,6 +179,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-event-handler",
       "no-full-lodash-import",
       "no-hydration-branch-on-browser-global",
+      "no-img-without-dimensions",
       "no-indeterminate-attribute",
       "no-initialize-state",
       "no-loading-flag-reset-outside-finally",

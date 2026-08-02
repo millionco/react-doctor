@@ -653,6 +653,7 @@ describe("ScanApp", () => {
     await flush();
 
     const frame = lastFrame() ?? "";
+    expect(frame).toContain("React Doctor (https://react.doctor)");
     expect(frame).toContain("Your users briefly see stale state");
     expect(frame).toContain("react-doctor/rule-00");
     expect(frame).not.toContain(`react-doctor/rule-${TUI_REPORT_STACKED_MAX_LIST_ROWS}`);

@@ -110,7 +110,7 @@ const recordOnboardingCompletion = (options: ResolvedInspectOptions): void => {
   const paceOnboardingSections =
     !options.silent &&
     !options.scoreOnly &&
-    (!options.suppressRendering || options.uiLayers !== null) &&
+    !options.suppressRendering &&
     !options.verbose &&
     canAnimateOnboarding(process.stdout) &&
     (forceOnboarding || !hasCompletedOnboarding());

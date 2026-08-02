@@ -6,6 +6,8 @@ import { buildHandoffPayload } from "../../utils/build-handoff-payload.js";
 import { METRIC } from "../../utils/constants.js";
 import type { CliAgentId } from "../../utils/launch-agent.js";
 import { openUrl } from "../../utils/open-url.js";
+import { isOnboardingForced, shouldRecordOnboarding } from "../../utils/onboarding-pacing.js";
+import { markOnboardingComplete } from "../../utils/onboarding-state.js";
 import { recordCount } from "../../utils/record-metric.js";
 import { useReportReveal } from "../hooks/use-report-reveal.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
@@ -54,6 +56,20 @@ const recordReportAction = (action: string): void => {
   recordCount(METRIC.tuiReportActionSelected, 1, { action });
 };
 
+const completeReportOnboarding = (): void => {
+  const forceOnboarding = isOnboardingForced();
+  if (
+    shouldRecordOnboarding({
+      paceOnboardingSections: true,
+      forceOnboarding,
+      verbose: false,
+      isNonInteractiveEnvironment: false,
+    })
+  ) {
+    markOnboardingComplete();
+  }
+};
+
 export const Report = ({
   report,
   onExit,
@@ -76,7 +92,10 @@ export const Report = ({
     diagnosticRowCount: diagnosticRows.length,
     terminalRows,
   });
-  const reportReveal = useReportReveal({ issueCount: diagnosticRows.length });
+  const reportReveal = useReportReveal({
+    issueCount: diagnosticRows.length,
+    onRevealComplete: completeReportOnboarding,
+  });
   const [activeReportScreen, setActiveReportScreen] = useState<ReportScreen>(LANDING_SCREEN);
   const [ciSetupFeedback, setCiSetupFeedback] = useState<CiSetupFeedback>();
   const [landingSelectedIndex, setLandingSelectedIndex] = useState(0);
@@ -127,7 +146,7 @@ export const Report = ({
       projectName={report.projectName}
       issueCount={report.diagnostics.length}
       noScoreMessage={report.noScoreMessage}
-      width={reportLayout.listColumnWidth}
+      width={isWide ? reportLayout.listColumnWidth : reportLayout.width}
     />
   );
 
@@ -276,7 +295,7 @@ export const Report = ({
   } else {
     activeScreenContent = (
       <DiagnosticList
-        header={isWide ? viewerScoreHeader : null}
+        header={viewerScoreHeader}
         rows={diagnosticRows}
         width={reportLayout.width}
         listColumnWidth={reportLayout.listColumnWidth}

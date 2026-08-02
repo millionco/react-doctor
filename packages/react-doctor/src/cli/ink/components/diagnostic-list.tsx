@@ -238,6 +238,7 @@ export const DiagnosticList = ({
 
   return (
     <Box flexDirection="column" width={width}>
+      {header}
       <Box marginTop={TUI_REPORT_LIST_MARGIN_ROWS}>{listColumn}</Box>
       <Text dimColor>{"─".repeat(width)}</Text>
       <Box flexDirection="column" maxHeight={detailHeight} overflowY="hidden">

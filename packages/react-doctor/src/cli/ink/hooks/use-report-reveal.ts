@@ -1,5 +1,5 @@
 import { useStdout } from "ink";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   TUI_REPORT_ISSUE_STREAM_FRAME_DELAY_MS,
   TUI_REPORT_ISSUE_STREAM_MAX_STEPS,
@@ -18,9 +18,13 @@ export interface ReportReveal {
 
 export interface UseReportRevealInput {
   readonly issueCount: number;
+  readonly onRevealComplete?: () => void;
 }
 
-export const useReportReveal = ({ issueCount }: UseReportRevealInput): ReportReveal => {
+export const useReportReveal = ({
+  issueCount,
+  onRevealComplete,
+}: UseReportRevealInput): ReportReveal => {
   const { stdout } = useStdout();
   const shouldAnimate = issueCount > 0 && canAnimateOnboarding(stdout ?? undefined);
   const streamStepCount = Math.min(
@@ -29,6 +33,7 @@ export const useReportReveal = ({ issueCount }: UseReportRevealInput): ReportRev
   );
   const [streamStep, setStreamStep] = useState(0);
   const [didRevealActions, setDidRevealActions] = useState(false);
+  const didNotifyRevealComplete = useRef(false);
   const isStreaming = shouldAnimate && streamStep < streamStepCount;
 
   useEffect(() => {
@@ -49,6 +54,12 @@ export const useReportReveal = ({ issueCount }: UseReportRevealInput): ReportRev
     const timeoutId = setTimeout(() => setDidRevealActions(true), ONBOARDING_SECTION_DELAY_MS);
     return () => clearTimeout(timeoutId);
   }, [isStreaming, shouldAnimate]);
+
+  useEffect(() => {
+    if (!didRevealActions || didNotifyRevealComplete.current) return;
+    didNotifyRevealComplete.current = true;
+    onRevealComplete?.();
+  }, [didRevealActions, onRevealComplete]);
 
   if (!shouldAnimate) {
     return { phase: "actions", streamSelectedIndex: 0 };

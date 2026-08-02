@@ -7,6 +7,13 @@ import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
+const CHEAP_EMPTY_COLLECTION_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+]);
+
 export const rerenderLazyRefInit = defineRule({
   id: "rerender-lazy-ref-init",
   title: "Ref initializer runs on every render",
@@ -34,6 +41,16 @@ export const rerenderLazyRefInit = defineRule({
       const calleeName = isNodeOfType(callee, "Identifier")
         ? callee.name
         : (memberPropertyName ?? "fn");
+
+      if (
+        isNewCall &&
+        initializer.arguments.length === 0 &&
+        isNodeOfType(callee, "Identifier") &&
+        CHEAP_EMPTY_COLLECTION_CONSTRUCTOR_NAMES.has(callee.name) &&
+        context.scopes.isGlobalReference(callee)
+      ) {
+        return;
+      }
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
 

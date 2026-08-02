@@ -88,7 +88,7 @@ describe("rerender-lazy-ref-init", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags zero-argument constructors", () => {
+  it("allows cheap empty collection constructors but flags other zero-argument constructors", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `
@@ -105,7 +105,8 @@ describe("rerender-lazy-ref-init", () => {
     );
 
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(5);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("new AbortController()");
   });
 
   it("flags `new Set(props.items)` — a runtime argument iterates its input on every render", () => {

@@ -58,7 +58,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a construction with only type arguments", () => {
+  it("allows a global empty collection construction with only type arguments", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `function C() {
@@ -67,10 +67,10 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a TS-wrapped zero-argument construction", () => {
+  it("allows a TS-wrapped global empty collection construction", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `function C() {
@@ -79,7 +79,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags a TS-wrapped expensive construction (wrapper transparency)", () => {

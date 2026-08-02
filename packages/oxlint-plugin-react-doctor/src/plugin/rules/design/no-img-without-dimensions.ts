@@ -367,8 +367,20 @@ const hasReservedExternalCssBox = (
   context: RuleContext,
   resolver: StaticCssStyleResolver,
 ): boolean => {
-  if (getAuthoritativeJsxAttribute(node.attributes, "className", false)) {
-    return false;
+  const classNameAttribute = getAuthoritativeJsxAttribute(node.attributes, "className", false);
+  if (classNameAttribute) {
+    const className = getStringLiteralAttributeValue(classNameAttribute);
+    if (className === null) return false;
+    const hasSizingUtility = splitTailwindClassName(className).some((token) => {
+      const utility = parseTailwindClassNameToken(token).utility;
+      return (
+        utility.startsWith("aspect-") ||
+        utility.startsWith("size-") ||
+        utility.startsWith("w-") ||
+        utility.startsWith("h-")
+      );
+    });
+    if (hasSizingUtility) return false;
   }
   const evidence = getExternalCssBoxEvidenceWithInlineOverrides(node, context, resolver);
   if (!evidence) return false;

@@ -116,6 +116,27 @@ describe("no-img-without-dimensions", () => {
     expect(inlineOverride.diagnostics).toHaveLength(1);
   });
 
+  it("composes non-sizing and empty classes with imported CSS", () => {
+    const nonSizingClasses = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img className="object-cover rounded-lg" src="/place.jpg" alt="" /></section>;`,
+      `.feed img { width: 100%; height: 178px; }`,
+    );
+    const emptyClass = runRuleWithSiblingCss(
+      `const Feed = () => <img className="" src="/place.jpg" alt="" />;`,
+      `img { width: 100%; height: 178px; }`,
+    );
+    expect(nonSizingClasses.diagnostics).toHaveLength(0);
+    expect(emptyClass.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let imported CSS override explicit auto-sizing utilities", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <img className="w-full h-auto object-cover" src="/place.jpg" alt="" />;`,
+      `img { width: 100%; height: 178px; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows a full-size image in a definitively stretched flex item", () => {
     const result = runRuleWithSiblingCss(
       `const Map = () => <main><div className="body"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,

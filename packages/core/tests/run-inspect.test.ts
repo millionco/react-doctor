@@ -342,7 +342,7 @@ describe("runInspect — happy path", () => {
 
     expect(lintIncludePaths).toEqual(["src/root.tsx"]);
     expect(deadCodeIgnorePatterns).toEqual(["packages/web/**"]);
-    expect(output.scannedFilePaths).toEqual(["/repo/src/root.tsx"]);
+    expect(output.scannedFilePaths).toEqual([path.resolve("/repo/src/root.tsx")]);
   });
 
   it("collects diagnostics from Linter, DeadCode, and emits them through Reporter", async () => {

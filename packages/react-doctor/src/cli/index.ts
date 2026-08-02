@@ -128,7 +128,7 @@ ${highlighter.dim("Scope:")}
 `;
 
 const MAX_DURATION_OPTION_DESCRIPTION =
-  "scan time budget for the whole run, shared across workspace projects: past it, remaining lint batches and dead-code are skipped and partial results are reported (skipped files are listed in the JSON report)";
+  "scan time budget for the whole run, shared across workspace projects: past it, queued projects, remaining lint batches, and dead-code are skipped and partial results are reported (skipped files are listed in the JSON report)";
 
 const renderCiHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}

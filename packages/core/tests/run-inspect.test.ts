@@ -1245,6 +1245,32 @@ describe("runInspect — supply-chain lint overlap", () => {
     expect(output.didLintFail).toBe(false);
   });
 
+  it("caps supply-chain work to the remaining max-duration budget", async () => {
+    let supplyChainTimeoutMs: number | undefined;
+    const hungSupplyChain = Layer.mock(SupplyChain, {
+      run: (input) => {
+        supplyChainTimeoutMs = input.timeoutMs;
+        return Stream.fromEffect(Effect.never);
+      },
+    });
+    const deadlineBudgetMs = 100;
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, deadlineEpochMs: Date.now() + deadlineBudgetMs }).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: hungSupplyChain,
+            overlapTimeoutMs: 5_000,
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+
+    expect(supplyChainTimeoutMs).toBeLessThanOrEqual(deadlineBudgetMs);
+    expect(output.supplyChainOverlapTimedOut).toBe(true);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual(["no-derived-state"]);
+  });
+
   it("does not cut a slow-but-healthy supply-chain run that finishes within budget", async () => {
     const slowSupplyChain = Layer.mock(SupplyChain, {
       run: () =>

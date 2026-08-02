@@ -7,6 +7,7 @@ import {
   highlighter,
   isPathInsideDirectory,
   mapWithConcurrency,
+  remainingDeadlineBudgetMs,
   Reporter,
   resolveScanTarget,
   yieldToEventLoop,
@@ -26,6 +27,7 @@ import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
 import { buildEmptyReportMessage } from "../utils/build-empty-report-message.js";
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";
+import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
 import { discoverWorkspacePackages, selectProjects } from "../utils/select-projects.js";
 import { isCiEnvironment } from "../utils/is-ci-environment.js";
 import { formatElapsedTime } from "../utils/render-diagnostics.js";
@@ -481,29 +483,42 @@ const runMultiProjectScan = async (
 ): Promise<RunScanAppResult> => {
   const feedbackStartTime = performance.now();
   const rootDirectory = rootScanTarget.resolvedDirectory;
-  const projectScans = await mapWithConcurrency(
-    [...directories],
-    DEFAULT_PROJECT_SCAN_CONCURRENCY,
-    (projectDirectory) => resolveProjectScan(rootScanTarget, projectDirectory),
+  const projectScans = deduplicateProjectScans(
+    await mapWithConcurrency(
+      [...directories],
+      DEFAULT_PROJECT_SCAN_CONCURRENCY,
+      (projectDirectory) => resolveProjectScan(rootScanTarget, projectDirectory),
+    ),
   );
+  const projectCount = projectScans.length;
   const presentation = resolveScanPresentation(input, projectScans);
   return runMountedScan(rootDirectory, presentation, blockingLevel, async (context) => {
     const startTime = performance.now();
     let finishedCount = 0;
-    context.store.setProgress(`Scanning ${directories.length} projects…`);
+    context.store.setProgress(`Scanning ${projectCount} projects…`);
     await yieldToEventLoop();
     recordDistribution(METRIC.scanFeedbackDelay, performance.now() - feedbackStartTime, {
       unit: "millisecond",
-      attributes: { surface: "tui", projectCount: directories.length },
+      attributes: { surface: "tui", projectCount },
     });
-    const results = await mapWithConcurrency(
+    const scanOutcomes = await mapWithConcurrency(
       projectScans,
       DEFAULT_PROJECT_SCAN_CONCURRENCY,
       async (projectScan) => {
+        if (
+          input.options?.deadlineEpochMs !== undefined &&
+          remainingDeadlineBudgetMs(input.options.deadlineEpochMs) === 0
+        ) {
+          finishedCount += 1;
+          context.store.setProgress(
+            `Scanning ${projectCount} projects… (${finishedCount}/${projectCount})`,
+          );
+          return null;
+        }
         const projectLabel =
           path.relative(rootDirectory, projectScan.directory) || path.basename(rootDirectory);
         const formatProjectProgress = (displayText: string): string =>
-          `Scanning ${directories.length} projects… (${finishedCount}/${directories.length}) · ${projectLabel}: ${displayText}`;
+          `Scanning ${projectCount} projects… (${finishedCount}/${projectCount}) · ${projectLabel}: ${displayText}`;
         const result = await inspectProject(projectScan.directory, {
           ...resolveTuiInspectOptions(input, projectScan.config),
           isCi: isCiEnvironment(),
@@ -525,11 +540,14 @@ const runMultiProjectScan = async (
         });
         finishedCount += 1;
         context.store.setProgress(
-          `Scanning ${directories.length} projects… (${finishedCount}/${directories.length})`,
+          `Scanning ${projectCount} projects… (${finishedCount}/${projectCount})`,
         );
         await yieldToEventLoop();
         return { directory: projectScan.directory, result, config: projectScan.config };
       },
+    );
+    const results = scanOutcomes.filter(
+      (scanOutcome): scanOutcome is NonNullable<typeof scanOutcome> => scanOutcome !== null,
     );
 
     const projectEntries = results.map(({ directory, result, config }) => {

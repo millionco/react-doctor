@@ -55,6 +55,7 @@ import {
 import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
 import { resolveDeadCodeTimeout } from "./utils/resolve-dead-code-timeout.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
+import { filterPathsOutsideDirectories } from "./utils/filter-paths-outside-directories.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
 import { Files } from "./services/files.js";
@@ -477,13 +478,10 @@ export const runInspect = <HooksR = never>(
     if (excludedProjectDirectories.length > 0) {
       const candidatePaths =
         lintIncludePaths ?? (yield* filesService.listSourceFiles(scanDirectory));
-      lintIncludePaths = candidatePaths.filter((relativePath) => {
-        const absolutePath = path.resolve(scanDirectory, relativePath);
-        return !excludedProjectDirectories.some(
-          (excludedDirectory) =>
-            absolutePath === excludedDirectory ||
-            isPathInsideDirectory(absolutePath, excludedDirectory),
-        );
+      lintIncludePaths = filterPathsOutsideDirectories({
+        rootDirectory: scanDirectory,
+        relativePaths: candidatePaths,
+        excludedDirectories: excludedProjectDirectories,
       });
     }
 
@@ -563,13 +561,15 @@ export const runInspect = <HooksR = never>(
                 // otherwise-successful scan. The skip is recorded on
                 // `securityScanFailed` so telemetry can tell a failed pass
                 // from a clean one — mirroring `supplyChainOverlapTimedOut`.
-                Effect.tryPromise(() =>
+                Effect.tryPromise((signal) =>
                   checkSecurityScanCooperative(scanDirectory, {
                     project,
                     ignoredTags: input.ignoredTags,
                     includedTags: input.includedTags,
                     includeTagDefaults: input.includeTagDefaults,
                     excludedDirectories: new Set(excludedProjectDirectories),
+                    deadlineEpochMs: input.deadlineEpochMs,
+                    signal,
                   }),
                 ).pipe(
                   Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
@@ -610,8 +610,12 @@ export const runInspect = <HooksR = never>(
     // and the returned `diagnostics`/score only ever read the joined value.)
     // When skipped, the fork takes the empty branch so the join below stays
     // unconditional (mirroring the viewer-permission fiber above).
+    const capToDeadline = (phaseTimeoutMs: number): number =>
+      input.deadlineEpochMs === undefined
+        ? phaseTimeoutMs
+        : Math.min(phaseTimeoutMs, remainingDeadlineBudgetMs(input.deadlineEpochMs));
     const shouldRunSupplyChain = !isDiffMode || (input.supplyChainManifestChanged ?? false);
-    const supplyChainOverlapTimeout = yield* SupplyChainOverlapTimeoutMs;
+    const supplyChainOverlapTimeout = capToDeadline(yield* SupplyChainOverlapTimeoutMs);
     const supplyChainFiber = yield* Effect.forkChild(
       shouldRunSupplyChain
         ? Stream.runCollect(
@@ -619,6 +623,7 @@ export const runInspect = <HooksR = never>(
               supplyChainService.run({
                 rootDirectory: scanDirectory,
                 userConfig: resolvedConfig.config,
+                timeoutMs: supplyChainOverlapTimeout,
               }),
             ),
           ).pipe(
@@ -673,13 +678,6 @@ export const runInspect = <HooksR = never>(
         : deadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
-    // Caps a phase timeout to what's left of the `--max-duration` budget;
-    // identity when no deadline was set.
-    const capToDeadline = (phaseTimeoutMs: number): number =>
-      input.deadlineEpochMs === undefined
-        ? phaseTimeoutMs
-        : Math.min(phaseTimeoutMs, remainingDeadlineBudgetMs(input.deadlineEpochMs));
-
     // ── Dead-code plan ────────────────────────────────────────────────
     // Dead-code (deslop reachability) emits only `"warning"`-severity
     // diagnostics, all `Maintainability`; warnings show by default, so this

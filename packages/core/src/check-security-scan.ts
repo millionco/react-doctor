@@ -7,6 +7,7 @@ import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
+import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
 import { shouldEnableRuleByDefaultStatus } from "./utils/should-enable-rule-by-default-status.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 import type { Capability } from "oxlint-plugin-react-doctor/core";
@@ -17,6 +18,8 @@ export interface CheckSecurityScanOptions {
   readonly includedTags?: ReadonlySet<string>;
   readonly includeTagDefaults?: boolean;
   readonly excludedDirectories?: ReadonlySet<string>;
+  readonly deadlineEpochMs?: number;
+  readonly signal?: AbortSignal;
 }
 
 interface EnabledScanRule {
@@ -147,13 +150,25 @@ export const checkSecurityScanCooperative = async (
   rootDirectory: string,
   options: CheckSecurityScanOptions = {},
 ): Promise<Diagnostic[]> => {
+  const throwIfScanCancelled = (): void => {
+    options.signal?.throwIfAborted();
+    if (
+      options.deadlineEpochMs !== undefined &&
+      remainingDeadlineBudgetMs(options.deadlineEpochMs) === 0
+    ) {
+      throw new Error("Security scan deadline exceeded");
+    }
+  };
+  throwIfScanCancelled();
   const session = createSecurityScanSession(rootDirectory, options);
   if (session === null) return [];
   let sliceStartedAt = performance.now();
   for (const file of collectSecurityScanFiles(rootDirectory, options.excludedDirectories)) {
+    throwIfScanCancelled();
     if (file === null) {
       if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
         await yieldToEventLoop();
+        throwIfScanCancelled();
         sliceStartedAt = performance.now();
       }
       continue;
@@ -161,6 +176,7 @@ export const checkSecurityScanCooperative = async (
     for (const _ruleStep of session.scanFileByRule(file)) {
       if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
         await yieldToEventLoop();
+        throwIfScanCancelled();
         sliceStartedAt = performance.now();
       }
     }

@@ -11,6 +11,7 @@ import {
   hasReactRuntime,
   highlighter,
   isPathInsideDirectory,
+  remainingDeadlineBudgetMs,
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
@@ -29,6 +30,7 @@ import { recordCount, recordDistribution } from "../utils/record-metric.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-staged-files.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
+import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
@@ -910,21 +912,22 @@ export const inspectAction = async (
       logger.break();
     }
 
-    const resolvedProjectScans = await Promise.all(
-      projectDirectories.map((projectDirectory) =>
-        resolveProjectScan(scanTarget, projectDirectory),
+    const projectScans = deduplicateProjectScans(
+      await Promise.all(
+        projectDirectories.map((projectDirectory) =>
+          resolveProjectScan(scanTarget, projectDirectory),
+        ),
       ),
     );
-    const projectScans: ResolvedProjectScan[] = [];
-    const seenScanDirectories = new Set<string>();
-    for (const projectScan of resolvedProjectScans) {
-      if (seenScanDirectories.has(projectScan.directory)) continue;
-      seenScanDirectories.add(projectScan.directory);
-      projectScans.push(projectScan);
-    }
     const isMultiProject = projectScans.length > 1;
 
     const scanProject = async (projectScan: ResolvedProjectScan): Promise<CompletedScan | null> => {
+      if (
+        scanDeadlineEpochMs !== undefined &&
+        remainingDeadlineBudgetMs(scanDeadlineEpochMs) === 0
+      ) {
+        return null;
+      }
       const scanDirectory = projectScan.directory;
       const projectConfig = projectScan.config;
       // The Socket supply-chain check runs by default; opted out by

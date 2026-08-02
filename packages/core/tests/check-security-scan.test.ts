@@ -270,6 +270,21 @@ export const databaseUrl = process.env.DATABASE_URL;`,
         syncDiagnostics,
       );
     });
+
+    it("stops before walking files when the shared scan deadline has passed", async () => {
+      const fixtureDirectory = path.join(FIXTURES_DIRECTORY, "eva-mintlify-docs-platform");
+      await expect(
+        checkSecurityScanCooperative(fixtureDirectory, { deadlineEpochMs: Date.now() - 1 }),
+      ).rejects.toThrow("Security scan deadline exceeded");
+    });
+
+    it("honors an already-aborted scan signal", async () => {
+      const abortController = new AbortController();
+      abortController.abort();
+      await expect(
+        checkSecurityScanCooperative(temporaryRoot, { signal: abortController.signal }),
+      ).rejects.toThrow();
+    });
   });
 
   describe("supabase-rls-policy-risk regressions", () => {

@@ -200,6 +200,38 @@ describe("runScanApp", () => {
     );
   });
 
+  it("scans aliased selections that resolve to one project root once", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const requestedWebDirectory = "/repo/apps/web";
+    const requestedWebAliasDirectory = "/repo/packages/web";
+    const resolvedWebDirectory = "/repo/apps/web/client";
+    mockState.projectDirectories.push(requestedWebDirectory, requestedWebAliasDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      requestedWebDirectory,
+      buildScanTarget(requestedWebDirectory, resolvedWebDirectory, null, requestedWebDirectory),
+    );
+    mockState.scanTargets.set(
+      requestedWebAliasDirectory,
+      buildScanTarget(
+        requestedWebAliasDirectory,
+        resolvedWebDirectory,
+        null,
+        requestedWebAliasDirectory,
+      ),
+    );
+    mockState.inspectResults.set(resolvedWebDirectory, buildInspectResult(resolvedWebDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(resolvedWebDirectory, expect.anything());
+  });
+
   it("merges root and project configs while sharing one scan deadline", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     mockState.shouldRequestHandoff = true;
@@ -289,6 +321,36 @@ describe("runScanApp", () => {
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
     expect(mockState.lifecycleEvents).toEqual(["footer", "handoff"]);
     expect(result.shouldFail).toBe(true);
+  });
+
+  it("does not start queued project scans after the shared deadline", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const adminDirectory = "/repo/apps/admin";
+    mockState.projectDirectories.push(webDirectory, adminDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.scanTargets.set(
+      adminDirectory,
+      buildScanTarget(adminDirectory, adminDirectory, null, adminDirectory),
+    );
+
+    const result = await runScanApp({
+      directory: rootDirectory,
+      options: { deadlineEpochMs: Date.now() - 1 },
+      skipPrompts: true,
+    });
+
+    expect(inspect).not.toHaveBeenCalled();
+    expect(mockState.scanStores[0]?.getSnapshot().summary?.projects).toEqual([]);
+    expect(result.shouldFail).toBe(false);
   });
 
   it("uses the configured blocking level and ciFailure surface for the exit gate", async () => {

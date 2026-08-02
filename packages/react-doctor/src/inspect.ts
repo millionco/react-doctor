@@ -10,6 +10,7 @@ import {
   createOxlintSpawnSlots,
   DEFAULT_SHOW_WARNINGS,
   filterDiagnosticsForSurface,
+  filterPathsOutsideDirectories,
   filterSourceFiles,
   highlighter,
   OXLINT_NODE_REQUIREMENT,
@@ -526,14 +527,33 @@ const runBaselineComparison = async (
   params: RunBaselineComparisonInput,
 ): Promise<BaselineComparison | null> => {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
+  const baselineIncludePaths = filterPathsOutsideDirectories({
+    rootDirectory: params.directory,
+    relativePaths: params.options.includePaths,
+    excludedDirectories: params.options.excludedProjectDirectories,
+  });
+  const baselineBaseFiles = params.baseFiles
+    ? filterPathsOutsideDirectories({
+        rootDirectory: params.directory,
+        relativePaths: params.baseFiles,
+        excludedDirectories: params.options.excludedProjectDirectories,
+      })
+    : undefined;
+  const baselineHeadFiles = params.headFiles
+    ? filterPathsOutsideDirectories({
+        rootDirectory: params.directory,
+        relativePaths: params.headFiles,
+        excludedDirectories: params.options.excludedProjectDirectories,
+      })
+    : undefined;
   // If materialization throws before the snapshot (and its cleanup) exists,
   // remove the temp dir we just created so it can't leak.
   const snapshot = await materializeBaselineFiles({
     directory: params.directory,
     ref: params.baselineRef,
-    files: params.options.includePaths,
-    baseFiles: params.baseFiles,
-    headFiles: params.headFiles,
+    files: baselineIncludePaths,
+    baseFiles: baselineBaseFiles,
+    headFiles: baselineHeadFiles,
     tempDirectory,
   }).catch((error: unknown) => {
     rmSync(tempDirectory, { recursive: true, force: true });
@@ -549,7 +569,7 @@ const runBaselineComparison = async (
     const baseFiles = new Set(snapshot.baseFiles.map(toForwardSlashes));
     const trackedHeadFiles = new Set(snapshot.headFiles.map(toForwardSlashes));
     const expectedHeadFiles = new Set(trackedHeadFiles);
-    for (const filePath of params.options.includePaths) {
+    for (const filePath of baselineIncludePaths) {
       const normalizedFilePath = toForwardSlashes(filePath);
       if (!baseFiles.has(normalizedFilePath)) expectedHeadFiles.add(normalizedFilePath);
     }

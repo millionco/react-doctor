@@ -58,7 +58,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a construction with only type arguments", () => {
+  it("stays quiet for an empty built-in registry with only type arguments", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `function C() {
@@ -67,10 +67,10 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a TS-wrapped zero-argument construction", () => {
+  it("stays quiet for a TS-wrapped empty built-in registry", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `function C() {
@@ -79,7 +79,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags a TS-wrapped expensive construction (wrapper transparency)", () => {
@@ -94,7 +94,7 @@ describe("rerender-lazy-ref-init — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("still flags an aliased constructor binding", () => {
+  it("stays quiet for a proven alias of an empty built-in registry", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `function C() {
@@ -104,7 +104,19 @@ describe("rerender-lazy-ref-init — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays quiet for an empty registry from the global object", () => {
+    const result = runRule(
+      rerenderLazyRefInit,
+      `function C() {
+        const byKey = useRef(new globalThis.Map());
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags a shadowing binding of a built-in constructor name", () => {

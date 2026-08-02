@@ -2,10 +2,13 @@ import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
+import { isProvenGlobalNamespaceReference } from "../../utils/is-proven-global-namespace-reference.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+
+const EMPTY_REGISTRY_CONSTRUCTOR_NAMES = ["Map", "Set", "WeakMap", "WeakSet"];
 
 export const rerenderLazyRefInit = defineRule({
   id: "rerender-lazy-ref-init",
@@ -36,6 +39,16 @@ export const rerenderLazyRefInit = defineRule({
         : (memberPropertyName ?? "fn");
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
+
+      if (
+        isNewCall &&
+        initializer.arguments.length === 0 &&
+        EMPTY_REGISTRY_CONSTRUCTOR_NAMES.some((constructorName) =>
+          isProvenGlobalNamespaceReference(callee, constructorName, context.scopes),
+        )
+      ) {
+        return;
+      }
 
       if (isPlainCall && isReactHookName(calleeName)) return;
 

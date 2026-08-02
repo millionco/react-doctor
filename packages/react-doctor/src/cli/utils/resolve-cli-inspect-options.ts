@@ -1,5 +1,6 @@
 import type { InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
 import type { InspectFlags } from "./inspect-flags.js";
+import { getDoctorProduct } from "./doctor-product.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
 import { pickBlockingLevel } from "./resolve-blocking-level.js";
 import { resolveCliCategories } from "./resolve-cli-categories.js";
@@ -33,11 +34,15 @@ export const resolveCliInspectOptions = (
   // The gate level itself is resolved by `resolveBlockingLevel`.
   const wantsWarningGate = pickBlockingLevel(flags, userConfig) === "warning";
   const isDesignScan = flags.design === true;
+  const doctorProduct = getDoctorProduct();
+  const isFocusedProductScan = doctorProduct.includedTags.length > 0;
+  const isFocusedScan = isDesignScan || isFocusedProductScan;
+  const includedTags = isDesignScan ? ["design"] : doctorProduct.includedTags;
 
   return {
-    lint: flags.lint,
-    deadCode: isDesignScan ? false : flags.deadCode,
-    supplyChain: isDesignScan ? false : flags.supplyChain,
+    lint: isFocusedScan ? (flags.lint ?? true) : flags.lint,
+    deadCode: isFocusedScan ? false : flags.deadCode,
+    supplyChain: isFocusedScan ? false : flags.supplyChain,
     verbose: flags.verbose,
     outputDirectory: flags.outputDir,
     // `--no-respect-inline-disables` is negatable-only, so commander defaults
@@ -50,16 +55,16 @@ export const resolveCliInspectOptions = (
     // `inspect()`'s merge layer inherits `userConfig.noScore` from the
     // per-project (module-merged) config — eagerly collapsing it here from the
     // ROOT config silently overrode a workspace module's own `noScore: true`.
-    noScore: isDesignScan || flags.score === false || flags.telemetry === false ? true : undefined,
+    noScore: isFocusedScan || flags.score === false || flags.telemetry === false ? true : undefined,
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     concurrency: resolveParallelFlag(flags.parallel),
     maxDurationMs: resolveMaxDurationFlag(flags.maxDuration),
     categoryFilters: resolveCliCategories(flags.category),
-    includedTags: isDesignScan ? new Set(["design"]) : undefined,
-    includeTagDefaults: isDesignScan ? true : undefined,
+    includedTags: isFocusedScan ? new Set(includedTags) : undefined,
+    includeTagDefaults: isFocusedScan ? true : undefined,
     scoreDisabledMessage: isDesignScan
       ? "Design scans do not affect the React health score."
-      : undefined,
+      : doctorProduct.scoreDisabledMessage,
   };
 };

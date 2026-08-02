@@ -5,6 +5,9 @@
   "fixed": [
     [
       "react-doctor",
+      "tui-doctor",
+      "ui-doctor",
+      "threejs-doctor",
       "eslint-plugin-react-doctor",
       "oxlint-plugin-react-doctor",
       "@react-doctor/core",

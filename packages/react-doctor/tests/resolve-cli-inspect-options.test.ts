@@ -171,3 +171,31 @@ describe("resolveCliInspectOptions: design scan", () => {
     );
   });
 });
+
+describe("resolveCliInspectOptions: focused products", () => {
+  const previousProduct = process.env.REACT_DOCTOR_PRODUCT;
+
+  afterEach(() => {
+    if (previousProduct === undefined) delete process.env.REACT_DOCTOR_PRODUCT;
+    else process.env.REACT_DOCTOR_PRODUCT = previousProduct;
+  });
+
+  it.each([
+    ["tui-doctor", ["ink"]],
+    ["ui-doctor", ["design"]],
+    ["threejs-doctor", ["three", "r3f"]],
+  ])("selects only the %s rule tags", (packageName, includedTags) => {
+    process.env.REACT_DOCTOR_PRODUCT = packageName;
+    const resolved = resolveCliInspectOptions(
+      { deadCode: true, supplyChain: true, score: true },
+      null,
+    );
+
+    expect(resolved.includedTags).toEqual(new Set(includedTags));
+    expect(resolved.includeTagDefaults).toBe(true);
+    expect(resolved.lint).toBe(true);
+    expect(resolved.deadCode).toBe(false);
+    expect(resolved.supplyChain).toBe(false);
+    expect(resolved.noScore).toBe(true);
+  });
+});

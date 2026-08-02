@@ -86,6 +86,7 @@ import { validateIncludeUntrackedScope, validateModeFlags } from "../utils/valid
 import { VERSION } from "../utils/version.js";
 import { findStagedSnapshotDivergences } from "../utils/find-staged-snapshot-divergences.js";
 import { CliInputError } from "../utils/cli-input-error.js";
+import { getDoctorProduct } from "../utils/doctor-product.js";
 
 interface CompletedScan {
   directory: string;
@@ -190,10 +191,11 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   const baselineDegraded = input.baselineIntended && !baselineComputed;
   const mode: JsonReportMode = baselineDegraded ? "diff" : input.mode;
   const isReactDetected = input.completedScans.some((scan) => hasReactRuntime(scan.result.project));
-  if (input.completedScans.length > 0 && !isReactDetected) {
+  const doctorProduct = getDoctorProduct();
+  if (input.completedScans.length > 0 && !isReactDetected && doctorProduct.requiresReactRuntime) {
     recordCount(METRIC.scanNoReactDetected, 1);
     logger.warn(
-      `No React project detected at ${input.resolvedDirectory} — React rules were gated off; this is not the same as a clean scan.`,
+      `No React project detected at ${input.resolvedDirectory} — ${doctorProduct.displayName} rules were gated off; this is not the same as a clean scan.`,
     );
   }
   const jsonCompletedScans = filterCompletedScansByCategories(

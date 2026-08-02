@@ -108,7 +108,7 @@ jobs:
         env:
           DEV_VERSION: ${{ steps.dev-version.outputs.version }}
         run: |
-          for package_dir in react-doctor oxlint-plugin-react-doctor eslint-plugin-react-doctor; do
+          for package_dir in react-doctor tui-doctor ui-doctor threejs-doctor oxlint-plugin-react-doctor eslint-plugin-react-doctor; do
             node -e "const fs = require('node:fs'); const path = 'packages/${package_dir}/package.json'; const manifest = JSON.parse(fs.readFileSync(path, 'utf8')); manifest.version = process.env.DEV_VERSION; fs.writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');"
           done
 

@@ -2,7 +2,11 @@ import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { buildRunContext } from "../src/cli/utils/build-run-context.js";
 
-const CI_ENV_VARS = ["GITHUB_EVENT_NAME", "REACT_DOCTOR_GITHUB_ACTION"] as const;
+const RUN_CONTEXT_ENVIRONMENT_VARIABLES = [
+  "GITHUB_EVENT_NAME",
+  "REACT_DOCTOR_GITHUB_ACTION",
+  "REACT_DOCTOR_PRODUCT",
+] as const;
 
 describe("buildRunContext", () => {
   let savedUserAgent: string | undefined;
@@ -16,7 +20,7 @@ describe("buildRunContext", () => {
     delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
     savedArgv = process.argv;
     savedEnv = {};
-    for (const name of CI_ENV_VARS) {
+    for (const name of RUN_CONTEXT_ENVIRONMENT_VARIABLES) {
       savedEnv[name] = process.env[name];
       delete process.env[name];
     }
@@ -34,7 +38,7 @@ describe("buildRunContext", () => {
       process.env.REACT_DOCTOR_LINT_BATCH_ORDERING = savedLintBatchOrdering;
     }
     process.argv = savedArgv;
-    for (const name of CI_ENV_VARS) {
+    for (const name of RUN_CONTEXT_ENVIRONMENT_VARIABLES) {
       const previous = savedEnv[name];
       if (previous === undefined) delete process.env[name];
       else process.env[name] = previous;
@@ -61,6 +65,11 @@ describe("buildRunContext", () => {
   it("reports the running Node major version", () => {
     const expectedMajor = Number.parseInt(process.versions.node.split(".", 1)[0] ?? "", 10);
     expect(buildRunContext().nodeMajor).toBe(expectedMajor);
+  });
+
+  it("records the active doctor product", () => {
+    process.env.REACT_DOCTOR_PRODUCT = "ui-doctor";
+    expect(buildRunContext().product).toBe("ui-doctor");
   });
 
   it("records the focused design command separately from a general inspection", () => {

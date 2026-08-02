@@ -26,6 +26,15 @@ const FORBIDDEN_INSTALLED_PACKAGES: readonly string[] = [
   "effect",
   "@effect/platform-node-shared",
 ];
+const PACKED_PACKAGE_NAMES: readonly string[] = [
+  "react-doctor",
+  "tui-doctor",
+  "ui-doctor",
+  "threejs-doctor",
+  "oxlint-plugin-react-doctor",
+  "deslop-js",
+];
+const SPECIALIZED_CLI_NAMES: readonly string[] = ["tui-doctor", "ui-doctor", "threejs-doctor"];
 const COMMAND_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 
 const isRecord = (value: unknown): value is StringRecord =>
@@ -123,12 +132,7 @@ const main = (): void => {
     runCommand({
       command: "pnpm",
       args: [
-        "--filter",
-        "react-doctor",
-        "--filter",
-        "oxlint-plugin-react-doctor",
-        "--filter",
-        "deslop-js",
+        ...PACKED_PACKAGE_NAMES.flatMap((packageName) => ["--filter", packageName]),
         "pack",
         "--pack-destination",
         packDirectory,
@@ -138,9 +142,9 @@ const main = (): void => {
     });
 
     const tarballs = fs.readdirSync(packDirectory).filter((fileName) => fileName.endsWith(".tgz"));
-    if (tarballs.length !== 3) {
+    if (tarballs.length !== PACKED_PACKAGE_NAMES.length) {
       console.error(
-        `Expected exactly three packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
+        `Expected ${PACKED_PACKAGE_NAMES.length} packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
       );
       process.exit(1);
     }
@@ -182,6 +186,27 @@ const main = (): void => {
     if (version === "" || version === "0.0.0") {
       console.error(`Installed CLI version is missing or invalid: "${version}"`);
       process.exit(1);
+    }
+
+    for (const packageName of SPECIALIZED_CLI_NAMES) {
+      const specializedBinaryPath = path.join(
+        installDirectory,
+        "node_modules",
+        packageName,
+        "bin",
+        `${packageName}.js`,
+      );
+      const specializedVersionResult = runCommand({
+        command: process.execPath,
+        args: [specializedBinaryPath, "--version"],
+        cwd: installDirectory,
+      });
+      if (specializedVersionResult.stdout.trim() !== version) {
+        console.error(
+          `${packageName} version ${specializedVersionResult.stdout.trim()} does not match react-doctor ${version}.`,
+        );
+        process.exit(1);
+      }
     }
 
     const scanResult = runCommand({

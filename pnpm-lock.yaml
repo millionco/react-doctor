@@ -356,6 +356,24 @@ importers:
         specifier: ^9.4.0
         version: 9.4.0
 
+  packages/threejs-doctor:
+    dependencies:
+      react-doctor:
+        specifier: workspace:*
+        version: link:../react-doctor
+
+  packages/tui-doctor:
+    dependencies:
+      react-doctor:
+        specifier: workspace:*
+        version: link:../react-doctor
+
+  packages/ui-doctor:
+    dependencies:
+      react-doctor:
+        specifier: workspace:*
+        version: link:../react-doctor
+
   packages/vscode-react-doctor:
     dependencies:
       vscode-languageclient:

@@ -1,5 +1,6 @@
 import { TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
+import { getDoctorProduct } from "./doctor-product.js";
 import { HANDOFF_MAX_FILES_PER_RULE } from "./constants.js";
 import {
   buildSortedRuleGroups,
@@ -20,6 +21,7 @@ export interface HandoffPayloadInput {
 // per rule) for follow-up. Keeps the first pass small & high-signal rather
 // than dumping every issue inline.
 export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
+  const doctorProduct = getDoctorProduct();
   const topGroups = buildSortedRuleGroups(input.diagnostics).slice(0, TOP_ERRORS_DISPLAY_COUNT);
   const migrationScaleBuckets = new Map(
     findMigrationScaleBuckets(input.diagnostics).map((bucket) => [bucket.ruleKey, bucket]),
@@ -31,7 +33,7 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   } catch {}
 
   const lines: string[] = [
-    `Fix the top ${topGroups.length} React Doctor ${topGroups.length === 1 ? "issue" : "issues"} in ${input.projectName} on this pass — leave the rest for a follow-up.`,
+    `Fix the top ${topGroups.length} ${doctorProduct.displayName} ${topGroups.length === 1 ? "issue" : "issues"} in ${input.projectName} on this pass — leave the rest for a follow-up.`,
     "",
   ];
 

@@ -35,6 +35,10 @@ import { reportErrorToSentry } from "./utils/report-error.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
 import { unrefStdin } from "./utils/unref-stdin.js";
 import { VERSION } from "./utils/version.js";
+import { getDoctorProduct } from "./utils/doctor-product.js";
+
+const doctorProduct = getDoctorProduct();
+const isFocusedProduct = doctorProduct.includedTags.length > 0;
 
 initializeSentry();
 
@@ -70,21 +74,24 @@ const formatExampleLines = (
 // clig.dev (Help): "Lead with examples." Epilogs are functions, not
 // pre-built strings, so they render after `applyColorPreference` runs and
 // honor `--no-color` in a TTY.
-const renderRootHelpEpilog = (): string => `
+const renderReactDoctorHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}
 ${formatExampleLines([
-  ["react-doctor", "scan the current project"],
-  ["react-doctor ./apps/web", "scan a specific directory"],
-  ["react-doctor --scope changed --base main", "scan only new issues vs. main"],
-  ["react-doctor --project modules/a,modules/b", "score each module separately (names or paths)"],
-  ["react-doctor --staged", "scan staged files (pre-commit hook)"],
-  ["react-doctor design", "run the focused UI design audit"],
-  ["react-doctor --category Security", "show only one diagnostic category"],
-  ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],
-  ["react-doctor --json > report.json", "write a machine-readable report"],
-  ["react-doctor why src/App.tsx:42", "explain why a rule fired there"],
-  ["react-doctor ci install", "scan every pull request in CI"],
-  ["react-doctor install", "set up the agent skill and git hook"],
+  [doctorProduct.packageName, "scan the current project"],
+  [`${doctorProduct.packageName} ./apps/web`, "scan a specific directory"],
+  [`${doctorProduct.packageName} --scope changed --base main`, "scan only new issues vs. main"],
+  [
+    `${doctorProduct.packageName} --project modules/a,modules/b`,
+    "score each module separately (names or paths)",
+  ],
+  [`${doctorProduct.packageName} --staged`, "scan staged files (pre-commit hook)"],
+  [`${doctorProduct.packageName} design`, "run the focused UI design audit"],
+  [`${doctorProduct.packageName} --category Security`, "show only one diagnostic category"],
+  [`${doctorProduct.packageName} --blocking warning`, "fail CI on warnings too (default: error)"],
+  [`${doctorProduct.packageName} --json > report.json`, "write a machine-readable report"],
+  [`${doctorProduct.packageName} why src/App.tsx:42`, "explain why a rule fired there"],
+  [`${doctorProduct.packageName} ci install`, "scan every pull request in CI"],
+  [`${doctorProduct.packageName} install`, "set up the agent skill and git hook"],
 ])}
 
 ${highlighter.dim("Configuration:")}
@@ -97,6 +104,29 @@ ${highlighter.dim("Feedback & bug reports:")}
 ${highlighter.dim("Learn more:")}
   ${highlighter.info(CANONICAL_GITHUB_URL)}
 `;
+
+const renderFocusedProductHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  [doctorProduct.packageName, "scan the current project"],
+  [`${doctorProduct.packageName} ./apps/web`, "scan a specific directory"],
+  [`${doctorProduct.packageName} --scope changed --base main`, "scan only new issues vs. main"],
+  [`${doctorProduct.packageName} --verbose`, "show every finding"],
+  [`${doctorProduct.packageName} --json > report.json`, "write a machine-readable report"],
+])}
+
+${highlighter.dim("Scope:")}
+  Runs React Doctor rules tagged ${doctorProduct.includedTags.map((tag) => highlighter.info(tag)).join(" or ")}.
+  Dead-code, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
+  ${doctorProduct.displayName} respects ${highlighter.info("doctor.config.ts")}, inline disables, project selection, diff scopes, and JSON output.
+
+${highlighter.dim("Feedback & bug reports:")}
+  ${highlighter.info(`${CANONICAL_GITHUB_URL}/issues`)}
+`;
+
+const renderRootHelpEpilog = isFocusedProduct
+  ? renderFocusedProductHelpEpilog
+  : renderReactDoctorHelpEpilog;
 
 const renderInstallHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}
@@ -153,9 +183,18 @@ const collectCategoryOption = (value: string, previousValues: string[] | undefin
   value,
 ];
 
+interface ExperimentalTuiOptions {
+  readonly blocking?: string;
+  readonly deadCode?: boolean;
+  readonly score?: boolean;
+  readonly supplyChain?: boolean;
+  readonly project?: string;
+  readonly yes?: boolean;
+}
+
 const program = new Command()
-  .name("react-doctor")
-  .description("Diagnose React codebase health")
+  .name(doctorProduct.packageName)
+  .description(doctorProduct.description)
   .version(VERSION, "-v, --version", "display the version number")
   .argument("[directory]", "project directory to scan", ".")
   .option("--lint", "enable linting")
@@ -258,7 +297,7 @@ const program = new Command()
 program.action(inspectAction);
 
 program
-  .command("design [directory]")
+  .command("design [directory]", { hidden: isFocusedProduct })
   .description("Run only the focused UI design diagnostics")
   .addHelpText("after", renderDesignHelpEpilog)
   .action((directory, _options, command) =>
@@ -266,7 +305,7 @@ program
   );
 
 program
-  .command("why <location>")
+  .command("why <location>", { hidden: isFocusedProduct })
   .description("Explain why a rule fired (or why a suppression didn't apply) at a file:line")
   .option(
     "--project <name>",
@@ -278,7 +317,7 @@ program
   .action((location, options) => whyAction(location, options));
 
 program
-  .command("install")
+  .command("install", { hidden: isFocusedProduct })
   .alias("setup")
   .description("Install the react-doctor skill into your coding agents and optional git hook")
   .option("-y, --yes", "skip prompts, install for all detected agents")
@@ -305,7 +344,7 @@ const prOption: [string, string] = [
 // action through `optsWithGlobals()` so the merged option set (subcommand +
 // inherited globals) is what the action sees — mirroring the `rules` group.
 const ci = program
-  .command("ci")
+  .command("ci", { hidden: isFocusedProduct })
   .description("Set up, upgrade, and configure React Doctor in your CI");
 
 ci.command("install")
@@ -358,14 +397,14 @@ ci.command("upgrade")
   .action((_options, command) => ciUpgradeAction(command.optsWithGlobals()));
 
 program
-  .command("version")
+  .command("version", { hidden: isFocusedProduct })
   .description("show the version with Node and platform info")
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .action(versionAction);
 
 const rules = program
-  .command("rules")
+  .command("rules", { hidden: isFocusedProduct })
   .description("List, explain, and configure which React Doctor rules run");
 
 // HACK: `--json` is also declared on the root program (for the default
@@ -440,19 +479,10 @@ rules
 // It's gated behind the `experimental-` prefix because the editor language
 // server is still unstable (protocol, caching, and diagnostics may change).
 program
-  .command("experimental-lsp", { hidden: false })
+  .command("experimental-lsp", { hidden: isFocusedProduct })
   .description("[experimental] run the React Doctor language server over stdio (for editors)")
   .allowUnknownOption()
   .action(() => {});
-
-interface ExperimentalTuiOptions {
-  readonly blocking?: string;
-  readonly deadCode?: boolean;
-  readonly score?: boolean;
-  readonly supplyChain?: boolean;
-  readonly project?: string;
-  readonly yes?: boolean;
-}
 
 program
   .command("experimental-tui [directory]", { hidden: true })

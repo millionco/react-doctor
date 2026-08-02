@@ -598,8 +598,13 @@ const expressionProvidesLabel = (
     );
   }
   if (isNodeOfType(expression, "LogicalExpression")) {
-    // Only the right side of `guard && <content/>` renders as content.
-    return expressionProvidesLabel(expression.right as EsTreeNode, currentDepth, context);
+    if (expression.operator === "&&") {
+      return expressionProvidesLabel(expression.right, currentDepth, context);
+    }
+    return (
+      expressionProvidesLabel(expression.left, currentDepth, context) ||
+      expressionProvidesLabel(expression.right, currentDepth, context)
+    );
   }
   if (isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment")) {
     return checkChildForLabel(expression, currentDepth, context);

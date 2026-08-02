@@ -16,6 +16,7 @@ import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { getEffectDepsRefs, hasCleanup, isProp, isState } from "./utils/effect/react.js";
 import { hasDeferredOrExternalEffectWork } from "./utils/has-deferred-or-external-effect-work.js";
+import { hasExternalResourceSetterWriter } from "./utils/has-external-resource-setter-writer.js";
 
 const writesPropDerivedValue = (analysis: ProgramAnalysis, fact: EffectStateWriteFact): boolean => {
   if (fact.writesPropDerivedMemberValue) return true;
@@ -91,6 +92,7 @@ export const noAdjustStateOnPropChange = defineRule({
       for (const fact of facts) {
         if (
           fact.isDeferred ||
+          hasExternalResourceSetterWriter(context, fact.setterReference, node) ||
           hasDeferredOrExternalEffectWork(analysis, node, context.scopes, fact.callExpression)
         ) {
           continue;

@@ -1,4 +1,5 @@
 import type { Reference } from "eslint-scope";
+import { SINGLE_STATE_CELL_COUNT } from "../../constants/thresholds.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
@@ -33,6 +34,7 @@ import {
   isSyncStateSetterCall,
 } from "./utils/effect/react.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
+import { hasExternalResourceSetterWriter } from "./utils/has-external-resource-setter-writer.js";
 
 // 1:1 port of upstream `src/rules/no-reset-all-state-on-prop-change.js`.
 
@@ -1266,11 +1268,20 @@ const findPropUsedToResetAllState = (
   if (isEveryResetReloadedAsync) return null;
 
   const containing = findContainingNode(analysis, useEffectNode);
+  const stateCount = countUseStates(analysis, containing);
+  if (
+    stateCount === SINGLE_STATE_CELL_COUNT &&
+    stateSetterRefs.every((setterReference) =>
+      hasExternalResourceSetterWriter(context, setterReference, useEffectNode),
+    )
+  ) {
+    return null;
+  }
   // Distinct state VARIABLES reset — two call sites of one setter must not
   // satisfy a two-useState component (freecut inline-composition-preview,
   // delta audit).
   const resetStateVariables = new Set(stateSetterRefs.map((setterRef) => setterRef.resolved));
-  if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
+  if (resetStateVariables.size !== stateCount) return null;
 
   const componentFunctionNode = containing ? getComponentFunctionNode(containing) : null;
   if (

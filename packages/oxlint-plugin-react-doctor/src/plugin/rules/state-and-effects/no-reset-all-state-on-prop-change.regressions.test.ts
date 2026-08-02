@@ -1111,5 +1111,20 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toEqual([]);
     });
+
+    it("stays silent when a sole media failure latch resets for a new resource identity", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `function AnimatedBackgroundImage({ src, mime }) {
+          const [hasFailed, setHasFailed] = useState(false);
+          useEffect(() => {
+            setHasFailed(false);
+          }, [src, mime]);
+          return <video src={src} onError={() => setHasFailed(true)} />;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
   });
 });

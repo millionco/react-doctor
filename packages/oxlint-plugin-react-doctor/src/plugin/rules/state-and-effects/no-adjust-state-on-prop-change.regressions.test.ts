@@ -644,5 +644,23 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
     });
+
+    it("stays silent when a media failure latch resets for a new resource identity", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function AnimatedBackgroundImage({ src, mime }) {
+          const [hasFailed, setHasFailed] = useState(false);
+          useEffect(() => {
+            setHasFailed(false);
+          }, [src, mime]);
+          const handleLoadedData = (event) => {
+            event.currentTarget.play()?.catch(() => setHasFailed(true));
+          };
+          return <video src={src} onLoadedData={handleLoadedData} />;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
   });
 });

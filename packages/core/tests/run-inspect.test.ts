@@ -299,7 +299,7 @@ const overlapLayersOf = (config: {
   );
 
 describe("runInspect — happy path", () => {
-  it("keeps descendant projects out of ancestor lint and dead-code scans", async () => {
+  it("keeps descendant projects out of ancestor lint and dead-code results", async () => {
     let lintIncludePaths: ReadonlyArray<string> | undefined;
     let deadCodeIgnorePatterns: ReadonlyArray<string> | undefined;
     const layers = Layer.mergeAll(
@@ -321,7 +321,13 @@ describe("runInspect — happy path", () => {
       Layer.mock(DeadCode, {
         run: (input) => {
           deadCodeIgnorePatterns = input.ignorePatterns;
-          return Stream.empty;
+          return Stream.fromIterable([
+            deadCodeDiagnostic,
+            {
+              ...deadCodeDiagnostic,
+              filePath: "packages/web/src/Unused.tsx",
+            },
+          ]);
         },
       }),
       Git.layerOf({}),
@@ -341,7 +347,8 @@ describe("runInspect — happy path", () => {
     );
 
     expect(lintIncludePaths).toEqual(["src/root.tsx"]);
-    expect(deadCodeIgnorePatterns).toEqual(["packages/web/**"]);
+    expect(deadCodeIgnorePatterns).toBeUndefined();
+    expect(output.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual(["src/Unused.tsx"]);
     expect(output.scannedFilePaths).toEqual([path.resolve("/repo/src/root.tsx")]);
   });
 

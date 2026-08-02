@@ -443,6 +443,14 @@ export const runInspect = <HooksR = never>(
     const excludedProjectRelativePaths = excludedProjectDirectories.map((excludedDirectory) =>
       path.relative(scanDirectory, excludedDirectory).replaceAll("\\", "/"),
     );
+    const isExcludedProjectDiagnostic = (diagnostic: Diagnostic): boolean => {
+      const relativeFilePath = toNormalizedRelativePath(diagnostic.filePath, scanDirectory);
+      return excludedProjectRelativePaths.some(
+        (excludedRelativePath) =>
+          relativeFilePath === excludedRelativePath ||
+          relativeFilePath.startsWith(`${excludedRelativePath}/`),
+      );
+    };
     const shouldPrecomputeSourceFiles =
       input.suppressScanSummary === true || excludedProjectDirectories.length > 0;
     const precomputedSourceFiles = shouldPrecomputeSourceFiles
@@ -749,9 +757,6 @@ export const runInspect = <HooksR = never>(
           deadCodeService
             .run({
               rootDirectory: scanDirectory,
-              ignorePatterns: excludedProjectRelativePaths.map(
-                (relativePath) => `${relativePath}/**`,
-              ),
               parseConcurrency: deadCodeParseConcurrency,
               workerTimeoutMs: deadCodeTimeout.workerTimeoutMs,
               onCacheOutcome: (didHitCache) => {
@@ -763,6 +768,7 @@ export const runInspect = <HooksR = never>(
               },
             })
             .pipe(
+              Stream.filter((diagnostic) => !isExcludedProjectDiagnostic(diagnostic)),
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
                 Stream.unwrap(
                   Effect.gen(function* () {

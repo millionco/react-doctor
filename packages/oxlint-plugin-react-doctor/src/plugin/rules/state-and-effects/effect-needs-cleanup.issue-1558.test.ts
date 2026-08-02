@@ -96,6 +96,9 @@ export const Component = () => {
 };`,
       );
       expect(result.parseErrors).toEqual([]);
+      if (result.diagnostics.length > 0) {
+        console.log("Inline cleanup diagnostic:", result.diagnostics[0].message);
+      }
       expect(result.diagnostics).toHaveLength(0);
     });
   });

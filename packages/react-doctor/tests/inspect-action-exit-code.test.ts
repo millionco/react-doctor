@@ -15,6 +15,7 @@ interface InspectInvocation {
 const mockState = vi.hoisted(() => ({
   projectDirectories: [] as string[],
   inspectInvocations: [] as InspectInvocation[],
+  resolvedDirectories: new Map<string, string>(),
   result: undefined as InspectResult | undefined,
   userConfig: undefined as ReactDoctorConfig | null | undefined,
 }));
@@ -38,7 +39,8 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   return {
     ...actual,
     resolveScanTarget: vi.fn(async (requestedDirectory: string) => ({
-      resolvedDirectory: requestedDirectory,
+      resolvedDirectory:
+        mockState.resolvedDirectories.get(requestedDirectory) ?? requestedDirectory,
       requestedDirectory,
       userConfig: mockState.userConfig ?? null,
       configSourceDirectory: null,
@@ -120,6 +122,7 @@ describe("inspectAction exit-code gate", () => {
     mockState.result = undefined;
     mockState.projectDirectories = [];
     mockState.inspectInvocations = [];
+    mockState.resolvedDirectories.clear();
     mockState.userConfig = undefined;
     fs.rmSync(projectDirectory, { recursive: true, force: true });
     vi.clearAllMocks();
@@ -189,6 +192,34 @@ describe("inspectAction exit-code gate", () => {
       directory: nestedProjectDirectory,
       excludedProjectDirectories: [],
     });
+  });
+
+  it("computes workspace exclusions from unique resolved project roots", async () => {
+    const configuredProjectDirectory = path.join(projectDirectory, "packages", "web");
+    const configuredProjectAliasDirectory = path.join(projectDirectory, "packages", "web-alias");
+    const resolvedProjectDirectory = path.join(projectDirectory, "apps", "web");
+    fs.mkdirSync(configuredProjectDirectory, { recursive: true });
+    fs.mkdirSync(configuredProjectAliasDirectory, { recursive: true });
+    fs.mkdirSync(resolvedProjectDirectory, { recursive: true });
+    mockState.projectDirectories = [
+      projectDirectory,
+      configuredProjectDirectory,
+      configuredProjectAliasDirectory,
+    ];
+    mockState.resolvedDirectories.set(configuredProjectDirectory, resolvedProjectDirectory);
+    mockState.resolvedDirectories.set(configuredProjectAliasDirectory, resolvedProjectDirectory);
+
+    await runInspectAction({});
+
+    expect(mockState.inspectInvocations).toContainEqual({
+      directory: projectDirectory,
+      excludedProjectDirectories: [resolvedProjectDirectory],
+    });
+    expect(mockState.inspectInvocations).toContainEqual({
+      directory: resolvedProjectDirectory,
+      excludedProjectDirectories: [],
+    });
+    expect(mockState.inspectInvocations).toHaveLength(2);
   });
 
   it("still exits 1 when a complete scan has a blocking finding", async () => {

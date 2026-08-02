@@ -11,7 +11,6 @@ import {
   hasReactRuntime,
   highlighter,
   isPathInsideDirectory,
-  mergeReactDoctorConfigs,
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
@@ -68,6 +67,7 @@ import {
   resolveProjectDiffIncludePaths,
 } from "../utils/resolve-project-diff-include-paths.js";
 import { resolveProjectSourceFilePaths } from "../utils/resolve-project-source-file-paths.js";
+import { resolveProjectScan, type ResolvedProjectScan } from "../utils/resolve-project-scan.js";
 import { runExplain } from "../utils/run-explain.js";
 import { runProjectScanBatch } from "../utils/run-project-scan-batch.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
@@ -450,11 +450,8 @@ export const inspectAction = async (
       const buildProjectScanContext = async (
         projectDirectory: string,
       ): Promise<StagedProjectScanContext | null> => {
-        const projectScanTarget =
-          projectDirectory === resolvedDirectory
-            ? scanTarget
-            : await resolveScanTarget(projectDirectory, { allowAmbiguous: true });
-        const scanDirectory = projectScanTarget.resolvedDirectory;
+        const projectScan = await resolveProjectScan(scanTarget, projectDirectory);
+        const scanDirectory = projectScan.directory;
         const treeRelativeDirectory = resolveProjectRelativeDirectory(
           resolvedDirectory,
           scanDirectory,
@@ -466,16 +463,8 @@ export const inspectAction = async (
           projectDirectory,
           scanDirectory,
           treeRelativeDirectory,
-          projectConfig:
-            projectDirectory === resolvedDirectory
-              ? userConfig
-              : mergeReactDoctorConfigs(userConfig, projectScanTarget.userConfig ?? undefined),
-          // `plugins` is override-wins in the merge, so relative entries must
-          // resolve against the config file that supplied them.
-          projectConfigSourceDirectory:
-            projectScanTarget.userConfig?.plugins === undefined
-              ? scanTarget.configSourceDirectory
-              : projectScanTarget.configSourceDirectory,
+          projectConfig: projectScan.config,
+          projectConfigSourceDirectory: projectScan.configSourceDirectory,
         };
       };
 
@@ -921,30 +910,23 @@ export const inspectAction = async (
       logger.break();
     }
 
-    const isMultiProject = projectDirectories.length > 1;
+    const resolvedProjectScans = await Promise.all(
+      projectDirectories.map((projectDirectory) =>
+        resolveProjectScan(scanTarget, projectDirectory),
+      ),
+    );
+    const projectScans: ResolvedProjectScan[] = [];
+    const seenScanDirectories = new Set<string>();
+    for (const projectScan of resolvedProjectScans) {
+      if (seenScanDirectories.has(projectScan.directory)) continue;
+      seenScanDirectories.add(projectScan.directory);
+      projectScans.push(projectScan);
+    }
+    const isMultiProject = projectScans.length > 1;
 
-    const scanProject = async (projectDirectory: string): Promise<CompletedScan | null> => {
-      // Each selected folder goes through the same scan-target resolution as
-      // `diagnose({ projects })` — its own `rootDir`, nested React discovery,
-      // and on-disk config (layered additively onto the root config via
-      // `mergeReactDoctorConfigs`) — so the CLI and the API agree on what
-      // scanning a module means.
-      const projectScanTarget =
-        projectDirectory === resolvedDirectory
-          ? scanTarget
-          : await resolveScanTarget(projectDirectory, { allowAmbiguous: true });
-      const scanDirectory = projectScanTarget.resolvedDirectory;
-      const projectConfig =
-        projectDirectory === resolvedDirectory
-          ? userConfig
-          : mergeReactDoctorConfigs(userConfig, projectScanTarget.userConfig ?? undefined);
-      // `plugins` is override-wins in the merge, so relative entries must
-      // resolve against the config file that supplied them: the module's own
-      // config when it declares `plugins`, the root config otherwise.
-      const projectConfigSourceDirectory =
-        projectScanTarget.userConfig?.plugins === undefined
-          ? scanTarget.configSourceDirectory
-          : projectScanTarget.configSourceDirectory;
+    const scanProject = async (projectScan: ResolvedProjectScan): Promise<CompletedScan | null> => {
+      const scanDirectory = projectScan.directory;
+      const projectConfig = projectScan.config;
       // The Socket supply-chain check runs by default; opted out by
       // `--no-supply-chain` (wins) or per-project config. Off ⇒ a manifest-only
       // diff change shouldn't pull a project into the scan (nothing to report).
@@ -1012,14 +994,16 @@ export const inspectAction = async (
         deadlineEpochMs: scanDeadlineEpochMs,
         includePaths,
         configOverride: projectConfig,
-        configSourceDirectory: projectConfigSourceDirectory ?? undefined,
+        configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
         suppressRendering: isMultiProject,
         // Pool members overlap; they must not own the process-global Sentry
         // run state (see `InspectOptions.concurrentScan`).
         concurrentScan: isMultiProject,
-        excludedProjectDirectories: projectDirectories.filter((candidateDirectory) =>
-          isPathInsideDirectory(candidateDirectory, scanDirectory),
-        ),
+        excludedProjectDirectories: projectScans
+          .filter((candidateProjectScan) =>
+            isPathInsideDirectory(candidateProjectScan.directory, scanDirectory),
+          )
+          .map((candidateProjectScan) => candidateProjectScan.directory),
         baseline:
           baselineRef !== null &&
           projectBaselineBaseFiles !== null &&
@@ -1043,7 +1027,7 @@ export const inspectAction = async (
     };
 
     const projectBatch = await runProjectScanBatch({
-      projects: projectDirectories,
+      projects: projectScans,
       isQuiet,
       isSilent: scanOptions.silent === true,
       scanProject,

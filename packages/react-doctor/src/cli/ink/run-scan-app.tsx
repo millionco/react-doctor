@@ -7,7 +7,6 @@ import {
   highlighter,
   isPathInsideDirectory,
   mapWithConcurrency,
-  mergeReactDoctorConfigs,
   Reporter,
   resolveScanTarget,
   yieldToEventLoop,
@@ -48,6 +47,7 @@ import {
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
+import { resolveProjectScan, type ResolvedProjectScan } from "../utils/resolve-project-scan.js";
 import { selectReportDiagnostics } from "../utils/select-report-diagnostics.js";
 import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
 import { ProjectSelect } from "./components/project-select.js";
@@ -76,43 +76,11 @@ export interface RunScanAppResult {
   readonly shouldFail: boolean;
 }
 
-interface ResolvedProjectScan {
-  readonly directory: string;
-  readonly config: ReactDoctorConfig | null;
-  readonly configSourceDirectory: string | null;
-}
-
 interface ScanPresentation {
   readonly isOffline: boolean;
   readonly noScoreMessage: string;
   readonly shouldRecommendCi: boolean;
 }
-
-const resolveProjectScan = async (
-  rootScanTarget: ResolvedScanTarget,
-  projectDirectory: string,
-): Promise<ResolvedProjectScan> => {
-  const projectScanTarget =
-    projectDirectory === rootScanTarget.resolvedDirectory
-      ? rootScanTarget
-      : await resolveScanTarget(projectDirectory, { allowAmbiguous: true });
-  const config =
-    projectDirectory === rootScanTarget.resolvedDirectory
-      ? rootScanTarget.userConfig
-      : mergeReactDoctorConfigs(
-          rootScanTarget.userConfig,
-          projectScanTarget.userConfig ?? undefined,
-        );
-  const configSourceDirectory =
-    projectScanTarget.userConfig?.plugins === undefined
-      ? rootScanTarget.configSourceDirectory
-      : projectScanTarget.configSourceDirectory;
-  return {
-    directory: projectScanTarget.resolvedDirectory,
-    config,
-    configSourceDirectory,
-  };
-};
 
 const qualifyDiagnosticPaths = (
   diagnostics: ReadonlyArray<Diagnostic>,

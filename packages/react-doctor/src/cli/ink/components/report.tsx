@@ -270,7 +270,6 @@ export const Report = ({
         actions={landingActions}
         selectedIndex={resolvedLandingSelectedIndex}
         onSelectionChange={setLandingSelectedIndex}
-        onExit={onExit}
         onQuit={onQuit}
       />
     );

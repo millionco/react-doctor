@@ -14,7 +14,6 @@ export interface ReportLandingProps {
   readonly actions: ReadonlyArray<ActionMenuAction>;
   readonly selectedIndex: number;
   readonly onSelectionChange: (index: number) => void;
-  readonly onExit: () => void;
   readonly onQuit: () => void;
 }
 
@@ -27,7 +26,6 @@ export const ReportLanding = ({
   actions,
   selectedIndex,
   onSelectionChange,
-  onExit,
   onQuit,
 }: ReportLandingProps) => {
   const showScore = phase === "actions" || phase === "score";
@@ -56,7 +54,7 @@ export const ReportLanding = ({
             actions={actions}
             selectedIndex={selectedIndex}
             onSelectionChange={onSelectionChange}
-            onEscape={onExit}
+            onEscape={onQuit}
             onQuit={onQuit}
           />
           <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>

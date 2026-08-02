@@ -674,6 +674,49 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("still reports when a dependency is only read by a non-resource attribute", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Preview({ userId, previewUrl }) {
+          const [hasFailed, setHasFailed] = useState(false);
+          useEffect(() => {
+            setHasFailed(false);
+          }, [userId]);
+          return (
+            <img
+              src={previewUrl}
+              aria-label={userId}
+              onError={() => setHasFailed(true)}
+            />
+          );
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still reports an editable value reset despite a resource error writer", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Editor({ documentId }) {
+          const [draft, setDraft] = useState("");
+          useEffect(() => {
+            setDraft("");
+          }, [documentId]);
+          return (
+            <>
+              <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+              <img src={documentId} onError={() => setDraft("unavailable")} />
+            </>
+          );
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("stays silent on an async probe whose on* handler assignments set the same state (psysonic artistHero)", () => {
       const result = runRule(
         noAdjustStateOnPropChange,

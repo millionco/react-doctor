@@ -10,7 +10,7 @@ import { isProvenIntrinsicJsxElement } from "../../../utils/is-proven-intrinsic-
 import { resolveJsxElementType } from "../../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { walkAst } from "../../../utils/walk-ast.js";
-import { getRef } from "./effect/ast.js";
+import { getCallExpr, getRef } from "./effect/ast.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { isSetterWiredToJsxHandler } from "./is-controlled-prop-mirror.js";
 
@@ -31,6 +31,20 @@ const RESOURCE_LIFECYCLE_EVENT_NAMES: ReadonlySet<string> = new Set([
   "onSuspend",
   "onWaiting",
 ]);
+
+const RESOURCE_IDENTITY_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set([
+  "data",
+  "href",
+  "src",
+  "srcSet",
+]);
+
+const writesFailureLatch = (setterReference: Reference): boolean => {
+  const callExpression = getCallExpr(setterReference);
+  if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return false;
+  const writtenValue = callExpression.arguments?.[0] as EsTreeNode | undefined;
+  return Boolean(isNodeOfType(writtenValue, "Literal") && writtenValue.value === true);
+};
 
 const isResourceLifecycleAttribute = (
   analysis: ProgramAnalysis,
@@ -54,6 +68,12 @@ const isResourceLifecycleAttribute = (
   let readsDependency = false;
   for (const siblingAttribute of openingElement.attributes ?? []) {
     if (siblingAttribute === attribute) continue;
+    if (
+      !isNodeOfType(siblingAttribute, "JSXAttribute") ||
+      !RESOURCE_IDENTITY_ATTRIBUTE_NAMES.has(getJsxAttributeName(siblingAttribute.name) ?? "")
+    ) {
+      continue;
+    }
     walkAst(siblingAttribute, (child): boolean | void => {
       if (readsDependency) return false;
       if (!isNodeOfType(child, "Identifier")) return;
@@ -87,6 +107,7 @@ export const hasResourceLifecycleSetterWriter = (
 
   for (const reference of setterReference.resolved.references) {
     if (reference.init) continue;
+    if (!writesFailureLatch(reference)) continue;
     const identifier = reference.identifier as unknown as EsTreeNode;
     let outermostFunctionBelowComponent: EsTreeNode | null = null;
     let cursor: EsTreeNode | null | undefined = identifier;

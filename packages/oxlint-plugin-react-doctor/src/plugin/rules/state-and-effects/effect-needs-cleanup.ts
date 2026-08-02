@@ -1,4 +1,5 @@
 import {
+  EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
   TIMER_CALLEE_NAMES_REQUIRING_CLEANUP,
   TIMER_CLEANUP_CALLEE_NAMES,
@@ -1582,14 +1583,166 @@ const findSingleDirectInvocation = (
     : null;
 };
 
+const isGlobalObserverConstruction = (
+  node: EsTreeNode,
+  context: RuleContext,
+): node is EsTreeNodeOfType<"NewExpression"> => {
+  if (!isNodeOfType(node, "NewExpression")) return false;
+  const constructor = stripParenExpression(node.callee);
+  return (
+    isNodeOfType(constructor, "Identifier") &&
+    EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS.has(constructor.name) &&
+    context.scopes.isGlobalReference(constructor)
+  );
+};
+
+const isNullishObserverInitializer = (
+  expression: EsTreeNode | null | undefined,
+  context: RuleContext,
+): boolean => {
+  if (!expression) return true;
+  const initializer = stripParenExpression(expression);
+  return (
+    (isNodeOfType(initializer, "Literal") && initializer.value === null) ||
+    (isNodeOfType(initializer, "Identifier") &&
+      initializer.name === "undefined" &&
+      context.scopes.isGlobalReference(initializer))
+  );
+};
+
+const findReconnectHelperInvocation = (
+  usageFunction: EsTreeNode,
+  effectCallback: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): EsTreeNode | null => {
+  if (
+    !isFunctionLike(usageFunction) ||
+    usageFunction.async ||
+    usageFunction.generator ||
+    usage.receiverKey === null ||
+    !isNodeOfType(usage.node, "CallExpression")
+  ) {
+    return null;
+  }
+  const usageCallee = stripParenExpression(usage.node.callee);
+  const usageReceiver = isNodeOfType(usageCallee, "MemberExpression")
+    ? stripParenExpression(usageCallee.object)
+    : null;
+  if (!usageReceiver || !isNodeOfType(usageReceiver, "Identifier")) return null;
+  const observerSymbol = context.scopes.symbolFor(usageReceiver);
+  const observerDeclaration = observerSymbol?.declarationNode;
+  if (
+    !observerSymbol ||
+    (observerSymbol.kind !== "let" && observerSymbol.kind !== "var") ||
+    !isNodeOfType(observerDeclaration, "VariableDeclarator") ||
+    observerDeclaration.id !== observerSymbol.bindingIdentifier ||
+    findEnclosingFunction(observerDeclaration) !== effectCallback ||
+    !isNullishObserverInitializer(observerDeclaration.init, context)
+  ) {
+    return null;
+  }
+
+  const observerAssignments: EsTreeNodeOfType<"AssignmentExpression">[] = [];
+  for (const reference of observerSymbol.references) {
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const referenceParent = referenceRoot.parent;
+    if (
+      isNodeOfType(referenceParent, "AssignmentExpression") &&
+      referenceParent.operator === "=" &&
+      referenceParent.left === referenceRoot
+    ) {
+      observerAssignments.push(referenceParent);
+      continue;
+    }
+    const member = referenceParent;
+    const methodCall = member?.parent;
+    if (
+      !isNodeOfType(member, "MemberExpression") ||
+      member.object !== referenceRoot ||
+      !isNodeOfType(methodCall, "CallExpression") ||
+      methodCall.callee !== member ||
+      !["disconnect", "observe", "unobserve"].includes(getStaticPropertyKeyName(member) ?? "")
+    ) {
+      return null;
+    }
+  }
+  if (observerAssignments.length !== 1) return null;
+  const observerAssignment = observerAssignments[0];
+  if (!observerAssignment) return null;
+  const observerConstruction = stripParenExpression(observerAssignment.right);
+  if (
+    !isGlobalObserverConstruction(observerConstruction, context) ||
+    findEnclosingFunction(observerAssignment) !== usageFunction ||
+    !canNodeReachLaterNodeWithinFunction(observerAssignment, usage.node, usageFunction, context)
+  ) {
+    return null;
+  }
+
+  const matchingReleaseAnchors: EsTreeNode[] = [];
+  const assignmentStart = getRangeStart(observerAssignment);
+  if (assignmentStart === null) return null;
+  walkAst(usageFunction.body, (child: EsTreeNode) => {
+    if (child !== usageFunction.body && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const childStart = getRangeStart(child);
+    if (
+      childStart === null ||
+      childStart >= assignmentStart ||
+      !doesReleaseCallMatchUsage(child, usage, context)
+    ) {
+      return;
+    }
+    matchingReleaseAnchors.push(
+      findLiveExpressionGuardForRelease(child, usageFunction, usage.receiverKey ?? "", context) ??
+        child,
+    );
+  });
+  if (!doNodesCoverEveryPathFromFunctionEntry(usageFunction, matchingReleaseAnchors, context)) {
+    return null;
+  }
+
+  const functionBindingIdentifier = getFunctionBindingIdentifier(usageFunction);
+  const functionSymbol = functionBindingIdentifier
+    ? context.scopes.symbolFor(functionBindingIdentifier)
+    : null;
+  if (!functionSymbol) return null;
+  const directInvocations: EsTreeNode[] = [];
+  for (const reference of functionSymbol.references) {
+    const directCall = findDirectCallForReference(reference.identifier);
+    if (directCall && findEnclosingFunction(directCall) === effectCallback) {
+      directInvocations.push(directCall);
+      continue;
+    }
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const construction = referenceRoot.parent;
+    if (
+      !construction ||
+      !isGlobalObserverConstruction(construction, context) ||
+      findEnclosingFunction(construction) !== usageFunction ||
+      !construction.arguments.some((argument) => argument === referenceRoot)
+    ) {
+      return null;
+    }
+  }
+  const directInvocation = directInvocations.length === 1 ? directInvocations[0] : null;
+  return directInvocation && isNodeReachableWithinFunction(directInvocation, context)
+    ? directInvocation
+    : null;
+};
+
 const resolveCleanupPathAnchor = (
-  usageNode: EsTreeNode,
+  usage: SubscribeLikeUsage,
   effectCallback: EsTreeNode,
   context: RuleContext,
 ): EsTreeNode => {
-  const usageFunction = findEnclosingFunction(usageNode);
-  if (!usageFunction || usageFunction === effectCallback) return usageNode;
-  return findSingleDirectInvocation(usageFunction, effectCallback, context) ?? usageNode;
+  const usageFunction = findEnclosingFunction(usage.node);
+  if (!usageFunction || usageFunction === effectCallback) return usage.node;
+  return (
+    findSingleDirectInvocation(usageFunction, effectCallback, context) ??
+    findReconnectHelperInvocation(usageFunction, effectCallback, usage, context) ??
+    usage.node
+  );
 };
 
 const resolveSingleAssignedCleanupFunction = (
@@ -2818,7 +2971,7 @@ const effectHasCleanupForUsage = (
     return true;
   }
   return doMatchingNodesCoverEveryPathAfterUsage(
-    resolveCleanupPathAnchor(usage.node, callback, context),
+    resolveCleanupPathAnchor(usage, callback, context),
     matchingCleanupReturns,
     context,
   );

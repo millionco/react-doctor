@@ -78,8 +78,10 @@ nr --silent eval \
   --paired-baseline-output <absolute-new-baseline-path> \
   --paired-base-react-doctor-repository <base-repository-url> \
   --paired-base-react-doctor-ref <base-or-full-shadow-commit> \
+  --paired-base-rule <treatment-plugin/rule> \
   --react-doctor-repository <treatment-repository-url> \
   --react-doctor-ref <treatment-commit> \
+  --paired-execution sequential \
   --rule <treatment-plugin/rule> \
   > <absolute-run-directory>/candidate.ndjson
 ```
@@ -94,13 +96,19 @@ baseline back if either sink fails. Any nonzero paired evaluator run still
 makes both output artifacts invalid and non-reusable; discard them instead of
 feeding them to the comparator or cache.
 
+Use the same `--paired-base-rule` and `--rule` values for performance
+comparison, or omit both for a full-rule comparison. A full-versus-scoped
+shadow run remains valid diagnostic evidence but not performance evidence.
+
 Paired sandboxes request four CPU cores, eight GiB of memory, and twenty GiB of
 disk. `--paired-execution auto` is the default and runs the scans in parallel
 only when the sandbox has at least four CPU cores. Use
-`--paired-execution sequential` for the controlled sequential benchmark or
-when parallel execution is undesirable. Paired evaluations default to 50
-sandboxes, below the observed capacity ceiling for four-core sandboxes; pass
-`--concurrency` only when the Daytona allocation supports a different envelope.
+`--paired-execution sequential` for the controlled sequential benchmark and
+the performance comparison below. Use `auto` or `parallel` only for
+diagnostic-only parity where timing evidence will be discarded. Paired
+evaluations default to 50 sandboxes, below the observed capacity ceiling for
+four-core sandboxes; pass `--concurrency` only when the Daytona allocation
+supports a different envelope.
 Both modes share the same hard attempt deadline and exact evaluation-label
 cleanup. Each paired scan has a five-minute command cap so a small number of
 stuck sandboxes cannot consume the whole attempt budget; the ordinary evaluator
@@ -252,6 +260,11 @@ node .agents/skills/run-parity/scripts/compare-parity.mjs \
   <run-directory>/baseline.ndjson \
   <run-directory>/candidate.ndjson \
   > <run-directory>/parity.json
+
+node .agents/skills/run-parity/scripts/compare-parity-performance.mjs \
+  <run-directory>/baseline.ndjson \
+  <run-directory>/candidate.ndjson \
+  > <run-directory>/performance-parity.json
 ```
 
 Interpret exit codes:
@@ -263,6 +276,19 @@ Interpret exit codes:
 The evaluator retries incomplete reports instead of recording them as successful. The comparator validates both inputs again and exits with invalid-input status if either side contains an evaluation error, a malformed report, a missing completion marker, or a partial legacy report. It canonicalizes diagnostics to report-relative identities across legacy and v3 report schemas, so overlapping workspace scans do not inflate counts and schema upgrades do not appear as diagnostic churn.
 
 The comparator streams both NDJSON inputs, stages baseline records in the system temporary directory, and writes large detail arrays incrementally. It retains changed diagnostic entries only long enough to sort them deterministically, so leave temporary-disk and output capacity proportional to the run size.
+
+The performance comparator requires complete v3 reports, identical project
+coverage, rule scope, config contract, and evaluator source. Run it only on a
+paired sequential evaluation so base and candidate share the same Daytona
+sandbox without competing for CPU. Exit `0` means timings stayed within the
+fixed noise-tolerant thresholds, `1` means a material project or aggregate
+regression, and `2` means the evidence is invalid. It ignores projects whose
+base scan is under one second, flags an individual project only when it is at
+least 50% and two seconds slower, and flags a corpus-wide regression only with
+at least ten eligible projects, a 20% ratio, and ten seconds of aggregate
+added latency. Inspect the emitted measurements before attributing a cause.
+Matrix lanes run concurrently and remain diagnostic evidence; do not feed
+matrix artifacts to the performance comparator.
 
 For exit code `1`, inspect affected source locations before classifying changes.
 
@@ -312,6 +338,7 @@ Validate comparator changes from the repository root:
 
 ```sh
 node --test .agents/skills/run-parity/scripts/compare-parity.test.mjs
+node --test .agents/skills/run-parity/scripts/compare-parity-performance.test.mjs
 node --test .agents/skills/run-parity/scripts/find-impacted-rules.test.mjs
 node --test .agents/skills/run-parity/scripts/parity-index.test.mjs
 node --test .agents/skills/run-parity/scripts/validate-parity-input.test.mjs

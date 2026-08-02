@@ -1,5 +1,6 @@
 import {
   EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
+  EXTERNAL_SYNC_DOM_MEMBER_PROPERTY_NAMES,
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
 } from "../../constants/dom.js";
@@ -1943,6 +1944,46 @@ const storesOnlyIntrinsicRefCallbackValues = (
 ): boolean => {
   const refCall = getDirectReactRefCall(symbol, scopes);
   const initialValue = refCall?.arguments[0];
+  if (isNodeOfType(initialValue, "ObjectExpression") && initialValue.properties.length === 0) {
+    let intrinsicValueWriteCount = 0;
+    for (const reference of symbol.references) {
+      const identifier = findTransparentExpressionRoot(reference.identifier);
+      const currentMember = identifier.parent;
+      if (
+        !isNodeOfType(currentMember, "MemberExpression") ||
+        currentMember.object !== identifier ||
+        getStaticPropertyName(currentMember) !== "current"
+      ) {
+        return false;
+      }
+      const currentExpression = findTransparentExpressionRoot(currentMember);
+      const propertyMember = currentExpression.parent;
+      if (
+        !isNodeOfType(propertyMember, "MemberExpression") ||
+        propertyMember.object !== currentExpression
+      ) {
+        return false;
+      }
+      const propertyExpression = findTransparentExpressionRoot(propertyMember);
+      const parent = propertyExpression.parent;
+      if (isNodeOfType(parent, "AssignmentExpression") && parent.left === propertyExpression) {
+        if (parent.operator !== "=" || !isIntrinsicRefCallbackParameter(parent.right, scopes)) {
+          return false;
+        }
+        intrinsicValueWriteCount += 1;
+        continue;
+      }
+      if (
+        (isNodeOfType(parent, "UpdateExpression") && parent.argument === propertyExpression) ||
+        (isNodeOfType(parent, "UnaryExpression") &&
+          parent.operator === "delete" &&
+          parent.argument === propertyExpression)
+      ) {
+        return false;
+      }
+    }
+    return intrinsicValueWriteCount > 0;
+  }
   const hasDirectEmptyMapInitializer = Boolean(
     initialValue && isEmptyGlobalMapConstruction(initialValue, scopes),
   );
@@ -2035,12 +2076,7 @@ const isDerivedFromProvenDomRefCurrent = (
           (didReadCollectionValue && storesOnlyIntrinsicRefCallbackValues(symbol, scopes))),
       );
     }
-    return isDerivedFromProvenDomRefCurrent(
-      expression.object,
-      scopes,
-      didReadCollectionValue,
-      visitedSymbolIds,
-    );
+    return isDerivedFromProvenDomRefCurrent(expression.object, scopes, true, visitedSymbolIds);
   }
   if (!isNodeOfType(expression, "CallExpression")) return false;
   const callee = stripParenExpression(expression.callee);
@@ -2054,6 +2090,22 @@ const isDerivedFromProvenDomRefCurrent = (
 };
 
 const isCommittedDomSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (isNodeOfType(node, "AssignmentExpression")) {
+    const target = stripParenExpression(node.left);
+    return Boolean(
+      isNodeOfType(target, "MemberExpression") &&
+      EXTERNAL_SYNC_DOM_MEMBER_PROPERTY_NAMES.has(getStaticPropertyName(target) ?? "") &&
+      isDerivedFromProvenDomRefCurrent(target.object, scopes),
+    );
+  }
+  if (isNodeOfType(node, "UpdateExpression")) {
+    const target = stripParenExpression(node.argument);
+    return Boolean(
+      isNodeOfType(target, "MemberExpression") &&
+      EXTERNAL_SYNC_DOM_MEMBER_PROPERTY_NAMES.has(getStaticPropertyName(target) ?? "") &&
+      isDerivedFromProvenDomRefCurrent(target.object, scopes),
+    );
+  }
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -2234,6 +2286,52 @@ const isExternalSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   );
 };
 
+const cleanupFunctionHasExternalWork = (
+  cleanupFunction: EsTreeNode,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
+  scopes: ScopeAnalysis,
+  visitedFunctions: ReadonlySet<EsTreeNode> = new Set(),
+): boolean => {
+  if (
+    !isFunctionLike(cleanupFunction) ||
+    cleanupFunction.async ||
+    cleanupFunction.generator ||
+    visitedFunctions.has(cleanupFunction)
+  ) {
+    return false;
+  }
+  const nextVisitedFunctions = new Set(visitedFunctions).add(cleanupFunction);
+  let hasExternalWork = false;
+  walkInsideStatementBlocks(cleanupFunction.body, (child) => {
+    if (hasExternalWork) return false;
+    if (isNodeOfType(child, "CallExpression")) {
+      if (getStateNameForSetterCall(child, setterSymbolIdToStateName, scopes)) return;
+      if (isNodeOfType(child.callee, "Identifier") && isSetterIdentifier(child.callee.name)) {
+        return;
+      }
+      const invokedFunction = resolveSynchronouslyInvokedFunction(child.callee, scopes);
+      if (
+        invokedFunction &&
+        !cleanupFunctionHasExternalWork(
+          invokedFunction,
+          setterSymbolIdToStateName,
+          scopes,
+          nextVisitedFunctions,
+        )
+      ) {
+        return;
+      }
+      hasExternalWork = true;
+      return false;
+    }
+    if (isExternalSyncNode(child, scopes) || isCommittedDomSyncNode(child, scopes)) {
+      hasExternalWork = true;
+      return false;
+    }
+  });
+  return hasExternalWork;
+};
+
 const collectExternalSyncAnchors = (
   effectCallback: EsTreeNode,
   analysisFunctions: ReadonlySet<EsTreeNode>,
@@ -2258,15 +2356,23 @@ const collectExternalSyncAnchors = (
     }
   } else {
     for (const statement of collectFunctionReturnStatements(effectCallback)) {
+      const returnedValue = statement.argument;
       if (
-        statement.argument &&
+        returnedValue &&
         isFunctionShapedReturn(
-          statement.argument,
+          returnedValue,
           setterToStateName,
           setterSymbolIdToStateName,
           scopes,
           true,
-        )
+        ) &&
+        (statement.parent === effectCallback.body ||
+          !isFunctionLike(stripParenExpression(returnedValue)) ||
+          cleanupFunctionHasExternalWork(
+            stripParenExpression(returnedValue),
+            setterSymbolIdToStateName,
+            scopes,
+          ))
       ) {
         externalSyncAnchors.push(statement);
       }

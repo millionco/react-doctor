@@ -25,8 +25,6 @@ Wait+Screen /Select projects/
 Sleep 500ms
 Space
 Enter
-Wait+Screen /Scanning.../
-Sleep 2s
 Wait+Screen /No issues found/
 Sleep 2s
 Type "q"

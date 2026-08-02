@@ -52,7 +52,7 @@ GIT_DELAY_SECONDS = 3
 TERMINAL_ROWS = 24
 TERMINAL_COLUMNS = 100
 PROMPT_MARKER = "Select projects"
-SCAN_FEEDBACK_MARKER = "Scanning..."
+SCAN_FEEDBACK_MARKER = "Scanning"
 
 # Env vars that make `shouldSkipPrompts()` short-circuit to non-interactive
 # (so the multiselect would never render). CI sets CI / GITHUB_ACTIONS, and a
@@ -262,7 +262,7 @@ def run_prompt_in_pty(fixture_directory, delayed_git_directory):
     exited_by_itself = process.poll() is not None
     scan_feedback_rendered = False
     if prompt_rendered and not exited_by_itself:
-        os.write(master_fd, b" \r")
+        os.write(master_fd, b"\r")
         captured_output = read_pty_until(
             master_fd,
             process,

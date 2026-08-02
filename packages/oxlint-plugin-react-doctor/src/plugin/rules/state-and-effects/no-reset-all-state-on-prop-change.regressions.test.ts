@@ -68,6 +68,27 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still reports an editable value reset despite a resource error writer", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `function Editor({ documentId }) {
+        const [draft, setDraft] = useState("");
+        useEffect(() => {
+          setDraft("");
+        }, [documentId]);
+        return (
+          <>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+            <img src={documentId} onError={() => setDraft("unavailable")} />
+          </>
+        );
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for an extracted async loading lifecycle helper", () => {
     const result = runRule(
       noResetAllStateOnPropChange,

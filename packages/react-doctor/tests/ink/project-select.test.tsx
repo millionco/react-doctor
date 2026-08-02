@@ -1,3 +1,4 @@
+import path from "node:path";
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { WorkspacePackage } from "@react-doctor/core";
@@ -15,6 +16,22 @@ const ENTER = "\r";
 const ESC = "\u001b";
 
 describe("ProjectSelect", () => {
+  it("omits a relative directory that duplicates the project name", async () => {
+    const rootDirectory = path.resolve("repo");
+    const packages = [
+      { name: "same-next", directory: path.join(rootDirectory, "same-next") },
+      { name: "web", directory: path.join(rootDirectory, "apps", "web") },
+    ];
+    const { lastFrame, unmount } = render(
+      <ProjectSelect packages={packages} rootDirectory={rootDirectory} onSubmit={vi.fn()} />,
+    );
+    await flush();
+
+    expect(lastFrame()?.match(/same-next/g)).toHaveLength(1);
+    expect(lastFrame()).toContain(path.join("apps", "web"));
+    unmount();
+  });
+
   it("scans only the highlighted project when Enter is pressed with nothing checked", async () => {
     const onSubmit = vi.fn();
     const { stdin, unmount } = render(

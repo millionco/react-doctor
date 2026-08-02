@@ -1,10 +1,11 @@
 import path from "node:path";
 import figures from "figures";
 import { Box, Text, useInput } from "ink";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { WorkspacePackage } from "@react-doctor/core";
 import {
+  METRIC,
   TUI_PROJECT_SELECT_CHROME_ROWS,
   TUI_PROJECT_SELECT_FILTER_ROWS,
   TUI_PROJECT_SELECT_FOOTER_MARGIN_ROWS,
@@ -13,6 +14,7 @@ import {
 } from "../../utils/constants.js";
 import { clampNumber } from "../../utils/clamp-number.js";
 import { isPrintableInput } from "../../utils/is-printable-input.js";
+import { recordCount } from "../../utils/record-metric.js";
 import { resolveVisibleStart } from "../../utils/resolve-visible-start.js";
 import { useExitOnCtrlC } from "../hooks/use-exit-on-ctrl-c.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
@@ -29,6 +31,7 @@ type SelectMode = "list" | "search";
 interface ScoredPackage {
   readonly workspacePackage: WorkspacePackage;
   readonly matchedIndices: ReadonlyArray<number>;
+  readonly relativeDirectory: string;
 }
 
 interface MatchedNameProps {
@@ -72,6 +75,7 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
   const [checkedDirectories, setCheckedDirectories] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const didRecordProjectPathContext = useRef(false);
 
   const matchedPackages = useMemo<ReadonlyArray<ScoredPackage>>(() => {
     const scoredPackages = packages.flatMap((workspacePackage) => {
@@ -86,8 +90,18 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
     return scoredPackages.map(({ workspacePackage, result }) => ({
       workspacePackage,
       matchedIndices: result.matchedIndices,
+      relativeDirectory: path.relative(rootDirectory, workspacePackage.directory) || ".",
     }));
-  }, [packages, searchQuery]);
+  }, [packages, rootDirectory, searchQuery]);
+  const hasProjectPathContext = matchedPackages.some(
+    ({ relativeDirectory, workspacePackage }) => relativeDirectory !== workspacePackage.name,
+  );
+
+  useEffect(() => {
+    if (!hasProjectPathContext || didRecordProjectPathContext.current) return;
+    didRecordProjectPathContext.current = true;
+    recordCount(METRIC.tuiProjectPathContextShown);
+  }, [hasProjectPathContext]);
 
   const isSearching = selectionMode === "search";
   const hasFilterLine = isSearching || searchQuery.length > 0;
@@ -250,6 +264,8 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
             const matchIndex = visibleStart + visiblePackageIndex;
             const isSelected = matchIndex === selectedPackageIndex;
             const isChecked = checkedDirectories.has(matchedPackage.workspacePackage.directory);
+            const shouldShowRelativeDirectory =
+              matchedPackage.relativeDirectory !== matchedPackage.workspacePackage.name;
             return (
               <Text key={matchedPackage.workspacePackage.directory} wrap="truncate-end">
                 <Text color={isSelected ? "cyan" : undefined}>
@@ -263,14 +279,16 @@ export const ProjectSelect = ({ packages, rootDirectory, onSubmit }: ProjectSele
                   matchedIndices={matchedPackage.matchedIndices}
                   isSelected={isSelected}
                 />
-                <Text dimColor>
-                  {" ".repeat(
-                    longestNameLength -
-                      matchedPackage.workspacePackage.name.length +
-                      TUI_PROJECT_NAME_GAP_COLUMNS,
-                  )}
-                  {path.relative(rootDirectory, matchedPackage.workspacePackage.directory) || "."}
-                </Text>
+                {shouldShowRelativeDirectory ? (
+                  <Text dimColor>
+                    {" ".repeat(
+                      longestNameLength -
+                        matchedPackage.workspacePackage.name.length +
+                        TUI_PROJECT_NAME_GAP_COLUMNS,
+                    )}
+                    {matchedPackage.relativeDirectory}
+                  </Text>
+                ) : null}
               </Text>
             );
           })

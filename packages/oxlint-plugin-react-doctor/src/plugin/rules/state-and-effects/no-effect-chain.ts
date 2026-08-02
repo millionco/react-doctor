@@ -13,6 +13,7 @@ import {
 } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { canNodeReachNode } from "../../utils/can-node-reach-node.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
@@ -1653,7 +1654,9 @@ const isFunctionShapedReturn = (
   // `const unsub = subscribe(...)` line. We can't statically prove
   // it's function-typed without scope analysis, but in idiomatic React
   // this is the dominant cleanup pattern. Accept.
-  if (isNodeOfType(unwrappedReturnedValue, "Identifier")) return true;
+  if (isNodeOfType(unwrappedReturnedValue, "Identifier")) {
+    return !isProvenGlobalNamespaceReference(unwrappedReturnedValue, "undefined", scopes);
+  }
   return false;
 };
 
@@ -2254,9 +2257,8 @@ const collectExternalSyncAnchors = (
       externalSyncAnchors.push(effectCallback.body);
     }
   } else {
-    for (const statement of effectCallback.body.body ?? []) {
+    for (const statement of collectFunctionReturnStatements(effectCallback)) {
       if (
-        isNodeOfType(statement, "ReturnStatement") &&
         statement.argument &&
         isFunctionShapedReturn(
           statement.argument,
@@ -2294,11 +2296,11 @@ const collectExternallySynchronizedStateNames = (
     const areAllWritesPartOfExternalSync = writeInfo.nodes.every((writeNode) => {
       const writeOwner = context.cfg.enclosingFunction(writeNode);
       const functionCfg = writeOwner ? context.cfg.cfgFor(writeOwner) : null;
-      if (!writeOwner || !functionCfg) return true;
+      if (!writeOwner || !functionCfg) return false;
       const sameOwnerAnchors = externalSyncAnchors.filter(
         (anchor) => context.cfg.enclosingFunction(anchor) === writeOwner,
       );
-      if (sameOwnerAnchors.length === 0) return true;
+      if (sameOwnerAnchors.length === 0) return false;
       return sameOwnerAnchors.some(
         (anchor) =>
           nodesCanCoExecute(writeNode, anchor, context) &&
@@ -2405,6 +2407,12 @@ export const noEffectChain = defineRule({
       const reportedNodes = new Set<EsTreeNode>();
       for (const writerEffect of effectInfos) {
         if (writerEffect.stateWrites.size === 0) continue;
+        if (
+          writerEffect.isExternalSync &&
+          writerEffect.externallySynchronizedStateNames.size === 0
+        ) {
+          continue;
+        }
         for (const readerEffect of effectInfos) {
           if (readerEffect === writerEffect) continue;
           if (readerEffect.isExternalSync) continue;

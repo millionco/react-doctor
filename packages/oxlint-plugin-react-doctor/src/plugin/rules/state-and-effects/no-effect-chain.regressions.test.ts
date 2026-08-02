@@ -656,6 +656,30 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps a stored channel handle on its lifecycle path quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `function LiveQueries({ controller, perspective }) {
+        const [channel, setChannel] = useState();
+        useEffect((): (() => void) => {
+          if (controller) {
+            const nextChannel = controller.createChannel();
+            setChannel(nextChannel);
+            nextChannel.on("message", receiveMessage);
+            return nextChannel.start();
+          }
+          return () => undefined;
+        }, [controller]);
+        useEffect(() => {
+          if (channel) channel.post("perspective", perspective);
+        }, [channel, perspective]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Docs-validation r2 docMismatch (Security.jsx): the downstream effect
   // only persists state to localStorage — synchronizing with an external
   // system, which the doc excludes; no re-render chain exists.

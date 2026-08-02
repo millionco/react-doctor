@@ -2795,12 +2795,21 @@ const effectHasCleanupForUsage = (
       matchingCleanupReturns.push(child);
       return;
     }
+    if (
+      usage.kind === "subscribe" &&
+      isNodeOfType(returnedValue, "Identifier") &&
+      usage.handleKey !== null &&
+      resolveExpressionKey(returnedValue, context) === usage.handleKey &&
+      usage.registrationVerbName !== null &&
+      (usage.registrationVerbName === "addEventListener" || usage.registrationVerbName === "addListener")
+    ) {
+      matchingCleanupReturns.push(child);
+      return;
+    }
     if (isNodeOfType(returnedValue, "Identifier")) {
       if (returnedValue.name === "undefined" && context.scopes.isGlobalReference(returnedValue)) {
         return;
       }
-      const returnedKey = resolveExpressionKey(returnedValue, context);
-      if (usage.handleKey !== null && returnedKey === usage.handleKey) return;
       const returnedSymbol = context.scopes.symbolFor(returnedValue);
       if (!returnedSymbol?.initializer) return;
     }
@@ -3511,7 +3520,10 @@ const doesReleaseCallMatchUsage = (
     isNodeOfType(callee, "Identifier") &&
     usage.kind === "subscribe" &&
     doesResourceKeyMatchUsageHandle(resolveExpressionKey(callee, context), usage, context) &&
-    isCleanupReturningSubscribeLikeCallExpression(usage.node)
+    (isCleanupReturningSubscribeLikeCallExpression(usage.node) ||
+      (usage.registrationVerbName !== null &&
+        (usage.registrationVerbName === "addEventListener" ||
+          usage.registrationVerbName === "addListener")))
   ) {
     return true;
   }

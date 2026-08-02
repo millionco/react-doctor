@@ -10,17 +10,25 @@ export interface FilterPathsOutsideDirectoriesInput {
 export const filterPathsOutsideDirectories = (
   input: FilterPathsOutsideDirectoriesInput,
 ): string[] => {
-  const excludedDirectories = input.excludedDirectories
+  const excludedPrefixes = input.excludedDirectories
     .map((excludedDirectory) => path.resolve(excludedDirectory))
-    .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, input.rootDirectory));
-  if (excludedDirectories.length === 0) return [...input.relativePaths];
+    .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, input.rootDirectory))
+    .map((excludedDirectory) =>
+      path.relative(input.rootDirectory, excludedDirectory).replaceAll("\\", "/"),
+    )
+    .sort((left, right) => left.length - right.length)
+    .filter(
+      (candidatePrefix, index, prefixes) =>
+        !prefixes.slice(0, index).some((prefix) => candidatePrefix.startsWith(`${prefix}/`)),
+    );
+  if (excludedPrefixes.length === 0) return [...input.relativePaths];
 
   return input.relativePaths.filter((relativePath) => {
-    const absolutePath = path.resolve(input.rootDirectory, relativePath);
-    return !excludedDirectories.some(
-      (excludedDirectory) =>
-        absolutePath === excludedDirectory ||
-        isPathInsideDirectory(absolutePath, excludedDirectory),
+    const normalizedRelativePath = relativePath.replaceAll("\\", "/").replace(/^\.\//, "");
+    return !excludedPrefixes.some(
+      (excludedPrefix) =>
+        normalizedRelativePath === excludedPrefix ||
+        normalizedRelativePath.startsWith(`${excludedPrefix}/`),
     );
   });
 };

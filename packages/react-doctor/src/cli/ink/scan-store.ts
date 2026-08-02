@@ -1,4 +1,4 @@
-import type { Diagnostic, ScoreResult } from "@react-doctor/core";
+import type { Diagnostic, JsonReportSkippedProject, ScoreResult } from "@react-doctor/core";
 // The live feed carries diagnostics exactly as `Reporter.emit` produces them
 // (the schema class), which differs from the index `Diagnostic` type only in
 // nested-array readonly-ness. The settled `report` keeps the index type.
@@ -27,10 +27,12 @@ export interface ScanReport {
   readonly emptyStateMessage?: string;
   readonly lintFailureReason?: string;
   readonly skippedChecks?: ReadonlyArray<string>;
+  readonly incompleteMessage?: string;
 }
 
 export interface MultiProjectSummary {
   readonly projects: ReadonlyArray<ScanReport>;
+  readonly skippedProjects?: ReadonlyArray<JsonReportSkippedProject>;
   readonly aggregateScore: ScoreResult | null;
   readonly projectedScore: number | null;
   readonly combinedDiagnostics: ReadonlyArray<Diagnostic>;

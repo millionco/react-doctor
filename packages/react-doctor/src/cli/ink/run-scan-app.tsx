@@ -16,6 +16,7 @@ import type {
   BlockingLevel,
   Diagnostic,
   InspectResult,
+  JsonReportSkippedProject,
   ReactDoctorConfig,
   ResolvedScanTarget,
   ScoreResult,
@@ -82,6 +83,17 @@ interface ScanPresentation {
   readonly isOffline: boolean;
   readonly noScoreMessage: string;
   readonly shouldRecommendCi: boolean;
+}
+
+interface CompletedProjectScanOutcome {
+  readonly status: "completed";
+  readonly directory: string;
+  readonly result: InspectResult;
+  readonly config: ReactDoctorConfig | null;
+}
+
+interface SkippedProjectScanOutcome extends JsonReportSkippedProject {
+  readonly status: "skipped";
 }
 
 const qualifyDiagnosticPaths = (
@@ -513,7 +525,11 @@ const runMultiProjectScan = async (
           context.store.setProgress(
             `Scanning ${projectCount} projects… (${finishedCount}/${projectCount})`,
           );
-          return null;
+          return {
+            status: "skipped",
+            directory: projectScan.directory,
+            reason: "max-duration",
+          } satisfies SkippedProjectScanOutcome;
         }
         const projectLabel =
           path.relative(rootDirectory, projectScan.directory) || path.basename(rootDirectory);
@@ -543,12 +559,29 @@ const runMultiProjectScan = async (
           `Scanning ${projectCount} projects… (${finishedCount}/${projectCount})`,
         );
         await yieldToEventLoop();
-        return { directory: projectScan.directory, result, config: projectScan.config };
+        return {
+          status: "completed",
+          directory: projectScan.directory,
+          result,
+          config: projectScan.config,
+        } satisfies CompletedProjectScanOutcome;
       },
     );
     const results = scanOutcomes.filter(
-      (scanOutcome): scanOutcome is NonNullable<typeof scanOutcome> => scanOutcome !== null,
+      (scanOutcome): scanOutcome is CompletedProjectScanOutcome =>
+        scanOutcome.status === "completed",
     );
+    const skippedProjects = scanOutcomes
+      .filter(
+        (scanOutcome): scanOutcome is SkippedProjectScanOutcome => scanOutcome.status === "skipped",
+      )
+      .map(({ directory, reason }) => ({ directory, reason }))
+      .sort((left, right) => left.directory.localeCompare(right.directory));
+    if (skippedProjects.length > 0) {
+      recordCount(METRIC.scanProjectSkipped, skippedProjects.length, {
+        reason: "max-duration",
+      });
+    }
 
     const projectEntries = results.map(({ directory, result, config }) => {
       const reportSelection = selectReportDiagnostics({
@@ -592,6 +625,7 @@ const runMultiProjectScan = async (
 
     const summary: MultiProjectSummary = {
       projects,
+      skippedProjects,
       aggregateScore: lowestScoredReport?.score ?? null,
       projectedScore,
       combinedDiagnostics,

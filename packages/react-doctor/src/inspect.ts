@@ -21,6 +21,7 @@ import {
   restoreLegacyThrow,
   runInspect as runInspectEffect,
   SidecarLintCacheEnabled,
+  yieldToEventLoop,
 } from "@react-doctor/core";
 import type * as Layer from "effect/Layer";
 import type { Progress, Reporter, WorkerSlots } from "@react-doctor/core";
@@ -89,9 +90,11 @@ import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
 import {
   buildScanResultCacheKey,
+  createScanResultCacheInvocationState,
   createScanResultCache,
   shouldStoreScanPayload,
   type CachedScanPayload,
+  type ScanResultCacheInvocationState,
 } from "./cli/utils/scan-result-cache.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
@@ -102,6 +105,7 @@ interface OxlintInvocationRuntime {
   readonly concurrency: number;
   readonly spawnSlots: WorkerSlots;
   readonly abortSignal: AbortSignal;
+  readonly scanResultCacheInvocationState: ScanResultCacheInvocationState;
 }
 
 const runConsole = (effect: Effect.Effect<void>): void => {
@@ -457,6 +461,7 @@ export const createInvocationInspect = (
     requestedOxlintConcurrency ?? Effect.runSync(OxlintConcurrency),
   );
   const spawnSlots = createOxlintSpawnSlots(concurrency);
+  const scanResultCacheInvocationState = createScanResultCacheInvocationState();
   return async (directory, inputOptions = {}) => {
     const abortController = new AbortController();
     const unregisterAbortController = activeScanAbortRegistry.register(abortController);
@@ -465,6 +470,7 @@ export const createInvocationInspect = (
         concurrency,
         spawnSlots,
         abortSignal: abortController.signal,
+        scanResultCacheInvocationState,
       };
       return await inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
     } finally {
@@ -616,6 +622,7 @@ const runBaselineComparison = async (
         // The base-ref lint shares the invocation deadline, so a --max-duration
         // budget bounds the whole run, not just the head scan.
         deadlineEpochMs: params.deadlineEpochMs ?? undefined,
+        signal: params.oxlintRuntime.abortSignal,
       },
       {},
     );
@@ -694,6 +701,7 @@ const runInspectWithRuntime = async (
     options.scoreOnly || options.silent,
   );
   const lintBindingMissing = options.lint && !resolvedNodeBinaryPath;
+  await yieldToEventLoop();
   const cacheKey = buildScanResultCacheKey({
     projectDirectory: directory,
     version: VERSION,
@@ -702,6 +710,7 @@ const runInspectWithRuntime = async (
     userConfig,
     hasConfigOverride,
     configSourceDirectory,
+    invocationState: oxlintRuntime.scanResultCacheInvocationState,
   });
   const scanResultCache = cacheKey === null ? null : createScanResultCache(directory);
   const cachedPayload = cacheKey === null ? null : (scanResultCache?.lookup(cacheKey) ?? null);
@@ -784,6 +793,7 @@ const runInspectWithRuntime = async (
       supplyChainManifestChanged: options.supplyChainManifestChanged,
       concurrentScan: options.concurrentScan,
       deadlineEpochMs: deadlineEpochMs ?? undefined,
+      signal: oxlintRuntime.abortSignal,
       excludedProjectDirectories: options.excludedProjectDirectories,
     },
     {
@@ -939,6 +949,7 @@ const runInspectWithRuntime = async (
       : output.lintFailureReasonKind,
     supplyChainOverlapTimedOut: output.supplyChainOverlapTimedOut,
     securityScanFailed: output.securityScanFailed,
+    securityScanFailureReason: output.securityScanFailureReason,
     suppressedRuleCounts: output.suppressedRuleCounts,
   };
   // A degraded baseline (requested but no delta — e.g. a transient base-lint
@@ -990,6 +1001,7 @@ interface FinalizeInput {
   deadCodeFailureReason: string | null;
   supplyChainOverlapTimedOut: boolean;
   securityScanFailed: boolean;
+  securityScanFailureReason: string | null;
   directory: string;
   scannedFileCount: number;
   scannedFilePaths: ReadonlyArray<string>;
@@ -1098,6 +1110,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     deadCodeFailureReason: input.payload.deadCodeFailureReason,
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
     securityScanFailed: input.payload.securityScanFailed ?? false,
+    securityScanFailureReason: input.payload.securityScanFailureReason ?? null,
     directory: input.payload.directory,
     scannedFileCount: input.payload.scannedFileCount,
     scannedFilePaths: input.payload.scannedFilePaths,
@@ -1179,6 +1192,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       deadCodeFailureReason,
       supplyChainOverlapTimedOut,
       securityScanFailed,
+      securityScanFailureReason,
       directory,
       scannedFileCount,
       scannedFilePaths,
@@ -1202,6 +1216,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       deadCodeFailureReason,
       supplyChainOverlapTimedOut,
       securityScanFailed,
+      securityScanFailureReason,
     });
     const hasSkippedChecks = skippedChecks.length > 0;
 

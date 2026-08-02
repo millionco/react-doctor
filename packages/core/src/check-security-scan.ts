@@ -20,6 +20,7 @@ export interface CheckSecurityScanOptions {
   readonly excludedDirectories?: ReadonlySet<string>;
   readonly deadlineEpochMs?: number;
   readonly signal?: AbortSignal;
+  readonly onDeadlineExceeded?: () => void;
 }
 
 interface EnabledScanRule {
@@ -137,8 +138,8 @@ export const checkSecurityScan = (
   return session.diagnostics;
 };
 
-// Cooperative variant: identical output to `checkSecurityScan`, but hands the
-// event loop back whenever a scan slice has held it for
+// Cooperative variant: identical output to `checkSecurityScan` when it
+// completes, but hands the event loop back whenever a scan slice has held it for
 // `COOPERATIVE_YIELD_BUDGET_MS`, checked between every walk step and every
 // (file, rule) step, so a caller that forks it (the orchestrator) can overlap
 // its CPU with other async work. A time budget rather than a file interval:
@@ -150,25 +151,29 @@ export const checkSecurityScanCooperative = async (
   rootDirectory: string,
   options: CheckSecurityScanOptions = {},
 ): Promise<Diagnostic[]> => {
-  const throwIfScanCancelled = (): void => {
+  const throwIfScanAborted = (): void => {
     options.signal?.throwIfAborted();
-    if (
-      options.deadlineEpochMs !== undefined &&
-      remainingDeadlineBudgetMs(options.deadlineEpochMs) === 0
-    ) {
-      throw new Error("Security scan deadline exceeded");
-    }
   };
-  throwIfScanCancelled();
+  const didReachDeadline = (): boolean => {
+    const hasDeadlineElapsed =
+      options.deadlineEpochMs !== undefined &&
+      remainingDeadlineBudgetMs(options.deadlineEpochMs) === 0;
+    if (hasDeadlineElapsed) options.onDeadlineExceeded?.();
+    return hasDeadlineElapsed;
+  };
+  throwIfScanAborted();
+  if (didReachDeadline()) return [];
   const session = createSecurityScanSession(rootDirectory, options);
   if (session === null) return [];
   let sliceStartedAt = performance.now();
   for (const file of collectSecurityScanFiles(rootDirectory, options.excludedDirectories)) {
-    throwIfScanCancelled();
+    throwIfScanAborted();
+    if (didReachDeadline()) return session.diagnostics;
     if (file === null) {
       if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
         await yieldToEventLoop();
-        throwIfScanCancelled();
+        throwIfScanAborted();
+        if (didReachDeadline()) return session.diagnostics;
         sliceStartedAt = performance.now();
       }
       continue;
@@ -176,7 +181,8 @@ export const checkSecurityScanCooperative = async (
     for (const _ruleStep of session.scanFileByRule(file)) {
       if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
         await yieldToEventLoop();
-        throwIfScanCancelled();
+        throwIfScanAborted();
+        if (didReachDeadline()) return session.diagnostics;
         sliceStartedAt = performance.now();
       }
     }

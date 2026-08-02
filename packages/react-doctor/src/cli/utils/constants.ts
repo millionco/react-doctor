@@ -284,6 +284,9 @@ export const METRIC = {
   scanScore: "scan.score",
   scanClean: "scan.clean",
   scanCheckSkipped: "scan.check_skipped",
+  // Kill metric for queued-project deadline reporting. If this never fires,
+  // the additive JSON/TUI skipped-project surface is not carrying user value.
+  scanProjectSkipped: "scan.project_skipped",
   // One count per completed scan where no project resolved a React /
   // Preact runtime — the JSON report's `reactDetected: false` case. The
   // kill metric for the vacuous-clean-scan signal: if it never fires,

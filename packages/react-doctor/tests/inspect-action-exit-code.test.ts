@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectResult, ReactDoctorConfig } from "@react-doctor/core";
+import type { InspectResult, JsonReport, ReactDoctorConfig } from "@react-doctor/core";
 import { inspectAction } from "../src/cli/commands/inspect.js";
 import type { InspectFlags } from "../src/cli/utils/inspect-flags.js";
 import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
@@ -18,6 +18,8 @@ const mockState = vi.hoisted(() => ({
   resolvedDirectories: new Map<string, string>(),
   result: undefined as InspectResult | undefined,
   userConfig: undefined as ReactDoctorConfig | null | undefined,
+  jsonReports: new Array<JsonReport>(),
+  shouldExpireDeadline: false,
 }));
 
 vi.mock("ora", () => ({
@@ -47,8 +49,18 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
       didRedirectViaRootDir: false,
     })),
     filterDiagnosticsForSurface: actual.filterDiagnosticsForSurface,
+    remainingDeadlineBudgetMs: (deadlineEpochMs: number) =>
+      mockState.shouldExpireDeadline ? 0 : actual.remainingDeadlineBudgetMs(deadlineEpochMs),
   };
 });
+
+vi.mock("../src/cli/utils/json-mode.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/cli/utils/json-mode.js")>()),
+  enableJsonMode: vi.fn(),
+  setJsonReportDirectory: vi.fn(),
+  setJsonReportMode: vi.fn(),
+  writeJsonReport: vi.fn((report: JsonReport) => mockState.jsonReports.push(report)),
+}));
 
 vi.mock("../src/inspect.js", () => {
   const inspect = vi.fn(
@@ -124,6 +136,8 @@ describe("inspectAction exit-code gate", () => {
     mockState.inspectInvocations = [];
     mockState.resolvedDirectories.clear();
     mockState.userConfig = undefined;
+    mockState.jsonReports.length = 0;
+    mockState.shouldExpireDeadline = false;
     fs.rmSync(projectDirectory, { recursive: true, force: true });
     vi.clearAllMocks();
   });
@@ -162,6 +176,22 @@ describe("inspectAction exit-code gate", () => {
       skippedCheckReasons: { "lint:partial": "1 file was skipped after the scan budget ran out." },
     });
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it("lists workspace projects that never started before max-duration elapsed", async () => {
+    const secondProjectDirectory = path.join(projectDirectory, "apps", "admin");
+    fs.mkdirSync(secondProjectDirectory, { recursive: true });
+    mockState.projectDirectories = [projectDirectory, secondProjectDirectory];
+    mockState.shouldExpireDeadline = true;
+
+    await inspectAction(projectDirectory, { json: true, maxDuration: "1" });
+
+    expect(mockState.inspectInvocations).toEqual([]);
+    expect(mockState.jsonReports).toHaveLength(1);
+    expect(mockState.jsonReports[0]?.skippedProjects).toEqual([
+      { directory: projectDirectory, reason: "max-duration" },
+      { directory: secondProjectDirectory, reason: "max-duration" },
+    ]);
   });
 
   it("exits 0 when a fail-open pass was skipped (supply-chain timeout)", async () => {

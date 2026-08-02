@@ -154,6 +154,13 @@ export class JsonReportProjectEntryV3 extends Schema.Class<JsonReportProjectEntr
   elapsedMilliseconds: Schema.Number,
 }) {}
 
+export class JsonReportSkippedProject extends Schema.Class<JsonReportSkippedProject>(
+  "JsonReportSkippedProject",
+)({
+  directory: Schema.String,
+  reason: Schema.Literal("max-duration"),
+}) {}
+
 /** Original full, diff, and staged report contract. */
 export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
   schemaVersion: Schema.Literal(1),
@@ -182,6 +189,7 @@ export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
   reactDetected: Schema.optional(Schema.Boolean),
   diff: Schema.NullOr(JsonReportDiffInfo),
   projects: Schema.Array(JsonReportProjectEntry),
+  skippedProjects: Schema.optional(Schema.Array(JsonReportSkippedProject)),
   diagnostics: Schema.Array(Diagnostic),
   summary: JsonReportSummary,
   elapsedMilliseconds: Schema.Number,
@@ -212,6 +220,7 @@ export class JsonReportV2 extends Schema.Class<JsonReportV2>("JsonReportV2")({
   diff: Schema.NullOr(JsonReportDiffInfo),
   baseline: JsonReportBaseline,
   projects: Schema.Array(JsonReportProjectEntry),
+  skippedProjects: Schema.optional(Schema.Array(JsonReportSkippedProject)),
   diagnostics: Schema.Array(Diagnostic),
   summary: JsonReportSummary,
   elapsedMilliseconds: Schema.Number,
@@ -229,6 +238,7 @@ export class JsonReportV3 extends Schema.Class<JsonReportV3>("JsonReportV3")({
   diff: Schema.NullOr(JsonReportDiffInfo),
   baseline: Schema.optional(JsonReportBaseline),
   projects: Schema.Array(JsonReportProjectEntryV3),
+  skippedProjects: Schema.optional(Schema.Array(JsonReportSkippedProject)),
   diagnostics: Schema.Array(JsonReportDiagnosticV3),
   summary: JsonReportSummary,
   elapsedMilliseconds: Schema.Number,

@@ -4,7 +4,11 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { MINIFIED_MIN_SIZE_BYTES } from "../src/project-info/constants.js";
-import { listSourceFiles, listSourceFilesWithSize } from "../src/utils/list-source-files.js";
+import {
+  listSourceFiles,
+  listSourceFilesCooperative,
+  listSourceFilesWithSize,
+} from "../src/utils/list-source-files.js";
 
 describe("listSourceFilesWithSize", () => {
   let temporaryDirectory: string;
@@ -64,6 +68,25 @@ describe("listSourceFilesWithSize", () => {
     expect(sourceFiles).toContain("legacy.HTML");
     expect(sourceFiles).toContain("page.astro");
     expect(sourceFiles).not.toContain("ignored.TS");
+  });
+
+  it("cooperative discovery matches synchronous discovery", async () => {
+    writeFile("index.ts", "export const index = 0;\n");
+    writeFile("button.tsx", "export const Button = () => null;\n");
+    writeFile("notes.md", "# ignored\n");
+
+    await expect(listSourceFilesCooperative(temporaryDirectory)).resolves.toEqual(
+      listSourceFiles(temporaryDirectory),
+    );
+  });
+
+  it("cooperative discovery stops when cancelled", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await expect(
+      listSourceFilesCooperative(temporaryDirectory, abortController.signal),
+    ).rejects.toBeDefined();
   });
 
   const writeNestedFile = (relativePath: string, contents: string): void => {

@@ -154,6 +154,7 @@ export interface InspectInput {
    * dead-code phase is skipped or capped to the remaining budget.
    */
   readonly deadlineEpochMs?: number;
+  readonly signal?: AbortSignal;
   /** Descendant project roots covered by sibling scans in a workspace batch. */
   readonly excludedProjectDirectories?: ReadonlyArray<string>;
 }
@@ -230,13 +231,15 @@ export interface InspectOutput {
    */
   readonly supplyChainOverlapTimedOut: boolean;
   /**
-   * `true` when the forked security scan failed (a non-ignorable fs error
-   * escaping the cooperative walk) and failed open to no diagnostics —
-   * surfaced for telemetry and skipped-check accounting so a failed pass is
-   * distinguishable from a clean one with zero findings. `false` on the
-   * healthy path and when the pass was skipped (diff/staged scans).
+   * `true` when the forked security scan failed or reached the shared deadline.
+   * Filesystem failures fail open to no diagnostics; deadline truncation keeps
+   * findings collected before time elapsed. Surfaced for telemetry and
+   * skipped-check accounting so an incomplete pass is distinguishable from a
+   * clean one with zero findings. `false` on the healthy path and when the pass
+   * was skipped (diff/staged scans).
    */
   readonly securityScanFailed: boolean;
+  readonly securityScanFailureReason: string | null;
   /**
    * Per-file lint cache outcome for the lint pass: files served from cache and
    * total files considered. Both `null` when the cache was disabled or bypassed
@@ -434,8 +437,24 @@ export const runInspect = <HooksR = never>(
 
     const resolvedConfig: ResolvedConfig = yield* configService.resolve(input.directory);
     const scanDirectory = resolvedConfig.resolvedDirectory;
-
-    const project = yield* projectService.discover(scanDirectory);
+    const excludedProjectDirectories = (input.excludedProjectDirectories ?? [])
+      .map((excludedDirectory) => path.resolve(excludedDirectory))
+      .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, scanDirectory));
+    const excludedProjectRelativePaths = excludedProjectDirectories.map((excludedDirectory) =>
+      path.relative(scanDirectory, excludedDirectory).replaceAll("\\", "/"),
+    );
+    const shouldPrecomputeSourceFiles =
+      input.suppressScanSummary === true || excludedProjectDirectories.length > 0;
+    const precomputedSourceFiles = shouldPrecomputeSourceFiles
+      ? yield* filesService.listSourceFilesCooperative({
+          rootDirectory: scanDirectory,
+          signal: input.signal,
+        })
+      : null;
+    const project = yield* projectService.discover({
+      directory: scanDirectory,
+      sourceFileCount: precomputedSourceFiles?.length,
+    });
     if (!isAnalyzableProject(project)) {
       return yield* new ReactDoctorError({
         reason: new NoReactDependency({ directory: scanDirectory }),
@@ -469,15 +488,11 @@ export const runInspect = <HooksR = never>(
       : computeExplicitLintIncludePaths([...input.includePaths]);
     let lintIncludePaths =
       explicitLintIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
-    const excludedProjectDirectories = (input.excludedProjectDirectories ?? [])
-      .map((excludedDirectory) => path.resolve(excludedDirectory))
-      .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, scanDirectory));
-    const excludedProjectRelativePaths = excludedProjectDirectories.map((excludedDirectory) =>
-      path.relative(scanDirectory, excludedDirectory).replaceAll("\\", "/"),
-    );
     if (excludedProjectDirectories.length > 0) {
       const candidatePaths =
-        lintIncludePaths ?? (yield* filesService.listSourceFiles(scanDirectory));
+        lintIncludePaths ??
+        precomputedSourceFiles ??
+        (yield* filesService.listSourceFiles(scanDirectory));
       lintIncludePaths = filterPathsOutsideDirectories({
         rootDirectory: scanDirectory,
         relativePaths: candidatePaths,
@@ -491,9 +506,11 @@ export const runInspect = <HooksR = never>(
     // every single-project / `diagnose()` run — for a full scan the linter
     // already enumerates the same files, so we'd otherwise list twice.
     const fallbackScannedFilePaths = input.suppressScanSummary
-      ? (lintIncludePaths ?? (yield* filesService.listSourceFiles(scanDirectory))).map(
-          (relativePath) => path.resolve(scanDirectory, relativePath),
-        )
+      ? (
+          lintIncludePaths ??
+          precomputedSourceFiles ??
+          (yield* filesService.listSourceFiles(scanDirectory))
+        ).map((relativePath) => path.resolve(scanDirectory, relativePath))
       : [];
 
     const beforeLint = hooks.beforeLint ?? NO_HOOKS.beforeLint;
@@ -548,6 +565,7 @@ export const runInspect = <HooksR = never>(
     // diff/staged mode like the env checks. The final stable sort makes the
     // concat order irrelevant, so output stays byte-identical to the serial path.
     const securityScanFailedRef = yield* Ref.make(false);
+    let didSecurityScanReachDeadline = false;
     const securityScanFiber = yield* Effect.forkChild(
       Stream.runCollect(
         applyPerElementPipeline(
@@ -570,6 +588,9 @@ export const runInspect = <HooksR = never>(
                     excludedDirectories: new Set(excludedProjectDirectories),
                     deadlineEpochMs: input.deadlineEpochMs,
                     signal,
+                    onDeadlineExceeded: () => {
+                      didSecurityScanReachDeadline = true;
+                    },
                   }),
                 ).pipe(
                   Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
@@ -1073,7 +1094,13 @@ export const runInspect = <HooksR = never>(
             metadata: scoreMetadata,
           });
     const lintPartialFailures = yield* Ref.get(partialFailuresRef);
-    const securityScanFailed = yield* Ref.get(securityScanFailedRef);
+    const didSecurityScanFail = yield* Ref.get(securityScanFailedRef);
+    const securityScanFailed = didSecurityScanFail || didSecurityScanReachDeadline;
+    const securityScanFailureReason = didSecurityScanReachDeadline
+      ? "Security scan reached the max scan duration; findings collected before the deadline were preserved."
+      : didSecurityScanFail
+        ? "Security scan failed and was skipped."
+        : null;
 
     return {
       project,
@@ -1097,6 +1124,7 @@ export const runInspect = <HooksR = never>(
       scanConcurrency,
       supplyChainOverlapTimedOut: supplyChainResult.timedOut,
       securityScanFailed,
+      securityScanFailureReason,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
       lintSidecarReplayedFileCount,

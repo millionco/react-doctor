@@ -7,6 +7,7 @@ import { clearConfigCache, type Diagnostic } from "@react-doctor/core";
 import { inspect, type ResolvedInspectOptions } from "../src/inspect.js";
 import {
   buildScanResultCacheKey,
+  createScanResultCacheInvocationState,
   createScanResultCache,
   shouldStoreScanPayload,
   type CachedScanPayload,
@@ -56,6 +57,7 @@ const cacheKey = (
   options: ResolvedInspectOptions,
   version = VERSION,
   nodeBinaryPath: string | null = null,
+  invocationState = createScanResultCacheInvocationState(),
 ): string | null =>
   buildScanResultCacheKey({
     projectDirectory,
@@ -65,6 +67,7 @@ const cacheKey = (
     userConfig: null,
     hasConfigOverride: false,
     configSourceDirectory: null,
+    invocationState,
   });
 
 const diagnostic = (projectDirectory: string): Diagnostic => ({
@@ -141,6 +144,25 @@ afterEach(() => {
 });
 
 describe("scan result cache", () => {
+  it("reuses one repository identity across workspace projects", () => {
+    const firstProjectDirectory = setupReactProject(tempDirectory, "apps/first", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    const secondProjectDirectory = setupReactProject(tempDirectory, "apps/second", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(tempDirectory, { commit: true });
+    const invocationState = createScanResultCacheInvocationState();
+
+    expect(
+      cacheKey(firstProjectDirectory, baseOptions(), VERSION, null, invocationState),
+    ).not.toBeNull();
+    expect(
+      cacheKey(secondProjectDirectory, baseOptions(), VERSION, null, invocationState),
+    ).not.toBeNull();
+    expect(invocationState.repositoryIdentityByRoot.size).toBe(1);
+  });
+
   it("returns cached payloads for the same clean project key", () => {
     const projectDirectory = setupReactProject(tempDirectory, "hit", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },

@@ -20,6 +20,7 @@ import { flushSentry } from "../../instrument.js";
 import type {
   DiffInfo,
   InspectResult,
+  JsonReportSkippedProject,
   JsonReportMode,
   ReactDoctorConfig,
 } from "@react-doctor/core";
@@ -135,6 +136,7 @@ const filterCompletedScansByCategories = (
 
 interface FinalizeScansInput {
   readonly completedScans: CompletedScan[];
+  readonly skippedProjects: ReadonlyArray<JsonReportSkippedProject>;
   readonly mode: JsonReportMode;
   readonly diff: DiffInfo | null;
   /**
@@ -188,6 +190,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   // filtering out of `inspect()` (an InspectResult contract change) — a v2
   // follow-up. Single-project and all-succeed runs are unaffected.
   const baselineComputed =
+    input.skippedProjects.length === 0 &&
     input.completedScans.length > 0 &&
     input.completedScans.every((scan) => scan.result.baselineDelta !== undefined);
   const baselineDegraded = input.baselineIntended && !baselineComputed;
@@ -223,6 +226,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
         mode,
         diff: input.diff,
         scans: jsonCompletedScans,
+        skippedProjects: input.skippedProjects,
         totalElapsedMilliseconds: performance.now() - input.startTime,
         baseline,
         baselineDegraded,
@@ -758,6 +762,7 @@ export const inspectAction = async (
 
       finalizeScans({
         completedScans,
+        skippedProjects: [],
         mode: "staged",
         diff: null,
         baselineIntended: false,
@@ -920,12 +925,14 @@ export const inspectAction = async (
       ),
     );
     const isMultiProject = projectScans.length > 1;
+    const skippedProjects: JsonReportSkippedProject[] = [];
 
     const scanProject = async (projectScan: ResolvedProjectScan): Promise<CompletedScan | null> => {
       if (
         scanDeadlineEpochMs !== undefined &&
         remainingDeadlineBudgetMs(scanDeadlineEpochMs) === 0
       ) {
+        skippedProjects.push({ directory: projectScan.directory, reason: "max-duration" });
         return null;
       }
       const scanDirectory = projectScan.directory;
@@ -1036,6 +1043,19 @@ export const inspectAction = async (
       scanProject,
     });
     const completedScans = projectBatch.completedScans;
+    skippedProjects.sort((left, right) => left.directory.localeCompare(right.directory));
+
+    if (skippedProjects.length > 0) {
+      recordCount(METRIC.scanProjectSkipped, skippedProjects.length, {
+        reason: "max-duration",
+      });
+      if (!isQuiet) {
+        logger.warn(
+          `${skippedProjects.length} ${skippedProjects.length === 1 ? "project was" : "projects were"} skipped because the max scan duration was reached.`,
+        );
+        logger.break();
+      }
+    }
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
       const showShareLink =
@@ -1083,6 +1103,7 @@ export const inspectAction = async (
 
     finalizeScans({
       completedScans,
+      skippedProjects,
       // A resolved base ref means a baseline run; finalizeScans downgrades this
       // to `diff` if no delta was produced (degraded run).
       mode: baselineRef ? "baseline" : isDiffMode ? "diff" : "full",

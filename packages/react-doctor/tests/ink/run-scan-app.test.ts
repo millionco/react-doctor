@@ -350,6 +350,10 @@ describe("runScanApp", () => {
 
     expect(inspect).not.toHaveBeenCalled();
     expect(mockState.scanStores[0]?.getSnapshot().summary?.projects).toEqual([]);
+    expect(mockState.scanStores[0]?.getSnapshot().summary?.skippedProjects).toEqual([
+      { directory: adminDirectory, reason: "max-duration" },
+      { directory: webDirectory, reason: "max-duration" },
+    ]);
     expect(result.shouldFail).toBe(false);
   });
 

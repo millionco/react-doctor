@@ -12,6 +12,7 @@ export interface ReportLandingProps {
   readonly emptyStateMessage?: string;
   readonly lintFailureReason?: string;
   readonly skippedChecks?: ReadonlyArray<string>;
+  readonly incompleteMessage?: string;
   readonly actions: ReadonlyArray<ActionMenuAction>;
   readonly selectedIndex: number;
   readonly onSelectionChange: (index: number) => void;
@@ -25,6 +26,7 @@ export const ReportLanding = ({
   emptyStateMessage,
   lintFailureReason,
   skippedChecks,
+  incompleteMessage,
   actions,
   selectedIndex,
   onSelectionChange,
@@ -42,6 +44,11 @@ export const ReportLanding = ({
   return (
     <Box flexDirection="column">
       {showScore ? header : null}
+      {incompleteMessage ? (
+        <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
+          <Text color="yellow">⚠ {incompleteMessage}</Text>
+        </Box>
+      ) : null}
       {issueCount === 0 ? (
         <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
           {lintFailureReason ? (

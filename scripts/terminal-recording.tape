@@ -35,7 +35,7 @@ Type "use-terminal-recording-tui-fixture"
 Enter
 Show
 
-Type "clear && react-doctor experimental-tui --no-score --no-supply-chain --project app-a"
+Type "clear && react-doctor --no-score --no-supply-chain --project app-a"
 Enter
 Wait+Screen /add CI/
 Sleep 2s

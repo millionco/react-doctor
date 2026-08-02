@@ -3,6 +3,7 @@ import {
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP,
 } from "../../constants/dom.js";
+import { SINGLE_STATE_CELL_COUNT } from "../../constants/thresholds.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import {
   EFFECT_HOOK_NAMES,
@@ -20,7 +21,6 @@ import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreass
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getReactUseCallbackCall } from "../../utils/get-react-use-callback-call.js";
-import { getRootIdentifier } from "../../utils/get-root-identifier.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getRequireCallSource } from "../../utils/get-require-call-source.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -111,10 +111,25 @@ const collectDependencyStateSymbolIds = (
   if (!isNodeOfType(depsNode, "ArrayExpression")) return dependencyStateSymbolIds;
   for (const element of depsNode.elements ?? []) {
     if (!element || isNodeOfType(element, "SpreadElement")) continue;
-    const rootIdentifier = getRootIdentifier(element);
-    if (!isNodeOfType(rootIdentifier, "Identifier")) continue;
-    const symbol = resolveConstIdentifierAlias(rootIdentifier, scopes, true);
-    if (symbol && stateSymbolIds.has(symbol.id)) dependencyStateSymbolIds.add(symbol.id);
+    const pendingExpressions: EsTreeNode[] = [element];
+    const visitedSymbolIds = new Set<number>();
+    while (pendingExpressions.length > 0) {
+      const expression = pendingExpressions.pop();
+      if (!expression) continue;
+      walkInsideStatementBlocks(expression, (child) => {
+        if (!isNodeOfType(child, "Identifier")) return;
+        const symbol = resolveConstIdentifierAlias(child, scopes, true) ?? scopes.symbolFor(child);
+        if (!symbol) return;
+        if (stateSymbolIds.has(symbol.id)) {
+          dependencyStateSymbolIds.add(symbol.id);
+          return;
+        }
+        if (visitedSymbolIds.has(symbol.id)) return;
+        visitedSymbolIds.add(symbol.id);
+        const initializer = getDirectUnreassignedInitializer(symbol);
+        if (initializer) pendingExpressions.push(initializer);
+      });
+    }
   }
   return dependencyStateSymbolIds;
 };
@@ -1648,7 +1663,12 @@ const isFunctionShapedReturn = (
   // `const unsub = subscribe(...)` line. We can't statically prove
   // it's function-typed without scope analysis, but in idiomatic React
   // this is the dominant cleanup pattern. Accept.
-  if (isNodeOfType(unwrappedReturnedValue, "Identifier")) return true;
+  if (isNodeOfType(unwrappedReturnedValue, "Identifier")) {
+    return !(
+      unwrappedReturnedValue.name === "undefined" &&
+      scopes.isGlobalReference(unwrappedReturnedValue)
+    );
+  }
   return false;
 };
 
@@ -2183,6 +2203,24 @@ const isProvenExternalSyncDirectCallee = (callee: EsTreeNode, scopes: ScopeAnaly
   return Boolean(moduleBinding && isKnownExternalSyncDirectModuleBinding(moduleBinding));
 };
 
+const isReactRefMutationNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (!isNodeOfType(node, "AssignmentExpression") && !isNodeOfType(node, "UpdateExpression")) {
+    return false;
+  }
+  const mutationTarget = isNodeOfType(node, "AssignmentExpression") ? node.left : node.argument;
+  return (
+    isNodeOfType(mutationTarget, "MemberExpression") &&
+    getStaticPropertyName(mutationTarget) === "current" &&
+    Boolean(
+      resolveReactRefSymbol(mutationTarget, scopes, {
+        allowUnboundBareCalls: true,
+        includeCreateRef: true,
+        resolveNamedAliases: true,
+      }),
+    )
+  );
+};
+
 const isExternalSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (isNodeOfType(node, "NewExpression")) {
     return hasProvenGlobalNamespaceReference(
@@ -2192,20 +2230,7 @@ const isExternalSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
     );
   }
 
-  if (isNodeOfType(node, "AssignmentExpression") || isNodeOfType(node, "UpdateExpression")) {
-    const mutationTarget = isNodeOfType(node, "AssignmentExpression") ? node.left : node.argument;
-    return (
-      isNodeOfType(mutationTarget, "MemberExpression") &&
-      getStaticPropertyName(mutationTarget) === "current" &&
-      Boolean(
-        resolveReactRefSymbol(mutationTarget, scopes, {
-          allowUnboundBareCalls: true,
-          includeCreateRef: true,
-          resolveNamedAliases: true,
-        }),
-      )
-    );
-  }
+  if (isReactRefMutationNode(node, scopes)) return true;
 
   if (!isNodeOfType(node, "CallExpression")) return false;
   if (isProvenExternalSyncDirectCallee(node.callee, scopes)) return true;
@@ -2233,6 +2258,8 @@ const isExternalSyncEffect = (
   setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
   allowCommittedDomSync: boolean,
+  hasSynchronousStateWrites: boolean,
+  hasMultipleSynchronousStateWrites: boolean,
 ): boolean => {
   if (!isFunctionLike(effectCallback)) return false;
   // A cleanup return is the strongest signal that the effect owns
@@ -2252,15 +2279,20 @@ const isExternalSyncEffect = (
     }
   } else {
     for (const statement of effectCallback.body.body ?? []) {
+      const returnedValue = isNodeOfType(statement, "ReturnStatement") ? statement.argument : null;
       if (
-        isNodeOfType(statement, "ReturnStatement") &&
-        statement.argument &&
+        returnedValue &&
         isFunctionShapedReturn(
-          statement.argument,
+          returnedValue,
           setterToStateName,
           setterSymbolIdToStateName,
           scopes,
           true,
+        ) &&
+        !(
+          hasSynchronousStateWrites &&
+          (isNodeOfType(stripParenExpression(returnedValue), "ArrowFunctionExpression") ||
+            isNodeOfType(stripParenExpression(returnedValue), "FunctionExpression"))
         )
       ) {
         return true;
@@ -2269,16 +2301,33 @@ const isExternalSyncEffect = (
   }
 
   let didFindExternalCall = false;
+  let didFindNonRefExternalCall = false;
+  let didFindOpaqueCallbackCall = false;
   visitSynchronousFunctionBodies(analysisFunctions, (child) => {
-    if (
+    const isExternalNode =
       isExternalSyncNode(child, scopes) ||
-      (allowCommittedDomSync && isCommittedDomSyncNode(child, scopes))
-    ) {
+      (allowCommittedDomSync && isCommittedDomSyncNode(child, scopes));
+    if (isExternalNode) {
       didFindExternalCall = true;
+      didFindNonRefExternalCall ||= !isReactRefMutationNode(child, scopes);
+      return;
+    }
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      !getStateNameForSetterCall(child, setterSymbolIdToStateName, scopes) &&
+      !resolveSynchronouslyInvokedFunction(child.callee, scopes) &&
+      !scopes.isGlobalReference(child.callee)
+    ) {
+      didFindOpaqueCallbackCall = true;
     }
   });
 
-  return didFindExternalCall;
+  return (
+    didFindExternalCall &&
+    (didFindNonRefExternalCall ||
+      (!didFindOpaqueCallbackCall && !hasMultipleSynchronousStateWrites))
+  );
 };
 
 interface EffectInfo {
@@ -2339,7 +2388,14 @@ export const noEffectChain = defineRule({
           setterSymbolIdToStateName,
           context.scopes,
         );
+        const synchronousStateWrites = collectStateWritesInEffect(
+          analysisFunctions,
+          setterSymbolIdToStateName,
+          context.scopes,
+        );
         const writtenStateNames = new Set(stateWrites.keys());
+        const hasMultipleSynchronousStateWrites =
+          synchronousStateWrites.size > SINGLE_STATE_CELL_COUNT;
         effectInfos.push({
           node: effectCall,
           callback,
@@ -2358,6 +2414,8 @@ export const noEffectChain = defineRule({
               setterSymbolIdToStateName,
               context.scopes,
               writtenStateNames.size === 0,
+              writtenStateNames.size > 0,
+              hasMultipleSynchronousStateWrites,
             ) ||
             callsStorageHookSetter(analysisFunctions, storageSetterNames) ||
             (writtenStateNames.size === 0 &&

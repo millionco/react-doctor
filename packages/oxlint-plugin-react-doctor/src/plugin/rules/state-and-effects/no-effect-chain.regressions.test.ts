@@ -4741,4 +4741,148 @@ describe("no-effect-chain — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("preserves a local state chain when unrelated external work adds cleanup", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ data, imgError, onError }) {
+        const [error, setError] = useState();
+        const [imageObjectUrl, setImageObjectUrl] = useState();
+        useEffect(() => {
+          if (error) onError(error);
+        }, [error, onError]);
+        useEffect(() => {
+          if (imgError) {
+            setError(imgError);
+            return undefined;
+          }
+          if (!data) return undefined;
+          const nextImageObjectUrl = URL.createObjectURL(data);
+          setImageObjectUrl(nextImageObjectUrl);
+          return () => URL.revokeObjectURL(nextImageObjectUrl);
+        }, [data, imgError]);
+        return imageObjectUrl;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves a local state chain when conditional cleanup ends with undefined", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ data, imgError, onError }) {
+        const [error, setError] = useState();
+        const [imageObjectUrl, setImageObjectUrl] = useState();
+        useEffect(() => {
+          if (error) onError(error);
+        }, [error, onError]);
+        useEffect(() => {
+          if (imgError) {
+            setError(imgError);
+            return undefined;
+          }
+          const nextImageObjectUrl = data && URL.createObjectURL(data);
+          if (nextImageObjectUrl) {
+            setImageObjectUrl(nextImageObjectUrl);
+            return () => URL.revokeObjectURL(nextImageObjectUrl);
+          }
+          return undefined;
+        }, [data, imgError]);
+        return imageObjectUrl;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves a local state chain through unrelated notification ref bookkeeping", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ imgError, onError }) {
+        const [error, setError] = useState();
+        const reportedError = useRef();
+        useEffect(() => {
+          if (error && reportedError.current !== error) {
+            reportedError.current = error;
+            onError(error);
+          }
+        }, [error, onError]);
+        useEffect(() => {
+          if (imgError) setError(imgError);
+        }, [imgError]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("preserves a local state chain when a stable helper owns separate URL state", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ data, imgError, onError }) {
+        const [error, setError] = useState();
+        const [imageObjectUrl, setImageObjectUrl] = useState();
+        const imageObjectUrlRef = useRef();
+        const updateImageObjectUrl = useCallback((nextImageObjectUrl) => {
+          if (imageObjectUrlRef.current) URL.revokeObjectURL(imageObjectUrlRef.current);
+          imageObjectUrlRef.current = nextImageObjectUrl;
+          setImageObjectUrl(nextImageObjectUrl);
+        }, []);
+        useEffect(() => {
+          if (error) onError(error);
+        }, [error, onError]);
+        useEffect(() => {
+          if (imgError) {
+            setError(imgError);
+            return;
+          }
+          const nextImageObjectUrl = data && URL.createObjectURL(data);
+          if (nextImageObjectUrl) updateImageObjectUrl(nextImageObjectUrl);
+        }, [data, imgError, updateImageObjectUrl]);
+        return imageObjectUrl;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a chain through a render-derived effect dependency", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ imgError, thingError, onError }) {
+        const [stateError, setError] = useState();
+        const error = stateError ?? thingError;
+        useEffect(() => {
+          if (error) onError(error);
+        }, [error, onError]);
+        useEffect(() => {
+          if (imgError) setError(imgError);
+        }, [imgError]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a chain through a memoized effect dependency", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ imgError, thingError, onError }) {
+        const [stateError, setError] = useState();
+        const error = useMemo(() => stateError ?? thingError, [stateError, thingError]);
+        useEffect(() => {
+          if (error) onError(error);
+        }, [error, onError]);
+        useEffect(() => {
+          if (imgError) setError(imgError);
+        }, [imgError]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

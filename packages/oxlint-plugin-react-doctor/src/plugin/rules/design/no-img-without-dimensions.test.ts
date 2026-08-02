@@ -137,6 +137,19 @@ describe("no-img-without-dimensions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("uses unconditional layer sizing without trusting conditional at-rules", () => {
+    const layered = runRuleWithSiblingCss(
+      `const Feed = () => <section><img className="object-cover" src="/place.jpg" alt="" /></section>;`,
+      `@layer components { section img { width: 100%; height: 178px; } }`,
+    );
+    const conditional = runRuleWithSiblingCss(
+      `const Feed = () => <section><img className="object-cover" src="/place.jpg" alt="" /></section>;`,
+      `@media (min-width: 900px) { section img { width: 100%; height: 178px; } }`,
+    );
+    expect(layered.diagnostics).toHaveLength(0);
+    expect(conditional.diagnostics).toHaveLength(1);
+  });
+
   it("allows a full-size image in a definitively stretched flex item", () => {
     const result = runRuleWithSiblingCss(
       `const Map = () => <main><div className="body"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,

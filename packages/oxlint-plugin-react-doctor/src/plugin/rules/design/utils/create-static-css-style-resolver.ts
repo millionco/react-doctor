@@ -223,7 +223,12 @@ const parseStylesheet = (source: string): ParsedStylesheets => {
     if (prelude.startsWith("@")) {
       if (body.includes("{")) {
         const nestedStylesheet = parseStylesheet(body);
-        ambiguousRules.push(...nestedStylesheet.rules, ...nestedStylesheet.ambiguousRules);
+        if (/^@layer(?:\s|$)/i.test(prelude)) {
+          rules.push(...nestedStylesheet.rules);
+          ambiguousRules.push(...nestedStylesheet.ambiguousRules);
+        } else {
+          ambiguousRules.push(...nestedStylesheet.rules, ...nestedStylesheet.ambiguousRules);
+        }
         for (const property of nestedStylesheet.ambiguousProperties) {
           ambiguousProperties.add(property);
         }

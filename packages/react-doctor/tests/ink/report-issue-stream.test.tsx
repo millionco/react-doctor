@@ -33,6 +33,7 @@ describe("ReportIssueStream", () => {
     const frameLines = (lastFrame() ?? "").split("\n");
 
     expect(frameLines).toHaveLength(4);
+    expect(frameLines[0]).toBe("Reviewing issues");
     expect(frameLines[1]).toContain("Third finding");
     expect(frameLines[2]).toContain("First finding");
     expect(frameLines[3]).toContain("› Performance: Second finding");

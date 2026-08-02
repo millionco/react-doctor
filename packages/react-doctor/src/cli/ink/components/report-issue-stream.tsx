@@ -21,7 +21,7 @@ export const ReportIssueStream = ({ rows, selectedIndex, width }: ReportIssueStr
 
   return (
     <Box flexDirection="column" width={contentWidth}>
-      <Text bold>Reviewing findings</Text>
+      <Text bold>Reviewing issues</Text>
       {visibleRows.map(({ row, rowIndex }) => {
         if (!row) return null;
         const variant = severityVariant(row.severity);

@@ -8,9 +8,9 @@ export const CiJustification = () => (
     <Text dimColor>
       Scan every pull request to prevent new React issues while you fix the backlog.
     </Text>
-    <TuiLink url={GITHUB_ACTIONS_SETUP_URL}>
-      <Text color="cyan">GitHub Actions setup guide</Text>
-    </TuiLink>
     <Text dimColor>Used by teams at {CI_TRUST_COMPANIES}.</Text>
+    <TuiLink url={GITHUB_ACTIONS_SETUP_URL}>
+      <Text color="cyan">{GITHUB_ACTIONS_SETUP_URL}</Text>
+    </TuiLink>
   </Box>
 );

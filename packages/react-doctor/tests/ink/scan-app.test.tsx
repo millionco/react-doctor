@@ -852,7 +852,12 @@ describe("ScanApp", () => {
       "Scan every pull request to prevent new React issues while you fix the backlog.",
     );
     expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
-    expect(lastFrame()).toContain("GitHub Actions setup guide");
+    expect(lastFrame()).toContain(GITHUB_ACTIONS_SETUP_URL);
+    const ciSetupLines = (lastFrame() ?? "").split("\n");
+    const trustLineIndex = ciSetupLines.findIndex((line) =>
+      line.includes("Used by teams at PayPal, Rippling, and Alibaba."),
+    );
+    expect(ciSetupLines[trustLineIndex + 1]).toContain(GITHUB_ACTIONS_SETUP_URL);
     expect(lastFrame()).not.toContain("`doctor` package script");
     expect(lastFrame()).toContain(`${figures.pointer} Yes, add the workflow`);
     expect(lastFrame()).toContain("Open the GitHub Actions guide");

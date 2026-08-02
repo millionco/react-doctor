@@ -601,6 +601,122 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
   });
 
   describe("docs-validation round 2", () => {
+    it("stays silent when a media failure latch resets for a new resource", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function AnimatedBackground({ src, mime }) {
+          const [hasFailed, setHasFailed] = useState(false);
+          useEffect(() => {
+            setHasFailed(false);
+          }, [src, mime]);
+          const handleLoadedData = (event) => {
+            event.currentTarget.play()?.catch(() => setHasFailed(true));
+          };
+          const handlePlaybackError = () => setHasFailed(true);
+          return (
+            <video
+              src={src}
+              type={mime}
+              onLoadedData={handleLoadedData}
+              onError={handlePlaybackError}
+            />
+          );
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still reports a draft reset when unrelated media also has an error handler", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Editor({ documentId, previewUrl }) {
+          const [draft, setDraft] = useState("");
+          const [previewFailed, setPreviewFailed] = useState(false);
+          useEffect(() => {
+            setDraft("");
+          }, [documentId]);
+          return (
+            <>
+              <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+              <img src={previewUrl} onError={() => setPreviewFailed(true)} />
+            </>
+          );
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still reports a failure reset when the changed prop does not identify the resource", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Preview({ userId, previewUrl }) {
+          const [hasFailed, setHasFailed] = useState(false);
+          useEffect(() => {
+            setHasFailed(false);
+          }, [userId]);
+          return (
+            <img
+              src={previewUrl}
+              onError={() => {
+                logFailure(userId);
+                setHasFailed(true);
+              }}
+            />
+          );
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still reports when a dependency is only read by a non-resource attribute", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Preview({ userId, previewUrl }) {
+          const [hasFailed, setHasFailed] = useState(false);
+          useEffect(() => {
+            setHasFailed(false);
+          }, [userId]);
+          return (
+            <img
+              src={previewUrl}
+              aria-label={userId}
+              onError={() => setHasFailed(true)}
+            />
+          );
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still reports an editable value reset despite a resource error writer", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Editor({ documentId }) {
+          const [draft, setDraft] = useState("");
+          useEffect(() => {
+            setDraft("");
+          }, [documentId]);
+          return (
+            <>
+              <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+              <img src={documentId} onError={() => setDraft("unavailable")} />
+            </>
+          );
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("stays silent on an async probe whose on* handler assignments set the same state (psysonic artistHero)", () => {
       const result = runRule(
         noAdjustStateOnPropChange,

@@ -1,6 +1,7 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { highlighter } from "@react-doctor/core";
+import { getDoctorProduct } from "./doctor-product.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -13,6 +14,9 @@ import { VERSION } from "./version.js";
  * they're still inside an imperative function.
  */
 export const printBrandedHeader: Effect.Effect<void> = Effect.gen(function* () {
-  yield* Console.log(`${highlighter.bold("React Doctor")} ${highlighter.dim(`v${VERSION}`)}`);
+  const doctorProduct = getDoctorProduct();
+  yield* Console.log(
+    `${highlighter.bold(doctorProduct.displayName)} ${highlighter.dim(`v${VERSION}`)}`,
+  );
   yield* Console.log("");
 });

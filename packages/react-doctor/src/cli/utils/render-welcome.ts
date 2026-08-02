@@ -6,6 +6,7 @@ import {
   WELCOME_INTER_LINE_DELAY_MS,
   WELCOME_TYPEWRITER_CHAR_DELAY_MS,
 } from "./constants.js";
+import { getDoctorProduct } from "./doctor-product.js";
 import { writeStdout } from "./write-stdout.js";
 
 const HAPPY_FACE_LINES = ["┌─────┐", "│ ◠ ◠ │", "│  ▽  │", "└─────┘"] as const;
@@ -60,6 +61,7 @@ const typeLine = (
 export const playWelcomeScene = (options: WelcomeSceneOptions = {}): Effect.Effect<void> =>
   Effect.gen(function* () {
     const speedMultiplier = options.speedMultiplier ?? 1;
+    const doctorProduct = getDoctorProduct();
     const charDelayMs = WELCOME_TYPEWRITER_CHAR_DELAY_MS / speedMultiplier;
     const interLineDelayMs = WELCOME_INTER_LINE_DELAY_MS / speedMultiplier;
     const explanationHoldMs = WELCOME_EXPLANATION_HOLD_MS / speedMultiplier;
@@ -75,11 +77,11 @@ export const playWelcomeScene = (options: WelcomeSceneOptions = {}): Effect.Effe
       terminalColumns && terminalColumns > 0
         ? Math.max(0, terminalColumns - FACE_PREFIX_WIDTH - RIGHT_EDGE_SAFETY_COLUMNS)
         : Number.POSITIVE_INFINITY;
-    const greeting = clampToColumns("Welcome to React Doctor", availableTextColumns);
-    const tagline = clampToColumns(
-      "I diagnose your React code for bugs, security & performance.",
+    const greeting = clampToColumns(
+      `Welcome to ${doctorProduct.displayName}`,
       availableTextColumns,
     );
+    const tagline = clampToColumns(doctorProduct.tagline, availableTextColumns);
 
     // Blank line + face box; cursor ends just below the box.
     yield* writeStdout(`\n${face.map((line) => `${FACE_INDENT}${line}`).join("\n")}\n`);

@@ -17,6 +17,16 @@ Scans JavaScript, TypeScript, and Astro source files plus JavaScript in standard
 
 [Website →](https://react.doctor/docs)
 
+## Focused packages
+
+The same engine and `doctor.config.*` configuration are also available through focused, independently installable CLIs:
+
+- [`ui-doctor`](https://npmjs.com/package/ui-doctor) runs every UI design rule.
+- [`threejs-doctor`](https://npmjs.com/package/threejs-doctor) runs the Three.js and React Three Fiber rules.
+- [`tui-doctor`](https://npmjs.com/package/tui-doctor) runs the Ink terminal UI rules.
+
+Each focused package skips unrelated rules, dead-code analysis, supply-chain checks, and the React health score.
+
 ## Install
 
 ### 1. Quick start

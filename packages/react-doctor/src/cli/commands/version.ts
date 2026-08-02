@@ -1,5 +1,6 @@
 import { METRIC } from "../utils/constants.js";
 import { recordCount } from "../utils/record-metric.js";
+import { getDoctorProduct } from "../utils/doctor-product.js";
 import { VERSION } from "../utils/version.js";
 
 /**
@@ -10,7 +11,7 @@ import { VERSION } from "../utils/version.js";
  * number) so scripts can parse them.
  */
 export const buildVersionString = (): string =>
-  `react-doctor/${VERSION} ${process.platform}-${process.arch} node-${process.version}`;
+  `${getDoctorProduct().packageName}/${VERSION} ${process.platform}-${process.arch} node-${process.version}`;
 
 export const versionAction = (): void => {
   recordCount(METRIC.cliInvoked, 1, { command: "version" });

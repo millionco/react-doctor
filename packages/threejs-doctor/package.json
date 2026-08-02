@@ -1,0 +1,40 @@
+{
+  "name": "threejs-doctor",
+  "version": "0.9.3",
+  "description": "Focused React Doctor diagnostics for Three.js and React Three Fiber",
+  "keywords": [
+    "3d",
+    "r3f",
+    "react-three-fiber",
+    "three",
+    "threejs",
+    "webgl"
+  ],
+  "homepage": "https://github.com/millionco/react-doctor#readme",
+  "bugs": {
+    "url": "https://github.com/millionco/react-doctor/issues"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Million Software, Inc",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/millionco/react-doctor.git",
+    "directory": "packages/threejs-doctor"
+  },
+  "bin": {
+    "threejs-doctor": "./bin/threejs-doctor.js"
+  },
+  "files": [
+    "bin/**",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "dependencies": {
+    "react-doctor": "workspace:*"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}

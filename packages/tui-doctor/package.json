@@ -1,0 +1,40 @@
+{
+  "name": "tui-doctor",
+  "version": "0.9.3",
+  "description": "Focused React Doctor diagnostics for Ink terminal UIs",
+  "keywords": [
+    "ink",
+    "linter",
+    "react",
+    "terminal",
+    "tui",
+    "typescript"
+  ],
+  "homepage": "https://github.com/millionco/react-doctor#readme",
+  "bugs": {
+    "url": "https://github.com/millionco/react-doctor/issues"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Million Software, Inc",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/millionco/react-doctor.git",
+    "directory": "packages/tui-doctor"
+  },
+  "bin": {
+    "tui-doctor": "./bin/tui-doctor.js"
+  },
+  "files": [
+    "bin/**",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "dependencies": {
+    "react-doctor": "workspace:*"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}

@@ -6,6 +6,7 @@ import type { ProjectInfo } from "@react-doctor/core";
 
 const baseRunContext: RunContext = {
   version: "1.2.3",
+  product: "react-doctor",
   runId: "run-abc123",
   origin: "ci",
   command: "inspect",
@@ -64,6 +65,7 @@ describe("buildSentryScope", () => {
   it("maps the run context to searchable tags", () => {
     const { tags } = buildSentryScope(baseRunContext);
     expect(tags).toEqual({
+      product: "react-doctor",
       origin: "ci",
       command: "inspect",
       ci: true,

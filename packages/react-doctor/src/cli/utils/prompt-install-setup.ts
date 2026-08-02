@@ -3,6 +3,7 @@ import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 import { hashProjectRoot } from "./hash-project-root.js";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";
+import { getDoctorProduct } from "./doctor-product.js";
 
 export interface SetupPitchWriter {
   (line?: string): void;
@@ -69,6 +70,7 @@ export interface ShouldShowAgentInstallHintOptions {
 }
 
 export const shouldShowAgentInstallHint = (options: ShouldShowAgentInstallHintOptions): boolean => {
+  if (getDoctorProduct().includedTags.length > 0) return false;
   if (!(options.hasCompletedScan ?? options.hasScoredScan ?? false)) return false;
   if (options.isJsonMode) return false;
   if (options.isScoreOnly) return false;

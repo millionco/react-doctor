@@ -10,6 +10,7 @@ import {
   isReactDoctorError,
 } from "@react-doctor/core";
 import type { HandleErrorOptions } from "@react-doctor/core";
+import { getDoctorProduct } from "./doctor-product.js";
 import { VERSION } from "./version.js";
 import { METRIC } from "./constants.js";
 import { formatEnvironmentError, isEnvironmentError } from "./is-environment-error.js";
@@ -70,7 +71,7 @@ const buildErrorIssueBody = (
     "",
     "## Runtime",
     "",
-    `- react-doctor version: ${VERSION}`,
+    `- ${getDoctorProduct().packageName} version: ${VERSION}`,
     `- node: ${context.nodeVersion}`,
     `- platform: ${context.platform} ${context.architecture}`,
     `- cwd: ${context.cwd}`,

@@ -14,9 +14,11 @@ import { isNonInteractiveEnvironment } from "./is-non-interactive-environment.js
 import { isJsonModeActive } from "./json-mode.js";
 import { getRunId } from "./run-id.js";
 import { VERSION } from "./version.js";
+import { getDoctorProduct } from "./doctor-product.js";
 
 export interface RunContext {
   version: string;
+  product: string;
   // Random per-run (per-process) id, carried on events/spans (via
   // `contexts.run`) only — never a tag.
   runId: string;
@@ -98,6 +100,7 @@ export const buildRunContext = (): RunContext => {
   const userArguments = process.argv.slice(2);
   return {
     version: VERSION,
+    product: getDoctorProduct().packageName,
     runId: getRunId(),
     origin: detectOrigin(),
     command: detectCommand(userArguments),

@@ -27,6 +27,7 @@ export interface SentryScope {
  */
 export const buildSentryScope = (runContext: RunContext = buildRunContext()): SentryScope => {
   const tags: Record<string, string | number | boolean | null> = {
+    product: runContext.product,
     origin: runContext.origin,
     command: runContext.command,
     ci: runContext.ci,

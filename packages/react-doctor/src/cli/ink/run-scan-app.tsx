@@ -83,6 +83,7 @@ interface ResolvedProjectScan {
 interface ScanPresentation {
   readonly isOffline: boolean;
   readonly noScoreMessage: string;
+  readonly shouldRecommendCi: boolean;
 }
 
 const resolveProjectScan = async (
@@ -141,6 +142,9 @@ const resolveScanPresentation = (
       input.share === false ||
       isShareOptedOut(projectScans, input.options?.noScore),
     noScoreMessage: buildNoScoreMessage(isScoreDisabled),
+    shouldRecommendCi:
+      projectScans.length > 1 ||
+      projectScans.some((projectScan) => isCiUnconfigured(projectScan.directory)),
   };
 };
 
@@ -339,7 +343,10 @@ interface MountedScanApp {
   readonly executePendingActions: () => Promise<void>;
 }
 
-const mountScanApp = async (rootDirectory: string): Promise<MountedScanApp> => {
+const mountScanApp = async (
+  rootDirectory: string,
+  shouldRecommendCi: boolean,
+): Promise<MountedScanApp> => {
   const store = createScanStore();
   const launchableAgents = await detectLaunchableAgents();
   const pendingActions: PendingTuiActions = {
@@ -354,7 +361,7 @@ const mountScanApp = async (rootDirectory: string): Promise<MountedScanApp> => {
       onHandoff={(request) => {
         pendingActions.handoffRequest = request;
       }}
-      canAddToCi={isCiUnconfigured(rootDirectory)}
+      canAddToCi={shouldRecommendCi}
       onAddToCi={() => {
         pendingActions.shouldSetUpCi = true;
       }}
@@ -401,8 +408,10 @@ const runMountedScan = async (
   blockingLevel: BlockingLevel,
   executeScan: ExecuteTuiScan,
 ): Promise<RunScanAppResult> => {
-  const { store, instance, pendingActions, executePendingActions } =
-    await mountScanApp(rootDirectory);
+  const { store, instance, pendingActions, executePendingActions } = await mountScanApp(
+    rootDirectory,
+    presentation.shouldRecommendCi,
+  );
   const context: ScanExecutionContext = {
     store,
     ...presentation,

@@ -325,11 +325,14 @@ describe("ScanApp", () => {
       noScoreMessage: "Score unavailable.",
     });
 
-    const { lastFrame, stdin, stdout, unmount } = render(<ScanApp store={store} />);
+    const { lastFrame, stdin, stdout, unmount } = render(
+      <ScanApp store={store} canAddToCi onAddToCi={() => {}} />,
+    );
     await flush();
     resizeTerminal(stdout, { rows: 30 });
     await flush();
     expect(lastFrame()).toContain(`${figures.pointer} Review 2 issues`);
+    expect(lastFrame()).toContain("Add to GitHub Actions (Recommended)");
     expect(lastFrame()).toContain("58");
     stdin.write("\r");
     await flush();

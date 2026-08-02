@@ -12,6 +12,7 @@ import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 interface MockScanAppProps {
   readonly store?: ScanStore;
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
+  readonly canAddToCi?: boolean;
   readonly onAddToCi?: () => void;
   readonly onQuit?: () => void;
 }
@@ -25,6 +26,7 @@ const mockState = vi.hoisted(() => ({
   shouldQuit: false,
   lifecycleEvents: new Array<string>(),
   scanStores: new Array<ScanStore>(),
+  ciRecommendationStates: new Array<boolean>(),
 }));
 
 vi.mock("ink", async (importOriginal) => {
@@ -35,6 +37,7 @@ vi.mock("ink", async (importOriginal) => {
     render: vi.fn((node) => {
       if (React.isValidElement<MockScanAppProps>(node)) {
         if (node.props.store) mockState.scanStores.push(node.props.store);
+        mockState.ciRecommendationStates.push(Boolean(node.props.canAddToCi));
         if (mockState.shouldRequestHandoff) {
           node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
         }
@@ -161,6 +164,7 @@ describe("runScanApp", () => {
     mockState.shouldQuit = false;
     mockState.lifecycleEvents.length = 0;
     mockState.scanStores.length = 0;
+    mockState.ciRecommendationStates.length = 0;
     vi.restoreAllMocks();
   });
 
@@ -456,5 +460,32 @@ describe("runScanApp", () => {
     expect(mockState.scanStores[0]?.getSnapshot().summary?.combinedDiagnostics[0]?.filePath).toBe(
       "apps/web/src/app.tsx",
     );
+  });
+
+  it("recommends GitHub Actions after scanning multiple projects", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const adminDirectory = "/repo/apps/admin";
+
+    mockState.projectDirectories.push(webDirectory, adminDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.scanTargets.set(
+      adminDirectory,
+      buildScanTarget(adminDirectory, adminDirectory, null, adminDirectory),
+    );
+    mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
+    mockState.inspectResults.set(adminDirectory, buildInspectResult(adminDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.ciRecommendationStates).toEqual([true]);
   });
 });

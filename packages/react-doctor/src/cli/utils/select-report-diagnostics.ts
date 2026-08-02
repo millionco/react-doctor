@@ -8,8 +8,17 @@ export interface SelectReportDiagnosticsInput {
   readonly surface?: DiagnosticSurface;
 }
 
-export const selectReportDiagnostics = (input: SelectReportDiagnosticsInput): Diagnostic[] =>
-  filterDiagnosticsByCategories(
-    filterScansForSurface([input.scan], input.surface ?? "cli"),
-    new Set(input.categoryFilters),
-  );
+export interface SelectedReportDiagnostics {
+  readonly diagnostics: Diagnostic[];
+  readonly demotedDiagnosticCount: number;
+}
+
+export const selectReportDiagnostics = (
+  input: SelectReportDiagnosticsInput,
+): SelectedReportDiagnostics => {
+  const surfaceDiagnostics = filterScansForSurface([input.scan], input.surface ?? "cli");
+  return {
+    diagnostics: filterDiagnosticsByCategories(surfaceDiagnostics, new Set(input.categoryFilters)),
+    demotedDiagnosticCount: input.scan.result.diagnostics.length - surfaceDiagnostics.length,
+  };
+};

@@ -68,4 +68,19 @@ describe("shouldUseTui", () => {
 
     expect(shouldUseTui(makeInput({ flags }))).toBe(true);
   });
+
+  it.each([
+    ["changed scope", { scope: "changed" }],
+    ["legacy diff scope", { diff: true }],
+    ["base-driven scope selection", { base: "main" }],
+  ])("uses the stable renderer for config-defined %s", (_name, userConfig) => {
+    expect(shouldUseTui(makeInput({ userConfig }))).toBe(false);
+  });
+
+  it.each([[{ scope: "full" }], [{ diff: false }], [{ diff: "false" }]])(
+    "keeps a config-defined full scan in the TUI",
+    (userConfig) => {
+      expect(shouldUseTui(makeInput({ userConfig }))).toBe(true);
+    },
+  );
 });

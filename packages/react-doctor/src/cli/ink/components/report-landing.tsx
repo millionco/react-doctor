@@ -9,6 +9,7 @@ export interface ReportLandingProps {
   readonly header: ReactNode;
   readonly phase: ReportReveal["phase"];
   readonly issueCount: number;
+  readonly emptyStateMessage?: string;
   readonly lintFailureReason?: string;
   readonly actions: ReadonlyArray<ActionMenuAction>;
   readonly selectedIndex: number;
@@ -21,6 +22,7 @@ export const ReportLanding = ({
   header,
   phase,
   issueCount,
+  emptyStateMessage,
   lintFailureReason,
   actions,
   selectedIndex,
@@ -44,7 +46,7 @@ export const ReportLanding = ({
           {lintFailureReason ? (
             <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>
           ) : (
-            <Text color="green">✔ No issues found. Nice work.</Text>
+            <Text color="green">✔ {emptyStateMessage ?? "No issues found. Nice work."}</Text>
           )}
         </Box>
       ) : null}

@@ -349,6 +349,33 @@ describe("runScanApp", () => {
     );
   });
 
+  it("explains when a category filter leaves the TUI report empty", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      diagnostics: [buildDiagnostic({ category: "Performance" })],
+    });
+
+    await runScanApp({
+      directory: rootDirectory,
+      options: { categoryFilters: ["Security"] },
+      skipPrompts: true,
+    });
+
+    expect(mockState.scanStores[0]?.getSnapshot().report).toEqual(
+      expect.objectContaining({
+        diagnostics: [],
+        emptyStateMessage: "No issues found in category Security!",
+      }),
+    );
+  });
+
   it("does not print the scan footer after the user quits", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";

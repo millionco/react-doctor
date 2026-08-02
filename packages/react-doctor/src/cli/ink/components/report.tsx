@@ -263,6 +263,7 @@ export const Report = ({
         header={landingScoreHeader}
         phase={reportReveal.phase}
         issueCount={report.diagnostics.length}
+        emptyStateMessage={report.emptyStateMessage}
         lintFailureReason={report.lintFailureReason}
         actions={landingActions}
         selectedIndex={resolvedLandingSelectedIndex}

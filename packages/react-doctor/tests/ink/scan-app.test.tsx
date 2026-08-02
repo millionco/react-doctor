@@ -735,6 +735,29 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("shows why a filtered report has no visible issues", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: process.cwd(),
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      emptyStateMessage: "No issues found in category Security!",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    await flush();
+
+    expect(lastFrame()).toContain("✔ No issues found in category Security!");
+    expect(lastFrame()).not.toContain("Nice work");
+    unmount();
+  });
+
   it("justifies CI setup before confirming the workflow change", async () => {
     const store = createScanStore();
     const onAddToCi = vi.fn();

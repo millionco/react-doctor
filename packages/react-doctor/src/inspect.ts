@@ -55,6 +55,7 @@ import { materializeBaselineFiles } from "./cli/utils/materialize-baseline-files
 import { createSourceLineReader } from "./cli/utils/read-source-line.js";
 import { createDiagnosticEvidenceReader } from "./cli/utils/read-diagnostic-evidence.js";
 import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
+import { buildEmptyReportMessage } from "./cli/utils/build-empty-report-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import {
   isCiOrCodingAgentEnvironment,
@@ -124,9 +125,6 @@ const recordOnboardingCompletion = (options: ResolvedInspectOptions): void => {
     markOnboardingComplete();
   }
 };
-
-const formatCategorySelection = (categoryFilters: ReadonlySet<string>): string =>
-  [...categoryFilters].join(", ");
 
 // Builds the `--scope lines` predicate: a diagnostic survives when its source
 // span intersects a changed range of its file. `changedLineRanges` is keyed by paths
@@ -1243,20 +1241,16 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
             `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
           ),
         );
-      } else if (options.categoryFilters.size > 0) {
-        yield* Console.log(
-          highlighter.success(
-            `No issues found in category ${formatCategorySelection(options.categoryFilters)}!`,
-          ),
-        );
-      } else if (demotedDiagnosticCount > 0) {
-        yield* Console.log(
-          highlighter.success(
-            `No issues found! (${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface — see config.surfaces.)`,
-          ),
-        );
       } else {
-        yield* Console.log(highlighter.success("No issues found!"));
+        yield* Console.log(
+          highlighter.success(
+            buildEmptyReportMessage({
+              categoryFilters: options.categoryFilters,
+              demotedDiagnosticCount,
+              outputSurface: options.outputSurface,
+            }),
+          ),
+        );
       }
       yield* Console.log("");
       yield* pause;

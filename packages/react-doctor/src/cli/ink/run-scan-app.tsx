@@ -22,6 +22,7 @@ import type {
 import { createInvocationInspect } from "../../inspect.js";
 import type { ReactDoctorInspectOptions } from "../../inspect.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
+import { buildEmptyReportMessage } from "../utils/build-empty-report-message.js";
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";
 import { discoverWorkspacePackages, selectProjects } from "../utils/select-projects.js";
@@ -59,6 +60,7 @@ import type {
 
 export interface RunScanAppInput {
   readonly directory: string;
+  readonly scanTarget?: ResolvedScanTarget;
   readonly options?: ReactDoctorInspectOptions;
   readonly projectFlag?: string;
   readonly skipPrompts?: boolean;
@@ -202,6 +204,7 @@ interface ScanReportInput {
   readonly projectedScore: number | null;
   readonly isOffline: boolean;
   readonly noScoreMessage: string;
+  readonly emptyStateMessage: string;
 }
 
 const resolveLintFailureReason = (results: ReadonlyArray<InspectResult>): string | null => {
@@ -219,6 +222,7 @@ const toScanReport = ({
   projectedScore,
   isOffline,
   noScoreMessage,
+  emptyStateMessage,
 }: ScanReportInput): ScanReport => {
   const lintFailureReason = resolveLintFailureReason([result]);
   return {
@@ -231,6 +235,7 @@ const toScanReport = ({
     elapsedMilliseconds: result.elapsedMilliseconds,
     isOffline,
     noScoreMessage,
+    emptyStateMessage,
     ...(lintFailureReason ? { lintFailureReason } : {}),
   };
 };
@@ -440,7 +445,7 @@ const runSingleProjectScan = async (
         progress: progressLayerForStore(context.store),
       },
     });
-    const reportDiagnostics = selectReportDiagnostics({
+    const reportSelection = selectReportDiagnostics({
       scan: { result, config: projectScan.config },
       categoryFilters: input.options?.categoryFilters,
       surface: input.options?.outputSurface,
@@ -450,21 +455,30 @@ const runSingleProjectScan = async (
       "score",
     );
     const projectedScore = result.score
-      ? await computeProjectedScore([...reportDiagnostics], scoreDiagnostics, result.score)
+      ? await computeProjectedScore(
+          [...reportSelection.diagnostics],
+          scoreDiagnostics,
+          result.score,
+        )
       : null;
     context.store.setReport(
       toScanReport({
         result,
-        diagnostics: reportDiagnostics,
+        diagnostics: reportSelection.diagnostics,
         rootDirectory: projectScan.directory,
         projectedScore,
         isOffline: context.isOffline,
         noScoreMessage: context.noScoreMessage,
+        emptyStateMessage: buildEmptyReportMessage({
+          categoryFilters: input.options?.categoryFilters ?? [],
+          demotedDiagnosticCount: reportSelection.demotedDiagnosticCount,
+          outputSurface: input.options?.outputSurface ?? "cli",
+        }),
       }),
     );
     return {
       scans: [{ result, config: projectScan.config }],
-      diagnostics: reportDiagnostics,
+      diagnostics: reportSelection.diagnostics,
       scoreResult: result.score,
       projectName: result.project.projectName,
       scannedFileCount: result.scannedFileCount ?? 0,
@@ -512,7 +526,7 @@ const runMultiProjectScan = async (
     );
 
     const projectEntries = results.map(({ directory, result, config }) => {
-      const reportDiagnostics = selectReportDiagnostics({
+      const reportSelection = selectReportDiagnostics({
         scan: { result, config },
         categoryFilters: input.options?.categoryFilters,
         surface: input.options?.outputSurface,
@@ -520,14 +534,20 @@ const runMultiProjectScan = async (
       return {
         report: toScanReport({
           result,
-          diagnostics: reportDiagnostics,
+          diagnostics: reportSelection.diagnostics,
           rootDirectory: directory,
           projectedScore: null,
           isOffline: context.isOffline,
           noScoreMessage: context.noScoreMessage,
+          emptyStateMessage: buildEmptyReportMessage({
+            categoryFilters: input.options?.categoryFilters ?? [],
+            demotedDiagnosticCount: reportSelection.demotedDiagnosticCount,
+            outputSurface: input.options?.outputSurface ?? "cli",
+          }),
         }),
         score: result.score,
         diagnostics: filterScansForSurface([{ result, config }], "score"),
+        demotedDiagnosticCount: reportSelection.demotedDiagnosticCount,
       };
     });
     const projects = projectEntries.map(({ report }) => report);
@@ -557,6 +577,14 @@ const runMultiProjectScan = async (
       rootDirectory,
       isOffline: context.isOffline,
       noScoreMessage: context.noScoreMessage,
+      emptyStateMessage: buildEmptyReportMessage({
+        categoryFilters: input.options?.categoryFilters ?? [],
+        demotedDiagnosticCount: projectEntries.reduce(
+          (total, projectEntry) => total + projectEntry.demotedDiagnosticCount,
+          0,
+        ),
+        outputSurface: input.options?.outputSurface ?? "cli",
+      }),
       ...(lintFailureReason ? { lintFailureReason } : {}),
     };
     context.store.setSummary(summary);
@@ -572,7 +600,8 @@ const runMultiProjectScan = async (
 };
 
 export const runScanApp = async (input: RunScanAppInput): Promise<RunScanAppResult> => {
-  const scanTarget = await resolveScanTarget(input.directory, { allowAmbiguous: true });
+  const scanTarget =
+    input.scanTarget ?? (await resolveScanTarget(input.directory, { allowAmbiguous: true }));
   const rootDirectory = scanTarget.resolvedDirectory;
   const deadlineEpochMs =
     input.options?.deadlineEpochMs ??

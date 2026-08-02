@@ -29,6 +29,17 @@ vi.mock("../src/cli/utils/should-use-tui.js", () => ({
   shouldUseTui: vi.fn(() => true),
 }));
 
+vi.mock("@react-doctor/core", () => ({
+  resolveScanTarget: vi.fn(async (directory: string) => ({
+    resolvedDirectory: directory,
+    requestedDirectory: directory,
+    userConfig: null,
+    configSourceDirectory: null,
+    didRedirectViaRootDir: false,
+  })),
+}));
+
+import { resolveScanTarget } from "@react-doctor/core";
 import { inspectAction } from "../src/cli/commands/inspect.js";
 import { runScanCommand } from "../src/cli/commands/scan.js";
 import { runScanApp } from "../src/cli/ink/run-scan-app.js";
@@ -60,14 +71,34 @@ describe("runScanCommand", () => {
     expect(resolveCliInspectOptions).toHaveBeenCalledWith(flags, null);
     expect(runScanApp).toHaveBeenCalledWith({
       directory: "/tmp/project",
+      scanTarget: {
+        resolvedDirectory: "/tmp/project",
+        requestedDirectory: "/tmp/project",
+        userConfig: null,
+        configSourceDirectory: null,
+        didRedirectViaRootDir: false,
+      },
       options: { noScore: true },
       projectFlag: "app",
       skipPrompts: true,
       blocking: "warning",
     });
     expect(recordCount).toHaveBeenCalledWith(METRIC.cliInvoked, 1, { command: "inspect" });
+    expect(resolveScanTarget).toHaveBeenCalledWith("/tmp/project", { allowAmbiguous: true });
     expect(runProjectMigrations).toHaveBeenCalledWith(path.resolve("/tmp/project"));
     expect(inspectAction).not.toHaveBeenCalled();
+  });
+
+  it("uses the stable renderer when project config requires diff semantics", async () => {
+    vi.mocked(shouldUseTui).mockReturnValueOnce(true).mockReturnValueOnce(false);
+    const flags = {};
+
+    await runScanCommand({ directory: "/tmp/project", flags, invocationCommand: "inspect" });
+
+    expect(runProjectMigrations).toHaveBeenCalledWith(path.resolve("/tmp/project"));
+    expect(inspectAction).toHaveBeenCalledWith("/tmp/project", flags, "inspect");
+    expect(runScanApp).not.toHaveBeenCalled();
+    expect(recordCount).not.toHaveBeenCalled();
   });
 
   it("uses the stable renderer when the TUI gate rejects the environment or flags", async () => {

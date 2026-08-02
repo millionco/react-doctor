@@ -48,12 +48,12 @@ describe("useReportReveal", () => {
 
     await vi.waitFor(() => expect(renderedView.lastFrame()).toContain("streaming"));
     expect(onRevealComplete).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(renderedView.lastFrame()).toContain("actions"), {
+    await vi.waitFor(() => expect(onRevealComplete).toHaveBeenCalledOnce(), {
       timeout:
         TUI_REPORT_ISSUE_STREAM_FRAME_DELAY_MS * TUI_REPORT_ISSUE_STREAM_MAX_STEPS +
         ONBOARDING_SECTION_DELAY_MS * 2,
     });
-    expect(onRevealComplete).toHaveBeenCalledOnce();
+    expect(renderedView.lastFrame()).toContain("actions");
     renderedView.unmount();
   });
 });

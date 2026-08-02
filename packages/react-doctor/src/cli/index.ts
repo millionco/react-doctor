@@ -460,13 +460,14 @@ program
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .option("--no-dead-code", "skip dead-code analysis")
   .option("--no-supply-chain", "skip the dependency supply-chain scan")
+  .option("--score", "only print the numeric score (for scripts and CI)")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")
-  .action((directory = ".", _localOptions, command) =>
+  .action((directory = ".", flags: InspectFlags) =>
     runScanCommand({
       directory,
-      flags: command.optsWithGlobals(),
+      flags,
       invocationCommand: "experimental-tui",
     }),
   );

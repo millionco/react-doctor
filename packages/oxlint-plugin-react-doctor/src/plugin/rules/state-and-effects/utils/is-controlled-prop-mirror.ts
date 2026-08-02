@@ -98,6 +98,7 @@ const referencesIdentifierNamed = (root: EsTreeNode, identifierName: string): bo
 export const isSetterWiredToJsxHandler = (
   componentFunction: EsTreeNode,
   setterName: string,
+  matchesAttribute: (attribute: EsTreeNode) => boolean = () => true,
 ): boolean => {
   let isWired = false;
   walkAst(componentFunction, (child: EsTreeNode): boolean | void => {
@@ -109,7 +110,7 @@ export const isSetterWiredToJsxHandler = (
     ) {
       return false;
     }
-    if (!isNodeOfType(child, "JSXAttribute") || !child.value) return;
+    if (!isNodeOfType(child, "JSXAttribute") || !child.value || !matchesAttribute(child)) return;
     const attributeName = getJsxAttributeName(child.name);
     if (!attributeName || !isEventHandlerName(attributeName)) return;
     if (referencesIdentifierNamed(child.value, setterName)) {

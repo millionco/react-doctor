@@ -150,6 +150,15 @@ describe("no-img-without-dimensions", () => {
     expect(conditional.diagnostics).toHaveLength(1);
   });
 
+  it("does not apply interaction-state sizing to the initial image layout", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,
+      `.feed img { width: 100%; height: 178px; }
+       .feed:hover img { height: auto; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows a full-size image in a definitively stretched flex item", () => {
     const result = runRuleWithSiblingCss(
       `const Map = () => <main><div className="body"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,

@@ -22,6 +22,8 @@ const TRACKED_CSS_PROPERTIES = new Set([
 ]);
 const REACT_ROOT_HEIGHT_TARGETS: ReadonlyArray<"body" | "html" | "root"> = ["html", "body", "root"];
 const CSS_PSEUDO_ELEMENT_PATTERN = /::|:(?:after|before|first-letter|first-line)\b/i;
+const CSS_INTERACTION_PSEUDO_CLASS_PATTERN =
+  /:(?:active|focus|focus-visible|focus-within|hover)\b/i;
 const STATIC_CSS_IMPORT_PATTERN =
   /(?:^|[;\n])\s*import\s+(?:[^;\n]*?\s+from\s+)?["']([^"']+\.css(?:[?#][^"']*)?)["']/gm;
 
@@ -187,9 +189,11 @@ const parseSelector = (source: string): StaticCssSelector | null => {
 };
 
 const parsePotentiallyMatchingSelector = (source: string): StaticCssSelector | null => {
-  if (/:+(?:has|not)\(/i.test(source)) return null;
+  if (/:+(?:has|not)\(/i.test(source) || CSS_INTERACTION_PSEUDO_CLASS_PATTERN.test(source)) {
+    return null;
+  }
   const withoutDynamicPseudoClasses = source.replace(
-    /:(?:active|any-link|checked|default|disabled|empty|enabled|focus|focus-visible|focus-within|hover|indeterminate|link|optional|required|target|valid|visited)\b/gi,
+    /:(?:any-link|checked|default|disabled|empty|enabled|indeterminate|link|optional|required|target|valid|visited)\b/gi,
     "",
   );
   return parseSelector(withoutDynamicPseudoClasses);

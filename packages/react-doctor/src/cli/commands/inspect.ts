@@ -156,6 +156,24 @@ interface FinalizeScansInput {
   readonly startTime: number;
 }
 
+interface ReportSkippedProjectsInput {
+  readonly skippedProjects: JsonReportSkippedProject[];
+  readonly isQuiet: boolean;
+}
+
+const reportSkippedProjects = (input: ReportSkippedProjectsInput): void => {
+  input.skippedProjects.sort((left, right) => left.directory.localeCompare(right.directory));
+  if (input.skippedProjects.length === 0) return;
+
+  recordCount(METRIC.scanProjectSkipped, input.skippedProjects.length, {
+    reason: "max-duration",
+  });
+  if (!input.isQuiet) {
+    logger.warn(formatSkippedProjectsMessage(input.skippedProjects.length));
+    logger.break();
+  }
+};
+
 /**
  * Post-scan finalization shared by the staged-arm and project-loop
  * paths of `inspectAction`: emit the JSON report (when in JSON mode)
@@ -631,6 +649,7 @@ export const inspectAction = async (
       // selected: a lone survivor renders inline like any single-project scan
       // instead of being suppressed in favour of an aggregate summary of one.
       const isMultiProject = stagedProjectRuns.length > 1;
+      const skippedProjects: JsonReportSkippedProject[] = [];
       // Nothing at all came out of the index. An unreadable index already failed
       // upstream — the divergence guard runs `git status` before any of this, and
       // `getStagedSourceFiles` throws when `git diff --cached` reports failure —
@@ -659,8 +678,15 @@ export const inspectAction = async (
 
       const scanStagedProject = async (
         projectRun: (typeof stagedProjectRuns)[number],
-      ): Promise<CompletedScan> => {
+      ): Promise<CompletedScan | null> => {
         const { projectScan, includePaths } = projectRun;
+        if (
+          scanDeadlineEpochMs !== undefined &&
+          remainingDeadlineBudgetMs(scanDeadlineEpochMs) === 0
+        ) {
+          skippedProjects.push({ directory: projectScan.scanDirectory, reason: "max-duration" });
+          return null;
+        }
         const projectTempDirectory = path.join(
           snapshot.tempDirectory,
           projectScan.treeRelativeDirectory,
@@ -724,7 +750,8 @@ export const inspectAction = async (
       // bytes out of it, so tearing it down first would silently degrade every
       // frame to a bare `file:line`.
       try {
-        if (!isQuiet && isMultiProject) {
+        reportSkippedProjects({ skippedProjects, isQuiet });
+        if (!isQuiet && isMultiProject && completedScans.length > 0) {
           const showShareLink =
             !isShareOptedOut(completedScans, scanOptions.noScore) && !scanOptions.isCi;
           await Effect.runPromise(
@@ -763,7 +790,7 @@ export const inspectAction = async (
 
       finalizeScans({
         completedScans,
-        skippedProjects: [],
+        skippedProjects,
         mode: "staged",
         diff: null,
         baselineIntended: false,
@@ -1044,17 +1071,7 @@ export const inspectAction = async (
       scanProject,
     });
     const completedScans = projectBatch.completedScans;
-    skippedProjects.sort((left, right) => left.directory.localeCompare(right.directory));
-
-    if (skippedProjects.length > 0) {
-      recordCount(METRIC.scanProjectSkipped, skippedProjects.length, {
-        reason: "max-duration",
-      });
-      if (!isQuiet) {
-        logger.warn(formatSkippedProjectsMessage(skippedProjects.length));
-        logger.break();
-      }
-    }
+    reportSkippedProjects({ skippedProjects, isQuiet });
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
       const showShareLink =

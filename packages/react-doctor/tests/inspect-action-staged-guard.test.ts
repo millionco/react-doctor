@@ -10,6 +10,17 @@ import { cliLogger } from "../src/cli/utils/cli-logger.js";
 import { handleUserError } from "../src/cli/utils/handle-error.js";
 import { inspect } from "../src/inspect.js";
 
+const deadlineMockState = vi.hoisted(() => ({ shouldExpire: false }));
+
+vi.mock("@react-doctor/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@react-doctor/core")>();
+  return {
+    ...actual,
+    remainingDeadlineBudgetMs: (deadlineEpochMs: number) =>
+      deadlineMockState.shouldExpire ? 0 : actual.remainingDeadlineBudgetMs(deadlineEpochMs),
+  };
+});
+
 vi.mock("../src/cli/utils/handle-error.js", () => ({
   buildErrorIssueUrl: vi.fn(() => ""),
   handleError: vi.fn(),
@@ -101,6 +112,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
   Object.assign(console, originalConsoleMethods);
+  deadlineMockState.shouldExpire = false;
   process.exitCode = undefined;
   for (const temporaryDirectory of temporaryDirectories.splice(0)) {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -214,6 +226,59 @@ describe("inspectAction staged multi-project", () => {
     fs.writeFileSync(path.join(appDirectory, "src/app.tsx"), "export const App = () => null;\n");
     return appDirectory;
   };
+
+  it("reports staged projects that never start before the shared deadline", async () => {
+    const directory = createDirectory("rd-staged-project-deadline-");
+    const firstProjectDirectory = path.join(directory, "packages/first");
+    const secondProjectDirectory = path.join(directory, "packages/second");
+    for (const projectDirectory of [firstProjectDirectory, secondProjectDirectory]) {
+      fs.mkdirSync(path.join(projectDirectory, "src"), { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        '{"dependencies":{"react":"19"}}\n',
+      );
+      fs.writeFileSync(
+        path.join(projectDirectory, "src/app.tsx"),
+        "export const App = () => null;\n",
+      );
+    }
+    fs.writeFileSync(
+      path.join(directory, "package.json"),
+      '{"name":"monorepo-root","private":true}\n',
+    );
+    fs.writeFileSync(path.join(directory, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
+    fs.writeFileSync(
+      path.join(directory, "doctor.config.json"),
+      `${JSON.stringify({ projects: ["packages/first", "packages/second"], noScore: true })}\n`,
+    );
+    initializeRepository(directory);
+
+    for (const projectDirectory of [firstProjectDirectory, secondProjectDirectory]) {
+      fs.writeFileSync(
+        path.join(projectDirectory, "src/app.tsx"),
+        "export const App = () => <div />;\n",
+      );
+    }
+    runGit(directory, ["add", "packages/first/src/app.tsx", "packages/second/src/app.tsx"]);
+    deadlineMockState.shouldExpire = true;
+    const reportPath = path.join(directory, "report.json");
+
+    await inspectAction(directory, {
+      staged: true,
+      json: true,
+      jsonOut: reportPath,
+      lint: false,
+      maxDuration: "1",
+      yes: true,
+    });
+
+    expect(inspect).not.toHaveBeenCalled();
+    const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+    expect(report.skippedProjects).toEqual([
+      { directory: firstProjectDirectory, reason: "max-duration" },
+      { directory: secondProjectDirectory, reason: "max-duration" },
+    ]);
+  });
 
   it("materializes staged files under each selected package so React rules see package identity", async () => {
     const directory = createDirectory("rd-staged-projects-");

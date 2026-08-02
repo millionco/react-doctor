@@ -40,12 +40,14 @@ Enter
 Wait+Screen /Add to GitHub Actions/
 Sleep 2s
 Enter
-Wait+Screen /Copy prompt/
+Wait+Screen /enter copy context/
 Sleep 2s
 Escape
 Wait+Screen /Add to GitHub Actions/
-Down
 Sleep 1s
-Type "G"
+Enter
+Wait+Screen /Add React Doctor to GitHub Actions?/
 Sleep 2s
+Escape
+Wait+Screen /Add to GitHub Actions/
 Type "q"

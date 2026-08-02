@@ -47,6 +47,7 @@ const baseOptions = (overrides: Partial<ResolvedInspectOptions> = {}): ResolvedI
   concurrency: undefined,
   baseline: null,
   supplyChainManifestChanged: false,
+  excludedProjectDirectories: [],
   ...overrides,
 });
 
@@ -232,6 +233,12 @@ describe("scan result cache", () => {
     expect(cacheKey(projectDirectory, baseOptions({ includePaths: ["src/App.tsx"] }))).not.toBe(
       originalKey,
     );
+    expect(
+      cacheKey(
+        projectDirectory,
+        baseOptions({ excludedProjectDirectories: [path.join(projectDirectory, "packages/web")] }),
+      ),
+    ).not.toBe(originalKey);
     // `--no-supply-chain` must not share a key with a supply-chain-on run at the
     // same commit — the flag no longer rides the keyed `userConfig` blob.
     expect(cacheKey(projectDirectory, baseOptions({ supplyChain: false }))).not.toBe(originalKey);

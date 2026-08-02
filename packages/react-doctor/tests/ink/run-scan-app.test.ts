@@ -166,6 +166,38 @@ describe("runScanApp", () => {
     mockState.scanStores.length = 0;
     mockState.ciRecommendationStates.length = 0;
     vi.restoreAllMocks();
+    vi.clearAllMocks();
+  });
+
+  it("excludes nested projects from an ancestor scan", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    mockState.projectDirectories.push(rootDirectory, webDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+    mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(inspect).toHaveBeenCalledWith(
+      rootDirectory,
+      expect.objectContaining({
+        excludedProjectDirectories: [webDirectory],
+        uiLayers: expect.objectContaining({ progress: expect.anything() }),
+      }),
+    );
+    expect(inspect).toHaveBeenCalledWith(
+      webDirectory,
+      expect.objectContaining({ excludedProjectDirectories: [] }),
+    );
   });
 
   it("merges root and project configs while sharing one scan deadline", async () => {

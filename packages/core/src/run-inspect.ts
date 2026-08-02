@@ -15,6 +15,7 @@ import type {
 } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
 import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js";
+import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkExpoProject } from "./check-expo-project.js";
@@ -152,6 +153,8 @@ export interface InspectInput {
    * dead-code phase is skipped or capped to the remaining budget.
    */
   readonly deadlineEpochMs?: number;
+  /** Descendant project roots covered by sibling scans in a workspace batch. */
+  readonly excludedProjectDirectories?: ReadonlyArray<string>;
 }
 
 export interface InspectOutput {
@@ -463,8 +466,26 @@ export const runInspect = <HooksR = never>(
         ? [...input.includePaths]
         : undefined
       : computeExplicitLintIncludePaths([...input.includePaths]);
-    const lintIncludePaths =
+    let lintIncludePaths =
       explicitLintIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
+    const excludedProjectDirectories = (input.excludedProjectDirectories ?? [])
+      .map((excludedDirectory) => path.resolve(excludedDirectory))
+      .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, scanDirectory));
+    const excludedProjectRelativePaths = excludedProjectDirectories.map((excludedDirectory) =>
+      path.relative(scanDirectory, excludedDirectory).replaceAll("\\", "/"),
+    );
+    if (excludedProjectDirectories.length > 0) {
+      const candidatePaths =
+        lintIncludePaths ?? (yield* filesService.listSourceFiles(scanDirectory));
+      lintIncludePaths = candidatePaths.filter((relativePath) => {
+        const absolutePath = path.resolve(scanDirectory, relativePath);
+        return !excludedProjectDirectories.some(
+          (excludedDirectory) =>
+            absolutePath === excludedDirectory ||
+            isPathInsideDirectory(absolutePath, excludedDirectory),
+        );
+      });
+    }
 
     // Absolute paths of the exact file set the linter scans, captured ONLY
     // for the multi-project summary (the sole consumer), which signals via
@@ -548,6 +569,7 @@ export const runInspect = <HooksR = never>(
                     ignoredTags: input.ignoredTags,
                     includedTags: input.includedTags,
                     includeTagDefaults: input.includeTagDefaults,
+                    excludedDirectories: new Set(excludedProjectDirectories),
                   }),
                 ).pipe(
                   Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
@@ -708,6 +730,9 @@ export const runInspect = <HooksR = never>(
           deadCodeService
             .run({
               rootDirectory: scanDirectory,
+              ignorePatterns: excludedProjectRelativePaths.map(
+                (relativePath) => `${relativePath}/**`,
+              ),
               parseConcurrency: deadCodeParseConcurrency,
               workerTimeoutMs: deadCodeTimeout.workerTimeoutMs,
               onCacheOutcome: (didHitCache) => {

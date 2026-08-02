@@ -1,5 +1,5 @@
 import os from "node:os";
-import { PER_WORKER_MEM_BUDGET_BYTES } from "../constants.js";
+import { AUTO_MAX_SCAN_CONCURRENCY, PER_WORKER_MEM_BUDGET_BYTES } from "../constants.js";
 import { readCgroupMemoryLimitBytes } from "./read-cgroup-memory-limit-bytes.js";
 import { resolveScanConcurrency } from "./resolve-scan-concurrency.js";
 
@@ -21,7 +21,8 @@ const readSystemFacts = (): AutoScanConcurrencyFacts => ({
 /**
  * Auto lint-worker count: the smaller of the (cgroup-CPU-aware) core count and
  * the number of `PER_WORKER_MEM_BUDGET_BYTES` workers that fit in available
- * memory, then clamped to `[MIN, HARD_MAX]` by `resolveScanConcurrency`.
+ * memory, and the measured automatic parallel-efficiency ceiling, then clamped
+ * to `[MIN, HARD_MAX]` by `resolveScanConcurrency`.
  *
  * `os.availableParallelism()` already respects cgroup CPU quotas, so the core
  * term needs no help. Available memory is `os.totalmem()` floored by the cgroup
@@ -42,5 +43,7 @@ export const resolveAutoScanConcurrency = (
     facts.cgroupMemoryLimitBytes ?? Number.POSITIVE_INFINITY,
   );
   const memoryBoundedWorkers = Math.floor(availableMemoryBytes / PER_WORKER_MEM_BUDGET_BYTES);
-  return resolveScanConcurrency(Math.min(facts.availableCores, memoryBoundedWorkers));
+  return resolveScanConcurrency(
+    Math.min(facts.availableCores, memoryBoundedWorkers, AUTO_MAX_SCAN_CONCURRENCY),
+  );
 };

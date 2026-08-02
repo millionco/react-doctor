@@ -10,6 +10,7 @@ import {
   getDiffInfo,
   hasReactRuntime,
   highlighter,
+  isPathInsideDirectory,
   mergeReactDoctorConfigs,
   resolveScanTarget,
   toRelativePath,
@@ -1016,6 +1017,9 @@ export const inspectAction = async (
         // Pool members overlap; they must not own the process-global Sentry
         // run state (see `InspectOptions.concurrentScan`).
         concurrentScan: isMultiProject,
+        excludedProjectDirectories: projectDirectories.filter((candidateDirectory) =>
+          isPathInsideDirectory(candidateDirectory, scanDirectory),
+        ),
         baseline:
           baselineRef !== null &&
           projectBaselineBaseFiles !== null &&

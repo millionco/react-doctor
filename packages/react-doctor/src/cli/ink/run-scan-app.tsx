@@ -5,10 +5,12 @@ import * as Effect from "effect/Effect";
 import {
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
   highlighter,
+  isPathInsideDirectory,
   mapWithConcurrency,
   mergeReactDoctorConfigs,
   Reporter,
   resolveScanTarget,
+  yieldToEventLoop,
 } from "@react-doctor/core";
 import type {
   BlockingLevel,
@@ -37,7 +39,7 @@ import { isReactDoctorWorkflowInstalled } from "../utils/install-github-workflow
 import { findNearestPackageDirectory } from "../utils/install-doctor-script.js";
 import { hasLintHardFailure } from "../utils/has-lint-hard-failure.js";
 import { setUpGitHubActions } from "../utils/set-up-github-actions.js";
-import { recordCount } from "../utils/record-metric.js";
+import { recordCount, recordDistribution } from "../utils/record-metric.js";
 import { METRIC } from "../utils/constants.js";
 import {
   filterScansForSurface,
@@ -509,6 +511,7 @@ const runMultiProjectScan = async (
   blockingLevel: BlockingLevel,
   inspectProject: ReturnType<typeof createInvocationInspect>,
 ): Promise<RunScanAppResult> => {
+  const feedbackStartTime = performance.now();
   const rootDirectory = rootScanTarget.resolvedDirectory;
   const projectScans = await mapWithConcurrency(
     [...directories],
@@ -520,22 +523,43 @@ const runMultiProjectScan = async (
     const startTime = performance.now();
     let finishedCount = 0;
     context.store.setProgress(`Scanning ${directories.length} projects…`);
+    await yieldToEventLoop();
+    recordDistribution(METRIC.scanFeedbackDelay, performance.now() - feedbackStartTime, {
+      unit: "millisecond",
+      attributes: { surface: "tui", projectCount: directories.length },
+    });
     const results = await mapWithConcurrency(
       projectScans,
       DEFAULT_PROJECT_SCAN_CONCURRENCY,
       async (projectScan) => {
+        const projectLabel =
+          path.relative(rootDirectory, projectScan.directory) || path.basename(rootDirectory);
+        const formatProjectProgress = (displayText: string): string =>
+          `Scanning ${directories.length} projects… (${finishedCount}/${directories.length}) · ${projectLabel}: ${displayText}`;
         const result = await inspectProject(projectScan.directory, {
           ...resolveTuiInspectOptions(input, projectScan.config),
           isCi: isCiEnvironment(),
           configOverride: projectScan.config,
           configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
-          uiLayers: { reporter: Reporter.layerNoop },
+          uiLayers: {
+            reporter: Reporter.layerNoop,
+            progress: progressLayerForStore(context.store, {
+              transformText: formatProjectProgress,
+              shouldClearOnStop: false,
+            }),
+          },
           concurrentScan: true,
+          excludedProjectDirectories: projectScans
+            .filter((candidateProjectScan) =>
+              isPathInsideDirectory(candidateProjectScan.directory, projectScan.directory),
+            )
+            .map((candidateProjectScan) => candidateProjectScan.directory),
         });
         finishedCount += 1;
         context.store.setProgress(
           `Scanning ${directories.length} projects… (${finishedCount}/${directories.length})`,
         );
+        await yieldToEventLoop();
         return { directory: projectScan.directory, result, config: projectScan.config };
       },
     );

@@ -127,6 +127,9 @@ ${highlighter.dim("Scope:")}
   Standard scan flags such as ${highlighter.info("--scope")}, ${highlighter.info("--project")}, ${highlighter.info("--verbose")}, and ${highlighter.info("--json")} still work.
 `;
 
+const MAX_DURATION_OPTION_DESCRIPTION =
+  "scan time budget for the whole run, shared across workspace projects: past it, remaining lint batches and dead-code are skipped and partial results are reported (skipped files are listed in the JSON report)";
+
 const renderCiHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}
 ${formatExampleLines([
@@ -229,10 +232,7 @@ const program = new Command()
     "--staged",
     "scan only staged (git index) files for pre-commit hooks (honors --project and config `projects`; exits 0 when nothing is staged)",
   )
-  .option(
-    "--max-duration <seconds>",
-    "scan time budget for the whole run, shared across workspace projects: past it, remaining lint batches and dead-code are skipped and partial results are reported (skipped files are listed in the JSON report)",
-  )
+  .option("--max-duration <seconds>", MAX_DURATION_OPTION_DESCRIPTION)
   .option(
     "--blocking <level>",
     "severity that fails CI: error (default), warning, or none (advisory)",
@@ -462,6 +462,7 @@ program
   .option("--no-supply-chain", "skip the dependency supply-chain scan")
   .option("--score", "only print the numeric score (for scripts and CI)")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
+  .option("--max-duration <seconds>", MAX_DURATION_OPTION_DESCRIPTION)
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")
   .action((directory = ".", _localOptions, command) =>

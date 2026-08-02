@@ -168,6 +168,7 @@ describe("checkDeadCode", () => {
 
     await checkDeadCode({
       rootDirectory: directory,
+      ignorePatterns: ["packages/web/**"],
       createWorker: (input) => {
         capturedInput = input;
         return {
@@ -185,6 +186,7 @@ describe("checkDeadCode", () => {
     expect(capturedInput?.entryPatterns).toContain("packages/*/src/main.ts");
     expect(capturedInput?.ignorePatterns).toContain("src/generated.ts");
     expect(capturedInput?.ignorePatterns).toContain("packages/*/src/fixtures.ts");
+    expect(capturedInput?.ignorePatterns).toContain("packages/web/**");
   });
 
   it("maps unused exports, dependencies, and cycles from worker results", async () => {

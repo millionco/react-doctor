@@ -1,4 +1,5 @@
 import { flushSentry } from "../../instrument.js";
+import { activeScanAbortRegistry } from "./active-scan-abort-registry.js";
 import { buildFooterLinkLines } from "./build-footer-link-lines.js";
 import { buildSectionDivider } from "./build-section-divider.js";
 import { SIGINT_EXIT_CODE } from "./constants.js";
@@ -11,6 +12,7 @@ export const exitGracefully = (): void => {
   // of printing the cancellation footer twice.
   if (didStartExiting) return process.exit(SIGINT_EXIT_CODE);
   didStartExiting = true;
+  activeScanAbortRegistry.abortAll();
   try {
     if (isJsonModeActive()) {
       writeJsonErrorReport(new Error("Scan cancelled by user (SIGINT/SIGTERM)"));

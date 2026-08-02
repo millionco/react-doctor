@@ -16,6 +16,7 @@ export interface CheckSecurityScanOptions {
   readonly ignoredTags?: ReadonlySet<string>;
   readonly includedTags?: ReadonlySet<string>;
   readonly includeTagDefaults?: boolean;
+  readonly excludedDirectories?: ReadonlySet<string>;
 }
 
 interface EnabledScanRule {
@@ -124,7 +125,7 @@ export const checkSecurityScan = (
 ): Diagnostic[] => {
   const session = createSecurityScanSession(rootDirectory, options);
   if (session === null) return [];
-  for (const file of collectSecurityScanFiles(rootDirectory)) {
+  for (const file of collectSecurityScanFiles(rootDirectory, options.excludedDirectories)) {
     if (file === null) continue;
     for (const _ruleStep of session.scanFileByRule(file)) {
       // Sync driver: exhaust the per-rule steps without yielding.
@@ -149,7 +150,7 @@ export const checkSecurityScanCooperative = async (
   const session = createSecurityScanSession(rootDirectory, options);
   if (session === null) return [];
   let sliceStartedAt = performance.now();
-  for (const file of collectSecurityScanFiles(rootDirectory)) {
+  for (const file of collectSecurityScanFiles(rootDirectory, options.excludedDirectories)) {
     if (file === null) {
       if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
         await yieldToEventLoop();

@@ -423,6 +423,7 @@ describe("spawnLintBatches — max-duration deadline", () => {
 
   it("attributes a single-file timeout past the deadline as a skip, not a drop", async () => {
     const partialFailures: string[] = [];
+    const startTime = performance.now();
 
     // A lone-file batch starts inside the budget (top-of-fn check passes) but
     // its spawn times out AFTER the deadline (spawn timeout 200ms > 100ms
@@ -434,7 +435,7 @@ describe("spawnLintBatches — max-duration deadline", () => {
       rootDirectory: process.cwd(),
       nodeBinaryPath: process.execPath,
       project,
-      spawnTimeoutMs: 200,
+      spawnTimeoutMs: 10_000,
       deadlineEpochMs: Date.now() + 100,
       onPartialFailure: (reason) => partialFailures.push(reason),
     });
@@ -444,6 +445,7 @@ describe("spawnLintBatches — max-duration deadline", () => {
     expect(partialFailures[0]).toContain("1 file(s) skipped");
     expect(partialFailures[0]).toContain("max scan duration reached");
     expect(partialFailures[0]).not.toContain("failed to lint");
+    expect(performance.now() - startTime).toBeLessThan(1_000);
   });
 
   it("lints every batch when the deadline has not passed", async () => {

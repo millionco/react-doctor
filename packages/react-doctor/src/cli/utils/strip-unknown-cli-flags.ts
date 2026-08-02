@@ -142,7 +142,7 @@ const EXPERIMENTAL_TUI_FLAG_SPEC: CliFlagSpec = {
     "--no-supply-chain",
     "--yes",
   ]),
-  longOptionsWithRequiredValues: new Set(["--blocking", "--project"]),
+  longOptionsWithRequiredValues: new Set(["--blocking", "--max-duration", "--project"]),
   longOptionsWithOptionalValues: new Set(),
   shortOptionsWithoutValues: new Set(["-h", "-y"]),
   shortOptionsWithRequiredValues: new Set(["-p"]),

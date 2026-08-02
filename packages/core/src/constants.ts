@@ -230,6 +230,11 @@ export const OXLINT_MAX_FILES_PER_BATCH = 100;
 // every requested count is clamped to [MIN, HARD_MAX].
 export const MIN_SCAN_CONCURRENCY = 1;
 
+// Automatic scans stop at the measured parallel-efficiency knee so CPU
+// contention cannot push healthy JS-plugin batches into timeout retries.
+// Explicit and programmatic worker counts can still reach the hard ceiling.
+export const AUTO_MAX_SCAN_CONCURRENCY = 10;
+
 // Absolute upper bound on lint workers, and the clamp applied to every requested
 // count (auto-detected, `REACT_DOCTOR_PARALLEL=N`, or `inspect({ concurrency })`).
 // Past ~10 workers parallel efficiency already collapses (stragglers + per-spawn

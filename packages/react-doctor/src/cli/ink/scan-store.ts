@@ -4,7 +4,7 @@ import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 // nested-array readonly-ness. The settled `report` keeps the index type.
 import type { Diagnostic as LiveDiagnostic } from "@react-doctor/core/schemas";
 
-import { TUI_LIVE_FEED_MAX_ENTRIES } from "../utils/constants.js";
+import { TUI_LIVE_FEED_MAX_ENTRIES, TUI_PROGRESS_UPDATE_INTERVAL_MS } from "../utils/constants.js";
 import type { CliAgentId } from "../utils/launch-agent.js";
 
 export type ScanPhase = "scanning" | "report" | "summary";
@@ -57,6 +57,7 @@ export interface ScanStore {
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => ScanStoreSnapshot;
   readonly emitDiagnostic: (diagnostic: LiveDiagnostic) => void;
+  readonly scheduleProgress: (progress: string) => void;
   readonly setProgress: (progress: string | null) => void;
   readonly setReport: (report: ScanReport) => void;
   readonly setSummary: (summary: MultiProjectSummary) => void;
@@ -74,10 +75,24 @@ const INITIAL_SNAPSHOT: ScanStoreSnapshot = {
 export const createScanStore = (): ScanStore => {
   let snapshot = INITIAL_SNAPSHOT;
   const listeners = new Set<() => void>();
+  let pendingProgress: string | null = null;
+  let progressTimer: ReturnType<typeof setTimeout> | null = null;
 
   const commit = (next: ScanStoreSnapshot): void => {
     snapshot = next;
     for (const listener of listeners) listener();
+  };
+
+  const cancelPendingProgress = (): void => {
+    pendingProgress = null;
+    if (progressTimer === null) return;
+    clearTimeout(progressTimer);
+    progressTimer = null;
+  };
+
+  const setProgress = (progress: string | null): void => {
+    cancelPendingProgress();
+    commit({ ...snapshot, progress });
   };
 
   return {
@@ -96,8 +111,25 @@ export const createScanStore = (): ScanStore => {
         ),
         liveCount: snapshot.liveCount + 1,
       }),
-    setProgress: (progress) => commit({ ...snapshot, progress }),
-    setReport: (report) => commit({ ...snapshot, report, phase: "report" }),
-    setSummary: (summary) => commit({ ...snapshot, summary, phase: "summary" }),
+    scheduleProgress: (progress) => {
+      pendingProgress = progress;
+      if (progressTimer !== null) return;
+      progressTimer = setTimeout(() => {
+        progressTimer = null;
+        const progressToCommit = pendingProgress;
+        pendingProgress = null;
+        if (progressToCommit !== null) commit({ ...snapshot, progress: progressToCommit });
+      }, TUI_PROGRESS_UPDATE_INTERVAL_MS);
+      progressTimer.unref?.();
+    },
+    setProgress,
+    setReport: (report) => {
+      cancelPendingProgress();
+      commit({ ...snapshot, report, phase: "report" });
+    },
+    setSummary: (summary) => {
+      cancelPendingProgress();
+      commit({ ...snapshot, summary, phase: "summary" });
+    },
   };
 };

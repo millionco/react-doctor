@@ -23,6 +23,7 @@ import {
 } from "@react-doctor/core";
 import type * as Layer from "effect/Layer";
 import type { Progress, Reporter, WorkerSlots } from "@react-doctor/core";
+import { activeScanAbortRegistry } from "./cli/utils/active-scan-abort-registry.js";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
 import {
@@ -99,6 +100,7 @@ const silentConsole = makeNoopConsole();
 interface OxlintInvocationRuntime {
   readonly concurrency: number;
   readonly spawnSlots: WorkerSlots;
+  readonly abortSignal: AbortSignal;
 }
 
 const runConsole = (effect: Effect.Effect<void>): void => {
@@ -175,6 +177,8 @@ export interface ReactDoctorInspectOptions extends InspectOptions {
    * the deadline is derived from `maxDurationMs` at call start.
    */
   deadlineEpochMs?: number;
+  /** Internal: descendant projects covered by sibling scans in the same workspace batch. */
+  excludedProjectDirectories?: ReadonlyArray<string>;
   /** See {@link InspectUiLayers}. */
   uiLayers?: InspectUiLayers;
 }
@@ -227,6 +231,8 @@ export interface ResolvedInspectOptions {
   supplyChainManifestChanged: boolean;
   /** Interactive UI layer overrides, or `null` for the static console path. */
   uiLayers: InspectUiLayers | null;
+  /** Descendant projects covered by sibling scans in the same workspace batch. */
+  excludedProjectDirectories: ReadonlyArray<string>;
 }
 
 const buildIgnoredTags = (
@@ -280,6 +286,7 @@ const mergeInspectOptions = (
     baseline: inputOptions.baseline ?? null,
     changedLineRanges: inputOptions.changedLineRanges ?? null,
     supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
+    excludedProjectDirectories: inputOptions.excludedProjectDirectories ?? [],
   };
 };
 
@@ -448,12 +455,21 @@ export const createInvocationInspect = (
   const concurrency = resolveScanConcurrency(
     requestedOxlintConcurrency ?? Effect.runSync(OxlintConcurrency),
   );
-  const oxlintRuntime: OxlintInvocationRuntime = {
-    concurrency,
-    spawnSlots: createOxlintSpawnSlots(concurrency),
+  const spawnSlots = createOxlintSpawnSlots(concurrency);
+  return async (directory, inputOptions = {}) => {
+    const abortController = new AbortController();
+    const unregisterAbortController = activeScanAbortRegistry.register(abortController);
+    try {
+      const oxlintRuntime: OxlintInvocationRuntime = {
+        concurrency,
+        spawnSlots,
+        abortSignal: abortController.signal,
+      };
+      return await inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
+    } finally {
+      unregisterAbortController();
+    }
   };
-  return (directory, inputOptions = {}) =>
-    inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
 };
 
 export const inspect = async (
@@ -596,6 +612,7 @@ const runBaselineComparison = async (
           Effect.provideService(Console.Console, silentConsole),
         ),
       ),
+      { signal: params.oxlintRuntime.abortSignal },
     );
     // A failed OR budget-truncated base lint leaves base findings
     // unreliable/incomplete, which would mislabel pre-existing head issues as
@@ -747,6 +764,7 @@ const runInspectWithRuntime = async (
       supplyChainManifestChanged: options.supplyChainManifestChanged,
       concurrentScan: options.concurrentScan,
       deadlineEpochMs: deadlineEpochMs ?? undefined,
+      excludedProjectDirectories: options.excludedProjectDirectories,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>
@@ -788,7 +806,9 @@ const runInspectWithRuntime = async (
     ? program.pipe(Effect.provide(layers), Effect.provideService(Console.Console, silentConsole))
     : program.pipe(Effect.provide(layers));
   const programWithLayers = applyObservability(baseProgram, rootSentrySpan);
-  const output = await Effect.runPromise(restoreLegacyThrow(programWithLayers));
+  const output = await Effect.runPromise(restoreLegacyThrow(programWithLayers), {
+    signal: oxlintRuntime.abortSignal,
+  });
 
   const didLintFail = lintBindingMissing || output.didLintFail;
   const lintFailureReason = lintBindingMissing

@@ -117,6 +117,15 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps the max-duration budget on the experimental TUI command", () => {
+    expect(stripUserArguments(["experimental-tui", ".", "--max-duration", "30"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--max-duration",
+      "30",
+    ]);
+  });
+
   it("keeps the supply-chain opt-out on the experimental TUI command", () => {
     expect(stripUserArguments(["experimental-tui", ".", "--no-supply-chain"])).toEqual([
       "experimental-tui",

@@ -442,6 +442,7 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       // lookup must not serve a supply-chain-on payload at the same commit.
       supplyChain: input.options.supplyChain,
       includePaths: [...input.options.includePaths].sort(),
+      excludedProjectDirectories: [...(input.options.excludedProjectDirectories ?? [])].sort(),
       customRulesOnly: input.options.customRulesOnly,
       respectInlineDisables: input.options.respectInlineDisables,
       warnings: input.options.warnings,

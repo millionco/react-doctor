@@ -7,8 +7,14 @@ import { inspectAction } from "../src/cli/commands/inspect.js";
 import type { InspectFlags } from "../src/cli/utils/inspect-flags.js";
 import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
 
+interface InspectInvocation {
+  readonly directory: string;
+  readonly excludedProjectDirectories: ReadonlyArray<string>;
+}
+
 const mockState = vi.hoisted(() => ({
   projectDirectories: [] as string[],
+  inspectInvocations: [] as InspectInvocation[],
   result: undefined as InspectResult | undefined,
   userConfig: undefined as ReactDoctorConfig | null | undefined,
 }));
@@ -43,10 +49,19 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
 });
 
 vi.mock("../src/inspect.js", () => {
-  const inspect = vi.fn(async (): Promise<InspectResult> => {
-    if (mockState.result === undefined) throw new Error("mockState.result not set");
-    return mockState.result;
-  });
+  const inspect = vi.fn(
+    async (
+      directory: string,
+      options: { readonly excludedProjectDirectories?: ReadonlyArray<string> },
+    ): Promise<InspectResult> => {
+      mockState.inspectInvocations.push({
+        directory,
+        excludedProjectDirectories: options.excludedProjectDirectories ?? [],
+      });
+      if (mockState.result === undefined) throw new Error("mockState.result not set");
+      return mockState.result;
+    },
+  );
   return {
     inspect,
     createInvocationInspect: () => inspect,
@@ -104,6 +119,7 @@ describe("inspectAction exit-code gate", () => {
     process.exitCode = savedExitCode;
     mockState.result = undefined;
     mockState.projectDirectories = [];
+    mockState.inspectInvocations = [];
     mockState.userConfig = undefined;
     fs.rmSync(projectDirectory, { recursive: true, force: true });
     vi.clearAllMocks();
@@ -156,6 +172,23 @@ describe("inspectAction exit-code gate", () => {
   it("exits 0 on a complete clean scan", async () => {
     await runInspectAction({});
     expect(process.exitCode).toBeUndefined();
+  });
+
+  it("excludes selected descendant projects from an ancestor workspace scan", async () => {
+    const nestedProjectDirectory = path.join(projectDirectory, "packages", "web");
+    fs.mkdirSync(nestedProjectDirectory, { recursive: true });
+    mockState.projectDirectories = [projectDirectory, nestedProjectDirectory];
+
+    await runInspectAction({});
+
+    expect(mockState.inspectInvocations).toContainEqual({
+      directory: projectDirectory,
+      excludedProjectDirectories: [nestedProjectDirectory],
+    });
+    expect(mockState.inspectInvocations).toContainEqual({
+      directory: nestedProjectDirectory,
+      excludedProjectDirectories: [],
+    });
   });
 
   it("still exits 1 when a complete scan has a blocking finding", async () => {

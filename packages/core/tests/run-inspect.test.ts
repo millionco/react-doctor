@@ -299,6 +299,52 @@ const overlapLayersOf = (config: {
   );
 
 describe("runInspect — happy path", () => {
+  it("keeps descendant projects out of ancestor lint and dead-code scans", async () => {
+    let lintIncludePaths: ReadonlyArray<string> | undefined;
+    let deadCodeIgnorePatterns: ReadonlyArray<string> | undefined;
+    const layers = Layer.mergeAll(
+      Project.layerOf(sampleProject),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+      Files.layerInMemory(
+        new Map([
+          ["/repo/src/root.tsx", "export const Root = null;"],
+          ["/repo/packages/web/src/app.tsx", "export const App = null;"],
+        ]),
+      ),
+      Layer.mock(Linter, {
+        run: (input) => {
+          lintIncludePaths = input.includePaths;
+          return Stream.empty;
+        },
+      }),
+      LintPartialFailures.layerLive,
+      Layer.mock(DeadCode, {
+        run: (input) => {
+          deadCodeIgnorePatterns = input.ignorePatterns;
+          return Stream.empty;
+        },
+      }),
+      Git.layerOf({}),
+      Score.layerOf({ score: 85, label: "Good" }),
+      SupplyChain.layerOf([]),
+      Progress.layerNoop,
+      Reporter.layerNoop,
+      Layer.succeed(DeadCodeOverlap, "off"),
+    );
+
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        excludedProjectDirectories: ["/repo/packages/web"],
+        suppressScanSummary: true,
+      }).pipe(Effect.provide(layers)),
+    );
+
+    expect(lintIncludePaths).toEqual(["src/root.tsx"]);
+    expect(deadCodeIgnorePatterns).toEqual(["packages/web/**"]);
+    expect(output.scannedFilePaths).toEqual(["/repo/src/root.tsx"]);
+  });
+
   it("collects diagnostics from Linter, DeadCode, and emits them through Reporter", async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {

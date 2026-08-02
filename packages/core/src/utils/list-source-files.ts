@@ -112,19 +112,17 @@ const listSourceFilesViaGitCooperative = (
 ): Promise<string[] | null> =>
   new Promise((resolve, reject) => {
     signal?.throwIfAborted();
-    const abort = (): void => {
-      child.kill("SIGKILL");
-    };
-    const child = execFile(
+    execFile(
       "git",
       ["ls-files", "-z", "--stage", "--others", "--exclude-standard"],
       {
         cwd: rootDirectory,
         encoding: "utf-8",
+        killSignal: "SIGKILL",
         maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
+        signal,
       },
       (error, stdout) => {
-        signal?.removeEventListener("abort", abort);
         if (signal?.aborted) {
           reject(signal.reason);
           return;
@@ -134,7 +132,6 @@ const listSourceFilesViaGitCooperative = (
         );
       },
     );
-    signal?.addEventListener("abort", abort, { once: true });
   });
 
 const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {

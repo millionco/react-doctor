@@ -92,7 +92,6 @@ interface CheckDeadCodeOptions {
    * orchestrator's telemetry distinguishes "no cache" from a 0% hit rate.
    */
   readonly onSummaryCacheStats?: (stats: DeadCodeSummaryCacheStats) => void;
-  readonly ignorePatterns?: ReadonlyArray<string>;
 }
 
 interface DeadCodeSummaryCacheStats {
@@ -571,10 +570,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
   const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
-  const ignorePatterns = [
-    ...collectDeadCodeIgnorePatterns(rootDirectory),
-    ...(options.ignorePatterns ?? []),
-  ];
+  const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory);
   const tsConfigPath = resolveTsConfigPath(rootDirectory);
   const deslopJsModuleSpecifier =
     options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js");

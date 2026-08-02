@@ -32,6 +32,7 @@ import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-stage
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
 import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
+import { formatSkippedProjectsMessage } from "../utils/format-skipped-projects-message.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
@@ -1050,9 +1051,7 @@ export const inspectAction = async (
         reason: "max-duration",
       });
       if (!isQuiet) {
-        logger.warn(
-          `${skippedProjects.length} ${skippedProjects.length === 1 ? "project was" : "projects were"} skipped because the max scan duration was reached.`,
-        );
+        logger.warn(formatSkippedProjectsMessage(skippedProjects.length));
         logger.break();
       }
     }

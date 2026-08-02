@@ -1102,11 +1102,13 @@ export const runInspect = <HooksR = never>(
     const lintPartialFailures = yield* Ref.get(partialFailuresRef);
     const didSecurityScanFail = yield* Ref.get(securityScanFailedRef);
     const securityScanFailed = didSecurityScanFail || didSecurityScanReachDeadline;
-    const securityScanFailureReason = didSecurityScanReachDeadline
-      ? "Security scan reached the max scan duration; findings collected before the deadline were preserved."
-      : didSecurityScanFail
-        ? "Security scan failed and was skipped."
-        : null;
+    let securityScanFailureReason: string | null = null;
+    if (didSecurityScanReachDeadline) {
+      securityScanFailureReason =
+        "Security scan reached the max scan duration; findings collected before the deadline were preserved.";
+    } else if (didSecurityScanFail) {
+      securityScanFailureReason = "Security scan failed and was skipped.";
+    }
 
     return {
       project,

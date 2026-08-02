@@ -1,4 +1,5 @@
 import type { CliAgentId } from "../../utils/launch-agent.js";
+import { formatSkippedProjectsMessage } from "../../utils/format-skipped-projects-message.js";
 import type { MultiProjectSummary, ScanReport, TuiHandoffRequest } from "../scan-store.js";
 import { Report } from "./report.js";
 
@@ -35,7 +36,7 @@ export const Summary = ({
     skippedChecks: [...new Set(summary.projects.flatMap((project) => project.skippedChecks ?? []))],
     ...(skippedProjects.length > 0
       ? {
-          incompleteMessage: `${skippedProjects.length} ${skippedProjects.length === 1 ? "project was" : "projects were"} skipped because the max scan duration was reached.`,
+          incompleteMessage: formatSkippedProjectsMessage(skippedProjects.length),
         }
       : {}),
     ...(summary.emptyStateMessage ? { emptyStateMessage: summary.emptyStateMessage } : {}),

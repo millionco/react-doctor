@@ -9,7 +9,6 @@ import { DeadCodeResultCacheEnabled } from "../refs.js";
 
 interface DeadCodeInput {
   readonly rootDirectory: string;
-  readonly ignorePatterns?: ReadonlyArray<string>;
   /**
    * Caps deslop's parse pool so it shares cores with a concurrent lint pass
    * instead of oversubscribing. Set by the orchestrator only when dead-code
@@ -76,7 +75,6 @@ export class DeadCode extends Context.Service<
               try: (signal) =>
                 checkDeadCode({
                   rootDirectory: input.rootDirectory,
-                  ignorePatterns: input.ignorePatterns,
                   parseConcurrency: input.parseConcurrency,
                   workerTimeoutMs: input.workerTimeoutMs,
                   abortSignal: signal,

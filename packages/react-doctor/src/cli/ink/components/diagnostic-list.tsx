@@ -12,6 +12,7 @@ import { copyToClipboard } from "../../utils/launch-agent.js";
 import { recordCount } from "../../utils/record-metric.js";
 import { useScrollViewport } from "../hooks/use-scroll-viewport.js";
 import { buildIssuePrompt } from "../lib/build-issue-prompt.js";
+import type { DiagnosticListEntry } from "../lib/diagnostic-list-entries.js";
 import type { DiagnosticRow } from "../lib/diagnostic-rows.js";
 import type { DiagnosticListLayout } from "../lib/resolve-report-layout.js";
 import { DiagnosticDetail } from "./diagnostic-detail.js";
@@ -21,6 +22,7 @@ import { StatusBar } from "./status-bar.js";
 export interface DiagnosticListProps {
   readonly header: ReactNode;
   readonly rows: ReadonlyArray<DiagnosticRow>;
+  readonly entries: ReadonlyArray<DiagnosticListEntry>;
   readonly width: number;
   readonly listColumnWidth: number;
   readonly detailColumnWidth: number;
@@ -30,9 +32,9 @@ export interface DiagnosticListProps {
   readonly rootDirectory: string;
   readonly projectName: string;
   readonly projectCount?: number;
-  readonly initialSelectedIndex: number;
+  readonly initialSelectedRowIndex: number | null;
   readonly readRuleKeys: ReadonlySet<string>;
-  readonly onSelectedIndexChange: (index: number) => void;
+  readonly onSelectedRowIndexChange: (index: number) => void;
   readonly onQuit: () => void;
   readonly onBack?: () => void;
   readonly exitHint?: string;
@@ -49,6 +51,7 @@ const DIAGNOSTIC_KEY_HINTS = (
 export const DiagnosticList = ({
   header,
   rows,
+  entries,
   width,
   listColumnWidth,
   detailColumnWidth,
@@ -58,25 +61,43 @@ export const DiagnosticList = ({
   rootDirectory,
   projectName,
   projectCount,
-  initialSelectedIndex,
+  initialSelectedRowIndex,
   readRuleKeys,
-  onSelectedIndexChange,
+  onSelectedRowIndexChange,
   onQuit,
   onBack = onQuit,
   exitHint,
 }: DiagnosticListProps) => {
   const isSplit = layout === "split";
   const isCompact = layout === "compact";
+  const initialSelectedEntryIndex =
+    initialSelectedRowIndex === null
+      ? 0
+      : Math.max(
+          0,
+          entries.findIndex(
+            (entry) => entry.kind === "item" && entry.rowIndex === initialSelectedRowIndex,
+          ),
+        );
 
-  const { selectedIndex, visibleStart, visibleEnd } = useScrollViewport({
-    itemCount: rows.length,
+  const {
+    selectedIndex: selectedEntryIndex,
+    visibleStart: visibleEntryStart,
+    visibleEnd: visibleEntryEnd,
+  } = useScrollViewport({
+    itemCount: entries.length,
     height: listHeight,
-    initialSelectedIndex,
-    onSelectedIndexChange,
+    initialSelectedIndex: initialSelectedEntryIndex,
+    isSelectable: (entryIndex) => entries[entryIndex]?.kind === "item",
+    onSelectedIndexChange: (entryIndex) => {
+      const entry = entries[entryIndex];
+      if (entry?.kind === "item") onSelectedRowIndexChange(entry.rowIndex);
+    },
   });
 
-  const visibleRows = rows.slice(visibleStart, visibleEnd);
-  const selected = rows[selectedIndex] ?? null;
+  const visibleEntries = entries.slice(visibleEntryStart, visibleEntryEnd);
+  const selectedEntry = entries[selectedEntryIndex];
+  const selected = selectedEntry?.kind === "item" ? selectedEntry.row : null;
   const selectedRuleKey = selected?.ruleKey ?? null;
   const initialSelectedRuleKey = useRef(selectedRuleKey);
   const didRecordFindingNavigation = useRef(false);
@@ -132,20 +153,29 @@ export const DiagnosticList = ({
     if (row.severity === "error") errorFindingCount += row.siteCount;
     else warningFindingCount += row.siteCount;
   }
-  const selectedIssuePosition = rows.length === 0 ? 0 : selectedIndex + 1;
+  const selectedIssuePosition = entries
+    .slice(0, selectedEntryIndex + 1)
+    .filter((entry) => entry.kind === "item").length;
   const unreadIssueCount =
     rows.length - rows.filter((row) => effectiveReadRuleKeys.has(row.ruleKey)).length;
 
   const listColumn = (
     <Box flexDirection="column" height={listHeight} width={isSplit ? listColumnWidth : width}>
-      {visibleRows.map((row, index) => {
-        const rowIndex = visibleStart + index;
+      {visibleEntries.map((entry, index) => {
+        const entryIndex = visibleEntryStart + index;
+        if (entry.kind === "header") {
+          return (
+            <Text key={`header-${entry.category}`} bold>
+              {entry.category}
+            </Text>
+          );
+        }
         return (
           <DiagnosticItem
-            key={row.ruleKey}
-            row={row}
-            isSelected={rowIndex === selectedIndex}
-            isRead={effectiveReadRuleKeys.has(row.ruleKey)}
+            key={entry.row.ruleKey}
+            row={entry.row}
+            isSelected={entryIndex === selectedEntryIndex}
+            isRead={effectiveReadRuleKeys.has(entry.row.ruleKey)}
           />
         );
       })}

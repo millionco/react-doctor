@@ -11,6 +11,7 @@ import { markOnboardingComplete } from "../../utils/onboarding-state.js";
 import { recordCount } from "../../utils/record-metric.js";
 import { useReportReveal } from "../hooks/use-report-reveal.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
+import { buildDiagnosticListEntries } from "../lib/diagnostic-list-entries.js";
 import { buildDiagnosticRows } from "../lib/diagnostic-rows.js";
 import { resolveReportLayout } from "../lib/resolve-report-layout.js";
 import type { ScanReport, TuiHandoffRequest } from "../scan-store.js";
@@ -87,9 +88,13 @@ export const Report = ({
     () => buildDiagnosticRows(report.diagnostics, priorityScores ?? [report.score]),
     [report.diagnostics, report.score, priorityScores],
   );
+  const diagnosticListEntries = useMemo(
+    () => buildDiagnosticListEntries(diagnosticRows),
+    [diagnosticRows],
+  );
   const reportLayout = resolveReportLayout({
     columns,
-    diagnosticRowCount: diagnosticRows.length,
+    diagnosticRowCount: diagnosticListEntries.length,
     terminalRows,
   });
   const reportReveal = useReportReveal({
@@ -99,7 +104,7 @@ export const Report = ({
   const [activeReportScreen, setActiveReportScreen] = useState<ReportScreen>(LANDING_SCREEN);
   const [ciSetupFeedback, setCiSetupFeedback] = useState<CiSetupFeedback>();
   const [landingSelectedIndex, setLandingSelectedIndex] = useState(0);
-  const [viewerSelectedIndex, setViewerSelectedIndex] = useState(0);
+  const [viewerSelectedRowIndex, setViewerSelectedRowIndex] = useState<number | null>(null);
   const [viewerReadRuleKeys, setViewerReadRuleKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -154,6 +159,10 @@ export const Report = ({
   const isHandoffAvailable =
     diagnosticRows.length > 0 && launchableAgents.length > 0 && Boolean(onHandoff);
   const issueLabel = diagnosticRows.length === 1 ? "issue" : "issues";
+  const firstDiagnosticEntry = diagnosticListEntries.find((entry) => entry.kind === "item");
+  const resolvedViewerSelectedRowIndex =
+    viewerSelectedRowIndex ??
+    (firstDiagnosticEntry?.kind === "item" ? firstDiagnosticEntry.rowIndex : null);
   const markViewerRuleRead = (index: number): void => {
     const ruleKey = diagnosticRows[index]?.ruleKey;
     if (!ruleKey) return;
@@ -162,7 +171,7 @@ export const Report = ({
     );
   };
   const handleViewerSelectionChange = (index: number): void => {
-    setViewerSelectedIndex(index);
+    setViewerSelectedRowIndex(index);
     markViewerRuleRead(index);
   };
   const openReportScreen = (nextScreen: ReportScreen): void => {
@@ -177,7 +186,10 @@ export const Report = ({
       label: `Review ${diagnosticRows.length} ${issueLabel}`,
       onSelect: () => {
         recordReportAction("view-issues");
-        markViewerRuleRead(viewerSelectedIndex);
+        if (resolvedViewerSelectedRowIndex !== null) {
+          setViewerSelectedRowIndex(resolvedViewerSelectedRowIndex);
+          markViewerRuleRead(resolvedViewerSelectedRowIndex);
+        }
         openReportScreen(ISSUES_SCREEN);
       },
     });
@@ -297,6 +309,7 @@ export const Report = ({
       <DiagnosticList
         header={reportLayout.showsViewerScoreHeader ? viewerScoreHeader : null}
         rows={diagnosticRows}
+        entries={diagnosticListEntries}
         width={reportLayout.width}
         listColumnWidth={reportLayout.listColumnWidth}
         detailColumnWidth={reportLayout.detailColumnWidth}
@@ -306,9 +319,9 @@ export const Report = ({
         rootDirectory={report.rootDirectory}
         projectName={report.projectName}
         projectCount={projectCount}
-        initialSelectedIndex={viewerSelectedIndex}
+        initialSelectedRowIndex={resolvedViewerSelectedRowIndex}
         readRuleKeys={viewerReadRuleKeys}
-        onSelectedIndexChange={handleViewerSelectionChange}
+        onSelectedRowIndexChange={handleViewerSelectionChange}
         onQuit={onQuit}
         onBack={() => {
           setLandingSelectedIndex(Math.max(0, postReviewLandingActionIndex));

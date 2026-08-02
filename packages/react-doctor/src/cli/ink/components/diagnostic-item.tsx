@@ -22,7 +22,7 @@ export const DiagnosticItem = ({ row, isSelected, isRead }: DiagnosticItemProps)
       <Text color={markerColor}>{marker}</Text>
       <Text color={shouldHighlightSeverity ? variant.color : undefined}>{`${variant.icon} `}</Text>
       <Text color={shouldHighlightSeverity ? variant.color : undefined} bold={isSelected}>
-        {row.category}: {row.title}
+        {row.title}
       </Text>
       {row.siteCount > 1 ? <Text dimColor> ×{row.siteCount}</Text> : null}
     </Text>

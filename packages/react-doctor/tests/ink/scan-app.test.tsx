@@ -150,9 +150,8 @@ describe("ScanApp", () => {
       .filter((frame) => frame.includes("issue unread"));
     expect(unreadFrames.length).toBeGreaterThan(0);
     expect(unreadFrames.every((frame) => frame.includes("1 issue unread"))).toBe(true);
-    expect(issueFrame).toContain(
-      `› ${severityVariant("error").icon} Correctness: react-doctor/rules-of-hooks`,
-    );
+    expect(issueFrame).toContain("Correctness");
+    expect(issueFrame).toContain(`› ${severityVariant("error").icon} react-doctor/rules-of-hooks`);
     expect(issueFrame).toContain("react-doctor/rules-of-hooks");
     expect(issueFrame).toContain("Correctness · error");
     expect(issueFrame).toContain("×2");
@@ -395,7 +394,8 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
     expect(lastFrame()).toContain("issue 2/2");
-    expect(lastFrame()).toMatch(/› [⚠!] State & Effects: react-doctor\/no-array-index-key/);
+    expect(lastFrame()).toContain("State & Effects");
+    expect(lastFrame()).toMatch(/› [⚠!] react-doctor\/no-array-index-key/);
     expect(lastFrame()).toContain("0 issues unread");
 
     stdin.write("q");
@@ -738,7 +738,7 @@ describe("ScanApp", () => {
     resizeTerminal(stdout, { columns: 60, rows: 8 });
     await flush();
 
-    expect(lastFrame()).toMatch(/› [⚠!] Correctness: Resize finding 12/);
+    expect(lastFrame()).toMatch(/› [⚠!] Resize finding 12/);
     expect(lastFrame()).toContain("issue 13/20");
     unmount();
   });
@@ -852,7 +852,8 @@ describe("ScanApp", () => {
       "Scan every pull request to prevent new React issues while you fix the backlog.",
     );
     expect(lastFrame()).toContain("Used by teams at PayPal, Rippling, and Alibaba.");
-    expect(lastFrame()).toContain("Adds a workflow file and a `doctor` package script.");
+    expect(lastFrame()).toContain("GitHub Actions setup guide");
+    expect(lastFrame()).not.toContain("`doctor` package script");
     expect(lastFrame()).toContain(`${figures.pointer} Yes, add the workflow`);
     expect(lastFrame()).toContain("Open the GitHub Actions guide");
 

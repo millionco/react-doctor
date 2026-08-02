@@ -609,6 +609,53 @@ describe("no-effect-chain — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("reports a local state chain isolated from an object URL cleanup branch", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ data, imageError, onError }) {
+        const [error, setError] = useState();
+        const [imageObjectUrl, setImageObjectUrl] = useState();
+        useEffect(() => {
+          if (error) onError(error);
+        }, [error, onError]);
+        useEffect(() => {
+          if (imageError) {
+            setError(imageError);
+            return undefined;
+          }
+          if (!data) return undefined;
+          const objectUrl = URL.createObjectURL(data);
+          setImageObjectUrl(objectUrl);
+          return () => URL.revokeObjectURL(objectUrl);
+        }, [data, imageError]);
+        return imageObjectUrl;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain('changes "error"');
+  });
+
+  it("keeps a state write on the object URL lifecycle path quiet", () => {
+    const result = runRule(
+      noEffectChain,
+      `function Image({ data }) {
+        const [imageObjectUrl, setImageObjectUrl] = useState();
+        const [status, setStatus] = useState("idle");
+        useEffect(() => {
+          if (!data) return undefined;
+          const objectUrl = URL.createObjectURL(data);
+          setImageObjectUrl(objectUrl);
+          return () => URL.revokeObjectURL(objectUrl);
+        }, [data]);
+        useEffect(() => setStatus(imageObjectUrl ? "ready" : "idle"), [imageObjectUrl]);
+        return status;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Docs-validation r2 docMismatch (Security.jsx): the downstream effect
   // only persists state to localStorage — synchronizing with an external
   // system, which the doc excludes; no re-render chain exists.

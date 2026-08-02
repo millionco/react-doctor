@@ -12,6 +12,7 @@ import {
   HOOKS_WITH_DEPS,
 } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { canNodeReachNode } from "../../utils/can-node-reach-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
@@ -29,6 +30,7 @@ import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineIntrinsicRefCallback } from "../../utils/is-inline-intrinsic-ref-callback.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { nodesCanCoExecute } from "../../utils/nodes-can-co-execute.js";
 import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
 import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -265,6 +267,7 @@ interface StaticEffectStateValue {
 interface EffectStateWriteInfo {
   values: Set<boolean | number | string | null | undefined>;
   hasUnknownValue: boolean;
+  nodes: EsTreeNodeOfType<"CallExpression">[];
 }
 
 const readStaticEffectValue = (
@@ -503,10 +506,12 @@ const collectStateWritesInEffect = (
     const writeInfo = stateWrites.get(stateName) ?? {
       values: new Set<boolean | number | string | null | undefined>(),
       hasUnknownValue: false,
+      nodes: [],
     };
     const staticValue = readStaticSetterValue(child, scopes);
     if (staticValue) writeInfo.values.add(staticValue.value);
     else writeInfo.hasUnknownValue = true;
+    writeInfo.nodes.push(child);
     stateWrites.set(stateName, writeInfo);
   });
   return stateWrites;
@@ -2226,18 +2231,16 @@ const isExternalSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   );
 };
 
-const isExternalSyncEffect = (
+const collectExternalSyncAnchors = (
   effectCallback: EsTreeNode,
   analysisFunctions: ReadonlySet<EsTreeNode>,
   setterToStateName: ReadonlyMap<string, string>,
   setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
   allowCommittedDomSync: boolean,
-): boolean => {
-  if (!isFunctionLike(effectCallback)) return false;
-  // A cleanup return is the strongest signal that the effect owns
-  // an external resource — once we see one, we don't need to inspect
-  // the body for an external-sync call shape.
+): EsTreeNode[] => {
+  if (!isFunctionLike(effectCallback)) return [];
+  const externalSyncAnchors: EsTreeNode[] = [];
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
     if (
       isFunctionShapedReturn(
@@ -2248,7 +2251,7 @@ const isExternalSyncEffect = (
         false,
       )
     ) {
-      return true;
+      externalSyncAnchors.push(effectCallback.body);
     }
   } else {
     for (const statement of effectCallback.body.body ?? []) {
@@ -2263,22 +2266,49 @@ const isExternalSyncEffect = (
           true,
         )
       ) {
-        return true;
+        externalSyncAnchors.push(statement);
       }
     }
   }
 
-  let didFindExternalCall = false;
   visitSynchronousFunctionBodies(analysisFunctions, (child) => {
     if (
       isExternalSyncNode(child, scopes) ||
       (allowCommittedDomSync && isCommittedDomSyncNode(child, scopes))
     ) {
-      didFindExternalCall = true;
+      externalSyncAnchors.push(child);
     }
   });
 
-  return didFindExternalCall;
+  return externalSyncAnchors;
+};
+
+const collectExternallySynchronizedStateNames = (
+  stateWrites: ReadonlyMap<string, EffectStateWriteInfo>,
+  externalSyncAnchors: readonly EsTreeNode[],
+  context: RuleContext,
+): Set<string> => {
+  const externallySynchronizedStateNames = new Set<string>();
+  if (externalSyncAnchors.length === 0) return externallySynchronizedStateNames;
+  for (const [stateName, writeInfo] of stateWrites) {
+    const areAllWritesPartOfExternalSync = writeInfo.nodes.every((writeNode) => {
+      const writeOwner = context.cfg.enclosingFunction(writeNode);
+      const functionCfg = writeOwner ? context.cfg.cfgFor(writeOwner) : null;
+      if (!writeOwner || !functionCfg) return true;
+      const sameOwnerAnchors = externalSyncAnchors.filter(
+        (anchor) => context.cfg.enclosingFunction(anchor) === writeOwner,
+      );
+      if (sameOwnerAnchors.length === 0) return true;
+      return sameOwnerAnchors.some(
+        (anchor) =>
+          nodesCanCoExecute(writeNode, anchor, context) &&
+          (canNodeReachNode(writeNode, anchor, functionCfg) ||
+            canNodeReachNode(anchor, writeNode, functionCfg)),
+      );
+    });
+    if (areAllWritesPartOfExternalSync) externallySynchronizedStateNames.add(stateName);
+  }
+  return externallySynchronizedStateNames;
 };
 
 interface EffectInfo {
@@ -2288,6 +2318,7 @@ interface EffectInfo {
   stateWrites: Map<string, EffectStateWriteInfo>;
   analysisFunctions: ReadonlySet<EsTreeNode>;
   isExternalSync: boolean;
+  externallySynchronizedStateNames: ReadonlySet<string>;
 }
 
 export const noEffectChain = defineRule({
@@ -2340,6 +2371,15 @@ export const noEffectChain = defineRule({
           context.scopes,
         );
         const writtenStateNames = new Set(stateWrites.keys());
+        const externalSyncAnchors = collectExternalSyncAnchors(
+          callback,
+          analysisFunctions,
+          setterToStateName,
+          setterSymbolIdToStateName,
+          context.scopes,
+          writtenStateNames.size === 0,
+        );
+        const doesCallStorageSetter = callsStorageHookSetter(analysisFunctions, storageSetterNames);
         effectInfos.push({
           node: effectCall,
           callback,
@@ -2351,24 +2391,19 @@ export const noEffectChain = defineRule({
           stateWrites,
           analysisFunctions,
           isExternalSync:
-            isExternalSyncEffect(
-              callback,
-              analysisFunctions,
-              setterToStateName,
-              setterSymbolIdToStateName,
-              context.scopes,
-              writtenStateNames.size === 0,
-            ) ||
-            callsStorageHookSetter(analysisFunctions, storageSetterNames) ||
+            externalSyncAnchors.length > 0 ||
+            doesCallStorageSetter ||
             (writtenStateNames.size === 0 &&
               callsOpaqueExternalSetter(analysisFunctions, setterToStateName)),
+          externallySynchronizedStateNames: doesCallStorageSetter
+            ? writtenStateNames
+            : collectExternallySynchronizedStateNames(stateWrites, externalSyncAnchors, context),
         });
       }
       if (effectInfos.length < 2) return;
 
       const reportedNodes = new Set<EsTreeNode>();
       for (const writerEffect of effectInfos) {
-        if (writerEffect.isExternalSync) continue;
         if (writerEffect.stateWrites.size === 0) continue;
         for (const readerEffect of effectInfos) {
           if (readerEffect === writerEffect) continue;
@@ -2377,6 +2412,7 @@ export const noEffectChain = defineRule({
 
           let chainedStateName: string | null = null;
           for (const writtenName of writerEffect.stateWrites.keys()) {
+            if (writerEffect.externallySynchronizedStateNames.has(writtenName)) continue;
             const writtenStateSymbolId = stateSymbolIds.get(writtenName);
             if (
               writtenStateSymbolId === undefined ||

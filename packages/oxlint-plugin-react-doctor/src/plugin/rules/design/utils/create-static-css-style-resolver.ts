@@ -22,7 +22,6 @@ const TRACKED_CSS_PROPERTIES = new Set([
 ]);
 const REACT_ROOT_HEIGHT_TARGETS: ReadonlyArray<"body" | "html" | "root"> = ["html", "body", "root"];
 const CSS_PSEUDO_ELEMENT_PATTERN = /::|:(?:after|before|first-letter|first-line)\b/i;
-const SCRIPT_FILE_EXTENSION_PATTERN = /\.[cm]?[jt]sx?$/i;
 const STATIC_CSS_IMPORT_PATTERN =
   /(?:^|[;\n])\s*import\s+(?:[^;\n]*?\s+from\s+)?["']([^"']+\.css(?:[?#][^"']*)?)["']/gm;
 
@@ -160,6 +159,8 @@ const parseCompoundSelector = (source: string): StaticCssCompoundSelector | null
 };
 
 const parseSelector = (source: string): StaticCssSelector | null => {
+  const selectorFunctionMatch = /^:(?:is|where)\((.*)\)$/i.exec(source.trim());
+  if (selectorFunctionMatch) return parseSelector(selectorFunctionMatch[1]);
   const normalizedSource = source
     .trim()
     .replace(/\s*>\s*/g, ">")
@@ -183,6 +184,15 @@ const parseSelector = (source: string): StaticCssSelector | null => {
   }
   if (compounds.length !== combinators.length + 1) return null;
   return { combinators, compounds };
+};
+
+const parsePotentiallyMatchingSelector = (source: string): StaticCssSelector | null => {
+  if (/:+(?:has|not)\(/i.test(source)) return null;
+  const withoutDynamicPseudoClasses = source.replace(
+    /:(?:active|any-link|checked|default|disabled|empty|enabled|focus|focus-visible|focus-within|hover|indeterminate|link|optional|required|target|valid|visited)\b/gi,
+    "",
+  );
+  return parseSelector(withoutDynamicPseudoClasses);
 };
 
 const addAmbiguousDeclarations = (
@@ -222,14 +232,17 @@ const parseStylesheet = (source: string): ParsedStylesheets => {
       }
     } else if (declarations.size > 0) {
       const selectors: StaticCssSelector[] = [];
-      let hasUnsupportedSelector = false;
       for (const selectorSource of splitTopLevel(prelude, ",")) {
         if (CSS_PSEUDO_ELEMENT_PATTERN.test(selectorSource)) continue;
         const selector = parseSelector(selectorSource);
         if (selector) selectors.push(selector);
-        else hasUnsupportedSelector = true;
+        else {
+          const potentiallyMatchingSelector = parsePotentiallyMatchingSelector(selectorSource);
+          if (potentiallyMatchingSelector) {
+            ambiguousRules.push({ declarations, selectors: [potentiallyMatchingSelector] });
+          }
+        }
       }
-      if (hasUnsupportedSelector) addAmbiguousDeclarations(declarations, ambiguousProperties);
       if (selectors.length > 0) rules.push({ declarations, selectors });
     }
     index = closingBraceIndex;
@@ -344,29 +357,22 @@ const stylesheetsHaveDefiniteReactRootHeight = (stylesheets: ParsedStylesheets):
   });
 };
 
-const findImportedSiblingStylesheetPaths = (
-  directoryPath: string,
-  directoryEntries: ReadonlyArray<fs.Dirent>,
-): ReadonlySet<string> => {
+const findImportedSiblingStylesheetPaths = (filename: string): ReadonlySet<string> => {
   const importedStylesheetPaths = new Set<string>();
-  for (const entry of directoryEntries) {
-    if (!entry.isFile() || !SCRIPT_FILE_EXTENSION_PATTERN.test(entry.name)) continue;
-    const sourcePath = path.join(directoryPath, entry.name);
-    recordContentProbe(sourcePath);
-    try {
-      const fileStat = fs.statSync(sourcePath);
-      if (fileStat.size > CROSS_FILE_PARSE_MAX_BYTES) continue;
-      const source = fs.readFileSync(sourcePath, "utf8");
-      for (const match of source.matchAll(STATIC_CSS_IMPORT_PATTERN)) {
-        const importSource = match[1].split(/[?#]/, 1)[0];
-        if (!importSource.startsWith(".")) continue;
-        const stylesheetPath = path.resolve(directoryPath, importSource);
-        if (path.dirname(stylesheetPath) === directoryPath) {
-          importedStylesheetPaths.add(stylesheetPath);
-        }
+  const directoryPath = path.dirname(filename);
+  try {
+    const fileStat = fs.statSync(filename);
+    if (fileStat.size > CROSS_FILE_PARSE_MAX_BYTES) return importedStylesheetPaths;
+    const source = fs.readFileSync(filename, "utf8");
+    for (const match of source.matchAll(STATIC_CSS_IMPORT_PATTERN)) {
+      const importSource = match[1].split(/[?#]/, 1)[0];
+      if (!importSource.startsWith(".")) continue;
+      const stylesheetPath = path.resolve(directoryPath, importSource);
+      if (path.dirname(stylesheetPath) === directoryPath) {
+        importedStylesheetPaths.add(stylesheetPath);
       }
-    } catch {}
-  }
+    }
+  } catch {}
   return importedStylesheetPaths;
 };
 
@@ -381,10 +387,7 @@ const loadSiblingStylesheets = (filename: string): ParsedStylesheets => {
     return { ambiguousProperties, ambiguousRules, rules };
   }
   const directoryPath = path.dirname(filename);
-  const importedStylesheetPaths = findImportedSiblingStylesheetPaths(
-    directoryPath,
-    directoryEntries,
-  );
+  const importedStylesheetPaths = findImportedSiblingStylesheetPaths(filename);
   for (const entry of directoryEntries) {
     if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".css")) continue;
     const stylesheetPath = path.join(directoryPath, entry.name);

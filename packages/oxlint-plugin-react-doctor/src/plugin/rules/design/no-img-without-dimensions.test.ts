@@ -5,12 +5,18 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noImgWithoutDimensions } from "./no-img-without-dimensions.js";
 
-const runRuleWithSiblingCss = (code: string, css: string, shouldImportStylesheet = true) => {
+const runRuleWithSiblingCss = (
+  code: string,
+  css: string,
+  shouldImportStylesheet = true,
+  siblingSource: string | null = null,
+) => {
   const directoryPath = fs.mkdtempSync(path.join(os.tmpdir(), "rd-img-css-"));
   const filename = path.join(directoryPath, "app.tsx");
   const source = `${shouldImportStylesheet ? 'import "./styles.css";\n' : ""}${code}`;
   fs.writeFileSync(filename, source);
   fs.writeFileSync(path.join(directoryPath, "styles.css"), css);
+  if (siblingSource) fs.writeFileSync(path.join(directoryPath, "sibling.tsx"), siblingSource);
   try {
     return runRule(noImgWithoutDimensions, source, { filename });
   } finally {
@@ -92,6 +98,24 @@ describe("no-img-without-dimensions", () => {
     expect(positionSpecificDimensions.diagnostics).toHaveLength(0);
   });
 
+  it("composes non-sizing and partial inline styles with imported CSS", () => {
+    const nonSizingInlineStyle = runRuleWithSiblingCss(
+      `const Feed = () => <img src="/place.jpg" alt="" style={{ objectFit: "cover" }} />;`,
+      `img { width: 100%; height: 178px; }`,
+    );
+    const partialInlineStyle = runRuleWithSiblingCss(
+      `const Feed = () => <img src="/place.jpg" alt="" style={{ width: "100%" }} />;`,
+      `img { height: 178px; }`,
+    );
+    const inlineOverride = runRuleWithSiblingCss(
+      `const Feed = () => <img src="/place.jpg" alt="" style={{ height: "auto" }} />;`,
+      `img { width: 100%; height: 178px; }`,
+    );
+    expect(nonSizingInlineStyle.diagnostics).toHaveLength(0);
+    expect(partialInlineStyle.diagnostics).toHaveLength(0);
+    expect(inlineOverride.diagnostics).toHaveLength(1);
+  });
+
   it("allows a full-size image in a definitively stretched flex item", () => {
     const result = runRuleWithSiblingCss(
       `const Map = () => <main><div className="body"><section /><aside><img src="/map.jpg" alt="" /></aside></div></main>;`,
@@ -99,6 +123,17 @@ describe("no-img-without-dimensions", () => {
        .body { display: flex; height: calc(100vh - 48px); }
        aside { flex: 1; }
        aside > img { width: 100%; height: 100%; object-fit: cover; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps external parent sizing when inline styles do not override layout", () => {
+    const result = runRuleWithSiblingCss(
+      `const Map = () => <main><div className="body" style={{ color: "red" }}><aside style={{ color: "blue" }}><img src="/map.jpg" alt="" /></aside></div></main>;`,
+      `main { width: 100vw; height: 100vh; }
+       .body { display: flex; height: calc(100vh - 48px); }
+       aside { flex: 1; }
+       aside > img { width: 100%; height: 100%; }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -134,10 +169,26 @@ describe("no-img-without-dimensions", () => {
       `section img { width: 768px; height: 400px; }`,
       false,
     );
+    const importedByAnotherModule = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }`,
+      false,
+      `import "./styles.css"; export const Other = () => null;`,
+    );
     expect(autoHeight.diagnostics).toHaveLength(1);
     expect(widthOnly.diagnostics).toHaveLength(1);
     expect(indefiniteParentHeight.diagnostics).toHaveLength(1);
     expect(unusedStylesheet.diagnostics).toHaveLength(1);
+    expect(importedByAnotherModule.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps unsupported selector ambiguity scoped to possible matches", () => {
+    const result = runRuleWithSiblingCss(
+      `const Gallery = () => <img src="/photo.jpg" alt="" />;`,
+      `img { width: 768px; height: 400px; }
+       .unrelated:hover { height: auto; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("reports when conditional or unsupported CSS can remove the reservation", () => {

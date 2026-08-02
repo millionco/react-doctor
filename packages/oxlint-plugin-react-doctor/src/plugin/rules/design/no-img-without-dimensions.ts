@@ -222,6 +222,50 @@ const getExternalCssBoxEvidence = (style: StaticCssStyle): ExternalCssBoxEvidenc
   };
 };
 
+const getExternalCssBoxEvidenceWithInlineOverrides = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+  resolver: StaticCssStyleResolver,
+): ExternalCssBoxEvidence | null => {
+  const externalEvidence = getExternalCssBoxEvidence(resolver.resolve(node));
+  const styleAttribute = getAuthoritativeJsxAttribute(node.attributes, "style", false);
+  if (!styleAttribute) return externalEvidence;
+  const expression = getInlineStyleExpression(styleAttribute, context.scopes);
+  if (!expression) return null;
+  const inlineEvidence = getReservedInlineBoxEvidence(node, context);
+  const overridesAspectRatio = Boolean(
+    getEffectiveStyleProperty(expression.properties, "aspectRatio"),
+  );
+  const overridesHeight = Boolean(getEffectiveStyleProperty(expression.properties, "height"));
+  const overridesWidth = Boolean(getEffectiveStyleProperty(expression.properties, "width"));
+  return {
+    hasAspectRatio: overridesAspectRatio
+      ? inlineEvidence.hasAspectRatio
+      : externalEvidence.hasAspectRatio,
+    hasHeight: overridesHeight ? inlineEvidence.hasHeight : externalEvidence.hasHeight,
+    hasWidth: overridesWidth ? inlineEvidence.hasWidth : externalEvidence.hasWidth,
+    heightReservesWithParent: overridesHeight ? false : externalEvidence.heightReservesWithParent,
+    widthReservesWithParent: overridesWidth ? false : externalEvidence.widthReservesWithParent,
+  };
+};
+
+const inlineStyleOverridesAny = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
+  propertyNames: ReadonlyArray<string>,
+): boolean => {
+  const styleAttribute = getAuthoritativeJsxAttribute(node.attributes, "style", false);
+  const expression = styleAttribute
+    ? getInlineStyleExpression(styleAttribute, context.scopes)
+    : null;
+  return Boolean(
+    expression &&
+    propertyNames.some((propertyName) =>
+      getEffectiveStyleProperty(expression.properties, propertyName),
+    ),
+  );
+};
+
 const getConsistentExternalCssValue = (style: StaticCssStyle, property: string): string | null => {
   const values = getExternalCssValues(style, property);
   return values.length > 0 && values.every((value) => value === values[0]) ? values[0] : null;
@@ -242,13 +286,16 @@ const externalCssHasPositiveFlexGrow = (style: StaticCssStyle): boolean => {
 
 const getExternalCssElementBoxAxes = (
   elementOpeningElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
   resolver: StaticCssStyleResolver,
 ): ParentBoxAxes => {
-  if (getAuthoritativeJsxAttribute(elementOpeningElement.attributes, "style", false)) {
-    return { hasHeight: false, hasWidth: false };
-  }
   const style = resolver.resolve(elementOpeningElement);
-  const evidence = getExternalCssBoxEvidence(style);
+  const evidence = getExternalCssBoxEvidenceWithInlineOverrides(
+    elementOpeningElement,
+    context,
+    resolver,
+  );
+  if (!evidence) return { hasHeight: false, hasWidth: false };
   const elementName = resolveJsxElementType(elementOpeningElement);
   const element = elementOpeningElement.parent;
   const parentElement = element?.parent;
@@ -257,7 +304,7 @@ const getExternalCssElementBoxAxes = (
       ? parentElement.openingElement
       : null;
   const parentAxes = parentOpeningElement
-    ? getExternalCssElementBoxAxes(parentOpeningElement, resolver)
+    ? getExternalCssElementBoxAxes(parentOpeningElement, context, resolver)
     : { hasHeight: resolver.hasDefiniteReactRootHeight, hasWidth: true };
   let hasWidth =
     evidence.hasWidth ||
@@ -269,6 +316,17 @@ const getExternalCssElementBoxAxes = (
     hasWidth ||= hasHeight;
   }
   if (!parentOpeningElement) return { hasHeight, hasWidth };
+  if (
+    inlineStyleOverridesAny(elementOpeningElement, context, ["alignSelf", "flex", "flexGrow"]) ||
+    inlineStyleOverridesAny(parentOpeningElement, context, [
+      "alignItems",
+      "display",
+      "flexDirection",
+      "flexWrap",
+    ])
+  ) {
+    return { hasHeight, hasWidth };
+  }
   const parentStyle = resolver.resolve(parentOpeningElement);
   const display = getConsistentExternalCssValue(parentStyle, "display");
   const flexDirection = getConsistentExternalCssValue(parentStyle, "flex-direction") ?? "row";
@@ -294,28 +352,28 @@ const getExternalCssElementBoxAxes = (
 
 const getExternalCssParentBoxAxes = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
   resolver: StaticCssStyleResolver,
 ): ParentBoxAxes => {
   const imageElement = node.parent;
   const parentElement = imageElement?.parent;
   return isNodeOfType(imageElement, "JSXElement") && isNodeOfType(parentElement, "JSXElement")
-    ? getExternalCssElementBoxAxes(parentElement.openingElement, resolver)
+    ? getExternalCssElementBoxAxes(parentElement.openingElement, context, resolver)
     : { hasHeight: false, hasWidth: false };
 };
 
 const hasReservedExternalCssBox = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
+  context: RuleContext,
   resolver: StaticCssStyleResolver,
 ): boolean => {
-  if (
-    getAuthoritativeJsxAttribute(node.attributes, "className", false) ||
-    getAuthoritativeJsxAttribute(node.attributes, "style", false)
-  ) {
+  if (getAuthoritativeJsxAttribute(node.attributes, "className", false)) {
     return false;
   }
-  const evidence = getExternalCssBoxEvidence(resolver.resolve(node));
+  const evidence = getExternalCssBoxEvidenceWithInlineOverrides(node, context, resolver);
+  if (!evidence) return false;
   if (evidenceReservesBox(evidence, false)) return true;
-  const parentAxes = getExternalCssParentBoxAxes(node, resolver);
+  const parentAxes = getExternalCssParentBoxAxes(node, context, resolver);
   const hasWidth = evidence.hasWidth || (evidence.widthReservesWithParent && parentAxes.hasWidth);
   const hasHeight =
     evidence.hasHeight || (evidence.heightReservesWithParent && parentAxes.hasHeight);
@@ -492,7 +550,9 @@ const getReservedInlineBoxEvidence = (
   context: RuleContext,
 ): ReservedImageBoxEvidence => {
   const styleAttribute = getAuthoritativeJsxAttribute(node.attributes, "style", false);
-  const expression = styleAttribute ? getInlineStyleExpression(styleAttribute) : null;
+  const expression = styleAttribute
+    ? getInlineStyleExpression(styleAttribute, context.scopes)
+    : null;
   if (!expression) return { hasAspectRatio: false, hasHeight: false, hasWidth: false };
   return {
     hasAspectRatio: stylePropertyMayReserveSpace(
@@ -746,7 +806,7 @@ export const noImgWithoutDimensions = defineRule({
         if (
           hasReservedImageBox(node, context, hasTailwind) ||
           hasReservedParentBox(node, context, hasTailwind) ||
-          hasReservedExternalCssBox(node, staticCssStyleResolver)
+          hasReservedExternalCssBox(node, context, staticCssStyleResolver)
         ) {
           return;
         }

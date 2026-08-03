@@ -32,11 +32,39 @@ describe("r3f-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("reports repeated meshes stored in a local binding and rendered as children", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ geometry, material }) => {
+         const meshes = [0, 1].map((index) => (
+           <mesh key={index} geometry={geometry} material={material} />
+         ));
+         return <group>{meshes}</group>;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports transparent TypeScript resource references", () => {
     const result = runRule(
       r3fPreferInstancedMesh,
       `${R3F_RUNTIME_IMPORT}
        const Scene = ({ geometry, material }) => <>{[0, 1].map((index) => <mesh key={index} geometry={geometry!} material={material as Material} />)}</>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports data properties from a local resource object", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ geometry, material }) => {
+         const resources = { geometry, material };
+         return [0, 1].map((index) => (
+           <mesh key={index} geometry={resources.geometry} material={resources.material} />
+         ));
+       };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -136,6 +164,45 @@ describe("r3f-prefer-instanced-mesh", () => {
          };
          const resources = { mesh: meshResources, material };
          return [0, 1].map(() => <mesh geometry={resources.mesh.geometry} material={resources.material} />);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows resource members reached through an alias that is mutated by the callback", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ firstGeometry, material }) => {
+         const resources = { geometry: firstGeometry, material };
+         return [0, 1].map((index) => {
+           const mutableResources = resources;
+           mutableResources.geometry = createGeometry(index);
+           return <mesh geometry={resources.geometry} material={resources.material} />;
+         });
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows mesh elements stored in a JSX prop instead of rendered as children", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ geometry, material }) => (
+         <group userData={{ samples: [0, 1].map(() => <mesh geometry={geometry} material={material} />) }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows a local repeated-mesh binding consumed only by a JSX prop", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ geometry, material }) => {
+         const samples = [0, 1].map(() => <mesh geometry={geometry} material={material} />);
+         return <group userData={{ samples }} />;
        };`,
     );
     expect(result.diagnostics).toHaveLength(0);

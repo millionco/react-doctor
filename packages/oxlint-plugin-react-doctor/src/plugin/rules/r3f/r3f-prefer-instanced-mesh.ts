@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { collectLocalValueReferences } from "../../utils/collect-local-value-references.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -79,6 +80,33 @@ const hasNonRenderingAncestor = (
   return false;
 };
 
+const isRenderedWithinExpression = (node: EsTreeNode, expression: EsTreeNode): boolean => {
+  if (!isAstDescendant(node, expression)) return false;
+  let current: EsTreeNode | null | undefined = node;
+  while (current && current !== expression) {
+    if (isNodeOfType(current, "JSXAttribute")) return false;
+    current = current.parent;
+  }
+  return true;
+};
+
+const isMapResultRenderedByOwner = (
+  mapCall: EsTreeNodeOfType<"CallExpression">,
+  renderOwner: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const mapValueReferences = collectLocalValueReferences(mapCall, context);
+  return functionReturnsMatchingExpression(
+    renderOwner,
+    context.scopes,
+    (returnedExpression) =>
+      mapValueReferences.some((reference) =>
+        isRenderedWithinExpression(reference, returnedExpression),
+      ),
+    context.cfg,
+  );
+};
+
 export const r3fPreferInstancedMesh = defineRule({
   id: "r3f-prefer-instanced-mesh",
   title: "Repeated R3F meshes use separate draw calls",
@@ -124,15 +152,7 @@ export const r3fPreferInstancedMesh = defineRule({
           context,
         ).filter((mapCall) => {
           const renderOwner = findRenderPhaseComponentOrHook(mapCall, context.scopes);
-          return Boolean(
-            renderOwner &&
-            functionReturnsMatchingExpression(
-              renderOwner,
-              context.scopes,
-              (returnedExpression) => isAstDescendant(mapCall, returnedExpression),
-              context.cfg,
-            ),
-          );
+          return Boolean(renderOwner && isMapResultRenderedByOwner(mapCall, renderOwner, context));
         });
         if (repeatedRenderedMaps.length === 0) return;
         context.report({

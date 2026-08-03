@@ -42,12 +42,48 @@ describe("three-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports repeated mesh arrays stored in a local binding before being added", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       const meshes = [0, 1].map(() => new Mesh(geometry, material));
+       scene.add(...meshes);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a returned mesh binding added inside every callback execution", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       [0, 1].map(() => {
+         const mesh = new Mesh(geometry, material);
+         scene.add(mesh);
+         return mesh;
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports transparent TypeScript resource references", () => {
     const result = runRule(
       threePreferInstancedMesh,
       `import { Mesh, Scene } from "three";
        const scene = new Scene();
        scene.add(...[0, 1].map(() => new Mesh(geometry!, material as Material)));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports data properties from a local resource object", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       const resources = { geometry, material };
+       scene.add(...[0, 1].map(() => new Mesh(resources.geometry, resources.material)));`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -123,6 +159,34 @@ describe("three-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("allows a mesh binding added only on a conditional callback path", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       [0, 1].map((index) => {
+         const mesh = new Mesh(geometry, material);
+         if (index > 0) scene.add(mesh);
+         return mesh;
+       });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports returned meshes with per-instance transform updates", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       scene.add(...[0, 1].map((index) => {
+         const mesh = new Mesh(geometry, material);
+         mesh.position.x = index;
+         return mesh;
+       }));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("allows Mesh objects that are not returned by the added map", () => {
     const result = runRule(
       threePreferInstancedMesh,
@@ -162,6 +226,40 @@ describe("three-prefer-instanced-mesh", () => {
        };
        const resources = { mesh: meshResources, material };
        scene.add(...[0, 1].map(() => new Mesh(resources.mesh.geometry, resources.material)));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows resource members reached through an alias that is mutated by the callback", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       const resources = { geometry: firstGeometry, material };
+       scene.add(...[0, 1].map((index) => {
+         const mutableResources = resources;
+         mutableResources.geometry = createGeometry(index);
+         return new Mesh(resources.geometry, resources.material);
+       }));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows returned meshes whose geometry or object semantics change after construction", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Object3D, Scene } from "three";
+       const scene = new Scene();
+       scene.add(...[0, 1].map((index) => {
+         const mesh = new Mesh(geometry, material);
+         mesh.geometry = createGeometry(index);
+         return mesh;
+       }));
+       scene.add(...[0, 1].map(() => {
+         const mesh = new Mesh(geometry, material);
+         mesh.add(new Object3D());
+         return mesh;
+       }));`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

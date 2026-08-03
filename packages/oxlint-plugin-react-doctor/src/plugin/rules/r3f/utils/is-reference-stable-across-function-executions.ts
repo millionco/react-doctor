@@ -45,16 +45,58 @@ const hasUnstableLocalMemberSource = (expression: EsTreeNode, context: RuleConte
   return propertyValue === null || propertyValue === undefined;
 };
 
+const isExpressionKeyAffectedByWrite = (
+  expressionKey: string,
+  writeTarget: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const writeKey = resolveExpressionKey(writeTarget, context);
+  return Boolean(
+    writeKey && (writeKey === expressionKey || expressionKey.startsWith(`${writeKey}.`)),
+  );
+};
+
+const isExpressionWrittenWithinFunction = (
+  expressionKey: string,
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let isWritten = false;
+  walkAst(functionNode, (descendant) => {
+    if (isWritten) return false;
+    if (descendant !== functionNode && /Function/.test(descendant.type)) return false;
+    if (
+      isNodeOfType(descendant, "AssignmentExpression") &&
+      isExpressionKeyAffectedByWrite(expressionKey, descendant.left, context)
+    ) {
+      isWritten = true;
+      return false;
+    }
+    if (
+      (isNodeOfType(descendant, "UpdateExpression") ||
+        (isNodeOfType(descendant, "UnaryExpression") && descendant.operator === "delete")) &&
+      isExpressionKeyAffectedByWrite(expressionKey, descendant.argument, context)
+    ) {
+      isWritten = true;
+      return false;
+    }
+  });
+  return isWritten;
+};
+
 export const isReferenceStableAcrossFunctionExecutions = (
   expression: EsTreeNode,
   functionNode: EsTreeNode,
   context: RuleContext,
 ): boolean => {
   const candidate = stripParenExpression(expression);
+  const expressionKey = resolveExpressionKey(candidate, context);
   if (
     (!isNodeOfType(candidate, "Identifier") && !isNodeOfType(candidate, "MemberExpression")) ||
-    !resolveExpressionKey(candidate, context) ||
-    hasUnstableLocalMemberSource(candidate, context)
+    !expressionKey ||
+    (isNodeOfType(candidate, "MemberExpression") &&
+      hasUnstableLocalMemberSource(candidate, context)) ||
+    isExpressionWrittenWithinFunction(expressionKey, functionNode, context)
   ) {
     return false;
   }

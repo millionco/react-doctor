@@ -1,5 +1,6 @@
 import type { Diagnostic, ReactDoctorConfig, ReactDoctorIgnoreOverride } from "./types/index.js";
 import { isPlainObject } from "./project-info/index.js";
+import { isSameRuleKey } from "./rule-key-aliases.js";
 import { compileGlobPatternsLenient } from "./utils/match-glob-pattern.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
@@ -14,6 +15,14 @@ const isStringArray = (value: unknown): value is string[] =>
 
 const collectStringList = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+
+const hasMatchingRuleOverride = (ruleIds: ReadonlySet<string>, ruleIdentifier: string): boolean => {
+  if (ruleIds.size === 0) return true;
+  for (const ruleId of ruleIds) {
+    if (isSameRuleKey(ruleId, ruleIdentifier)) return true;
+  }
+  return false;
+};
 
 const validateOverrideEntry = (entry: unknown, index: number): ReactDoctorIgnoreOverride | null => {
   if (!isPlainObject(entry)) {
@@ -73,6 +82,6 @@ export const isDiagnosticIgnoredByOverrides = (
   return overrides.some(
     (override) =>
       override.filePatterns.some((pattern) => pattern.test(relativeFilePath)) &&
-      (override.ruleIds.size === 0 || override.ruleIds.has(ruleIdentifier)),
+      hasMatchingRuleOverride(override.ruleIds, ruleIdentifier),
   );
 };

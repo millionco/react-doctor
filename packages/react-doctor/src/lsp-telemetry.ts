@@ -6,6 +6,7 @@ import type {
 } from "@react-doctor/language-server";
 import { SENTRY_DSN, SENTRY_FLUSH_TIMEOUT_MS, METRIC } from "./cli/utils/constants.js";
 import { toCategoryKey } from "./cli/utils/to-category-key.js";
+import { isEnvFlagEnabled } from "./cli/utils/is-env-flag-enabled.js";
 import { scrubSentryEvent } from "./cli/utils/scrub-sentry-event.js";
 import { scrubSentryMetric } from "./cli/utils/scrub-sentry-metric.js";
 import {
@@ -29,9 +30,6 @@ import {
  */
 
 let lspTracesSampleRate = 0;
-
-const isEnvFlagEnabled = (value: string | undefined): boolean =>
-  value === "1" || value?.toLowerCase() === "true";
 
 const nodeMajorVersion = (): number =>
   Number.parseInt(process.versions.node.split(".", 1)[0] ?? "", 10) || 0;

@@ -46,6 +46,20 @@ describe("r3f-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports a repeated rendered set even when another component path returns nothing", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ geometry, material, isReady }) => {
+         if (!isReady) return null;
+         return [0, 1].map((index) => (
+           <mesh key={index} geometry={geometry} material={material} />
+         ));
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports transparent TypeScript resource references", () => {
     const result = runRule(
       r3fPreferInstancedMesh,
@@ -178,6 +192,24 @@ describe("r3f-prefer-instanced-mesh", () => {
          return [0, 1].map((index) => {
            const mutableResources = resources;
            mutableResources.geometry = createGeometry(index);
+           return <mesh geometry={resources.geometry} material={resources.material} />;
+         });
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows resources mutated by an invoked local helper", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ firstGeometry, material }) => {
+         const resources = { geometry: firstGeometry, material };
+         return [0, 1].map((index) => {
+           const updateResources = () => {
+             resources.geometry = createGeometry(index);
+           };
+           updateResources();
            return <mesh geometry={resources.geometry} material={resources.material} />;
          });
        };`,

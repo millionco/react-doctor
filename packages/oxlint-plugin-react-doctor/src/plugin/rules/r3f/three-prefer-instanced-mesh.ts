@@ -9,7 +9,6 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import {
@@ -19,6 +18,7 @@ import {
 import { findProvablyRepeatedMapCallsForCallback } from "./utils/find-provably-repeated-map-calls-for-callback.js";
 import { getThreeConstructorName } from "./utils/get-three-constructor-name.js";
 import { isReferenceStableAcrossFunctionExecutions } from "./utils/is-reference-stable-across-function-executions.js";
+import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
 const THREE_OBJECT_CONTAINER_CONSTRUCTOR_NAMES = new Set(["Group", "Mesh", "Object3D", "Scene"]);
 
@@ -69,14 +69,13 @@ const hasIncompatibleMeshMutation = (
     [...meshKeys].flatMap((meshKey) => [`${meshKey}.geometry`, `${meshKey}.material`]),
   );
   let hasIncompatibleMutation = false;
-  walkAst(callback, (descendant) => {
-    if (hasIncompatibleMutation) return false;
-    if (descendant !== callback && /Function/.test(descendant.type)) return false;
+  walkFunctionExecution(callback, context.scopes, (descendant) => {
+    if (hasIncompatibleMutation) return;
     if (isNodeOfType(descendant, "AssignmentExpression")) {
       const assignmentKey = resolveExpressionKey(descendant.left, context);
       if (assignmentKey && incompatibleResourceKeys.has(assignmentKey)) {
         hasIncompatibleMutation = true;
-        return false;
+        return;
       }
     }
     if (
@@ -91,7 +90,6 @@ const hasIncompatibleMeshMutation = (
         (methodName === "add" || methodName === "attach" || methodName === "copy")
       ) {
         hasIncompatibleMutation = true;
-        return false;
       }
     }
   });

@@ -8,6 +8,7 @@ import { resolveExpressionKey } from "../../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
+import { walkFunctionExecution } from "./walk-function-execution.js";
 
 const getLocalObjectExpression = (
   expression: EsTreeNode,
@@ -62,15 +63,14 @@ const isExpressionWrittenWithinFunction = (
   context: RuleContext,
 ): boolean => {
   let isWritten = false;
-  walkAst(functionNode, (descendant) => {
-    if (isWritten) return false;
-    if (descendant !== functionNode && /Function/.test(descendant.type)) return false;
+  walkFunctionExecution(functionNode, context.scopes, (descendant) => {
+    if (isWritten) return;
     if (
       isNodeOfType(descendant, "AssignmentExpression") &&
       isExpressionKeyAffectedByWrite(expressionKey, descendant.left, context)
     ) {
       isWritten = true;
-      return false;
+      return;
     }
     if (
       (isNodeOfType(descendant, "UpdateExpression") ||
@@ -78,7 +78,6 @@ const isExpressionWrittenWithinFunction = (
       isExpressionKeyAffectedByWrite(expressionKey, descendant.argument, context)
     ) {
       isWritten = true;
-      return false;
     }
   });
   return isWritten;

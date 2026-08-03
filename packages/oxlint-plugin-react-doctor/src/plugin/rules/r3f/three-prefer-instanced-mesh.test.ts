@@ -245,6 +245,29 @@ describe("three-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows resources and mesh semantics mutated by invoked local helpers", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Object3D, Scene } from "three";
+       const scene = new Scene();
+       const resources = { geometry: firstGeometry, material };
+       scene.add(...[0, 1].map((index) => {
+         const updateResources = () => {
+           resources.geometry = createGeometry(index);
+         };
+         updateResources();
+         return new Mesh(resources.geometry, resources.material);
+       }));
+       scene.add(...[0, 1].map(() => {
+         const mesh = new Mesh(geometry, material);
+         const addChild = () => mesh.add(new Object3D());
+         addChild();
+         return mesh;
+       }));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows returned meshes whose geometry or object semantics change after construction", () => {
     const result = runRule(
       threePreferInstancedMesh,

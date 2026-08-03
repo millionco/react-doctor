@@ -12,6 +12,7 @@ import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 
 interface MockScanAppProps {
   readonly store?: ScanStore;
+  readonly displayMode?: "scan" | "report";
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
   readonly canAddToCi?: boolean;
   readonly onAddToCi?: () => void;
@@ -48,16 +49,20 @@ vi.mock("ink", async (importOriginal) => {
         queueMicrotask(() => node.props.onSubmit?.(mockState.projectDirectories));
       }
       if (React.isValidElement<MockScanAppProps>(node)) {
-        if (node.props.store) {
+        if (node.props.store && node.props.displayMode === "scan") {
           mockState.scanStores.push(node.props.store);
           mockState.initialProgressStates.push(node.props.store.getSnapshot().progress);
         }
-        mockState.ciRecommendationStates.push(Boolean(node.props.canAddToCi));
-        if (mockState.shouldRequestHandoff) {
+        if (node.props.displayMode === "report") {
+          mockState.ciRecommendationStates.push(Boolean(node.props.canAddToCi));
+        }
+        if (mockState.shouldRequestHandoff && node.props.displayMode === "report") {
           node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
         }
-        if (mockState.shouldSetUpCi) node.props.onAddToCi?.();
-        if (mockState.shouldQuit) node.props.onQuit?.();
+        if (mockState.shouldSetUpCi && node.props.displayMode === "report") {
+          node.props.onAddToCi?.();
+        }
+        if (mockState.shouldQuit && node.props.displayMode === "report") node.props.onQuit?.();
       }
       return {
         clear: vi.fn(() => {
@@ -226,7 +231,7 @@ describe("runScanApp", () => {
     });
   });
 
-  it("uses a disposable screen for scanning and report navigation", async () => {
+  it("keeps scanning inline and uses a disposable screen for report navigation", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
     mockState.projectDirectories.push(rootDirectory);
@@ -239,8 +244,18 @@ describe("runScanApp", () => {
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(vi.mocked(render).mock.calls[0]?.[1]).toEqual({
+      alternateScreen: false,
+      exitOnCtrlC: false,
+    });
+    expect(vi.mocked(render).mock.calls[1]?.[1]).toEqual({
       alternateScreen: true,
       exitOnCtrlC: false,
+    });
+    expect(vi.mocked(render).mock.calls[0]?.[0]).toMatchObject({
+      props: { displayMode: "scan" },
+    });
+    expect(vi.mocked(render).mock.calls[1]?.[0]).toMatchObject({
+      props: { displayMode: "report" },
     });
   });
 
@@ -578,7 +593,7 @@ describe("runScanApp", () => {
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(mockState.lifecycleEvents).not.toContain("footer");
-    expect(mockState.scanRendererClearCount).toBe(1);
+    expect(mockState.scanRendererClearCount).toBe(2);
   });
 
   it("runs confirmed CI setup even when the user quits", async () => {

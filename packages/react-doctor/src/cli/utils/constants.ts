@@ -338,6 +338,7 @@ export const METRIC = {
   tuiProjectPathContextShown: "tui.project_path_context_shown",
   tuiReportActionSelected: "tui.report_action_selected",
   tuiCancelled: "tui.cancelled",
+  tuiScanInlineShown: "tui.scan_inline_shown",
   tuiStackedReportCapped: "tui.stacked_report_capped",
   aiTrainingWarningShown: "ai.training.warning_shown",
   jsonOutUsed: "json.out_used",

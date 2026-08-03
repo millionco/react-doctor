@@ -329,10 +329,14 @@ interface PendingTuiActions {
 
 interface MountedScanApp {
   readonly store: ScanStore;
-  readonly instance: ReturnType<typeof render>;
   readonly pendingActions: PendingTuiActions;
-  readonly unregisterActiveTuiRenderer: () => void;
+  readonly mountRenderer: (displayMode: "scan" | "report") => MountedTuiRenderer;
   readonly executePendingActions: () => Promise<void>;
+}
+
+interface MountedTuiRenderer {
+  readonly instance: ReturnType<typeof render>;
+  readonly dispose: () => void;
 }
 
 const mountScanApp = async (
@@ -348,32 +352,42 @@ const mountScanApp = async (
     shouldSetUpCi: false,
     didQuit: false,
   };
-  const instance = render(
-    <ScanApp
-      store={store}
-      launchableAgents={launchableAgents}
-      onHandoff={(request) => {
-        pendingActions.handoffRequest = request;
-      }}
-      canAddToCi={shouldRecommendCi}
-      onAddToCi={() => {
-        pendingActions.shouldSetUpCi = true;
-      }}
-      onQuit={() => {
-        pendingActions.didQuit = true;
-      }}
-    />,
-    { alternateScreen: true, exitOnCtrlC: false },
-  );
-  const unregisterActiveTuiRenderer = registerActiveTuiRenderer({
-    clear: () => {
+  const mountRenderer = (displayMode: "scan" | "report"): MountedTuiRenderer => {
+    const instance = render(
+      <ScanApp
+        store={store}
+        displayMode={displayMode}
+        launchableAgents={launchableAgents}
+        onHandoff={(request) => {
+          pendingActions.handoffRequest = request;
+        }}
+        canAddToCi={shouldRecommendCi}
+        onAddToCi={() => {
+          pendingActions.shouldSetUpCi = true;
+        }}
+        onQuit={() => {
+          pendingActions.didQuit = true;
+        }}
+      />,
+      { alternateScreen: displayMode === "report", exitOnCtrlC: false },
+    );
+    let didClearRenderer = false;
+    const clearRenderer = (): void => {
+      if (didClearRenderer) return;
+      didClearRenderer = true;
       instance.clear();
       instance.unmount();
-    },
-  });
+    };
+    const unregisterActiveTuiRenderer = registerActiveTuiRenderer({ clear: clearRenderer });
+    return {
+      instance,
+      dispose: () => {
+        unregisterActiveTuiRenderer();
+        clearRenderer();
+      },
+    };
+  };
   const executePendingActions = async (): Promise<void> => {
-    // The user explicitly confirmed CI setup, so honor it even after a quit;
-    // a quit only skips the agent handoff.
     if (pendingActions.shouldSetUpCi) await performCiSetup(rootDirectory);
     if (pendingActions.didQuit) return;
     if (pendingActions.handoffRequest) {
@@ -382,9 +396,8 @@ const mountScanApp = async (
   };
   return {
     store,
-    instance,
     pendingActions,
-    unregisterActiveTuiRenderer,
+    mountRenderer,
     executePendingActions,
   };
 };
@@ -414,8 +427,13 @@ const runMountedScan = async (
   blockingLevel: BlockingLevel,
   executeScan: ExecuteTuiScan,
 ): Promise<RunScanAppResult> => {
-  const { store, instance, pendingActions, unregisterActiveTuiRenderer, executePendingActions } =
-    await mountScanApp(rootDirectory, presentation.shouldRecommendCi, presentation.initialProgress);
+  const { store, pendingActions, mountRenderer, executePendingActions } = await mountScanApp(
+    rootDirectory,
+    presentation.shouldRecommendCi,
+    presentation.initialProgress,
+  );
+  let mountedRenderer = mountRenderer("scan");
+  recordCount(METRIC.tuiScanInlineShown);
   const context: ScanExecutionContext = {
     store,
     ...presentation,
@@ -423,10 +441,10 @@ const runMountedScan = async (
 
   try {
     const completedScan = await executeScan(context);
-    await instance.waitUntilExit();
-    unregisterActiveTuiRenderer();
-    instance.clear();
-    instance.unmount();
+    mountedRenderer.dispose();
+    mountedRenderer = mountRenderer("report");
+    await mountedRenderer.instance.waitUntilExit();
+    mountedRenderer.dispose();
     if (!pendingActions.didQuit) {
       await printExitFooter({
         diagnostics: completedScan.diagnostics,
@@ -445,9 +463,7 @@ const runMountedScan = async (
       shouldFail: shouldFailScanGate({ scans: completedScan.scans, blockingLevel }),
     };
   } catch (error) {
-    unregisterActiveTuiRenderer();
-    instance.clear();
-    instance.unmount();
+    mountedRenderer.dispose();
     throw error;
   }
 };

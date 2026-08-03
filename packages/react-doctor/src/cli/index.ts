@@ -181,6 +181,7 @@ const program = new Command()
   .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("--json-compact", "with --json, emit compact JSON (no indentation)")
   .option("--json-out <path>", "with --json, write the report to a file instead of stdout")
+  .option("--no-cache", "disable all scan caches for this run")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option(
     "--no-parallel",
@@ -462,6 +463,7 @@ program
   .option("--no-supply-chain", "skip the dependency supply-chain scan")
   .option("--score", "only print the numeric score (for scripts and CI)")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")
+  .option("--no-cache", "disable all scan caches for this run")
   .option("--max-duration <seconds>", MAX_DURATION_OPTION_DESCRIPTION)
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")

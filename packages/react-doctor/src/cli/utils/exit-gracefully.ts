@@ -1,5 +1,6 @@
 import { flushSentry } from "../../instrument.js";
 import { activeScanAbortRegistry } from "./active-scan-abort-registry.js";
+import { clearActiveTuiRenderer } from "./active-tui-renderer.js";
 import { buildFooterLinkLines } from "./build-footer-link-lines.js";
 import { buildSectionDivider } from "./build-section-divider.js";
 import { SIGINT_EXIT_CODE } from "./constants.js";
@@ -13,6 +14,7 @@ export const exitGracefully = (): void => {
   if (didStartExiting) return process.exit(SIGINT_EXIT_CODE);
   didStartExiting = true;
   activeScanAbortRegistry.abortAll();
+  clearActiveTuiRenderer();
   try {
     if (isJsonModeActive()) {
       writeJsonErrorReport(new Error("Scan cancelled by user (SIGINT/SIGTERM)"));

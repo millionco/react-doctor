@@ -245,6 +245,31 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("wraps the no-score explanation within the terminal width", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage:
+        "Score unavailable (could not reach the score API). Want something custom to your company? Contact us at https://react.doctor/enterprise.",
+    });
+
+    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { columns: 50 });
+    await flush();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("https://react.doctor/enterprise");
+    expect(frame.split("\n").every((line) => line.length <= 50)).toBe(true);
+    unmount();
+  });
+
   it("does not show a clean state when lint hard-fails", () => {
     const store = createScanStore();
     store.setReport({

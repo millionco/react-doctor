@@ -158,6 +158,8 @@ export interface InspectInput {
   readonly signal?: AbortSignal;
   /** Descendant project roots covered by sibling scans in a workspace batch. */
   readonly excludedProjectDirectories?: ReadonlyArray<string>;
+  /** Keep descendant dead-code findings when this scan owns the workspace-wide pass. */
+  readonly retainExcludedProjectDeadCodeDiagnostics?: boolean;
 }
 
 export interface InspectOutput {
@@ -774,7 +776,11 @@ export const runInspect = <HooksR = never>(
               },
             })
             .pipe(
-              Stream.filter((diagnostic) => !isExcludedProjectDiagnostic(diagnostic)),
+              Stream.filter(
+                (diagnostic) =>
+                  input.retainExcludedProjectDeadCodeDiagnostics === true ||
+                  !isExcludedProjectDiagnostic(diagnostic),
+              ),
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
                 Stream.unwrap(
                   Effect.gen(function* () {

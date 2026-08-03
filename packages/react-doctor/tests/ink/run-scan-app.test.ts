@@ -31,6 +31,7 @@ const mockState = vi.hoisted(() => ({
   shouldRequestHandoff: false,
   shouldSetUpCi: false,
   shouldQuit: false,
+  scanRendererClearCount: 0,
   lifecycleEvents: new Array<string>(),
   scanStores: new Array<ScanStore>(),
   initialProgressStates: new Array<string | null>(),
@@ -59,7 +60,9 @@ vi.mock("ink", async (importOriginal) => {
         if (mockState.shouldQuit) node.props.onQuit?.();
       }
       return {
-        clear: vi.fn(),
+        clear: vi.fn(() => {
+          if (React.isValidElement<MockScanAppProps>(node)) mockState.scanRendererClearCount += 1;
+        }),
         unmount: vi.fn(),
         waitUntilExit: vi.fn(async () => {}),
       };
@@ -184,6 +187,7 @@ describe("runScanApp", () => {
     mockState.shouldRequestHandoff = false;
     mockState.shouldSetUpCi = false;
     mockState.shouldQuit = false;
+    mockState.scanRendererClearCount = 0;
     mockState.lifecycleEvents.length = 0;
     mockState.scanStores.length = 0;
     mockState.initialProgressStates.length = 0;
@@ -222,6 +226,24 @@ describe("runScanApp", () => {
     });
   });
 
+  it("uses a disposable screen for scanning and report navigation", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(vi.mocked(render).mock.calls[0]?.[1]).toEqual({
+      alternateScreen: true,
+      exitOnCtrlC: false,
+    });
+  });
+
   it("excludes nested projects from an ancestor scan", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
@@ -244,14 +266,20 @@ describe("runScanApp", () => {
     expect(inspect).toHaveBeenCalledWith(
       rootDirectory,
       expect.objectContaining({
+        deadCode: true,
         excludedProjectDirectories: [webDirectory],
         precomputedSourceFileCount: 0,
+        retainExcludedProjectDeadCodeDiagnostics: true,
         uiLayers: expect.objectContaining({ progress: expect.anything() }),
       }),
     );
     expect(inspect).toHaveBeenCalledWith(
       webDirectory,
-      expect.objectContaining({ excludedProjectDirectories: [] }),
+      expect.objectContaining({
+        deadCode: false,
+        excludedProjectDirectories: [],
+        retainExcludedProjectDeadCodeDiagnostics: false,
+      }),
     );
   });
 
@@ -550,6 +578,7 @@ describe("runScanApp", () => {
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(mockState.lifecycleEvents).not.toContain("footer");
+    expect(mockState.scanRendererClearCount).toBe(1);
   });
 
   it("runs confirmed CI setup even when the user quits", async () => {

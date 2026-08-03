@@ -16,6 +16,7 @@ export interface RunScanCommandInput {
 }
 
 export const runScanCommand = async (input: RunScanCommandInput): Promise<void> => {
+  if (input.flags.cache === false) process.env.REACT_DOCTOR_NO_CACHE = "1";
   const nodeMajorVersion = Number(process.versions.node.split(".")[0]);
   const tuiEnvironment = {
     flags: input.flags,

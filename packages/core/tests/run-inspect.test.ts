@@ -350,6 +350,20 @@ describe("runInspect — happy path", () => {
     expect(didDeadCodeReceiveIgnorePatterns).toBe(false);
     expect(output.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual(["src/Unused.tsx"]);
     expect(output.scannedFilePaths).toEqual([path.resolve("/repo/src/root.tsx")]);
+
+    const workspaceOutput = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        excludedProjectDirectories: ["/repo/packages/web"],
+        retainExcludedProjectDeadCodeDiagnostics: true,
+        suppressScanSummary: true,
+      }).pipe(Effect.provide(layers)),
+    );
+
+    expect(workspaceOutput.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "packages/web/src/Unused.tsx",
+      "src/Unused.tsx",
+    ]);
   });
 
   it("collects diagnostics from Linter, DeadCode, and emits them through Reporter", async () => {

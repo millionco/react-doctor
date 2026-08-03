@@ -9,7 +9,9 @@ import { buildDiagnostic, buildTestProject } from "./regressions/_helpers.js";
 
 interface InspectInvocation {
   readonly directory: string;
+  readonly deadCode: boolean | undefined;
   readonly excludedProjectDirectories: ReadonlyArray<string>;
+  readonly retainExcludedProjectDeadCodeDiagnostics: boolean;
 }
 
 const mockState = vi.hoisted(() => ({
@@ -66,11 +68,18 @@ vi.mock("../src/inspect.js", () => {
   const inspect = vi.fn(
     async (
       directory: string,
-      options: { readonly excludedProjectDirectories?: ReadonlyArray<string> },
+      options: {
+        readonly deadCode?: boolean;
+        readonly excludedProjectDirectories?: ReadonlyArray<string>;
+        readonly retainExcludedProjectDeadCodeDiagnostics?: boolean;
+      },
     ): Promise<InspectResult> => {
       mockState.inspectInvocations.push({
         directory,
+        deadCode: options.deadCode,
         excludedProjectDirectories: options.excludedProjectDirectories ?? [],
+        retainExcludedProjectDeadCodeDiagnostics:
+          options.retainExcludedProjectDeadCodeDiagnostics ?? false,
       });
       if (mockState.result === undefined) throw new Error("mockState.result not set");
       return mockState.result;
@@ -216,11 +225,15 @@ describe("inspectAction exit-code gate", () => {
 
     expect(mockState.inspectInvocations).toContainEqual({
       directory: projectDirectory,
+      deadCode: true,
       excludedProjectDirectories: [nestedProjectDirectory],
+      retainExcludedProjectDeadCodeDiagnostics: true,
     });
     expect(mockState.inspectInvocations).toContainEqual({
       directory: nestedProjectDirectory,
+      deadCode: false,
       excludedProjectDirectories: [],
+      retainExcludedProjectDeadCodeDiagnostics: false,
     });
   });
 
@@ -243,11 +256,15 @@ describe("inspectAction exit-code gate", () => {
 
     expect(mockState.inspectInvocations).toContainEqual({
       directory: projectDirectory,
+      deadCode: true,
       excludedProjectDirectories: [resolvedProjectDirectory],
+      retainExcludedProjectDeadCodeDiagnostics: true,
     });
     expect(mockState.inspectInvocations).toContainEqual({
       directory: resolvedProjectDirectory,
+      deadCode: false,
       excludedProjectDirectories: [],
+      retainExcludedProjectDeadCodeDiagnostics: false,
     });
     expect(mockState.inspectInvocations).toHaveLength(2);
   });

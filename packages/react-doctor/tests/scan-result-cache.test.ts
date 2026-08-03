@@ -49,6 +49,7 @@ const baseOptions = (overrides: Partial<ResolvedInspectOptions> = {}): ResolvedI
   baseline: null,
   supplyChainManifestChanged: false,
   excludedProjectDirectories: [],
+  retainExcludedProjectDeadCodeDiagnostics: false,
   ...overrides,
 });
 

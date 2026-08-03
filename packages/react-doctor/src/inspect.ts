@@ -186,6 +186,8 @@ export interface ReactDoctorInspectOptions extends InspectOptions {
   deadlineEpochMs?: number;
   /** Internal: descendant projects covered by sibling scans in the same workspace batch. */
   excludedProjectDirectories?: ReadonlyArray<string>;
+  /** Internal: this scan owns dead-code findings for its excluded descendants. */
+  retainExcludedProjectDeadCodeDiagnostics?: boolean;
   /** See {@link InspectUiLayers}. */
   uiLayers?: InspectUiLayers;
 }
@@ -240,6 +242,8 @@ export interface ResolvedInspectOptions {
   uiLayers: InspectUiLayers | null;
   /** Descendant projects covered by sibling scans in the same workspace batch. */
   excludedProjectDirectories: ReadonlyArray<string>;
+  /** Whether this scan owns dead-code findings for excluded descendants. */
+  retainExcludedProjectDeadCodeDiagnostics: boolean;
   /** Source-file count collected once for a workspace batch. */
   precomputedSourceFileCount: number | undefined;
 }
@@ -296,6 +300,8 @@ const mergeInspectOptions = (
     changedLineRanges: inputOptions.changedLineRanges ?? null,
     supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
     excludedProjectDirectories: inputOptions.excludedProjectDirectories ?? [],
+    retainExcludedProjectDeadCodeDiagnostics:
+      inputOptions.retainExcludedProjectDeadCodeDiagnostics ?? false,
     precomputedSourceFileCount: inputOptions.precomputedSourceFileCount,
   };
 };
@@ -801,6 +807,7 @@ const runInspectWithRuntime = async (
       deadlineEpochMs: deadlineEpochMs ?? undefined,
       signal: oxlintRuntime.abortSignal,
       excludedProjectDirectories: options.excludedProjectDirectories,
+      retainExcludedProjectDeadCodeDiagnostics: options.retainExcludedProjectDeadCodeDiagnostics,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>

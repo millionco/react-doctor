@@ -138,6 +138,15 @@ describe("stripUnknownCliFlags", () => {
     expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
   });
 
+  it("keeps the global cache opt-out", () => {
+    expect(stripUserArguments([".", "--no-cache"])).toEqual([".", "--no-cache"]);
+    expect(stripUserArguments(["experimental-tui", ".", "--no-cache"])).toEqual([
+      "experimental-tui",
+      ".",
+      "--no-cache",
+    ]);
+  });
+
   it("keeps the phase opt-out flags so Commander can toggle each scan phase", () => {
     expect(stripUserArguments([".", "--no-lint", "--no-dead-code", "--no-supply-chain"])).toEqual([
       ".",

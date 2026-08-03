@@ -19,6 +19,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--json-compact",
     "--lint",
     "--no-color",
+    "--no-cache",
     "--no-dead-code",
     "--no-lint",
     "--no-parallel",
@@ -136,6 +137,7 @@ const EXPERIMENTAL_TUI_FLAG_SPEC: CliFlagSpec = {
   longOptionsWithoutValues: new Set([
     "--color",
     "--help",
+    "--no-cache",
     "--no-color",
     "--no-dead-code",
     "--no-score",

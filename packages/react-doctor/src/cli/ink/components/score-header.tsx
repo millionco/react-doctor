@@ -54,11 +54,15 @@ export const ScoreHeader = ({
 
   if (!score) {
     return (
-      <Box flexDirection="column" paddingLeft={TUI_HORIZONTAL_PADDING_COLUMNS}>
+      <Box
+        flexDirection="column"
+        paddingLeft={TUI_HORIZONTAL_PADDING_COLUMNS}
+        width={availableWidth}
+      >
         <Text wrap="truncate-end">
           <ReactDoctorLink />
         </Text>
-        <Text dimColor wrap="truncate-end">
+        <Text dimColor wrap="wrap">
           {noScoreMessage ?? `${pluralize(issueCount, "finding")} · ${projectName}`}
         </Text>
       </Box>

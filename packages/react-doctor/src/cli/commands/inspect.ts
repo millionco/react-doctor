@@ -67,6 +67,8 @@ import type { CliInspectOptions } from "../utils/resolve-cli-inspect-options.js"
 import { finalizeScope, resolveScope, warnDeprecatedDiff } from "../utils/resolve-scope.js";
 import { resolveMergeBaseRef } from "../utils/materialize-baseline-files.js";
 import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
+import { resolveWorkspaceDeadCodeOwner } from "../utils/resolve-workspace-dead-code-owner.js";
+import { retryMissingProjectScores } from "../utils/retry-missing-project-scores.js";
 import {
   resolveProjectChangedLineRanges,
   resolveProjectDiffIncludePaths,
@@ -954,6 +956,17 @@ export const inspectAction = async (
       ),
     );
     const isMultiProject = projectScans.length > 1;
+    const rootProjectScan = projectScans.find(
+      (projectScan) => path.resolve(projectScan.directory) === path.resolve(resolvedDirectory),
+    );
+    const workspaceDeadCodeOwner = resolveWorkspaceDeadCodeOwner({
+      rootDirectory: resolvedDirectory,
+      projectDirectories: projectScans.map((projectScan) => projectScan.directory),
+      isRootDeadCodeEnabled: scanOptions.deadCode ?? rootProjectScan?.config?.deadCode ?? true,
+    });
+    if (workspaceDeadCodeOwner !== null) {
+      recordCount(METRIC.scanWorkspaceDeadCodeShared, 1, { projectCount: projectScans.length });
+    }
     const precomputedSourceFileCounts =
       isMultiProject && !isDiffMode
         ? await collectProjectSourceFileCounts(
@@ -973,6 +986,7 @@ export const inspectAction = async (
       }
       const scanDirectory = projectScan.directory;
       const projectConfig = projectScan.config;
+      const ownsWorkspaceDeadCode = scanDirectory === workspaceDeadCodeOwner;
       // The Socket supply-chain check runs by default; opted out by
       // `--no-supply-chain` (wins) or per-project config. Off ⇒ a manifest-only
       // diff change shouldn't pull a project into the scan (nothing to report).
@@ -1037,6 +1051,7 @@ export const inspectAction = async (
       }
       const scanResult = await inspectProject(scanDirectory, {
         ...scanOptions,
+        deadCode: workspaceDeadCodeOwner === null ? scanOptions.deadCode : ownsWorkspaceDeadCode,
         precomputedSourceFileCount: precomputedSourceFileCounts?.get(scanDirectory),
         deadlineEpochMs: scanDeadlineEpochMs,
         includePaths,
@@ -1051,6 +1066,7 @@ export const inspectAction = async (
             isPathInsideDirectory(candidateProjectScan.directory, scanDirectory),
           )
           .map((candidateProjectScan) => candidateProjectScan.directory),
+        retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
         baseline:
           baselineRef !== null &&
           projectBaselineBaseFiles !== null &&
@@ -1079,7 +1095,12 @@ export const inspectAction = async (
       isSilent: scanOptions.silent === true,
       scanProject,
     });
-    const completedScans = projectBatch.completedScans;
+    const completedScans = await retryMissingProjectScores(
+      projectBatch.completedScans.map((completedScan) => ({
+        ...completedScan,
+        isScoreDisabled: scanOptions.noScore ?? completedScan.config?.noScore ?? false,
+      })),
+    );
     reportSkippedProjects({ skippedProjects, isQuiet });
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {

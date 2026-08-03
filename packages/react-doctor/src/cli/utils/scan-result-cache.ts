@@ -474,6 +474,8 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       supplyChain: input.options.supplyChain,
       includePaths: [...input.options.includePaths].sort(),
       excludedProjectDirectories: [...(input.options.excludedProjectDirectories ?? [])].sort(),
+      retainExcludedProjectDeadCodeDiagnostics:
+        input.options.retainExcludedProjectDeadCodeDiagnostics ?? false,
       customRulesOnly: input.options.customRulesOnly,
       respectInlineDisables: input.options.respectInlineDisables,
       warnings: input.options.warnings,

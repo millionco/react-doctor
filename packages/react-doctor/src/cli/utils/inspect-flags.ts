@@ -17,6 +17,7 @@ export interface InspectFlags {
   json?: boolean;
   jsonCompact?: boolean;
   jsonOut?: string;
+  cache?: boolean;
   telemetry?: boolean;
   yes?: boolean;
   staged?: boolean;

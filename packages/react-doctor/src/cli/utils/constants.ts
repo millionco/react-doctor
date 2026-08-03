@@ -282,11 +282,15 @@ export const METRIC = {
   scanPhaseDuration: "scan.phase_duration",
   scanFiles: "scan.files",
   scanScore: "scan.score",
+  scanScoreRetry: "scan.score_retry",
   scanClean: "scan.clean",
   scanCheckSkipped: "scan.check_skipped",
   // Kill metric for queued-project deadline reporting. If this never fires,
   // the additive JSON/TUI skipped-project surface is not carrying user value.
   scanProjectSkipped: "scan.project_skipped",
+  // Kill metric for workspace-owned dead-code analysis. If this never fires,
+  // multi-project scans do not include their root and cannot share the pass.
+  scanWorkspaceDeadCodeShared: "scan.workspace_deadcode_shared",
   // One count per completed scan where no project resolved a React /
   // Preact runtime — the JSON report's `reactDetected: false` case. The
   // kill metric for the vacuous-clean-scan signal: if it never fires,
@@ -338,3 +342,5 @@ export const METRIC = {
   aiTrainingWarningShown: "ai.training.warning_shown",
   jsonOutUsed: "json.out_used",
 } as const;
+
+export const SCORE_RETRY_MAX_CONCURRENCY = 64;

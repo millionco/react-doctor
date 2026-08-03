@@ -25,6 +25,7 @@ import type {
 import { createInvocationInspect } from "../../inspect.js";
 import type { ReactDoctorInspectOptions } from "../../inspect.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
+import { registerActiveTuiRenderer } from "../utils/active-tui-renderer.js";
 import { buildEmptyReportMessage } from "../utils/build-empty-report-message.js";
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";
@@ -43,6 +44,8 @@ import { findNearestPackageDirectory } from "../utils/install-doctor-script.js";
 import { hasLintHardFailure } from "../utils/has-lint-hard-failure.js";
 import { setUpGitHubActions } from "../utils/set-up-github-actions.js";
 import { recordCount, recordDistribution } from "../utils/record-metric.js";
+import { resolveWorkspaceDeadCodeOwner } from "../utils/resolve-workspace-dead-code-owner.js";
+import { retryMissingProjectScores } from "../utils/retry-missing-project-scores.js";
 import { METRIC } from "../utils/constants.js";
 import {
   filterScansForSurface,
@@ -328,6 +331,7 @@ interface MountedScanApp {
   readonly store: ScanStore;
   readonly instance: ReturnType<typeof render>;
   readonly pendingActions: PendingTuiActions;
+  readonly unregisterActiveTuiRenderer: () => void;
   readonly executePendingActions: () => Promise<void>;
 }
 
@@ -359,8 +363,14 @@ const mountScanApp = async (
         pendingActions.didQuit = true;
       }}
     />,
-    { exitOnCtrlC: false },
+    { alternateScreen: true, exitOnCtrlC: false },
   );
+  const unregisterActiveTuiRenderer = registerActiveTuiRenderer({
+    clear: () => {
+      instance.clear();
+      instance.unmount();
+    },
+  });
   const executePendingActions = async (): Promise<void> => {
     // The user explicitly confirmed CI setup, so honor it even after a quit;
     // a quit only skips the agent handoff.
@@ -370,7 +380,13 @@ const mountScanApp = async (
       await performTuiHandoff(pendingActions.handoffRequest, rootDirectory);
     }
   };
-  return { store, instance, pendingActions, executePendingActions };
+  return {
+    store,
+    instance,
+    pendingActions,
+    unregisterActiveTuiRenderer,
+    executePendingActions,
+  };
 };
 
 interface ScanExecutionContext {
@@ -398,11 +414,8 @@ const runMountedScan = async (
   blockingLevel: BlockingLevel,
   executeScan: ExecuteTuiScan,
 ): Promise<RunScanAppResult> => {
-  const { store, instance, pendingActions, executePendingActions } = await mountScanApp(
-    rootDirectory,
-    presentation.shouldRecommendCi,
-    presentation.initialProgress,
-  );
+  const { store, instance, pendingActions, unregisterActiveTuiRenderer, executePendingActions } =
+    await mountScanApp(rootDirectory, presentation.shouldRecommendCi, presentation.initialProgress);
   const context: ScanExecutionContext = {
     store,
     ...presentation,
@@ -411,6 +424,9 @@ const runMountedScan = async (
   try {
     const completedScan = await executeScan(context);
     await instance.waitUntilExit();
+    unregisterActiveTuiRenderer();
+    instance.clear();
+    instance.unmount();
     if (!pendingActions.didQuit) {
       await printExitFooter({
         diagnostics: completedScan.diagnostics,
@@ -429,6 +445,8 @@ const runMountedScan = async (
       shouldFail: shouldFailScanGate({ scans: completedScan.scans, blockingLevel }),
     };
   } catch (error) {
+    unregisterActiveTuiRenderer();
+    instance.clear();
     instance.unmount();
     throw error;
   }
@@ -509,6 +527,17 @@ const runMultiProjectScan = async (
     ),
   );
   const projectCount = projectScans.length;
+  const rootProjectScan = projectScans.find(
+    (projectScan) => path.resolve(projectScan.directory) === path.resolve(rootDirectory),
+  );
+  const workspaceDeadCodeOwner = resolveWorkspaceDeadCodeOwner({
+    rootDirectory,
+    projectDirectories: projectScans.map((projectScan) => projectScan.directory),
+    isRootDeadCodeEnabled: input.options?.deadCode ?? rootProjectScan?.config?.deadCode ?? true,
+  });
+  if (workspaceDeadCodeOwner !== null) {
+    recordCount(METRIC.scanWorkspaceDeadCodeShared, 1, { projectCount });
+  }
   const presentation = resolveScanPresentation(input, projectScans);
   return runMountedScan(rootDirectory, presentation, blockingLevel, async (context) => {
     const startTime = performance.now();
@@ -545,8 +574,12 @@ const runMultiProjectScan = async (
           path.relative(rootDirectory, projectScan.directory) || path.basename(rootDirectory);
         const formatProjectProgress = (displayText: string): string =>
           `Scanning ${projectCount} projects… (${finishedCount}/${projectCount}) · ${projectLabel}: ${displayText}`;
+        const inspectOptions = resolveTuiInspectOptions(input, projectScan.config);
+        const ownsWorkspaceDeadCode = projectScan.directory === workspaceDeadCodeOwner;
         const result = await inspectProject(projectScan.directory, {
-          ...resolveTuiInspectOptions(input, projectScan.config),
+          ...inspectOptions,
+          deadCode:
+            workspaceDeadCodeOwner === null ? inspectOptions.deadCode : ownsWorkspaceDeadCode,
           isCi: isCiEnvironment(),
           configOverride: projectScan.config,
           configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
@@ -564,6 +597,7 @@ const runMultiProjectScan = async (
               isPathInsideDirectory(candidateProjectScan.directory, projectScan.directory),
             )
             .map((candidateProjectScan) => candidateProjectScan.directory),
+          retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
         });
         finishedCount += 1;
         context.store.setProgress(
@@ -578,9 +612,16 @@ const runMultiProjectScan = async (
         } satisfies CompletedProjectScanOutcome;
       },
     );
-    const results = scanOutcomes.filter(
-      (scanOutcome): scanOutcome is CompletedProjectScanOutcome =>
-        scanOutcome.status === "completed",
+    const results = await retryMissingProjectScores(
+      scanOutcomes
+        .filter(
+          (scanOutcome): scanOutcome is CompletedProjectScanOutcome =>
+            scanOutcome.status === "completed",
+        )
+        .map((completedScan) => ({
+          ...completedScan,
+          isScoreDisabled: input.options?.noScore ?? completedScan.config?.noScore ?? false,
+        })),
     );
     const skippedProjects = scanOutcomes
       .filter(

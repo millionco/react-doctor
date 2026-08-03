@@ -33,11 +33,13 @@ export const anchorTargetExists = defineRule({
         const hrefAttribute = getAuthoritativeJsxAttribute(node.attributes, "href", false);
         if (!hrefAttribute) return;
         const href = getStringLiteralAttributeValue(hrefAttribute);
+        const normalizedHref = href?.toLowerCase();
         if (
           !href?.startsWith("#") ||
           href.length === 1 ||
           href.startsWith("#/") ||
-          href.startsWith("#!")
+          href.startsWith("#!") ||
+          normalizedHref === "#top"
         ) {
           return;
         }

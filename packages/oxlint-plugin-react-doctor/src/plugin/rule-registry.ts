@@ -898,7 +898,7 @@ export const reactDoctorRules = [
     key: "react-doctor/anchor-target-exists",
     id: "anchor-target-exists",
     source: "react-doctor",
-    originallyExternal: true,
+    originallyExternal: false,
     rule: {
       ...anchorTargetExists,
       framework: "global",

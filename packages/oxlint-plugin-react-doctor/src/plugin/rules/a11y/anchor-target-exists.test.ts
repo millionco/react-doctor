@@ -51,9 +51,9 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("allows the empty document-top fragment and non-fragment links", () => {
+  it("allows document-top fragments and non-fragment links", () => {
     const result = runProjectRule(
-      `const Links = () => <><a href="#">Top</a><a href="https://example.com/#about">External</a><a href="mailto:user@example.com">Mail</a><a href="tel:+15551212">Call</a></>;`,
+      `const Links = () => <><a href="#">Top</a><a href="#top">Top</a><a href="#TOP">Top</a><a href="https://example.com/#about">External</a><a href="mailto:user@example.com">Mail</a><a href="tel:+15551212">Call</a></>;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);

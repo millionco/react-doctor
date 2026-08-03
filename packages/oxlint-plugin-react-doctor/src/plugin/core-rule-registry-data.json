@@ -136,7 +136,7 @@
     "key": "react-doctor/anchor-target-exists",
     "id": "anchor-target-exists",
     "source": "react-doctor",
-    "originallyExternal": true,
+    "originallyExternal": false,
     "rule": {
       "id": "anchor-target-exists",
       "title": "Fragment link target is missing",

@@ -301,6 +301,25 @@ describe("scope-analysis", () => {
   });
 
   describe("non-reference positions", () => {
+    it("does not record binding identifiers as references", () => {
+      const analysis = analyze(`
+        import Default, { value as alias } from "source";
+        const { first, nested: { second }, ...rest } = input;
+        function named(parameter, { option }) {
+          class Inner {}
+          try {} catch (error) {}
+        }
+        namespace Example {}
+      `);
+      const scopes = [analysis.rootScope];
+      for (const scope of scopes) {
+        scopes.push(...scope.children);
+        for (const symbol of scope.symbols) {
+          expect(analysis.referenceFor(symbol.bindingIdentifier)).toBeNull();
+        }
+      }
+    });
+
     it("does not record `obj.foo` as a reference to foo", () => {
       const analysis = analyze(`obj.foo;`);
       const refs = findAllNamedNodes(analysis.program, "Identifier", "foo");

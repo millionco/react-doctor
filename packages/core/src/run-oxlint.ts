@@ -39,6 +39,7 @@ import {
 import { spawnLintBatches } from "./runners/oxlint/spawn-batches.js";
 import { validateRuleRegistration } from "./runners/oxlint/validate-rule-registration.js";
 import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
+import { collectProjectIndexModuleSources } from "./utils/collect-project-index-module-sources.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
@@ -147,7 +148,7 @@ interface RunOxlintOptions {
    * Full-scan batch planning, resolved from the `LintBatchOrdering`
    * Reference. `"cost"` (the default) plans size-balanced LPT batches via
    * `planLintBatches`; `"arrival"` is the rollback hatch to the plain greedy
-   * 100-file chunking in discovery order. Only affects the full-scan branch
+   * fixed-size chunking in discovery order. Only affects the full-scan branch
    * (`includePaths` undefined) — diff / staged scans pass explicit paths and
    * are untouched.
    */
@@ -525,6 +526,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
     const candidateFiles =
       includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
+    const projectIndexModuleSources =
+      includePaths === undefined && options.deadlineEpochMs === undefined
+        ? await collectProjectIndexModuleSources(rootDirectory, candidateFiles)
+        : undefined;
     unpluginAutoImportGlobalScopes = collectUnpluginAutoImportGlobalScopes({
       rootDirectory,
       candidateFiles,
@@ -553,6 +558,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         runtimeGlobals,
         unpluginAutoImportGlobalScopes,
         serverAuthFunctionNames,
+        projectIndexModuleSources,
         severityControls,
         userPlugins,
         disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,

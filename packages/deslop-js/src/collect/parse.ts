@@ -930,7 +930,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     }),
   );
 
-  const referencedFilenames = extractReferencedFilenames(sourceText);
+  const referencedFilenames = extractReferencedFilenames(sourceText, program.body);
 
   return {
     imports,
@@ -953,13 +953,54 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
 
 const REFERENCED_FILENAME_LITERAL_PATTERN =
   /(?<![./@\w-])(?:["'`])([a-z][\w-]*\.(?:ts|tsx|js|jsx|mts|mjs|cts|cjs))(?:["'`])/g;
+const REFERENCED_MODULE_PATH_PATTERN = /^[a-zA-Z0-9_@-][a-zA-Z0-9_@.-]*(?:\/[a-zA-Z0-9_@.-]+)+$/;
 
-const extractReferencedFilenames = (sourceText: string): string[] => {
+const extractReferencedFilenames = (
+  sourceText: string,
+  bodyNodes: Array<Statement | ModuleDeclaration> = [],
+): string[] => {
   const captured = new Set<string>();
   REFERENCED_FILENAME_LITERAL_PATTERN.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = REFERENCED_FILENAME_LITERAL_PATTERN.exec(sourceText)) !== null) {
     captured.add(match[1]);
+  }
+
+  const visitNode = (node: WalkableNode): void => {
+    if (node.type === "ImportExpression") {
+      const sourceExpression = node.source;
+      if (isWalkableNode(sourceExpression) && sourceExpression.type === "Literal") {
+        const literalValue = sourceExpression.value;
+        if (typeof literalValue === "string" && REFERENCED_MODULE_PATH_PATTERN.test(literalValue)) {
+          captured.add(literalValue);
+        }
+      }
+    }
+
+    if (node.type === "CallExpression" || node.type === "NewExpression") {
+      const callArguments = node.arguments;
+      for (const callArgument of Array.isArray(callArguments) ? callArguments : []) {
+        if (!isWalkableNode(callArgument) || callArgument.type !== "Literal") continue;
+        const literalValue = callArgument.value;
+        if (typeof literalValue === "string" && REFERENCED_MODULE_PATH_PATTERN.test(literalValue)) {
+          captured.add(literalValue);
+        }
+      }
+    }
+
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const element of value) {
+          if (isWalkableNode(element)) visitNode(element);
+        }
+      } else if (isWalkableNode(value)) {
+        visitNode(value);
+      }
+    }
+  };
+
+  for (const bodyNode of bodyNodes) {
+    if (isWalkableNode(bodyNode)) visitNode(bodyNode);
   }
   return [...captured];
 };

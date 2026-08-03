@@ -58,6 +58,7 @@ export interface CachedScanPayload {
    * `undefined` reads as the healthy `false`.
    */
   readonly securityScanFailed?: boolean;
+  readonly securityScanFailureReason?: string | null;
   /**
    * `InspectOutput["suppressedRuleCounts"]` — deterministic for a given
    * commit + config (part of the cache key), so a cache hit replays the same
@@ -98,7 +99,21 @@ interface ScanResultCacheKeyInput {
   readonly userConfig: ReactDoctorConfig | null;
   readonly hasConfigOverride: boolean;
   readonly configSourceDirectory: string | null;
+  readonly invocationState: ScanResultCacheInvocationState;
 }
+
+interface RepositoryCacheIdentity {
+  readonly headSha: string;
+  readonly worktreeFingerprint: ReadonlyArray<WorktreeDirtyEntry>;
+}
+
+export interface ScanResultCacheInvocationState {
+  readonly repositoryIdentityByRoot: Map<string, RepositoryCacheIdentity | null>;
+}
+
+export const createScanResultCacheInvocationState = (): ScanResultCacheInvocationState => ({
+  repositoryIdentityByRoot: new Map(),
+});
 
 const CACHE_DISABLED_VALUES = new Set(["1", "true"]);
 const TOOLCHAIN_PACKAGE_SPECIFIERS = [
@@ -233,6 +248,7 @@ const buildDirtyPathContentFingerprint = (
 // treats null exactly like the old dirty-tree bail: cache off.
 const buildWorktreeFingerprint = (
   projectDirectory: string,
+  repositoryRoot: string,
 ): ReadonlyArray<WorktreeDirtyEntry> | null => {
   const statusOutput = runGit(projectDirectory, [
     "status",
@@ -249,8 +265,6 @@ const buildWorktreeFingerprint = (
   if (statusEntries.length > SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT) return null;
   // Porcelain paths are relative to the repository root, not the (possibly
   // nested workspace-member) project directory.
-  const repositoryRoot = runGit(projectDirectory, ["rev-parse", "--show-toplevel"]);
-  if (repositoryRoot === null) return null;
   const dirtyEntries: WorktreeDirtyEntry[] = [];
   for (const statusEntry of statusEntries) {
     const contentFingerprint = buildDirtyPathContentFingerprint(
@@ -267,6 +281,22 @@ const buildWorktreeFingerprint = (
     const secondSortKey = `${secondEntry.path}${secondEntry.statusCode}`;
     return firstSortKey < secondSortKey ? -1 : firstSortKey > secondSortKey ? 1 : 0;
   });
+};
+
+const resolveRepositoryCacheIdentity = (
+  projectDirectory: string,
+  invocationState: ScanResultCacheInvocationState,
+): RepositoryCacheIdentity | null => {
+  const repositoryRoot = runGit(projectDirectory, ["rev-parse", "--show-toplevel"]);
+  if (repositoryRoot === null) return null;
+  const cachedIdentity = invocationState.repositoryIdentityByRoot.get(repositoryRoot);
+  if (cachedIdentity !== undefined) return cachedIdentity;
+  const worktreeFingerprint = buildWorktreeFingerprint(projectDirectory, repositoryRoot);
+  const headSha = readHeadSha(repositoryRoot);
+  const identity =
+    worktreeFingerprint === null || headSha === null ? null : { headSha, worktreeFingerprint };
+  invocationState.repositoryIdentityByRoot.set(repositoryRoot, identity);
+  return identity;
 };
 
 const DOTENV_FILE_NAME_PATTERN = /^\.env(\.|$)/;
@@ -414,17 +444,18 @@ const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArr
 export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
   if (isCacheGloballyDisabled()) return null;
   if (!isGitIdentityTrustworthy(input.projectDirectory)) return null;
-  const worktreeFingerprint = buildWorktreeFingerprint(input.projectDirectory);
-  if (worktreeFingerprint === null) return null;
-  const headSha = readHeadSha(input.projectDirectory);
-  if (headSha === null) return null;
+  const repositoryIdentity = resolveRepositoryCacheIdentity(
+    input.projectDirectory,
+    input.invocationState,
+  );
+  if (repositoryIdentity === null) return null;
   const userConfigJson = stringifyStableJson(input.userConfig);
   if (userConfigJson === null) return null;
   const cacheKeyJson = stringifyStableJson({
     schemaVersion: SCAN_RESULT_CACHE_SCHEMA_VERSION,
     projectIdentity: resolveProjectIdentity(input.projectDirectory),
-    headSha,
-    worktreeFingerprint,
+    headSha: repositoryIdentity.headSha,
+    worktreeFingerprint: repositoryIdentity.worktreeFingerprint,
     dotenvFingerprint: resolveDotenvFingerprint(input.projectDirectory),
     reactDoctorVersion: input.version,
     nodeVersion: process.version,
@@ -442,6 +473,9 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       // lookup must not serve a supply-chain-on payload at the same commit.
       supplyChain: input.options.supplyChain,
       includePaths: [...input.options.includePaths].sort(),
+      excludedProjectDirectories: [...(input.options.excludedProjectDirectories ?? [])].sort(),
+      retainExcludedProjectDeadCodeDiagnostics:
+        input.options.retainExcludedProjectDeadCodeDiagnostics ?? false,
       customRulesOnly: input.options.customRulesOnly,
       respectInlineDisables: input.options.respectInlineDisables,
       warnings: input.options.warnings,

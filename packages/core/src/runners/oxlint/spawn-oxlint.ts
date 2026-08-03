@@ -8,6 +8,7 @@ import {
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
 import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
 import { buildProfiledNodeArguments } from "../../utils/build-profiled-node-arguments.js";
+import { lowerChildProcessPriority } from "../../utils/lower-child-process-priority.js";
 
 const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
 
@@ -74,6 +75,7 @@ export const spawnOxlint = (
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
+    lowerChildProcessPriority(child.pid);
 
     const onAbort = () => {
       child.kill("SIGKILL");

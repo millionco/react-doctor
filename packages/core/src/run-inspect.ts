@@ -15,6 +15,7 @@ import type {
 } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
 import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js";
+import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkExpoProject } from "./check-expo-project.js";
@@ -25,7 +26,6 @@ import { checkReducedMotion } from "./check-reduced-motion.js";
 import { checkSecurityScanCooperative } from "./check-security-scan.js";
 import {
   DEAD_CODE_OVERLAP_PARSE_SHARE,
-  DEAD_CODE_PHASE_TIMEOUT_MS,
   DEFAULT_SHOW_WARNINGS,
   MILLISECONDS_PER_SECOND,
   MIN_DEAD_CODE_PARSE_CONCURRENCY,
@@ -54,6 +54,7 @@ import {
 import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
 import { resolveDeadCodeTimeout } from "./utils/resolve-dead-code-timeout.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
+import { filterPathsOutsideDirectories } from "./utils/filter-paths-outside-directories.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
 import { Files } from "./services/files.js";
@@ -71,6 +72,7 @@ import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js
 
 export interface InspectInput {
   readonly directory: string;
+  readonly precomputedSourceFileCount?: number;
   readonly includePaths: ReadonlyArray<string>;
   readonly customRulesOnly: boolean;
   readonly respectInlineDisables: boolean;
@@ -152,6 +154,11 @@ export interface InspectInput {
    * dead-code phase is skipped or capped to the remaining budget.
    */
   readonly deadlineEpochMs?: number;
+  readonly signal?: AbortSignal;
+  /** Descendant project roots covered by sibling scans in a workspace batch. */
+  readonly excludedProjectDirectories?: ReadonlyArray<string>;
+  /** Keep descendant dead-code findings when this scan owns the workspace-wide pass. */
+  readonly retainExcludedProjectDeadCodeDiagnostics?: boolean;
 }
 
 export interface InspectOutput {
@@ -226,13 +233,15 @@ export interface InspectOutput {
    */
   readonly supplyChainOverlapTimedOut: boolean;
   /**
-   * `true` when the forked security scan failed (a non-ignorable fs error
-   * escaping the cooperative walk) and failed open to no diagnostics —
-   * surfaced for telemetry and skipped-check accounting so a failed pass is
-   * distinguishable from a clean one with zero findings. `false` on the
-   * healthy path and when the pass was skipped (diff/staged scans).
+   * `true` when the forked security scan failed or reached the shared deadline.
+   * Filesystem failures fail open to no diagnostics; deadline truncation keeps
+   * findings collected before time elapsed. Surfaced for telemetry and
+   * skipped-check accounting so an incomplete pass is distinguishable from a
+   * clean one with zero findings. `false` on the healthy path and when the pass
+   * was skipped (diff/staged scans).
    */
   readonly securityScanFailed: boolean;
+  readonly securityScanFailureReason: string | null;
   /**
    * Per-file lint cache outcome for the lint pass: files served from cache and
    * total files considered. Both `null` when the cache was disabled or bypassed
@@ -430,13 +439,53 @@ export const runInspect = <HooksR = never>(
 
     const resolvedConfig: ResolvedConfig = yield* configService.resolve(input.directory);
     const scanDirectory = resolvedConfig.resolvedDirectory;
-
-    const project = yield* projectService.discover(scanDirectory);
+    const excludedProjectDirectories = (input.excludedProjectDirectories ?? [])
+      .map((excludedDirectory) => path.resolve(excludedDirectory))
+      .filter((excludedDirectory) => isPathInsideDirectory(excludedDirectory, scanDirectory));
+    const excludedProjectRelativePaths = excludedProjectDirectories.map((excludedDirectory) =>
+      path.relative(scanDirectory, excludedDirectory).replaceAll("\\", "/"),
+    );
+    const isExcludedProjectDiagnostic = (diagnostic: Diagnostic): boolean => {
+      const relativeFilePath = toNormalizedRelativePath(diagnostic.filePath, scanDirectory);
+      return excludedProjectRelativePaths.some(
+        (excludedRelativePath) =>
+          relativeFilePath === excludedRelativePath ||
+          relativeFilePath.startsWith(`${excludedRelativePath}/`),
+      );
+    };
+    const shouldPrecomputeSourceFiles =
+      input.suppressScanSummary === true || excludedProjectDirectories.length > 0;
+    const precomputedSourceFiles = shouldPrecomputeSourceFiles
+      ? yield* filesService.listSourceFilesCooperative({
+          rootDirectory: scanDirectory,
+          signal: input.signal,
+        })
+      : null;
+    const includedPrecomputedSourceFiles =
+      precomputedSourceFiles !== null && excludedProjectDirectories.length > 0
+        ? filterPathsOutsideDirectories({
+            rootDirectory: scanDirectory,
+            relativePaths: precomputedSourceFiles,
+            excludedDirectories: excludedProjectDirectories,
+          })
+        : precomputedSourceFiles;
+    const sourceFileCount =
+      excludedProjectDirectories.length > 0
+        ? includedPrecomputedSourceFiles?.length
+        : (input.precomputedSourceFileCount ?? includedPrecomputedSourceFiles?.length);
+    const project = yield* projectService.discover({
+      directory: scanDirectory,
+      sourceFileCount,
+    });
     if (!isAnalyzableProject(project)) {
       return yield* new ReactDoctorError({
         reason: new NoReactDependency({ directory: scanDirectory }),
       });
     }
+    const deadCodeSourceFileCount =
+      input.retainExcludedProjectDeadCodeDiagnostics === true && precomputedSourceFiles !== null
+        ? precomputedSourceFiles.length
+        : project.sourceFileCount;
     const [repo, sha, defaultBranch] = yield* Effect.all(
       [
         gitService
@@ -463,8 +512,24 @@ export const runInspect = <HooksR = never>(
         ? [...input.includePaths]
         : undefined
       : computeExplicitLintIncludePaths([...input.includePaths]);
-    const lintIncludePaths =
-      explicitLintIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
+    let lintIncludePaths =
+      explicitLintIncludePaths ??
+      resolveLintIncludePaths(
+        scanDirectory,
+        resolvedConfig.config,
+        includedPrecomputedSourceFiles ?? undefined,
+      );
+    if (excludedProjectDirectories.length > 0) {
+      const candidatePaths =
+        lintIncludePaths ??
+        includedPrecomputedSourceFiles ??
+        (yield* filesService.listSourceFiles(scanDirectory));
+      lintIncludePaths = filterPathsOutsideDirectories({
+        rootDirectory: scanDirectory,
+        relativePaths: candidatePaths,
+        excludedDirectories: excludedProjectDirectories,
+      });
+    }
 
     // Absolute paths of the exact file set the linter scans, captured ONLY
     // for the multi-project summary (the sole consumer), which signals via
@@ -472,9 +537,11 @@ export const runInspect = <HooksR = never>(
     // every single-project / `diagnose()` run — for a full scan the linter
     // already enumerates the same files, so we'd otherwise list twice.
     const fallbackScannedFilePaths = input.suppressScanSummary
-      ? (lintIncludePaths ?? (yield* filesService.listSourceFiles(scanDirectory))).map(
-          (relativePath) => path.resolve(scanDirectory, relativePath),
-        )
+      ? (
+          lintIncludePaths ??
+          includedPrecomputedSourceFiles ??
+          (yield* filesService.listSourceFiles(scanDirectory))
+        ).map((relativePath) => path.resolve(scanDirectory, relativePath))
       : [];
 
     const beforeLint = hooks.beforeLint ?? NO_HOOKS.beforeLint;
@@ -529,6 +596,7 @@ export const runInspect = <HooksR = never>(
     // diff/staged mode like the env checks. The final stable sort makes the
     // concat order irrelevant, so output stays byte-identical to the serial path.
     const securityScanFailedRef = yield* Ref.make(false);
+    let didSecurityScanReachDeadline = false;
     const securityScanFiber = yield* Effect.forkChild(
       Stream.runCollect(
         applyPerElementPipeline(
@@ -542,12 +610,18 @@ export const runInspect = <HooksR = never>(
                 // otherwise-successful scan. The skip is recorded on
                 // `securityScanFailed` so telemetry can tell a failed pass
                 // from a clean one — mirroring `supplyChainOverlapTimedOut`.
-                Effect.tryPromise(() =>
+                Effect.tryPromise((signal) =>
                   checkSecurityScanCooperative(scanDirectory, {
                     project,
                     ignoredTags: input.ignoredTags,
                     includedTags: input.includedTags,
                     includeTagDefaults: input.includeTagDefaults,
+                    excludedDirectories: new Set(excludedProjectDirectories),
+                    deadlineEpochMs: input.deadlineEpochMs,
+                    signal,
+                    onDeadlineExceeded: () => {
+                      didSecurityScanReachDeadline = true;
+                    },
                   }),
                 ).pipe(
                   Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
@@ -588,8 +662,19 @@ export const runInspect = <HooksR = never>(
     // and the returned `diagnostics`/score only ever read the joined value.)
     // When skipped, the fork takes the empty branch so the join below stays
     // unconditional (mirroring the viewer-permission fiber above).
+    const capToDeadline = (phaseTimeoutMs: number): number =>
+      input.deadlineEpochMs === undefined
+        ? phaseTimeoutMs
+        : Math.min(phaseTimeoutMs, remainingDeadlineBudgetMs(input.deadlineEpochMs));
+    const capOptionalToDeadline = (phaseTimeoutMs: number | null): number | null => {
+      if (input.deadlineEpochMs === undefined) return phaseTimeoutMs;
+      const remainingBudgetMs = remainingDeadlineBudgetMs(input.deadlineEpochMs);
+      return phaseTimeoutMs === null
+        ? remainingBudgetMs
+        : Math.min(phaseTimeoutMs, remainingBudgetMs);
+    };
     const shouldRunSupplyChain = !isDiffMode || (input.supplyChainManifestChanged ?? false);
-    const supplyChainOverlapTimeout = yield* SupplyChainOverlapTimeoutMs;
+    const supplyChainOverlapTimeout = capToDeadline(yield* SupplyChainOverlapTimeoutMs);
     const supplyChainFiber = yield* Effect.forkChild(
       shouldRunSupplyChain
         ? Stream.runCollect(
@@ -597,6 +682,7 @@ export const runInspect = <HooksR = never>(
               supplyChainService.run({
                 rootDirectory: scanDirectory,
                 userConfig: resolvedConfig.config,
+                timeoutMs: supplyChainOverlapTimeout,
               }),
             ),
           ).pipe(
@@ -639,25 +725,8 @@ export const runInspect = <HooksR = never>(
     const scanConcurrency = resolveScanConcurrency(yield* OxlintConcurrency);
     const lintPhaseTimeoutMs = yield* LintPhaseTimeoutMs;
     const deadCodePhaseTimeoutMs = yield* DeadCodePhaseTimeoutMs;
-    // The dead-code phase timeout normally tracks the file-count-scaled worker
-    // timeout (`resolveDeadCodeTimeout`), so a large repo's legitimately-long
-    // pass isn't reclaimed before it finishes. But an EXPLICIT override (an env
-    // value or a test `Layer` that sets it off its default) is honored verbatim
-    // — tests pin it low to exercise the skip path, and that intent must win
-    // over the scaling.
-    const resolveDeadCodePhaseTimeoutMs = (scaledPhaseTimeoutMs: number): number =>
-      deadCodePhaseTimeoutMs === DEAD_CODE_PHASE_TIMEOUT_MS
-        ? scaledPhaseTimeoutMs
-        : deadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
-    // Caps a phase timeout to what's left of the `--max-duration` budget;
-    // identity when no deadline was set.
-    const capToDeadline = (phaseTimeoutMs: number): number =>
-      input.deadlineEpochMs === undefined
-        ? phaseTimeoutMs
-        : Math.min(phaseTimeoutMs, remainingDeadlineBudgetMs(input.deadlineEpochMs));
-
     // ── Dead-code plan ────────────────────────────────────────────────
     // Dead-code (deslop reachability) emits only `"warning"`-severity
     // diagnostics, all `Maintainability`; warnings show by default, so this
@@ -695,15 +764,13 @@ export const runInspect = <HooksR = never>(
         : Math.max(MIN_SCAN_CONCURRENCY, scanConcurrency - deadCodeParseConcurrency);
 
     // Runs either forked (overlap) or inline (sequential) with the same pipeline
-    // + failure Ref. The timeout is a parameter because it scales with the repo's
-    // source-file count — known accurately only after lint, on the sequential
-    // path. Building this is side-effect-free; the worker spawns only when the
-    // effect runs.
+    // + failure Ref. Building this is side-effect-free; the worker spawns only
+    // when the effect runs.
     const buildCollectDeadCode = (deadCodeTimeout: {
       workerTimeoutMs: number;
-      phaseTimeoutMs: number;
-    }) =>
-      Stream.runCollect(
+      phaseTimeoutMs: number | null;
+    }) => {
+      const collectDeadCode = Stream.runCollect(
         applyPerElementPipeline(
           deadCodeService
             .run({
@@ -719,6 +786,11 @@ export const runInspect = <HooksR = never>(
               },
             })
             .pipe(
+              Stream.filter(
+                (diagnostic) =>
+                  input.retainExcludedProjectDeadCodeDiagnostics === true ||
+                  !isExcludedProjectDiagnostic(diagnostic),
+              ),
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
                 Stream.unwrap(
                   Effect.gen(function* () {
@@ -732,25 +804,25 @@ export const runInspect = <HooksR = never>(
               ),
             ),
         ),
-      ).pipe(
-        // Dead-code phase cap (Effect-side): sits ABOVE the in-worker SIGKILL
-        // timer as a runtime-independent backstop for a starved event loop. On
-        // timeout, fold into the existing dead-code skip contract and yield an
-        // empty chunk so the scan still completes.
-        Effect.timeoutOption(deadCodeTimeout.phaseTimeoutMs),
+      );
+      const phaseTimeoutMs = deadCodeTimeout.phaseTimeoutMs;
+      if (phaseTimeoutMs === null) return collectDeadCode;
+      return collectDeadCode.pipe(
+        Effect.timeoutOption(phaseTimeoutMs),
         Effect.flatMap(
           Option.match({
             onNone: () =>
               Ref.set(deadCodeFailure, {
                 didFail: true,
                 reason: `Dead-code analysis exceeded ${Math.round(
-                  deadCodeTimeout.phaseTimeoutMs / MILLISECONDS_PER_SECOND,
+                  phaseTimeoutMs / MILLISECONDS_PER_SECOND,
                 )}s and was skipped.`,
               }).pipe(Effect.as<Diagnostic[]>([])),
             onSome: Effect.succeed,
           }),
         ),
       );
+    };
     // The overlap fork happens BEFORE lint, so the lint-reported file count isn't
     // known yet — scale the timeout off the project's discovered source count and
     // the reduced core share. (`forkChild`, not `startImmediately`: the lint
@@ -758,7 +830,7 @@ export const runInspect = <HooksR = never>(
     // the runtime to this child so it runs DURING lint. Auto-supervised —
     // interrupted if the parent dies.)
     const overlapDeadCodeTimeout = resolveDeadCodeTimeout({
-      sourceFileCount: project.sourceFileCount,
+      sourceFileCount: deadCodeSourceFileCount,
       deadCodeConcurrency: deadCodeParseConcurrency ?? scanConcurrency,
       fullConcurrency: scanConcurrency,
     });
@@ -766,9 +838,7 @@ export const runInspect = <HooksR = never>(
       ? yield* Effect.forkChild(
           buildCollectDeadCode({
             workerTimeoutMs: overlapDeadCodeTimeout.workerTimeoutMs,
-            phaseTimeoutMs: capToDeadline(
-              resolveDeadCodePhaseTimeoutMs(overlapDeadCodeTimeout.phaseTimeoutMs),
-            ),
+            phaseTimeoutMs: capOptionalToDeadline(deadCodePhaseTimeoutMs),
           }),
         )
       : null;
@@ -850,25 +920,26 @@ export const runInspect = <HooksR = never>(
     // the existing lint-failure contract (score becomes null) with an
     // `OxlintBatchExceeded`-tagged reason so renderers dispatch on it, and
     // yield an empty chunk so the rest of the scan still completes.
-    const filteredLintDiagnostics = yield* Stream.runCollect(
-      filterPerElementPipeline(rawLintStream),
-    ).pipe(
-      Effect.timeoutOption(lintPhaseTimeoutMs),
-      Effect.flatMap(
-        Option.match({
-          onNone: () =>
-            Ref.set(lintFailure, {
-              didFail: true,
-              reason: `Lint analysis exceeded ${
-                lintPhaseTimeoutMs / MILLISECONDS_PER_SECOND
-              }s and was skipped.`,
-              reasonTag: "OxlintBatchExceeded",
-              reasonKind: null,
-            }).pipe(Effect.as<Diagnostic[]>([])),
-          onSome: Effect.succeed,
-        }),
-      ),
-    );
+    const collectLintDiagnostics = Stream.runCollect(filterPerElementPipeline(rawLintStream));
+    const filteredLintDiagnostics = yield* lintPhaseTimeoutMs === null
+      ? collectLintDiagnostics
+      : collectLintDiagnostics.pipe(
+          Effect.timeoutOption(lintPhaseTimeoutMs),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Ref.set(lintFailure, {
+                  didFail: true,
+                  reason: `Lint analysis exceeded ${
+                    lintPhaseTimeoutMs / MILLISECONDS_PER_SECOND
+                  }s and was skipped.`,
+                  reasonTag: "OxlintBatchExceeded",
+                  reasonKind: null,
+                }).pipe(Effect.as<Diagnostic[]>([])),
+              onSome: Effect.succeed,
+            }),
+          ),
+        );
     const lintCollected = dedupeRelatedDiagnostics(filteredLintDiagnostics);
     yield* Effect.forEach(lintCollected, reporterService.emit, { discard: true });
     const lintFailureState = yield* Ref.get(lintFailure);
@@ -947,7 +1018,10 @@ export const runInspect = <HooksR = never>(
         // reported the true file count — scale the timeout to it so a large repo's
         // legitimately-long pass isn't reclaimed before it finishes.
         const sequentialDeadCodeTimeout = resolveDeadCodeTimeout({
-          sourceFileCount: totalFileCount,
+          sourceFileCount:
+            input.retainExcludedProjectDeadCodeDiagnostics === true
+              ? deadCodeSourceFileCount
+              : totalFileCount,
           deadCodeConcurrency: scanConcurrency,
           fullConcurrency: scanConcurrency,
         });
@@ -956,9 +1030,7 @@ export const runInspect = <HooksR = never>(
             ? yield* Fiber.join(deadCodeFiber)
             : yield* buildCollectDeadCode({
                 workerTimeoutMs: sequentialDeadCodeTimeout.workerTimeoutMs,
-                phaseTimeoutMs: capToDeadline(
-                  resolveDeadCodePhaseTimeoutMs(sequentialDeadCodeTimeout.phaseTimeoutMs),
-                ),
+                phaseTimeoutMs: capOptionalToDeadline(deadCodePhaseTimeoutMs),
               });
       }
     }
@@ -1050,7 +1122,15 @@ export const runInspect = <HooksR = never>(
             metadata: scoreMetadata,
           });
     const lintPartialFailures = yield* Ref.get(partialFailuresRef);
-    const securityScanFailed = yield* Ref.get(securityScanFailedRef);
+    const didSecurityScanFail = yield* Ref.get(securityScanFailedRef);
+    const securityScanFailed = didSecurityScanFail || didSecurityScanReachDeadline;
+    let securityScanFailureReason: string | null = null;
+    if (didSecurityScanReachDeadline) {
+      securityScanFailureReason =
+        "Security scan reached the max scan duration; findings collected before the deadline were preserved.";
+    } else if (didSecurityScanFail) {
+      securityScanFailureReason = "Security scan failed and was skipped.";
+    }
 
     return {
       project,
@@ -1074,6 +1154,7 @@ export const runInspect = <HooksR = never>(
       scanConcurrency,
       supplyChainOverlapTimedOut: supplyChainResult.timedOut,
       securityScanFailed,
+      securityScanFailureReason,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
       lintSidecarReplayedFileCount,
@@ -1095,13 +1176,10 @@ export const runInspect = <HooksR = never>(
         "inspect.scoreSurface": input.scoreSurface ?? "score",
       },
     }),
-    // Overall scan deadline backstop: bounds any phase not individually
-    // capped (e.g. a wedged git/IO call). Raises `ScanDeadlineExceeded`,
-    // keeping the declared error channel as `ReactDoctorError`; the CLI's
-    // `restoreLegacyThrow` re-dies it cleanly into `handleError`.
     (scanProgram) =>
-      Effect.flatMap(ScanDeadlineMs, (scanDeadlineMs) =>
-        scanProgram.pipe(
+      Effect.flatMap(ScanDeadlineMs, (scanDeadlineMs) => {
+        if (scanDeadlineMs === null) return scanProgram;
+        return scanProgram.pipe(
           Effect.timeout(scanDeadlineMs),
           Effect.catchTag(
             "TimeoutError",
@@ -1112,6 +1190,6 @@ export const runInspect = <HooksR = never>(
                 }),
               }),
           ),
-        ),
-      ),
+        );
+      }),
   );

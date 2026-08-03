@@ -349,6 +349,57 @@ module.exports = {
     }
   });
 
+  it("keeps baseline comparisons complete when descendant projects are excluded", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "react-doctor-baseline-exclude-"),
+    );
+    const nestedProjectDirectory = path.join(projectDirectory, "packages", "web");
+    try {
+      writeJson(path.join(projectDirectory, "package.json"), {
+        name: "baseline-exclusion-root",
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+      });
+      writeFile(
+        path.join(projectDirectory, "src", "App.tsx"),
+        "export const App = () => <main>Base root</main>;\n",
+      );
+      writeFile(
+        path.join(nestedProjectDirectory, "src", "App.tsx"),
+        "export const App = () => <main>Base nested</main>;\n",
+      );
+      initGitRepo(projectDirectory);
+      const baseRef = commitAll(projectDirectory, "initial workspace");
+
+      writeFile(
+        path.join(projectDirectory, "src", "App.tsx"),
+        "export const App = () => <main>Head root</main>;\n",
+      );
+      writeFile(
+        path.join(nestedProjectDirectory, "src", "App.tsx"),
+        "export const App = () => <main>Head nested</main>;\n",
+      );
+
+      const changedFiles = ["src/App.tsx", "packages/web/src/App.tsx"];
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: false,
+        noScore: true,
+        silent: true,
+        includePaths: changedFiles,
+        baseline: { ref: baseRef, baseFiles: changedFiles, headFiles: changedFiles },
+        excludedProjectDirectories: [nestedProjectDirectory],
+      });
+
+      expect(result.analyzedFiles).toEqual(["src/App.tsx"]);
+      expect(result.baselineDelta).toBeDefined();
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("degrades baseline to a plain diff when the head lint only partially ran", async () => {
     clearConfigCache();
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});

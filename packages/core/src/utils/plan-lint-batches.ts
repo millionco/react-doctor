@@ -20,9 +20,9 @@ interface MutableLintBatch {
 
 /**
  * Balanced LPT (longest-processing-time-first) lint batch planner. Where
- * `batchIncludePaths` greedily fills 100-file batches and leaves a small
- * remainder batch (617 files → 6×100 + 17, so the parallel pool's wall clock
- * is set by whichever 100-file chunk happened to collect the most work while
+ * `batchIncludePaths` greedily fills fixed-size batches and leaves a small
+ * remainder batch, so the parallel pool's wall clock is set by whichever
+ * full chunk happened to collect the most work while
  * the remainder's worker idles), this planner keeps the SAME mandatory batch
  * count — `ceil(files / OXLINT_MAX_FILES_PER_BATCH)`, the JS-plugin
  * perf-cliff / native-binding SIGABRT guard — and assigns files largest-first,

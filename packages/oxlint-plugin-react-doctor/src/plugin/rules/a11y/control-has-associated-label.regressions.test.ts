@@ -968,6 +968,32 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(6);
   });
 
+  it("reports nested decorative glyph and repeated-bar labels", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Player = () => (
+          <nav>
+            <button className="sound">⌁<span>×</span></button>
+            <button className="sound"><i /><span>╎╎╎╎╎╎</span></button>
+            <button className="mute">⌁ <span>|||||||</span></button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("accepts a button named by an SVG title", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `<button><svg><title>Close</title></svg></button>`,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("accepts concise text, numeric, and explicitly named symbol controls", () => {
     const result = runRule(
       controlHasAssociatedLabel,

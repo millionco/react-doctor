@@ -1,4 +1,5 @@
 import type { CliAgentId } from "../../utils/launch-agent.js";
+import { formatSkippedProjectsMessage } from "../../utils/format-skipped-projects-message.js";
 import type { MultiProjectSummary, ScanReport, TuiHandoffRequest } from "../scan-store.js";
 import { Report } from "./report.js";
 
@@ -21,6 +22,7 @@ export const Summary = ({
   canAddToCi,
   onAddToCi,
 }: SummaryProps) => {
+  const skippedProjects = summary.skippedProjects ?? [];
   const report: ScanReport = {
     diagnostics: summary.combinedDiagnostics,
     score: summary.aggregateScore,
@@ -32,6 +34,11 @@ export const Summary = ({
     isOffline: summary.isOffline,
     noScoreMessage: summary.noScoreMessage,
     skippedChecks: [...new Set(summary.projects.flatMap((project) => project.skippedChecks ?? []))],
+    ...(skippedProjects.length > 0
+      ? {
+          incompleteMessage: formatSkippedProjectsMessage(skippedProjects.length),
+        }
+      : {}),
     ...(summary.emptyStateMessage ? { emptyStateMessage: summary.emptyStateMessage } : {}),
     ...(summary.lintFailureReason ? { lintFailureReason: summary.lintFailureReason } : {}),
   };
@@ -44,7 +51,7 @@ export const Summary = ({
       onHandoff={onHandoff}
       canAddToCi={canAddToCi}
       onAddToCi={onAddToCi}
-      projectCount={summary.projects.length}
+      projectCount={summary.projects.length + skippedProjects.length}
       priorityScores={summary.projects.map((project) => project.score)}
     />
   );

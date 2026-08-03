@@ -12,6 +12,7 @@ export interface ReportLandingProps {
   readonly emptyStateMessage?: string;
   readonly lintFailureReason?: string;
   readonly skippedChecks?: ReadonlyArray<string>;
+  readonly incompleteMessage?: string;
   readonly actions: ReadonlyArray<ActionMenuAction>;
   readonly selectedIndex: number;
   readonly onSelectionChange: (index: number) => void;
@@ -25,13 +26,17 @@ export const ReportLanding = ({
   emptyStateMessage,
   lintFailureReason,
   skippedChecks,
+  incompleteMessage,
   actions,
   selectedIndex,
   onSelectionChange,
   onQuit,
 }: ReportLandingProps) => {
   const showScore = phase === "actions" || phase === "score";
-  const skippedCheckLabel = skippedChecks?.join(" and ");
+  const skippedCheckLabel = skippedChecks
+    ?.filter((skippedCheck) => skippedCheck !== "lint" || !lintFailureReason)
+    .join(" and ");
+  const hasIncompleteResult = Boolean(incompleteMessage || lintFailureReason || skippedCheckLabel);
   useInput(
     (input) => {
       if (input === "q") onQuit();
@@ -42,17 +47,21 @@ export const ReportLanding = ({
   return (
     <Box flexDirection="column">
       {showScore ? header : null}
-      {issueCount === 0 ? (
-        <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
+      {hasIncompleteResult || issueCount === 0 ? (
+        <Box flexDirection="column" marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
+          {incompleteMessage ? <Text color="yellow">⚠ {incompleteMessage}</Text> : null}
           {lintFailureReason ? (
             <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>
-          ) : skippedCheckLabel ? (
+          ) : null}
+          {skippedCheckLabel ? (
             <Text color="yellow">
-              ⚠ No issues detected, but {skippedCheckLabel} checks failed — results are incomplete.
+              ⚠ {issueCount === 0 ? "No issues detected, but " : ""}
+              {skippedCheckLabel} checks failed — results are incomplete.
             </Text>
-          ) : (
+          ) : null}
+          {issueCount === 0 && !hasIncompleteResult ? (
             <Text color="green">✔ {emptyStateMessage ?? "No issues found. Nice work."}</Text>
-          )}
+          ) : null}
         </Box>
       ) : null}
       {phase === "actions" ? (

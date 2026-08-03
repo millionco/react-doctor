@@ -12,6 +12,7 @@ const INTRINSIC_STRING_ALIAS_RULE_IDS: ReadonlyArray<string> = [
   "anchor-ambiguous-text",
   "anchor-has-content",
   "anchor-is-valid",
+  "anchor-target-exists",
   "aria-activedescendant-has-tabindex",
   "aria-role",
   "aria-unsupported-elements",

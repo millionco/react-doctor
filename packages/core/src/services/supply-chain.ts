@@ -9,6 +9,7 @@ import { SupplyChainOverlapTimeoutMs } from "../refs.js";
 interface SupplyChainInput {
   readonly rootDirectory: string;
   readonly userConfig: ReactDoctorConfig | null;
+  readonly timeoutMs?: number;
 }
 
 /**
@@ -46,8 +47,12 @@ export class SupplyChain extends Context.Service<
           // the fork-level budget also raises the inner one — otherwise the
           // inner cap stays pinned at the constant and the env var can only
           // ever lower the effective budget.
-          Effect.flatMap(SupplyChainOverlapTimeoutMs, (totalTimeoutMs) =>
-            checkSupplyChain({ ...input, totalTimeoutMs }),
+          Effect.flatMap(SupplyChainOverlapTimeoutMs, (configuredTimeoutMs) =>
+            checkSupplyChain({
+              rootDirectory: input.rootDirectory,
+              userConfig: input.userConfig,
+              totalTimeoutMs: input.timeoutMs ?? configuredTimeoutMs,
+            }),
           ).pipe(
             Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
             // Surface the whole check as one named span (parent of the

@@ -6,6 +6,7 @@ import { listSourceFiles } from "./utils/list-source-files.js";
 export const resolveLintIncludePaths = (
   rootDirectory: string,
   userConfig: ReactDoctorConfig | null,
+  sourceFiles?: ReadonlyArray<string>,
 ): string[] | undefined => {
   if (!Array.isArray(userConfig?.ignore?.files) || userConfig.ignore.files.length === 0) {
     return undefined;
@@ -13,7 +14,7 @@ export const resolveLintIncludePaths = (
 
   const ignoredPatterns = compileIgnoredFilePatterns(userConfig);
 
-  const includedPaths = listSourceFiles(rootDirectory).filter((filePath) => {
+  const includedPaths = (sourceFiles ?? listSourceFiles(rootDirectory)).filter((filePath) => {
     if (!isLintableSourceFile(filePath)) {
       return false;
     }

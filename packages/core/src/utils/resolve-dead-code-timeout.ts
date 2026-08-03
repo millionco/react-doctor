@@ -1,5 +1,4 @@
 import {
-  DEAD_CODE_PHASE_TIMEOUT_OVER_WORKER_MS,
   DEAD_CODE_TIMEOUT_CEILING_MS,
   DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE,
   DEAD_CODE_WORKER_TIMEOUT_MS,
@@ -26,12 +25,11 @@ interface DeadCodeTimeoutInput {
  * tipped over by any concurrent load — silently dropping every dead-code
  * finding. Scaling the budget with file count (and inversely with the core
  * share when overlapped) lets the pass complete, while the ceiling still
- * reclaims a genuinely wedged worker. Returns the in-worker SIGKILL deadline
- * and the Effect-side phase backstop that sits a margin above it.
+ * reclaims a genuinely wedged worker.
  */
 export const resolveDeadCodeTimeout = (
   input: DeadCodeTimeoutInput,
-): { workerTimeoutMs: number; phaseTimeoutMs: number } => {
+): { workerTimeoutMs: number } => {
   const coreShareFactor = Math.max(
     1,
     input.fullConcurrency / Math.max(1, input.deadCodeConcurrency),
@@ -43,8 +41,5 @@ export const resolveDeadCodeTimeout = (
       Math.ceil(input.sourceFileCount * DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE * coreShareFactor),
     ),
   );
-  return {
-    workerTimeoutMs,
-    phaseTimeoutMs: workerTimeoutMs + DEAD_CODE_PHASE_TIMEOUT_OVER_WORKER_MS,
-  };
+  return { workerTimeoutMs };
 };

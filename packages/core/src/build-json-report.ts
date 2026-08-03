@@ -6,6 +6,7 @@ import type {
   JsonReportDiffInfo,
   JsonReportMode,
   JsonReportProjectEntryV3,
+  JsonReportSkippedProject,
   JsonReportV3,
   InspectResult,
 } from "./types/index.js";
@@ -22,6 +23,7 @@ interface BuildJsonReportInput {
   mode: JsonReportMode;
   diff: DiffInfo | null;
   scans: Array<{ directory: string; result: InspectResult }>;
+  skippedProjects?: ReadonlyArray<JsonReportSkippedProject>;
   totalElapsedMilliseconds: number;
   /**
    * Present for a baseline run — `scans[].result.diagnostics` are then the
@@ -171,6 +173,9 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReportV3 => {
     directory: input.directory,
     diff: toJsonDiff(input.diff),
     projects,
+    ...(input.skippedProjects && input.skippedProjects.length > 0
+      ? { skippedProjects: [...input.skippedProjects] }
+      : {}),
     diagnostics: flattenedDiagnostics,
     summary,
     elapsedMilliseconds: input.totalElapsedMilliseconds,

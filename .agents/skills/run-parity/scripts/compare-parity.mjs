@@ -310,7 +310,7 @@ const validateSkippedCheckReasons = (skippedCheckReasons) =>
   (isRecord(skippedCheckReasons) &&
     Object.values(skippedCheckReasons).every((reason) => typeof reason === "string"));
 
-const validateReport = (report) => {
+export const validateReport = (report) => {
   if (
     !isRecord(report) ||
     !REPORT_SCHEMA_VERSIONS.has(report.schemaVersion) ||

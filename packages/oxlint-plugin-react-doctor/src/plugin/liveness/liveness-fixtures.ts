@@ -66,6 +66,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "anchor-is-valid": {
     code: 'const B = () => <a href="#" onClick={go}>Go</a>;',
   },
+  "anchor-target-exists": {
+    code: 'const B = () => <a href="#missing">Missing</a>;',
+  },
   "aria-activedescendant-has-tabindex": {
     code: '<div contentEditable="false" aria-activedescendant={activeId} />',
   },
@@ -118,7 +121,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     filePath: ".github/workflows/release.yml",
   },
   "button-has-type": {
-    code: "<button type />",
+    code: "<form><button type /></form>",
   },
   "checked-requires-onchange-or-readonly": {
     code: 'const C = ({ checked, locked }) => <input type="checkbox" checked={checked} disabled={locked} />;',
@@ -2553,6 +2556,19 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-unowned-async-error-clear": {
     code: 'import { useEffect, useState } from "react";\nexport const Request = ({ currentId, send }) => { const [ownerId, setOwnerId] = useState(null); useEffect(() => { if (ownerId !== currentId) setOwnerId(null); }, [currentId, ownerId]); const respond = async (request) => { await send(request); if (request.failed) setOwnerId(request.requestId); else setOwnerId(null); }; return <button onClick={() => respond({ requestId: currentId })}>Send</button>; };',
+  },
+  "no-controlled-selection-focus-effect": {
+    code: `import { useModernLayoutEffect } from "./use-modern-layout-effect";
+export const useListNavigation = ({ selectedIndex, focusItem }) => {
+  const indexRef = useRef(null);
+  useModernLayoutEffect(() => {
+    indexRef.current = selectedIndex;
+    focusItem(indexRef);
+  }, [focusItem, selectedIndex]);
+};`,
+  },
+  "no-passive-request-owner-ref": {
+    code: "export const History = ({ viewId }) => { const ownerRef = useRef(viewId); const [, setItems] = useState([]); useEffect(() => { ownerRef.current = viewId; }, [viewId]); const refresh = async () => { const items = await load(viewId); if (ownerRef.current !== viewId) return; setItems(items); }; return <button onClick={refresh}>Refresh</button>; };",
   },
   "no-focus-in-animation-completion-handler": {
     code: 'import { useRef } from "react";\nexport const Dialog = () => { const inputRef = useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };',

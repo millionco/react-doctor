@@ -226,6 +226,19 @@ describe("createOxlintConfig settings", () => {
     expect(config.settings["react-doctor"]).not.toHaveProperty("shopifyFlashListMajorVersion");
   });
 
+  it("forwards the module sources detected before spawning lint workers", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      projectIndexModuleSources: ["next/og", "remotion"],
+    });
+
+    expect(config.settings["react-doctor"].projectIndexModuleSources).toEqual([
+      "next/og",
+      "remotion",
+    ]);
+  });
+
   it("forwards configured and generated runtime globals to plugin rules", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",

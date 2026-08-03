@@ -2498,6 +2498,19 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays bounded when an async helper calls itself recursively", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `async function visit(entry) {
+        if (entry.isDirectory()) {
+          await visit(entry.child);
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not treat Promise.resolve as rejection absorption for a rejecting argument", () => {
     const rejectingArgument = runRule(
       noLoadingFlagResetOutsideFinally,

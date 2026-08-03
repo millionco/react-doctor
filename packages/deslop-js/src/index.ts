@@ -35,6 +35,7 @@ import { resolveEntriesInWorker } from "./collect/entries-in-worker.js";
 import { loadSummaryCache } from "./summary-cache.js";
 import { findMonorepoRoot } from "./utils/find-monorepo-root.js";
 import { collectGitIgnoredPaths } from "./utils/collect-git-ignored-paths.js";
+import { normalizeRegistryModulePath } from "./utils/normalize-registry-module-path.js";
 
 const STYLE_EXTENSIONS = [".css", ".scss"];
 
@@ -52,15 +53,25 @@ const basenameFromPath = (filePath: string): string => {
  * analysis can't follow the indirection, so those targets get falsely
  * flagged as unused.
  *
- * Heuristic: if a parsed string literal exactly matches the basename of
- * exactly one file in the project, treat that file as an entry point.
- * Uniqueness guards against false-positives from common names like
- * `index.ts` matching dozens of unrelated files.
+ * Heuristic: if a parsed string literal exactly matches the basename or
+ * extensionless path suffix of exactly one file in the project, treat that
+ * file as an entry point. Uniqueness guards against false-positives from
+ * common names like `index.ts` matching dozens of unrelated files.
  */
 const markFilenameRegistryEntries = (
   moduleGraph: ReturnType<typeof buildDependencyGraph>,
 ): void => {
   const basenameToModuleIndex = new Map<string, number | "ambiguous">();
+  const pathSuffixToModuleIndex = new Map<string, number | "ambiguous">();
+  const referencedPathSet = new Set<string>();
+  for (const module of moduleGraph.modules) {
+    for (const referencedFilename of module.referencedFilenames) {
+      if (referencedFilename.includes("/")) {
+        referencedPathSet.add(normalizeRegistryModulePath(referencedFilename));
+      }
+    }
+  }
+
   for (const module of moduleGraph.modules) {
     const basename = basenameFromPath(module.fileId.path);
     const existing = basenameToModuleIndex.get(basename);
@@ -69,11 +80,28 @@ const markFilenameRegistryEntries = (
     } else if (existing !== "ambiguous") {
       basenameToModuleIndex.set(basename, "ambiguous");
     }
+
+    const extensionlessPath = normalizeRegistryModulePath(module.fileId.path);
+    let slashIndex = extensionlessPath.indexOf("/");
+    while (slashIndex !== -1) {
+      const pathSuffix = extensionlessPath.slice(slashIndex + 1);
+      slashIndex = extensionlessPath.indexOf("/", slashIndex + 1);
+      if (!referencedPathSet.has(pathSuffix)) continue;
+      const existingPathIndex = pathSuffixToModuleIndex.get(pathSuffix);
+      if (existingPathIndex === undefined) {
+        pathSuffixToModuleIndex.set(pathSuffix, module.fileId.index);
+      } else if (existingPathIndex !== "ambiguous") {
+        pathSuffixToModuleIndex.set(pathSuffix, "ambiguous");
+      }
+    }
   }
 
   for (const module of moduleGraph.modules) {
     for (const referencedFilename of module.referencedFilenames) {
-      const targetIndex = basenameToModuleIndex.get(referencedFilename);
+      const normalizedReference = normalizeRegistryModulePath(referencedFilename);
+      const targetIndex = referencedFilename.includes("/")
+        ? pathSuffixToModuleIndex.get(normalizedReference)
+        : basenameToModuleIndex.get(referencedFilename);
       if (typeof targetIndex !== "number") continue;
       const targetModule = moduleGraph.modules[targetIndex];
       if (!targetModule || targetModule.isEntryPoint) continue;

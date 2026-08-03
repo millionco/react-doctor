@@ -76,11 +76,10 @@ export interface SpawnLintBatchesInput {
   readonly signal?: AbortSignal;
   /**
    * Absolute epoch-millisecond deadline for the whole lint pass (from the
-   * caller's `--max-duration` budget). Once it passes, batches that haven't
-   * started yet are skipped — recorded and surfaced via `onPartialFailure` —
-   * instead of spawned, so the scan degrades to partial results rather than
-   * running past the budget. In-flight batches finish normally, but their
-   * binary-split retries re-check the deadline before re-spawning.
+   * caller's `--max-duration` budget). Each child process is capped to the
+   * remaining budget; once it passes, unfinished and unstarted batches are
+   * skipped and surfaced via `onPartialFailure`, so the scan degrades to
+   * partial results instead of running past the budget.
    */
   readonly deadlineEpochMs?: number;
   /**
@@ -181,6 +180,16 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   const isPastDeadline = (): boolean =>
     (deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0) ||
     (rescueDeadlineEpochMs !== undefined && remainingDeadlineBudgetMs(rescueDeadlineEpochMs) === 0);
+  const resolveSpawnTimeoutMs = (): number | undefined => {
+    const deadlineBudgets = [deadlineEpochMs, rescueDeadlineEpochMs]
+      .filter((deadline): deadline is number => deadline !== undefined)
+      .map(remainingDeadlineBudgetMs);
+    if (deadlineBudgets.length === 0) return spawnTimeoutMs;
+    const remainingDeadlineMs = Math.min(...deadlineBudgets);
+    return spawnTimeoutMs === undefined
+      ? remainingDeadlineMs
+      : Math.min(spawnTimeoutMs, remainingDeadlineMs);
+  };
 
   // One full pass over the given batches at `concurrency` workers. All
   // mutable state (diagnostics, dropped-file bookkeeping, progress counters,
@@ -241,7 +250,8 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       const batchArgs = [...baseArgs, ...batch];
       try {
         const spawnBatch = (): Promise<string | null> => {
-          if (isPastDeadline()) {
+          const effectiveSpawnTimeoutMs = resolveSpawnTimeoutMs();
+          if (effectiveSpawnTimeoutMs === 0) {
             deadlineSkippedFiles.push(...batch);
             batchState.deadlineSkippedFileCount += batch.length;
             return Promise.resolve(null);
@@ -250,7 +260,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
             batchArgs,
             rootDirectory,
             nodeBinaryPath,
-            spawnTimeoutMs,
+            effectiveSpawnTimeoutMs,
             outputMaxBytes,
             signal,
             () => {

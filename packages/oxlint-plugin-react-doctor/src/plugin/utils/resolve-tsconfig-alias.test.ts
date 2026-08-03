@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS } from "../constants/thresholds.js";
 import { collectCrossFileProbes } from "./cross-file-probe-recorder.js";
 import {
   __clearTsconfigAliasCacheForTests,
@@ -114,7 +115,7 @@ describe("resolveTsconfigAliasPath", () => {
     expect(resolveTsconfigAliasPath(fromFile, "react")).toBeNull();
   });
 
-  it("picks up tsconfig edits within a long-lived process (no stale directory cache)", () => {
+  it("picks up tsconfig edits after scan caches reset", () => {
     const tsconfigPath = writeFile(
       "tsconfig.json",
       JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./old/*"] } } }),
@@ -132,6 +133,7 @@ describe("resolveTsconfigAliasPath", () => {
     const future = new Date(Date.now() + 2000);
     fs.utimesSync(tsconfigPath, future, future);
 
+    resetTsconfigAliasCaches();
     expect(resolveTsconfigAliasPath(fromFile, "@/Thing")).toBe(newTarget);
   });
 
@@ -159,12 +161,29 @@ describe("resolveTsconfigAliasPath", () => {
     );
     const freshTarget = writeFile("src/fresh/Thing.tsx", "export const Thing = () => null;");
 
-    const cached = collectResolution();
+    const siblingFromFile = path.join(temporaryDirectory, "src/other/page.tsx");
+    const collectSiblingResolution = () => {
+      let result: string | null = null;
+      const trace = collectCrossFileProbes(() => {
+        result = resolveTsconfigAliasPath(siblingFromFile, "@/Thing");
+      });
+      return { result, trace };
+    };
+
+    const cached = collectSiblingResolution();
     expect(cached.result).toBe(oldTarget);
-    expect(cached.trace).toEqual(first.trace);
+    expect(cached.trace.contentPaths).toEqual(
+      new Set([
+        path.join(temporaryDirectory, "src/other/tsconfig.json"),
+        path.join(temporaryDirectory, "src/other/jsconfig.json"),
+        path.join(temporaryDirectory, "src/tsconfig.json"),
+        path.join(temporaryDirectory, "src/jsconfig.json"),
+        path.join(temporaryDirectory, "tsconfig.json"),
+      ]),
+    );
 
     resetTsconfigAliasCaches();
-    const refreshed = collectResolution();
+    const refreshed = collectSiblingResolution();
     expect(refreshed.result).toBe(freshTarget);
     expect(
       refreshed.trace.contentPaths.has(path.join(temporaryDirectory, "src/tsconfig.json")),
@@ -177,5 +196,48 @@ describe("resolveTsconfigAliasPath", () => {
   it("returns null when no tsconfig is found", () => {
     const fromFile = path.join(temporaryDirectory, "src/page.tsx");
     expect(resolveTsconfigAliasPath(fromFile, "@/anything")).toBeNull();
+  });
+
+  it("preserves the directory walk limit when reusing an ancestor lookup", () => {
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./src/*"] } } }),
+    );
+    const target = writeFile("src/Thing.tsx", "export const Thing = () => null;");
+    const directorySegments = Array.from(
+      { length: CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS - 1 },
+      (_, index) => `level-${index}`,
+    );
+    const cachedAncestorFile = path.join(temporaryDirectory, ...directorySegments, "page.tsx");
+    expect(resolveTsconfigAliasPath(cachedAncestorFile, "@/Thing")).toBe(target);
+
+    const deeperFile = path.join(
+      temporaryDirectory,
+      ...directorySegments,
+      "beyond-limit",
+      "page.tsx",
+    );
+    expect(resolveTsconfigAliasPath(deeperFile, "@/Thing")).toBeNull();
+  });
+
+  it("does not path-compress an incomplete directory walk", () => {
+    writeFile(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@/*": ["./src/*"] } } }),
+    );
+    const target = writeFile("src/Thing.tsx", "export const Thing = () => null;");
+    const directorySegments = Array.from(
+      { length: CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS },
+      (_, index) => `level-${index}`,
+    );
+    const beyondLimitFile = path.join(temporaryDirectory, ...directorySegments, "page.tsx");
+    expect(resolveTsconfigAliasPath(beyondLimitFile, "@/Thing")).toBeNull();
+
+    const withinLimitFile = path.join(
+      temporaryDirectory,
+      ...directorySegments.slice(0, -1),
+      "page.tsx",
+    );
+    expect(resolveTsconfigAliasPath(withinLimitFile, "@/Thing")).toBe(target);
   });
 });

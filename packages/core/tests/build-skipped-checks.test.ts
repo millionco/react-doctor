@@ -20,4 +20,20 @@ describe("buildSkippedChecks", () => {
       "security-scan": "Security scan failed and was skipped.",
     });
   });
+
+  it("uses the security scan's partial deadline explanation", () => {
+    const securityScanFailureReason =
+      "Security scan reached the max scan duration; findings collected before the deadline were preserved.";
+    const result = buildSkippedChecks({
+      didLintFail: false,
+      lintFailureReason: null,
+      lintPartialFailures: [],
+      didDeadCodeFail: false,
+      deadCodeFailureReason: null,
+      securityScanFailed: true,
+      securityScanFailureReason,
+    });
+
+    expect(result.skippedCheckReasons["security-scan"]).toBe(securityScanFailureReason);
+  });
 });

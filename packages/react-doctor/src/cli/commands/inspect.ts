@@ -10,7 +10,8 @@ import {
   getDiffInfo,
   hasReactRuntime,
   highlighter,
-  mergeReactDoctorConfigs,
+  isPathInsideDirectory,
+  remainingDeadlineBudgetMs,
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
@@ -19,6 +20,7 @@ import { flushSentry } from "../../instrument.js";
 import type {
   DiffInfo,
   InspectResult,
+  JsonReportSkippedProject,
   JsonReportMode,
   ReactDoctorConfig,
 } from "@react-doctor/core";
@@ -29,6 +31,9 @@ import { recordCount, recordDistribution } from "../utils/record-metric.js";
 import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-staged-files.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
+import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
+import { collectProjectSourceFileCounts } from "../utils/collect-project-source-file-counts.js";
+import { formatSkippedProjectsMessage } from "../utils/format-skipped-projects-message.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
 import { isShareOptedOut } from "../utils/is-share-opted-out.js";
@@ -62,11 +67,14 @@ import type { CliInspectOptions } from "../utils/resolve-cli-inspect-options.js"
 import { finalizeScope, resolveScope, warnDeprecatedDiff } from "../utils/resolve-scope.js";
 import { resolveMergeBaseRef } from "../utils/materialize-baseline-files.js";
 import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
+import { resolveWorkspaceDeadCodeOwner } from "../utils/resolve-workspace-dead-code-owner.js";
+import { retryMissingProjectScores } from "../utils/retry-missing-project-scores.js";
 import {
   resolveProjectChangedLineRanges,
   resolveProjectDiffIncludePaths,
 } from "../utils/resolve-project-diff-include-paths.js";
 import { resolveProjectSourceFilePaths } from "../utils/resolve-project-source-file-paths.js";
+import { resolveProjectScan, type ResolvedProjectScan } from "../utils/resolve-project-scan.js";
 import { runExplain } from "../utils/run-explain.js";
 import { runProjectScanBatch } from "../utils/run-project-scan-batch.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
@@ -132,6 +140,7 @@ const filterCompletedScansByCategories = (
 
 interface FinalizeScansInput {
   readonly completedScans: CompletedScan[];
+  readonly skippedProjects: ReadonlyArray<JsonReportSkippedProject>;
   readonly mode: JsonReportMode;
   readonly diff: DiffInfo | null;
   /**
@@ -149,6 +158,24 @@ interface FinalizeScansInput {
   readonly resolvedDirectory: string;
   readonly startTime: number;
 }
+
+interface ReportSkippedProjectsInput {
+  readonly skippedProjects: JsonReportSkippedProject[];
+  readonly isQuiet: boolean;
+}
+
+const reportSkippedProjects = (input: ReportSkippedProjectsInput): void => {
+  input.skippedProjects.sort((left, right) => left.directory.localeCompare(right.directory));
+  if (input.skippedProjects.length === 0) return;
+
+  recordCount(METRIC.scanProjectSkipped, input.skippedProjects.length, {
+    reason: "max-duration",
+  });
+  if (!input.isQuiet) {
+    logger.warn(formatSkippedProjectsMessage(input.skippedProjects.length));
+    logger.break();
+  }
+};
 
 /**
  * Post-scan finalization shared by the staged-arm and project-loop
@@ -185,6 +212,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
   // filtering out of `inspect()` (an InspectResult contract change) — a v2
   // follow-up. Single-project and all-succeed runs are unaffected.
   const baselineComputed =
+    input.skippedProjects.length === 0 &&
     input.completedScans.length > 0 &&
     input.completedScans.every((scan) => scan.result.baselineDelta !== undefined);
   const baselineDegraded = input.baselineIntended && !baselineComputed;
@@ -220,6 +248,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
         mode,
         diff: input.diff,
         scans: jsonCompletedScans,
+        skippedProjects: input.skippedProjects,
         totalElapsedMilliseconds: performance.now() - input.startTime,
         baseline,
         baselineDegraded,
@@ -449,11 +478,8 @@ export const inspectAction = async (
       const buildProjectScanContext = async (
         projectDirectory: string,
       ): Promise<StagedProjectScanContext | null> => {
-        const projectScanTarget =
-          projectDirectory === resolvedDirectory
-            ? scanTarget
-            : await resolveScanTarget(projectDirectory, { allowAmbiguous: true });
-        const scanDirectory = projectScanTarget.resolvedDirectory;
+        const projectScan = await resolveProjectScan(scanTarget, projectDirectory);
+        const scanDirectory = projectScan.directory;
         const treeRelativeDirectory = resolveProjectRelativeDirectory(
           resolvedDirectory,
           scanDirectory,
@@ -465,16 +491,8 @@ export const inspectAction = async (
           projectDirectory,
           scanDirectory,
           treeRelativeDirectory,
-          projectConfig:
-            projectDirectory === resolvedDirectory
-              ? userConfig
-              : mergeReactDoctorConfigs(userConfig, projectScanTarget.userConfig ?? undefined),
-          // `plugins` is override-wins in the merge, so relative entries must
-          // resolve against the config file that supplied them.
-          projectConfigSourceDirectory:
-            projectScanTarget.userConfig?.plugins === undefined
-              ? scanTarget.configSourceDirectory
-              : projectScanTarget.configSourceDirectory,
+          projectConfig: projectScan.config,
+          projectConfigSourceDirectory: projectScan.configSourceDirectory,
         };
       };
 
@@ -634,6 +652,7 @@ export const inspectAction = async (
       // selected: a lone survivor renders inline like any single-project scan
       // instead of being suppressed in favour of an aggregate summary of one.
       const isMultiProject = stagedProjectRuns.length > 1;
+      const skippedProjects: JsonReportSkippedProject[] = [];
       // Nothing at all came out of the index. An unreadable index already failed
       // upstream — the divergence guard runs `git status` before any of this, and
       // `getStagedSourceFiles` throws when `git diff --cached` reports failure —
@@ -662,8 +681,15 @@ export const inspectAction = async (
 
       const scanStagedProject = async (
         projectRun: (typeof stagedProjectRuns)[number],
-      ): Promise<CompletedScan> => {
+      ): Promise<CompletedScan | null> => {
         const { projectScan, includePaths } = projectRun;
+        if (
+          scanDeadlineEpochMs !== undefined &&
+          remainingDeadlineBudgetMs(scanDeadlineEpochMs) === 0
+        ) {
+          skippedProjects.push({ directory: projectScan.scanDirectory, reason: "max-duration" });
+          return null;
+        }
         const projectTempDirectory = path.join(
           snapshot.tempDirectory,
           projectScan.treeRelativeDirectory,
@@ -727,7 +753,8 @@ export const inspectAction = async (
       // bytes out of it, so tearing it down first would silently degrade every
       // frame to a bare `file:line`.
       try {
-        if (!isQuiet && isMultiProject) {
+        reportSkippedProjects({ skippedProjects, isQuiet });
+        if (!isQuiet && isMultiProject && completedScans.length > 0) {
           const showShareLink =
             !isShareOptedOut(completedScans, scanOptions.noScore) && !scanOptions.isCi;
           await Effect.runPromise(
@@ -766,6 +793,7 @@ export const inspectAction = async (
 
       finalizeScans({
         completedScans,
+        skippedProjects,
         mode: "staged",
         diff: null,
         baselineIntended: false,
@@ -920,30 +948,45 @@ export const inspectAction = async (
       logger.break();
     }
 
-    const isMultiProject = projectDirectories.length > 1;
+    const projectScans = deduplicateProjectScans(
+      await Promise.all(
+        projectDirectories.map((projectDirectory) =>
+          resolveProjectScan(scanTarget, projectDirectory),
+        ),
+      ),
+    );
+    const isMultiProject = projectScans.length > 1;
+    const rootProjectScan = projectScans.find(
+      (projectScan) => path.resolve(projectScan.directory) === path.resolve(resolvedDirectory),
+    );
+    const workspaceDeadCodeOwner = resolveWorkspaceDeadCodeOwner({
+      rootDirectory: resolvedDirectory,
+      projectDirectories: projectScans.map((projectScan) => projectScan.directory),
+      isRootDeadCodeEnabled: scanOptions.deadCode ?? rootProjectScan?.config?.deadCode ?? true,
+    });
+    if (workspaceDeadCodeOwner !== null) {
+      recordCount(METRIC.scanWorkspaceDeadCodeShared, 1, { projectCount: projectScans.length });
+    }
+    const precomputedSourceFileCounts =
+      isMultiProject && !isDiffMode
+        ? await collectProjectSourceFileCounts(
+            resolvedDirectory,
+            projectScans.map((projectScan) => projectScan.directory),
+          )
+        : null;
+    const skippedProjects: JsonReportSkippedProject[] = [];
 
-    const scanProject = async (projectDirectory: string): Promise<CompletedScan | null> => {
-      // Each selected folder goes through the same scan-target resolution as
-      // `diagnose({ projects })` — its own `rootDir`, nested React discovery,
-      // and on-disk config (layered additively onto the root config via
-      // `mergeReactDoctorConfigs`) — so the CLI and the API agree on what
-      // scanning a module means.
-      const projectScanTarget =
-        projectDirectory === resolvedDirectory
-          ? scanTarget
-          : await resolveScanTarget(projectDirectory, { allowAmbiguous: true });
-      const scanDirectory = projectScanTarget.resolvedDirectory;
-      const projectConfig =
-        projectDirectory === resolvedDirectory
-          ? userConfig
-          : mergeReactDoctorConfigs(userConfig, projectScanTarget.userConfig ?? undefined);
-      // `plugins` is override-wins in the merge, so relative entries must
-      // resolve against the config file that supplied them: the module's own
-      // config when it declares `plugins`, the root config otherwise.
-      const projectConfigSourceDirectory =
-        projectScanTarget.userConfig?.plugins === undefined
-          ? scanTarget.configSourceDirectory
-          : projectScanTarget.configSourceDirectory;
+    const scanProject = async (projectScan: ResolvedProjectScan): Promise<CompletedScan | null> => {
+      if (
+        scanDeadlineEpochMs !== undefined &&
+        remainingDeadlineBudgetMs(scanDeadlineEpochMs) === 0
+      ) {
+        skippedProjects.push({ directory: projectScan.directory, reason: "max-duration" });
+        return null;
+      }
+      const scanDirectory = projectScan.directory;
+      const projectConfig = projectScan.config;
+      const ownsWorkspaceDeadCode = scanDirectory === workspaceDeadCodeOwner;
       // The Socket supply-chain check runs by default; opted out by
       // `--no-supply-chain` (wins) or per-project config. Off ⇒ a manifest-only
       // diff change shouldn't pull a project into the scan (nothing to report).
@@ -1008,14 +1051,22 @@ export const inspectAction = async (
       }
       const scanResult = await inspectProject(scanDirectory, {
         ...scanOptions,
+        deadCode: workspaceDeadCodeOwner === null ? scanOptions.deadCode : ownsWorkspaceDeadCode,
+        precomputedSourceFileCount: precomputedSourceFileCounts?.get(scanDirectory),
         deadlineEpochMs: scanDeadlineEpochMs,
         includePaths,
         configOverride: projectConfig,
-        configSourceDirectory: projectConfigSourceDirectory ?? undefined,
+        configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
         suppressRendering: isMultiProject,
         // Pool members overlap; they must not own the process-global Sentry
         // run state (see `InspectOptions.concurrentScan`).
         concurrentScan: isMultiProject,
+        excludedProjectDirectories: projectScans
+          .filter((candidateProjectScan) =>
+            isPathInsideDirectory(candidateProjectScan.directory, scanDirectory),
+          )
+          .map((candidateProjectScan) => candidateProjectScan.directory),
+        retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
         baseline:
           baselineRef !== null &&
           projectBaselineBaseFiles !== null &&
@@ -1039,12 +1090,18 @@ export const inspectAction = async (
     };
 
     const projectBatch = await runProjectScanBatch({
-      projects: projectDirectories,
+      projects: projectScans,
       isQuiet,
       isSilent: scanOptions.silent === true,
       scanProject,
     });
-    const completedScans = projectBatch.completedScans;
+    const completedScans = await retryMissingProjectScores(
+      projectBatch.completedScans.map((completedScan) => ({
+        ...completedScan,
+        isScoreDisabled: scanOptions.noScore ?? completedScan.config?.noScore ?? false,
+      })),
+    );
+    reportSkippedProjects({ skippedProjects, isQuiet });
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
       const showShareLink =
@@ -1092,6 +1149,7 @@ export const inspectAction = async (
 
     finalizeScans({
       completedScans,
+      skippedProjects,
       // A resolved base ref means a baseline run; finalizeScans downgrades this
       // to `diff` if no delta was produced (degraded run).
       mode: baselineRef ? "baseline" : isDiffMode ? "diff" : "full",

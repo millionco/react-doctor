@@ -4,7 +4,11 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { MINIFIED_MIN_SIZE_BYTES } from "../src/project-info/constants.js";
-import { listSourceFiles, listSourceFilesWithSize } from "../src/utils/list-source-files.js";
+import {
+  listSourceFiles,
+  listSourceFilesCooperative,
+  listSourceFilesWithSize,
+} from "../src/utils/list-source-files.js";
 
 describe("listSourceFilesWithSize", () => {
   let temporaryDirectory: string;
@@ -64,6 +68,25 @@ describe("listSourceFilesWithSize", () => {
     expect(sourceFiles).toContain("legacy.HTML");
     expect(sourceFiles).toContain("page.astro");
     expect(sourceFiles).not.toContain("ignored.TS");
+  });
+
+  it("cooperative discovery matches synchronous discovery", async () => {
+    writeFile("index.ts", "export const index = 0;\n");
+    writeFile("button.tsx", "export const Button = () => null;\n");
+    writeFile("notes.md", "# ignored\n");
+
+    await expect(listSourceFilesCooperative(temporaryDirectory)).resolves.toEqual(
+      listSourceFiles(temporaryDirectory),
+    );
+  });
+
+  it("cooperative discovery stops when cancelled", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await expect(
+      listSourceFilesCooperative(temporaryDirectory, abortController.signal),
+    ).rejects.toBeDefined();
   });
 
   const writeNestedFile = (relativePath: string, contents: string): void => {
@@ -171,6 +194,58 @@ describe("listSourceFilesWithSize", () => {
       "init",
     );
   };
+
+  it("git discovery excludes files marked generated or vendored by ancestor attributes", async () => {
+    writeNestedFile(
+      ".gitattributes",
+      [
+        "packages/generated/src/** linguist-generated=true",
+        "packages/vendor/src/** linguist-vendored",
+        "packages/source/src/** linguist-generated=false",
+      ].join("\n"),
+    );
+    writeNestedFile("packages/generated/src/api.ts", "export const generated = true;\n");
+    writeNestedFile("packages/vendor/src/library.ts", "export const vendored = true;\n");
+    writeNestedFile("packages/source/src/app.tsx", "export const App = () => null;\n");
+    runGit("init", "--quiet");
+    commitAll();
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).not.toContain("packages/generated/src/api.ts");
+    expect(filePaths).not.toContain("packages/vendor/src/library.ts");
+    expect(filePaths).toContain("packages/source/src/app.tsx");
+    await expect(listSourceFilesCooperative(temporaryDirectory)).resolves.toEqual(filePaths);
+  });
+
+  it("git discovery lists a file with unresolved conflicts once", () => {
+    writeNestedFile("src/app.tsx", "export const App = () => <main>base</main>;\n");
+    runGit("init", "--quiet");
+    runGit("switch", "--quiet", "-c", "base");
+    commitAll();
+    runGit("switch", "--quiet", "-c", "conflict");
+    writeNestedFile("src/app.tsx", "export const App = () => <main>conflict</main>;\n");
+    commitAll();
+    runGit("switch", "--quiet", "base");
+    writeNestedFile("src/app.tsx", "export const App = () => <main>current</main>;\n");
+    commitAll();
+
+    const mergeResult = spawnSync(
+      "git",
+      ["-c", "user.email=test@example.com", "-c", "user.name=test", "merge", "conflict"],
+      { cwd: temporaryDirectory },
+    );
+    expect(mergeResult.status).not.toBe(0);
+
+    const stagedPaths = spawnSync("git", ["ls-files", "--stage", "src/app.tsx"], {
+      cwd: temporaryDirectory,
+      encoding: "utf-8",
+    });
+    expect(stagedPaths.stdout.match(/src\/app\.tsx/g)?.length).toBeGreaterThan(1);
+    expect(
+      listSourceFiles(temporaryDirectory).filter((filePath) => filePath === "src/app.tsx"),
+    ).toHaveLength(1);
+  });
 
   const writeEmitQuartet = (): void => {
     writeNestedFile("src/store.js", "export const store = 1;\n//# sourceMappingURL=store.js.map\n");

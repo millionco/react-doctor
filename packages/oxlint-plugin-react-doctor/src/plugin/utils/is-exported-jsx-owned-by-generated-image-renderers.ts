@@ -10,12 +10,18 @@ import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getDirectFunctionBindingIdentifier } from "./get-direct-function-binding-identifier.js";
 import { getFunctionExportNames } from "./get-function-export-names.js";
-import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
+import {
+  getReactDoctorOptionalStringArraySetting,
+  getReactDoctorStringSetting,
+} from "./get-react-doctor-setting.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isFunctionLike } from "./is-function-like.js";
-import { isGeneratedImageRendererCall } from "./is-generated-image-renderer-call.js";
+import {
+  GENERATED_IMAGE_RENDERER_MODULES,
+  isGeneratedImageRendererCall,
+} from "./is-generated-image-renderer-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { readNearestPackageManifest } from "./read-nearest-package-manifest.js";
@@ -386,7 +392,17 @@ export const createExportedJsxGeneratedImageOwnershipAnalyzer = (context: RuleCo
     if (initialExportNames.length === 0) return false;
 
     if (projectIndex === undefined) {
-      projectIndex = buildSourceProjectIndex(rootDirectory, filename, programNode, context.scopes);
+      projectIndex = buildSourceProjectIndex({
+        rootDirectory,
+        currentFilePath: filename,
+        currentProgramNode: programNode,
+        currentScopes: context.scopes,
+        requiredModuleSources: GENERATED_IMAGE_RENDERER_MODULES,
+        knownModuleSources: getReactDoctorOptionalStringArraySetting(
+          context.settings,
+          "projectIndexModuleSources",
+        ),
+      });
     }
     if (!projectIndex || projectIndex.hasOpaqueMdxConsumerSurface) return false;
     const state: GeneratedImageOwnershipState = {

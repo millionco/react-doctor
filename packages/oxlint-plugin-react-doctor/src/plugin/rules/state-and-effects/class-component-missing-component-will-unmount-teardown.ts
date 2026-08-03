@@ -277,6 +277,83 @@ const getClassMemberName = (member: EsTreeNode): string | null => {
   return getStaticPropertyKeyName(member, { allowComputedString: true });
 };
 
+interface ClassInstanceWrite {
+  readonly node: EsTreeNode;
+  readonly enclosingMemberName: string | null;
+  readonly isAssignment: boolean;
+}
+
+interface ClassBodyIndex {
+  readonly accessorNames: ReadonlySet<string>;
+  readonly memberFunctionsByName: ReadonlyMap<string, EsTreeNode>;
+  readonly instanceWritesByName: ReadonlyMap<string, ReadonlyArray<ClassInstanceWrite>>;
+}
+
+const classBodyIndexCache = new WeakMap<EsTreeNode, ClassBodyIndex>();
+
+const getEnclosingClassMember = (node: EsTreeNode, classBody: EsTreeNode): EsTreeNode | null => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current && current.parent !== classBody) current = current.parent;
+  return current ?? null;
+};
+
+const getClassBodyIndex = (classBody: EsTreeNode): ClassBodyIndex => {
+  const cachedIndex = classBodyIndexCache.get(classBody);
+  if (cachedIndex) return cachedIndex;
+  const accessorNames = new Set<string>();
+  const memberFunctionsByName = new Map<string, EsTreeNode>();
+  const instanceWritesByName = new Map<string, ClassInstanceWrite[]>();
+  if (isNodeOfType(classBody, "ClassBody")) {
+    for (const member of classBody.body) {
+      const memberName = getClassMemberName(member);
+      if (!memberName) continue;
+      if (
+        isNodeOfType(member, "MethodDefinition") &&
+        (member.kind === "get" || member.kind === "set")
+      ) {
+        accessorNames.add(memberName);
+      }
+      if (
+        (isNodeOfType(member, "MethodDefinition") || isNodeOfType(member, "PropertyDefinition")) &&
+        member.value &&
+        isFunctionLike(member.value)
+      ) {
+        memberFunctionsByName.set(memberName, member.value);
+      }
+    }
+    walkAst(classBody, (candidate) => {
+      const target = isNodeOfType(candidate, "AssignmentExpression")
+        ? stripParenExpression(candidate.left)
+        : isNodeOfType(candidate, "UpdateExpression")
+          ? stripParenExpression(candidate.argument)
+          : null;
+      if (
+        !isNodeOfType(target, "MemberExpression") ||
+        !isNodeOfType(stripParenExpression(target.object), "ThisExpression")
+      ) {
+        return;
+      }
+      const memberName = getStaticPropertyName(target);
+      if (!memberName) return;
+      const enclosingMember = getEnclosingClassMember(candidate, classBody);
+      const writes = instanceWritesByName.get(memberName) ?? [];
+      writes.push({
+        node: candidate,
+        enclosingMemberName: enclosingMember ? getClassMemberName(enclosingMember) : null,
+        isAssignment: isNodeOfType(candidate, "AssignmentExpression"),
+      });
+      instanceWritesByName.set(memberName, writes);
+    });
+  }
+  const index: ClassBodyIndex = {
+    accessorNames,
+    memberFunctionsByName,
+    instanceWritesByName,
+  };
+  classBodyIndexCache.set(classBody, index);
+  return index;
+};
+
 // A `setTimeout` is a hazard only when its callback actually mutates the
 // component — `this.setState(...)`, `runInAction(...)`, or any direct
 // `this.<action>(...)` call. A one-shot field write (`this.x = true`) or a
@@ -287,34 +364,12 @@ const classMemberFunction = (
   reference?: EsTreeNode,
 ): EsTreeNode | null => {
   if (!classBody || !isNodeOfType(classBody, "ClassBody")) return null;
-  const matchingFunctions = classBody.body.flatMap((candidate) => {
-    if (
-      (!isNodeOfType(candidate, "MethodDefinition") &&
-        !isNodeOfType(candidate, "PropertyDefinition")) ||
-      getClassMemberName(candidate) !== memberName ||
-      !candidate.value ||
-      !isFunctionLike(candidate.value)
-    ) {
-      return [];
-    }
-    return [candidate.value];
-  });
-  const matchingFunction = matchingFunctions.at(-1);
+  const classBodyIndex = getClassBodyIndex(classBody);
+  const matchingFunction = classBodyIndex.memberFunctionsByName.get(memberName);
   if (!matchingFunction) return null;
-  let isReassigned = false;
-  walkAst(classBody, (candidate) => {
-    if (isReassigned || !isNodeOfType(candidate, "AssignmentExpression")) return;
-    const target = stripParenExpression(candidate.left);
-    if (
-      isNodeOfType(target, "MemberExpression") &&
-      isNodeOfType(stripParenExpression(target.object), "ThisExpression") &&
-      getStaticPropertyName(target) === memberName &&
-      (!reference || candidate.range[0] <= reference.range[0])
-    ) {
-      isReassigned = true;
-      return false;
-    }
-  });
+  const isReassigned = (classBodyIndex.instanceWritesByName.get(memberName) ?? []).some(
+    (write) => write.isAssignment && (!reference || write.node.range[0] <= reference.range[0]),
+  );
   return isReassigned ? null : matchingFunction;
 };
 
@@ -630,12 +685,6 @@ const getRootThisMemberName = (node: EsTreeNode): string | null => {
   return null;
 };
 
-const getEnclosingClassMember = (node: EsTreeNode, classBody: EsTreeNode): EsTreeNode | null => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current && current.parent !== classBody) current = current.parent;
-  return current ?? null;
-};
-
 const isStableInstanceMember = (
   memberName: string,
   reference: EsTreeNode,
@@ -643,64 +692,40 @@ const isStableInstanceMember = (
 ): boolean => {
   if (memberName === "props" || memberName === "state") return false;
   if (!isNodeOfType(classBody, "ClassBody")) return true;
-  if (
-    classBody.body.some(
-      (member) =>
-        isNodeOfType(member, "MethodDefinition") &&
-        (member.kind === "get" || member.kind === "set") &&
-        getClassMemberName(member) === memberName,
-    )
-  ) {
-    return false;
-  }
+  const classBodyIndex = getClassBodyIndex(classBody);
+  if (classBodyIndex.accessorNames.has(memberName)) return false;
   const referenceMember = getEnclosingClassMember(reference, classBody);
   const referenceMemberName = referenceMember ? getClassMemberName(referenceMember) : null;
-  let hasUnstableWrite = false;
-  walkAst(classBody, (candidate) => {
-    if (hasUnstableWrite) return false;
-    const target = isNodeOfType(candidate, "AssignmentExpression")
-      ? stripParenExpression(candidate.left)
-      : isNodeOfType(candidate, "UpdateExpression")
-        ? stripParenExpression(candidate.argument)
-        : null;
-    if (
-      isNodeOfType(target, "MemberExpression") &&
-      isNodeOfType(stripParenExpression(target.object), "ThisExpression") &&
-      getStaticPropertyName(target) === memberName
-    ) {
-      const writeMember = getEnclosingClassMember(candidate, classBody);
-      const writeMemberName = writeMember ? getClassMemberName(writeMember) : null;
+  return !(classBodyIndex.instanceWritesByName.get(memberName) ?? []).some(
+    ({ node, enclosingMemberName }) => {
       const isBeforeMountReference =
         referenceMemberName === "componentDidMount" &&
-        writeMemberName === "componentDidMount" &&
-        candidate.range[0] <= reference.range[0];
+        enclosingMemberName === "componentDidMount" &&
+        node.range[0] <= reference.range[0];
       const isBeforeConstructorReference =
         referenceMemberName === "constructor" &&
-        writeMemberName === "constructor" &&
-        candidate.range[0] <= reference.range[0];
+        enclosingMemberName === "constructor" &&
+        node.range[0] <= reference.range[0];
       const isMountInitializationForUnmount =
-        referenceMemberName === "componentWillUnmount" && writeMemberName === "componentDidMount";
+        referenceMemberName === "componentWillUnmount" &&
+        enclosingMemberName === "componentDidMount";
       const isAfterUnmountReference =
         referenceMemberName === "componentWillUnmount" &&
-        writeMemberName === "componentWillUnmount" &&
-        candidate.range[0] > reference.range[0];
+        enclosingMemberName === "componentWillUnmount" &&
+        node.range[0] > reference.range[0];
       const isUnmountWriteAfterAcquisition =
         (referenceMemberName === "constructor" || referenceMemberName === "componentDidMount") &&
-        writeMemberName === "componentWillUnmount";
-      if (
-        !(writeMemberName === "constructor" && referenceMemberName !== "constructor") &&
+        enclosingMemberName === "componentWillUnmount";
+      return (
+        !(enclosingMemberName === "constructor" && referenceMemberName !== "constructor") &&
         !isBeforeMountReference &&
         !isBeforeConstructorReference &&
         !isMountInitializationForUnmount &&
         !isAfterUnmountReference &&
         !isUnmountWriteAfterAcquisition
-      ) {
-        hasUnstableWrite = true;
-        return false;
-      }
-    }
-  });
-  return !hasUnstableWrite;
+      );
+    },
+  );
 };
 
 const isUnconditionalInstanceAliasAssignment = (

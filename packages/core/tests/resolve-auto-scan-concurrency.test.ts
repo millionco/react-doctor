@@ -1,6 +1,10 @@
 import os from "node:os";
 import { describe, expect, it } from "vite-plus/test";
-import { HARD_MAX_SCAN_CONCURRENCY, MIN_SCAN_CONCURRENCY } from "../src/constants.js";
+import {
+  AUTO_MAX_SCAN_CONCURRENCY,
+  HARD_MAX_SCAN_CONCURRENCY,
+  MIN_SCAN_CONCURRENCY,
+} from "../src/constants.js";
 import { readCgroupMemoryLimitBytes } from "../src/utils/read-cgroup-memory-limit-bytes.js";
 import { resolveAutoScanConcurrency } from "../src/utils/resolve-auto-scan-concurrency.js";
 
@@ -13,22 +17,20 @@ describe("resolveAutoScanConcurrency", () => {
     expect(
       resolveAutoScanConcurrency({
         availableCores: 8,
-        totalMemoryBytes: 64 * GIB,
+        totalMemoryBytes: 16 * GIB,
         cgroupMemoryLimitBytes: undefined,
       }),
     ).toBe(8);
   });
 
-  it("does not regress a 16-core / 16 GiB machine below the old fixed ceiling", () => {
-    // 1 GiB/worker is calibrated so the common 1 GiB/core shape stays core-bound:
-    // floor(16 / 1) = 16, so a 16-core box still runs 16 workers (not fewer).
+  it("caps the automatic path at its parallel-efficiency knee", () => {
     expect(
       resolveAutoScanConcurrency({
         availableCores: 16,
-        totalMemoryBytes: 16 * GIB,
+        totalMemoryBytes: 64 * GIB,
         cgroupMemoryLimitBytes: undefined,
       }),
-    ).toBe(16);
+    ).toBe(AUTO_MAX_SCAN_CONCURRENCY);
   });
 
   it("is memory-bound on a high-core / memory-starved box", () => {
@@ -56,14 +58,14 @@ describe("resolveAutoScanConcurrency", () => {
     ).toBe(4);
   });
 
-  it("never exceeds HARD_MAX_SCAN_CONCURRENCY", () => {
+  it("never exceeds AUTO_MAX_SCAN_CONCURRENCY", () => {
     expect(
       resolveAutoScanConcurrency({
         availableCores: 128,
         totalMemoryBytes: 256 * GIB,
         cgroupMemoryLimitBytes: undefined,
       }),
-    ).toBe(HARD_MAX_SCAN_CONCURRENCY);
+    ).toBe(AUTO_MAX_SCAN_CONCURRENCY);
   });
 
   it("floors to MIN when not even one worker's budget fits", () => {
@@ -81,6 +83,7 @@ describe("resolveAutoScanConcurrency", () => {
     expect(Number.isInteger(resolved)).toBe(true);
     expect(resolved).toBeGreaterThanOrEqual(MIN_SCAN_CONCURRENCY);
     expect(resolved).toBeLessThanOrEqual(HARD_MAX_SCAN_CONCURRENCY);
+    expect(resolved).toBeLessThanOrEqual(AUTO_MAX_SCAN_CONCURRENCY);
   });
 
   it("sources total (not free) memory on the real system", () => {

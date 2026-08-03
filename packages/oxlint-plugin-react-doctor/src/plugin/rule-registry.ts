@@ -17,6 +17,7 @@ import { altText } from "./rules/a11y/alt-text.js";
 import { anchorAmbiguousText } from "./rules/a11y/anchor-ambiguous-text.js";
 import { anchorHasContent } from "./rules/a11y/anchor-has-content.js";
 import { anchorIsValid } from "./rules/a11y/anchor-is-valid.js";
+import { anchorTargetExists } from "./rules/a11y/anchor-target-exists.js";
 import { ariaActivedescendantHasTabindex } from "./rules/a11y/aria-activedescendant-has-tabindex.js";
 import { ariaBrailleEquivalent } from "./rules/a11y/aria-braille-equivalent.js";
 import { ariaProps } from "./rules/a11y/aria-props.js";
@@ -237,6 +238,7 @@ import { noCollapsedLiteralOrChainAsValue } from "./rules/correctness/no-collaps
 import { noCommonRootFont } from "./rules/design/no-common-root-font.js";
 import { noConflictingSpringOptions } from "./rules/performance/no-conflicting-spring-options.js";
 import { noControlledInputValueWithoutStateUpdate } from "./rules/correctness/no-controlled-input-value-without-state-update.js";
+import { noControlledSelectionFocusEffect } from "./rules/state-and-effects/no-controlled-selection-focus-effect.js";
 import { noCrampedContainerPadding } from "./rules/design/no-cramped-container-padding.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
 import { noCreateObjectUrlInRender } from "./rules/state-and-effects/no-create-object-url-in-render.js";
@@ -383,6 +385,7 @@ import { noOversizedLongHeading } from "./rules/design/no-oversized-long-heading
 import { noOverwideTextMeasure } from "./rules/design/no-overwide-text-measure.js";
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
+import { noPassiveRequestOwnerRef } from "./rules/state-and-effects/no-passive-request-owner-ref.js";
 import { noPathPrefixContainment } from "./rules/security/no-path-prefix-containment.js";
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
 import { noPillNavigationCount } from "./rules/design/no-pill-navigation-count.js";
@@ -891,6 +894,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(anchorIsValid.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/anchor-target-exists",
+    id: "anchor-target-exists",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...anchorTargetExists,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(anchorTargetExists.requires ?? [])])],
     },
   },
   {
@@ -3524,6 +3539,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-controlled-selection-focus-effect",
+    id: "no-controlled-selection-focus-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noControlledSelectionFocusEffect,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(noControlledSelectionFocusEffect.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-cramped-container-padding",
     id: "no-cramped-container-padding",
     source: "react-doctor",
@@ -5302,6 +5331,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noPassLiveStateToParent.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-passive-request-owner-ref",
+    id: "no-passive-request-owner-ref",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPassiveRequestOwnerRef,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noPassiveRequestOwnerRef.requires ?? [])])],
     },
   },
   {

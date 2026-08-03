@@ -453,6 +453,18 @@ describe("filename-registry-entries", () => {
       `export-data.ts is registered by basename string and must be treated as entry, got: ${unusedFilePaths}`,
     );
     assert.ok(
+      !unusedFilePaths.includes("tools/dynamic/nested-task.ts"),
+      `nested-task.ts is registered by its extensionless path and must be treated as entry, got: ${unusedFilePaths}`,
+    );
+    assert.ok(
+      !unusedFilePaths.includes("tools/dynamic/dynamic-import-task.ts"),
+      `dynamic-import-task.ts is referenced by an extensionless import expression and must be treated as entry, got: ${unusedFilePaths}`,
+    );
+    assert.ok(
+      unusedFilePaths.includes("other/nested-task.ts"),
+      `the same basename at an unregistered path SHOULD still be flagged, got: ${unusedFilePaths}`,
+    );
+    assert.ok(
       unusedFilePaths.includes("tools/genuinely-dead.ts"),
       `genuinely-dead.ts has no string-literal references and SHOULD still be flagged, got: ${unusedFilePaths}`,
     );

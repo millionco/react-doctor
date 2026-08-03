@@ -210,42 +210,6 @@ const recordSymbol = (
   return symbol;
 };
 
-const collectBindingNamesFromPattern = (pattern: EsTreeNode): EsTreeNode[] => {
-  const out: EsTreeNode[] = [];
-  const visit = (node: EsTreeNode): void => {
-    if (isNodeOfType(node, "Identifier")) {
-      out.push(node);
-      return;
-    }
-    if (isNodeOfType(node, "ObjectPattern")) {
-      for (const property of node.properties) {
-        if (isNodeOfType(property as EsTreeNode, "Property")) {
-          const propValue = (property as { value: EsTreeNode }).value;
-          visit(propValue);
-        } else if (isNodeOfType(property as EsTreeNode, "RestElement")) {
-          visit((property as { argument: EsTreeNode }).argument);
-        }
-      }
-      return;
-    }
-    if (isNodeOfType(node, "ArrayPattern")) {
-      for (const element of node.elements) {
-        if (element) visit(element as EsTreeNode);
-      }
-      return;
-    }
-    if (isNodeOfType(node, "RestElement")) {
-      visit(node.argument as EsTreeNode);
-      return;
-    }
-    if (isNodeOfType(node, "AssignmentPattern")) {
-      visit(node.left as EsTreeNode);
-    }
-  };
-  visit(pattern);
-  return out;
-};
-
 // Gathers every Identifier introduced by a destructuring pattern, with
 // their per-element default expression (the right side of an
 // AssignmentPattern in destructure position) — used for jsx-no-new-*-as-prop
@@ -346,23 +310,6 @@ const visitDestructuringDeclarations = (
   }
 };
 
-// Sets to consult during the walk to know whether an Identifier is in a
-// BINDING position (declares a name) vs a REFERENCE position (uses a
-// name). The walker tracks binding sites explicitly; everything else is
-// treated as a reference.
-const tagAsBinding = (state: BuilderState, identifier: EsTreeNode): void => {
-  // Currently a marker only — we already recorded the symbol, so we
-  // tag the identifier so the generic walk doesn't add it again as a
-  // reference. We use a dedicated WeakSet for this (built lazily).
-  bindingPositionMarker.add(identifier);
-};
-
-// Module-level WeakSet: identifies AST nodes the walker should NOT
-// treat as a reference (because they're a binding position). Reset
-// per-analyze call would mean per-program; using a single set across
-// programs is fine because AST nodes are unique.
-const bindingPositionMarker: WeakSet<EsTreeNode> = new WeakSet();
-
 const recordReference = (
   state: BuilderState,
   identifier: EsTreeNode,
@@ -417,13 +364,6 @@ const handleVariableDeclaration = (declaration: EsTreeNode, state: BuilderState)
       symbolKind,
       declaratorNode,
     );
-    // Mark every binding identifier so the generic walk doesn't
-    // double-count it as a reference.
-    for (const identifier of collectBindingNamesFromPattern(
-      (declarator as { id: EsTreeNode }).id,
-    )) {
-      tagAsBinding(state, identifier);
-    }
   }
 };
 
@@ -438,7 +378,6 @@ const handleFunctionDeclaration = (fn: EsTreeNode, state: BuilderState): void =>
       declarationNode: fn,
       initializer: fn,
     });
-    tagAsBinding(state, fn.id as EsTreeNode);
   }
 };
 
@@ -452,7 +391,6 @@ const handleClassDeclaration = (cls: EsTreeNode, state: BuilderState): void => {
       declarationNode: cls,
       initializer: cls,
     });
-    tagAsBinding(state, cls.id as EsTreeNode);
   }
 };
 
@@ -469,7 +407,6 @@ const handleImportDeclaration = (importDeclaration: EsTreeNode, state: BuilderSt
       declarationNode: specifier as EsTreeNode,
       initializer: specifier as EsTreeNode,
     });
-    tagAsBinding(state, local);
   }
 };
 
@@ -503,7 +440,6 @@ const handleTsDeclarations = (node: EsTreeNode, state: BuilderState): void => {
     declarationNode: node,
     initializer: null,
   });
-  tagAsBinding(state, idNode);
 };
 
 const handleFunctionParameters = (
@@ -513,9 +449,6 @@ const handleFunctionParameters = (
 ): void => {
   for (const param of params) {
     visitDestructuringDeclarations(param, null, scope, state, "parameter", param);
-    for (const identifier of collectBindingNamesFromPattern(param)) {
-      tagAsBinding(state, identifier);
-    }
   }
 };
 
@@ -718,7 +651,6 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         declarationNode: node,
         initializer: node,
       });
-      tagAsBinding(state, node.id as EsTreeNode);
     }
     handleFunctionParameters(functionParams, fnScope, state);
     // Record references inside parameter default values and computed
@@ -757,7 +689,6 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         declarationNode: node,
         initializer: node,
       });
-      tagAsBinding(state, node.id as EsTreeNode);
     }
     if (node.superClass) walk(node.superClass as EsTreeNode, state);
     if (node.body) walk(node.body as EsTreeNode, state);
@@ -777,9 +708,6 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         "catch-clause-parameter",
         node as EsTreeNode,
       );
-      for (const identifier of collectBindingNamesFromPattern(node.param as EsTreeNode)) {
-        tagAsBinding(state, identifier);
-      }
     }
     if (node.body) walk(node.body as EsTreeNode, state);
     popScope(state);
@@ -835,7 +763,6 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         declarationNode: node,
         initializer: null,
       });
-      tagAsBinding(state, identifier);
     }
     if (node.body) walk(node.body as EsTreeNode, state);
     popScope(state);
@@ -882,12 +809,11 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
       break;
   }
 
-  // Reference recording. Identifier in a non-binding position, AND
-  // not already tagged as a binding by an earlier handler, IS a
-  // reference.
+  // Reference recording. An identifier without a symbol is not a binding
+  // position and is therefore a reference unless its parent excludes it.
   if (
     (node.type === "Identifier" || node.type === "JSXIdentifier") &&
-    !bindingPositionMarker.has(node) &&
+    !state.symbolByBindingIdentifier.has(node) &&
     !isNonReferencePosition(node)
   ) {
     // JSXIdentifier needs an extra filter: tag-position lowercase

@@ -22,6 +22,22 @@ interface ReactCompilerDetectionCase {
 }
 
 describe("discoverProject", () => {
+  it("uses a precomputed source-file count", () => {
+    const projectDirectory = path.join(tempDirectory, "precomputed-source-count");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "precomputed-source-count", dependencies: { react: "^19.0.0" } }),
+    );
+
+    expect(discoverProject(projectDirectory, { sourceFileCount: 12_345 }).sourceFileCount).toBe(
+      12_345,
+    );
+    expect(discoverProject(projectDirectory, { sourceFileCount: 54_321 }).sourceFileCount).toBe(
+      54_321,
+    );
+  });
+
   it("detects React version from package.json", () => {
     const projectInfo = discoverProject(path.join(FIXTURES_DIRECTORY, "basic-react"));
     expect(projectInfo.reactVersion).toBe("^19.0.0");

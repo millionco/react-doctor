@@ -1,31 +1,42 @@
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
+import { render } from "ink";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectResult, ResolvedScanTarget } from "@react-doctor/core";
+import type { InspectResult, ResolvedScanTarget, WorkspacePackage } from "@react-doctor/core";
 import { Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
+import { clearActiveTuiRenderer } from "../../src/cli/utils/active-tui-renderer.js";
 import { computeProjectedScore } from "../../src/cli/utils/compute-score-projection.js";
 import { inspect } from "../../src/inspect.js";
 import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
 
 interface MockScanAppProps {
   readonly store?: ScanStore;
+  readonly displayMode?: "scan" | "report";
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
   readonly canAddToCi?: boolean;
   readonly onAddToCi?: () => void;
   readonly onQuit?: () => void;
 }
 
+interface MockProjectSelectProps {
+  readonly packages?: ReadonlyArray<WorkspacePackage>;
+  readonly onSubmit?: (directories: string[]) => void;
+}
+
 const mockState = vi.hoisted(() => ({
   projectDirectories: new Array<string>(),
+  workspacePackages: new Array<WorkspacePackage>(),
   scanTargets: new Map<string, ResolvedScanTarget>(),
   inspectResults: new Map<string, InspectResult>(),
   shouldRequestHandoff: false,
   shouldSetUpCi: false,
   shouldQuit: false,
+  scanRendererClearCount: 0,
   lifecycleEvents: new Array<string>(),
   scanStores: new Array<ScanStore>(),
+  initialProgressStates: new Array<string | null>(),
   ciRecommendationStates: new Array<boolean>(),
 }));
 
@@ -35,17 +46,29 @@ vi.mock("ink", async (importOriginal) => {
   return {
     ...actual,
     render: vi.fn((node) => {
+      if (React.isValidElement<MockProjectSelectProps>(node) && node.props.packages) {
+        queueMicrotask(() => node.props.onSubmit?.(mockState.projectDirectories));
+      }
       if (React.isValidElement<MockScanAppProps>(node)) {
-        if (node.props.store) mockState.scanStores.push(node.props.store);
-        mockState.ciRecommendationStates.push(Boolean(node.props.canAddToCi));
-        if (mockState.shouldRequestHandoff) {
+        if (node.props.store && node.props.displayMode === "scan") {
+          mockState.scanStores.push(node.props.store);
+          mockState.initialProgressStates.push(node.props.store.getSnapshot().progress);
+        }
+        if (node.props.displayMode === "report") {
+          mockState.ciRecommendationStates.push(Boolean(node.props.canAddToCi));
+        }
+        if (mockState.shouldRequestHandoff && node.props.displayMode === "report") {
           node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
         }
-        if (mockState.shouldSetUpCi) node.props.onAddToCi?.();
-        if (mockState.shouldQuit) node.props.onQuit?.();
+        if (mockState.shouldSetUpCi && node.props.displayMode === "report") {
+          node.props.onAddToCi?.();
+        }
+        if (mockState.shouldQuit && node.props.displayMode === "report") node.props.onQuit?.();
       }
       return {
-        clear: vi.fn(),
+        clear: vi.fn(() => {
+          if (React.isValidElement<MockScanAppProps>(node)) mockState.scanRendererClearCount += 1;
+        }),
         unmount: vi.fn(),
         waitUntilExit: vi.fn(async () => {}),
       };
@@ -72,6 +95,13 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   };
 });
 
+vi.mock("../../src/cli/utils/collect-project-source-file-counts.js", () => ({
+  collectProjectSourceFileCounts: vi.fn(
+    async (_rootDirectory: string, projectDirectories: ReadonlyArray<string>) =>
+      new Map(projectDirectories.map((projectDirectory) => [projectDirectory, 0])),
+  ),
+}));
+
 vi.mock("../../src/inspect.js", () => {
   const inspect = vi.fn(async (directory: string): Promise<InspectResult> => {
     const result = mockState.inspectResults.get(directory);
@@ -85,7 +115,7 @@ vi.mock("../../src/inspect.js", () => {
 });
 
 vi.mock("../../src/cli/utils/select-projects.js", () => ({
-  discoverWorkspacePackages: vi.fn(() => []),
+  discoverWorkspacePackages: vi.fn(() => mockState.workspacePackages),
   selectProjects: vi.fn(async () => mockState.projectDirectories),
 }));
 
@@ -157,15 +187,229 @@ const buildInspectResult = (directory: string): InspectResult => ({
 describe("runScanApp", () => {
   afterEach(() => {
     mockState.projectDirectories.length = 0;
+    mockState.workspacePackages.length = 0;
     mockState.scanTargets.clear();
     mockState.inspectResults.clear();
     mockState.shouldRequestHandoff = false;
     mockState.shouldSetUpCi = false;
     mockState.shouldQuit = false;
+    mockState.scanRendererClearCount = 0;
     mockState.lifecycleEvents.length = 0;
     mockState.scanStores.length = 0;
+    mockState.initialProgressStates.length = 0;
     mockState.ciRecommendationStates.length = 0;
     vi.restoreAllMocks();
+    vi.clearAllMocks();
+  });
+
+  it("uses a disposable screen for project selection", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const originalIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+    mockState.workspacePackages.push(
+      { name: "web", directory: "/repo/apps/web" },
+      { name: "admin", directory: "/repo/apps/admin" },
+    );
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+
+    try {
+      await runScanApp({ directory: rootDirectory });
+    } finally {
+      if (originalIsTtyDescriptor) {
+        Object.defineProperty(process.stdin, "isTTY", originalIsTtyDescriptor);
+      } else {
+        delete process.stdin.isTTY;
+      }
+    }
+
+    expect(vi.mocked(render).mock.calls[0]?.[1]).toEqual({
+      alternateScreen: true,
+      exitOnCtrlC: false,
+    });
+  });
+
+  it("clears the project selection screen through the active renderer lifecycle", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const originalIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+    mockState.workspacePackages.push(
+      { name: "web", directory: "/repo/apps/web" },
+      { name: "admin", directory: "/repo/apps/admin" },
+    );
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+
+    try {
+      const scanPromise = runScanApp({ directory: rootDirectory });
+      await Promise.resolve();
+      const selectionRenderer = vi.mocked(render).mock.results[0]?.value;
+
+      clearActiveTuiRenderer();
+
+      expect(selectionRenderer?.clear).toHaveBeenCalledOnce();
+      expect(selectionRenderer?.unmount).toHaveBeenCalledOnce();
+      await scanPromise;
+      expect(selectionRenderer?.clear).toHaveBeenCalledOnce();
+      expect(selectionRenderer?.unmount).toHaveBeenCalledOnce();
+    } finally {
+      if (originalIsTtyDescriptor) {
+        Object.defineProperty(process.stdin, "isTTY", originalIsTtyDescriptor);
+      } else {
+        delete process.stdin.isTTY;
+      }
+    }
+  });
+
+  it("keeps scanning and report navigation inline", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(vi.mocked(render).mock.calls[0]?.[1]).toEqual({
+      alternateScreen: false,
+      exitOnCtrlC: false,
+    });
+    expect(vi.mocked(render).mock.calls[1]?.[1]).toEqual({
+      alternateScreen: false,
+      exitOnCtrlC: false,
+    });
+    expect(vi.mocked(render).mock.calls[0]?.[0]).toMatchObject({
+      props: { displayMode: "scan" },
+    });
+    expect(vi.mocked(render).mock.calls[1]?.[0]).toMatchObject({
+      props: { displayMode: "report" },
+    });
+  });
+
+  it("explains that an incomplete scan suppressed the score", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      skippedChecks: ["dead-code"],
+      skippedCheckReasons: { "dead-code": "Dead-code analysis failed." },
+    });
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain(
+      "lint or dead-code analysis could not complete",
+    );
+    expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).not.toContain(
+      "score API",
+    );
+  });
+
+  it("does not blame a score API failure on unrelated skipped checks", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      skippedChecks: ["supply-chain"],
+      skippedCheckReasons: { "supply-chain": "Supply-chain analysis failed." },
+    });
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain("score API");
+    expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).not.toContain(
+      "lint or dead-code analysis could not complete",
+    );
+  });
+
+  it("excludes nested projects from an ancestor scan", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    mockState.projectDirectories.push(rootDirectory, webDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+    mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.initialProgressStates).toEqual(["Indexing workspace files…"]);
+    expect(inspect).toHaveBeenCalledWith(
+      rootDirectory,
+      expect.objectContaining({
+        deadCode: true,
+        excludedProjectDirectories: [webDirectory],
+        precomputedSourceFileCount: 0,
+        retainExcludedProjectDeadCodeDiagnostics: true,
+        uiLayers: expect.objectContaining({ progress: expect.anything() }),
+      }),
+    );
+    expect(inspect).toHaveBeenCalledWith(
+      webDirectory,
+      expect.objectContaining({
+        deadCode: false,
+        excludedProjectDirectories: [],
+        retainExcludedProjectDeadCodeDiagnostics: false,
+      }),
+    );
+  });
+
+  it("scans aliased selections that resolve to one project root once", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const requestedWebDirectory = "/repo/apps/web";
+    const requestedWebAliasDirectory = "/repo/packages/web";
+    const resolvedWebDirectory = "/repo/apps/web/client";
+    mockState.projectDirectories.push(requestedWebDirectory, requestedWebAliasDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      requestedWebDirectory,
+      buildScanTarget(requestedWebDirectory, resolvedWebDirectory, null, requestedWebDirectory),
+    );
+    mockState.scanTargets.set(
+      requestedWebAliasDirectory,
+      buildScanTarget(
+        requestedWebAliasDirectory,
+        resolvedWebDirectory,
+        null,
+        requestedWebAliasDirectory,
+      ),
+    );
+    mockState.inspectResults.set(resolvedWebDirectory, buildInspectResult(resolvedWebDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(resolvedWebDirectory, expect.anything());
   });
 
   it("merges root and project configs while sharing one scan deadline", async () => {
@@ -257,6 +501,40 @@ describe("runScanApp", () => {
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
     expect(mockState.lifecycleEvents).toEqual(["footer", "handoff"]);
     expect(result.shouldFail).toBe(true);
+  });
+
+  it("does not start queued project scans after the shared deadline", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const adminDirectory = "/repo/apps/admin";
+    mockState.projectDirectories.push(webDirectory, adminDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.scanTargets.set(
+      adminDirectory,
+      buildScanTarget(adminDirectory, adminDirectory, null, adminDirectory),
+    );
+
+    const result = await runScanApp({
+      directory: rootDirectory,
+      options: { deadlineEpochMs: Date.now() - 1 },
+      skipPrompts: true,
+    });
+
+    expect(inspect).not.toHaveBeenCalled();
+    expect(mockState.scanStores[0]?.getSnapshot().summary?.projects).toEqual([]);
+    expect(mockState.scanStores[0]?.getSnapshot().summary?.skippedProjects).toEqual([
+      { directory: adminDirectory, reason: "max-duration" },
+      { directory: webDirectory, reason: "max-duration" },
+    ]);
+    expect(result.shouldFail).toBe(false);
   });
 
   it("uses the configured blocking level and ciFailure surface for the exit gate", async () => {
@@ -397,6 +675,7 @@ describe("runScanApp", () => {
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
     expect(mockState.lifecycleEvents).not.toContain("footer");
+    expect(mockState.scanRendererClearCount).toBe(2);
   });
 
   it("runs confirmed CI setup even when the user quits", async () => {

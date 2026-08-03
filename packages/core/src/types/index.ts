@@ -40,6 +40,7 @@ export type {
   JsonReportMode,
   JsonReportProjectEntry,
   JsonReportProjectEntryV3,
+  JsonReportSkippedProject,
   JsonReportSummary,
   JsonReportV1,
   JsonReportV2,

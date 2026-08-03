@@ -179,8 +179,7 @@ const bindingReadsExactGlobalLocationSnapshot = (
     : getDirectUnreassignedInitializer(symbol);
   if (!initializer) return false;
 
-  const nextVisitedSymbolIds = new Set(visitedSymbolIds);
-  nextVisitedSymbolIds.add(symbol.id);
+  visitedSymbolIds.add(symbol.id);
   if (containsGlobalLocationSnapshotRead(initializer, scopes)) return true;
 
   let didFindAliasedLocationSnapshotRead = false;
@@ -194,7 +193,7 @@ const bindingReadsExactGlobalLocationSnapshot = (
       return false;
     }
     if (!isNodeOfType(child, "Identifier")) return;
-    if (bindingReadsExactGlobalLocationSnapshot(child, scopes, nextVisitedSymbolIds)) {
+    if (bindingReadsExactGlobalLocationSnapshot(child, scopes, visitedSymbolIds)) {
       didFindAliasedLocationSnapshotRead = true;
       return false;
     }

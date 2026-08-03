@@ -778,6 +778,7 @@ const isRejectionProofAsyncHelperBody = (
   depth: number,
   scopes?: ScopeAnalysis,
 ): boolean => {
+  if (depth <= 0) return false;
   if (scopes && subtreeCanThrowSynchronously(helper, helper, scopes)) return false;
   if (helperHasUnhandledSynchronousCall(helper, depth, scopes)) return false;
   let isRejectionProof = true;

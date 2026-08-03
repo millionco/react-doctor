@@ -51,6 +51,7 @@ import { shouldUseTui } from "../src/cli/utils/should-use-tui.js";
 
 describe("runScanCommand", () => {
   const previousExitCode = process.exitCode;
+  const previousNoCache = process.env.REACT_DOCTOR_NO_CACHE;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,6 +62,8 @@ describe("runScanCommand", () => {
 
   afterEach(() => {
     process.exitCode = previousExitCode;
+    if (previousNoCache === undefined) delete process.env.REACT_DOCTOR_NO_CACHE;
+    else process.env.REACT_DOCTOR_NO_CACHE = previousNoCache;
   });
 
   it("runs the interactive report with the root scan flags", async () => {
@@ -119,5 +122,15 @@ describe("runScanCommand", () => {
     await runScanCommand({ directory: "/tmp/project", flags: {}, invocationCommand: "inspect" });
 
     expect(process.exitCode).toBe(1);
+  });
+
+  it("disables every scan cache when requested", async () => {
+    await runScanCommand({
+      directory: "/tmp/project",
+      flags: { cache: false },
+      invocationCommand: "inspect",
+    });
+
+    expect(process.env.REACT_DOCTOR_NO_CACHE).toBe("1");
   });
 });

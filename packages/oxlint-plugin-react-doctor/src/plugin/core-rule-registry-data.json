@@ -133,6 +133,22 @@
     }
   },
   {
+    "key": "react-doctor/anchor-target-exists",
+    "id": "anchor-target-exists",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "anchor-target-exists",
+      "title": "Fragment link target is missing",
+      "severity": "warn",
+      "recommendation": "Add an element with the referenced id, or update the fragment link to point to an existing target.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/aria-activedescendant-has-tabindex",
     "id": "aria-activedescendant-has-tabindex",
     "source": "react-doctor",
@@ -3756,6 +3772,24 @@
     }
   },
   {
+    "key": "react-doctor/no-controlled-selection-focus-effect",
+    "id": "no-controlled-selection-focus-effect",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-controlled-selection-focus-effect",
+      "title": "Controlled selection change steals focus",
+      "severity": "warn",
+      "recommendation": "Move selection-driven focus into the keyboard or pointer navigation path, or prove that the list just opened before focusing the selected item.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react"],
+      "tags": ["react-jsx-only"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-cramped-container-padding",
     "id": "no-cramped-container-padding",
     "source": "react-doctor",
@@ -6176,6 +6210,24 @@
       "framework": "global",
       "requires": ["react"],
       "tags": ["test-noise"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/no-passive-request-owner-ref",
+    "id": "no-passive-request-owner-ref",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-passive-request-owner-ref",
+      "title": "Passive owner ref leaves a stale-request window",
+      "severity": "warn",
+      "recommendation": "Invalidate requests when the owner changes before an old promise can settle, or bind the request to lifecycle cleanup instead of trusting a ref synchronized by `useEffect`.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react"],
+      "tags": ["react-jsx-only"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },

@@ -111,6 +111,7 @@ export const TUI_ISSUE_PROMPT_MAX_SITES = 8;
 export const TUI_MIN_NODE_MAJOR_VERSION = 22;
 
 export const TUI_LIVE_FEED_MAX_ENTRIES = 25;
+export const TUI_PROGRESS_UPDATE_INTERVAL_MS = 250;
 export const TUI_RECENT_LIVE_DIAGNOSTIC_COUNT = 5;
 export const TUI_DETAIL_INDENT_COLUMNS = 2;
 export const TUI_PROJECT_SELECT_CHROME_ROWS = 3;
@@ -281,8 +282,15 @@ export const METRIC = {
   scanPhaseDuration: "scan.phase_duration",
   scanFiles: "scan.files",
   scanScore: "scan.score",
+  scanScoreRetry: "scan.score_retry",
   scanClean: "scan.clean",
   scanCheckSkipped: "scan.check_skipped",
+  // Kill metric for queued-project deadline reporting. If this never fires,
+  // the additive JSON/TUI skipped-project surface is not carrying user value.
+  scanProjectSkipped: "scan.project_skipped",
+  // Kill metric for workspace-owned dead-code analysis. If this never fires,
+  // multi-project scans do not include their root and cannot share the pass.
+  scanWorkspaceDeadCodeShared: "scan.workspace_deadcode_shared",
   // One count per completed scan where no project resolved a React /
   // Preact runtime — the JSON report's `reactDetected: false` case. The
   // kill metric for the vacuous-clean-scan signal: if it never fires,
@@ -330,7 +338,10 @@ export const METRIC = {
   tuiProjectPathContextShown: "tui.project_path_context_shown",
   tuiReportActionSelected: "tui.report_action_selected",
   tuiCancelled: "tui.cancelled",
+  tuiScanInlineShown: "tui.scan_inline_shown",
   tuiStackedReportCapped: "tui.stacked_report_capped",
   aiTrainingWarningShown: "ai.training.warning_shown",
   jsonOutUsed: "json.out_used",
 } as const;
+
+export const SCORE_RETRY_MAX_CONCURRENCY = 64;

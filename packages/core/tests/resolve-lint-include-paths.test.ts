@@ -47,4 +47,14 @@ describe("resolveLintIncludePaths", () => {
       "src/server.ts",
     ]);
   });
+
+  it("filters a precomputed source list without walking the directory again", () => {
+    const includedPaths = resolveLintIncludePaths(
+      tempDirectory,
+      { ignore: { files: ["src/ignored.tsx"] } },
+      ["src/App.tsx", "src/ignored.tsx", "README.md"],
+    );
+
+    expect(includedPaths).toEqual(["src/App.tsx"]);
+  });
 });

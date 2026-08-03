@@ -311,6 +311,11 @@ export interface JsonReportDiffInfo {
   isCurrentChanges: boolean;
 }
 
+export interface JsonReportSkippedProject {
+  directory: string;
+  reason: "max-duration";
+}
+
 export interface JsonReportProjectEntry {
   directory: string;
   project: ProjectInfo;
@@ -396,6 +401,8 @@ export interface JsonReportV1 {
   reactDetected?: boolean;
   diff: JsonReportDiffInfo | null;
   projects: JsonReportProjectEntry[];
+  /** Workspace projects that were selected but never started. */
+  skippedProjects?: JsonReportSkippedProject[];
   /**
    * Flattened across `projects[].diagnostics` for convenience. Equivalent to
    * `projects.flatMap((project) => project.diagnostics)`.

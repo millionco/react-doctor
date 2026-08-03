@@ -12,16 +12,23 @@ interface CollectProjectIndexModuleSourcesInput {
   readonly deadlineEpochMs?: number;
 }
 
+interface CollectedProjectIndexModuleSources {
+  readonly moduleSources: ReadonlyArray<string>;
+  readonly didComplete: boolean;
+}
+
 export const collectProjectIndexModuleSources = async ({
   rootDirectory,
   candidateFiles,
   deadlineEpochMs,
-}: CollectProjectIndexModuleSourcesInput): Promise<ReadonlyArray<string>> => {
+}: CollectProjectIndexModuleSourcesInput): Promise<CollectedProjectIndexModuleSources> => {
   const foundModuleSources = new Set<string>();
   let sliceStartedAt = performance.now();
 
   for (const candidateFile of candidateFiles) {
-    if (deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0) break;
+    if (deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0) {
+      return { moduleSources: [], didComplete: false };
+    }
     let sourceBuffer: Buffer;
     try {
       sourceBuffer = fs.readFileSync(
@@ -30,7 +37,9 @@ export const collectProjectIndexModuleSources = async ({
     } catch {
       continue;
     }
-    if (deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0) break;
+    if (deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0) {
+      return { moduleSources: [], didComplete: false };
+    }
     for (const moduleSource of PROJECT_INDEX_MODULE_SOURCES) {
       if (
         sourceBuffer.includes(`"${moduleSource}"`) ||
@@ -46,5 +55,5 @@ export const collectProjectIndexModuleSources = async ({
     }
   }
 
-  return [...foundModuleSources].sort();
+  return { moduleSources: [...foundModuleSources].sort(), didComplete: true };
 };

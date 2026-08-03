@@ -526,11 +526,19 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
     const candidateFiles =
       includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
-    const projectIndexModuleSources = await collectProjectIndexModuleSources({
+    const collectedProjectIndexModuleSources = await collectProjectIndexModuleSources({
       rootDirectory,
       candidateFiles,
       deadlineEpochMs: options.deadlineEpochMs,
     });
+    if (!collectedProjectIndexModuleSources.didComplete) {
+      onPartialFailure?.(
+        `${candidateFiles.length} file(s) skipped — max scan duration reached before they were linted`,
+      );
+      onFileCoverage?.({ candidateFiles, analyzedFiles: [] });
+      return [];
+    }
+    const projectIndexModuleSources = collectedProjectIndexModuleSources.moduleSources;
     unpluginAutoImportGlobalScopes = collectUnpluginAutoImportGlobalScopes({
       rootDirectory,
       candidateFiles,

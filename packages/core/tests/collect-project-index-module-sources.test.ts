@@ -36,7 +36,7 @@ describe("collectProjectIndexModuleSources", () => {
         rootDirectory,
         candidateFiles: ["image.tsx", "video.tsx", "ordinary.tsx"],
       }),
-    ).resolves.toEqual(["next/og", "remotion"]);
+    ).resolves.toEqual({ moduleSources: ["next/og", "remotion"], didComplete: true });
   });
 
   it("returns an empty complete result for ordinary source files", async () => {
@@ -46,7 +46,7 @@ describe("collectProjectIndexModuleSources", () => {
 
     await expect(
       collectProjectIndexModuleSources({ rootDirectory, candidateFiles: ["component.tsx"] }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({ moduleSources: [], didComplete: true });
   });
 
   it("stops reading candidates when the scan deadline has elapsed", async () => {
@@ -60,6 +60,6 @@ describe("collectProjectIndexModuleSources", () => {
         candidateFiles: ["image.tsx"],
         deadlineEpochMs: Date.now(),
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({ moduleSources: [], didComplete: false });
   });
 });

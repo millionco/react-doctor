@@ -58,17 +58,6 @@ const isSpreadIntoThreeObjectAdd = (node: EsTreeNode, context: RuleContext): boo
   );
 };
 
-const isDirectCallbackReturn = (node: EsTreeNode, callback: EsTreeNode): boolean => {
-  const expressionRoot = findTransparentExpressionRoot(node);
-  if (isNodeOfType(callback, "ArrowFunctionExpression") && callback.body === expressionRoot) {
-    return true;
-  }
-  const parent = expressionRoot.parent;
-  return Boolean(
-    parent && isNodeOfType(parent, "ReturnStatement") && parent.argument === expressionRoot,
-  );
-};
-
 export const threePreferInstancedMesh = defineRule({
   id: "three-prefer-instanced-mesh",
   title: "Repeated Three.js meshes use separate draw calls",
@@ -84,15 +73,13 @@ export const threePreferInstancedMesh = defineRule({
       const material = node.arguments[THREE_MESH_MATERIAL_ARGUMENT_INDEX];
       if (!callback || !geometry || !material) return;
       const repeatedMapCalls = findProvablyRepeatedMapCallsForCallback(callback, context);
-      const doesCallbackReturnMesh =
-        isDirectCallbackReturn(node, callback) &&
-        functionReturnsMatchingExpression(
-          callback,
-          context.scopes,
-          (returnedExpression) => stripParenExpression(returnedExpression) === node,
-          context.cfg,
-          "every",
-        );
+      const doesCallbackReturnMesh = functionReturnsMatchingExpression(
+        callback,
+        context.scopes,
+        (returnedExpression) => stripParenExpression(returnedExpression) === node,
+        context.cfg,
+        "every",
+      );
       const isAddedToThreeObject =
         isDirectlyAddedToThreeObject(node, context) ||
         (doesCallbackReturnMesh &&

@@ -29,6 +29,19 @@ describe("three-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
+  it("reports a Mesh returned through a local callback binding", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       scene.add(...[0, 1].map(() => {
+         const mesh = new Mesh(geometry, material);
+         return mesh;
+       }));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports transparent TypeScript resource references", () => {
     const result = runRule(
       threePreferInstancedMesh,

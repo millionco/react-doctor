@@ -240,6 +240,65 @@ describe("effect-needs-cleanup issue 1558 cleanup ownership", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("reports an armed timer when an effect exit omits cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      function Watchdog({ done, enabled }) {
+        useEffect(() => {
+          let timer = null;
+          const disarm = () => {
+            if (timer != null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          };
+          const arm = () => {
+            if (timer != null) return;
+            timer = setTimeout(done, 1000);
+          };
+          arm();
+          if (!enabled) return;
+          return () => disarm();
+        }, [done, enabled]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setTimeout");
+  });
+
+  it("accepts a timer armed only on a path that returns cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      function Watchdog({ done, enabled }) {
+        useEffect(() => {
+          let timer = null;
+          const disarm = () => {
+            if (timer != null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          };
+          const arm = () => {
+            if (timer != null) return;
+            timer = setTimeout(done, 1000);
+          };
+          if (!enabled) return;
+          arm();
+          return () => disarm();
+        }, [done, enabled]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each([
     ["an unowned callback", "scheduleAgain(arm);", "subscription.remove();"],
     ["an async listener", "", "subscription.remove();", "async () => arm()"],

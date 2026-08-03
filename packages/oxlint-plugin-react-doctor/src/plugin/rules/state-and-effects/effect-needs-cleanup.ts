@@ -2964,11 +2964,14 @@ const hasGuardedDeferredCleanup = (
   }
   const usageFunction = findEnclosingFunction(usage.node);
   const promiseChainCall = usageFunction ? getPromiseChainCallForCallback(usageFunction) : null;
-  const hasEffectOwnedInvocations = Boolean(
+  const hasEffectOwnedUsageInvocations = Boolean(
     usageFunction &&
     isFunctionLike(usageFunction) &&
     hasOnlyEffectOwnedFunctionInvocations(usageFunction, callback, cleanupReturns, context),
   );
+  const hasEffectOwnedCleanupPath =
+    hasEffectOwnedUsageInvocations &&
+    doNodesCoverEveryPathFromFunctionEntry(callback, cleanupReturns, context);
   if (
     usage.kind !== "timer" ||
     usage.handleKey === null ||
@@ -2981,7 +2984,7 @@ const hasGuardedDeferredCleanup = (
     !isNodeOfType(usage.node.callee, "Identifier") ||
     !context.scopes.isGlobalReference(usage.node.callee) ||
     !collectEffectInvokedFunctions(callback, context.scopes).has(usageFunction) ||
-    (!promiseChainCall && !hasEffectOwnedInvocations) ||
+    (!promiseChainCall && !hasEffectOwnedCleanupPath) ||
     (promiseChainCall &&
       !doMatchingNodesCoverEveryPathAfterUsage(promiseChainCall, cleanupReturns, context))
   ) {
@@ -3056,7 +3059,7 @@ const hasGuardedDeferredCleanup = (
     const cleanupFunction = findEnclosingFunction(assignment);
     const globalReleaseProofs = cleanupFunction
       ? (globalReleaseProofsByCleanup.get(cleanupFunction) ??
-        (hasEffectOwnedInvocations
+        (hasEffectOwnedCleanupPath
           ? collectGlobalReleaseProofs(cleanupFunction, usage, context)
           : undefined))
       : undefined;
@@ -3129,7 +3132,7 @@ const hasGuardedDeferredCleanup = (
     if (hasPotentialInterruptionAfterGuard(usageFunction, guardState, usage.node, context)) {
       return false;
     }
-    if (hasEffectOwnedInvocations && guardState.key === usage.handleKey) return true;
+    if (hasEffectOwnedCleanupPath && guardState.key === usage.handleKey) return true;
     if (deferredUsageWritesGuardBeforeUsage(usageFunction, usage.node, guardState, context)) {
       return false;
     }

@@ -385,6 +385,7 @@ import { noOversizedLongHeading } from "./rules/design/no-oversized-long-heading
 import { noOverwideTextMeasure } from "./rules/design/no-overwide-text-measure.js";
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
+import { noPassiveRequestOwnerRef } from "./rules/state-and-effects/no-passive-request-owner-ref.js";
 import { noPathPrefixContainment } from "./rules/security/no-path-prefix-containment.js";
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
 import { noPillNavigationCount } from "./rules/design/no-pill-navigation-count.js";
@@ -5330,6 +5331,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noPassLiveStateToParent.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-passive-request-owner-ref",
+    id: "no-passive-request-owner-ref",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPassiveRequestOwnerRef,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noPassiveRequestOwnerRef.requires ?? [])])],
     },
   },
   {

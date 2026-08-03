@@ -6214,6 +6214,24 @@
     }
   },
   {
+    "key": "react-doctor/no-passive-request-owner-ref",
+    "id": "no-passive-request-owner-ref",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-passive-request-owner-ref",
+      "title": "Passive owner ref leaves a stale-request window",
+      "severity": "warn",
+      "recommendation": "Invalidate requests when the owner changes before an old promise can settle, or bind the request to lifecycle cleanup instead of trusting a ref synchronized by `useEffect`.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react"],
+      "tags": ["react-jsx-only"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-path-prefix-containment",
     "id": "no-path-prefix-containment",
     "source": "react-doctor",

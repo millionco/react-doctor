@@ -2567,6 +2567,9 @@ export const useListNavigation = ({ selectedIndex, focusItem }) => {
   }, [focusItem, selectedIndex]);
 };`,
   },
+  "no-passive-request-owner-ref": {
+    code: "export const History = ({ viewId }) => { const ownerRef = useRef(viewId); const [, setItems] = useState([]); useEffect(() => { ownerRef.current = viewId; }, [viewId]); const refresh = async () => { const items = await load(viewId); if (ownerRef.current !== viewId) return; setItems(items); }; return <button onClick={refresh}>Refresh</button>; };",
+  },
   "no-focus-in-animation-completion-handler": {
     code: 'import { useRef } from "react";\nexport const Dialog = () => { const inputRef = useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };',
   },

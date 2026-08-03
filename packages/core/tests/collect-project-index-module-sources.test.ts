@@ -32,7 +32,10 @@ describe("collectProjectIndexModuleSources", () => {
     });
 
     await expect(
-      collectProjectIndexModuleSources(rootDirectory, ["image.tsx", "video.tsx", "ordinary.tsx"]),
+      collectProjectIndexModuleSources({
+        rootDirectory,
+        candidateFiles: ["image.tsx", "video.tsx", "ordinary.tsx"],
+      }),
     ).resolves.toEqual(["next/og", "remotion"]);
   });
 
@@ -42,7 +45,21 @@ describe("collectProjectIndexModuleSources", () => {
     });
 
     await expect(
-      collectProjectIndexModuleSources(rootDirectory, ["component.tsx"]),
+      collectProjectIndexModuleSources({ rootDirectory, candidateFiles: ["component.tsx"] }),
+    ).resolves.toEqual([]);
+  });
+
+  it("stops reading candidates when the scan deadline has elapsed", async () => {
+    const rootDirectory = createFixture({
+      "image.tsx": `import { ImageResponse } from "next/og";`,
+    });
+
+    await expect(
+      collectProjectIndexModuleSources({
+        rootDirectory,
+        candidateFiles: ["image.tsx"],
+        deadlineEpochMs: Date.now(),
+      }),
     ).resolves.toEqual([]);
   });
 });

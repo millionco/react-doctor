@@ -526,10 +526,11 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
     const candidateFiles =
       includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
-    const projectIndexModuleSources = await collectProjectIndexModuleSources(
+    const projectIndexModuleSources = await collectProjectIndexModuleSources({
       rootDirectory,
       candidateFiles,
-    );
+      deadlineEpochMs: options.deadlineEpochMs,
+    });
     unpluginAutoImportGlobalScopes = collectUnpluginAutoImportGlobalScopes({
       rootDirectory,
       candidateFiles,

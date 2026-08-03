@@ -195,6 +195,29 @@ describe("listSourceFilesWithSize", () => {
     );
   };
 
+  it("git discovery excludes files marked generated or vendored by ancestor attributes", async () => {
+    writeNestedFile(
+      ".gitattributes",
+      [
+        "packages/generated/src/** linguist-generated=true",
+        "packages/vendor/src/** linguist-vendored",
+        "packages/source/src/** linguist-generated=false",
+      ].join("\n"),
+    );
+    writeNestedFile("packages/generated/src/api.ts", "export const generated = true;\n");
+    writeNestedFile("packages/vendor/src/library.ts", "export const vendored = true;\n");
+    writeNestedFile("packages/source/src/app.tsx", "export const App = () => null;\n");
+    runGit("init", "--quiet");
+    commitAll();
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).not.toContain("packages/generated/src/api.ts");
+    expect(filePaths).not.toContain("packages/vendor/src/library.ts");
+    expect(filePaths).toContain("packages/source/src/app.tsx");
+    await expect(listSourceFilesCooperative(temporaryDirectory)).resolves.toEqual(filePaths);
+  });
+
   it("git discovery lists a file with unresolved conflicts once", () => {
     writeNestedFile("src/app.tsx", "export const App = () => <main>base</main>;\n");
     runGit("init", "--quiet");

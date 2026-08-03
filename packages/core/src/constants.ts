@@ -4,6 +4,7 @@
 // consumers don't have to know which subtree owns each constant.
 export {
   GENERATED_BUNDLE_FILE_PATTERN,
+  GIT_CHECK_ATTR_MAX_BUFFER_BYTES,
   GIT_LS_FILES_MAX_BUFFER_BYTES,
   HTML_FILE_PATTERN,
   IGNORED_DIRECTORIES,
@@ -213,49 +214,48 @@ export const NODE_VERSION_PROBE_TIMEOUT_MS = 5_000;
 // HACK: bound per-batch work so that JS-evaluated plugins with bad
 // scaling (originally the upstream `effect` plugin — verified to hit
 // the 5-min spawn timeout on supabase/studio's ~3500 source files at
-// batch=500, productive at batch=100; same characteristics apply to
+// batch=500, productive at batch=200; same characteristics apply to
 // the ported `react-doctor/no-derived-state` family because both rely
 // on whole-component scope walking) stay tractable AND so that oxlint
 // doesn't SIGABRT from memory pressure on very large file sets.
 // Smaller batches add ~50ms spawn overhead per extra batch — negligible
 // vs the hard-cap perf cliffs they prevent.
-export const OXLINT_MAX_FILES_PER_BATCH = 100;
+export const OXLINT_MAX_FILES_PER_BATCH = 200;
 
 // Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded by
 // the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces the
 // MIN end). React Doctor's rules are oxlint JS plugins — single-threaded per
 // process — so running the file batches across N concurrent oxlint subprocesses
 // scales the scan nearly linearly with N up to the straggler / per-spawn-overhead
-// knee (~10 workers). `resolveAutoScanConcurrency` chooses N for the auto path;
+// knee (~16 workers). `resolveAutoScanConcurrency` chooses N for the auto path;
 // every requested count is clamped to [MIN, HARD_MAX].
 export const MIN_SCAN_CONCURRENCY = 1;
 
 // Automatic scans stop at the measured parallel-efficiency knee so CPU
 // contention cannot push healthy JS-plugin batches into timeout retries.
 // Explicit and programmatic worker counts can still reach the hard ceiling.
-export const AUTO_MAX_SCAN_CONCURRENCY = 10;
+export const AUTO_MAX_SCAN_CONCURRENCY = 16;
 
 // Absolute upper bound on lint workers, and the clamp applied to every requested
 // count (auto-detected, `REACT_DOCTOR_PARALLEL=N`, or `inspect({ concurrency })`).
-// Past ~10 workers parallel efficiency already collapses (stragglers + per-spawn
-// overhead), so 32 is headroom that stops a 32/64-core CI runner from idling
-// cores behind the old fixed 16 — not a promise of proportionally more speed.
+// Past ~16 workers parallel efficiency collapses (stragglers + per-spawn
+// overhead), so 32 remains explicit-pin headroom rather than a promise of
+// proportionally more speed.
 export const HARD_MAX_SCAN_CONCURRENCY = 32;
 
-// Memory one oxlint subprocess is budgeted at the OXLINT_MAX_FILES_PER_BATCH=100
+// Memory one oxlint subprocess is budgeted at the OXLINT_MAX_FILES_PER_BATCH=200
 // batch size (the native binding's parser arena + the batch's ASTs + the
 // JS-plugin heap). The auto path takes `floor(availableMemory / this)` as a
 // second ceiling alongside the core count, so a high-core / memory-starved box
 // (or a memory-limited container) doesn't spawn enough workers to trip the
 // native-binding SIGABRT that OXLINT_MAX_FILES_PER_BATCH and the EAGAIN/ENOMEM
-// serial replay already guard. 1 GiB matches the per-worker footprint the old
-// fixed-16 ceiling implicitly tolerated (16 workers on a typical 16 GiB CI box),
-// so any machine with >= ~1 GiB/core stays core-bound and the memory term only
-// binds on genuinely memory-constrained hosts — exactly where over-subscription
-// would OOM. `availableMemory` is `os.totalmem()` floored by the cgroup memory
-// limit, NOT `os.freemem()`, which excludes reclaimable page cache and reads
-// near-zero on macOS / cache-heavy Linux, collapsing the auto path to one worker.
-export const PER_WORKER_MEM_BUDGET_BYTES = 1024 * 1024 * 1024;
+// serial replay already guard. The 1.5 GiB allowance keeps a 16 GiB machine at
+// the established safe 10-worker level while high-memory workstations can use
+// the measured 16-worker knee. `availableMemory` is `os.totalmem()` floored by
+// the cgroup memory limit, NOT `os.freemem()`, which excludes reclaimable page
+// cache and reads near-zero on macOS / cache-heavy Linux, collapsing the auto
+// path to one worker.
+export const PER_WORKER_MEM_BUDGET_BYTES = 1536 * 1024 * 1024;
 
 // Default worker count for a `diagnose({ projects })` batch. Each project
 // scan already fans out its own oxlint workers (bounded by the constants
@@ -515,7 +515,7 @@ export const SKILL_NAME = "react-doctor";
 export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 
 // HACK: per-batch wall-clock budget for an oxlint spawn. Each batch
-// is at most OXLINT_MAX_FILES_PER_BATCH (= 100) files and a healthy
+// is at most OXLINT_MAX_FILES_PER_BATCH (= 200) files and a healthy
 // batch finishes in well under a second; 60 s leaves a large safety
 // margin while still firing fast enough that the binary-split
 // recovery in spawnLintBatches narrows a pathological batch to the
@@ -541,7 +541,7 @@ export const NODE_COMPILE_CACHE_DIR_NAME = "node-compile-cache";
 export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
 
 // Cumulative wall-clock budget across ALL binary-split retries of one
-// batch pass. A pathological file recurses through ~log2(100)≈7
+// batch pass. A pathological file recurses through ~log2(200)≈8
 // split levels, and each level re-waits a full OXLINT_SPAWN_TIMEOUT_MS;
 // without a cumulative cap that cascade can stall the scan for minutes.
 // 180 s bounds the whole cascade while leaving room for a few healthy
@@ -549,11 +549,11 @@ export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
 export const OXLINT_SPLIT_TOTAL_BUDGET_MS = 180_000;
 
 // Recursion-depth cap on the binary-split recovery — a belt to the
-// OXLINT_SPLIT_TOTAL_BUDGET_MS suspenders. A 100-file batch needs at
-// most ceil(log2(100))=7 levels to isolate a single offender; 8 leaves
+// OXLINT_SPLIT_TOTAL_BUDGET_MS suspenders. A 200-file batch needs at
+// most ceil(log2(200))=8 levels to isolate a single offender; 9 leaves
 // one level of slack and still terminates the recursion deterministically
 // even if the budget clock is somehow not advancing.
-export const OXLINT_SPLIT_MAX_DEPTH = 8;
+export const OXLINT_SPLIT_MAX_DEPTH = 9;
 
 // Exit codes that mean the oxlint child ABORTED rather than exited. Windows
 // has no POSIX signals, so an aborting child (oxlint's native binding

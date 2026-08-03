@@ -147,7 +147,7 @@ interface RunOxlintOptions {
    * Full-scan batch planning, resolved from the `LintBatchOrdering`
    * Reference. `"cost"` (the default) plans size-balanced LPT batches via
    * `planLintBatches`; `"arrival"` is the rollback hatch to the plain greedy
-   * 100-file chunking in discovery order. Only affects the full-scan branch
+   * fixed-size chunking in discovery order. Only affects the full-scan branch
    * (`includePaths` undefined) — diff / staged scans pass explicit paths and
    * are untouched.
    */

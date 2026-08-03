@@ -3,6 +3,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
 import { COOPERATIVE_YIELD_BUDGET_MS, GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
+import {
+  collectGitLinguistIgnoredPaths,
+  collectGitLinguistIgnoredPathsCooperative,
+} from "./collect-git-linguist-ignored-paths.js";
 import { collectTypeScriptEmitDuplicateJsPaths } from "./collect-typescript-emit-duplicate-js-paths.js";
 import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
@@ -85,7 +89,10 @@ const listGitSourceFilePaths = (rootDirectory: string): GitSourceFilePaths | nul
   return parseGitSourceFilePaths(result.stdout);
 };
 
-const filterGitSourceFilePaths = (rootDirectory: string, paths: GitSourceFilePaths): string[] => {
+const collectGitCandidateSourceFilePaths = (
+  rootDirectory: string,
+  paths: GitSourceFilePaths,
+): string[] => {
   const { trackedPaths, untrackedPaths } = paths;
   const emitDuplicateJsPaths = collectTypeScriptEmitDuplicateJsPaths({
     trackedPaths: new Set(trackedPaths),
@@ -101,16 +108,22 @@ const filterGitSourceFilePaths = (rootDirectory: string, paths: GitSourceFilePat
   );
 };
 
+const filterGitSourceFilePaths = (rootDirectory: string, paths: GitSourceFilePaths): string[] => {
+  const candidatePaths = collectGitCandidateSourceFilePaths(rootDirectory, paths);
+  const linguistIgnoredPaths = collectGitLinguistIgnoredPaths(rootDirectory, candidatePaths);
+  return candidatePaths.filter((filePath) => !linguistIgnoredPaths.has(filePath));
+};
+
 const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
   const paths = listGitSourceFilePaths(rootDirectory);
   return paths === null ? null : filterGitSourceFilePaths(rootDirectory, paths);
 };
 
-const listSourceFilesViaGitCooperative = (
+const listSourceFilesViaGitCooperative = async (
   rootDirectory: string,
   signal?: AbortSignal,
-): Promise<string[] | null> =>
-  new Promise((resolve, reject) => {
+): Promise<string[] | null> => {
+  const paths = await new Promise<GitSourceFilePaths | null>((resolve, reject) => {
     signal?.throwIfAborted();
     execFile(
       "git",
@@ -127,12 +140,19 @@ const listSourceFilesViaGitCooperative = (
           reject(signal.reason);
           return;
         }
-        resolve(
-          error ? null : filterGitSourceFilePaths(rootDirectory, parseGitSourceFilePaths(stdout)),
-        );
+        resolve(error ? null : parseGitSourceFilePaths(stdout));
       },
     );
   });
+  if (paths === null) return null;
+  const candidatePaths = collectGitCandidateSourceFilePaths(rootDirectory, paths);
+  const linguistIgnoredPaths = await collectGitLinguistIgnoredPathsCooperative(
+    rootDirectory,
+    candidatePaths,
+    signal,
+  );
+  return candidatePaths.filter((filePath) => !linguistIgnoredPaths.has(filePath));
+};
 
 const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
   const filePaths: string[] = [];

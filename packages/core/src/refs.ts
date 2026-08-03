@@ -164,14 +164,14 @@ export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
 /**
  * How the full-scan lint pass plans its file batches. `"cost"` (the default)
  * builds size-balanced LPT batches (`planLintBatches`): the same mandatory
- * batch count as greedy chunking (`ceil(files / 100)`), but every batch gets
- * an even share of files AND bytes, so no 100-file chunk is a straggler while
+ * batch count as greedy chunking, but every batch gets an even share of files
+ * AND bytes, so no full chunk is a straggler while
  * the remainder-batch worker idles — and the heavy files are SPREAD across
  * batches, the precondition the old sort-desc-then-chunk-100 `cost` mode
  * lacked (it packed the heaviest files into one wave-1 straggler batch,
  * measurably regressing size-skewed repos, which is why it never earned the
  * default). `"arrival"` (`REACT_DOCTOR_LINT_BATCH_ORDERING=arrival`) is the
- * rollback hatch to plain greedy 100-file chunking in discovery order. Tests
+ * rollback hatch to plain greedy fixed-size chunking in discovery order. Tests
  * override via `Layer.succeed(LintBatchOrdering, ...)`. Diff / staged scans
  * never reach this — they pass user-scoped `includePaths` that skip discovery
  * and stay in arrival order; only the full-scan branch reads it.

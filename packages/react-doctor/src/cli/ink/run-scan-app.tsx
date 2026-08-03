@@ -567,12 +567,12 @@ const runMultiProjectScan = async (
       unit: "millisecond",
       attributes: { surface: "tui", projectCount },
     });
+    context.store.setProgress(`Scanning ${projectCount} projects…`);
+    await yieldToEventLoop();
     const precomputedSourceFileCounts = await collectProjectSourceFileCounts(
       rootDirectory,
       projectScans.map((projectScan) => projectScan.directory),
     );
-    context.store.setProgress(`Scanning ${projectCount} projects…`);
-    await yieldToEventLoop();
     const scanOutcomes = await mapWithConcurrency(
       projectScans,
       DEFAULT_PROJECT_SCAN_CONCURRENCY,

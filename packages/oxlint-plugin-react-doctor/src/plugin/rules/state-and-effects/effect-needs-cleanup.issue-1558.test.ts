@@ -281,7 +281,283 @@ export const Component = ({ videoId }) => {
   return null;
 };`,
   ],
+  [
+    "does not treat an imported DOM wrapper as a callable disposer",
+    `import { document as importedDocument } from "global-jsdom";
+import { useEffect } from "react";
+export const Component = () => {
+  useEffect(() => {
+    const dispose = importedDocument.addEventListener("change", () => {});
+    return () => dispose();
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "does not treat a Node EventEmitter instance as a callable disposer",
+    `import { EventEmitter } from "node:events";
+import { useEffect } from "react";
+export const Component = () => {
+  useEffect(() => {
+    const emitter = new EventEmitter();
+    const dispose = emitter.addListener("change", () => {});
+    return () => dispose();
+  }, []);
+  return null;
+};`,
+  ],
 ];
+
+const timerAllocationVariants: ReadonlyArray<readonly [string, string, boolean]> = [
+  [
+    "early-return guard",
+    `if (timer != null) return;
+      timer = setTimeout(() => {}, 30000);`,
+    true,
+  ],
+  [
+    "release-before-replace guard",
+    `if (timer != null) clearTimeout(timer);
+      timer = setTimeout(() => {}, 30000);`,
+    true,
+  ],
+  [
+    "unconditional release before replace",
+    `clearTimeout(timer);
+      timer = setTimeout(() => {}, 30000);`,
+    true,
+  ],
+  [
+    "conditional release before replace",
+    `if (condition) clearTimeout(timer);
+      timer = setTimeout(() => {}, 30000);`,
+    false,
+  ],
+  ["unprotected replacement", `timer = setTimeout(() => {}, 30000);`, false],
+];
+
+const timerInvocationVariants: ReadonlyArray<readonly [string, string, string, boolean]> = [
+  ["direct calls", `arm(); arm();`, `clearTimeout(timer);`, true],
+  [
+    "owned listener calls",
+    `const unsubscribe = NetInfo.addEventListener(arm);`,
+    `clearTimeout(timer); unsubscribe();`,
+    true,
+  ],
+  ["deferred promise call", `Promise.resolve().then(arm);`, `clearTimeout(timer);`, false],
+];
+
+const generatedTimerCases = timerAllocationVariants.flatMap(
+  ([allocationName, allocationBody, doesProtectLiveHandle]) =>
+    timerInvocationVariants.map(
+      ([invocationName, invocationBody, cleanupBody, doesEffectOwnInvocation]): readonly [
+        string,
+        string,
+        boolean,
+      ] => [
+        `${allocationName} with ${invocationName}`,
+        `import NetInfo from "@react-native-community/netinfo";
+import { useEffect } from "react";
+export const Component = ({ condition }) => {
+  useEffect(() => {
+    let timer = null;
+    const arm = () => {
+      ${allocationBody}
+    };
+    ${invocationBody}
+    return () => { ${cleanupBody} };
+  }, []);
+  return null;
+};`,
+        doesProtectLiveHandle && doesEffectOwnInvocation,
+      ],
+    ),
+);
+
+const collectionStorageVariants: ReadonlyArray<readonly [string, string, boolean]> = [
+  [
+    "direct collection",
+    `const ownedUnsubscribers = sources.map((source) => source.addListener("change", () => {}));`,
+    true,
+  ],
+  [
+    "stable alias",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers;`,
+    true,
+  ],
+  [
+    "full slice copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();`,
+    true,
+  ],
+  [
+    "full spread copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = [...unsubscribers];`,
+    true,
+  ],
+  [
+    "Array.from copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = Array.from(unsubscribers);`,
+    true,
+  ],
+  [
+    "empty concat copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.concat();`,
+    true,
+  ],
+  [
+    "reversed copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.toReversed();`,
+    true,
+  ],
+  [
+    "sorted copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.toSorted();`,
+    true,
+  ],
+  [
+    "source mutation after snapshot",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();
+    unsubscribers.length = 0;`,
+    true,
+  ],
+  [
+    "source escape after snapshot",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();
+    register(unsubscribers);`,
+    true,
+  ],
+  [
+    "partial slice copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice(1);`,
+    false,
+  ],
+  [
+    "source mutation before snapshot",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    unsubscribers.length = 0;
+    const ownedUnsubscribers = unsubscribers.slice();`,
+    false,
+  ],
+  [
+    "snapshot mutation after copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();
+    ownedUnsubscribers.length = 0;`,
+    false,
+  ],
+  [
+    "source escape before snapshot",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    register(unsubscribers);
+    const ownedUnsubscribers = unsubscribers.slice();`,
+    false,
+  ],
+  [
+    "filtered copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.filter(Boolean);`,
+    false,
+  ],
+  [
+    "escaped collection",
+    `const ownedUnsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    register(ownedUnsubscribers);`,
+    false,
+  ],
+];
+
+const collectionCleanupVariants: ReadonlyArray<readonly [string, string, boolean]> = [
+  ["forEach", `ownedUnsubscribers.forEach((unsubscribe) => unsubscribe());`, true],
+  [
+    "for-of with continue after release",
+    `for (const unsubscribe of ownedUnsubscribers) {
+        unsubscribe();
+        if (condition) continue;
+      }`,
+    true,
+  ],
+  [
+    "for-of with continue before release",
+    `for (const unsubscribe of ownedUnsubscribers) {
+        if (condition) continue;
+        unsubscribe();
+      }`,
+    false,
+  ],
+  [
+    "for-of with break after release",
+    `for (const unsubscribe of ownedUnsubscribers) {
+        unsubscribe();
+        if (condition) break;
+      }`,
+    false,
+  ],
+  [
+    "for-of with nested break before release",
+    `for (const unsubscribe of ownedUnsubscribers) {
+        for (const item of []) {
+          if (item) break;
+        }
+        unsubscribe();
+      }`,
+    true,
+  ],
+  [
+    "for-of with nested continue before release",
+    `for (const unsubscribe of ownedUnsubscribers) {
+        for (const item of []) {
+          if (item) continue;
+        }
+        unsubscribe();
+      }`,
+    true,
+  ],
+  [
+    "for-of with caught throw before release",
+    `for (const unsubscribe of ownedUnsubscribers) {
+        try {
+          if (condition) throw new Error("retry");
+        } catch {}
+        unsubscribe();
+      }`,
+    true,
+  ],
+];
+
+const generatedCollectionCases = collectionStorageVariants.flatMap(
+  ([storageName, storageBody, doesStorageRetainEveryEntry]) =>
+    collectionCleanupVariants.map(
+      ([cleanupName, cleanupBody, doesCleanupVisitEveryEntry]): readonly [
+        string,
+        string,
+        boolean,
+      ] => [
+        `${storageName} with ${cleanupName}`,
+        `import { useEffect } from "react";
+export const Component = ({ sources, condition, register }) => {
+  useEffect(() => {
+    ${storageBody}
+    return () => {
+      ${cleanupBody}
+    };
+  }, [sources, condition, register]);
+  return null;
+};`,
+        doesStorageRetainEveryEntry && doesCleanupVisitEveryEntry,
+      ],
+    ),
+);
 
 describe("effect-needs-cleanup issue #1558", () => {
   it.each(validCases)("accepts %s", (_name, source) => {
@@ -295,4 +571,22 @@ describe("effect-needs-cleanup issue #1558", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it.each(generatedTimerCases)(
+    "proves generated timer ownership for %s",
+    (_name, source, isSafe) => {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length > 0).toBe(!isSafe);
+    },
+  );
+
+  it.each(generatedCollectionCases)(
+    "proves generated collection ownership for %s",
+    (_name, source, isSafe) => {
+      const result = runRule(effectNeedsCleanup, source);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length > 0).toBe(!isSafe);
+    },
+  );
 });

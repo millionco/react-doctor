@@ -139,6 +139,20 @@ describe("three-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows nested local resource getters that can return a fresh value per access", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       const meshResources = {
+         get geometry() { return createGeometry(); },
+       };
+       const resources = { mesh: meshResources, material };
+       scene.add(...[0, 1].map(() => new Mesh(resources.mesh.geometry, resources.material)));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("requires proven Three.js Mesh provenance", () => {
     const result = runRule(
       threePreferInstancedMesh,

@@ -5,13 +5,13 @@
 import "@react-three/fiber";
 
 export const Scene = ({ material }) => {
-  const resources = {
+  const meshResources = {
     get geometry() {
       return createGeometry();
     },
-    material,
   };
+  const resources = { mesh: meshResources, material };
   return [0, 1].map((index) => (
-    <mesh key={index} geometry={resources.geometry} material={resources.material} />
+    <mesh key={index} geometry={resources.mesh.geometry} material={resources.material} />
   ));
 };

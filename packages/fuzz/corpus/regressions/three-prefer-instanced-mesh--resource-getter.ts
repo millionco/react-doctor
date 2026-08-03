@@ -5,10 +5,10 @@
 import { Mesh, Scene } from "three";
 
 const scene = new Scene();
-const resources = {
+const meshResources = {
   get geometry() {
     return createGeometry();
   },
-  material,
 };
-scene.add(...[0, 1].map(() => new Mesh(resources.geometry, resources.material)));
+const resources = { mesh: meshResources, material };
+scene.add(...[0, 1].map(() => new Mesh(resources.mesh.geometry, resources.material)));

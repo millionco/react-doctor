@@ -126,6 +126,21 @@ describe("r3f-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows nested local resource getters that can return a fresh value per access", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ material }) => {
+         const meshResources = {
+           get geometry() { return createGeometry(); },
+         };
+         const resources = { mesh: meshResources, material };
+         return [0, 1].map(() => <mesh geometry={resources.mesh.geometry} material={resources.material} />);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows unknown, singleton, conditional, and unrendered maps", () => {
     const result = runRule(
       r3fPreferInstancedMesh,

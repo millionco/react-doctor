@@ -1899,6 +1899,7 @@ const doesCleanupFunctionReleaseUsage = (
   cleanupFunction: EsTreeNode,
   usage: SubscribeLikeUsage,
   context: RuleContext,
+  requiresDirectReleasePathCoverage = false,
   visitedFunctions: Set<EsTreeNode> = new Set(),
   parameterSubstitutions: ReadonlyMap<number, EsTreeNode> = new Map(),
 ): boolean => {
@@ -1958,6 +1959,13 @@ const doesCleanupFunctionReleaseUsage = (
         findForOfStatementForIteratorExpression(cleanupEventArgument, context) ??
         cleanupReceiverForOfStatement;
       if (!cleanupForOfStatement) {
+        if (requiresDirectReleasePathCoverage) {
+          matchingLoopOrHelperAnchors.push(
+            findDirectHandleGuardForRelease(cleanupChild, cleanupFunction, usage, context) ??
+              cleanupChild,
+          );
+          return;
+        }
         didCleanupFunctionMatch = true;
         return false;
       }
@@ -1996,6 +2004,7 @@ const doesCleanupFunctionReleaseUsage = (
         helperFunction,
         usage,
         context,
+        requiresDirectReleasePathCoverage,
         new Set(visitedFunctions),
         helperParameterSubstitutions,
       )
@@ -2277,6 +2286,7 @@ const hasRerunReleaseBeforeUsage = (
         helperFunction,
         usage,
         context,
+        false,
         new Set(),
         helperParameterSubstitutions,
       )
@@ -2716,6 +2726,7 @@ const cleanupReturnsReleaseUsage = (
 
 const findSubscriptionRegistrationsForHandler = (
   handlerFunction: EsTreeNode,
+  synchronouslyInvokedFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
 ): EsTreeNodeOfType<"CallExpression">[] | null => {
   if (!isFunctionLike(handlerFunction) || handlerFunction.async || handlerFunction.generator) {
@@ -2735,6 +2746,18 @@ const findSubscriptionRegistrationsForHandler = (
   if (!handlerSymbol || handlerSymbol.references.length === 0) return null;
   const registrations: EsTreeNodeOfType<"CallExpression">[] = [];
   for (const reference of handlerSymbol.references) {
+    const directCall = findDirectCallForReference(reference.identifier);
+    if (directCall) {
+      const invocationOwner = findEnclosingFunction(directCall);
+      if (
+        !invocationOwner ||
+        invocationOwner === handlerFunction ||
+        !synchronouslyInvokedFunctions.has(invocationOwner)
+      ) {
+        return null;
+      }
+      continue;
+    }
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const registration = referenceRoot.parent;
     if (
@@ -2756,7 +2779,11 @@ const isEffectOwnedSubscriptionHandler = (
   synchronouslyInvokedFunctions: ReadonlySet<EsTreeNode>,
   context: RuleContext,
 ): boolean => {
-  const registrations = findSubscriptionRegistrationsForHandler(handlerFunction, context);
+  const registrations = findSubscriptionRegistrationsForHandler(
+    handlerFunction,
+    synchronouslyInvokedFunctions,
+    context,
+  );
   if (
     !registrations ||
     registrations.length === 0 ||
@@ -2801,16 +2828,24 @@ const hasOnlyEffectOwnedFunctionInvocations = (
     const directCall = findDirectCallForReference(reference.identifier);
     if (!directCall) return false;
     const invocationOwner = findEnclosingFunction(directCall);
-    return Boolean(
-      invocationOwner &&
-      (synchronouslyInvokedFunctions.has(invocationOwner) ||
+    if (!invocationOwner) return false;
+    if (invocationOwner === callback) return true;
+    const registrations = findSubscriptionRegistrationsForHandler(
+      invocationOwner,
+      synchronouslyInvokedFunctions,
+      context,
+    );
+    if (registrations === null) return false;
+    return (
+      (registrations.length === 0 && synchronouslyInvokedFunctions.has(invocationOwner)) ||
+      (registrations.length > 0 &&
         isEffectOwnedSubscriptionHandler(
           invocationOwner,
           callback,
           cleanupReturns,
           synchronouslyInvokedFunctions,
           context,
-        )),
+        ))
     );
   });
 };
@@ -3025,7 +3060,7 @@ const hasGuardedDeferredCleanup = (
           globalReleaseProofs.map((releaseProof) => releaseProof.anchor),
           context,
         )
-      : doesCleanupFunctionReleaseUsage(cleanupFunction, usage, context);
+      : doesCleanupFunctionReleaseUsage(cleanupFunction, usage, context, true);
     if (!hasRequiredRelease) {
       return false;
     }
@@ -3168,6 +3203,24 @@ const effectHasCleanupForUsage = (
   if (!isNodeOfType(callback.body, "BlockStatement")) {
     return callback.body === usage.node && isKnownCallableSubscriptionResult(usage, context);
   }
+  const usageExpression = findTransparentExpressionRoot(usage.node);
+  const usageAssignment = usageExpression.parent;
+  const assignedHandleSymbol =
+    isNodeOfType(usageAssignment, "AssignmentExpression") &&
+    usageAssignment.operator === "=" &&
+    usageAssignment.right === usageExpression &&
+    isNodeOfType(usageAssignment.left, "Identifier")
+      ? context.scopes.symbolFor(usageAssignment.left)
+      : null;
+  const requiresDirectReleasePathCoverage =
+    usage.kind === "timer" &&
+    findEnclosingFunction(usage.node) !== callback &&
+    Boolean(
+      assignedHandleSymbol &&
+      (assignedHandleSymbol.kind === "let" || assignedHandleSymbol.kind === "var") &&
+      isNodeOfType(assignedHandleSymbol.declarationNode, "VariableDeclarator") &&
+      findEnclosingFunction(assignedHandleSymbol.declarationNode) === callback,
+    );
   const matchingCleanupReturns: EsTreeNode[] = [];
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "ReturnStatement")) return;
@@ -3215,7 +3268,14 @@ const effectHasCleanupForUsage = (
       return;
     }
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
-    if (doesCleanupFunctionReleaseUsage(cleanupFunction, usage, context)) {
+    if (
+      doesCleanupFunctionReleaseUsage(
+        cleanupFunction,
+        usage,
+        context,
+        requiresDirectReleasePathCoverage,
+      )
+    ) {
       matchingCleanupReturns.push(child);
     }
   });

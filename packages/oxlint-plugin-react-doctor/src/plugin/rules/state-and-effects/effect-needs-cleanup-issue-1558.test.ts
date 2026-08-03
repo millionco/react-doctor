@@ -299,6 +299,96 @@ describe("effect-needs-cleanup issue 1558 cleanup ownership", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("reports conditional direct timer cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      function Watchdog({ done, enabled }) {
+        useEffect(() => {
+          let timer = null;
+          const arm = () => {
+            if (timer != null) return;
+            timer = setTimeout(done, 1000);
+          };
+          arm();
+          return () => {
+            if (enabled) clearTimeout(timer);
+          };
+        }, [done, enabled]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setTimeout");
+  });
+
+  it("reports a synchronously invoked timer helper retained by an unreleased listener", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      function Watchdog({ AppState, done }) {
+        useEffect(() => {
+          let timer = null;
+          const disarm = () => {
+            if (timer != null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          };
+          const arm = () => {
+            if (timer != null) return;
+            timer = setTimeout(done, 1000);
+          };
+          const onChange = () => arm();
+          onChange();
+          AppState.addEventListener("change", onChange);
+          return () => disarm();
+        }, [AppState, done]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.some((diagnostic) => diagnostic.message.includes("setTimeout"))).toBe(
+      true,
+    );
+  });
+
+  it("accepts a synchronously invoked timer helper retained by a released listener", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      function Watchdog({ AppState, done }) {
+        useEffect(() => {
+          let timer = null;
+          const disarm = () => {
+            if (timer != null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          };
+          const arm = () => {
+            if (timer != null) return;
+            timer = setTimeout(done, 1000);
+          };
+          const onChange = () => arm();
+          onChange();
+          const subscription = AppState.addEventListener("change", onChange);
+          return () => {
+            disarm();
+            subscription.remove();
+          };
+        }, [AppState, done]);
+        return null;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it.each([
     ["an unowned callback", "scheduleAgain(arm);", "subscription.remove();"],
     ["an async listener", "", "subscription.remove();", "async () => arm()"],

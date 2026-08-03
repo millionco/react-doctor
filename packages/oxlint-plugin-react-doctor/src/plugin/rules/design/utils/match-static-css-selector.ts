@@ -91,7 +91,7 @@ const getStaticElementPosition = (
   return index < 0 ? null : { index: index + 1, total: siblings.length };
 };
 
-const selectorMatches = (
+export const selectorMatches = (
   selector: Selector,
   node: EsTreeNodeOfType<"JSXOpeningElement">,
 ): StaticSelectorMatch => selectorMatchesAt(selector, selector.length - 1, node);

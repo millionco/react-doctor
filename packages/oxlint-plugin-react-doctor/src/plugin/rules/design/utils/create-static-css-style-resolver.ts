@@ -1,16 +1,23 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { Selector } from "lightningcss";
 import { CROSS_FILE_PARSE_MAX_BYTES } from "../../../constants/thresholds.js";
 import { recordContentProbe } from "../../../utils/cross-file-probe-recorder.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
+import { compareStaticCssSelectorSpecificity } from "./compare-static-css-selector-specificity.js";
 import {
-  selectorListMatches,
+  getStaticCssSelectorSpecificity,
+  type StaticCssSelectorSpecificity,
+} from "./get-static-css-selector-specificity.js";
+import {
+  selectorMatches,
   selectorMatchesRootTarget,
   StaticSelectorMatch,
 } from "./match-static-css-selector.js";
 import {
   parseStaticCssStylesheet,
   type ParsedStaticCssStylesheets,
+  type StaticCssDeclaration,
   type StaticCssRule,
 } from "./parse-static-css-stylesheet.js";
 
@@ -28,47 +35,136 @@ export interface StaticCssStyleResolver {
   readonly resolve: (node: EsTreeNodeOfType<"JSXOpeningElement">) => StaticCssStyle;
 }
 
+interface MatchedCssDeclaration {
+  readonly declaration: StaticCssDeclaration;
+  readonly isInCascadeLayer: boolean;
+  readonly sourceOrder: number;
+  readonly specificity: StaticCssSelectorSpecificity;
+}
+
+interface CssCascadeResolution {
+  readonly isAmbiguous: boolean;
+  readonly value: string | null;
+}
+
 const addAmbiguousDeclarations = (
-  declarations: ReadonlyMap<string, ReadonlyArray<string>>,
+  declarations: ReadonlyArray<StaticCssDeclaration>,
   ambiguousProperties: Set<string>,
 ): void => {
-  for (const property of declarations.keys()) ambiguousProperties.add(property);
+  for (const declaration of declarations) ambiguousProperties.add(declaration.property);
 };
 
-const ruleCanMatchRootTarget = (
-  rule: StaticCssRule,
-  target: "body" | "html" | "root",
-  expectedMatch: StaticSelectorMatch,
-): boolean =>
-  rule.declarations.has("height") &&
-  rule.selectors.some((selector) => {
-    const result = selectorMatchesRootTarget(selector, target);
-    return result.hasTargetAnchor && result.match === expectedMatch;
-  });
+const compareMatchedDeclarations = (
+  leftCandidate: MatchedCssDeclaration,
+  rightCandidate: MatchedCssDeclaration,
+): number =>
+  compareStaticCssSelectorSpecificity(leftCandidate.specificity, rightCandidate.specificity) ||
+  leftCandidate.sourceOrder - rightCandidate.sourceOrder ||
+  leftCandidate.declaration.declarationOrder - rightCandidate.declaration.declarationOrder;
 
-const stylesheetsHaveDefiniteReactRootHeight = (
+const resolveCascade = (candidates: ReadonlyArray<MatchedCssDeclaration>): CssCascadeResolution => {
+  if (candidates.length === 0) return { isAmbiguous: false, value: null };
+  const hasImportantCandidate = candidates.some((candidate) => candidate.declaration.isImportant);
+  let eligibleCandidates = candidates.filter(
+    (candidate) => candidate.declaration.isImportant === hasImportantCandidate,
+  );
+  const hasLayeredCandidate = eligibleCandidates.some((candidate) => candidate.isInCascadeLayer);
+  const hasUnlayeredCandidate = eligibleCandidates.some((candidate) => !candidate.isInCascadeLayer);
+  const shouldUseLayeredCandidates = hasImportantCandidate
+    ? hasLayeredCandidate
+    : !hasUnlayeredCandidate;
+  eligibleCandidates = eligibleCandidates.filter(
+    (candidate) => candidate.isInCascadeLayer === shouldUseLayeredCandidates,
+  );
+  if (
+    eligibleCandidates[0]?.isInCascadeLayer &&
+    new Set(eligibleCandidates.map((candidate) => candidate.declaration.value)).size > 1
+  ) {
+    return { isAmbiguous: true, value: null };
+  }
+  const winner = eligibleCandidates.reduce((winningCandidate, candidate) =>
+    compareMatchedDeclarations(candidate, winningCandidate) > 0 ? candidate : winningCandidate,
+  );
+  return { isAmbiguous: false, value: winner.declaration.value };
+};
+
+const resolveStylesheets = (
   stylesheets: ParsedStaticCssStylesheets,
-): boolean => {
-  if (stylesheets.ambiguousProperties.has("height")) return false;
-  return REACT_ROOT_HEIGHT_TARGETS.every((target) => {
-    if (
-      [...stylesheets.rules, ...stylesheets.ambiguousRules].some((rule) =>
-        ruleCanMatchRootTarget(rule, target, StaticSelectorMatch.Ambiguous),
-      ) ||
-      stylesheets.ambiguousRules.some((rule) =>
-        ruleCanMatchRootTarget(rule, target, StaticSelectorMatch.Match),
-      )
-    ) {
-      return false;
+  getSelectorMatch: (selector: Selector) => StaticSelectorMatch,
+): StaticCssStyle => {
+  const ambiguousProperties = new Set(stylesheets.ambiguousProperties);
+  const candidatesByProperty = new Map<string, MatchedCssDeclaration[]>();
+  for (const rule of stylesheets.rules) {
+    let ambiguousSpecificity: StaticCssSelectorSpecificity | null = null;
+    let matchingSpecificity: StaticCssSelectorSpecificity | null = null;
+    for (const selector of rule.selectors) {
+      const match = getSelectorMatch(selector);
+      const specificity = getStaticCssSelectorSpecificity(selector);
+      if (match === StaticSelectorMatch.Ambiguous) {
+        if (
+          ambiguousSpecificity === null ||
+          compareStaticCssSelectorSpecificity(specificity, ambiguousSpecificity) > 0
+        ) {
+          ambiguousSpecificity = specificity;
+        }
+      } else if (match === StaticSelectorMatch.Match) {
+        if (
+          matchingSpecificity === null ||
+          compareStaticCssSelectorSpecificity(specificity, matchingSpecificity) > 0
+        ) {
+          matchingSpecificity = specificity;
+        }
+      }
     }
-    const values = stylesheets.rules.flatMap((rule) =>
-      ruleCanMatchRootTarget(rule, target, StaticSelectorMatch.Match)
-        ? (rule.declarations.get("height") ?? [])
-        : [],
-    );
-    return values.length > 0 && values.every((value) => value === "100%");
-  });
+    if (
+      ambiguousSpecificity &&
+      (!matchingSpecificity ||
+        compareStaticCssSelectorSpecificity(ambiguousSpecificity, matchingSpecificity) > 0)
+    ) {
+      addAmbiguousDeclarations(rule.declarations, ambiguousProperties);
+    }
+    if (matchingSpecificity === null) continue;
+    for (const declaration of rule.declarations) {
+      const candidates = candidatesByProperty.get(declaration.property) ?? [];
+      candidates.push({
+        declaration,
+        isInCascadeLayer: rule.isInCascadeLayer,
+        sourceOrder: rule.sourceOrder,
+        specificity: matchingSpecificity,
+      });
+      candidatesByProperty.set(declaration.property, candidates);
+    }
+  }
+  for (const rule of stylesheets.ambiguousRules) {
+    if (
+      rule.selectors.every((selector) => getSelectorMatch(selector) === StaticSelectorMatch.NoMatch)
+    ) {
+      continue;
+    }
+    addAmbiguousDeclarations(rule.declarations, ambiguousProperties);
+  }
+  const valuesByProperty = new Map<string, ReadonlyArray<string>>();
+  for (const [property, candidates] of candidatesByProperty) {
+    const resolution = resolveCascade(candidates);
+    if (resolution.isAmbiguous) ambiguousProperties.add(property);
+    else if (resolution.value !== null) valuesByProperty.set(property, [resolution.value]);
+  }
+  return { ambiguousProperties, valuesByProperty };
 };
+
+const stylesheetsHaveDefiniteReactRootHeight = (stylesheets: ParsedStaticCssStylesheets): boolean =>
+  REACT_ROOT_HEIGHT_TARGETS.every((target) => {
+    const style = resolveStylesheets(
+      stylesheets,
+      (selector) => selectorMatchesRootTarget(selector, target).match,
+    );
+    const values = style.valuesByProperty.get("height") ?? [];
+    return (
+      !style.ambiguousProperties.has("height") &&
+      values.length > 0 &&
+      values.every((value) => value === "100%")
+    );
+  });
 
 const findImportedSiblingStylesheetPaths = (filename: string): ReadonlySet<string> => {
   const importedStylesheetPaths = new Set<string>();
@@ -88,22 +184,31 @@ const findImportedSiblingStylesheetPaths = (filename: string): ReadonlySet<strin
   return importedStylesheetPaths;
 };
 
+const offsetRuleSourceOrder = (rule: StaticCssRule, sourceOrderOffset: number): StaticCssRule => ({
+  ...rule,
+  sourceOrder: rule.sourceOrder + sourceOrderOffset,
+});
+
 const loadSiblingStylesheets = (filename: string): ParsedStaticCssStylesheets => {
   const rules: StaticCssRule[] = [];
   const ambiguousRules: StaticCssRule[] = [];
   const ambiguousProperties = new Set<string>();
+  let ruleCount = 0;
   for (const stylesheetPath of findImportedSiblingStylesheetPaths(filename)) {
     recordContentProbe(stylesheetPath);
     try {
       const fileStat = fs.statSync(stylesheetPath);
       if (fileStat.size > CROSS_FILE_PARSE_MAX_BYTES) continue;
       const parsed = parseStaticCssStylesheet(fs.readFileSync(stylesheetPath, "utf8"));
-      rules.push(...parsed.rules);
-      ambiguousRules.push(...parsed.ambiguousRules);
+      rules.push(...parsed.rules.map((rule) => offsetRuleSourceOrder(rule, ruleCount)));
+      ambiguousRules.push(
+        ...parsed.ambiguousRules.map((rule) => offsetRuleSourceOrder(rule, ruleCount)),
+      );
+      ruleCount += parsed.ruleCount;
       for (const property of parsed.ambiguousProperties) ambiguousProperties.add(property);
     } catch {}
   }
-  return { ambiguousProperties, ambiguousRules, rules };
+  return { ambiguousProperties, ambiguousRules, ruleCount, rules };
 };
 
 export const createStaticCssStyleResolver = (
@@ -114,37 +219,14 @@ export const createStaticCssStyleResolver = (
     stylesheets ??=
       filename && path.isAbsolute(filename)
         ? loadSiblingStylesheets(filename)
-        : { ambiguousProperties: new Set(), ambiguousRules: [], rules: [] };
+        : { ambiguousProperties: new Set(), ambiguousRules: [], ruleCount: 0, rules: [] };
     return stylesheets;
   };
   return {
     get hasDefiniteReactRootHeight() {
       return stylesheetsHaveDefiniteReactRootHeight(getStylesheets());
     },
-    resolve: (node) => {
-      if (!filename || !path.isAbsolute(filename)) {
-        return { ambiguousProperties: new Set(), valuesByProperty: new Map() };
-      }
-      const loadedStylesheets = getStylesheets();
-      const valuesByProperty = new Map<string, string[]>();
-      const ambiguousProperties = new Set(loadedStylesheets.ambiguousProperties);
-      for (const rule of loadedStylesheets.rules) {
-        const match = selectorListMatches(rule.selectors, node);
-        if (match === StaticSelectorMatch.Ambiguous) {
-          addAmbiguousDeclarations(rule.declarations, ambiguousProperties);
-        } else if (match === StaticSelectorMatch.Match) {
-          for (const [property, ruleValues] of rule.declarations) {
-            const values = valuesByProperty.get(property) ?? [];
-            values.push(...ruleValues);
-            valuesByProperty.set(property, values);
-          }
-        }
-      }
-      for (const rule of loadedStylesheets.ambiguousRules) {
-        if (selectorListMatches(rule.selectors, node) === StaticSelectorMatch.NoMatch) continue;
-        addAmbiguousDeclarations(rule.declarations, ambiguousProperties);
-      }
-      return { ambiguousProperties, valuesByProperty };
-    },
+    resolve: (node) =>
+      resolveStylesheets(getStylesheets(), (selector) => selectorMatches(selector, node)),
   };
 };

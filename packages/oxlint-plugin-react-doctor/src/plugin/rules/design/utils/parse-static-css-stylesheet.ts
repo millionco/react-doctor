@@ -1,4 +1,4 @@
-import { transform } from "lightningcss";
+import { Features, transform } from "lightningcss";
 import type {
   CalcFor_DimensionPercentageFor_LengthValue,
   Declaration,
@@ -34,14 +34,22 @@ interface ParsedCssDeclaration {
   readonly value: string;
 }
 
+export interface StaticCssDeclaration extends ParsedCssDeclaration {
+  readonly declarationOrder: number;
+  readonly isImportant: boolean;
+}
+
 export interface StaticCssRule {
-  readonly declarations: ReadonlyMap<string, ReadonlyArray<string>>;
+  readonly declarations: ReadonlyArray<StaticCssDeclaration>;
+  readonly isInCascadeLayer: boolean;
+  readonly sourceOrder: number;
   readonly selectors: ReadonlyArray<Selector>;
 }
 
 export interface ParsedStaticCssStylesheets {
   readonly ambiguousProperties: ReadonlySet<string>;
   readonly ambiguousRules: ReadonlyArray<StaticCssRule>;
+  readonly ruleCount: number;
   readonly rules: ReadonlyArray<StaticCssRule>;
 }
 
@@ -127,16 +135,26 @@ const parseTrackedDeclaration = (declaration: Declaration): ParsedCssDeclaration
 
 const parseDeclarations = (
   declarations: ReadonlyArray<Declaration>,
-): ReadonlyMap<string, ReadonlyArray<string>> => {
-  const valuesByProperty = new Map<string, string[]>();
-  for (const declaration of declarations) {
-    const parsedDeclaration = parseTrackedDeclaration(declaration);
-    if (!parsedDeclaration) continue;
-    const values = valuesByProperty.get(parsedDeclaration.property) ?? [];
-    values.push(parsedDeclaration.value);
-    valuesByProperty.set(parsedDeclaration.property, values);
-  }
-  return valuesByProperty;
+  importantDeclarations: ReadonlyArray<Declaration>,
+): ReadonlyArray<StaticCssDeclaration> => {
+  const parsedDeclarations: StaticCssDeclaration[] = [];
+  const appendDeclarations = (
+    declarationsToParse: ReadonlyArray<Declaration>,
+    isImportant: boolean,
+  ): void => {
+    for (const declaration of declarationsToParse) {
+      const parsedDeclaration = parseTrackedDeclaration(declaration);
+      if (!parsedDeclaration) continue;
+      parsedDeclarations.push({
+        ...parsedDeclaration,
+        declarationOrder: parsedDeclarations.length,
+        isImportant,
+      });
+    }
+  };
+  appendDeclarations(declarations, false);
+  appendDeclarations(importantDeclarations, true);
+  return parsedDeclarations;
 };
 
 export const parseStaticCssStylesheet = (source: string): ParsedStaticCssStylesheets => {
@@ -144,38 +162,50 @@ export const parseStaticCssStylesheet = (source: string): ParsedStaticCssStylesh
   const ambiguousRules: StaticCssRule[] = [];
   const rules: StaticCssRule[] = [];
   let conditionalRuleDepth = 0;
-  let styleRuleDepth = 0;
+  let cascadeLayerDepth = 0;
+  let ruleCount = 0;
   try {
-    const result = transform({
+    const nestingResult = transform({
       code: Buffer.from(source),
+      errorRecovery: true,
+      filename: "stylesheet.css",
+      include: Features.Nesting,
+    });
+    const result = transform({
+      code: nestingResult.code,
       errorRecovery: true,
       filename: "stylesheet.css",
       visitor: {
         Rule: (rule) => {
           if (CONDITIONAL_CSS_RULE_TYPES.has(rule.type)) conditionalRuleDepth += 1;
+          if (rule.type === "layer-block") cascadeLayerDepth += 1;
           if (rule.type !== "style") return;
-          const declarations = parseDeclarations([
-            ...rule.value.declarations.declarations,
-            ...rule.value.declarations.importantDeclarations,
-          ]);
-          if (declarations.size > 0) {
-            const targetRules =
-              conditionalRuleDepth > 0 || styleRuleDepth > 0 ? ambiguousRules : rules;
-            targetRules.push({ declarations, selectors: rule.value.selectors });
+          const declarations = parseDeclarations(
+            rule.value.declarations.declarations,
+            rule.value.declarations.importantDeclarations,
+          );
+          if (declarations.length > 0) {
+            const targetRules = conditionalRuleDepth > 0 ? ambiguousRules : rules;
+            targetRules.push({
+              declarations,
+              isInCascadeLayer: cascadeLayerDepth > 0,
+              selectors: rule.value.selectors,
+              sourceOrder: ruleCount,
+            });
           }
-          styleRuleDepth += 1;
+          ruleCount += 1;
         },
         RuleExit: (rule) => {
-          if (rule.type === "style") styleRuleDepth -= 1;
+          if (rule.type === "layer-block") cascadeLayerDepth -= 1;
           if (CONDITIONAL_CSS_RULE_TYPES.has(rule.type)) conditionalRuleDepth -= 1;
         },
       },
     });
-    if (result.warnings.length > 0) {
+    if (nestingResult.warnings.length > 0 || result.warnings.length > 0) {
       for (const property of TRACKED_CSS_PROPERTIES) ambiguousProperties.add(property);
     }
   } catch {
     for (const property of TRACKED_CSS_PROPERTIES) ambiguousProperties.add(property);
   }
-  return { ambiguousProperties, ambiguousRules, rules };
+  return { ambiguousProperties, ambiguousRules, ruleCount, rules };
 };

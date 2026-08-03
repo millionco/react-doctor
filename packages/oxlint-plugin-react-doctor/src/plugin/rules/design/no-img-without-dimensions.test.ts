@@ -175,6 +175,35 @@ describe("no-img-without-dimensions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("resolves native nested selectors", () => {
+    const result = runRuleWithSiblingCss(
+      `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,
+      `.feed { img { width: 100%; height: 178px; } }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("applies CSS cascade precedence to matching dimensions", () => {
+    const higherSpecificity = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `section img { width: 100%; height: 178px; }
+       img { height: auto; }`,
+    );
+    const laterSourceOrder = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `section img { width: 100%; height: 178px; }
+       section img { height: auto; }`,
+    );
+    const importantDeclaration = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `img { width: 100%; height: auto !important; }
+       section img { height: 178px; }`,
+    );
+    expect(higherSpecificity.diagnostics).toHaveLength(0);
+    expect(laterSourceOrder.diagnostics).toHaveLength(1);
+    expect(importantDeclaration.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat interaction-only is branches as initial layout", () => {
     const result = runRuleWithSiblingCss(
       `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
@@ -270,13 +299,13 @@ describe("no-img-without-dimensions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("reports when conditional or unsupported CSS can remove the reservation", () => {
+  it("reports when conditional or higher-specificity CSS can remove the reservation", () => {
     const conditionalOverride = runRuleWithSiblingCss(
       `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
       `section img { width: 768px; height: 400px; }
        @media (max-width: 600px) { section img { height: auto; } }`,
     );
-    const unsupportedOverride = runRuleWithSiblingCss(
+    const zeroSpecificityOverride = runRuleWithSiblingCss(
       `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
       `section img { width: 768px; height: 400px; }
        :where(section img) { height: auto; }`,
@@ -292,7 +321,7 @@ describe("no-img-without-dimensions", () => {
        section img[data-fluid] { height: auto; }`,
     );
     expect(conditionalOverride.diagnostics).toHaveLength(1);
-    expect(unsupportedOverride.diagnostics).toHaveLength(1);
+    expect(zeroSpecificityOverride.diagnostics).toHaveLength(0);
     expect(negatedClassOverride.diagnostics).toHaveLength(1);
     expect(attributeOverride.diagnostics).toHaveLength(1);
   });

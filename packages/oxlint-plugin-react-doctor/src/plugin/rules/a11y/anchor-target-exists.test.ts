@@ -67,6 +67,50 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("ignores text fragment directives", () => {
+    const result = runProjectRule(
+      `const Link = () => <a href="#:~:text=React%20Doctor">React Doctor</a>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("validates the element id before a text fragment directive", () => {
+    const validResult = runProjectRule(
+      `const Link = () => <><a href="#about:~:text=React%20Doctor">React Doctor</a><main id="about" /></>;`,
+    );
+    expect(validResult.parseErrors).toEqual([]);
+    expect(validResult.diagnostics).toEqual([]);
+
+    resetStaticProjectDomIdCache();
+    const brokenResult = runProjectRule(
+      `const Link = () => <a href="#missing:~:text=React%20Doctor">React Doctor</a>;`,
+    );
+    expect(brokenResult.parseErrors).toEqual([]);
+    expect(brokenResult.diagnostics).toHaveLength(1);
+    expect(brokenResult.diagnostics[0]?.message).toContain('"#missing"');
+  });
+
+  it("reports a missing target on a configured anchor component", () => {
+    const result = runRule(
+      anchorTargetExists,
+      `const Link = () => <NavigationLink href="#about">About</NavigationLink>;`,
+      { settings: { "jsx-a11y": { components: { NavigationLink: "a" } } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a target used by a configured anchor component", () => {
+    const result = runRule(
+      anchorTargetExists,
+      `const Link = () => <><NavigationLink href="#about">About</NavigationLink><main id="about" /></>;`,
+      { settings: { "jsx-a11y": { components: { NavigationLink: "a" } } } },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("skips testlike files", () => {
     const result = runProjectRule(
       `const Broken = () => <a href="#about">About</a>;`,
@@ -93,6 +137,47 @@ describe("a11y/anchor-target-exists", () => {
       "utf8",
     );
     const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("skips a missing-target claim when a JSX spread can provide or replace an id", () => {
+    const result = runProjectRule(
+      `const Link = (props) => <><a href="#about">About</a><main id="about" {...props} /></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("resolves ids from static JSX spread objects", () => {
+    const result = runProjectRule(
+      `const Links = () => <><a href="#about">About</a><a href="#missing">Missing</a><main {...{ id: "about" }} /></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain('"#missing"');
+  });
+
+  it("uses the last explicit JSX id", () => {
+    const result = runProjectRule(
+      `const Link = () => <><a href="#about">About</a><main id="about" id="contact" /></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat ids inside JSX template content as document targets", () => {
+    const result = runProjectRule(
+      `const Link = () => <><a href="#about">About</a><template><main id="about" /></template></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an id on the JSX template element itself", () => {
+    const result = runProjectRule(
+      `const Link = () => <><a href="#about">About</a><template id="about"><main id="inside" /></template></>;`,
+    );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
@@ -128,5 +213,69 @@ describe("a11y/anchor-target-exists", () => {
     const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat comments, raw text, or visible text as HTML ids", () => {
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "other.html"),
+      `
+        <!-- <main id="about"></main> -->
+        <script>const markup = '<main id="about"></main>';</script>
+        <style>.example::after { content: '<main id="about"></main>'; }</style>
+        <p> id="about" </p>
+      `,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an HTML id when other text resembles markup", () => {
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "other.html"),
+      `
+        <!-- <main id="wrong"></main> -->
+        <script>const markup = '<main id="wrong"></main>';</script>
+        <main class="shell" id="about" data-label=">"></main>
+      `,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts an id on a raw-text element while ignoring its body", () => {
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "other.html"),
+      `<script id="about">const markup = '<main id="wrong"></main>';</script>`,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not treat ids inside an HTML template as document targets", () => {
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "other.html"),
+      `<template><main id="about"></main></template>`,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an id on the HTML template element itself", () => {
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "other.html"),
+      `<template id="about"><main id="inside"></main></template>`,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 });

@@ -3,11 +3,13 @@ import * as path from "node:path";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { buildSourceProjectIndex } from "./build-source-project-index.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
-import { getAuthoritativeJsxAttribute } from "./get-authoritative-jsx-attribute.js";
+import { getStaticStringExpression } from "./get-static-string-expression.js";
 import { getStringLiteralAttributeValue } from "./get-string-literal-attribute-value.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isPathInside } from "./is-path-inside.js";
 import { normalizeFilename } from "./normalize-filename.js";
+import { resolveJsxElementType } from "./resolve-jsx-element-type.js";
+import { resolveStaticJsxAttribute } from "./resolve-static-jsx-attribute.js";
 import { walkAst } from "./walk-ast.js";
 
 interface StaticProjectDomIdInput {
@@ -18,23 +20,68 @@ interface StaticProjectDomIdInput {
 }
 
 const HTML_ID_ATTRIBUTE_PATTERN =
-  /(?:^|[\s<])id\s*=\s*(?:"(?<doubleQuoted>[^"]*)"|'(?<singleQuoted>[^']*)'|(?<unquoted>[^\s"'=<>`]+))/gim;
+  /(?:^|\s)id\s*=\s*(?:"(?<doubleQuoted>[^"]*)"|'(?<singleQuoted>[^']*)'|(?<unquoted>[^\s"'=<>`]+))/gim;
+const HTML_TOKEN_PATTERN =
+  /<!--[\s\S]*?-->|(?<skippedContentOpeningTag><(?<skippedContentTag>script|style|textarea|title|xmp|iframe|noembed|noframes|plaintext|template)\b(?:"[^"]*"|'[^']*'|[^'"<>])*?>)[\s\S]*?(?:<\/\k<skippedContentTag>\s*>|$)|(?<openingTag><[A-Za-z][\w:-]*(?:"[^"]*"|'[^']*'|[^'"<>])*>)/gi;
 const cachedStaticDomIdsByRootDirectory = new Map<string, ReadonlySet<string> | null>();
+
+const collectResolvedStaticJsxId = (
+  idResolution: ReturnType<typeof resolveStaticJsxAttribute>,
+  ids: Set<string>,
+): void => {
+  if (!idResolution.isPresent) return;
+  const id = (
+    idResolution.attribute
+      ? getStringLiteralAttributeValue(idResolution.attribute)
+      : getStaticStringExpression(idResolution.expression)
+  )?.trim();
+  if (id) ids.add(id);
+};
+
+const isInsideJsxTemplateContent = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">) => {
+  let ancestor = openingElement.parent;
+  if (isNodeOfType(ancestor, "JSXElement") && ancestor.openingElement === openingElement) {
+    ancestor = ancestor.parent;
+  }
+  while (ancestor) {
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      resolveJsxElementType(ancestor.openingElement) === "template"
+    ) {
+      return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
 
 const collectStaticJsxIds = (programNode: EsTreeNodeOfType<"Program">, ids: Set<string>): void => {
   walkAst(programNode, (node) => {
     if (!isNodeOfType(node, "JSXOpeningElement")) return;
-    const idAttribute = getAuthoritativeJsxAttribute(node.attributes, "id", false);
-    const id = idAttribute ? getStringLiteralAttributeValue(idAttribute)?.trim() : null;
-    if (id) ids.add(id);
+    if (isInsideJsxTemplateContent(node)) return;
+    const idResolution = resolveStaticJsxAttribute(node.attributes, "id", false);
+    if (idResolution.isUnknown) {
+      for (const attribute of node.attributes) {
+        collectResolvedStaticJsxId(resolveStaticJsxAttribute([attribute], "id", false), ids);
+      }
+      return;
+    }
+    collectResolvedStaticJsxId(idResolution, ids);
   });
 };
 
 const collectStaticHtmlIds = (content: string, ids: Set<string>): void => {
-  for (const match of content.matchAll(HTML_ID_ATTRIBUTE_PATTERN)) {
-    const id =
-      match.groups?.doubleQuoted ?? match.groups?.singleQuoted ?? match.groups?.unquoted ?? "";
-    if (id.trim()) ids.add(id.trim());
+  for (const tokenMatch of content.matchAll(HTML_TOKEN_PATTERN)) {
+    const openingTag = tokenMatch.groups?.skippedContentOpeningTag ?? tokenMatch.groups?.openingTag;
+    if (!openingTag) continue;
+    for (const idAttributeMatch of openingTag.matchAll(HTML_ID_ATTRIBUTE_PATTERN)) {
+      const id =
+        idAttributeMatch.groups?.doubleQuoted ??
+        idAttributeMatch.groups?.singleQuoted ??
+        idAttributeMatch.groups?.unquoted ??
+        "";
+      if (id.trim()) ids.add(id.trim());
+    }
   }
 };
 

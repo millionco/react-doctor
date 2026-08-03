@@ -1,12 +1,12 @@
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getElementType } from "../../utils/get-element-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
 import { getStaticProjectDomIds } from "../../utils/get-static-project-dom-ids.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
-import { resolveJsxElementType } from "../../utils/resolve-jsx-element-type.js";
 
 interface PendingFragmentLink {
   readonly hrefAttribute: EsTreeNodeOfType<"JSXAttribute">;
@@ -29,21 +29,25 @@ export const anchorTargetExists = defineRule({
         programNode = node;
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (resolveJsxElementType(node) !== "a") return;
+        if (getElementType(node, context.settings) !== "a") return;
         const hrefAttribute = getAuthoritativeJsxAttribute(node.attributes, "href", false);
         if (!hrefAttribute) return;
         const href = getStringLiteralAttributeValue(hrefAttribute);
-        const normalizedHref = href?.toLowerCase();
         if (
           !href?.startsWith("#") ||
           href.length === 1 ||
           href.startsWith("#/") ||
-          href.startsWith("#!") ||
-          normalizedHref === "#top"
+          href.startsWith("#!")
         ) {
           return;
         }
-        pendingFragmentLinks.push({ hrefAttribute, targetId: href.slice(1) });
+        const textFragmentDirectiveIndex = href.indexOf(":~:");
+        const targetId = href.slice(
+          1,
+          textFragmentDirectiveIndex === -1 ? undefined : textFragmentDirectiveIndex,
+        );
+        if (!targetId || targetId.toLowerCase() === "top") return;
+        pendingFragmentLinks.push({ hrefAttribute, targetId });
       },
       "Program:exit"() {
         if (!programNode || pendingFragmentLinks.length === 0) return;

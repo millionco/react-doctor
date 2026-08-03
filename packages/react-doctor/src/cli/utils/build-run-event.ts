@@ -26,10 +26,10 @@ import { toSpanAttributes } from "./to-span-attributes.js";
 import { withNamespace } from "./with-namespace.js";
 import type { SentryRootSpan } from "./with-sentry-run-span.js";
 
-// A tag-like map: `null` denotes an absent signal and is dropped by
-// `toSpanAttributes` so it never becomes a misleading `"null"` attribute.
+// A tag-like map: `null`/`undefined` denote absent signals and are dropped by
+// `toSpanAttributes`.
 interface RunEventAttributes {
-  [attributeName: string]: string | number | boolean | null;
+  [attributeName: string]: string | number | boolean | null | undefined;
 }
 
 /**
@@ -191,7 +191,7 @@ const buildCacheAttributes = (input: RunEventInput): RunEventAttributes => {
   const temperature =
     warmth !== null && warmth > 0 ? "warm" : isCacheGloballyDisabled() ? "disabled" : "cold";
   return withNamespace("cache", {
-    wholeRepoHit: input.wholeRepoCacheHit ?? null,
+    wholeRepoHit: input.wholeRepoCacheHit,
     temperature,
     warmth,
   });
@@ -390,49 +390,49 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
           : null,
     }),
     ...withNamespace("lint", {
-      failed: input.didLintFail ?? null,
-      failureReasonKind: input.lintFailureReasonKind ?? null,
-      partialFailureCount: input.lintPartialFailureCount ?? null,
-      droppedFileCount: input.lintDroppedFileCount ?? null,
-      deadlineSkippedFileCount: input.lintDeadlineSkippedFileCount ?? null,
+      failed: input.didLintFail,
+      failureReasonKind: input.lintFailureReasonKind,
+      partialFailureCount: input.lintPartialFailureCount,
+      droppedFileCount: input.lintDroppedFileCount,
+      deadlineSkippedFileCount: input.lintDeadlineSkippedFileCount,
       // Per-file lint cache outcome. Numeric so Sentry can `p75(lint.cacheHitRatio)`;
-      // all `null` when the cache was off/bypassed so "no cache" reads distinctly
-      // from a 0% hit rate (`toSpanAttributes` drops the nulls).
-      cacheHitFiles: result.lintCacheHitFileCount ?? null,
-      cacheTotalFiles: result.lintCacheTotalFileCount ?? null,
+      // absent when the cache was off/bypassed so "no cache" reads distinctly
+      // from a 0% hit rate (`toSpanAttributes` drops missing values).
+      cacheHitFiles: result.lintCacheHitFileCount,
+      cacheTotalFiles: result.lintCacheTotalFileCount,
       cacheHitRatio: ratioOf(result.lintCacheHitFileCount, result.lintCacheTotalFileCount),
       // Sidecar lint cache outcome — same shape as the per-file cache dims;
-      // all `null` when the sidecar cache was off/bypassed.
-      sidecarReplayedFiles: result.lintSidecarReplayedFileCount ?? null,
-      sidecarTotalFiles: result.lintSidecarTotalFileCount ?? null,
+      // absent when the sidecar cache was off/bypassed.
+      sidecarReplayedFiles: result.lintSidecarReplayedFileCount,
+      sidecarTotalFiles: result.lintSidecarTotalFileCount,
       sidecarReplayRatio: ratioOf(
         result.lintSidecarReplayedFileCount,
         result.lintSidecarTotalFileCount,
       ),
     }),
     ...withNamespace("deadCode", {
-      failed: input.didDeadCodeFail ?? null,
-      overlapped: input.deadCodeOverlapped ?? null,
-      // Dead-code result cache outcome; `null` when the pass never consulted
+      failed: input.didDeadCodeFail,
+      overlapped: input.deadCodeOverlapped,
+      // Dead-code result cache outcome; absent when the pass never consulted
       // the cache, so "no cache" reads distinctly from a miss.
-      cacheHit: result.deadCodeCacheHit ?? null,
+      cacheHit: result.deadCodeCacheHit,
       // Incremental summary-cache outcome for the analysis that ran (the
       // kill-criterion metric for the fill overhead: if warm scans are rare,
-      // hits stay near zero). Numeric so Sentry can aggregate; `null` when no
+      // hits stay near zero). Numeric so Sentry can aggregate; absent when no
       // analysis consulted the incremental store (whole-result hit, cache
       // off, or dead-code skipped).
-      summaryCacheHits: result.deadCodeSummaryCacheHits ?? null,
-      summaryCacheMisses: result.deadCodeSummaryCacheMisses ?? null,
+      summaryCacheHits: result.deadCodeSummaryCacheHits,
+      summaryCacheMisses: result.deadCodeSummaryCacheMisses,
     }),
     ...withNamespace("supplyChain", {
-      overlapTimedOut: input.supplyChainOverlapTimedOut ?? null,
+      overlapTimedOut: input.supplyChainOverlapTimedOut,
     }),
     ...withNamespace("securityScan", {
-      failed: input.securityScanFailed ?? null,
+      failed: input.securityScanFailed,
     }),
     ...withNamespace("timing", {
       elapsedMs: result.elapsedMilliseconds,
-      scanMs: result.scanElapsedMilliseconds ?? null,
+      scanMs: result.scanElapsedMilliseconds,
     }),
     ...withNamespace("migration", {
       largestRuleBucketFiles: largestRuleBucket ? largestRuleBucket.fileCount : null,
@@ -453,7 +453,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
         new: summary.totalDiagnosticCount,
         fixed: result.baselineDelta.fixedCount,
         baseTotal: result.baselineDelta.baseTotalCount,
-        crossFileMatches: result.baselineDelta.crossFileMatchCount ?? null,
+        crossFileMatches: result.baselineDelta.crossFileMatchCount,
         degraded: false,
       }),
     );
@@ -466,7 +466,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
 const buildActionAttributes = (): RunEventAttributes => {
   const { githubActorAssociation } = resolveGithubActionsScoreMetadata();
   return withNamespace("action", {
-    actorAssociation: githubActorAssociation ?? null,
+    actorAssociation: githubActorAssociation,
     runnerOs: detectRunnerOs(),
     // Action knobs: present only when the official action forwarded them, so
     // they're `null` (dropped) for any non-action run. The action's `blocking`
@@ -485,7 +485,7 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     mode: input.mode,
     scope: input.scope,
     parallel: input.parallel,
-    workerCount: input.workerCount ?? null,
+    workerCount: input.workerCount,
     maxDurationMs: input.maxDurationMs,
     lint: input.lint,
     deadCode: input.deadCode,
@@ -501,17 +501,16 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     rulesDisabled: ruleKeys.filter((key) => ruleOverrides[key] === "off").length,
     // Scan extent — how many files this run covered (the denominator for
     // `diag.affectedFiles`). Known only on the success path.
-    fileCount: input.result?.scannedFileCount ?? null,
-    nonJsxFileCount:
-      input.result?.analyzedFiles?.filter((filePath) => !JSX_FILE_PATTERN.test(filePath)).length ??
-      null,
-    htmlFileCount:
-      input.result?.analyzedFiles?.filter((filePath) => HTML_FILE_PATTERN.test(filePath)).length ??
-      null,
-    multilineDiagnosticCount:
-      input.result?.diagnostics.filter(
-        (diagnostic) => (diagnostic.endLine ?? diagnostic.line) > diagnostic.line,
-      ).length ?? null,
+    fileCount: input.result?.scannedFileCount,
+    nonJsxFileCount: input.result?.analyzedFiles?.filter(
+      (filePath) => !JSX_FILE_PATTERN.test(filePath),
+    ).length,
+    htmlFileCount: input.result?.analyzedFiles?.filter((filePath) =>
+      HTML_FILE_PATTERN.test(filePath),
+    ).length,
+    multilineDiagnosticCount: input.result?.diagnostics.filter(
+      (diagnostic) => (diagnostic.endLine ?? diagnostic.line) > diagnostic.line,
+    ).length,
   });
 };
 
@@ -524,11 +523,11 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
  * tree up in Sentry's attribute browser and stay filter-/group-/aggregate-able
  * in the Spans dataset. Pure and exported so the projection (outcome
  * precedence, rule/category rollups, CI knobs, config shape) is unit-testable
- * without a live Sentry client. `null` values are dropped so absent signals
- * never become misleading `"null"` attributes. The run + project base context
- * (version, command, ci/provider, framework, …) is already on the span from
- * `withSentryRunSpan` / `recordSentryProjectContext`, so this adds only what
- * those don't carry.
+ * without a live Sentry client. `null`/`undefined` values are dropped so absent
+ * signals never become misleading `"null"`/`"undefined"` attributes. The run +
+ * project base context (version, command, ci/provider, framework, …) is already
+ * on the span from `withSentryRunSpan` / `recordSentryProjectContext`, so this
+ * adds only what those don't carry.
  */
 export const buildRunEventAttributes = (
   input: RunEventInput,

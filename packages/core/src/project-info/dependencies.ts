@@ -353,14 +353,8 @@ export const hasReactDependency = (packageJson: PackageJson): boolean => {
   );
 };
 
-export const getPreactVersion = (packageJson: PackageJson): string | null => {
-  const allDependencies = {
-    ...packageJson.peerDependencies,
-    ...packageJson.dependencies,
-    ...packageJson.devDependencies,
-  };
-  return allDependencies.preact ?? null;
-};
+export const getPreactVersion = (packageJson: PackageJson): string | null =>
+  getDependencySpec(packageJson, "preact");
 
 interface ResolveCatalogBackedDependencyVersionOptions {
   rootDirectory: string;

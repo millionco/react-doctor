@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
 import type { PackageJson, ProjectInfo } from "../types/index.js";
@@ -73,7 +72,7 @@ const discoverProjectWithoutPackageJson = (
   options: DiscoverProjectOptions,
 ): ProjectInfo => {
   const sourceFileCount = options.sourceFileCount ?? countSourceFiles(directory);
-  const hasOwnTsConfig = fs.existsSync(path.join(directory, "tsconfig.json"));
+  const hasOwnTsConfig = isFile(path.join(directory, "tsconfig.json"));
 
   const enclosingProjectRoot = findNearestAncestorPackageJson(directory);
   const enclosingProject =
@@ -262,7 +261,7 @@ export const discoverProject = (
   const zodVersion = zod.version;
 
   const projectName = packageJson.name ?? path.basename(directory);
-  const hasTypeScript = fs.existsSync(path.join(directory, "tsconfig.json"));
+  const hasTypeScript = isFile(path.join(directory, "tsconfig.json"));
   const sourceFileCount = options.sourceFileCount ?? countSourceFiles(directory);
 
   // The gates below are semantic, not perf: `expoVersion` / `nextjsVersion`

@@ -718,7 +718,7 @@ export const runInstallReactDoctor = async (
     (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_AGENT_HOOKS));
 
   if (!options.dryRun) {
-    if (shouldInstallGitHook && gitHookTarget !== null && gitHookTarget !== undefined) {
+    if (shouldInstallGitHook && gitHookTarget != null) {
       installReactDoctorGitHookStep(gitHookTarget);
     }
     if (shouldInstallAgentHooks) {

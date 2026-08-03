@@ -2,8 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { toSpanAttributes } from "../src/cli/utils/to-span-attributes.js";
 
 describe("toSpanAttributes", () => {
-  it("keeps primitive values and drops nulls", () => {
-    expect(toSpanAttributes({ a: "x", count: 3, flag: true, absent: null })).toEqual({
+  it("keeps primitive values and drops absent values", () => {
+    expect(
+      toSpanAttributes({ a: "x", count: 3, flag: true, absent: null, unknown: undefined }),
+    ).toEqual({
       a: "x",
       count: 3,
       flag: true,

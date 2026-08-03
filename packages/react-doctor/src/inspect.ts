@@ -6,25 +6,35 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   buildSkippedChecks,
+  type ChangedFileLineRanges,
   computeDiagnosticDelta,
   createOxlintSpawnSlots,
   DEFAULT_SHOW_WARNINGS,
+  type Diagnostic,
+  type DiagnosticSurface,
   filterDiagnosticsForSurface,
   filterPathsOutsideDirectories,
   filterSourceFiles,
   highlighter,
+  type InspectOptions,
+  type InspectResult,
   OXLINT_NODE_REQUIREMENT,
   OxlintConcurrency,
   PerFileLintCacheEnabled,
+  type Progress,
+  type ProjectInfo,
+  type ReactDoctorConfig,
   resolveScanTarget,
   resolveScanConcurrency,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
+  type ScoreResult,
+  type Reporter,
   SidecarLintCacheEnabled,
+  type WorkerSlots,
   yieldToEventLoop,
 } from "@react-doctor/core";
 import type * as Layer from "effect/Layer";
-import type { Progress, Reporter, WorkerSlots } from "@react-doctor/core";
 import { activeScanAbortRegistry } from "./cli/utils/active-scan-abort-registry.js";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
@@ -41,16 +51,6 @@ import { recordRunEvent } from "./cli/utils/build-run-event.js";
 import { resolveWorkerTelemetry } from "./cli/utils/resolve-worker-telemetry.js";
 import { countDeadlineSkippedFiles } from "./cli/utils/count-deadline-skipped-files.js";
 import { countDroppedLintFiles } from "./cli/utils/count-dropped-lint-files.js";
-import type {
-  ChangedFileLineRanges,
-  Diagnostic,
-  DiagnosticSurface,
-  InspectOptions,
-  InspectResult,
-  ProjectInfo,
-  ReactDoctorConfig,
-  ScoreResult,
-} from "@react-doctor/core";
 import { toForwardSlashes } from "./cli/utils/path-format.js";
 import { diagnosticIntersectsLineRanges } from "./cli/utils/diagnostic-intersects-line-ranges.js";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
@@ -371,7 +371,8 @@ const inspectWithOxlintRuntime = async (
   const isConcurrentScan = inputOptions.concurrentScan === true;
   if (!isConcurrentScan) resetSentryRunState();
 
-  const hasConfigOverride = inputOptions.configOverride !== undefined;
+  const configOverride = inputOptions.configOverride;
+  const hasConfigOverride = configOverride !== undefined;
   // When the caller pre-loaded a config (CLI's `inspectAction` does
   // this so it can render the rootDir-redirect hint before the scan
   // starts), use it verbatim. Otherwise, run the canonical scan-target
@@ -391,7 +392,7 @@ const inspectWithOxlintRuntime = async (
   let configSourceDirectory: string | null;
   if (hasConfigOverride) {
     scanDirectory = directory;
-    userConfig = inputOptions.configOverride ?? null;
+    userConfig = configOverride;
     configSourceDirectory = inputOptions.configSourceDirectory ?? null;
   } else {
     const scanTarget = await resolveScanTarget(directory);
@@ -712,7 +713,8 @@ const runInspectWithRuntime = async (
     invocationState: oxlintRuntime.scanResultCacheInvocationState,
   });
   const scanResultCache = cacheKey === null ? null : createScanResultCache(directory);
-  const cachedPayload = cacheKey === null ? null : (scanResultCache?.lookup(cacheKey) ?? null);
+  const cachedPayload =
+    cacheKey === null || scanResultCache === null ? null : scanResultCache.lookup(cacheKey);
   if (cachedPayload) {
     recordSentryProjectContext(cachedPayload.project, rootSentrySpan, {
       concurrentScan: options.concurrentScan,

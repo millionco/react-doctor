@@ -38,7 +38,7 @@ const NAMES: ReadonlySet<string> = new Set([
 
 const PREFIXES: ReadonlyArray<string> = ["@react-native/", "@react-native-"];
 
-export const isReactNativeDependencyName = (dependencyName: string): boolean => {
+const isReactNativeDependencyName = (dependencyName: string): boolean => {
   if (NAMES.has(dependencyName)) return true;
   for (const prefix of PREFIXES) {
     if (dependencyName.startsWith(prefix)) return true;

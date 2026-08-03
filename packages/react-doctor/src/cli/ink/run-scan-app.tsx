@@ -370,7 +370,7 @@ const mountScanApp = async (
           pendingActions.didQuit = true;
         }}
       />,
-      { alternateScreen: displayMode === "report", exitOnCtrlC: false },
+      { alternateScreen: false, exitOnCtrlC: false },
     );
     let didClearRenderer = false;
     const clearRenderer = (): void => {

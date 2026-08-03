@@ -231,7 +231,7 @@ describe("runScanApp", () => {
     });
   });
 
-  it("keeps scanning inline and uses a disposable screen for report navigation", async () => {
+  it("keeps scanning and report navigation inline", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
     mockState.projectDirectories.push(rootDirectory);
@@ -248,7 +248,7 @@ describe("runScanApp", () => {
       exitOnCtrlC: false,
     });
     expect(vi.mocked(render).mock.calls[1]?.[1]).toEqual({
-      alternateScreen: true,
+      alternateScreen: false,
       exitOnCtrlC: false,
     });
     expect(vi.mocked(render).mock.calls[0]?.[0]).toMatchObject({

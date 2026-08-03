@@ -17,8 +17,8 @@ afterEach(() => {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 });
 
-const runProjectRule = (code: string) => {
-  const filename = path.join(temporaryDirectory, "src", "app.tsx");
+const runProjectRule = (code: string, relativeFilePath = "src/app.tsx") => {
+  const filename = path.join(temporaryDirectory, relativeFilePath);
   fs.mkdirSync(path.dirname(filename), { recursive: true });
   fs.writeFileSync(filename, code, "utf8");
   fs.writeFileSync(path.join(temporaryDirectory, "package.json"), "{}\n", "utf8");
@@ -59,6 +59,32 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("ignores hash-router paths", () => {
+    const result = runProjectRule(
+      `const Links = () => <><a href="#/about">About</a><a href="#!/settings">Settings</a></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("skips testlike files", () => {
+    const result = runProjectRule(
+      `const Broken = () => <a href="#about">About</a>;`,
+      "src/app.test.tsx",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a same-file target outside the production project index", () => {
+    const result = runProjectRule(
+      `const Valid = () => <><a href="#about">About</a><section id="about" /></>;`,
+      ".generated/app.tsx",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("accepts a target in another JSX file", () => {
     fs.mkdirSync(path.join(temporaryDirectory, "src"), { recursive: true });
     fs.writeFileSync(
@@ -86,6 +112,17 @@ describe("a11y/anchor-target-exists", () => {
     fs.writeFileSync(
       path.join(temporaryDirectory, "other.html"),
       `<main id="contact"></main>`,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat data-id as an HTML id", () => {
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "other.html"),
+      `<main data-id="about"></main>`,
       "utf8",
     );
     const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);

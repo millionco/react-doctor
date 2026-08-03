@@ -18,7 +18,7 @@ interface StaticProjectDomIdInput {
 }
 
 const HTML_ID_ATTRIBUTE_PATTERN =
-  /\bid\s*=\s*(?:"(?<doubleQuoted>[^"]*)"|'(?<singleQuoted>[^']*)'|(?<unquoted>[^\s"'=<>`]+))/gi;
+  /(?:^|[\s<])id\s*=\s*(?:"(?<doubleQuoted>[^"]*)"|'(?<singleQuoted>[^']*)'|(?<unquoted>[^\s"'=<>`]+))/gim;
 const cachedStaticDomIdsByRootDirectory = new Map<string, ReadonlySet<string> | null>();
 
 const collectStaticJsxIds = (programNode: EsTreeNodeOfType<"Program">, ids: Set<string>): void => {
@@ -89,5 +89,5 @@ export const getStaticProjectDomIds = (
     return null;
   }
   cachedStaticDomIdsByRootDirectory.set(rootDirectory, projectIds);
-  return projectIds;
+  return new Set([...projectIds, ...currentIds]);
 };

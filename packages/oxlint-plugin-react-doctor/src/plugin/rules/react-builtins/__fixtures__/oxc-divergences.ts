@@ -16,6 +16,11 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  "button-has-type": {
+    failSkips: [0, 15, 16, 27],
+    reason:
+      "Intentional: a missing button type only matters when the button has a static form owner.",
+  },
   "jsx-no-target-blank": {
     failSkips: [31],
     reason:

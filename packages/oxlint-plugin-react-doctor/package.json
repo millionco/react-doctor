@@ -61,6 +61,7 @@
     "@typescript-eslint/types": "^8.59.3",
     "eslint-scope": "^9.1.2",
     "eslint-visitor-keys": "^5.0.1",
+    "lightningcss": "^1.33.0",
     "oxc-parser": "^0.142.0"
   },
   "devDependencies": {

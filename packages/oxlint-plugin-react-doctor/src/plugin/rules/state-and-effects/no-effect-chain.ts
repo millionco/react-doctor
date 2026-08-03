@@ -12,6 +12,8 @@ import {
   HOOKS_WITH_DEPS,
 } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { canNodeReachNode } from "../../utils/can-node-reach-node.js";
+import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
@@ -29,6 +31,7 @@ import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineIntrinsicRefCallback } from "../../utils/is-inline-intrinsic-ref-callback.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { nodesCanCoExecute } from "../../utils/nodes-can-co-execute.js";
 import { isProvenBrowserApiReceiver } from "../../utils/is-proven-browser-api-receiver.js";
 import { isProvenIntrinsicJsxElement } from "../../utils/is-proven-intrinsic-jsx-element.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -48,6 +51,15 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isCleanupReturn } from "./utils/is-cleanup-return.js";
+
+const COMMITTED_DOM_MEMBER_METHOD_NAMES = new Set([
+  ...EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
+  "clearRect",
+  "drawImage",
+  "fillRect",
+  "strokeRect",
+]);
+const COMMITTED_DOM_MEMBER_PROPERTY_NAMES = new Set(["scrollLeft", "scrollTop"]);
 
 // HACK: §7 of "You Might Not Need an Effect" — chains of computations:
 //
@@ -265,6 +277,7 @@ interface StaticEffectStateValue {
 interface EffectStateWriteInfo {
   values: Set<boolean | number | string | null | undefined>;
   hasUnknownValue: boolean;
+  nodes: EsTreeNodeOfType<"CallExpression">[];
 }
 
 const readStaticEffectValue = (
@@ -503,10 +516,12 @@ const collectStateWritesInEffect = (
     const writeInfo = stateWrites.get(stateName) ?? {
       values: new Set<boolean | number | string | null | undefined>(),
       hasUnknownValue: false,
+      nodes: [],
     };
     const staticValue = readStaticSetterValue(child, scopes);
     if (staticValue) writeInfo.values.add(staticValue.value);
     else writeInfo.hasUnknownValue = true;
+    writeInfo.nodes.push(child);
     stateWrites.set(stateName, writeInfo);
   });
   return stateWrites;
@@ -1648,7 +1663,9 @@ const isFunctionShapedReturn = (
   // `const unsub = subscribe(...)` line. We can't statically prove
   // it's function-typed without scope analysis, but in idiomatic React
   // this is the dominant cleanup pattern. Accept.
-  if (isNodeOfType(unwrappedReturnedValue, "Identifier")) return true;
+  if (isNodeOfType(unwrappedReturnedValue, "Identifier")) {
+    return !isProvenGlobalNamespaceReference(unwrappedReturnedValue, "undefined", scopes);
+  }
   return false;
 };
 
@@ -1935,6 +1952,46 @@ const storesOnlyIntrinsicRefCallbackValues = (
 ): boolean => {
   const refCall = getDirectReactRefCall(symbol, scopes);
   const initialValue = refCall?.arguments[0];
+  if (isNodeOfType(initialValue, "ObjectExpression") && initialValue.properties.length === 0) {
+    let intrinsicValueWriteCount = 0;
+    for (const reference of symbol.references) {
+      const identifier = findTransparentExpressionRoot(reference.identifier);
+      const currentMember = identifier.parent;
+      if (
+        !isNodeOfType(currentMember, "MemberExpression") ||
+        currentMember.object !== identifier ||
+        getStaticPropertyName(currentMember) !== "current"
+      ) {
+        return false;
+      }
+      const currentExpression = findTransparentExpressionRoot(currentMember);
+      const propertyMember = currentExpression.parent;
+      if (
+        !isNodeOfType(propertyMember, "MemberExpression") ||
+        propertyMember.object !== currentExpression
+      ) {
+        return false;
+      }
+      const propertyExpression = findTransparentExpressionRoot(propertyMember);
+      const parent = propertyExpression.parent;
+      if (isNodeOfType(parent, "AssignmentExpression") && parent.left === propertyExpression) {
+        if (parent.operator !== "=" || !isIntrinsicRefCallbackParameter(parent.right, scopes)) {
+          return false;
+        }
+        intrinsicValueWriteCount += 1;
+        continue;
+      }
+      if (
+        (isNodeOfType(parent, "UpdateExpression") && parent.argument === propertyExpression) ||
+        (isNodeOfType(parent, "UnaryExpression") &&
+          parent.operator === "delete" &&
+          parent.argument === propertyExpression)
+      ) {
+        return false;
+      }
+    }
+    return intrinsicValueWriteCount > 0;
+  }
   const hasDirectEmptyMapInitializer = Boolean(
     initialValue && isEmptyGlobalMapConstruction(initialValue, scopes),
   );
@@ -2027,12 +2084,7 @@ const isDerivedFromProvenDomRefCurrent = (
           (didReadCollectionValue && storesOnlyIntrinsicRefCallbackValues(symbol, scopes))),
       );
     }
-    return isDerivedFromProvenDomRefCurrent(
-      expression.object,
-      scopes,
-      didReadCollectionValue,
-      visitedSymbolIds,
-    );
+    return isDerivedFromProvenDomRefCurrent(expression.object, scopes, true, visitedSymbolIds);
   }
   if (!isNodeOfType(expression, "CallExpression")) return false;
   const callee = stripParenExpression(expression.callee);
@@ -2046,11 +2098,27 @@ const isDerivedFromProvenDomRefCurrent = (
 };
 
 const isCommittedDomSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (isNodeOfType(node, "AssignmentExpression")) {
+    const target = stripParenExpression(node.left);
+    return Boolean(
+      isNodeOfType(target, "MemberExpression") &&
+      COMMITTED_DOM_MEMBER_PROPERTY_NAMES.has(getStaticPropertyName(target) ?? "") &&
+      isDerivedFromProvenDomRefCurrent(target.object, scopes),
+    );
+  }
+  if (isNodeOfType(node, "UpdateExpression")) {
+    const target = stripParenExpression(node.argument);
+    return Boolean(
+      isNodeOfType(target, "MemberExpression") &&
+      COMMITTED_DOM_MEMBER_PROPERTY_NAMES.has(getStaticPropertyName(target) ?? "") &&
+      isDerivedFromProvenDomRefCurrent(target.object, scopes),
+    );
+  }
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return false;
   const propertyName = getStaticPropertyName(callee);
-  if (propertyName === null || !EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES.has(propertyName)) {
+  if (propertyName === null || !COMMITTED_DOM_MEMBER_METHOD_NAMES.has(propertyName)) {
     return false;
   }
   return (
@@ -2226,18 +2294,67 @@ const isExternalSyncNode = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
   );
 };
 
-const isExternalSyncEffect = (
+const cleanupFunctionHasExternalWork = (
+  cleanupFunction: EsTreeNode,
+  setterSymbolIdToStateName: ReadonlyMap<number, string>,
+  scopes: ScopeAnalysis,
+  visitedFunctions: ReadonlySet<EsTreeNode> = new Set(),
+): boolean => {
+  if (
+    !isFunctionLike(cleanupFunction) ||
+    cleanupFunction.async ||
+    cleanupFunction.generator ||
+    visitedFunctions.has(cleanupFunction)
+  ) {
+    return false;
+  }
+  const nextVisitedFunctions = new Set(visitedFunctions).add(cleanupFunction);
+  let hasExternalWork = false;
+  walkAst(cleanupFunction.body, (child) => {
+    if (hasExternalWork) return false;
+    if (isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "CallExpression")) {
+      if (getStateNameForSetterCall(child, setterSymbolIdToStateName, scopes)) return false;
+      if (
+        isNodeOfType(child.callee, "Identifier") &&
+        isSetterIdentifier(child.callee.name) &&
+        !EXTERNAL_SYNC_DIRECT_CALLEE_NAMES.has(child.callee.name)
+      ) {
+        return false;
+      }
+      const invokedFunction = resolveSynchronouslyInvokedFunction(child.callee, scopes);
+      if (
+        invokedFunction &&
+        !cleanupFunctionHasExternalWork(
+          invokedFunction,
+          setterSymbolIdToStateName,
+          scopes,
+          nextVisitedFunctions,
+        )
+      ) {
+        return false;
+      }
+      hasExternalWork = true;
+      return false;
+    }
+    if (isExternalSyncNode(child, scopes) || isCommittedDomSyncNode(child, scopes)) {
+      hasExternalWork = true;
+      return false;
+    }
+  });
+  return hasExternalWork;
+};
+
+const collectExternalSyncAnchors = (
   effectCallback: EsTreeNode,
   analysisFunctions: ReadonlySet<EsTreeNode>,
   setterToStateName: ReadonlyMap<string, string>,
   setterSymbolIdToStateName: ReadonlyMap<number, string>,
   scopes: ScopeAnalysis,
   allowCommittedDomSync: boolean,
-): boolean => {
-  if (!isFunctionLike(effectCallback)) return false;
-  // A cleanup return is the strongest signal that the effect owns
-  // an external resource — once we see one, we don't need to inspect
-  // the body for an external-sync call shape.
+): EsTreeNode[] => {
+  if (!isFunctionLike(effectCallback)) return [];
+  const externalSyncAnchors: EsTreeNode[] = [];
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
     if (
       isFunctionShapedReturn(
@@ -2248,37 +2365,71 @@ const isExternalSyncEffect = (
         false,
       )
     ) {
-      return true;
+      externalSyncAnchors.push(effectCallback.body);
     }
   } else {
-    for (const statement of effectCallback.body.body ?? []) {
+    for (const statement of collectFunctionReturnStatements(effectCallback)) {
+      const returnedValue = statement.argument;
       if (
-        isNodeOfType(statement, "ReturnStatement") &&
-        statement.argument &&
+        returnedValue &&
         isFunctionShapedReturn(
-          statement.argument,
+          returnedValue,
           setterToStateName,
           setterSymbolIdToStateName,
           scopes,
           true,
-        )
+        ) &&
+        (statement.parent === effectCallback.body ||
+          !isFunctionLike(stripParenExpression(returnedValue)) ||
+          cleanupFunctionHasExternalWork(
+            stripParenExpression(returnedValue),
+            setterSymbolIdToStateName,
+            scopes,
+          ))
       ) {
-        return true;
+        externalSyncAnchors.push(statement);
       }
     }
   }
 
-  let didFindExternalCall = false;
   visitSynchronousFunctionBodies(analysisFunctions, (child) => {
     if (
       isExternalSyncNode(child, scopes) ||
       (allowCommittedDomSync && isCommittedDomSyncNode(child, scopes))
     ) {
-      didFindExternalCall = true;
+      externalSyncAnchors.push(child);
     }
   });
 
-  return didFindExternalCall;
+  return externalSyncAnchors;
+};
+
+const collectExternallySynchronizedStateNames = (
+  stateWrites: ReadonlyMap<string, EffectStateWriteInfo>,
+  externalSyncAnchors: readonly EsTreeNode[],
+  context: RuleContext,
+): Set<string> => {
+  const externallySynchronizedStateNames = new Set<string>();
+  if (externalSyncAnchors.length === 0) return externallySynchronizedStateNames;
+  for (const [stateName, writeInfo] of stateWrites) {
+    const areAllWritesPartOfExternalSync = writeInfo.nodes.every((writeNode) => {
+      const writeOwner = context.cfg.enclosingFunction(writeNode);
+      const functionCfg = writeOwner ? context.cfg.cfgFor(writeOwner) : null;
+      if (!writeOwner || !functionCfg) return false;
+      const sameOwnerAnchors = externalSyncAnchors.filter(
+        (anchor) => context.cfg.enclosingFunction(anchor) === writeOwner,
+      );
+      if (sameOwnerAnchors.length === 0) return false;
+      return sameOwnerAnchors.some(
+        (anchor) =>
+          nodesCanCoExecute(writeNode, anchor, context) &&
+          (canNodeReachNode(writeNode, anchor, functionCfg) ||
+            canNodeReachNode(anchor, writeNode, functionCfg)),
+      );
+    });
+    if (areAllWritesPartOfExternalSync) externallySynchronizedStateNames.add(stateName);
+  }
+  return externallySynchronizedStateNames;
 };
 
 interface EffectInfo {
@@ -2288,6 +2439,7 @@ interface EffectInfo {
   stateWrites: Map<string, EffectStateWriteInfo>;
   analysisFunctions: ReadonlySet<EsTreeNode>;
   isExternalSync: boolean;
+  externallySynchronizedStateNames: ReadonlySet<string>;
 }
 
 export const noEffectChain = defineRule({
@@ -2340,6 +2492,15 @@ export const noEffectChain = defineRule({
           context.scopes,
         );
         const writtenStateNames = new Set(stateWrites.keys());
+        const externalSyncAnchors = collectExternalSyncAnchors(
+          callback,
+          analysisFunctions,
+          setterToStateName,
+          setterSymbolIdToStateName,
+          context.scopes,
+          writtenStateNames.size === 0,
+        );
+        const doesCallStorageSetter = callsStorageHookSetter(analysisFunctions, storageSetterNames);
         effectInfos.push({
           node: effectCall,
           callback,
@@ -2351,25 +2512,26 @@ export const noEffectChain = defineRule({
           stateWrites,
           analysisFunctions,
           isExternalSync:
-            isExternalSyncEffect(
-              callback,
-              analysisFunctions,
-              setterToStateName,
-              setterSymbolIdToStateName,
-              context.scopes,
-              writtenStateNames.size === 0,
-            ) ||
-            callsStorageHookSetter(analysisFunctions, storageSetterNames) ||
+            externalSyncAnchors.length > 0 ||
+            doesCallStorageSetter ||
             (writtenStateNames.size === 0 &&
               callsOpaqueExternalSetter(analysisFunctions, setterToStateName)),
+          externallySynchronizedStateNames: doesCallStorageSetter
+            ? writtenStateNames
+            : collectExternallySynchronizedStateNames(stateWrites, externalSyncAnchors, context),
         });
       }
       if (effectInfos.length < 2) return;
 
       const reportedNodes = new Set<EsTreeNode>();
       for (const writerEffect of effectInfos) {
-        if (writerEffect.isExternalSync) continue;
         if (writerEffect.stateWrites.size === 0) continue;
+        if (
+          writerEffect.isExternalSync &&
+          writerEffect.externallySynchronizedStateNames.size === 0
+        ) {
+          continue;
+        }
         for (const readerEffect of effectInfos) {
           if (readerEffect === writerEffect) continue;
           if (readerEffect.isExternalSync) continue;
@@ -2377,6 +2539,7 @@ export const noEffectChain = defineRule({
 
           let chainedStateName: string | null = null;
           for (const writtenName of writerEffect.stateWrites.keys()) {
+            if (writerEffect.externallySynchronizedStateNames.has(writtenName)) continue;
             const writtenStateSymbolId = stateSymbolIds.get(writtenName);
             if (
               writtenStateSymbolId === undefined ||

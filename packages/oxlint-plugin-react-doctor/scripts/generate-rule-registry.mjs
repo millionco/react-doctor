@@ -141,6 +141,7 @@ const EFFECT_RULES_PORTED_FROM_EXTERNAL = new Set([
 // `customRulesOnly`. Without this list every new in-house rule we drop
 // into `a11y/` would silently disappear for users who narrow scope.
 const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
+  "anchor-target-exists",
   "data-table-requires-accessible-name",
   "details-requires-summary",
   "fieldset-requires-legend",

@@ -133,6 +133,22 @@
     }
   },
   {
+    "key": "react-doctor/anchor-target-exists",
+    "id": "anchor-target-exists",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "anchor-target-exists",
+      "title": "Fragment link target is missing",
+      "severity": "warn",
+      "recommendation": "Add an element with the referenced id, or update the fragment link to point to an existing target.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/aria-activedescendant-has-tabindex",
     "id": "aria-activedescendant-has-tabindex",
     "source": "react-doctor",
@@ -3756,6 +3772,24 @@
     }
   },
   {
+    "key": "react-doctor/no-controlled-selection-focus-effect",
+    "id": "no-controlled-selection-focus-effect",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-controlled-selection-focus-effect",
+      "title": "Controlled selection change steals focus",
+      "severity": "warn",
+      "recommendation": "Move selection-driven focus into the keyboard or pointer navigation path, or prove that the list just opened before focusing the selected item.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react"],
+      "tags": ["react-jsx-only"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-cramped-container-padding",
     "id": "no-cramped-container-padding",
     "source": "react-doctor",
@@ -6180,6 +6214,24 @@
     }
   },
   {
+    "key": "react-doctor/no-passive-request-owner-ref",
+    "id": "no-passive-request-owner-ref",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-passive-request-owner-ref",
+      "title": "Passive owner ref leaves a stale-request window",
+      "severity": "warn",
+      "recommendation": "Invalidate requests when the owner changes before an old promise can settle, or bind the request to lifecycle cleanup instead of trusting a ref synchronized by `useEffect`.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react"],
+      "tags": ["react-jsx-only"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-path-prefix-containment",
     "id": "no-path-prefix-containment",
     "source": "react-doctor",
@@ -7679,6 +7731,24 @@
     }
   },
   {
+    "key": "react-doctor/no-unowned-async-error-clear",
+    "id": "no-unowned-async-error-clear",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-unowned-async-error-clear",
+      "title": "Stale async response clears newer request state",
+      "severity": "warn",
+      "recommendation": "Guard async completion by request identity, perform an ownership-aware functional state update, or key the state-owning component by request ID.",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react"],
+      "tags": ["react-jsx-only"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-unsafe",
     "id": "no-unsafe",
     "source": "react-doctor",
@@ -9017,6 +9087,23 @@
       "framework": "global",
       "requires": ["react", "r3f", "r3f:3"],
       "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-prefer-instanced-mesh",
+    "id": "r3f-prefer-instanced-mesh",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-prefer-instanced-mesh",
+      "title": "Repeated R3F meshes use separate draw calls",
+      "severity": "warn",
+      "recommendation": "Render repeated meshes that share geometry and material with <instancedMesh> so they can use one draw call",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -12137,6 +12224,23 @@
       "severity": "error",
       "recommendation": "Return every mutable shader-patch variant from customProgramCacheKey on the same material",
       "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-prefer-instanced-mesh",
+    "id": "three-prefer-instanced-mesh",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-prefer-instanced-mesh",
+      "title": "Repeated Three.js meshes use separate draw calls",
+      "severity": "warn",
+      "recommendation": "Replace repeated Mesh objects that share geometry and material with one InstancedMesh and per-instance transforms",
+      "category": "Performance",
       "framework": "global",
       "requires": ["three"],
       "tags": ["three", "webgl"],

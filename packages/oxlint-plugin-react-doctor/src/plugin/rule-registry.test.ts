@@ -8,6 +8,7 @@ const REANIMATED_LAYOUT_RULE_ID = "rn-animate-layout-property";
 const CASCADING_SET_STATE_RULE_ID = "no-cascading-set-state";
 const HOOK_IMPORT_RENAME_RULE_ID = "hook-import-rename-loses-use-prefix";
 const IN_HOUSE_A11Y_RULE_IDS = [
+  "anchor-target-exists",
   "data-table-requires-accessible-name",
   "details-requires-summary",
   "fieldset-requires-legend",

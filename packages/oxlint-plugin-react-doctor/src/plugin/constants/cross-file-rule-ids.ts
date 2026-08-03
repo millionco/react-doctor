@@ -42,6 +42,7 @@ import { REACT_ROUTER_RULE_IDS } from "./react-router.js";
 export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   ...INK_RULE_IDS,
   "client-passive-event-listeners",
+  "anchor-target-exists",
   "exhaustive-deps",
   "no-barrel-import",
   "nextjs-async-dynamic-api-not-awaited",
@@ -51,6 +52,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-dynamic-import-path",
   "no-full-lodash-import",
   "no-hydration-branch-on-browser-global",
+  "no-img-without-dimensions",
   "no-indeterminate-attribute",
   "no-loading-flag-reset-outside-finally",
   "no-locale-format-in-render",

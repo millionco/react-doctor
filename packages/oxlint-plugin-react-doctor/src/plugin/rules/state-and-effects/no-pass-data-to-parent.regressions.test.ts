@@ -5,6 +5,63 @@ import { noPassDataToParent } from "./no-pass-data-to-parent.js";
 const DEEP_REGISTER_ALIAS_CHAIN_LENGTH = 2_000;
 
 describe("no-pass-data-to-parent — regressions", () => {
+  it("stays silent when a required pending-change callback receives the parent-supplied value", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+interface SelectOptionValue {
+  id: string;
+}
+interface MultiSelectFieldProperties<Value extends SelectOptionValue> {
+  onPendingChange?: (values: Value[]) => void;
+  values?: Value[];
+}
+const EMPTY_VALUES: SelectOptionValue[] = [];
+export const MultiSelectField = <Value extends SelectOptionValue>({ onPendingChange, values: valuesProp }: MultiSelectFieldProperties<Value>) => {
+  const values = (valuesProp ?? (EMPTY_VALUES as Value[])) as Value[];
+  useEffect(() => {
+    onPendingChange?.(values);
+  }, [onPendingChange, values]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags child-produced hook data wrapped in a TypeScript cast", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+export const MultiSelectField = <Value,>({ onPendingChange }) => {
+  const values = useSelectedValues() as Value[];
+  useEffect(() => {
+    onPendingChange(values);
+  }, [onPendingChange, values]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags child-produced hook data wrapped in an angle-bracket assertion", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+export const MultiSelectField = ({ onPendingChange }) => {
+  const values = <string[]>useSelectedValues();
+  useEffect(() => {
+    onPendingChange(values);
+  }, [onPendingChange, values]);
+  return null;
+};`,
+      { filename: "fixture.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a callback parameter is passed through a parent callback", () => {
     const result = runRule(
       noPassDataToParent,

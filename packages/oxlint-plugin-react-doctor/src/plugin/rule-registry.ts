@@ -17,6 +17,7 @@ import { altText } from "./rules/a11y/alt-text.js";
 import { anchorAmbiguousText } from "./rules/a11y/anchor-ambiguous-text.js";
 import { anchorHasContent } from "./rules/a11y/anchor-has-content.js";
 import { anchorIsValid } from "./rules/a11y/anchor-is-valid.js";
+import { anchorTargetExists } from "./rules/a11y/anchor-target-exists.js";
 import { ariaActivedescendantHasTabindex } from "./rules/a11y/aria-activedescendant-has-tabindex.js";
 import { ariaBrailleEquivalent } from "./rules/a11y/aria-braille-equivalent.js";
 import { ariaProps } from "./rules/a11y/aria-props.js";
@@ -237,6 +238,7 @@ import { noCollapsedLiteralOrChainAsValue } from "./rules/correctness/no-collaps
 import { noCommonRootFont } from "./rules/design/no-common-root-font.js";
 import { noConflictingSpringOptions } from "./rules/performance/no-conflicting-spring-options.js";
 import { noControlledInputValueWithoutStateUpdate } from "./rules/correctness/no-controlled-input-value-without-state-update.js";
+import { noControlledSelectionFocusEffect } from "./rules/state-and-effects/no-controlled-selection-focus-effect.js";
 import { noCrampedContainerPadding } from "./rules/design/no-cramped-container-padding.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
 import { noCreateObjectUrlInRender } from "./rules/state-and-effects/no-create-object-url-in-render.js";
@@ -383,6 +385,7 @@ import { noOversizedLongHeading } from "./rules/design/no-oversized-long-heading
 import { noOverwideTextMeasure } from "./rules/design/no-overwide-text-measure.js";
 import { noPassDataToParent } from "./rules/state-and-effects/no-pass-data-to-parent.js";
 import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-state-to-parent.js";
+import { noPassiveRequestOwnerRef } from "./rules/state-and-effects/no-passive-request-owner-ref.js";
 import { noPathPrefixContainment } from "./rules/security/no-path-prefix-containment.js";
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
 import { noPillNavigationCount } from "./rules/design/no-pill-navigation-count.js";
@@ -473,6 +476,7 @@ import { noUnguardedThrowingParseCall } from "./rules/correctness/no-unguarded-t
 import { noUniformFeatureCardGrid } from "./rules/design/no-uniform-feature-card-grid.js";
 import { noUninformativeAriaLabel } from "./rules/a11y/no-uninformative-aria-label.js";
 import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js";
+import { noUnownedAsyncErrorClear } from "./rules/state-and-effects/no-unowned-async-error-clear.js";
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnsafeJsonParse } from "./rules/correctness/no-unsafe-json-parse.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
@@ -553,6 +557,7 @@ import { r3fNoStateInUseFrame } from "./rules/r3f/r3f-no-state-in-use-frame.js";
 import { r3fNoSyncReadbackInUseFrame } from "./rules/r3f/r3f-no-sync-readback-in-use-frame.js";
 import { r3fNoUnstableArgs } from "./rules/r3f/r3f-no-unstable-args.js";
 import { r3fNoUseFrameDependencyArray } from "./rules/r3f/r3f-no-use-frame-dependency-array.js";
+import { r3fPreferInstancedMesh } from "./rules/r3f/r3f-prefer-instanced-mesh.js";
 import { r3fPreferUseLoader } from "./rules/r3f/r3f-prefer-use-loader.js";
 import { r3fRequireFrameDelta } from "./rules/r3f/r3f-require-frame-delta.js";
 import { r3fRequireGlobalEffectCleanup } from "./rules/r3f/r3f-require-global-effect-cleanup.js";
@@ -738,6 +743,7 @@ import { threeNoRedundantUniformsNeedUpdate } from "./rules/r3f/three-no-redunda
 import { threeNoStateInAnimationLoop } from "./rules/r3f/three-no-state-in-animation-loop.js";
 import { threeNoStateInPointerMove } from "./rules/r3f/three-no-state-in-pointer-move.js";
 import { threeOnBeforeCompileRequireProgramCacheKey } from "./rules/r3f/three-on-before-compile-require-program-cache-key.js";
+import { threePreferInstancedMesh } from "./rules/r3f/three-prefer-instanced-mesh.js";
 import { threeRawShaderRequireFragmentFloatPrecision } from "./rules/r3f/three-raw-shader-require-fragment-float-precision.js";
 import { threeRawShaderRequireGlsl3Version } from "./rules/r3f/three-raw-shader-require-glsl3-version.js";
 import { threeRequireAnimationMixerCleanup } from "./rules/r3f/three-require-animation-mixer-cleanup.js";
@@ -888,6 +894,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(anchorIsValid.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/anchor-target-exists",
+    id: "anchor-target-exists",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...anchorTargetExists,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(anchorTargetExists.requires ?? [])])],
     },
   },
   {
@@ -3521,6 +3539,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-controlled-selection-focus-effect",
+    id: "no-controlled-selection-focus-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noControlledSelectionFocusEffect,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(noControlledSelectionFocusEffect.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-cramped-container-padding",
     id: "no-cramped-container-padding",
     source: "react-doctor",
@@ -5302,6 +5334,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-passive-request-owner-ref",
+    id: "no-passive-request-owner-ref",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPassiveRequestOwnerRef,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noPassiveRequestOwnerRef.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-path-prefix-containment",
     id: "no-path-prefix-containment",
     source: "react-doctor",
@@ -6401,6 +6445,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-unowned-async-error-clear",
+    id: "no-unowned-async-error-clear",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnownedAsyncErrorClear,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noUnownedAsyncErrorClear.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-unsafe",
     id: "no-unsafe",
     source: "react-doctor",
@@ -7427,6 +7483,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoUseFrameDependencyArray.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoUseFrameDependencyArray.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-prefer-instanced-mesh",
+    id: "r3f-prefer-instanced-mesh",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fPreferInstancedMesh,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fPreferInstancedMesh.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fPreferInstancedMesh.requires ?? [])]),
       ],
     },
   },
@@ -9716,6 +9787,19 @@ export const reactDoctorRules = [
           ...(threeOnBeforeCompileRequireProgramCacheKey.requires ?? []),
         ]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/three-prefer-instanced-mesh",
+    id: "three-prefer-instanced-mesh",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threePreferInstancedMesh,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threePreferInstancedMesh.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threePreferInstancedMesh.requires ?? [])])],
     },
   },
   {

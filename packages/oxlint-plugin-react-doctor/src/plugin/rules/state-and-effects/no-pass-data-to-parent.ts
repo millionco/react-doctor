@@ -9,6 +9,7 @@ import { findTransparentExpressionRoot } from "../../utils/find-transparent-expr
 import { collectFunctionReturnStatements } from "../../utils/collect-function-return-statements.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
+import { isTypeScriptTypePosition } from "../../utils/is-typescript-type-position.js";
 import {
   DATA_SINK_METHOD_NAMES,
   STRING_READ_METHOD_NAMES,
@@ -1624,6 +1625,7 @@ export const noPassDataToParent = defineRule({
 
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             const argIdentifier = argRef.identifier as unknown as EsTreeNode;
+            if (isTypeScriptTypePosition(argIdentifier)) return false;
             if (isUseStateIdentifier(argIdentifier)) return false;
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argIdentifier)) return false;

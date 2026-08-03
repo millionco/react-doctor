@@ -3,6 +3,21 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noArrayIndexAsKey } from "./no-array-index-as-key.js";
 
 describe("correctness/no-array-index-as-key regressions", () => {
+  it("stays silent on immutable decorative Array.from elements", () => {
+    const result = runRule(
+      noArrayIndexAsKey,
+      `Array.from({ length: 16 }, (_, i) => <i key={i} />);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on data-mapped decorative elements without component state", () => {
+    const result = runRule(noArrayIndexAsKey, `items.map((item, i) => <i key={i} />);`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   describe("reachable index fallbacks", () => {
     it("flags the authentic Lobe nullish fallback after it is inlined", () => {
       const result = runRule(

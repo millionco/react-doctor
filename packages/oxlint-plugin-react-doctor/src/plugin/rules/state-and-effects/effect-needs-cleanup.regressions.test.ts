@@ -3001,6 +3001,96 @@ export const useResizableColumns = () => {
 });
 
 describe("effect-needs-cleanup adversarial edge cases (observers / connections / retained functions)", () => {
+  it("accepts an observer replaced by a self-reconnecting helper with unmount cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    let observer;
+    const refresh = () => {
+      observer?.disconnect();
+      observer = new MutationObserver(refresh);
+      for (let node = element; node; node = node.parentElement) {
+        observer.observe(node, { attributes: true, childList: true });
+      }
+    };
+    refresh();
+    return () => observer?.disconnect();
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a reconnect helper that replaces the observer without releasing the previous one", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element }) => {
+  useLayoutEffect(() => {
+    let observer;
+    const refresh = () => {
+      observer = new MutationObserver(refresh);
+      observer.observe(element, { attributes: true });
+    };
+    refresh();
+    return () => observer?.disconnect();
+  }, [element]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags reconnect cleanup that is conditional on an unrelated value", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, shouldDisconnect }) => {
+  useLayoutEffect(() => {
+    let observer;
+    const refresh = () => {
+      if (shouldDisconnect) observer?.disconnect();
+      observer = new MutationObserver(refresh);
+      observer.observe(element, { attributes: true });
+    };
+    refresh();
+    return () => observer?.disconnect();
+  }, [element, shouldDisconnect]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a reconnect helper also retained by an unrelated external owner", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useLayoutEffect } from "react";
+export const ContextWatcher = ({ element, scheduler }) => {
+  useLayoutEffect(() => {
+    let observer;
+    const refresh = () => {
+      observer?.disconnect();
+      observer = new MutationObserver(refresh);
+      observer.observe(element, { attributes: true });
+    };
+    refresh();
+    scheduler.register(refresh);
+    return () => observer?.disconnect();
+  }, [element, scheduler]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an observer registered through a nested helper with no cleanup", () => {
     const result = runRule(
       effectNeedsCleanup,

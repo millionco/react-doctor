@@ -335,6 +335,16 @@ describe("effect-needs-cleanup issue 1558 cleanup ownership", () => {
       "conditional forEach cleanup",
       "unsubscribers.forEach((unsubscribe) => { if (enabled) unsubscribe(); });",
     ],
+    [
+      "outer conditional forEach cleanup",
+      "if (enabled) unsubscribers.forEach((unsubscribe) => unsubscribe());",
+    ],
+    [
+      "outer conditional for-of cleanup",
+      `if (enabled) {
+        for (const unsubscribe of unsubscribers) unsubscribe();
+      }`,
+    ],
   ])("reports array-collected disposers with %s", (_, cleanup) => {
     const result = runRule(
       effectNeedsCleanup,

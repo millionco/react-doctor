@@ -1923,6 +1923,14 @@ const doesCleanupFunctionReleaseUsage = (
       const cleanupCallee = isNodeOfType(cleanupCall, "CallExpression")
         ? stripParenExpression(cleanupCall.callee)
         : null;
+      const mappedResourceCollectionKey = findMappedResourceCollectionKey(usage.node, context);
+      const cleanupIdentifierLoop = isNodeOfType(cleanupCallee, "Identifier")
+        ? (findForOfStatementForIteratorExpression(cleanupCallee, context) ?? cleanupForEachCall)
+        : null;
+      if (mappedResourceCollectionKey !== null && cleanupIdentifierLoop) {
+        matchingLoopOrHelperAnchors.push(cleanupIdentifierLoop);
+        return;
+      }
       const cleanupReceiverForOfStatement = isNodeOfType(cleanupCallee, "MemberExpression")
         ? findForOfStatementForIteratorExpression(cleanupCallee.object, context)
         : null;

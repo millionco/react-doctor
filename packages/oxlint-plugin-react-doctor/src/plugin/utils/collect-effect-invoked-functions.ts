@@ -55,10 +55,7 @@ const collectInvokedFunctions = (
   };
 
   const enqueue = (candidate: EsTreeNode | null | undefined): void => {
-    const exactLocalFunction =
-      candidate && scopes ? resolveExactLocalFunction(candidate, scopes) : null;
-    const strippedCandidate =
-      exactLocalFunction ?? (candidate ? stripParenExpression(candidate) : candidate);
+    const strippedCandidate = candidate ? stripParenExpression(candidate) : candidate;
     if (!isFunctionLike(strippedCandidate) || invokedFunctions.has(strippedCandidate)) return;
     invokedFunctions.add(strippedCandidate);
     pendingFunctions.push(strippedCandidate);

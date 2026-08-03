@@ -918,16 +918,23 @@ const collectEffectOwnedResourceCallbackFunctions = (
         const timerCallback = child.arguments?.[0];
         callbackArgument = timerCallback && isAstNode(timerCallback) ? timerCallback : null;
       } else {
+        const promiseCallback = child.arguments?.find(
+          (argument) => isAstNode(argument) && getPromiseChainCallForCallback(argument) === child,
+        );
+        if (promiseCallback && isAstNode(promiseCallback)) {
+          callbackArgument = promiseCallback;
+        }
         const registrationVerbName = getSubscribeOrObserveMethodName(child);
-        if (registrationVerbName === null) return;
-        const registrationDetails = getCallRegistrationDetails(child, context);
-        callbackArgument = getSubscribeUsageCallbackArgument({
-          kind: "subscribe",
-          node: child,
-          resourceName: registrationVerbName,
-          handleKey: null,
-          ...registrationDetails,
-        });
+        if (registrationVerbName !== null) {
+          const registrationDetails = getCallRegistrationDetails(child, context);
+          callbackArgument = getSubscribeUsageCallbackArgument({
+            kind: "subscribe",
+            node: child,
+            resourceName: registrationVerbName,
+            handleKey: null,
+            ...registrationDetails,
+          });
+        }
       }
       const callbackFunction = callbackArgument
         ? resolveExactLocalFunction(callbackArgument, context.scopes)

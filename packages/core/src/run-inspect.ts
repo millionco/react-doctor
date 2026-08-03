@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Filter from "effect/Filter";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -136,15 +135,7 @@ export interface InspectInput {
    * (those always run it). Defaults to `false`.
    */
   readonly supplyChainManifestChanged?: boolean;
-  /**
-   * Set when this scan runs concurrently with sibling scans in one process
-   * (the CLI's multi-project pool). Such a scan can't safely reason about the
-   * shared memory budget from its own available-memory reading — N concurrent
-   * scans each reading "plenty available" would each fork a dead-code worker
-   * and sum past the single-scan budget — so the dead-code overlap memory gate
-   * (`"auto"`) stays sequential for concurrent members. An explicit
-   * `REACT_DOCTOR_DEAD_CODE_OVERLAP=on` override still wins. Defaults to `false`.
-   */
+  /** Set when this scan runs concurrently with sibling scans in one process. */
   readonly concurrentScan?: boolean;
   /**
    * Absolute epoch-millisecond deadline for the scan (the CLI's
@@ -190,12 +181,11 @@ export interface InspectOutput {
   readonly didDeadCodeFail: boolean;
   readonly deadCodeFailureReason: string | null;
   /**
-   * Whether the dead-code pass actually ran concurrently with lint this scan
-   * (the memory gate opened, or overlap was forced via
-   * `REACT_DOCTOR_DEAD_CODE_OVERLAP`). `false` for the strictly-sequential
-   * path: diff/staged/`--no-warnings` runs that skip dead-code, a closed
-   * memory gate, or `overlap=off`. Internal telemetry only (rides the per-scan
-   * wide event); NOT part of the public `inspect()` `InspectResult`.
+   * Whether the dead-code pass actually ran concurrently with lint this scan.
+   * Only `REACT_DOCTOR_DEAD_CODE_OVERLAP=on` overlaps; the default `"auto"`
+   * and explicit `"off"` paths stay sequential. Internal telemetry only
+   * (rides the per-scan wide event); NOT part of the public `inspect()`
+   * `InspectResult`.
    */
   readonly deadCodeOverlapped: boolean;
   /**
@@ -326,14 +316,6 @@ const NO_HOOKS: Required<InspectHooks<never>> = {
   afterLint: () => Effect.void,
 };
 
-const filterMapNullable = <Input, Output>(
-  transform: (value: Input) => Output | null,
-): Filter.Filter<Input, Output> =>
-  Filter.fromPredicateOption((value) => {
-    const result = transform(value);
-    return result === null ? Option.none() : Option.some(result);
-  });
-
 const fileReader =
   (filesService: Files["Service"], rootDirectory: string) =>
   (filePath: string): string[] | null => {
@@ -378,13 +360,11 @@ const formatLintFailText = (
  *      `SupplyChainOverlapTimeoutMs` (measured from fork) so a hung
  *      socket can't drag out its join; on timeout it fails open to no
  *      diagnostics — the same outcome class as a Socket outage.
- *   5. Linter.run runs; DeadCode.run runs concurrently (forked child
- *      fiber) ONLY when the memory gate has headroom to run the 8 GB
- *      dead-code child alongside the oxlint workers — or when overlap is
- *      forced via REACT_DOCTOR_DEAD_CODE_OVERLAP. Otherwise dead-code
- *      runs sequentially after lint, exactly as it did pre-overlap. The
- *      fiber is joined (or interrupted, SIGKILLing its worker, on lint
- *      failure) before diagnostics are concatenated. The afterLint hook
+ *   5. Linter.run runs; DeadCode.run forks only when
+ *      REACT_DOCTOR_DEAD_CODE_OVERLAP=on. The default "auto" and explicit
+ *      "off" paths stay sequential. The fiber is joined (or interrupted,
+ *      SIGKILLing its worker, on lint failure) before diagnostics are
+ *      concatenated. The afterLint hook
  *      fires between lint and dead-code. Progress spinner labels AND the
  *      final diagnostic / score order stay independent of execution
  *      order, so terminal output is identical either way; supply-chain
@@ -561,7 +541,14 @@ export const runInspect = <HooksR = never>(
     });
 
     const filterPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
-      rawStream.pipe(Stream.filterMap(filterMapNullable<Diagnostic, Diagnostic>(transform.apply)));
+      rawStream.pipe(
+        Stream.filterMap((diagnostic) => {
+          const filteredDiagnostic = transform.apply(diagnostic);
+          return filteredDiagnostic === null
+            ? Option.none()
+            : Option.some(filteredDiagnostic);
+        }),
+      );
 
     const applyPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
       filterPerElementPipeline(rawStream).pipe(

@@ -93,10 +93,9 @@ export interface RunEventInput {
   // before the field and on the failure path.
   readonly securityScanFailed?: boolean;
   /**
-   * Whether the dead-code pass ran concurrently with lint this scan (gate
-   * opened / overlap forced). Lets a query compare `runInspect` wall-clock
-   * grouped by overlap, and watch for an OOM/timeout regression on
-   * overlapped scans (the kill-metric for the overlap feature).
+   * Whether the dead-code pass ran concurrently with lint this scan. Lets a
+   * query compare `runInspect` wall-clock grouped by overlap, and watch for
+   * an OOM/timeout regression on overlapped scans.
    */
   readonly deadCodeOverlapped?: boolean;
   // A degraded baseline run (no delta computed) skips the CI gate, so the

@@ -79,7 +79,6 @@ import {
   shouldRecordOnboarding,
 } from "./cli/utils/onboarding-pacing.js";
 import { hasCompletedOnboarding, markOnboardingComplete } from "./cli/utils/onboarding-state.js";
-import { printProjectDetection } from "./cli/utils/render-project-detection.js";
 import {
   printBrandingOnlyHeader,
   printNoScoreHeader,
@@ -108,10 +107,6 @@ interface OxlintInvocationRuntime {
   readonly abortSignal: AbortSignal;
   readonly scanResultCacheInvocationState: ScanResultCacheInvocationState;
 }
-
-const runConsole = (effect: Effect.Effect<void>): void => {
-  Effect.runSync(effect);
-};
 
 const recordOnboardingCompletion = (options: ResolvedInspectOptions): void => {
   const forceOnboarding = isOnboardingForced();
@@ -309,13 +304,11 @@ const mergeInspectOptions = (
 
 // The scan-config slice of the wide event, shared by the success and failure
 // emit paths (the failure path has no `result`, so it can only supply config).
-// The return type is inferred and checked at the call sites, which spread it
-// into the full `RunEventInput` — a missing field surfaces there.
 // Reconstruct the resolved scope from the engine inputs (the CLI resolved it
 // from `--scope`, but `inspect()` only sees its effects): a baseline ref means
 // `changed`, line ranges mean `lines`, any other diff means `files`, else `full`.
-// A degraded `lines` / `changed` run carries neither, so it reads as `files` —
-// matching what actually ran.
+// A degraded `lines` run carries no ranges, so it reads as `files`; degraded
+// baseline runs keep `changed` and rely on the baseline-degraded fields.
 const deriveScope = (options: ResolvedInspectOptions): string => {
   if (options.baseline) return "changed";
   if (options.changedLineRanges !== null) return "lines";
@@ -409,14 +402,10 @@ const inspectWithOxlintRuntime = async (
 
   const options = mergeInspectOptions(inputOptions, userConfig);
 
-  // HACK: spinner.ts still has module-level silent state (used by
-  // printProjectDetection's internal spinner() calls). Mirror the
-  // silent flag here until that file moves to a Progress service in
-  // a follow-up PR. Console-side silent is handled by swapping the
-  // global Console reference for `silentConsole` inside the program
-  // (see `runInspectWithRuntime`). Concurrent batch members never touch
-  // the shared flag — overlapping save/restore pairs would race — so the
-  // pool owner (the CLI) silences spinners once around the whole batch.
+  // HACK: spinner.ts still has module-level silent state for imperative CLI
+  // helpers. Concurrent batch members never touch the shared flag — overlapping
+  // save/restore pairs would race — so the pool owner (the CLI) silences
+  // spinners once around the whole batch.
   const ownsSpinnerSilence = options.silent && !isConcurrentScan;
   const wasSpinnerSilent = isSpinnerSilent();
   if (ownsSpinnerSilence) setSpinnerSilent(true);
@@ -701,13 +690,11 @@ const runInspectWithRuntime = async (
   oxlintRuntime: OxlintInvocationRuntime,
 ): Promise<InspectResult> => {
   const isDiffMode = options.includePaths.length > 0;
-  // Pre-check oxlint native binding the same way the legacy entry
-  // point did: `resolveOxlintNode` prints its own warnings / upgrade
-  // hints and returns `null` when the binding can't be loaded. In
-  // that mode the orchestrator runs with `Linter.layerOf([])` so the
-  // rest of the pipeline (project detection, score, rendering) still
-  // happens with `skippedChecks: ["lint"]` surfacing the missed
-  // coverage.
+  // Pre-check oxlint native binding before the orchestrator:
+  // `resolveOxlintNode` prints its own warnings / upgrade hints and returns
+  // `null` when the binding can't be loaded. In that mode the orchestrator
+  // runs with `Linter.layerOf([])` so the rest of the pipeline still happens
+  // with `skippedChecks: ["lint"]` surfacing the missed coverage.
   const resolvedNodeBinaryPath = await resolveOxlintNode(
     options.lint,
     options.scoreOnly || options.silent,
@@ -731,12 +718,6 @@ const runInspectWithRuntime = async (
       concurrentScan: options.concurrentScan,
     });
     recordCount(METRIC.projectDetected, 1);
-    await renderCachedProjectDetection({
-      payload: cachedPayload,
-      options,
-      userConfig,
-      isDiffMode,
-    });
     const baselineDegraded =
       Boolean(options.baseline) && isDiffMode && cachedPayload.baselineDelta === undefined;
     const result = await renderAndRecordScan({
@@ -811,8 +792,8 @@ const runInspectWithRuntime = async (
       retainExcludedProjectDeadCodeDiagnostics: options.retainExcludedProjectDeadCodeDiagnostics,
     },
     {
-      beforeLint: (projectInfo, lintIncludePaths) =>
-        Effect.gen(function* () {
+      beforeLint: (projectInfo) =>
+        Effect.sync(() => {
           // Attach the discovered project shape to Sentry as early as possible
           // (this hook fires right after project discovery) so crashes, the run
           // transaction, and every subsequent metric carry it. No-op when
@@ -821,15 +802,6 @@ const runInspectWithRuntime = async (
             concurrentScan: options.concurrentScan,
           });
           recordCount(METRIC.projectDetected, 1);
-          if (options.scoreOnly || options.suppressRendering) return;
-          const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;
-          yield* printProjectDetection({
-            projectInfo,
-            userConfig,
-            isDiffMode,
-            includePaths: options.includePaths,
-            lintSourceFileCount,
-          });
         }),
     },
   );
@@ -872,7 +844,7 @@ const runInspectWithRuntime = async (
     lintFailureReason !== null
   ) {
     if (output.lintFailureReasonKind === "native-binding-missing") {
-      runConsole(
+      Effect.runSync(
         Console.log(
           highlighter.gray(
             `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`,
@@ -880,7 +852,7 @@ const runInspectWithRuntime = async (
         ),
       );
     } else {
-      runConsole(Console.error(highlighter.error(lintFailureReason)));
+      Effect.runSync(Console.error(highlighter.error(lintFailureReason)));
     }
   }
 
@@ -1031,13 +1003,6 @@ interface FinalizeInput {
   baselineDelta: InspectResult["baselineDelta"];
 }
 
-interface RenderCachedProjectDetectionInput {
-  readonly payload: CachedScanPayload;
-  readonly options: ResolvedInspectOptions;
-  readonly userConfig: ReactDoctorConfig | null;
-  readonly isDiffMode: boolean;
-}
-
 interface RenderAndRecordScanInput {
   readonly payload: CachedScanPayload;
   readonly options: ResolvedInspectOptions;
@@ -1090,24 +1055,6 @@ const runMaybeSilent = <A, E, R>(
   silent: boolean,
 ): Effect.Effect<A, E, R> =>
   silent ? effect.pipe(Effect.provideService(Console.Console, silentConsole)) : effect;
-
-const renderCachedProjectDetection = async (
-  input: RenderCachedProjectDetectionInput,
-): Promise<void> => {
-  if (input.options.scoreOnly || input.options.suppressRendering) return;
-  await Effect.runPromise(
-    runMaybeSilent(
-      printProjectDetection({
-        projectInfo: input.payload.project,
-        userConfig: input.userConfig,
-        isDiffMode: input.isDiffMode,
-        includePaths: input.options.includePaths,
-        lintSourceFileCount: input.payload.scannedFileCount,
-      }),
-      input.options.silent,
-    ),
-  );
-};
 
 const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<InspectResult> => {
   const finalizeInput: FinalizeInput = {

@@ -153,7 +153,5 @@ export const createScheduler = (options: SchedulerOptions): Scheduler => {
     queue.length = 0;
   };
 
-  const pendingCount = (): number => queue.length + running + timers.size;
-
-  return { enqueue, cancelProject, pendingCount, dispose };
+  return { enqueue, cancelProject, dispose };
 };

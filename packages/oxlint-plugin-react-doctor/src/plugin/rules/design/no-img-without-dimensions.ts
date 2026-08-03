@@ -367,28 +367,43 @@ const hasReservedExternalCssBox = (
   resolver: StaticCssStyleResolver,
 ): boolean => {
   const classNameAttribute = getAuthoritativeJsxAttribute(node.attributes, "className", false);
+  let classEvidence: ReservedImageBoxEvidence = {
+    hasAspectRatio: false,
+    hasHeight: false,
+    hasWidth: false,
+  };
+  let hasAspectRatioUtility = false;
+  let hasHeightUtility = false;
+  let hasWidthUtility = false;
   if (classNameAttribute) {
     const className = getStringLiteralAttributeValue(classNameAttribute);
     if (className === null) return false;
-    const hasSizingUtility = splitTailwindClassName(className).some((token) => {
+    classEvidence = getReservedClassBoxEvidence(node);
+    for (const token of splitTailwindClassName(className)) {
       const utility = parseTailwindClassNameToken(token).utility;
-      return (
-        utility.startsWith("aspect-") ||
-        utility.startsWith("size-") ||
-        utility.startsWith("w-") ||
-        utility.startsWith("h-")
-      );
-    });
-    if (hasSizingUtility) return false;
+      hasAspectRatioUtility ||= utility.startsWith("aspect-");
+      hasHeightUtility ||= utility.startsWith("size-") || utility.startsWith("h-");
+      hasWidthUtility ||= utility.startsWith("size-") || utility.startsWith("w-");
+    }
   }
   const evidence = getExternalCssBoxEvidenceWithInlineOverrides(node, context, resolver);
   if (!evidence) return false;
-  if (evidenceReservesBox(evidence, false)) return true;
+  const combinedEvidence: ExternalCssBoxEvidence = {
+    hasAspectRatio:
+      classEvidence.hasAspectRatio || (!hasAspectRatioUtility && evidence.hasAspectRatio),
+    hasHeight: classEvidence.hasHeight || (!hasHeightUtility && evidence.hasHeight),
+    hasWidth: classEvidence.hasWidth || (!hasWidthUtility && evidence.hasWidth),
+    heightReservesWithParent: !hasHeightUtility && evidence.heightReservesWithParent,
+    widthReservesWithParent: !hasWidthUtility && evidence.widthReservesWithParent,
+  };
+  if (evidenceReservesBox(combinedEvidence, false)) return true;
   const parentAxes = getExternalCssParentBoxAxes(node, context, resolver);
-  const hasWidth = evidence.hasWidth || (evidence.widthReservesWithParent && parentAxes.hasWidth);
+  const hasWidth =
+    combinedEvidence.hasWidth || (combinedEvidence.widthReservesWithParent && parentAxes.hasWidth);
   const hasHeight =
-    evidence.hasHeight || (evidence.heightReservesWithParent && parentAxes.hasHeight);
-  return (hasWidth && hasHeight) || (evidence.hasAspectRatio && (hasWidth || hasHeight));
+    combinedEvidence.hasHeight ||
+    (combinedEvidence.heightReservesWithParent && parentAxes.hasHeight);
+  return (hasWidth && hasHeight) || (combinedEvidence.hasAspectRatio && (hasWidth || hasHeight));
 };
 
 const hasReservedClassBox = (

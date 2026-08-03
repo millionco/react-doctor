@@ -129,6 +129,24 @@ describe("no-img-without-dimensions", () => {
     expect(emptyClass.diagnostics).toHaveLength(0);
   });
 
+  it("composes partial Tailwind sizing with imported CSS", () => {
+    const widthClass = runRuleWithSiblingCss(
+      `const Feed = () => <img className="w-full object-cover" src="/place.jpg" alt="" />;`,
+      `img { height: 178px; }`,
+    );
+    const heightClass = runRuleWithSiblingCss(
+      `const Feed = () => <img className="h-44 object-cover" src="/place.jpg" alt="" />;`,
+      `img { width: 100%; }`,
+    );
+    const aspectClass = runRuleWithSiblingCss(
+      `const Feed = () => <img className="aspect-video object-cover" src="/place.jpg" alt="" />;`,
+      `img { width: 100%; }`,
+    );
+    expect(widthClass.diagnostics).toHaveLength(0);
+    expect(heightClass.diagnostics).toHaveLength(0);
+    expect(aspectClass.diagnostics).toHaveLength(0);
+  });
+
   it("does not let imported CSS override explicit auto-sizing utilities", () => {
     const result = runRuleWithSiblingCss(
       `const Feed = () => <img className="w-full h-auto object-cover" src="/place.jpg" alt="" />;`,

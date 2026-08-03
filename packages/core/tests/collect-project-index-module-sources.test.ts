@@ -32,34 +32,17 @@ describe("collectProjectIndexModuleSources", () => {
     });
 
     await expect(
-      collectProjectIndexModuleSources({
-        rootDirectory,
-        candidateFiles: ["image.tsx", "video.tsx", "ordinary.tsx"],
-      }),
-    ).resolves.toEqual({ moduleSources: ["next/og", "remotion"], didComplete: true });
+      collectProjectIndexModuleSources(rootDirectory, ["image.tsx", "video.tsx", "ordinary.tsx"]),
+    ).resolves.toEqual(["next/og", "remotion"]);
   });
 
-  it("returns an empty complete result for ordinary source files", async () => {
+  it("returns an empty result for ordinary source files", async () => {
     const rootDirectory = createFixture({
       "component.tsx": `export const Component = () => <img src="/photo.png" alt="" />;`,
     });
 
     await expect(
-      collectProjectIndexModuleSources({ rootDirectory, candidateFiles: ["component.tsx"] }),
-    ).resolves.toEqual({ moduleSources: [], didComplete: true });
-  });
-
-  it("stops reading candidates when the scan deadline has elapsed", async () => {
-    const rootDirectory = createFixture({
-      "image.tsx": `import { ImageResponse } from "next/og";`,
-    });
-
-    await expect(
-      collectProjectIndexModuleSources({
-        rootDirectory,
-        candidateFiles: ["image.tsx"],
-        deadlineEpochMs: Date.now(),
-      }),
-    ).resolves.toEqual({ moduleSources: [], didComplete: false });
+      collectProjectIndexModuleSources(rootDirectory, ["component.tsx"]),
+    ).resolves.toEqual([]);
   });
 });

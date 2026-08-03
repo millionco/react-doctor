@@ -1814,6 +1814,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-duplicate-primitive-object": {
     code: 'import "@react-three/fiber"; const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;',
   },
+  "r3f-prefer-instanced-mesh": {
+    code: 'import "@react-three/fiber"; const Scene = ({ geometry, material }) => <>{[0, 1].map((index) => <mesh key={index} geometry={geometry} material={material} />)}</>;',
+  },
   "r3f-no-deep-use-three-selector": {
     code: 'import { useThree } from "@react-three/fiber"; const zoom = useThree((state) => state.camera.zoom);',
   },
@@ -1948,6 +1951,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "three-require-instanced-buffer-update": {
     code: 'import { InstancedMesh } from "three"; const mesh = new InstancedMesh(geometry, material, count); const update = () => { mesh.setMatrixAt(0, matrix); };',
+  },
+  "three-prefer-instanced-mesh": {
+    code: 'import { Mesh } from "three"; [0, 1].map(() => new Mesh(geometry, material));',
   },
   "three-require-owned-geometry-cleanup": {
     code: 'import { useMemo } from "react"; import { BoxGeometry } from "three"; const Scene = () => { const geometry = useMemo(() => new BoxGeometry(), []); return geometry.name; };',

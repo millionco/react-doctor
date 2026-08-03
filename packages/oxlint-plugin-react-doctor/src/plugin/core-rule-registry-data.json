@@ -9021,6 +9021,23 @@
     }
   },
   {
+    "key": "react-doctor/r3f-prefer-instanced-mesh",
+    "id": "r3f-prefer-instanced-mesh",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-prefer-instanced-mesh",
+      "title": "Repeated R3F meshes use separate draw calls",
+      "severity": "warn",
+      "recommendation": "Render repeated meshes that share geometry and material with <instancedMesh> so they can use one draw call",
+      "category": "Performance",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/r3f-prefer-use-loader",
     "id": "r3f-prefer-use-loader",
     "source": "react-doctor",
@@ -12137,6 +12154,23 @@
       "severity": "error",
       "recommendation": "Return every mutable shader-patch variant from customProgramCacheKey on the same material",
       "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-prefer-instanced-mesh",
+    "id": "three-prefer-instanced-mesh",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-prefer-instanced-mesh",
+      "title": "Repeated Three.js meshes use separate draw calls",
+      "severity": "warn",
+      "recommendation": "Replace repeated Mesh objects that share geometry and material with one InstancedMesh and per-instance transforms",
+      "category": "Performance",
       "framework": "global",
       "requires": ["three"],
       "tags": ["three", "webgl"],

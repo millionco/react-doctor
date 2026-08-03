@@ -170,6 +170,8 @@ export interface InspectUiLayers {
 }
 
 export interface ReactDoctorInspectOptions extends InspectOptions {
+  /** Internal: source-file count collected once for a workspace batch. */
+  precomputedSourceFileCount?: number;
   categoryFilters?: string[];
   includedTags?: ReadonlySet<string>;
   includeTagDefaults?: boolean;
@@ -238,6 +240,8 @@ export interface ResolvedInspectOptions {
   uiLayers: InspectUiLayers | null;
   /** Descendant projects covered by sibling scans in the same workspace batch. */
   excludedProjectDirectories: ReadonlyArray<string>;
+  /** Source-file count collected once for a workspace batch. */
+  precomputedSourceFileCount: number | undefined;
 }
 
 const buildIgnoredTags = (
@@ -292,6 +296,7 @@ const mergeInspectOptions = (
     changedLineRanges: inputOptions.changedLineRanges ?? null,
     supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
     excludedProjectDirectories: inputOptions.excludedProjectDirectories ?? [],
+    precomputedSourceFileCount: inputOptions.precomputedSourceFileCount,
   };
 };
 
@@ -775,6 +780,7 @@ const runInspectWithRuntime = async (
   const program = runInspectEffect(
     {
       directory,
+      precomputedSourceFileCount: options.precomputedSourceFileCount,
       includePaths: options.includePaths,
       customRulesOnly: options.customRulesOnly,
       respectInlineDisables: options.respectInlineDisables,

@@ -15,7 +15,7 @@ export const Scanning = ({ progressText, liveCount, recent }: ScanningProps) => 
     <Box flexDirection="column">
       <Text wrap="truncate-end">
         <Text color="cyan">
-          <Spinner type="simpleDots" />
+          <Spinner type="dots" />
         </Text>
         <Text> {progressText ?? "Scanning…"}</Text>
         {liveCount > 0 ? (

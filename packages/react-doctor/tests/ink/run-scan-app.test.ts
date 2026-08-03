@@ -1,7 +1,8 @@
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
+import { render } from "ink";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectResult, ResolvedScanTarget } from "@react-doctor/core";
+import type { InspectResult, ResolvedScanTarget, WorkspacePackage } from "@react-doctor/core";
 import { Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
@@ -17,8 +18,14 @@ interface MockScanAppProps {
   readonly onQuit?: () => void;
 }
 
+interface MockProjectSelectProps {
+  readonly packages?: ReadonlyArray<WorkspacePackage>;
+  readonly onSubmit?: (directories: string[]) => void;
+}
+
 const mockState = vi.hoisted(() => ({
   projectDirectories: new Array<string>(),
+  workspacePackages: new Array<WorkspacePackage>(),
   scanTargets: new Map<string, ResolvedScanTarget>(),
   inspectResults: new Map<string, InspectResult>(),
   shouldRequestHandoff: false,
@@ -26,6 +33,7 @@ const mockState = vi.hoisted(() => ({
   shouldQuit: false,
   lifecycleEvents: new Array<string>(),
   scanStores: new Array<ScanStore>(),
+  initialProgressStates: new Array<string | null>(),
   ciRecommendationStates: new Array<boolean>(),
 }));
 
@@ -35,8 +43,14 @@ vi.mock("ink", async (importOriginal) => {
   return {
     ...actual,
     render: vi.fn((node) => {
+      if (React.isValidElement<MockProjectSelectProps>(node) && node.props.packages) {
+        queueMicrotask(() => node.props.onSubmit?.(mockState.projectDirectories));
+      }
       if (React.isValidElement<MockScanAppProps>(node)) {
-        if (node.props.store) mockState.scanStores.push(node.props.store);
+        if (node.props.store) {
+          mockState.scanStores.push(node.props.store);
+          mockState.initialProgressStates.push(node.props.store.getSnapshot().progress);
+        }
         mockState.ciRecommendationStates.push(Boolean(node.props.canAddToCi));
         if (mockState.shouldRequestHandoff) {
           node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
@@ -72,6 +86,13 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
   };
 });
 
+vi.mock("../../src/cli/utils/collect-project-source-file-counts.js", () => ({
+  collectProjectSourceFileCounts: vi.fn(
+    async (_rootDirectory: string, projectDirectories: ReadonlyArray<string>) =>
+      new Map(projectDirectories.map((projectDirectory) => [projectDirectory, 0])),
+  ),
+}));
+
 vi.mock("../../src/inspect.js", () => {
   const inspect = vi.fn(async (directory: string): Promise<InspectResult> => {
     const result = mockState.inspectResults.get(directory);
@@ -85,7 +106,7 @@ vi.mock("../../src/inspect.js", () => {
 });
 
 vi.mock("../../src/cli/utils/select-projects.js", () => ({
-  discoverWorkspacePackages: vi.fn(() => []),
+  discoverWorkspacePackages: vi.fn(() => mockState.workspacePackages),
   selectProjects: vi.fn(async () => mockState.projectDirectories),
 }));
 
@@ -157,6 +178,7 @@ const buildInspectResult = (directory: string): InspectResult => ({
 describe("runScanApp", () => {
   afterEach(() => {
     mockState.projectDirectories.length = 0;
+    mockState.workspacePackages.length = 0;
     mockState.scanTargets.clear();
     mockState.inspectResults.clear();
     mockState.shouldRequestHandoff = false;
@@ -164,9 +186,40 @@ describe("runScanApp", () => {
     mockState.shouldQuit = false;
     mockState.lifecycleEvents.length = 0;
     mockState.scanStores.length = 0;
+    mockState.initialProgressStates.length = 0;
     mockState.ciRecommendationStates.length = 0;
     vi.restoreAllMocks();
     vi.clearAllMocks();
+  });
+
+  it("uses a disposable screen for project selection", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const originalIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+    mockState.workspacePackages.push(
+      { name: "web", directory: "/repo/apps/web" },
+      { name: "admin", directory: "/repo/apps/admin" },
+    );
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+
+    try {
+      await runScanApp({ directory: rootDirectory });
+    } finally {
+      if (originalIsTtyDescriptor) {
+        Object.defineProperty(process.stdin, "isTTY", originalIsTtyDescriptor);
+      } else {
+        delete process.stdin.isTTY;
+      }
+    }
+
+    expect(vi.mocked(render).mock.calls[0]?.[1]).toEqual({
+      alternateScreen: true,
+      exitOnCtrlC: false,
+    });
   });
 
   it("excludes nested projects from an ancestor scan", async () => {
@@ -187,10 +240,12 @@ describe("runScanApp", () => {
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
+    expect(mockState.initialProgressStates).toEqual(["Indexing workspace files…"]);
     expect(inspect).toHaveBeenCalledWith(
       rootDirectory,
       expect.objectContaining({
         excludedProjectDirectories: [webDirectory],
+        precomputedSourceFileCount: 0,
         uiLayers: expect.objectContaining({ progress: expect.anything() }),
       }),
     );

@@ -73,6 +73,7 @@ import { toNormalizedRelativePath } from "./utils/to-normalized-relative-path.js
 
 export interface InspectInput {
   readonly directory: string;
+  readonly precomputedSourceFileCount?: number;
   readonly includePaths: ReadonlyArray<string>;
   readonly customRulesOnly: boolean;
   readonly respectInlineDisables: boolean;
@@ -461,7 +462,7 @@ export const runInspect = <HooksR = never>(
       : null;
     const project = yield* projectService.discover({
       directory: scanDirectory,
-      sourceFileCount: precomputedSourceFiles?.length,
+      sourceFileCount: input.precomputedSourceFileCount ?? precomputedSourceFiles?.length,
     });
     if (!isAnalyzableProject(project)) {
       return yield* new ReactDoctorError({

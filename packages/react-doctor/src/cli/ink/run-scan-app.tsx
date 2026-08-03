@@ -29,6 +29,7 @@ import { buildEmptyReportMessage } from "../utils/build-empty-report-message.js"
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
 import { countUniqueScannedFiles } from "../utils/count-unique-scanned-files.js";
 import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
+import { collectProjectSourceFileCounts } from "../utils/collect-project-source-file-counts.js";
 import { discoverWorkspacePackages, selectProjects } from "../utils/select-projects.js";
 import { isCiEnvironment } from "../utils/is-ci-environment.js";
 import { formatElapsedTime } from "../utils/render-diagnostics.js";
@@ -81,6 +82,7 @@ export interface RunScanAppResult {
 
 interface ScanPresentation {
   readonly isOffline: boolean;
+  readonly initialProgress: string;
   readonly noScoreMessage: string;
   readonly shouldRecommendCi: boolean;
 }
@@ -125,6 +127,7 @@ const resolveScanPresentation = (
       isCiEnvironment() ||
       input.share === false ||
       isShareOptedOut(projectScans, input.options?.noScore),
+    initialProgress: projectScans.length > 1 ? "Indexing workspace files…" : "Scanning project…",
     noScoreMessage: buildNoScoreMessage(isScoreDisabled),
     shouldRecommendCi:
       projectScans.length > 1 ||
@@ -182,7 +185,7 @@ const promptProjectSelection = (
           resolve(directories);
         }}
       />,
-      { exitOnCtrlC: false },
+      { alternateScreen: true, exitOnCtrlC: false },
     );
   });
 
@@ -331,8 +334,10 @@ interface MountedScanApp {
 const mountScanApp = async (
   rootDirectory: string,
   shouldRecommendCi: boolean,
+  initialProgress: string,
 ): Promise<MountedScanApp> => {
   const store = createScanStore();
+  store.setProgress(initialProgress);
   const launchableAgents = await detectLaunchableAgents();
   const pendingActions: PendingTuiActions = {
     handoffRequest: null,
@@ -396,6 +401,7 @@ const runMountedScan = async (
   const { store, instance, pendingActions, executePendingActions } = await mountScanApp(
     rootDirectory,
     presentation.shouldRecommendCi,
+    presentation.initialProgress,
   );
   const context: ScanExecutionContext = {
     store,
@@ -507,12 +513,16 @@ const runMultiProjectScan = async (
   return runMountedScan(rootDirectory, presentation, blockingLevel, async (context) => {
     const startTime = performance.now();
     let finishedCount = 0;
-    context.store.setProgress(`Scanning ${projectCount} projects…`);
-    await yieldToEventLoop();
     recordDistribution(METRIC.scanFeedbackDelay, performance.now() - feedbackStartTime, {
       unit: "millisecond",
       attributes: { surface: "tui", projectCount },
     });
+    const precomputedSourceFileCounts = await collectProjectSourceFileCounts(
+      rootDirectory,
+      projectScans.map((projectScan) => projectScan.directory),
+    );
+    context.store.setProgress(`Scanning ${projectCount} projects…`);
+    await yieldToEventLoop();
     const scanOutcomes = await mapWithConcurrency(
       projectScans,
       DEFAULT_PROJECT_SCAN_CONCURRENCY,
@@ -540,6 +550,7 @@ const runMultiProjectScan = async (
           isCi: isCiEnvironment(),
           configOverride: projectScan.config,
           configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
+          precomputedSourceFileCount: precomputedSourceFileCounts.get(projectScan.directory),
           uiLayers: {
             reporter: Reporter.layerNoop,
             progress: progressLayerForStore(context.store, {

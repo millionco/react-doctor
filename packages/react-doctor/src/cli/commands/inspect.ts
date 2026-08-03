@@ -32,6 +32,7 @@ import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-stage
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
 import { deduplicateProjectScans } from "../utils/deduplicate-project-scans.js";
+import { collectProjectSourceFileCounts } from "../utils/collect-project-source-file-counts.js";
 import { formatSkippedProjectsMessage } from "../utils/format-skipped-projects-message.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
@@ -953,6 +954,13 @@ export const inspectAction = async (
       ),
     );
     const isMultiProject = projectScans.length > 1;
+    const precomputedSourceFileCounts =
+      isMultiProject && !isDiffMode
+        ? await collectProjectSourceFileCounts(
+            resolvedDirectory,
+            projectScans.map((projectScan) => projectScan.directory),
+          )
+        : null;
     const skippedProjects: JsonReportSkippedProject[] = [];
 
     const scanProject = async (projectScan: ResolvedProjectScan): Promise<CompletedScan | null> => {
@@ -1029,6 +1037,7 @@ export const inspectAction = async (
       }
       const scanResult = await inspectProject(scanDirectory, {
         ...scanOptions,
+        precomputedSourceFileCount: precomputedSourceFileCounts?.get(scanDirectory),
         deadlineEpochMs: scanDeadlineEpochMs,
         includePaths,
         configOverride: projectConfig,

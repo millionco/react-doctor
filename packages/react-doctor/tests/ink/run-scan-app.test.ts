@@ -6,6 +6,7 @@ import type { InspectResult, ResolvedScanTarget, WorkspacePackage } from "@react
 import { Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
+import { clearActiveTuiRenderer } from "../../src/cli/utils/active-tui-renderer.js";
 import { computeProjectedScore } from "../../src/cli/utils/compute-score-projection.js";
 import { inspect } from "../../src/inspect.js";
 import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
@@ -229,6 +230,41 @@ describe("runScanApp", () => {
       alternateScreen: true,
       exitOnCtrlC: false,
     });
+  });
+
+  it("clears the project selection screen through the active renderer lifecycle", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const originalIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+    mockState.workspacePackages.push(
+      { name: "web", directory: "/repo/apps/web" },
+      { name: "admin", directory: "/repo/apps/admin" },
+    );
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+
+    try {
+      const scanPromise = runScanApp({ directory: rootDirectory });
+      await Promise.resolve();
+      const selectionRenderer = vi.mocked(render).mock.results[0]?.value;
+
+      clearActiveTuiRenderer();
+
+      expect(selectionRenderer?.clear).toHaveBeenCalledOnce();
+      expect(selectionRenderer?.unmount).toHaveBeenCalledOnce();
+      await scanPromise;
+      expect(selectionRenderer?.clear).toHaveBeenCalledOnce();
+      expect(selectionRenderer?.unmount).toHaveBeenCalledOnce();
+    } finally {
+      if (originalIsTtyDescriptor) {
+        Object.defineProperty(process.stdin, "isTTY", originalIsTtyDescriptor);
+      } else {
+        delete process.stdin.isTTY;
+      }
+    }
   });
 
   it("keeps scanning and report navigation inline", async () => {

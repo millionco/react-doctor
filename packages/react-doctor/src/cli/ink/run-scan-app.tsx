@@ -179,18 +179,30 @@ const promptProjectSelection = (
   rootDirectory: string,
 ): Promise<string[]> =>
   new Promise((resolve) => {
+    let disposeRenderer = (): void => {};
     const instance = render(
       <ProjectSelect
         packages={packages}
         rootDirectory={rootDirectory}
         onSubmit={(directories) => {
-          instance.clear();
-          instance.unmount();
+          disposeRenderer();
           resolve(directories);
         }}
       />,
       { alternateScreen: true, exitOnCtrlC: false },
     );
+    let didClearRenderer = false;
+    const clearRenderer = (): void => {
+      if (didClearRenderer) return;
+      didClearRenderer = true;
+      instance.clear();
+      instance.unmount();
+    };
+    const unregisterActiveTuiRenderer = registerActiveTuiRenderer({ clear: clearRenderer });
+    disposeRenderer = () => {
+      unregisterActiveTuiRenderer();
+      clearRenderer();
+    };
   });
 
 interface ScanReportInput {

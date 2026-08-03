@@ -40,8 +40,9 @@ export interface StaticCssDeclaration extends ParsedCssDeclaration {
 }
 
 export interface StaticCssRule {
+  readonly cascadeLayerKey: string | null;
   readonly declarations: ReadonlyArray<StaticCssDeclaration>;
-  readonly isInCascadeLayer: boolean;
+  readonly hasAnonymousCascadeLayer: boolean;
   readonly sourceOrder: number;
   readonly selectors: ReadonlyArray<Selector>;
 }
@@ -161,8 +162,12 @@ export const parseStaticCssStylesheet = (source: string): ParsedStaticCssStylesh
   const ambiguousProperties = new Set<string>();
   const ambiguousRules: StaticCssRule[] = [];
   const rules: StaticCssRule[] = [];
+  const cascadeLayerPathStack: string[][] = [];
+  const hasAnonymousCascadeLayerStack: boolean[] = [];
+  let anonymousCascadeLayerCount = 0;
+  let cascadeLayerPath: string[] = [];
   let conditionalRuleDepth = 0;
-  let cascadeLayerDepth = 0;
+  let hasAnonymousCascadeLayer = false;
   let ruleCount = 0;
   try {
     const nestingResult = transform({
@@ -178,7 +183,17 @@ export const parseStaticCssStylesheet = (source: string): ParsedStaticCssStylesh
       visitor: {
         Rule: (rule) => {
           if (CONDITIONAL_CSS_RULE_TYPES.has(rule.type)) conditionalRuleDepth += 1;
-          if (rule.type === "layer-block") cascadeLayerDepth += 1;
+          if (rule.type === "layer-block") {
+            cascadeLayerPathStack.push(cascadeLayerPath);
+            hasAnonymousCascadeLayerStack.push(hasAnonymousCascadeLayer);
+            if (rule.value.name) {
+              cascadeLayerPath = [...cascadeLayerPath, ...rule.value.name];
+            } else {
+              cascadeLayerPath = [...cascadeLayerPath, `anonymous-${anonymousCascadeLayerCount}`];
+              anonymousCascadeLayerCount += 1;
+              hasAnonymousCascadeLayer = true;
+            }
+          }
           if (rule.type !== "style") return;
           const declarations = parseDeclarations(
             rule.value.declarations.declarations,
@@ -187,8 +202,10 @@ export const parseStaticCssStylesheet = (source: string): ParsedStaticCssStylesh
           if (declarations.length > 0) {
             const targetRules = conditionalRuleDepth > 0 ? ambiguousRules : rules;
             targetRules.push({
+              cascadeLayerKey:
+                cascadeLayerPath.length > 0 ? JSON.stringify(cascadeLayerPath) : null,
               declarations,
-              isInCascadeLayer: cascadeLayerDepth > 0,
+              hasAnonymousCascadeLayer,
               selectors: rule.value.selectors,
               sourceOrder: ruleCount,
             });
@@ -196,7 +213,10 @@ export const parseStaticCssStylesheet = (source: string): ParsedStaticCssStylesh
           ruleCount += 1;
         },
         RuleExit: (rule) => {
-          if (rule.type === "layer-block") cascadeLayerDepth -= 1;
+          if (rule.type === "layer-block") {
+            cascadeLayerPath = cascadeLayerPathStack.pop() ?? [];
+            hasAnonymousCascadeLayer = hasAnonymousCascadeLayerStack.pop() ?? false;
+          }
           if (CONDITIONAL_CSS_RULE_TYPES.has(rule.type)) conditionalRuleDepth -= 1;
         },
       },

@@ -168,6 +168,21 @@ describe("no-img-without-dimensions", () => {
     expect(conditional.diagnostics).toHaveLength(1);
   });
 
+  it("applies source order within the same cascade layer", () => {
+    const definiteDimensions = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `@layer components { section img { width: 100%; height: 178px; } }
+       @layer components { section img { height: 200px; } }`,
+    );
+    const autoOverride = runRuleWithSiblingCss(
+      `const Feed = () => <section><img src="/place.jpg" alt="" /></section>;`,
+      `@layer components { section img { width: 100%; height: 178px; } }
+       @layer components { section img { height: auto; } }`,
+    );
+    expect(definiteDimensions.diagnostics).toHaveLength(0);
+    expect(autoOverride.diagnostics).toHaveLength(1);
+  });
+
   it("does not apply interaction-state sizing to the initial image layout", () => {
     const result = runRuleWithSiblingCss(
       `const Feed = () => <section className="feed"><img src="/place.jpg" alt="" /></section>;`,

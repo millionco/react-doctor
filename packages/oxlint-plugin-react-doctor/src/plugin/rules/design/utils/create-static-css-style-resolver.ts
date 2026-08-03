@@ -36,8 +36,8 @@ export interface StaticCssStyleResolver {
 }
 
 interface MatchedCssDeclaration {
+  readonly cascadeLayerKey: string | null;
   readonly declaration: StaticCssDeclaration;
-  readonly isInCascadeLayer: boolean;
   readonly sourceOrder: number;
   readonly specificity: StaticCssSelectorSpecificity;
 }
@@ -68,16 +68,21 @@ const resolveCascade = (candidates: ReadonlyArray<MatchedCssDeclaration>): CssCa
   let eligibleCandidates = candidates.filter(
     (candidate) => candidate.declaration.isImportant === hasImportantCandidate,
   );
-  const hasLayeredCandidate = eligibleCandidates.some((candidate) => candidate.isInCascadeLayer);
-  const hasUnlayeredCandidate = eligibleCandidates.some((candidate) => !candidate.isInCascadeLayer);
+  const hasLayeredCandidate = eligibleCandidates.some(
+    (candidate) => candidate.cascadeLayerKey !== null,
+  );
+  const hasUnlayeredCandidate = eligibleCandidates.some(
+    (candidate) => candidate.cascadeLayerKey === null,
+  );
   const shouldUseLayeredCandidates = hasImportantCandidate
     ? hasLayeredCandidate
     : !hasUnlayeredCandidate;
   eligibleCandidates = eligibleCandidates.filter(
-    (candidate) => candidate.isInCascadeLayer === shouldUseLayeredCandidates,
+    (candidate) => (candidate.cascadeLayerKey !== null) === shouldUseLayeredCandidates,
   );
   if (
-    eligibleCandidates[0]?.isInCascadeLayer &&
+    eligibleCandidates[0]?.cascadeLayerKey !== null &&
+    new Set(eligibleCandidates.map((candidate) => candidate.cascadeLayerKey)).size > 1 &&
     new Set(eligibleCandidates.map((candidate) => candidate.declaration.value)).size > 1
   ) {
     return { isAmbiguous: true, value: null };
@@ -127,8 +132,8 @@ const resolveStylesheets = (
     for (const declaration of rule.declarations) {
       const candidates = candidatesByProperty.get(declaration.property) ?? [];
       candidates.push({
+        cascadeLayerKey: rule.cascadeLayerKey,
         declaration,
-        isInCascadeLayer: rule.isInCascadeLayer,
         sourceOrder: rule.sourceOrder,
         specificity: matchingSpecificity,
       });
@@ -184,10 +189,17 @@ const findImportedSiblingStylesheetPaths = (filename: string): ReadonlySet<strin
   return importedStylesheetPaths;
 };
 
-const offsetRuleSourceOrder = (rule: StaticCssRule, sourceOrderOffset: number): StaticCssRule => ({
-  ...rule,
-  sourceOrder: rule.sourceOrder + sourceOrderOffset,
-});
+const offsetStylesheetRule = (rule: StaticCssRule, sourceOrderOffset: number): StaticCssRule => {
+  const cascadeLayerKey =
+    rule.cascadeLayerKey && rule.hasAnonymousCascadeLayer
+      ? `${sourceOrderOffset}:${rule.cascadeLayerKey}`
+      : rule.cascadeLayerKey;
+  return {
+    ...rule,
+    cascadeLayerKey,
+    sourceOrder: rule.sourceOrder + sourceOrderOffset,
+  };
+};
 
 const loadSiblingStylesheets = (filename: string): ParsedStaticCssStylesheets => {
   const rules: StaticCssRule[] = [];
@@ -200,9 +212,9 @@ const loadSiblingStylesheets = (filename: string): ParsedStaticCssStylesheets =>
       const fileStat = fs.statSync(stylesheetPath);
       if (fileStat.size > CROSS_FILE_PARSE_MAX_BYTES) continue;
       const parsed = parseStaticCssStylesheet(fs.readFileSync(stylesheetPath, "utf8"));
-      rules.push(...parsed.rules.map((rule) => offsetRuleSourceOrder(rule, ruleCount)));
+      rules.push(...parsed.rules.map((rule) => offsetStylesheetRule(rule, ruleCount)));
       ambiguousRules.push(
-        ...parsed.ambiguousRules.map((rule) => offsetRuleSourceOrder(rule, ruleCount)),
+        ...parsed.ambiguousRules.map((rule) => offsetStylesheetRule(rule, ruleCount)),
       );
       ruleCount += parsed.ruleCount;
       for (const property of parsed.ambiguousProperties) ambiguousProperties.add(property);

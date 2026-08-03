@@ -7,6 +7,7 @@ import {
   getJsxPropKnownStaticStringValues,
   getKnownStaticStringExpressionValues,
 } from "./get-jsx-prop-static-string-values.js";
+import { getStaticPropertyKeyName } from "./get-static-property-key-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isPathInside } from "./is-path-inside.js";
 import { normalizeFilename } from "./normalize-filename.js";
@@ -44,6 +45,29 @@ const collectResolvedStaticJsxId = (
   }
 };
 
+const collectKnownStaticObjectIds = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+  scopes: ScopeAnalysis,
+  ids: Set<string>,
+): void => {
+  for (const property of objectExpression.properties) {
+    if (isNodeOfType(property, "SpreadElement")) {
+      if (isNodeOfType(property.argument, "ObjectExpression")) {
+        collectKnownStaticObjectIds(property.argument, scopes, ids);
+      }
+      continue;
+    }
+    if (!isNodeOfType(property, "Property")) continue;
+    if (getStaticPropertyKeyName(property, { allowComputedString: true })?.toLowerCase() !== "id") {
+      continue;
+    }
+    for (const candidateId of getKnownStaticStringExpressionValues(property.value, scopes) ?? []) {
+      const id = candidateId.trim();
+      if (id) ids.add(id);
+    }
+  }
+};
+
 const isInsideJsxTemplateContent = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">) => {
   let ancestor = openingElement.parent;
   if (isNodeOfType(ancestor, "JSXElement") && ancestor.openingElement === openingElement) {
@@ -77,6 +101,12 @@ const collectStaticJsxIds = (
           scopes,
           ids,
         );
+        if (
+          isNodeOfType(attribute, "JSXSpreadAttribute") &&
+          isNodeOfType(attribute.argument, "ObjectExpression")
+        ) {
+          collectKnownStaticObjectIds(attribute.argument, scopes, ids);
+        }
       }
       return;
     }

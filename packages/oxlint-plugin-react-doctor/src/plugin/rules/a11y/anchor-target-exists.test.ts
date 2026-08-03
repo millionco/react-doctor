@@ -218,6 +218,14 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps known ids from static spreads containing a later dynamic spread", () => {
+    const result = runProjectRule(
+      `const Link = (props) => <><a href="#about">About</a><main {...{ ...{ id: "about", ...props } }} /></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("uses the last explicit JSX id", () => {
     const result = runProjectRule(
       `const Link = () => <><a href="#about">About</a><main id="about" id="contact" /></>;`,

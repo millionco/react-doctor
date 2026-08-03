@@ -870,46 +870,6 @@ describe("runInspect — dead-code/lint overlap", () => {
     expect(output.diagnostics).toHaveLength(0);
     expect(output.didDeadCodeFail).toBe(false);
   });
-
-  it("keeps the auto overlap mode sequential for a concurrent batch member", async () => {
-    const output = await Effect.runPromise(
-      runInspect({ ...baseInput, concurrentScan: true }).pipe(
-        Effect.provide(
-          layersOf({
-            diagnostics: [lintDiagnostic],
-            deadCode: [deadCodeDiagnostic],
-            deadCodeOverlap: "auto",
-          }),
-        ),
-      ),
-    );
-    expect(output.deadCodeOverlapped).toBe(false);
-    // Output is unchanged — it just ran sequentially.
-    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
-      "no-derived-state",
-      "unused-file",
-    ]);
-  });
-
-  it("still overlaps a concurrent batch member when overlap is explicitly forced on", async () => {
-    // `"on"` is an operator override, so it wins over the default sequential path.
-    const output = await Effect.runPromise(
-      runInspect({ ...baseInput, concurrentScan: true }).pipe(
-        Effect.provide(
-          layersOf({
-            diagnostics: [lintDiagnostic],
-            deadCode: [deadCodeDiagnostic],
-            deadCodeOverlap: "on",
-          }),
-        ),
-      ),
-    );
-    expect(output.deadCodeOverlapped).toBe(true);
-    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
-      "no-derived-state",
-      "unused-file",
-    ]);
-  });
 });
 
 describe("runInspect — hooks fire in order", () => {

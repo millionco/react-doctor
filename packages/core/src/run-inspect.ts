@@ -136,8 +136,6 @@ export interface InspectInput {
    * (those always run it). Defaults to `false`.
    */
   readonly supplyChainManifestChanged?: boolean;
-  /** Set when this scan runs concurrently with sibling scans in one process. */
-  readonly concurrentScan?: boolean;
   /**
    * Absolute epoch-millisecond deadline for the scan (the CLI's
    * `--max-duration` budget resolved against the scan start). Past it the
@@ -294,21 +292,9 @@ interface SupplyChainForkResult {
   readonly timedOut: boolean;
 }
 
-/**
- * Hooks the caller participates in without owning the orchestration.
- * Today the CLI uses `beforeLint` to render the project-detection
- * block before lint runs; `afterLint` is invoked once lint (and any
- * downstream dead-code) finishes so the caller can attach side-effects
- * keyed on whether lint failed. Per-phase spinner reporting is owned
- * by the `Progress` service — the caller provides `Progress.layerOra`
- * or `Progress.layerNoop` rather than threading spinner handles
- * through hooks.
- */
+/** Hooks the caller participates in without owning the orchestration. */
 export interface InspectHooks<HooksR = never> {
-  readonly beforeLint?: (
-    project: ProjectInfo,
-    lintIncludePaths: ReadonlyArray<string> | undefined,
-  ) => Effect.Effect<void, never, HooksR>;
+  readonly beforeLint?: (project: ProjectInfo) => Effect.Effect<void, never, HooksR>;
   readonly afterLint?: (didFail: boolean) => Effect.Effect<void, never, HooksR>;
 }
 
@@ -348,7 +334,7 @@ const formatLintFailText = (
  *      The GitHub viewer-permission lookup is forked onto a background
  *      fiber here and joined late (it feeds score metadata, not
  *      diagnostics).
- *   2. beforeLint hook (e.g. CLI renders the project-detection block)
+ *   2. beforeLint hook (e.g. CLI records project telemetry)
  *   3. environment checks (reduced-motion + pnpm hardening +
  *      expo/react-native), collected synchronously. The heavier
  *      content-regex security scan is forked instead (like supply-chain
@@ -527,7 +513,7 @@ export const runInspect = <HooksR = never>(
 
     const beforeLint = hooks.beforeLint ?? NO_HOOKS.beforeLint;
     const afterLint = hooks.afterLint ?? NO_HOOKS.afterLint;
-    yield* beforeLint(project, lintIncludePaths ?? undefined);
+    yield* beforeLint(project);
 
     const isDiffMode = input.includePaths.length > 0;
 

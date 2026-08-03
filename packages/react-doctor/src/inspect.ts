@@ -785,7 +785,6 @@ const runInspectWithRuntime = async (
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
       supplyChainManifestChanged: options.supplyChainManifestChanged,
-      concurrentScan: options.concurrentScan,
       deadlineEpochMs: deadlineEpochMs ?? undefined,
       signal: oxlintRuntime.abortSignal,
       excludedProjectDirectories: options.excludedProjectDirectories,

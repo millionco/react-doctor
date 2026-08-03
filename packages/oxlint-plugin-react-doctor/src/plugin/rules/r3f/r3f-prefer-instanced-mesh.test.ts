@@ -69,6 +69,63 @@ describe("r3f-prefer-instanced-mesh", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("allows resource members reassigned by the map callback", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ firstGeometry, material }) => {
+         const resources = { geometry: firstGeometry, material };
+         return [0, 1].map((index) => {
+           resources.geometry = createGeometry(index);
+           return <mesh geometry={resources.geometry} material={resources.material} />;
+         });
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows meshes with per-instance children or non-rendering semantics", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ geometry, material, props }) => <>
+         {[0, 1].map(() => <mesh geometry={geometry} material={material}><group /></mesh>)}
+         {[0, 1].map(() => <mesh geometry={geometry} material={material} visible={false} />)}
+         {[0, 1].map(() => <mesh geometry={geometry} material={material} attach="customObject" />)}
+         {[0, 1].map(() => <mesh {...props} geometry={geometry} material={material} />)}
+       </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows meshes under non-rendering ancestors", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ geometry, material, props }) => <>
+         {[0, 1].map(() => <group visible={false}><mesh geometry={geometry} material={material} /></group>)}
+         {[0, 1].map(() => <group attach="customObject"><mesh geometry={geometry} material={material} /></group>)}
+         {[0, 1].map(() => <group {...props}><mesh geometry={geometry} material={material} /></group>)}
+       </>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows local resource getters that can return a fresh value per access", () => {
+    const result = runRule(
+      r3fPreferInstancedMesh,
+      `${R3F_RUNTIME_IMPORT}
+       const Scene = ({ material }) => {
+         const resources = {
+           get geometry() { return createGeometry(); },
+           material,
+         };
+         return [0, 1].map(() => <mesh geometry={resources.geometry} material={resources.material} />);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("allows unknown, singleton, conditional, and unrendered maps", () => {
     const result = runRule(
       r3fPreferInstancedMesh,

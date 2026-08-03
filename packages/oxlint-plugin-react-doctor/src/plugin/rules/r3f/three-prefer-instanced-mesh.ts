@@ -1,8 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { functionReturnsMatchingExpression } from "../../utils/function-returns-matching-expression.js";
+import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import {
   THREE_MESH_GEOMETRY_ARGUMENT_INDEX,
   THREE_MESH_MATERIAL_ARGUMENT_INDEX,
@@ -10,6 +16,58 @@ import {
 import { findProvablyRepeatedMapCallsForCallback } from "./utils/find-provably-repeated-map-calls-for-callback.js";
 import { getThreeConstructorName } from "./utils/get-three-constructor-name.js";
 import { isReferenceStableAcrossFunctionExecutions } from "./utils/is-reference-stable-across-function-executions.js";
+
+const THREE_OBJECT_CONTAINER_CONSTRUCTOR_NAMES = new Set(["Group", "Mesh", "Object3D", "Scene"]);
+
+const isThreeObjectAddCall = (
+  node: EsTreeNode,
+  context: RuleContext,
+): node is EsTreeNodeOfType<"CallExpression"> => {
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    !isNodeOfType(node.callee, "MemberExpression") ||
+    getStaticPropertyName(node.callee) !== "add"
+  ) {
+    return false;
+  }
+  const constructorName = getThreeConstructorName(node.callee.object, context.scopes);
+  return constructorName !== null && THREE_OBJECT_CONTAINER_CONSTRUCTOR_NAMES.has(constructorName);
+};
+
+const isDirectlyAddedToThreeObject = (node: EsTreeNode, context: RuleContext): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(node);
+  const call = expressionRoot.parent;
+  return Boolean(
+    call &&
+    isThreeObjectAddCall(call, context) &&
+    call.arguments.some((argument) => argument === expressionRoot),
+  );
+};
+
+const isSpreadIntoThreeObjectAdd = (node: EsTreeNode, context: RuleContext): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(node);
+  const spread = expressionRoot.parent;
+  const call = spread?.parent;
+  return Boolean(
+    spread &&
+    isNodeOfType(spread, "SpreadElement") &&
+    spread.argument === expressionRoot &&
+    call &&
+    isThreeObjectAddCall(call, context) &&
+    call.arguments.some((argument) => argument === spread),
+  );
+};
+
+const isDirectCallbackReturn = (node: EsTreeNode, callback: EsTreeNode): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(node);
+  if (isNodeOfType(callback, "ArrowFunctionExpression") && callback.body === expressionRoot) {
+    return true;
+  }
+  const parent = expressionRoot.parent;
+  return Boolean(
+    parent && isNodeOfType(parent, "ReturnStatement") && parent.argument === expressionRoot,
+  );
+};
 
 export const threePreferInstancedMesh = defineRule({
   id: "three-prefer-instanced-mesh",
@@ -24,21 +82,34 @@ export const threePreferInstancedMesh = defineRule({
       const callback = findEnclosingFunction(node);
       const geometry = node.arguments[THREE_MESH_GEOMETRY_ARGUMENT_INDEX];
       const material = node.arguments[THREE_MESH_MATERIAL_ARGUMENT_INDEX];
+      if (!callback || !geometry || !material) return;
+      const repeatedMapCalls = findProvablyRepeatedMapCallsForCallback(callback, context);
+      const doesCallbackReturnMesh =
+        isDirectCallbackReturn(node, callback) &&
+        functionReturnsMatchingExpression(
+          callback,
+          context.scopes,
+          (returnedExpression) => stripParenExpression(returnedExpression) === node,
+          context.cfg,
+          "every",
+        );
+      const isAddedToThreeObject =
+        isDirectlyAddedToThreeObject(node, context) ||
+        (doesCallbackReturnMesh &&
+          repeatedMapCalls.some((mapCall) => isSpreadIntoThreeObjectAdd(mapCall, context)));
       if (
-        !callback ||
-        !geometry ||
-        !material ||
         isNodeConditionallyExecuted(node, callback) ||
         !isReferenceStableAcrossFunctionExecutions(geometry, callback, context) ||
         !isReferenceStableAcrossFunctionExecutions(material, callback, context) ||
-        findProvablyRepeatedMapCallsForCallback(callback, context).length === 0
+        repeatedMapCalls.length === 0 ||
+        !isAddedToThreeObject
       ) {
         return;
       }
       context.report({
         node,
         message:
-          "This map constructs multiple Mesh objects with the same geometry and material, creating a draw call for each item. Use one InstancedMesh and set each instance transform",
+          "This map adds multiple Mesh objects with the same geometry and material, creating a draw call for each item. Use one InstancedMesh and set each instance transform",
       });
     },
   }),

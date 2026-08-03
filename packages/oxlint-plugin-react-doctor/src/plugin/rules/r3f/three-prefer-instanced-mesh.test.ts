@@ -6,10 +6,12 @@ describe("three-prefer-instanced-mesh", () => {
   it("reports repeated Mesh construction with shared resources", () => {
     const result = runRule(
       threePreferInstancedMesh,
-      `import { Mesh as ThreeMesh } from "three";
+      `import { Mesh as ThreeMesh, Scene } from "three";
        import * as THREE from "three";
-       [0, 1].map(() => new ThreeMesh(geometry, material));
-       [0, 1, 2].map(() => new THREE.Mesh(geometry, material));`,
+       const firstScene = new Scene();
+       const secondScene = new THREE.Scene();
+       firstScene.add(...[0, 1].map(() => new ThreeMesh(geometry, material)));
+       secondScene.add(...[0, 1, 2].map(() => new THREE.Mesh(geometry, material)));`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -17,11 +19,12 @@ describe("three-prefer-instanced-mesh", () => {
   it("reports exact local callbacks used by repeated maps", () => {
     const result = runRule(
       threePreferInstancedMesh,
-      `import { Mesh } from "three";
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
        const createMesh = (index) => new Mesh(geometry, material);
-       [0, 1].map(createMesh);
+       scene.add(...[0, 1].map(createMesh));
        function buildMesh(index) { return new Mesh(geometry, material); }
-       [0, 1].map(buildMesh);`,
+       scene.add(...[0, 1].map(buildMesh));`,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -29,8 +32,9 @@ describe("three-prefer-instanced-mesh", () => {
   it("reports transparent TypeScript resource references", () => {
     const result = runRule(
       threePreferInstancedMesh,
-      `import { Mesh } from "three";
-       [0, 1].map(() => new Mesh(geometry!, material as Material));`,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       scene.add(...[0, 1].map(() => new Mesh(geometry!, material as Material)));`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -68,6 +72,69 @@ describe("three-prefer-instanced-mesh", () => {
          geometry = createGeometry(index);
          return new Mesh(geometry, material);
        });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows resource members reassigned by the map callback", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       const resources = { geometry: firstGeometry, material };
+       scene.add(...[0, 1].map((index) => {
+         resources.geometry = createGeometry(index);
+         return new Mesh(resources.geometry, resources.material);
+       }));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows repeated Mesh construction that is not added to a Three object", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh } from "three";
+       const collisionSamples = [0, 1].map(() => new Mesh(geometry, material));
+       collisionSamples.forEach((mesh) => mesh.geometry.computeBoundingBox());`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports meshes directly added during every repeated callback execution", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       [0, 1].map(() => scene.add(new Mesh(geometry, material)));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("allows Mesh objects that are not returned by the added map", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Group, Mesh, Scene } from "three";
+       const scene = new Scene();
+       scene.add(...[0, 1].map(() => {
+         const collisionSample = new Mesh(geometry, material);
+         collisionSample.geometry.computeBoundingBox();
+         return new Group();
+       }));
+       scene.add(...[0, 1].map(() => new Mesh(geometry, material).add(new Group())));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("allows local resource getters that can return a fresh value per access", () => {
+    const result = runRule(
+      threePreferInstancedMesh,
+      `import { Mesh, Scene } from "three";
+       const scene = new Scene();
+       const resources = {
+         get geometry() { return createGeometry(); },
+         material,
+       };
+       scene.add(...[0, 1].map(() => new Mesh(resources.geometry, resources.material)));`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

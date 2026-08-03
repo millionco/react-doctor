@@ -1953,7 +1953,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { InstancedMesh } from "three"; const mesh = new InstancedMesh(geometry, material, count); const update = () => { mesh.setMatrixAt(0, matrix); };',
   },
   "three-prefer-instanced-mesh": {
-    code: 'import { Mesh } from "three"; [0, 1].map(() => new Mesh(geometry, material));',
+    code: 'import { Mesh, Scene } from "three"; const scene = new Scene(); scene.add(...[0, 1].map(() => new Mesh(geometry, material)));',
   },
   "three-require-owned-geometry-cleanup": {
     code: 'import { useMemo } from "react"; import { BoxGeometry } from "three"; const Scene = () => { const geometry = useMemo(() => new BoxGeometry(), []); return geometry.name; };',

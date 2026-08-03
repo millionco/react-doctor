@@ -8,7 +8,9 @@ import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeConditionallyExecuted } from "../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isMeaningfulJsxChild } from "../../utils/is-meaningful-jsx-child.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { findProvablyRepeatedMapCallsForCallback } from "./utils/find-provably-repeated-map-calls-for-callback.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isReferenceStableAcrossFunctionExecutions } from "./utils/is-reference-stable-across-function-executions.js";
@@ -33,6 +35,50 @@ const hasSharedGeometryAndMaterial = (
   return true;
 };
 
+const hasNonRenderingObjectProps = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  if (node.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"))) {
+    return true;
+  }
+  if (getAuthoritativeJsxAttribute(node.attributes, "attach")) return true;
+  const visibleAttribute = getAuthoritativeJsxAttribute(node.attributes, "visible");
+  if (
+    visibleAttribute?.value &&
+    isNodeOfType(visibleAttribute.value, "JSXExpressionContainer") &&
+    !isNodeOfType(visibleAttribute.value.expression, "JSXEmptyExpression")
+  ) {
+    const visibleExpression = stripParenExpression(visibleAttribute.value.expression);
+    return isNodeOfType(visibleExpression, "Literal") && visibleExpression.value === false;
+  }
+  return false;
+};
+
+const hasPerInstanceObjectSemantics = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  if (hasNonRenderingObjectProps(node)) return true;
+  const element = node.parent;
+  return Boolean(
+    isNodeOfType(element, "JSXElement") &&
+    element.children.some((child) => isMeaningfulJsxChild(child)),
+  );
+};
+
+const hasNonRenderingAncestor = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  callback: EsTreeNode,
+): boolean => {
+  let current = node.parent;
+  while (current && current !== callback) {
+    if (
+      isNodeOfType(current, "JSXElement") &&
+      current.openingElement !== node &&
+      hasNonRenderingObjectProps(current.openingElement)
+    ) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+};
+
 export const r3fPreferInstancedMesh = defineRule({
   id: "r3f-prefer-instanced-mesh",
   title: "Repeated R3F meshes use separate draw calls",
@@ -52,13 +98,15 @@ export const r3fPreferInstancedMesh = defineRule({
           !importsReactThreeFiber ||
           !isR3fHostIntrinsic(node) ||
           !isNodeOfType(node.name, "JSXIdentifier") ||
-          node.name.name !== "mesh"
+          node.name.name !== "mesh" ||
+          hasPerInstanceObjectSemantics(node)
         ) {
           return;
         }
         const callback = findEnclosingFunction(node);
         if (
           !callback ||
+          hasNonRenderingAncestor(node, callback) ||
           isNodeConditionallyExecuted(node, callback) ||
           !functionReturnsMatchingExpression(
             callback,

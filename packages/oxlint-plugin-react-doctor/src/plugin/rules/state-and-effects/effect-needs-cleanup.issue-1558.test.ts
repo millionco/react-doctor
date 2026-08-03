@@ -315,6 +315,19 @@ export const Component = ({ tabs }) => {
 };`,
   ],
   [
+    "rejects a disposer collection mutated through an effect-local helper",
+    `import { useEffect } from "react";
+export const Component = ({ tabs }) => {
+  useEffect(() => {
+    const unsubscribers = tabs.map((tab) => tab.addListener("tabPress", () => {}));
+    const dropLast = () => unsubscribers.pop();
+    dropLast();
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [tabs]);
+  return null;
+};`,
+  ],
+  [
     "rejects a timer helper that can overwrite a live handle",
     `import { useEffect } from "react";
 export const Component = () => {
@@ -636,6 +649,21 @@ const collectionStorageVariants: ReadonlyArray<readonly [string, string, boolean
     true,
   ],
   [
+    "source mutation through helper after snapshot",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();
+    const clearSource = () => { unsubscribers.length = 0; };
+    clearSource();`,
+    true,
+  ],
+  [
+    "source mutation through iterator after snapshot",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();
+    unsubscribers.forEach(() => unsubscribers.pop());`,
+    true,
+  ],
+  [
     "source escape after snapshot",
     `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
     const ownedUnsubscribers = unsubscribers.slice();
@@ -661,6 +689,29 @@ const collectionStorageVariants: ReadonlyArray<readonly [string, string, boolean
     const ownedUnsubscribers = unsubscribers.slice();
     ownedUnsubscribers.length = 0;`,
     false,
+  ],
+  [
+    "snapshot mutation through helper after copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();
+    const clearSnapshot = () => { ownedUnsubscribers.length = 0; };
+    clearSnapshot();`,
+    false,
+  ],
+  [
+    "snapshot mutation through iterator after copy",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();
+    ownedUnsubscribers.forEach(() => ownedUnsubscribers.pop());`,
+    false,
+  ],
+  [
+    "uninvoked snapshot mutation helper",
+    `const unsubscribers = sources.map((source) => source.addListener("change", () => {}));
+    const ownedUnsubscribers = unsubscribers.slice();
+    const clearSnapshot = () => { ownedUnsubscribers.length = 0; };
+    void clearSnapshot;`,
+    true,
   ],
   [
     "source escape before snapshot",

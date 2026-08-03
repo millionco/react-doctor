@@ -6,22 +6,42 @@ const MODULE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".
 const PACKAGE_EXPORT_CONDITIONS = ["import", "default", "module", "browser", "require"];
 const PACKAGE_ENTRY_FIELDS = ["module", "main", "browser"];
 
-const getExistingFilePath = (filePath: string): string | null => {
-  recordExistenceProbe(filePath);
+interface FilesystemEntryClassification {
+  readonly isDirectory: boolean;
+  readonly isFile: boolean;
+}
+
+const DIRECTORY_ENTRY: FilesystemEntryClassification = { isDirectory: true, isFile: false };
+const FILE_ENTRY: FilesystemEntryClassification = { isDirectory: false, isFile: true };
+const OTHER_ENTRY: FilesystemEntryClassification = { isDirectory: false, isFile: false };
+
+const filesystemEntryByPath = new Map<string, FilesystemEntryClassification>();
+const packageJsonByPath = new Map<string, Record<string, unknown> | null>();
+
+const classifyFilesystemEntry = (absolutePath: string): FilesystemEntryClassification => {
+  recordExistenceProbe(absolutePath);
+  const cachedEntry = filesystemEntryByPath.get(absolutePath);
+  if (cachedEntry) return cachedEntry;
+
+  let entry = OTHER_ENTRY;
   try {
-    return fs.statSync(filePath).isFile() ? filePath : null;
+    const fileStat = fs.statSync(absolutePath);
+    if (fileStat.isFile()) entry = FILE_ENTRY;
+    else if (fileStat.isDirectory()) entry = DIRECTORY_ENTRY;
   } catch {
-    return null;
+    filesystemEntryByPath.set(absolutePath, OTHER_ENTRY);
+    return OTHER_ENTRY;
   }
+  filesystemEntryByPath.set(absolutePath, entry);
+  return entry;
+};
+
+const getExistingFilePath = (filePath: string): string | null => {
+  return classifyFilesystemEntry(filePath).isFile ? filePath : null;
 };
 
 const getExistingDirectoryPath = (directoryPath: string): string | null => {
-  recordExistenceProbe(directoryPath);
-  try {
-    return fs.statSync(directoryPath).isDirectory() ? directoryPath : null;
-  } catch {
-    return null;
-  }
+  return classifyFilesystemEntry(directoryPath).isDirectory ? directoryPath : null;
 };
 
 const getModuleFilePathCandidates = (modulePath: string): string[] => {
@@ -79,6 +99,21 @@ const getPackageExportEntry = (packageJson: Record<string, unknown>): string | n
   return getConditionalExportEntry(exportsField["."]);
 };
 
+const readPackageJson = (packageJsonPath: string): Record<string, unknown> | null => {
+  recordContentProbe(packageJsonPath);
+  const cachedPackageJson = packageJsonByPath.get(packageJsonPath);
+  if (cachedPackageJson !== undefined) return cachedPackageJson;
+
+  let packageJson: Record<string, unknown> | null;
+  try {
+    packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  } catch {
+    packageJson = null;
+  }
+  packageJsonByPath.set(packageJsonPath, packageJson);
+  return packageJson;
+};
+
 const resolveModulePathWithIndexFallback = (modulePath: string): string | null => {
   const filePath = resolveModuleFilePath(modulePath);
   if (filePath) return filePath;
@@ -91,22 +126,17 @@ const resolvePackageDirectoryEntry = (directoryPath: string): string | null => {
   if (!existingDirectoryPath) return null;
 
   const packageJsonPath = path.join(existingDirectoryPath, "package.json");
-  recordContentProbe(packageJsonPath);
-  try {
-    const packageJson: Record<string, unknown> = JSON.parse(
-      fs.readFileSync(packageJsonPath, "utf8"),
-    );
-    const packageEntry =
-      getPackageExportEntry(packageJson) ??
-      PACKAGE_ENTRY_FIELDS.map((fieldName) => packageJson[fieldName]).find(
-        (value): value is string => typeof value === "string",
-      );
-    if (!packageEntry) return null;
+  const packageJson = readPackageJson(packageJsonPath);
+  if (!packageJson) return null;
 
-    return resolveModulePathWithIndexFallback(path.resolve(existingDirectoryPath, packageEntry));
-  } catch {
-    return null;
-  }
+  const packageEntry =
+    getPackageExportEntry(packageJson) ??
+    PACKAGE_ENTRY_FIELDS.map((fieldName) => packageJson[fieldName]).find(
+      (value): value is string => typeof value === "string",
+    );
+  if (!packageEntry) return null;
+
+  return resolveModulePathWithIndexFallback(path.resolve(existingDirectoryPath, packageEntry));
 };
 
 const resolveModuleFilePath = (modulePath: string): string | null => {
@@ -137,3 +167,8 @@ export const resolveModuleFileFromAbsolutePath = (importPath: string): string | 
 
 export const resolveRelativeImportPath = (filename: string, source: string): string | null =>
   resolveModuleFileFromAbsolutePath(path.resolve(path.dirname(filename), source));
+
+export const resetModuleResolutionCaches = (): void => {
+  filesystemEntryByPath.clear();
+  packageJsonByPath.clear();
+};

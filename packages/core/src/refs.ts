@@ -1,11 +1,8 @@
 import * as Context from "effect/Context";
 import {
-  DEAD_CODE_PHASE_TIMEOUT_MS,
-  LINT_PHASE_TIMEOUT_MS,
   MIN_SCAN_CONCURRENCY,
   OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_SPAWN_TIMEOUT_MS,
-  SCAN_TOTAL_DEADLINE_MS,
   SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS,
 } from "./constants.js";
 import { readPositiveEnvMs } from "./utils/read-positive-env-ms.js";
@@ -29,40 +26,39 @@ export class OxlintSpawnTimeoutMs extends Context.Reference<number>(
 ) {}
 
 /**
- * Effect-side cap on the lint phase. The env var lets CI / eval runners
- * raise the phase budget for slow large repos without recompiling.
+ * Optional Effect-side cap on the lint phase. Unbounded unless explicitly
+ * configured through the env var or a test layer.
  * Tests override via `Layer.succeed(LintPhaseTimeoutMs, ...)`.
  */
-export class LintPhaseTimeoutMs extends Context.Reference<number>(
+export class LintPhaseTimeoutMs extends Context.Reference<number | null>(
   "react-doctor/LintPhaseTimeoutMs",
   {
-    defaultValue: () =>
-      readPositiveEnvMs("REACT_DOCTOR_LINT_PHASE_TIMEOUT_MS", LINT_PHASE_TIMEOUT_MS),
+    defaultValue: () => readPositiveEnvMs("REACT_DOCTOR_LINT_PHASE_TIMEOUT_MS", null),
   },
 ) {}
 
 /**
- * Effect-side cap on the dead-code phase, sitting above the in-worker
- * timeout as a runtime-independent backstop. The env var raises it for
- * type-heavy projects; tests override via
+ * Optional Effect-side cap on the dead-code phase. Unbounded unless explicitly
+ * configured through the env var or a test layer. Tests override via
  * `Layer.succeed(DeadCodePhaseTimeoutMs, ...)`.
  */
-export class DeadCodePhaseTimeoutMs extends Context.Reference<number>(
+export class DeadCodePhaseTimeoutMs extends Context.Reference<number | null>(
   "react-doctor/DeadCodePhaseTimeoutMs",
   {
-    defaultValue: () =>
-      readPositiveEnvMs("REACT_DOCTOR_DEAD_CODE_PHASE_TIMEOUT_MS", DEAD_CODE_PHASE_TIMEOUT_MS),
+    defaultValue: () => readPositiveEnvMs("REACT_DOCTOR_DEAD_CODE_PHASE_TIMEOUT_MS", null),
   },
 ) {}
 
 /**
- * Overall scan deadline backstop, bounding everything the per-phase
- * timeouts don't (wedged git / IO). The env var raises it for very
- * large repos; tests override via `Layer.succeed(ScanDeadlineMs, ...)`.
+ * Optional overall scan deadline. Unbounded unless explicitly configured
+ * through the env var or a test layer.
  */
-export class ScanDeadlineMs extends Context.Reference<number>("react-doctor/ScanDeadlineMs", {
-  defaultValue: () => readPositiveEnvMs("REACT_DOCTOR_SCAN_DEADLINE_MS", SCAN_TOTAL_DEADLINE_MS),
-}) {}
+export class ScanDeadlineMs extends Context.Reference<number | null>(
+  "react-doctor/ScanDeadlineMs",
+  {
+    defaultValue: () => readPositiveEnvMs("REACT_DOCTOR_SCAN_DEADLINE_MS", null),
+  },
+) {}
 
 /**
  * Wall-clock budget for the supply-chain check when it runs on a background

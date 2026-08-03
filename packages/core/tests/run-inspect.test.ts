@@ -177,6 +177,29 @@ describe("runInspect — phase timeouts & overall deadline", () => {
       overrides.refOverrides,
     );
 
+  it("leaves lint and the overall scan unbounded when no timeout is configured", async () => {
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, runDeadCode: false }).pipe(
+        Effect.provide(
+          baseTimeoutLayers({
+            linter: Layer.mock(Linter, {
+              run: () => Stream.fromEffect(Effect.as(Effect.sleep("50 millis"), lintDiagnostic)),
+            }),
+            deadCode: DeadCode.layerOf([]),
+            refOverrides: Layer.mergeAll(
+              Layer.succeed(LintPhaseTimeoutMs, null),
+              Layer.succeed(DeadCodePhaseTimeoutMs, null),
+              Layer.succeed(ScanDeadlineMs, null),
+            ),
+          }),
+        ),
+      ),
+    );
+
+    expect(output.didLintFail).toBe(false);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toContain("no-derived-state");
+  });
+
   it("caps the dead-code phase into didDeadCodeFail without sinking the rest of the scan", async () => {
     const output = await Effect.runPromise(
       runInspect(baseInput).pipe(

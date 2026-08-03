@@ -570,36 +570,10 @@ export const ABORT_EXIT_CODES: ReadonlySet<number> = new Set([134, 0xc0000409]);
 // Wall-clock cap on the serial OOM rescue pass (replaying OOM-dropped
 // files one at a time after the parallel pass). The rescue is unbounded
 // by batch count — each file that STILL fails re-waits a spawn timeout —
-// so without a cap a large OOM-dropped set could eat the whole
-// LINT_PHASE_TIMEOUT_MS and convert a partial scan into a total lint
-// failure. 60 s rescues dozens of healthy files while at most one
+// so without a cap a large OOM-dropped set could stall the scan indefinitely.
+// 60 s rescues dozens of healthy files while at most one
 // still-pathological file can burn the budget.
 export const OXLINT_OOM_RESCUE_BUDGET_MS = 60_000;
-
-// Effect-side cap on the dead-code phase. Sits ABOVE the in-worker
-// DEAD_CODE_WORKER_TIMEOUT_MS (= 120 s) as a runtime-independent
-// backstop: if the worker's own timer is wedged (or the worker never
-// reports back), the Effect timeout still reclaims the phase.
-export const DEAD_CODE_PHASE_TIMEOUT_MS = 150_000;
-
-// Effect-side cap on the lint phase. Sits ABOVE the worst bounded split
-// cascade (OXLINT_SPLIT_TOTAL_BUDGET_MS plus scheduling overhead across
-// parallel workers) so a healthy-but-slow large repo finishes while a
-// truly wedged lint phase is still reclaimed. The split budget is scoped
-// PER top-level batch, so several failing batches can stagger past one
-// budget's worth of wall-clock — this cap is the hard ceiling that reclaims
-// those pathological scans.
-export const LINT_PHASE_TIMEOUT_MS = 300_000;
-
-// Overall scan deadline backstop. Catches everything the per-phase
-// timeouts don't bound — a wedged git invocation, a stuck filesystem
-// read, scoring — so no single scan can run unbounded. Sits comfortably
-// ABOVE the sum of the per-phase caps (supply-chain 90s + lint 5min +
-// dead-code 2.5min = 9min, run sequentially) plus discovery / git /
-// scoring overhead, so a scan that legitimately uses those budgets
-// degrades gracefully via the per-phase skips instead of hard-failing on
-// this deadline; only a genuinely wedged unbounded phase reaches it.
-export const SCAN_TOTAL_DEADLINE_MS = 900_000;
 
 // deslop's semantic pass builds a full TypeScript program and walks
 // every identifier through the type checker. On type-heavy projects
@@ -629,7 +603,6 @@ export const DEAD_CODE_WORKER_MEM_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
 // ceiling; the phase timeout sits a margin above it.
 export const DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE = 30;
 export const DEAD_CODE_TIMEOUT_CEILING_MS = 600_000;
-export const DEAD_CODE_PHASE_TIMEOUT_OVER_WORKER_MS = 30_000;
 
 // When dead-code is explicitly overlapped with lint (`DeadCodeOverlap="on"`),
 // the two CPU-bound worker pools must SHARE the cores rather than each claiming

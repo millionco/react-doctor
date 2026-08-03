@@ -26,7 +26,6 @@ import { checkReducedMotion } from "./check-reduced-motion.js";
 import { checkSecurityScanCooperative } from "./check-security-scan.js";
 import {
   DEAD_CODE_OVERLAP_PARSE_SHARE,
-  DEAD_CODE_PHASE_TIMEOUT_MS,
   DEFAULT_SHOW_WARNINGS,
   MILLISECONDS_PER_SECOND,
   MIN_DEAD_CODE_PARSE_CONCURRENCY,
@@ -663,6 +662,13 @@ export const runInspect = <HooksR = never>(
       input.deadlineEpochMs === undefined
         ? phaseTimeoutMs
         : Math.min(phaseTimeoutMs, remainingDeadlineBudgetMs(input.deadlineEpochMs));
+    const capOptionalToDeadline = (phaseTimeoutMs: number | null): number | null => {
+      if (input.deadlineEpochMs === undefined) return phaseTimeoutMs;
+      const remainingBudgetMs = remainingDeadlineBudgetMs(input.deadlineEpochMs);
+      return phaseTimeoutMs === null
+        ? remainingBudgetMs
+        : Math.min(phaseTimeoutMs, remainingBudgetMs);
+    };
     const shouldRunSupplyChain = !isDiffMode || (input.supplyChainManifestChanged ?? false);
     const supplyChainOverlapTimeout = capToDeadline(yield* SupplyChainOverlapTimeoutMs);
     const supplyChainFiber = yield* Effect.forkChild(
@@ -715,16 +721,6 @@ export const runInspect = <HooksR = never>(
     const scanConcurrency = resolveScanConcurrency(yield* OxlintConcurrency);
     const lintPhaseTimeoutMs = yield* LintPhaseTimeoutMs;
     const deadCodePhaseTimeoutMs = yield* DeadCodePhaseTimeoutMs;
-    // The dead-code phase timeout normally tracks the file-count-scaled worker
-    // timeout (`resolveDeadCodeTimeout`), so a large repo's legitimately-long
-    // pass isn't reclaimed before it finishes. But an EXPLICIT override (an env
-    // value or a test `Layer` that sets it off its default) is honored verbatim
-    // — tests pin it low to exercise the skip path, and that intent must win
-    // over the scaling.
-    const resolveDeadCodePhaseTimeoutMs = (scaledPhaseTimeoutMs: number): number =>
-      deadCodePhaseTimeoutMs === DEAD_CODE_PHASE_TIMEOUT_MS
-        ? scaledPhaseTimeoutMs
-        : deadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
     // ── Dead-code plan ────────────────────────────────────────────────
@@ -764,15 +760,13 @@ export const runInspect = <HooksR = never>(
         : Math.max(MIN_SCAN_CONCURRENCY, scanConcurrency - deadCodeParseConcurrency);
 
     // Runs either forked (overlap) or inline (sequential) with the same pipeline
-    // + failure Ref. The timeout is a parameter because it scales with the repo's
-    // source-file count — known accurately only after lint, on the sequential
-    // path. Building this is side-effect-free; the worker spawns only when the
-    // effect runs.
+    // + failure Ref. Building this is side-effect-free; the worker spawns only
+    // when the effect runs.
     const buildCollectDeadCode = (deadCodeTimeout: {
       workerTimeoutMs: number;
-      phaseTimeoutMs: number;
-    }) =>
-      Stream.runCollect(
+      phaseTimeoutMs: number | null;
+    }) => {
+      const collectDeadCode = Stream.runCollect(
         applyPerElementPipeline(
           deadCodeService
             .run({
@@ -806,25 +800,25 @@ export const runInspect = <HooksR = never>(
               ),
             ),
         ),
-      ).pipe(
-        // Dead-code phase cap (Effect-side): sits ABOVE the in-worker SIGKILL
-        // timer as a runtime-independent backstop for a starved event loop. On
-        // timeout, fold into the existing dead-code skip contract and yield an
-        // empty chunk so the scan still completes.
-        Effect.timeoutOption(deadCodeTimeout.phaseTimeoutMs),
+      );
+      const phaseTimeoutMs = deadCodeTimeout.phaseTimeoutMs;
+      if (phaseTimeoutMs === null) return collectDeadCode;
+      return collectDeadCode.pipe(
+        Effect.timeoutOption(phaseTimeoutMs),
         Effect.flatMap(
           Option.match({
             onNone: () =>
               Ref.set(deadCodeFailure, {
                 didFail: true,
                 reason: `Dead-code analysis exceeded ${Math.round(
-                  deadCodeTimeout.phaseTimeoutMs / MILLISECONDS_PER_SECOND,
+                  phaseTimeoutMs / MILLISECONDS_PER_SECOND,
                 )}s and was skipped.`,
               }).pipe(Effect.as<Diagnostic[]>([])),
             onSome: Effect.succeed,
           }),
         ),
       );
+    };
     // The overlap fork happens BEFORE lint, so the lint-reported file count isn't
     // known yet — scale the timeout off the project's discovered source count and
     // the reduced core share. (`forkChild`, not `startImmediately`: the lint
@@ -840,9 +834,7 @@ export const runInspect = <HooksR = never>(
       ? yield* Effect.forkChild(
           buildCollectDeadCode({
             workerTimeoutMs: overlapDeadCodeTimeout.workerTimeoutMs,
-            phaseTimeoutMs: capToDeadline(
-              resolveDeadCodePhaseTimeoutMs(overlapDeadCodeTimeout.phaseTimeoutMs),
-            ),
+            phaseTimeoutMs: capOptionalToDeadline(deadCodePhaseTimeoutMs),
           }),
         )
       : null;
@@ -924,25 +916,26 @@ export const runInspect = <HooksR = never>(
     // the existing lint-failure contract (score becomes null) with an
     // `OxlintBatchExceeded`-tagged reason so renderers dispatch on it, and
     // yield an empty chunk so the rest of the scan still completes.
-    const filteredLintDiagnostics = yield* Stream.runCollect(
-      filterPerElementPipeline(rawLintStream),
-    ).pipe(
-      Effect.timeoutOption(lintPhaseTimeoutMs),
-      Effect.flatMap(
-        Option.match({
-          onNone: () =>
-            Ref.set(lintFailure, {
-              didFail: true,
-              reason: `Lint analysis exceeded ${
-                lintPhaseTimeoutMs / MILLISECONDS_PER_SECOND
-              }s and was skipped.`,
-              reasonTag: "OxlintBatchExceeded",
-              reasonKind: null,
-            }).pipe(Effect.as<Diagnostic[]>([])),
-          onSome: Effect.succeed,
-        }),
-      ),
-    );
+    const collectLintDiagnostics = Stream.runCollect(filterPerElementPipeline(rawLintStream));
+    const filteredLintDiagnostics = yield* lintPhaseTimeoutMs === null
+      ? collectLintDiagnostics
+      : collectLintDiagnostics.pipe(
+          Effect.timeoutOption(lintPhaseTimeoutMs),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Ref.set(lintFailure, {
+                  didFail: true,
+                  reason: `Lint analysis exceeded ${
+                    lintPhaseTimeoutMs / MILLISECONDS_PER_SECOND
+                  }s and was skipped.`,
+                  reasonTag: "OxlintBatchExceeded",
+                  reasonKind: null,
+                }).pipe(Effect.as<Diagnostic[]>([])),
+              onSome: Effect.succeed,
+            }),
+          ),
+        );
     const lintCollected = dedupeRelatedDiagnostics(filteredLintDiagnostics);
     yield* Effect.forEach(lintCollected, reporterService.emit, { discard: true });
     const lintFailureState = yield* Ref.get(lintFailure);
@@ -1030,9 +1023,7 @@ export const runInspect = <HooksR = never>(
             ? yield* Fiber.join(deadCodeFiber)
             : yield* buildCollectDeadCode({
                 workerTimeoutMs: sequentialDeadCodeTimeout.workerTimeoutMs,
-                phaseTimeoutMs: capToDeadline(
-                  resolveDeadCodePhaseTimeoutMs(sequentialDeadCodeTimeout.phaseTimeoutMs),
-                ),
+                phaseTimeoutMs: capOptionalToDeadline(deadCodePhaseTimeoutMs),
               });
       }
     }
@@ -1178,13 +1169,10 @@ export const runInspect = <HooksR = never>(
         "inspect.scoreSurface": input.scoreSurface ?? "score",
       },
     }),
-    // Overall scan deadline backstop: bounds any phase not individually
-    // capped (e.g. a wedged git/IO call). Raises `ScanDeadlineExceeded`,
-    // keeping the declared error channel as `ReactDoctorError`; the CLI's
-    // `restoreLegacyThrow` re-dies it cleanly into `handleError`.
     (scanProgram) =>
-      Effect.flatMap(ScanDeadlineMs, (scanDeadlineMs) =>
-        scanProgram.pipe(
+      Effect.flatMap(ScanDeadlineMs, (scanDeadlineMs) => {
+        if (scanDeadlineMs === null) return scanProgram;
+        return scanProgram.pipe(
           Effect.timeout(scanDeadlineMs),
           Effect.catchTag(
             "TimeoutError",
@@ -1195,6 +1183,6 @@ export const runInspect = <HooksR = never>(
                 }),
               }),
           ),
-        ),
-      ),
+        );
+      }),
   );

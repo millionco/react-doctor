@@ -1814,6 +1814,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-duplicate-primitive-object": {
     code: 'import "@react-three/fiber"; const Scene = ({ scene }) => <><primitive object={scene} /><primitive object={scene} /></>;',
   },
+  "r3f-prefer-instanced-mesh": {
+    code: 'import "@react-three/fiber"; const Scene = ({ geometry, material }) => <>{[0, 1].map((index) => <mesh key={index} geometry={geometry} material={material} />)}</>;',
+  },
   "r3f-no-deep-use-three-selector": {
     code: 'import { useThree } from "@react-three/fiber"; const zoom = useThree((state) => state.camera.zoom);',
   },
@@ -1948,6 +1951,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "three-require-instanced-buffer-update": {
     code: 'import { InstancedMesh } from "three"; const mesh = new InstancedMesh(geometry, material, count); const update = () => { mesh.setMatrixAt(0, matrix); };',
+  },
+  "three-prefer-instanced-mesh": {
+    code: 'import { Mesh, Scene } from "three"; const scene = new Scene(); scene.add(...[0, 1].map(() => new Mesh(geometry, material)));',
   },
   "three-require-owned-geometry-cleanup": {
     code: 'import { useMemo } from "react"; import { BoxGeometry } from "three"; const Scene = () => { const geometry = useMemo(() => new BoxGeometry(), []); return geometry.name; };',
@@ -2544,6 +2550,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-collapse-request-error-to-empty-state": {
     code: 'import { useState } from "react";\nexport const Search = () => { const [items, setItems] = useState([]); const load = async () => { try { setItems(await (await fetch("/api/items")).json()); } catch { setItems([]); } }; if (!items.length) return <p>No results found</p>; return <ResultList items={items} />; };',
+  },
+  "no-unowned-async-error-clear": {
+    code: 'import { useEffect, useState } from "react";\nexport const Request = ({ currentId, send }) => { const [ownerId, setOwnerId] = useState(null); useEffect(() => { if (ownerId !== currentId) setOwnerId(null); }, [currentId, ownerId]); const respond = async (request) => { await send(request); if (request.failed) setOwnerId(request.requestId); else setOwnerId(null); }; return <button onClick={() => respond({ requestId: currentId })}>Send</button>; };',
   },
   "no-focus-in-animation-completion-handler": {
     code: 'import { useRef } from "react";\nexport const Dialog = () => { const inputRef = useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };',

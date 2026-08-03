@@ -473,6 +473,7 @@ import { noUnguardedThrowingParseCall } from "./rules/correctness/no-unguarded-t
 import { noUniformFeatureCardGrid } from "./rules/design/no-uniform-feature-card-grid.js";
 import { noUninformativeAriaLabel } from "./rules/a11y/no-uninformative-aria-label.js";
 import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js";
+import { noUnownedAsyncErrorClear } from "./rules/state-and-effects/no-unowned-async-error-clear.js";
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnsafeJsonParse } from "./rules/correctness/no-unsafe-json-parse.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
@@ -553,6 +554,7 @@ import { r3fNoStateInUseFrame } from "./rules/r3f/r3f-no-state-in-use-frame.js";
 import { r3fNoSyncReadbackInUseFrame } from "./rules/r3f/r3f-no-sync-readback-in-use-frame.js";
 import { r3fNoUnstableArgs } from "./rules/r3f/r3f-no-unstable-args.js";
 import { r3fNoUseFrameDependencyArray } from "./rules/r3f/r3f-no-use-frame-dependency-array.js";
+import { r3fPreferInstancedMesh } from "./rules/r3f/r3f-prefer-instanced-mesh.js";
 import { r3fPreferUseLoader } from "./rules/r3f/r3f-prefer-use-loader.js";
 import { r3fRequireFrameDelta } from "./rules/r3f/r3f-require-frame-delta.js";
 import { r3fRequireGlobalEffectCleanup } from "./rules/r3f/r3f-require-global-effect-cleanup.js";
@@ -738,6 +740,7 @@ import { threeNoRedundantUniformsNeedUpdate } from "./rules/r3f/three-no-redunda
 import { threeNoStateInAnimationLoop } from "./rules/r3f/three-no-state-in-animation-loop.js";
 import { threeNoStateInPointerMove } from "./rules/r3f/three-no-state-in-pointer-move.js";
 import { threeOnBeforeCompileRequireProgramCacheKey } from "./rules/r3f/three-on-before-compile-require-program-cache-key.js";
+import { threePreferInstancedMesh } from "./rules/r3f/three-prefer-instanced-mesh.js";
 import { threeRawShaderRequireFragmentFloatPrecision } from "./rules/r3f/three-raw-shader-require-fragment-float-precision.js";
 import { threeRawShaderRequireGlsl3Version } from "./rules/r3f/three-raw-shader-require-glsl3-version.js";
 import { threeRequireAnimationMixerCleanup } from "./rules/r3f/three-require-animation-mixer-cleanup.js";
@@ -6401,6 +6404,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-unowned-async-error-clear",
+    id: "no-unowned-async-error-clear",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnownedAsyncErrorClear,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noUnownedAsyncErrorClear.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-unsafe",
     id: "no-unsafe",
     source: "react-doctor",
@@ -7427,6 +7442,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoUseFrameDependencyArray.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoUseFrameDependencyArray.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-prefer-instanced-mesh",
+    id: "r3f-prefer-instanced-mesh",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fPreferInstancedMesh,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fPreferInstancedMesh.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fPreferInstancedMesh.requires ?? [])]),
       ],
     },
   },
@@ -9716,6 +9746,19 @@ export const reactDoctorRules = [
           ...(threeOnBeforeCompileRequireProgramCacheKey.requires ?? []),
         ]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/three-prefer-instanced-mesh",
+    id: "three-prefer-instanced-mesh",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threePreferInstancedMesh,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threePreferInstancedMesh.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threePreferInstancedMesh.requires ?? [])])],
     },
   },
   {

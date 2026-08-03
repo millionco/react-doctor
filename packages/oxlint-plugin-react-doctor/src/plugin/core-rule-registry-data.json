@@ -3756,6 +3756,24 @@
     }
   },
   {
+    "key": "react-doctor/no-controlled-selection-focus-effect",
+    "id": "no-controlled-selection-focus-effect",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-controlled-selection-focus-effect",
+      "title": "Controlled selection change steals focus",
+      "severity": "warn",
+      "recommendation": "Move selection-driven focus into the keyboard or pointer navigation path, or prove that the list just opened before focusing the selected item.",
+      "category": "Accessibility",
+      "framework": "global",
+      "requires": ["react"],
+      "tags": ["react-jsx-only"],
+      "defaultEnabled": false,
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-cramped-container-padding",
     "id": "no-cramped-container-padding",
     "source": "react-doctor",

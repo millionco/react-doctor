@@ -237,6 +237,7 @@ import { noCollapsedLiteralOrChainAsValue } from "./rules/correctness/no-collaps
 import { noCommonRootFont } from "./rules/design/no-common-root-font.js";
 import { noConflictingSpringOptions } from "./rules/performance/no-conflicting-spring-options.js";
 import { noControlledInputValueWithoutStateUpdate } from "./rules/correctness/no-controlled-input-value-without-state-update.js";
+import { noControlledSelectionFocusEffect } from "./rules/state-and-effects/no-controlled-selection-focus-effect.js";
 import { noCrampedContainerPadding } from "./rules/design/no-cramped-container-padding.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
 import { noCreateObjectUrlInRender } from "./rules/state-and-effects/no-create-object-url-in-render.js";
@@ -3521,6 +3522,20 @@ export const reactDoctorRules = [
       ...noControlledInputValueWithoutStateUpdate,
       framework: "global",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-controlled-selection-focus-effect",
+    id: "no-controlled-selection-focus-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noControlledSelectionFocusEffect,
+      framework: "global",
+      category: "Accessibility",
+      requires: [
+        ...new Set<Capability>(["react", ...(noControlledSelectionFocusEffect.requires ?? [])]),
+      ],
     },
   },
   {

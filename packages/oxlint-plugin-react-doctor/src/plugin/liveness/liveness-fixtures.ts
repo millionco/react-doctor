@@ -2554,6 +2554,16 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-unowned-async-error-clear": {
     code: 'import { useEffect, useState } from "react";\nexport const Request = ({ currentId, send }) => { const [ownerId, setOwnerId] = useState(null); useEffect(() => { if (ownerId !== currentId) setOwnerId(null); }, [currentId, ownerId]); const respond = async (request) => { await send(request); if (request.failed) setOwnerId(request.requestId); else setOwnerId(null); }; return <button onClick={() => respond({ requestId: currentId })}>Send</button>; };',
   },
+  "no-controlled-selection-focus-effect": {
+    code: `import { useModernLayoutEffect } from "./use-modern-layout-effect";
+export const useListNavigation = ({ selectedIndex, focusItem }) => {
+  const indexRef = useRef(null);
+  useModernLayoutEffect(() => {
+    indexRef.current = selectedIndex;
+    focusItem(indexRef);
+  }, [focusItem, selectedIndex]);
+};`,
+  },
   "no-focus-in-animation-completion-handler": {
     code: 'import { useRef } from "react";\nexport const Dialog = () => { const inputRef = useRef(null); return <><input ref={inputRef} /><div onAnimationEnd={() => inputRef.current.focus()} /></>; };',
   },

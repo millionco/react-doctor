@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   EVALUATION_CONFIG_CONTRACT,
+  MATRIX_IMPACT_MANIFEST_OPERATION_TIMEOUT_MS,
   MATRIX_IMPACT_MANIFEST_TEST_TIMEOUT_MS,
   MATRIX_PROJECT_ROOT_POLICY,
   MATRIX_REPORT_CONTRACT,
@@ -97,14 +98,17 @@ describe("verifyMatrixImpactManifests", { timeout: MATRIX_IMPACT_MANIFEST_TEST_T
       ruleKeys: ["react-doctor/example"],
     };
 
-    const deadlineMilliseconds = globalThis.performance.now() + 10_000;
+    const canonicalDeadlineMilliseconds =
+      globalThis.performance.now() + MATRIX_IMPACT_MANIFEST_OPERATION_TIMEOUT_MS;
     await expect(
-      verifyMatrixImpactManifests([treatment], deadlineMilliseconds),
+      verifyMatrixImpactManifests([treatment], canonicalDeadlineMilliseconds),
     ).resolves.toBeUndefined();
+    const mismatchDeadlineMilliseconds =
+      globalThis.performance.now() + MATRIX_IMPACT_MANIFEST_OPERATION_TIMEOUT_MS;
     await expect(
       verifyMatrixImpactManifests(
         [{ ...treatment, impactManifestContents: `${impactManifestContents} ` }],
-        deadlineMilliseconds,
+        mismatchDeadlineMilliseconds,
       ),
     ).rejects.toThrow("does not match the canonical generator");
     await expect(

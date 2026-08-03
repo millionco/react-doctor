@@ -18,6 +18,8 @@ import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 const MESSAGE =
   "An older async response can clear error state owned by a newer request. Check that this request still owns the error before clearing it, keep ownership in the state update, or key the state owner by request ID.";
 
+const COMPONENT_METADATA_PROPERTY_NAMES = new Set(["displayName", "propTypes"]);
+
 interface RequestOwnerState {
   componentFunction: EsTreeNode;
   ownerIdentityReferences: OwnerIdentityReference[];
@@ -179,6 +181,30 @@ const openingElementHasKey = (openingElement: EsTreeNodeOfType<"JSXOpeningElemen
       attribute.name.name === "key",
   );
 
+const getComponentOpeningElement = (
+  identifier: EsTreeNode,
+): EsTreeNodeOfType<"JSXOpeningElement"> | null => {
+  const openingElement = identifier.parent;
+  return isNodeOfType(openingElement, "JSXOpeningElement") && openingElement.name === identifier
+    ? openingElement
+    : null;
+};
+
+const isComponentClosingElementReference = (identifier: EsTreeNode): boolean => {
+  const closingElement = identifier.parent;
+  return isNodeOfType(closingElement, "JSXClosingElement") && closingElement.name === identifier;
+};
+
+const isComponentMetadataReference = (identifier: EsTreeNode): boolean => {
+  const referenceRoot = findTransparentExpressionRoot(identifier);
+  const member = referenceRoot.parent;
+  return (
+    isNodeOfType(member, "MemberExpression") &&
+    member.object === referenceRoot &&
+    COMPONENT_METADATA_PROPERTY_NAMES.has(getStaticPropertyName(member) ?? "")
+  );
+};
+
 const componentIsKeyedAtEveryLocalUse = (
   componentFunction: EsTreeNode,
   context: RuleContext,
@@ -193,14 +219,21 @@ const componentIsKeyedAtEveryLocalUse = (
     bindingScope = bindingScope.parent;
   }
   if (!componentSymbol || componentSymbol.references.length === 0) return false;
-  return componentSymbol.references.every((reference) => {
-    const openingElement = reference.identifier.parent;
-    return (
-      isNodeOfType(openingElement, "JSXOpeningElement") &&
-      openingElement.name === reference.identifier &&
-      openingElementHasKey(openingElement)
-    );
-  });
+  const openingElements: EsTreeNodeOfType<"JSXOpeningElement">[] = [];
+  for (const reference of componentSymbol.references) {
+    const openingElement = getComponentOpeningElement(reference.identifier);
+    if (openingElement) {
+      openingElements.push(openingElement);
+      continue;
+    }
+    if (
+      !isComponentClosingElementReference(reference.identifier) &&
+      !isComponentMetadataReference(reference.identifier)
+    ) {
+      return false;
+    }
+  }
+  return openingElements.length > 0 && openingElements.every(openingElementHasKey);
 };
 
 const conditionHasRequestIdentityEquality = (

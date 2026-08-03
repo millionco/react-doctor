@@ -170,11 +170,39 @@ function RequestCard({ currentRequest, respond }) {
   return <button onClick={() => handleRespond(currentRequest)}>Retry</button>;
 }
 function Screen(props) {
-  return <RequestCard key={props.request.requestId} currentRequest={props.request} respond={props.respond} />;
-}`,
+  return <RequestCard key={props.request.requestId} currentRequest={props.request} respond={props.respond}>Retry</RequestCard>;
+}
+RequestCard.displayName = "RequestCard";`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not assume exported components are keyed at every render site", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useCallback, useEffect, useState } from "react";
+function RequestCard({ currentRequest, respond }) {
+  const currentRequestId = currentRequest.requestId;
+  const [errorRequestId, setErrorRequestId] = useState(null);
+  useEffect(() => {
+    if (errorRequestId !== null && errorRequestId !== currentRequestId) {
+      setErrorRequestId(null);
+    }
+  }, [currentRequestId, errorRequestId]);
+  const handleRespond = useCallback(async (request) => {
+    const result = await respond(request);
+    setErrorRequestId(result.ok ? null : request.requestId);
+  }, [respond]);
+  return <button onClick={() => handleRespond(currentRequest)}>Retry</button>;
+}
+function Screen(props) {
+  return <RequestCard key={props.request.requestId} currentRequest={props.request} respond={props.respond} />;
+}
+export { RequestCard, Screen };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("ignores nullable state without proven request ownership", () => {

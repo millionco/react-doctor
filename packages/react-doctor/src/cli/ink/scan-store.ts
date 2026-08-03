@@ -49,7 +49,6 @@ export interface MultiProjectSummary {
 export interface ScanStoreSnapshot {
   readonly phase: ScanPhase;
   readonly liveDiagnostics: ReadonlyArray<LiveDiagnostic>;
-  readonly liveCount: number;
   readonly progress: string | null;
   readonly report: ScanReport | null;
   readonly summary: MultiProjectSummary | null;
@@ -68,7 +67,6 @@ export interface ScanStore {
 const INITIAL_SNAPSHOT: ScanStoreSnapshot = {
   phase: "scanning",
   liveDiagnostics: [],
-  liveCount: 0,
   progress: null,
   report: null,
   summary: null,
@@ -111,7 +109,6 @@ export const createScanStore = (): ScanStore => {
         liveDiagnostics: [...snapshot.liveDiagnostics, diagnostic].slice(
           -TUI_LIVE_FEED_MAX_ENTRIES,
         ),
-        liveCount: snapshot.liveCount + 1,
       }),
     scheduleProgress: (progress) => {
       pendingProgress = progress;

@@ -66,7 +66,6 @@ export const ScanApp = ({
   return (
     <Scanning
       progressText={snapshot.progress}
-      liveCount={snapshot.liveCount}
       recent={snapshot.liveDiagnostics.slice(-TUI_RECENT_LIVE_DIAGNOSTIC_COUNT)}
     />
   );

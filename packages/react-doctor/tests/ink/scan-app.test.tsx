@@ -69,7 +69,8 @@ describe("ScanApp", () => {
     const { lastFrame, unmount } = render(<ScanApp store={store} />);
     const frame = lastFrame() ?? "";
     expect(frame).toContain("Linting source files");
-    expect(frame).toContain("1 found");
+    expect(frame).toContain("react-doctor/rules-of-hooks");
+    expect(frame).not.toContain("found");
     unmount();
   });
 

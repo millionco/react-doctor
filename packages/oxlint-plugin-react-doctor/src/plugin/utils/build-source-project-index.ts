@@ -20,6 +20,7 @@ export interface SourceProjectModule {
 
 export interface SourceProjectIndex {
   readonly modulesByFilePath: ReadonlyMap<string, SourceProjectModule>;
+  readonly htmlFilePaths: ReadonlyArray<string>;
   readonly consumerModulesByFilePath: ReadonlyMap<string, ReadonlySet<SourceProjectModule>>;
   readonly resolvedSourcePathByNode: WeakMap<EsTreeNode, string>;
   readonly unresolvedRuntimeSources: ReadonlySet<string>;
@@ -29,6 +30,7 @@ export interface SourceProjectIndex {
 const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
 const SOURCE_PROJECT_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
 const SOURCE_PROJECT_MDX_FILE_PATTERN = /\.mdx$/i;
+const SOURCE_PROJECT_HTML_FILE_PATTERN = /\.html?$/i;
 const SOURCE_PROJECT_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
   ".angular",
   ".astro",
@@ -62,8 +64,13 @@ const getSourceProjectModuleScopes = (programNode: EsTreeNodeOfType<"Program">):
 
 const listProductionSourceFiles = (
   rootDirectory: string,
-): { sourceFilePaths: ReadonlyArray<string>; hasOpaqueMdxConsumerSurface: boolean } | null => {
+): {
+  sourceFilePaths: ReadonlyArray<string>;
+  htmlFilePaths: ReadonlyArray<string>;
+  hasOpaqueMdxConsumerSurface: boolean;
+} | null => {
   const sourceFilePaths: string[] = [];
+  const htmlFilePaths: string[] = [];
   const pendingDirectories = [rootDirectory];
   let hasOpaqueMdxConsumerSurface = false;
 
@@ -93,13 +100,17 @@ const listProductionSourceFiles = (
         hasOpaqueMdxConsumerSurface = true;
         continue;
       }
+      if (SOURCE_PROJECT_HTML_FILE_PATTERN.test(entry.name)) {
+        htmlFilePaths.push(normalizeFilename(absolutePath));
+        continue;
+      }
       if (!SOURCE_PROJECT_FILE_PATTERN.test(entry.name)) continue;
       if (SOURCE_PROJECT_DECLARATION_FILE_PATTERN.test(entry.name)) continue;
       sourceFilePaths.push(normalizeFilename(absolutePath));
     }
   }
 
-  return { sourceFilePaths, hasOpaqueMdxConsumerSurface };
+  return { sourceFilePaths, htmlFilePaths, hasOpaqueMdxConsumerSurface };
 };
 
 const getRuntimeModuleSource = (node: EsTreeNode): string | null => {
@@ -202,6 +213,7 @@ export const buildSourceProjectIndex = (
 
   return {
     modulesByFilePath,
+    htmlFilePaths: productionSourceFiles.htmlFilePaths,
     consumerModulesByFilePath,
     resolvedSourcePathByNode,
     unresolvedRuntimeSources,

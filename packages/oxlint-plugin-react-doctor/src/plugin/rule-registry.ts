@@ -17,6 +17,7 @@ import { altText } from "./rules/a11y/alt-text.js";
 import { anchorAmbiguousText } from "./rules/a11y/anchor-ambiguous-text.js";
 import { anchorHasContent } from "./rules/a11y/anchor-has-content.js";
 import { anchorIsValid } from "./rules/a11y/anchor-is-valid.js";
+import { anchorTargetExists } from "./rules/a11y/anchor-target-exists.js";
 import { ariaActivedescendantHasTabindex } from "./rules/a11y/aria-activedescendant-has-tabindex.js";
 import { ariaBrailleEquivalent } from "./rules/a11y/aria-braille-equivalent.js";
 import { ariaProps } from "./rules/a11y/aria-props.js";
@@ -891,6 +892,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(anchorIsValid.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/anchor-target-exists",
+    id: "anchor-target-exists",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...anchorTargetExists,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set<Capability>(["react", ...(anchorTargetExists.requires ?? [])])],
     },
   },
   {

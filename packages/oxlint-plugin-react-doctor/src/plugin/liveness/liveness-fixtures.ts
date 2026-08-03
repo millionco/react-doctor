@@ -66,6 +66,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "anchor-is-valid": {
     code: 'const B = () => <a href="#" onClick={go}>Go</a>;',
   },
+  "anchor-target-exists": {
+    code: 'const B = () => <a href="#missing">Missing</a>;',
+  },
   "aria-activedescendant-has-tabindex": {
     code: '<div contentEditable="false" aria-activedescendant={activeId} />',
   },
@@ -118,7 +121,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     filePath: ".github/workflows/release.yml",
   },
   "button-has-type": {
-    code: "<button type />",
+    code: "<form><button type /></form>",
   },
   "checked-requires-onchange-or-readonly": {
     code: 'const C = ({ checked, locked }) => <input type="checkbox" checked={checked} disabled={locked} />;',

@@ -4,7 +4,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
+import { getStaticStringExpression } from "../../utils/get-static-string-expression.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
@@ -458,6 +462,45 @@ const reportInvalid = (context: Parameters<Rule["create"]>[0], reportNode: EsTre
   context.report({ node: reportNode, message: INVALID_MESSAGE });
 };
 
+const jsxButtonHasAssociatedForm = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const formAttribute = getAuthoritativeJsxAttribute(openingElement.attributes, "form", false);
+  return Boolean(formAttribute && getStringLiteralAttributeValue(formAttribute)?.trim());
+};
+
+const createElementButtonHasAssociatedForm = (
+  propsArgument: EsTreeNode | null | undefined,
+): boolean => {
+  const formPropertyValue = propsArgument
+    ? getStaticObjectPropertyValue(propsArgument, "form")
+    : undefined;
+  return Boolean(getStaticStringExpression(formPropertyValue)?.trim());
+};
+
+const isFormCreateElementCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression") || !isCreateElementCall(node)) return false;
+  const elementType = node.arguments[0];
+  return Boolean(
+    elementType && isNodeOfType(elementType, "Literal") && elementType.value === "form",
+  );
+};
+
+const hasStaticFormAncestor = (node: EsTreeNode): boolean => {
+  let ancestor = node.parent;
+  while (ancestor) {
+    if (
+      isNodeOfType(ancestor, "JSXElement") &&
+      resolveJsxElementType(ancestor.openingElement) === "form"
+    ) {
+      return true;
+    }
+    if (isFormCreateElementCall(ancestor)) return true;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 // Port of `oxc_linter::rules::react::button_has_type`. Flags
 //   - `<button>` without a `type` attribute,
 //   - `<button type="foo">` outside the allowed set,
@@ -483,6 +526,7 @@ export const buttonHasType = defineRule({
         if (resolveJsxElementType(node) !== "button") return;
         const typeAttr = hasJsxPropIgnoreCase(node.attributes, "type");
         if (!typeAttr) {
+          if (!jsxButtonHasAssociatedForm(node) && !hasStaticFormAncestor(node)) return;
           // A spread (`<button {...props} />`) can forward `type` at
           // runtime, so the absence of an explicit attribute isn't proof —
           // unless every spread provably cannot carry a `type` key (e.g.
@@ -530,10 +574,13 @@ export const buttonHasType = defineRule({
           return;
         }
         const propsArgument = node.arguments[1];
+        const hasFormOwner =
+          createElementButtonHasAssociatedForm(propsArgument) || hasStaticFormAncestor(node);
         // No props (`createElement("button")`) or explicitly nullish props
         // (`…, null)`, `…, undefined)`, `…, void 0)`) carry no `type` — unlike
         // an opaque bag, which may forward one at runtime → missing.
         if (!propsArgument || isNullishExpression(propsArgument)) {
+          if (!hasFormOwner) return;
           context.report({ node, message: MISSING_MESSAGE });
           return;
         }
@@ -559,6 +606,7 @@ export const buttonHasType = defineRule({
           }
         }
         if (!typeProp) {
+          if (!hasFormOwner) return;
           // `{ ...props }` may supply `type` at runtime, just like a JSX
           // spread — unless every spread provably cannot carry `type`.
           if (hasSpread) {

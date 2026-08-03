@@ -142,6 +142,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
 
   it("contains the verified set and nothing the analysis can't justify", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
+      "anchor-target-exists",
       "client-passive-event-listeners",
       "exhaustive-deps",
       "ink-ctrl-c-handler-requires-exit-option",

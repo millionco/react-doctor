@@ -546,9 +546,7 @@ export const runInspect = <HooksR = never>(
         Stream.filterMap(
           Filter.fromPredicateOption((diagnostic: Diagnostic) => {
             const filteredDiagnostic = transform.apply(diagnostic);
-            return filteredDiagnostic === null
-              ? Option.none()
-              : Option.some(filteredDiagnostic);
+            return filteredDiagnostic === null ? Option.none() : Option.some(filteredDiagnostic);
           }),
         ),
       );

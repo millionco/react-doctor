@@ -23,21 +23,21 @@ const buildRetainedHandlersSource = (
   return `const Component = () => {\n${handlers}\nreturn <>${buttons}</>;\n};`;
 };
 
-const measureFastestCpuDuration = (
+const measureCpuDuration = (
   handlerCount: number,
   buildRegistration: (handlerIndex: number) => string,
 ): number => {
   const source = buildRetainedHandlersSource(handlerCount, buildRegistration);
-  let fastestDuration = Number.POSITIVE_INFINITY;
+  let totalDuration = 0;
   for (let repetition = 0; repetition < MEASUREMENT_REPETITION_COUNT; repetition += 1) {
     const startedCpuUsage = process.cpuUsage();
     const result = runRule(effectNeedsCleanup, source);
     const elapsedCpuUsage = process.cpuUsage(startedCpuUsage);
-    fastestDuration = Math.min(fastestDuration, elapsedCpuUsage.user + elapsedCpuUsage.system);
+    totalDuration += elapsedCpuUsage.user + elapsedCpuUsage.system;
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(handlerCount);
   }
-  return fastestDuration;
+  return totalDuration;
 };
 
 describe("effect-needs-cleanup performance", () => {
@@ -53,12 +53,12 @@ describe("effect-needs-cleanup performance", () => {
     },
   ]) {
     it(`scales near-linearly across retained ${performanceCase.name}`, () => {
-      measureFastestCpuDuration(SMALL_HANDLER_COUNT, performanceCase.buildRegistration);
-      const smallDuration = measureFastestCpuDuration(
+      measureCpuDuration(SMALL_HANDLER_COUNT, performanceCase.buildRegistration);
+      const smallDuration = measureCpuDuration(
         SMALL_HANDLER_COUNT,
         performanceCase.buildRegistration,
       );
-      const largeDuration = measureFastestCpuDuration(
+      const largeDuration = measureCpuDuration(
         LARGE_HANDLER_COUNT,
         performanceCase.buildRegistration,
       );

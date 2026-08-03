@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   EVALUATION_CONFIG_CONTRACT,
+  MATRIX_IMPACT_MANIFEST_TEST_TIMEOUT_MS,
   MATRIX_PROJECT_ROOT_POLICY,
   MATRIX_REPORT_CONTRACT,
   MATRIX_SCAN_CONTRACT,
@@ -26,7 +27,7 @@ afterEach(() => {
   }
 });
 
-describe("verifyMatrixImpactManifests", () => {
+describe("verifyMatrixImpactManifests", { timeout: MATRIX_IMPACT_MANIFEST_TEST_TIMEOUT_MS }, () => {
   it("regenerates exact manifest bytes from the pinned commits", async () => {
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-impact-verify-"));
     temporaryDirectories.push(temporaryDirectory);

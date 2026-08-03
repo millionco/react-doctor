@@ -310,6 +310,54 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("shows lint failures when projects were also skipped", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      lintFailureReason: "Oxlint failed.",
+      incompleteMessage: "2 projects were skipped because scanning failed.",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("2 projects were skipped because scanning failed.");
+    expect(lastFrame()).toContain("Lint did not run: Oxlint failed.");
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
+  it("shows skipped checks when projects were also skipped", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      skippedChecks: ["dead-code"],
+      incompleteMessage: "2 projects were skipped because scanning failed.",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("2 projects were skipped because scanning failed.");
+    expect(lastFrame()).toContain(
+      "No issues detected, but dead-code checks failed — results are incomplete.",
+    );
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
   it("renders a flat monorepo summary: aggregate score, combined list, folder-qualified paths", async () => {
     const store = createScanStore();
     const webScore: ScoreResult = {

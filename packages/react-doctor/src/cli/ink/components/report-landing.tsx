@@ -44,22 +44,18 @@ export const ReportLanding = ({
   return (
     <Box flexDirection="column">
       {showScore ? header : null}
-      {incompleteMessage ? (
-        <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
-          <Text color="yellow">⚠ {incompleteMessage}</Text>
-        </Box>
-      ) : null}
-      {issueCount === 0 && !incompleteMessage ? (
-        <Box marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
-          {lintFailureReason ? (
+      {incompleteMessage || issueCount === 0 ? (
+        <Box flexDirection="column" marginTop={TUI_REPORT_ACTION_MENU_MARGIN_ROWS}>
+          {incompleteMessage ? <Text color="yellow">⚠ {incompleteMessage}</Text> : null}
+          {issueCount === 0 && lintFailureReason ? (
             <Text color="yellow">⚠ Lint did not run: {lintFailureReason}</Text>
-          ) : skippedCheckLabel ? (
+          ) : issueCount === 0 && skippedCheckLabel ? (
             <Text color="yellow">
               ⚠ No issues detected, but {skippedCheckLabel} checks failed — results are incomplete.
             </Text>
-          ) : (
+          ) : issueCount === 0 && !incompleteMessage ? (
             <Text color="green">✔ {emptyStateMessage ?? "No issues found. Nice work."}</Text>
-          )}
+          ) : null}
         </Box>
       ) : null}
       {phase === "actions" ? (

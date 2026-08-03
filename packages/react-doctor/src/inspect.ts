@@ -58,6 +58,7 @@ import { materializeBaselineFiles } from "./cli/utils/materialize-baseline-files
 import { createSourceLineReader } from "./cli/utils/read-source-line.js";
 import { createDiagnosticEvidenceReader } from "./cli/utils/read-diagnostic-evidence.js";
 import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
+import { hasIncompleteScoreAnalysis } from "./cli/utils/has-incomplete-score-analysis.js";
 import { buildEmptyReportMessage } from "./cli/utils/build-empty-report-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import {
@@ -1232,8 +1233,11 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       securityScanFailureReason,
     });
     const hasSkippedChecks = skippedChecks.length > 0;
-
-    const noScoreMessage = buildNoScoreMessage(options.noScore, options.scoreDisabledMessage);
+    const noScoreMessage = buildNoScoreMessage({
+      isScoreDisabled: options.noScore,
+      isAnalysisIncomplete: hasIncompleteScoreAnalysis(skippedChecks),
+      disabledMessage: options.scoreDisabledMessage,
+    });
 
     const buildResult = (): InspectResult => ({
       diagnostics: [...diagnostics],

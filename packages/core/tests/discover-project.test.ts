@@ -33,6 +33,9 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory, { sourceFileCount: 12_345 }).sourceFileCount).toBe(
       12_345,
     );
+    expect(discoverProject(projectDirectory, { sourceFileCount: 54_321 }).sourceFileCount).toBe(
+      54_321,
+    );
   });
 
   it("detects React version from package.json", () => {

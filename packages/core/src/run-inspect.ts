@@ -482,6 +482,10 @@ export const runInspect = <HooksR = never>(
         reason: new NoReactDependency({ directory: scanDirectory }),
       });
     }
+    const deadCodeSourceFileCount =
+      input.retainExcludedProjectDeadCodeDiagnostics === true && precomputedSourceFiles !== null
+        ? precomputedSourceFiles.length
+        : project.sourceFileCount;
     const [repo, sha, defaultBranch] = yield* Effect.all(
       [
         gitService
@@ -826,7 +830,7 @@ export const runInspect = <HooksR = never>(
     // the runtime to this child so it runs DURING lint. Auto-supervised —
     // interrupted if the parent dies.)
     const overlapDeadCodeTimeout = resolveDeadCodeTimeout({
-      sourceFileCount: project.sourceFileCount,
+      sourceFileCount: deadCodeSourceFileCount,
       deadCodeConcurrency: deadCodeParseConcurrency ?? scanConcurrency,
       fullConcurrency: scanConcurrency,
     });
@@ -1014,7 +1018,10 @@ export const runInspect = <HooksR = never>(
         // reported the true file count — scale the timeout to it so a large repo's
         // legitimately-long pass isn't reclaimed before it finishes.
         const sequentialDeadCodeTimeout = resolveDeadCodeTimeout({
-          sourceFileCount: totalFileCount,
+          sourceFileCount:
+            input.retainExcludedProjectDeadCodeDiagnostics === true
+              ? deadCodeSourceFileCount
+              : totalFileCount,
           deadCodeConcurrency: scanConcurrency,
           fullConcurrency: scanConcurrency,
         });

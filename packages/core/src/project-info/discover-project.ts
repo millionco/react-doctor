@@ -160,7 +160,11 @@ export const discoverProject = (
   options: DiscoverProjectOptions = {},
 ): ProjectInfo => {
   const cached = cachedProjectInfos.get(directory);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return options.sourceFileCount === undefined
+      ? cached
+      : { ...cached, sourceFileCount: options.sourceFileCount };
+  }
 
   const packageJsonPath = path.join(directory, "package.json");
   if (!isFile(packageJsonPath)) {

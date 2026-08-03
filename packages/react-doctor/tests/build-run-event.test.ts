@@ -129,6 +129,27 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["scan.multilineDiagnosticCount"]).toBe(1);
   });
 
+  it("classifies why a score is unavailable", () => {
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult() }))["score.unavailableReason"],
+    ).toBe("api-unavailable");
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult(), didDeadCodeFail: true }))[
+        "score.unavailableReason"
+      ],
+    ).toBe("analysis-incomplete");
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult(), noScore: true }))[
+        "score.unavailableReason"
+      ],
+    ).toBe("disabled");
+    expect(
+      buildRunEventAttributes(
+        baseInput({ result: buildResult({ score: { score: 90, label: "Great" } }) }),
+      )["score.unavailableReason"],
+    ).toBeUndefined();
+  });
+
   it("records whether the dead-code pass overlapped lint, and drops it on the failure path", () => {
     expect(
       buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: true }))[

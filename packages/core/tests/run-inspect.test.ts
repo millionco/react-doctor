@@ -33,6 +33,10 @@ import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
 import { SupplyChain } from "../src/services/supply-chain.js";
+import {
+  DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE,
+  DEAD_CODE_WORKER_TIMEOUT_MS,
+} from "../src/constants.js";
 
 const temporaryDirectories: string[] = [];
 afterAll(() => {
@@ -326,6 +330,22 @@ describe("runInspect — happy path", () => {
     let lintIncludePaths: ReadonlyArray<string> | undefined;
     let didDeadCodeReceiveIgnorePatterns = false;
     let discoveredSourceFileCount: number | undefined;
+    const deadCodeWorkerTimeouts: Array<number | undefined> = [];
+    const descendantSourceFileCount =
+      Math.floor(DEAD_CODE_WORKER_TIMEOUT_MS / DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE) + 1;
+    const sourceFiles = new Map<string, string>([
+      ["/repo/src/root.tsx", "export const Root = null;"],
+    ]);
+    for (
+      let sourceFileIndex = 0;
+      sourceFileIndex < descendantSourceFileCount;
+      sourceFileIndex += 1
+    ) {
+      sourceFiles.set(
+        `/repo/packages/web/src/file-${sourceFileIndex}.tsx`,
+        `export const value${sourceFileIndex} = null;`,
+      );
+    }
     const layers = Layer.mergeAll(
       Layer.mock(Project, {
         discover: (input) => {
@@ -337,12 +357,7 @@ describe("runInspect — happy path", () => {
         },
       }),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
-      Files.layerInMemory(
-        new Map([
-          ["/repo/src/root.tsx", "export const Root = null;"],
-          ["/repo/packages/web/src/app.tsx", "export const App = null;"],
-        ]),
-      ),
+      Files.layerInMemory(sourceFiles),
       Layer.mock(Linter, {
         run: (input) => {
           lintIncludePaths = input.includePaths;
@@ -352,6 +367,7 @@ describe("runInspect — happy path", () => {
       LintPartialFailures.layerLive,
       Layer.mock(DeadCode, {
         run: (input) => {
+          deadCodeWorkerTimeouts.push(input.workerTimeoutMs);
           didDeadCodeReceiveIgnorePatterns = "ignorePatterns" in input;
           return Stream.fromIterable([
             deadCodeDiagnostic,
@@ -396,6 +412,10 @@ describe("runInspect — happy path", () => {
     expect(workspaceOutput.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
       "packages/web/src/Unused.tsx",
       "src/Unused.tsx",
+    ]);
+    expect(deadCodeWorkerTimeouts).toEqual([
+      DEAD_CODE_WORKER_TIMEOUT_MS,
+      (descendantSourceFileCount + 1) * DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE,
     ]);
   });
 

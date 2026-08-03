@@ -25,6 +25,7 @@ import type {
 import { createInvocationInspect } from "../../inspect.js";
 import type { ReactDoctorInspectOptions } from "../../inspect.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
+import { hasIncompleteScoreAnalysis } from "../utils/has-incomplete-score-analysis.js";
 import { registerActiveTuiRenderer } from "../utils/active-tui-renderer.js";
 import { buildEmptyReportMessage } from "../utils/build-empty-report-message.js";
 import { computeProjectedScore } from "../utils/compute-score-projection.js";
@@ -131,7 +132,7 @@ const resolveScanPresentation = (
       input.share === false ||
       isShareOptedOut(projectScans, input.options?.noScore),
     initialProgress: projectScans.length > 1 ? "Indexing workspace files…" : "Scanning project…",
-    noScoreMessage: buildNoScoreMessage(isScoreDisabled),
+    noScoreMessage: buildNoScoreMessage({ isScoreDisabled }),
     shouldRecommendCi:
       projectScans.length > 1 ||
       projectScans.some((projectScan) => isCiUnconfigured(projectScan.directory)),
@@ -511,7 +512,11 @@ const runSingleProjectScan = async (
         rootDirectory: projectScan.directory,
         projectedScore,
         isOffline: context.isOffline,
-        noScoreMessage: context.noScoreMessage,
+        noScoreMessage: buildNoScoreMessage({
+          isScoreDisabled: input.options?.noScore === true || projectScan.config?.noScore === true,
+          isAnalysisIncomplete: hasIncompleteScoreAnalysis(result.skippedChecks),
+          disabledMessage: input.options?.scoreDisabledMessage,
+        }),
         emptyStateMessage: resolveEmptyStateMessage(input, reportSelection.demotedDiagnosticCount),
       }),
     );
@@ -664,7 +669,11 @@ const runMultiProjectScan = async (
           rootDirectory: directory,
           projectedScore: null,
           isOffline: context.isOffline,
-          noScoreMessage: context.noScoreMessage,
+          noScoreMessage: buildNoScoreMessage({
+            isScoreDisabled: input.options?.noScore === true || config?.noScore === true,
+            isAnalysisIncomplete: hasIncompleteScoreAnalysis(result.skippedChecks),
+            disabledMessage: input.options?.scoreDisabledMessage,
+          }),
           emptyStateMessage: resolveEmptyStateMessage(
             input,
             reportSelection.demotedDiagnosticCount,
@@ -702,7 +711,14 @@ const runMultiProjectScan = async (
       projectName: path.basename(rootDirectory),
       rootDirectory,
       isOffline: context.isOffline,
-      noScoreMessage: context.noScoreMessage,
+      noScoreMessage: buildNoScoreMessage({
+        isScoreDisabled:
+          input.options?.noScore === true || results.some(({ config }) => config?.noScore === true),
+        isAnalysisIncomplete: results.some(({ result }) =>
+          hasIncompleteScoreAnalysis(result.skippedChecks),
+        ),
+        disabledMessage: input.options?.scoreDisabledMessage,
+      }),
       emptyStateMessage: resolveEmptyStateMessage(
         input,
         projectEntries.reduce(

@@ -457,6 +457,10 @@ describe("filename-registry-entries", () => {
       `nested-task.ts is registered by its extensionless path and must be treated as entry, got: ${unusedFilePaths}`,
     );
     assert.ok(
+      !unusedFilePaths.includes("tools/dynamic/dynamic-import-task.ts"),
+      `dynamic-import-task.ts is referenced by an extensionless import expression and must be treated as entry, got: ${unusedFilePaths}`,
+    );
+    assert.ok(
       unusedFilePaths.includes("other/nested-task.ts"),
       `the same basename at an unregistered path SHOULD still be flagged, got: ${unusedFilePaths}`,
     );

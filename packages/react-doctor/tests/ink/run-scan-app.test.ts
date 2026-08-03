@@ -259,6 +259,52 @@ describe("runScanApp", () => {
     });
   });
 
+  it("explains that an incomplete scan suppressed the score", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      skippedChecks: ["dead-code"],
+      skippedCheckReasons: { "dead-code": "Dead-code analysis failed." },
+    });
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain(
+      "lint or dead-code analysis could not complete",
+    );
+    expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).not.toContain(
+      "score API",
+    );
+  });
+
+  it("does not blame a score API failure on unrelated skipped checks", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      skippedChecks: ["supply-chain"],
+      skippedCheckReasons: { "supply-chain": "Supply-chain analysis failed." },
+    });
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).toContain("score API");
+    expect(mockState.scanStores[0]?.getSnapshot().report?.noScoreMessage).not.toContain(
+      "lint or dead-code analysis could not complete",
+    );
+  });
+
   it("excludes nested projects from an ancestor scan", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";

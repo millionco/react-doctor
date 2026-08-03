@@ -967,6 +967,16 @@ const extractReferencedFilenames = (
   }
 
   const visitNode = (node: WalkableNode): void => {
+    if (node.type === "ImportExpression") {
+      const sourceExpression = node.source;
+      if (isWalkableNode(sourceExpression) && sourceExpression.type === "Literal") {
+        const literalValue = sourceExpression.value;
+        if (typeof literalValue === "string" && REFERENCED_MODULE_PATH_PATTERN.test(literalValue)) {
+          captured.add(literalValue);
+        }
+      }
+    }
+
     if (node.type === "CallExpression" || node.type === "NewExpression") {
       const callArguments = node.arguments;
       for (const callArgument of Array.isArray(callArguments) ? callArguments : []) {

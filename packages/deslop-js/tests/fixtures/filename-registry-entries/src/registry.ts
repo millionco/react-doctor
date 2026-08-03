@@ -5,3 +5,5 @@ export const TOOL_REGISTRY = [
   { name: "export-data", file: "export-data.ts" },
   { name: "nested-task", file: registerTool("tools/dynamic/nested-task") },
 ] as const;
+
+export const loadDynamicTool = () => import("tools/dynamic/dynamic-import-task");

@@ -2,6 +2,7 @@ import { calculateScore, mapWithConcurrency } from "@react-doctor/core";
 import type { SurfaceFilterableScan } from "./filter-scans-for-surface.js";
 import { filterScansForSurface } from "./filter-scans-for-surface.js";
 import { METRIC, SCORE_RETRY_MAX_CONCURRENCY } from "./constants.js";
+import { hasIncompleteScoreAnalysis } from "./has-incomplete-score-analysis.js";
 import { recordCount } from "./record-metric.js";
 
 export interface RetryableProjectScore extends SurfaceFilterableScan {
@@ -15,8 +16,7 @@ export const retryMissingProjectScores = async <ProjectScan extends RetryablePro
     const shouldRetry =
       projectScan.result.score === null &&
       !projectScan.isScoreDisabled &&
-      !projectScan.result.skippedChecks.includes("lint") &&
-      !projectScan.result.skippedChecks.includes("dead-code");
+      !hasIncompleteScoreAnalysis(projectScan.result.skippedChecks);
     if (!shouldRetry) return projectScan;
 
     const score = await calculateScore(filterScansForSurface([projectScan], "score"));

@@ -311,10 +311,6 @@ const getExternalCssElementBoxAxes = (
     (evidence.widthReservesWithParent && parentAxes.hasWidth) ||
     (elementName !== null && IMPLICIT_WIDTH_PARENT_ELEMENT_NAMES.has(elementName));
   let hasHeight = evidence.hasHeight || (evidence.heightReservesWithParent && parentAxes.hasHeight);
-  if (evidence.hasAspectRatio) {
-    hasHeight ||= hasWidth;
-    hasWidth ||= hasHeight;
-  }
   if (!parentOpeningElement) return { hasHeight, hasWidth };
   if (
     inlineStyleOverridesAny(elementOpeningElement, context, ["alignSelf", "flex", "flexGrow"]) ||
@@ -333,19 +329,22 @@ const getExternalCssElementBoxAxes = (
   const flexWrap = getConsistentExternalCssValue(parentStyle, "flex-wrap") ?? "nowrap";
   const alignItems = getConsistentExternalCssValue(parentStyle, "align-items") ?? "stretch";
   const alignSelf = getConsistentExternalCssValue(style, "align-self") ?? "auto";
-  if (
-    display === "flex" &&
-    (flexDirection === "row" || flexDirection === "row-reverse") &&
-    flexWrap === "nowrap"
-  ) {
-    if (parentAxes.hasWidth && externalCssHasPositiveFlexGrow(style)) hasWidth = true;
-    if (
-      parentAxes.hasHeight &&
-      alignItems === "stretch" &&
-      (alignSelf === "auto" || alignSelf === "stretch")
-    ) {
-      hasHeight = true;
+  const isFlexContainer = display === "flex" || display === "inline-flex";
+  const isRowDirection = flexDirection === "row" || flexDirection === "row-reverse";
+  const isColumnDirection = flexDirection === "column" || flexDirection === "column-reverse";
+  if (isFlexContainer && (isRowDirection || isColumnDirection) && flexWrap === "nowrap") {
+    if (externalCssHasPositiveFlexGrow(style)) {
+      if (isRowDirection && parentAxes.hasWidth) hasWidth = true;
+      if (isColumnDirection && parentAxes.hasHeight) hasHeight = true;
     }
+    if (alignItems === "stretch" && (alignSelf === "auto" || alignSelf === "stretch")) {
+      if (isRowDirection && parentAxes.hasHeight) hasHeight = true;
+      if (isColumnDirection && parentAxes.hasWidth) hasWidth = true;
+    }
+  }
+  if (evidence.hasAspectRatio) {
+    hasHeight ||= hasWidth;
+    hasWidth ||= hasHeight;
   }
   return { hasHeight, hasWidth };
 };

@@ -194,6 +194,18 @@ describe("no-img-without-dimensions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("models row and column axes for flex and inline-flex containers", () => {
+    const result = runRuleWithSiblingCss(
+      `const Gallery = () => <main><div className="row"><aside><img src="/row.jpg" alt="" /></aside></div><div className="column"><aside><img src="/column.jpg" alt="" /></aside></div></main>;`,
+      `main { width: 100vw; height: 100vh; }
+       .row { display: inline-flex; width: 100%; height: 50%; }
+       .column { display: flex; flex-direction: column; width: 100%; height: 50%; }
+       aside { flex: 1; }
+       aside > img { width: 100%; height: 100%; object-fit: cover; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("keeps external parent sizing when inline styles do not override layout", () => {
     const result = runRuleWithSiblingCss(
       `const Map = () => <main><div className="body" style={{ color: "red" }}><aside style={{ color: "blue" }}><img src="/map.jpg" alt="" /></aside></div></main>;`,

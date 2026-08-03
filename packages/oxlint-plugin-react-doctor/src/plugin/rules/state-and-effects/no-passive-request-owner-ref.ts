@@ -63,16 +63,16 @@ const doesDependencyArrayContainSymbol = (
   });
 };
 
-const findPassiveOwnerSync = (
+const findPassiveOwnerSyncs = (
   effectCall: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
-): PassiveOwnerSync | null => {
+): PassiveOwnerSync[] => {
   const ownerFunction = findEnclosingFunction(effectCall);
   const callback = getEffectCallback(effectCall, context.scopes);
-  if (!ownerFunction || !isFunctionLike(callback)) return null;
-  let passiveOwnerSync: PassiveOwnerSync | null = null;
+  if (!ownerFunction || !isFunctionLike(callback)) return [];
+  const passiveOwnerSyncs: PassiveOwnerSync[] = [];
   walkOwnFunctionScope(callback, (node: EsTreeNode) => {
-    if (passiveOwnerSync || !isNodeOfType(node, "AssignmentExpression") || node.operator !== "=") {
+    if (!isNodeOfType(node, "AssignmentExpression") || node.operator !== "=") {
       return;
     }
     const target = stripParenExpression(node.left);
@@ -102,13 +102,22 @@ const findPassiveOwnerSync = (
     ) {
       return;
     }
-    passiveOwnerSync = {
+    if (
+      passiveOwnerSyncs.some(
+        (passiveOwnerSync) =>
+          passiveOwnerSync.ownerRefSymbolId === ownerRefSymbol.id &&
+          passiveOwnerSync.ownerSymbolId === ownerSymbol.id,
+      )
+    ) {
+      return;
+    }
+    passiveOwnerSyncs.push({
       ownerFunction,
       ownerRefSymbolId: ownerRefSymbol.id,
       ownerSymbolId: ownerSymbol.id,
-    };
+    });
   });
-  return passiveOwnerSync;
+  return passiveOwnerSyncs;
 };
 
 const doesTestContainOwnerMismatch = (
@@ -155,7 +164,7 @@ const doesAsyncFunctionTrustPassiveOwner = (
 ): boolean => {
   if (!isFunctionLike(asyncFunction) || !asyncFunction.async) return false;
   const awaitNodes: EsTreeNode[] = [];
-  const ownerGuards: EsTreeNode[] = [];
+  const ownerGuards: EsTreeNodeOfType<"IfStatement">[] = [];
   const stateDispatcherCalls: EsTreeNode[] = [];
   walkOwnFunctionScope(asyncFunction, (node: EsTreeNode) => {
     if (isNodeOfType(node, "AwaitExpression")) {
@@ -179,7 +188,7 @@ const doesAsyncFunctionTrustPassiveOwner = (
       ) &&
       stateDispatcherCalls.some(
         (stateDispatcherCall) =>
-          !isDescendantWithoutFunctionBoundary(stateDispatcherCall, ownerGuard) &&
+          !isDescendantWithoutFunctionBoundary(stateDispatcherCall, ownerGuard.consequent) &&
           nodesCanCoExecute(ownerGuard, stateDispatcherCall, context) &&
           canNodeReachLaterNodeWithinFunction(
             ownerGuard,
@@ -229,9 +238,12 @@ export const noPassiveRequestOwnerRef = defineRule({
       ) {
         return;
       }
-      const passiveOwnerSync = findPassiveOwnerSync(node, context);
-      if (!passiveOwnerSync) return;
-      if (hasAsyncCommitTrustingPassiveOwner(passiveOwnerSync, context)) {
+      const passiveOwnerSyncs = findPassiveOwnerSyncs(node, context);
+      if (
+        passiveOwnerSyncs.some((passiveOwnerSync) =>
+          hasAsyncCommitTrustingPassiveOwner(passiveOwnerSync, context),
+        )
+      ) {
         context.report({ node, message: MESSAGE });
       }
     },

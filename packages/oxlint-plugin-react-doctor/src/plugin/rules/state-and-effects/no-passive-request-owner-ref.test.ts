@@ -243,4 +243,51 @@ const History = ({ documentId }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("reports a state commit in the owner-match else branch", () => {
+    const result = runRule(
+      noPassiveRequestOwnerRef,
+      `const History = ({ viewId }) => {
+  const activeViewIdRef = useRef(viewId);
+  const [, setVersions] = useState([]);
+  useEffect(() => {
+    activeViewIdRef.current = viewId;
+  }, [viewId]);
+  const refresh = async () => {
+    const versions = await load(viewId);
+    if (activeViewIdRef.current !== viewId) {
+      return;
+    } else {
+      setVersions(versions);
+    }
+  };
+  return <button onClick={refresh}>Refresh</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a later passive owner synchronization in the same effect", () => {
+    const result = runRule(
+      noPassiveRequestOwnerRef,
+      `const History = ({ documentId, viewId }) => {
+  const documentIdRef = useRef(documentId);
+  const viewIdRef = useRef(viewId);
+  const [, setVersions] = useState([]);
+  useEffect(() => {
+    documentIdRef.current = documentId;
+    viewIdRef.current = viewId;
+  }, [documentId, viewId]);
+  const refresh = async () => {
+    const versions = await load(viewId);
+    if (viewIdRef.current !== viewId) return;
+    setVersions(versions);
+  };
+  return <button onClick={refresh}>Refresh</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

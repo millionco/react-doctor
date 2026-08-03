@@ -26,16 +26,6 @@ export interface SemanticAnalysisResult {
   misclassifiedDependencies: MisclassifiedDependency[];
   redundantAliases: RedundantAlias[];
   errors: DeslopError[];
-  contextStatus:
-    | "disabled"
-    | "ready"
-    | "no-context-required"
-    | "no-tsconfig"
-    | "tsconfig-parse-error"
-    | "program-creation-failed"
-    | "too-many-files"
-    | "typescript-load-failed";
-  contextMessage?: string;
 }
 
 const createDisabledSemanticResult = (): SemanticAnalysisResult => ({
@@ -45,7 +35,6 @@ const createDisabledSemanticResult = (): SemanticAnalysisResult => ({
   misclassifiedDependencies: [],
   redundantAliases: [],
   errors: [],
-  contextStatus: "disabled",
 });
 
 export const runSemanticAnalysis = (
@@ -93,7 +82,6 @@ export const runSemanticAnalysis = (
       misclassifiedDependencies,
       redundantAliases: [],
       errors,
-      contextStatus: "no-context-required",
     };
   }
 
@@ -115,7 +103,6 @@ export const runSemanticAnalysis = (
           detail: describeUnknownError(contextError),
         }),
       ],
-      contextStatus: "typescript-load-failed",
     };
   }
 
@@ -127,8 +114,6 @@ export const runSemanticAnalysis = (
       misclassifiedDependencies,
       redundantAliases: [],
       errors: [...errors, contextResult.failure.error],
-      contextStatus: contextResult.failure.reason,
-      contextMessage: contextResult.failure.message,
     };
   }
 
@@ -187,6 +172,5 @@ export const runSemanticAnalysis = (
     misclassifiedDependencies,
     redundantAliases: [...variableAliases, ...roundTripAliases],
     errors,
-    contextStatus: "ready",
   };
 };

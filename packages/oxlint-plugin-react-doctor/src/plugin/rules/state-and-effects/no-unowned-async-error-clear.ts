@@ -20,14 +20,19 @@ const MESSAGE =
 
 interface RequestOwnerState {
   componentFunction: EsTreeNode;
+  ownerIdentityReferences: OwnerIdentityReference[];
   setterSymbol: SymbolDescriptor;
-  stateSymbol: SymbolDescriptor;
 }
 
 interface AsyncOwnerWrite {
   call: EsTreeNodeOfType<"CallExpression">;
   hasClear: boolean;
   hasRequestIdentity: boolean;
+}
+
+interface OwnerIdentityReference {
+  propertyName: string | null;
+  symbolId: number;
 }
 
 const isNullLiteral = (node: EsTreeNode | null | undefined): boolean => {
@@ -89,12 +94,29 @@ const expressionContainsRequestIdentity = (
   return hasRequestIdentity;
 };
 
-const stateHasIdentityComparison = (
+const getOwnerIdentityReference = (
+  node: EsTreeNode,
+  context: RuleContext,
+): OwnerIdentityReference | null => {
+  const expression = stripParenExpression(node);
+  if (isNodeOfType(expression, "Identifier")) {
+    const symbol = context.scopes.symbolFor(expression);
+    return symbol ? { propertyName: null, symbolId: symbol.id } : null;
+  }
+  if (!isNodeOfType(expression, "MemberExpression")) return null;
+  const receiver = stripParenExpression(expression.object);
+  if (!isNodeOfType(receiver, "Identifier")) return null;
+  const receiverSymbol = context.scopes.symbolFor(receiver);
+  const propertyName = getStaticPropertyName(expression);
+  return receiverSymbol && propertyName ? { propertyName, symbolId: receiverSymbol.id } : null;
+};
+
+const collectOwnerIdentityReferences = (
   stateSymbol: SymbolDescriptor,
   componentFunction: EsTreeNode,
   context: RuleContext,
-): boolean =>
-  stateSymbol.references.some((reference) => {
+): OwnerIdentityReference[] =>
+  stateSymbol.references.flatMap((reference) => {
     const referenceRoot = findTransparentExpressionRoot(reference.identifier);
     const comparison = referenceRoot.parent;
     if (
@@ -102,10 +124,11 @@ const stateHasIdentityComparison = (
       !["==", "===", "!=", "!=="].includes(comparison.operator) ||
       !isAstDescendant(comparison, componentFunction)
     ) {
-      return false;
+      return [];
     }
     const counterpart = comparison.left === referenceRoot ? comparison.right : comparison.left;
-    return counterpart !== referenceRoot && !isNullLiteral(counterpart);
+    const identityReference = getOwnerIdentityReference(counterpart, context);
+    return identityReference ? [identityReference] : [];
   });
 
 const getRequestOwnerState = (
@@ -135,15 +158,17 @@ const getRequestOwnerState = (
   const stateSymbol = context.scopes.symbolFor(stateIdentifier);
   const setterSymbol = context.scopes.symbolFor(setterIdentifier);
   const componentFunction = findEnclosingFunction(declarator);
-  if (
-    !stateSymbol ||
-    !setterSymbol ||
-    !componentFunction ||
-    !stateHasIdentityComparison(stateSymbol, componentFunction, context)
-  ) {
+  if (!stateSymbol || !setterSymbol || !componentFunction) {
     return null;
   }
-  return { componentFunction, setterSymbol, stateSymbol };
+  const ownerIdentityReferences = collectOwnerIdentityReferences(
+    stateSymbol,
+    componentFunction,
+    context,
+  );
+  return ownerIdentityReferences.length > 0
+    ? { componentFunction, ownerIdentityReferences, setterSymbol }
+    : null;
 };
 
 const openingElementHasKey = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
@@ -178,28 +203,66 @@ const componentIsKeyedAtEveryLocalUse = (
   });
 };
 
-const functionHasRequestOwnershipGuard = (
+const conditionHasRequestIdentityEquality = (
+  condition: EsTreeNode,
   asyncFunction: EsTreeNode,
+  ownerIdentityReferences: OwnerIdentityReference[],
   context: RuleContext,
 ): boolean => {
-  let hasOwnershipGuard = false;
-  walkOwnFunctionScope(asyncFunction, (child) => {
+  let hasRequestIdentityEquality = false;
+  walkAst(condition, (child) => {
     if (
-      hasOwnershipGuard ||
+      hasRequestIdentityEquality ||
       !isNodeOfType(child, "BinaryExpression") ||
-      !["==", "===", "!=", "!=="].includes(child.operator)
+      !["==", "==="].includes(child.operator)
     ) {
       return;
     }
+    const requestIdentity = getRequestIdentityMember(child.left, asyncFunction, context);
+    const counterpart = requestIdentity
+      ? child.right
+      : getRequestIdentityMember(child.right, asyncFunction, context)
+        ? child.left
+        : null;
+    const ownerIdentity = counterpart ? getOwnerIdentityReference(counterpart, context) : null;
     if (
-      getRequestIdentityMember(child.left, asyncFunction, context) ||
-      getRequestIdentityMember(child.right, asyncFunction, context)
+      ownerIdentity &&
+      ownerIdentityReferences.some(
+        (candidate) =>
+          candidate.symbolId === ownerIdentity.symbolId &&
+          candidate.propertyName === ownerIdentity.propertyName,
+      )
     ) {
-      hasOwnershipGuard = true;
+      hasRequestIdentityEquality = true;
       return false;
     }
   });
-  return hasOwnershipGuard;
+  return hasRequestIdentityEquality;
+};
+
+const callHasRequestOwnershipGuard = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  asyncFunction: EsTreeNode,
+  ownerIdentityReferences: OwnerIdentityReference[],
+  context: RuleContext,
+): boolean => {
+  let ancestor = call.parent;
+  while (ancestor && ancestor !== asyncFunction) {
+    if (
+      isNodeOfType(ancestor, "IfStatement") &&
+      isAstDescendant(call, ancestor.consequent) &&
+      conditionHasRequestIdentityEquality(
+        ancestor.test,
+        asyncFunction,
+        ownerIdentityReferences,
+        context,
+      )
+    ) {
+      return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
 };
 
 const collectAsyncOwnerWrites = (
@@ -246,12 +309,18 @@ const findUnsafeOwnerClear = (
     if (unsafeClear) return false;
     if (child === state.componentFunction || !isFunctionLike(child)) return;
     const writes = collectAsyncOwnerWrites(child, state.setterSymbol, context);
-    if (
-      writes.some((write) => write.hasClear) &&
-      writes.some((write) => write.hasRequestIdentity) &&
-      !functionHasRequestOwnershipGuard(child, context)
-    ) {
-      unsafeClear = writes.find((write) => write.hasClear)?.call ?? null;
+    if (writes.some((write) => write.hasRequestIdentity)) {
+      unsafeClear =
+        writes.find(
+          (write) =>
+            write.hasClear &&
+            !callHasRequestOwnershipGuard(
+              write.call,
+              child,
+              state.ownerIdentityReferences,
+              context,
+            ),
+        )?.call ?? null;
     }
     return false;
   });

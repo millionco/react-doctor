@@ -91,6 +91,62 @@ function RequestCard({ currentRequest, respond }) {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not accept an unrelated request identity comparison", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useCallback, useEffect, useState } from "react";
+function RequestCard({ currentRequest, respond }) {
+  const currentRequestId = currentRequest.requestId;
+  const [errorRequestId, setErrorRequestId] = useState(null);
+  useEffect(() => {
+    if (errorRequestId !== null && errorRequestId !== currentRequestId) {
+      setErrorRequestId(null);
+    }
+  }, [currentRequestId, errorRequestId]);
+  const handleRespond = useCallback(async (request) => {
+    const result = await respond(request);
+    const isOriginalRequest = request.requestId === currentRequestId;
+    if (result.ok) {
+      setErrorRequestId(null);
+    } else {
+      setErrorRequestId(request.requestId);
+    }
+    return isOriginalRequest;
+  }, [currentRequestId, respond]);
+  return <button onClick={() => handleRespond(currentRequest)}>Retry</button>;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not accept a guard against an unrelated identity", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useCallback, useEffect, useState } from "react";
+function RequestCard({ currentRequest, respond }) {
+  const currentRequestId = currentRequest.requestId;
+  const [errorRequestId, setErrorRequestId] = useState(null);
+  useEffect(() => {
+    if (errorRequestId !== null && errorRequestId !== currentRequestId) {
+      setErrorRequestId(null);
+    }
+  }, [currentRequestId, errorRequestId]);
+  const handleRespond = useCallback(async (request) => {
+    const result = await respond(request);
+    if (result.ok && request.requestId === "archived") {
+      setErrorRequestId(null);
+    } else if (!result.ok) {
+      setErrorRequestId(request.requestId);
+    }
+  }, [respond]);
+  return <button onClick={() => handleRespond(currentRequest)}>Retry</button>;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts request state isolated by a key at every local component use", () => {
     const result = runRule(
       noUnownedAsyncErrorClear,

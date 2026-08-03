@@ -275,6 +275,28 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not treat id text inside another HTML attribute as an id", () => {
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "other.html"),
+      `<main title='Copy id="about"' data-copy="id=about"></main>`,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an HTML id after another attribute mentions id text", () => {
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "other.html"),
+      `<main title='Copy id="wrong"' id="about"></main>`,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not treat comments, raw text, or visible text as HTML ids", () => {
     fs.writeFileSync(
       path.join(temporaryDirectory, "other.html"),

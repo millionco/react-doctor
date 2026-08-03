@@ -21,8 +21,8 @@ interface StaticProjectDomIdInput {
   readonly currentScopes: ScopeAnalysis;
 }
 
-const HTML_ID_ATTRIBUTE_PATTERN =
-  /(?:^|\s)id\s*=\s*(?:"(?<doubleQuoted>[^"]*)"|'(?<singleQuoted>[^']*)'|(?<unquoted>[^\s"'=<>`]+))/gim;
+const HTML_ATTRIBUTE_PATTERN =
+  /(?<attributeName>[^\s"'<>/=]+)(?:\s*=\s*(?:"(?<doubleQuoted>[^"]*)"|'(?<singleQuoted>[^']*)'|(?<unquoted>[^\s"'=<>`]+)))?/g;
 const HTML_TOKEN_PATTERN =
   /<!--[\s\S]*?-->|(?<skippedContentOpeningTag><(?<skippedContentTag>script|style|textarea|title|xmp|iframe|noembed|noframes|plaintext|template)\b(?:"[^"]*"|'[^']*'|[^'"<>])*?>)[\s\S]*?(?:<\/\k<skippedContentTag>\s*>|$)|(?<openingTag><[A-Za-z][\w:-]*(?:"[^"]*"|'[^']*'|[^'"<>])*>)/gi;
 const cachedStaticDomIdsByRootDirectory = new Map<string, ReadonlySet<string> | null>();
@@ -88,7 +88,8 @@ const collectStaticHtmlIds = (content: string, ids: Set<string>): void => {
   for (const tokenMatch of content.matchAll(HTML_TOKEN_PATTERN)) {
     const openingTag = tokenMatch.groups?.skippedContentOpeningTag ?? tokenMatch.groups?.openingTag;
     if (!openingTag) continue;
-    for (const idAttributeMatch of openingTag.matchAll(HTML_ID_ATTRIBUTE_PATTERN)) {
+    for (const idAttributeMatch of openingTag.matchAll(HTML_ATTRIBUTE_PATTERN)) {
+      if (idAttributeMatch.groups?.attributeName?.toLowerCase() !== "id") continue;
       const id =
         idAttributeMatch.groups?.doubleQuoted ??
         idAttributeMatch.groups?.singleQuoted ??

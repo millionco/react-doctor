@@ -462,9 +462,21 @@ export const runInspect = <HooksR = never>(
           signal: input.signal,
         })
       : null;
+    const includedPrecomputedSourceFiles =
+      precomputedSourceFiles !== null && excludedProjectDirectories.length > 0
+        ? filterPathsOutsideDirectories({
+            rootDirectory: scanDirectory,
+            relativePaths: precomputedSourceFiles,
+            excludedDirectories: excludedProjectDirectories,
+          })
+        : precomputedSourceFiles;
+    const sourceFileCount =
+      excludedProjectDirectories.length > 0
+        ? includedPrecomputedSourceFiles?.length
+        : (input.precomputedSourceFileCount ?? includedPrecomputedSourceFiles?.length);
     const project = yield* projectService.discover({
       directory: scanDirectory,
-      sourceFileCount: input.precomputedSourceFileCount ?? precomputedSourceFiles?.length,
+      sourceFileCount,
     });
     if (!isAnalyzableProject(project)) {
       return yield* new ReactDoctorError({
@@ -502,12 +514,12 @@ export const runInspect = <HooksR = never>(
       resolveLintIncludePaths(
         scanDirectory,
         resolvedConfig.config,
-        precomputedSourceFiles ?? undefined,
+        includedPrecomputedSourceFiles ?? undefined,
       );
     if (excludedProjectDirectories.length > 0) {
       const candidatePaths =
         lintIncludePaths ??
-        precomputedSourceFiles ??
+        includedPrecomputedSourceFiles ??
         (yield* filesService.listSourceFiles(scanDirectory));
       lintIncludePaths = filterPathsOutsideDirectories({
         rootDirectory: scanDirectory,
@@ -524,7 +536,7 @@ export const runInspect = <HooksR = never>(
     const fallbackScannedFilePaths = input.suppressScanSummary
       ? (
           lintIncludePaths ??
-          precomputedSourceFiles ??
+          includedPrecomputedSourceFiles ??
           (yield* filesService.listSourceFiles(scanDirectory))
         ).map((relativePath) => path.resolve(scanDirectory, relativePath))
       : [];

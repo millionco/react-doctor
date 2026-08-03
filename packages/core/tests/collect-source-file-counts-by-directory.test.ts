@@ -15,7 +15,7 @@ describe("collectSourceFileCountsByDirectory", () => {
     fs.rmSync(rootDirectory, { recursive: true, force: true });
   });
 
-  it("counts source files for every containing project directory", async () => {
+  it("assigns each source file to its nearest project directory", async () => {
     const appDirectory = path.join(rootDirectory, "packages/app");
     const nestedDirectory = path.join(appDirectory, "packages/nested");
     const otherDirectory = path.join(rootDirectory, "packages/other");
@@ -39,20 +39,20 @@ describe("collectSourceFileCountsByDirectory", () => {
 
     expect(sourceFileCounts).toEqual(
       new Map([
-        [rootDirectory, 4],
-        [appDirectory, 2],
+        [rootDirectory, 1],
+        [appDirectory, 1],
         [nestedDirectory, 1],
         [otherDirectory, 1],
       ]),
     );
   });
 
-  it("keeps directories outside the root at zero", async () => {
+  it("omits directories outside the enumerated root so callers can count them locally", async () => {
     const outsideDirectory = path.join(path.dirname(rootDirectory), "outside-project");
     const sourceFileCounts = await collectSourceFileCountsByDirectory(rootDirectory, [
       outsideDirectory,
     ]);
-    expect(sourceFileCounts.get(outsideDirectory)).toBe(0);
+    expect(sourceFileCounts.has(outsideDirectory)).toBe(false);
   });
 
   it("stops before listing files when cancelled", async () => {

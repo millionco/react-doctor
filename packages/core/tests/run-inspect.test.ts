@@ -302,8 +302,17 @@ describe("runInspect — happy path", () => {
   it("keeps descendant projects out of ancestor lint and dead-code results", async () => {
     let lintIncludePaths: ReadonlyArray<string> | undefined;
     let didDeadCodeReceiveIgnorePatterns = false;
+    let discoveredSourceFileCount: number | undefined;
     const layers = Layer.mergeAll(
-      Project.layerOf(sampleProject),
+      Layer.mock(Project, {
+        discover: (input) => {
+          discoveredSourceFileCount = input.sourceFileCount;
+          return Effect.succeed({
+            ...sampleProject,
+            sourceFileCount: input.sourceFileCount ?? 0,
+          });
+        },
+      }),
       Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
       Files.layerInMemory(
         new Map([
@@ -350,6 +359,7 @@ describe("runInspect — happy path", () => {
     expect(didDeadCodeReceiveIgnorePatterns).toBe(false);
     expect(output.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual(["src/Unused.tsx"]);
     expect(output.scannedFilePaths).toEqual([path.resolve("/repo/src/root.tsx")]);
+    expect(discoveredSourceFileCount).toBe(1);
 
     const workspaceOutput = await Effect.runPromise(
       runInspect({

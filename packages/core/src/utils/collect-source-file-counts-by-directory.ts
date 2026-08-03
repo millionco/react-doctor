@@ -12,9 +12,9 @@ export const collectSourceFileCountsByDirectory = async (
 
   for (const projectDirectory of projectDirectories) {
     const resolvedProjectDirectory = path.resolve(projectDirectory);
-    sourceFileCounts.set(resolvedProjectDirectory, 0);
     const relativeDirectory = path.relative(resolvedRootDirectory, resolvedProjectDirectory);
     if (path.isAbsolute(relativeDirectory) || relativeDirectory.startsWith("..")) continue;
+    sourceFileCounts.set(resolvedProjectDirectory, 0);
     projectDirectoryByRelativePath.set(
       relativeDirectory.replaceAll(path.sep, "/"),
       resolvedProjectDirectory,
@@ -29,6 +29,7 @@ export const collectSourceFileCountsByDirectory = async (
       const projectDirectory = projectDirectoryByRelativePath.get(normalizedRelativeDirectory);
       if (projectDirectory !== undefined) {
         sourceFileCounts.set(projectDirectory, (sourceFileCounts.get(projectDirectory) ?? 0) + 1);
+        break;
       }
       if (relativeDirectory === ".") break;
       relativeDirectory = path.posix.dirname(relativeDirectory);

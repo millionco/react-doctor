@@ -314,6 +314,29 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("shows incomplete checks when the scan also found issues", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({})],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      lintFailureReason: "Oxlint failed.",
+      skippedChecks: ["lint", "security-scan"],
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("Lint did not run: Oxlint failed.");
+    expect(lastFrame()).toContain("security-scan checks failed — results are incomplete.");
+    expect(lastFrame()).not.toContain("No issues detected");
+    unmount();
+  });
+
   it("does not show a clean state when projects were skipped", () => {
     const store = createScanStore();
     store.setReport({

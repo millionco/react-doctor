@@ -71,7 +71,7 @@ describe("planLintBatches", () => {
       files.map((file, index) => [file, index % 2 === 0 ? 50_000 : 100] as const),
     );
     const batches = planLintBatches({ baseArgs: BASE_ARGS, files, sizeByFile });
-    expect(batches).toHaveLength(2);
+    expect(batches).toHaveLength(Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH));
     const batchByteTotals = batches.map((batch) =>
       batch.reduce((total, file) => total + (sizeByFile.get(file) ?? 0), 0),
     );
@@ -121,7 +121,7 @@ describe("planLintBatches", () => {
   it("treats files missing from the size map as zero-cost instead of throwing", () => {
     const files = makeFiles(400);
     const batches = planLintBatches({ baseArgs: BASE_ARGS, files, sizeByFile: new Map() });
-    expect(batches).toHaveLength(2);
+    expect(batches).toHaveLength(Math.ceil(files.length / OXLINT_MAX_FILES_PER_BATCH));
     expect(batches.flat().sort()).toEqual([...files].sort());
   });
 });

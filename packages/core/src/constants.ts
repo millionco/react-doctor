@@ -227,18 +227,18 @@ export const OXLINT_MAX_FILES_PER_BATCH = 200;
 // MIN end). React Doctor's rules are oxlint JS plugins — single-threaded per
 // process — so running the file batches across N concurrent oxlint subprocesses
 // scales the scan nearly linearly with N up to the straggler / per-spawn-overhead
-// knee (~16 workers). `resolveAutoScanConcurrency` chooses N for the auto path;
+// knee (~10 workers). `resolveAutoScanConcurrency` chooses N for the auto path;
 // every requested count is clamped to [MIN, HARD_MAX].
 export const MIN_SCAN_CONCURRENCY = 1;
 
 // Automatic scans stop at the measured parallel-efficiency knee so CPU
 // contention cannot push healthy JS-plugin batches into timeout retries.
 // Explicit and programmatic worker counts can still reach the hard ceiling.
-export const AUTO_MAX_SCAN_CONCURRENCY = 16;
+export const AUTO_MAX_SCAN_CONCURRENCY = 10;
 
 // Absolute upper bound on lint workers, and the clamp applied to every requested
 // count (auto-detected, `REACT_DOCTOR_PARALLEL=N`, or `inspect({ concurrency })`).
-// Past ~16 workers parallel efficiency collapses (stragglers + per-spawn
+// Past ~10 workers parallel efficiency collapses (stragglers + per-spawn
 // overhead), so 32 remains explicit-pin headroom rather than a promise of
 // proportionally more speed.
 export const HARD_MAX_SCAN_CONCURRENCY = 32;
@@ -249,13 +249,12 @@ export const HARD_MAX_SCAN_CONCURRENCY = 32;
 // second ceiling alongside the core count, so a high-core / memory-starved box
 // (or a memory-limited container) doesn't spawn enough workers to trip the
 // native-binding SIGABRT that OXLINT_MAX_FILES_PER_BATCH and the EAGAIN/ENOMEM
-// serial replay already guard. The 1.5 GiB allowance keeps a 16 GiB machine at
-// the established safe 10-worker level while high-memory workstations can use
-// the measured 16-worker knee. `availableMemory` is `os.totalmem()` floored by
-// the cgroup memory limit, NOT `os.freemem()`, which excludes reclaimable page
-// cache and reads near-zero on macOS / cache-heavy Linux, collapsing the auto
-// path to one worker.
-export const PER_WORKER_MEM_BUDGET_BYTES = 1536 * 1024 * 1024;
+// serial replay already guard. 1 GiB matches the established safe worker budget,
+// so the memory term only binds on genuinely constrained hosts. `availableMemory`
+// is `os.totalmem()` floored by the cgroup memory limit, NOT `os.freemem()`, which
+// excludes reclaimable page cache and reads near-zero on macOS / cache-heavy Linux,
+// collapsing the auto path to one worker.
+export const PER_WORKER_MEM_BUDGET_BYTES = 1024 * 1024 * 1024;
 
 // Default worker count for a `diagnose({ projects })` batch. Each project
 // scan already fans out its own oxlint workers (bounded by the constants

@@ -39,6 +39,7 @@ import {
 import { spawnLintBatches } from "./runners/oxlint/spawn-batches.js";
 import { validateRuleRegistration } from "./runners/oxlint/validate-rule-registration.js";
 import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
+import { collectProjectIndexModuleSources } from "./utils/collect-project-index-module-sources.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
@@ -525,6 +526,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
     const candidateFiles =
       includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
+    const projectIndexModuleSources = await collectProjectIndexModuleSources(
+      rootDirectory,
+      candidateFiles,
+    );
     unpluginAutoImportGlobalScopes = collectUnpluginAutoImportGlobalScopes({
       rootDirectory,
       candidateFiles,
@@ -553,6 +558,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         runtimeGlobals,
         unpluginAutoImportGlobalScopes,
         serverAuthFunctionNames,
+        projectIndexModuleSources,
         severityControls,
         userPlugins,
         disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,

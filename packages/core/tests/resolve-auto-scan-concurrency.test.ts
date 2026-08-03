@@ -17,7 +17,7 @@ describe("resolveAutoScanConcurrency", () => {
     expect(
       resolveAutoScanConcurrency({
         availableCores: 8,
-        totalMemoryBytes: 64 * GIB,
+        totalMemoryBytes: 16 * GIB,
         cgroupMemoryLimitBytes: undefined,
       }),
     ).toBe(8);
@@ -34,7 +34,7 @@ describe("resolveAutoScanConcurrency", () => {
   });
 
   it("is memory-bound on a high-core / memory-starved box", () => {
-    // floor(6 GiB / 1.5 GiB) = 4 — a 64-core box with little RAM does NOT spawn
+    // floor(6 GiB / 1 GiB) = 6 — a 64-core box with little RAM does NOT spawn
     // 32 workers (the native-binding SIGABRT trap this budget exists to avoid).
     expect(
       resolveAutoScanConcurrency({
@@ -42,12 +42,12 @@ describe("resolveAutoScanConcurrency", () => {
         totalMemoryBytes: 6 * GIB,
         cgroupMemoryLimitBytes: undefined,
       }),
-    ).toBe(4);
+    ).toBe(6);
   });
 
   it("honors a cgroup memory limit below the host total", () => {
     // The container sees 200 GiB of HOST memory via os.totalmem(), but its
-    // cgroup caps it at 4 GiB → floor(4 / 1.5) = 2. This is the case Node's
+    // cgroup caps it at 4 GiB → floor(4 / 1) = 4. This is the case Node's
     // totalmem()/freemem() both get wrong without the direct cgroup read.
     expect(
       resolveAutoScanConcurrency({
@@ -55,7 +55,7 @@ describe("resolveAutoScanConcurrency", () => {
         totalMemoryBytes: 200 * GIB,
         cgroupMemoryLimitBytes: 4 * GIB,
       }),
-    ).toBe(2);
+    ).toBe(4);
   });
 
   it("never exceeds AUTO_MAX_SCAN_CONCURRENCY", () => {

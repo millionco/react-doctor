@@ -49,18 +49,23 @@ export const getReactDoctorNumberSetting = (
     : undefined;
 };
 
-export const getReactDoctorStringArraySetting = (
+export const getReactDoctorOptionalStringArraySetting = (
   settings: RuleContext["settings"],
   settingName: string,
-): ReadonlyArray<string> => {
+): ReadonlyArray<string> | undefined => {
   const bag = readReactDoctorSettingsBag(settings);
-  if (!bag) return [];
+  if (!bag) return undefined;
   const settingValue = readOwnPropertyValue(bag, settingName);
-  if (!Array.isArray(settingValue)) return [];
+  if (!Array.isArray(settingValue)) return undefined;
   return settingValue.filter(
     (entry): entry is string => typeof entry === "string" && entry.length > 0,
   );
 };
+
+export const getReactDoctorStringArraySetting = (
+  settings: RuleContext["settings"],
+  settingName: string,
+): ReadonlyArray<string> => getReactDoctorOptionalStringArraySetting(settings, settingName) ?? [];
 
 // A project's capabilities (e.g. "server-actions", "nextjs:static-export") are
 // one vocabulary describing what it can do. `@react-doctor/core` builds the set

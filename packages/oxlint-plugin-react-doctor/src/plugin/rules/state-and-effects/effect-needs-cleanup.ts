@@ -3539,7 +3539,9 @@ const hasEffectOwnedNestedTimerCleanup = (
     const invocationCall = findDirectCallForReference(reference.identifier);
     if (!invocationCall) return false;
     const invocationOwner = findEnclosingFunction(invocationCall);
-    if (!invocationOwner || invocationOwner === usageFunction) return false;
+    if (!invocationOwner || !isFunctionLike(invocationOwner) || invocationOwner === usageFunction) {
+      return false;
+    }
     if (invocationOwner.async || invocationOwner.generator) return false;
     if (invocationOwner === callback) {
       return doMatchingNodesCoverEveryPathAfterUsage(

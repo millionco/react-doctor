@@ -195,4 +195,29 @@ const History = ({ documentId }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("ignores an owner guard and setter under contradictory sequential guards", () => {
+    const result = runRule(
+      noPassiveRequestOwnerRef,
+      `const History = ({ viewId, shouldLoad }) => {
+  const activeViewIdRef = useRef(viewId);
+  const [, setVersions] = useState([]);
+  useEffect(() => {
+    activeViewIdRef.current = viewId;
+  }, [viewId]);
+  const refresh = async () => {
+    if (shouldLoad) {
+      await load(viewId);
+      if (activeViewIdRef.current !== viewId) return;
+    }
+    if (!shouldLoad) {
+      setVersions([]);
+    }
+  };
+  return <button onClick={refresh}>Refresh</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

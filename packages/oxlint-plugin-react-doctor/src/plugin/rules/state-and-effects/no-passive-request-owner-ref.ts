@@ -10,6 +10,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactHookResultReference } from "../../utils/is-react-hook-result-reference.js";
+import { nodesCanCoExecute } from "../../utils/nodes-can-co-execute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -175,13 +176,15 @@ const doesAsyncFunctionTrustPassiveOwner = (
       awaitNodes.some((awaitNode) =>
         canNodeReachLaterNodeWithinFunction(awaitNode, ownerGuard, asyncFunction, context),
       ) &&
-      stateDispatcherCalls.some((stateDispatcherCall) =>
-        canNodeReachLaterNodeWithinFunction(
-          ownerGuard,
-          stateDispatcherCall,
-          asyncFunction,
-          context,
-        ),
+      stateDispatcherCalls.some(
+        (stateDispatcherCall) =>
+          nodesCanCoExecute(ownerGuard, stateDispatcherCall, context) &&
+          canNodeReachLaterNodeWithinFunction(
+            ownerGuard,
+            stateDispatcherCall,
+            asyncFunction,
+            context,
+          ),
       ),
   );
 };

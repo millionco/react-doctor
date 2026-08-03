@@ -63,7 +63,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --prefer-offline
 
-      - run: pnpm test
+      - name: Run tests
+        if: ${{ matrix.os != 'blacksmith-8vcpu-windows-2025' }}
+        run: pnpm test
+
+      - name: Run Windows tests serially
+        if: ${{ matrix.os == 'blacksmith-8vcpu-windows-2025' }}
+        run: pnpm test --concurrency=1
 
       # deslop-js/-cli assert on POSIX-separator paths, so their suites are
       # build-only on Windows (mirrors the deslop upstream matrix).

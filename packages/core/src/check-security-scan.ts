@@ -162,9 +162,9 @@ export const checkSecurityScanCooperative = async (
     return hasDeadlineElapsed;
   };
   throwIfScanAborted();
-  if (didReachDeadline()) return [];
   const session = createSecurityScanSession(rootDirectory, options);
   if (session === null) return [];
+  if (didReachDeadline()) return [];
   let sliceStartedAt = performance.now();
   for (const file of collectSecurityScanFiles(rootDirectory, options.excludedDirectories)) {
     throwIfScanAborted();

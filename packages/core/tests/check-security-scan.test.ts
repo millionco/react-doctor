@@ -284,6 +284,19 @@ export const databaseUrl = process.env.DATABASE_URL;`,
       expect(onDeadlineExceeded).toHaveBeenCalledOnce();
     });
 
+    it("does not report a deadline when no security rules are enabled", async () => {
+      const fixtureDirectory = path.join(FIXTURES_DIRECTORY, "eva-mintlify-docs-platform");
+      const onDeadlineExceeded = vi.fn();
+      await expect(
+        checkSecurityScanCooperative(fixtureDirectory, {
+          ignoredTags: new Set(["security-scan"]),
+          deadlineEpochMs: Date.now() - 1,
+          onDeadlineExceeded,
+        }),
+      ).resolves.toEqual([]);
+      expect(onDeadlineExceeded).not.toHaveBeenCalled();
+    });
+
     it("preserves findings collected before the shared scan deadline", async () => {
       for (let fileIndex = 0; fileIndex < 100; fileIndex += 1) {
         writeFile(

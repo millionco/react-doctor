@@ -495,7 +495,12 @@ export const runInspect = <HooksR = never>(
         : undefined
       : computeExplicitLintIncludePaths([...input.includePaths]);
     let lintIncludePaths =
-      explicitLintIncludePaths ?? resolveLintIncludePaths(scanDirectory, resolvedConfig.config);
+      explicitLintIncludePaths ??
+      resolveLintIncludePaths(
+        scanDirectory,
+        resolvedConfig.config,
+        precomputedSourceFiles ?? undefined,
+      );
     if (excludedProjectDirectories.length > 0) {
       const candidatePaths =
         lintIncludePaths ??

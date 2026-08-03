@@ -53,6 +53,14 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("keeps known target ids from dynamic nullish and falsy defaults", () => {
+    const result = runProjectRule(
+      `const Valid = (props) => <><a href="#about">About</a><a href="#contact">Contact</a><section id={props.id ?? "about"} /><section id={props.otherId || "contact"} /></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("reports a literal fragment without a project target", () => {
     const result = runProjectRule(`const Broken = () => <a href="#about">About</a>;`);
     expect(result.parseErrors).toEqual([]);

@@ -85,6 +85,23 @@ const resolveStaticStringExpressionValues = (
       });
       continue;
     }
+    if (
+      shouldKeepKnownValues &&
+      isNodeOfType(expression, "LogicalExpression") &&
+      (expression.operator === "??" || expression.operator === "||")
+    ) {
+      workItems.push({
+        expression: expression.right,
+        remainingConstAliases: workItem.remainingConstAliases,
+        resolvingSymbols: new Set(workItem.resolvingSymbols),
+      });
+      workItems.push({
+        expression: expression.left,
+        remainingConstAliases: workItem.remainingConstAliases,
+        resolvingSymbols: new Set(workItem.resolvingSymbols),
+      });
+      continue;
+    }
     if (isNodeOfType(expression, "Identifier")) {
       const symbol = scopes.referenceFor(expression)?.resolvedSymbol;
       if (

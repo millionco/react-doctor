@@ -220,4 +220,27 @@ const History = ({ documentId }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("ignores a state update inside the owner-mismatch bailout", () => {
+    const result = runRule(
+      noPassiveRequestOwnerRef,
+      `const History = ({ viewId }) => {
+  const activeViewIdRef = useRef(viewId);
+  const [, setWasSuperseded] = useState(false);
+  useEffect(() => {
+    activeViewIdRef.current = viewId;
+  }, [viewId]);
+  const refresh = async () => {
+    await load(viewId);
+    if (activeViewIdRef.current !== viewId) {
+      setWasSuperseded(true);
+      return;
+    }
+  };
+  return <button onClick={refresh}>Refresh</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

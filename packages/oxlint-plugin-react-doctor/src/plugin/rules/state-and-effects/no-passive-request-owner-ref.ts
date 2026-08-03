@@ -6,6 +6,7 @@ import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
+import { isDescendantWithoutFunctionBoundary } from "../../utils/is-descendant-without-function-boundary.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -178,6 +179,7 @@ const doesAsyncFunctionTrustPassiveOwner = (
       ) &&
       stateDispatcherCalls.some(
         (stateDispatcherCall) =>
+          !isDescendantWithoutFunctionBoundary(stateDispatcherCall, ownerGuard) &&
           nodesCanCoExecute(ownerGuard, stateDispatcherCall, context) &&
           canNodeReachLaterNodeWithinFunction(
             ownerGuard,

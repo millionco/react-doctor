@@ -1,6 +1,5 @@
 import path from "node:path";
 import {
-  clearAutoSuppressionCaches,
   clearConfigCache,
   clearIgnorePatternsCache,
   clearMinifiedFileCache,
@@ -80,7 +79,6 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
       clearPackageJsonCache();
       clearPackageRoleCache();
       clearIgnorePatternsCache();
-      clearAutoSuppressionCaches();
       clearMinifiedFileCache();
       projects = null;
     },

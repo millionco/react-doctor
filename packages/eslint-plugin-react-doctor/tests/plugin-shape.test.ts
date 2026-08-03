@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
+import oxlintPlugin, {
   NEXTJS_RULES,
   PREACT_RULES,
   REACT_NATIVE_RULES,
@@ -46,5 +46,21 @@ describe("eslint-plugin-react-doctor", () => {
         expect(eslintPlugin.rules[ruleName]).toBeDefined();
       }
     }
+  });
+
+  it("uses canonical rule metadata and docs URLs", () => {
+    const ruleName = "no-array-index-as-key";
+    const oxlintRule = oxlintPlugin.rules[ruleName];
+    const eslintRule = eslintPlugin.rules[ruleName];
+    expect(oxlintRule).toBeDefined();
+    expect(eslintRule).toBeDefined();
+    if (!oxlintRule || !eslintRule) return;
+
+    expect(eslintRule.meta.docs.description).toBe("Array index used as a key");
+    expect(eslintRule.meta.docs.description).toBe(oxlintRule.title);
+    expect(eslintRule.meta.docs.url).toBe(
+      "https://react.doctor/docs/rules/react-doctor/no-array-index-as-key",
+    );
+    expect(eslintRule.meta.type).toBe(oxlintRule.severity === "warn" ? "suggestion" : "problem");
   });
 });

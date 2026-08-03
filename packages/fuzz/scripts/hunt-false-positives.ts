@@ -3,9 +3,8 @@ import { reactDoctorRules } from "../../oxlint-plugin-react-doctor/src/plugin/ru
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
 
-// False-positive hunt over ground-truth-valid code. Every file in
-// corpus/regressions/ is a CONFIRMED-valid program (that's the corpus
-// contract), so:
+// False-positive hunt over ground-truth-valid code. Files marked with
+// `verdict: fail` are true-positive liveness fixtures and are excluded, so:
 //   - the seed's own named rule firing on it  => regression (hard FP)
 //   - any OTHER rule firing on it             => FP candidate for triage
 // Optionally extends the hunt to real-world corpus files (FP candidates
@@ -58,7 +57,9 @@ const isHuntableRule = (entry: (typeof reactDoctorRules)[number]): boolean => {
   return requires.every((capability) => capability === "react");
 };
 
-const seeds = loadFuzzCorpus(regressionsDirectory);
+const seeds = loadFuzzCorpus(regressionsDirectory).filter(
+  (seed) => !/^\/\/ verdict: fail$/m.test(seed.code),
+);
 const hits: SeedHit[] = [];
 for (const seed of seeds) {
   const namedRules = namedRulesFor(seed.code);

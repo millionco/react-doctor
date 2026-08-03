@@ -111,6 +111,101 @@ export const Component = () => {
   return null;
 };`,
   ],
+  [
+    "cleans a listener timer retained in a React ref",
+    `import { useEffect, useRef } from "react";
+export const Component = () => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    const handleResize = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {}, 30000);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "cleans a listener timer through an exact local helper",
+    `import { useEffect, useRef } from "react";
+export const Component = () => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    const clearTimer = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+    const handleResize = () => {
+      clearTimer();
+      timerRef.current = setTimeout(() => {}, 30000);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      clearTimer();
+    };
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "cleans every timer retained by an owned listener",
+    `import { useEffect } from "react";
+export const Component = () => {
+  useEffect(() => {
+    const timers = [];
+    const handleResize = () => {
+      timers.push(setTimeout(() => {}, 100));
+      timers.push(setTimeout(() => {}, 200));
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      timers.forEach(clearTimeout);
+    };
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "cleans every listener timer retained from a loop",
+    `import { useEffect } from "react";
+export const Component = ({ delays }) => {
+  useEffect(() => {
+    const timers = [];
+    const handleResize = () => {
+      for (const delay of delays) {
+        timers.push(setTimeout(() => {}, delay));
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      timers.forEach(clearTimeout);
+    };
+  }, [delays]);
+  return null;
+};`,
+  ],
+  [
+    "cleans the latest handle in a recursive one-shot timer",
+    `import { useEffect } from "react";
+export const Component = () => {
+  useEffect(() => {
+    let timer = null;
+    const schedule = () => {
+      timer = setTimeout(schedule, 30000);
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, []);
+  return null;
+};`,
+  ],
 ];
 
 const invalidCases: ReadonlyArray<readonly [string, string]> = [
@@ -302,6 +397,117 @@ export const Component = () => {
     const emitter = new EventEmitter();
     const dispose = emitter.addListener("change", () => {});
     return () => dispose();
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "clears a different listener timer ref",
+    `import { useEffect, useRef } from "react";
+export const Component = () => {
+  const timerRef = useRef(null);
+  const previousTimerRef = useRef(null);
+  useEffect(() => {
+    const handleResize = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {}, 30000);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      clearTimeout(previousTimerRef.current);
+    };
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "drops a listener timer before collection cleanup",
+    `import { useEffect } from "react";
+export const Component = () => {
+  useEffect(() => {
+    const timers = [];
+    const handleResize = () => {
+      timers.push(setTimeout(() => {}, 30000));
+      timers.pop();
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      timers.forEach(clearTimeout);
+    };
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "leaves the listener that owns a retained timer active",
+    `import { useEffect, useRef } from "react";
+export const Component = () => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    const handleResize = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {}, 30000);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => clearTimeout(timerRef.current);
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "allows a listener timer ref to overwrite a live handle",
+    `import { useEffect, useRef } from "react";
+export const Component = () => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    const handleResize = () => {
+      timerRef.current = setTimeout(() => {}, 30000);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      clearTimeout(timerRef.current);
+    };
+  }, []);
+  return null;
+};`,
+  ],
+  [
+    "conditionally calls a listener timer cleanup helper",
+    `import { useEffect, useRef } from "react";
+export const Component = ({ shouldRelease }) => {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    const clearTimer = () => {
+      if (shouldRelease) clearTimeout(timerRef.current);
+    };
+    const handleResize = () => {
+      clearTimer();
+      timerRef.current = setTimeout(() => {}, 30000);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      clearTimer();
+    };
+  }, [shouldRelease]);
+  return null;
+};`,
+  ],
+  [
+    "starts more than one recursive timer chain",
+    `import { useEffect } from "react";
+export const Component = () => {
+  useEffect(() => {
+    let timer = null;
+    const schedule = () => {
+      timer = setTimeout(schedule, 30000);
+      timer = setTimeout(schedule, 30000);
+    };
+    schedule();
+    return () => clearTimeout(timer);
   }, []);
   return null;
 };`,

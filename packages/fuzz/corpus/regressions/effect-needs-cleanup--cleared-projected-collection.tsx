@@ -1,7 +1,7 @@
 // rule: effect-needs-cleanup
 // weakness: control-flow
-// expect: diagnostic
 // source: PR #1380 adversarial review — clearing the replay collection loses registrations
+// verdict: fail
 
 import { useEffect } from "react";
 

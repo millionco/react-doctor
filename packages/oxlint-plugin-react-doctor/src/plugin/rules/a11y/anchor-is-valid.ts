@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxA11yHrefAttributeNames } from "../../utils/get-jsx-a11y-href-attribute-names.js";
 import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { hasJsxA11ySettings } from "../../utils/has-jsx-a11y-settings.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
@@ -21,10 +22,6 @@ interface AnchorIsValidSettings {
   validHrefs?: ReadonlyArray<string>;
 }
 
-interface JsxA11ySettings {
-  attributes?: { href?: ReadonlyArray<string> };
-}
-
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): { validHrefs: ReadonlySet<string>; hrefAttributeNames: ReadonlyArray<string> } => {
@@ -33,12 +30,9 @@ const resolveSettings = (
     typeof reactDoctor === "object" && reactDoctor !== null
       ? ((reactDoctor as { anchorIsValid?: AnchorIsValidSettings }).anchorIsValid ?? {})
       : {};
-  const jsxA11y = settings?.["jsx-a11y"];
-  const a11ySettings =
-    typeof jsxA11y === "object" && jsxA11y !== null ? (jsxA11y as JsxA11ySettings) : {};
   return {
     validHrefs: new Set(ruleSettings.validHrefs ?? []),
-    hrefAttributeNames: a11ySettings.attributes?.href ?? ["href"],
+    hrefAttributeNames: getJsxA11yHrefAttributeNames(settings),
   };
 };
 

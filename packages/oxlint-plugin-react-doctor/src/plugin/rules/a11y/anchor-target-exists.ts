@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
+import { getJsxA11yHrefAttributeNames } from "../../utils/get-jsx-a11y-href-attribute-names.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
 import { getStaticProjectDomIds } from "../../utils/get-static-project-dom-ids.js";
 import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
@@ -30,7 +31,11 @@ export const anchorTargetExists = defineRule({
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (getElementType(node, context.settings) !== "a") return;
-        const hrefAttribute = getAuthoritativeJsxAttribute(node.attributes, "href", false);
+        let hrefAttribute: EsTreeNodeOfType<"JSXAttribute"> | null = null;
+        for (const hrefAttributeName of getJsxA11yHrefAttributeNames(context.settings)) {
+          hrefAttribute = getAuthoritativeJsxAttribute(node.attributes, hrefAttributeName, false);
+          if (hrefAttribute) break;
+        }
         if (!hrefAttribute) return;
         const href = getStringLiteralAttributeValue(hrefAttribute);
         if (

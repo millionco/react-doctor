@@ -14,12 +14,21 @@ interface StaticStringWorkItem {
   resolvingSymbols: Set<SymbolDescriptor>;
 }
 
-const resolveStaticStringValues = (
+interface StaticStringResolutionOptions {
+  readonly maximumConstAliases?: number | null;
+  readonly shouldFoldStaticConditions?: boolean;
+}
+
+export const getStaticStringExpressionValues = (
   rawExpression: EsTreeNode,
   scopes: ScopeAnalysis,
-  maximumConstAliases: number | null,
-  shouldFoldStaticConditions: boolean,
+  options: StaticStringResolutionOptions = {},
 ): ReadonlyArray<string> | null => {
+  const maximumConstAliases =
+    options.maximumConstAliases === undefined
+      ? MAX_CONST_RESOLUTION_HOPS
+      : options.maximumConstAliases;
+  const shouldFoldStaticConditions = options.shouldFoldStaticConditions ?? false;
   const staticStringValues: string[] = [];
   const workItems: StaticStringWorkItem[] = [
     {
@@ -120,12 +129,10 @@ const getJsxPropStaticStringValuesWithMode = (
     return typeof value.value === "string" ? [value.value] : null;
   }
   if (isNodeOfType(value, "JSXExpressionContainer")) {
-    return resolveStaticStringValues(
-      value.expression as EsTreeNode,
-      scopes,
+    return getStaticStringExpressionValues(value.expression as EsTreeNode, scopes, {
       maximumConstAliases,
       shouldFoldStaticConditions,
-    );
+    });
   }
   return null;
 };

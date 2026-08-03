@@ -3,8 +3,10 @@ import * as path from "node:path";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { buildSourceProjectIndex } from "./build-source-project-index.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
-import { getStaticStringExpression } from "./get-static-string-expression.js";
-import { getStringLiteralAttributeValue } from "./get-string-literal-attribute-value.js";
+import {
+  getJsxPropStaticStringValues,
+  getStaticStringExpressionValues,
+} from "./get-jsx-prop-static-string-values.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isPathInside } from "./is-path-inside.js";
 import { normalizeFilename } from "./normalize-filename.js";
@@ -27,15 +29,19 @@ const cachedStaticDomIdsByRootDirectory = new Map<string, ReadonlySet<string> | 
 
 const collectResolvedStaticJsxId = (
   idResolution: ReturnType<typeof resolveStaticJsxAttribute>,
+  scopes: ScopeAnalysis,
   ids: Set<string>,
 ): void => {
   if (!idResolution.isPresent) return;
-  const id = (
-    idResolution.attribute
-      ? getStringLiteralAttributeValue(idResolution.attribute)
-      : getStaticStringExpression(idResolution.expression)
-  )?.trim();
-  if (id) ids.add(id);
+  const candidateIds = idResolution.attribute
+    ? getJsxPropStaticStringValues(idResolution.attribute, scopes)
+    : idResolution.expression
+      ? getStaticStringExpressionValues(idResolution.expression, scopes)
+      : null;
+  for (const candidateId of candidateIds ?? []) {
+    const id = candidateId?.trim();
+    if (id) ids.add(id);
+  }
 };
 
 const isInsideJsxTemplateContent = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">) => {
@@ -55,18 +61,26 @@ const isInsideJsxTemplateContent = (openingElement: EsTreeNodeOfType<"JSXOpening
   return false;
 };
 
-const collectStaticJsxIds = (programNode: EsTreeNodeOfType<"Program">, ids: Set<string>): void => {
+const collectStaticJsxIds = (
+  programNode: EsTreeNodeOfType<"Program">,
+  scopes: ScopeAnalysis,
+  ids: Set<string>,
+): void => {
   walkAst(programNode, (node) => {
     if (!isNodeOfType(node, "JSXOpeningElement")) return;
     if (isInsideJsxTemplateContent(node)) return;
     const idResolution = resolveStaticJsxAttribute(node.attributes, "id", false);
     if (idResolution.isUnknown) {
       for (const attribute of node.attributes) {
-        collectResolvedStaticJsxId(resolveStaticJsxAttribute([attribute], "id", false), ids);
+        collectResolvedStaticJsxId(
+          resolveStaticJsxAttribute([attribute], "id", false),
+          scopes,
+          ids,
+        );
       }
       return;
     }
-    collectResolvedStaticJsxId(idResolution, ids);
+    collectResolvedStaticJsxId(idResolution, scopes, ids);
   });
 };
 
@@ -102,7 +116,7 @@ export const getStaticProjectDomIds = (
   input: StaticProjectDomIdInput,
 ): ReadonlySet<string> | null => {
   const currentIds = new Set<string>();
-  collectStaticJsxIds(input.currentProgramNode, currentIds);
+  collectStaticJsxIds(input.currentProgramNode, input.currentScopes, currentIds);
   const rootDirectory = resolveProjectRootDirectory(input);
   if (!rootDirectory) return currentIds;
 
@@ -125,7 +139,7 @@ export const getStaticProjectDomIds = (
 
   const projectIds = new Set<string>();
   for (const projectModule of projectIndex.modulesByFilePath.values()) {
-    collectStaticJsxIds(projectModule.programNode, projectIds);
+    collectStaticJsxIds(projectModule.programNode, projectModule.scopes, projectIds);
   }
   try {
     for (const htmlFilePath of projectIndex.htmlFilePaths) {

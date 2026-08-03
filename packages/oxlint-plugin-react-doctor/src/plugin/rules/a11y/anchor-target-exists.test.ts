@@ -37,6 +37,14 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("accepts a target id resolved through a const alias", () => {
+    const result = runProjectRule(
+      `const SECTION_ID = "about"; const Valid = () => <><a href="#about">About</a><section id={SECTION_ID} /></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("reports a literal fragment without a project target", () => {
     const result = runProjectRule(`const Broken = () => <a href="#about">About</a>;`);
     expect(result.parseErrors).toEqual([]);
@@ -111,6 +119,30 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("reads configured href attribute names", () => {
+    const settings = {
+      "jsx-a11y": {
+        attributes: { href: ["to"] },
+        components: { NavigationLink: "a" },
+      },
+    };
+    const validResult = runRule(
+      anchorTargetExists,
+      `const Link = () => <><NavigationLink to="#about">About</NavigationLink><main id="about" /></>;`,
+      { settings },
+    );
+    expect(validResult.parseErrors).toEqual([]);
+    expect(validResult.diagnostics).toEqual([]);
+
+    const brokenResult = runRule(
+      anchorTargetExists,
+      `const Link = () => <NavigationLink to="#about">About</NavigationLink>;`,
+      { settings },
+    );
+    expect(brokenResult.parseErrors).toEqual([]);
+    expect(brokenResult.diagnostics).toHaveLength(1);
+  });
+
   it("skips testlike files", () => {
     const result = runProjectRule(
       `const Broken = () => <a href="#about">About</a>;`,
@@ -141,6 +173,18 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("accepts a const-aliased target in another JSX file", () => {
+    fs.mkdirSync(path.join(temporaryDirectory, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "src", "about.tsx"),
+      `const SECTION_ID = "about"; export const About = () => <section id={SECTION_ID} />;`,
+      "utf8",
+    );
+    const result = runProjectRule(`const Link = () => <a href="#about">About</a>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("skips a missing-target claim when a JSX spread can provide or replace an id", () => {
     const result = runProjectRule(
       `const Link = (props) => <><a href="#about">About</a><main id="about" {...props} /></>;`,
@@ -156,6 +200,14 @@ describe("a11y/anchor-target-exists", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]?.message).toContain('"#missing"');
+  });
+
+  it("resolves const-aliased ids from static JSX spread objects", () => {
+    const result = runProjectRule(
+      `const SECTION_ID = "about"; const Link = () => <><a href="#about">About</a><main {...{ id: SECTION_ID }} /></>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("uses the last explicit JSX id", () => {

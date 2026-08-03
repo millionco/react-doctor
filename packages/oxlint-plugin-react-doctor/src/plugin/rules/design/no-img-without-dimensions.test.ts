@@ -253,7 +253,7 @@ describe("no-img-without-dimensions", () => {
     const result = runRuleWithSiblingCss(
       `const Gallery = () => <img src="/photo.jpg" alt="" />;`,
       `img { width: 768px; height: 400px; }
-       .unrelated:hover { height: auto; }`,
+       .unrelated:not(.framed) { height: auto; }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -269,8 +269,20 @@ describe("no-img-without-dimensions", () => {
       `section img { width: 768px; height: 400px; }
        :where(section img) { height: auto; }`,
     );
+    const negatedClassOverride = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }
+       section img:not(.framed) { height: auto; }`,
+    );
+    const attributeOverride = runRuleWithSiblingCss(
+      `const Gallery = () => <section><img data-fluid src="/photo.jpg" alt="" /></section>;`,
+      `section img { width: 768px; height: 400px; }
+       section img[data-fluid] { height: auto; }`,
+    );
     expect(conditionalOverride.diagnostics).toHaveLength(1);
     expect(unsupportedOverride.diagnostics).toHaveLength(1);
+    expect(negatedClassOverride.diagnostics).toHaveLength(1);
+    expect(attributeOverride.diagnostics).toHaveLength(1);
   });
 
   it("allows an image inside a reserved wrapper", () => {

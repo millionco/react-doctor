@@ -948,6 +948,79 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("reports controls whose only child text is a symbol or emoji", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Player = ({ playing, onToggle }) => (
+          <nav>
+            <button>×</button>
+            <button>{"＋"}</button>
+            <button>{\`➕\`}</button>
+            <button>{playing ? "Ⅱ" : "▶"}</button>
+            <button>⏮</button>
+            <button role="switch" onClick={onToggle}>🔊</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(6);
+  });
+
+  it("accepts concise text, numeric, and explicitly named symbol controls", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Pager = () => (
+          <nav>
+            <button>Close</button>
+            <button>1</button>
+            <button aria-label="Add photo">＋</button>
+            <button title="Previous track">⏮</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts logical fallbacks when either possible child provides label text", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Pager = ({ label }) => (
+          <nav>
+            <button>{"Close" || "×"}</button>
+            <button>{label || "×"}</button>
+            <button>{"Close" ?? "×"}</button>
+            <button>{label ?? "×"}</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports logical fallbacks when neither possible child provides label text", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Pager = () => (
+          <nav>
+            <button>{"" || "×"}</button>
+            <button>{null ?? "×"}</button>
+            <button>{true && "×"}</button>
+          </nav>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("accepts icon buttons carrying either an aria-label or a native title", () => {
     const result = runRule(
       controlHasAssociatedLabel,

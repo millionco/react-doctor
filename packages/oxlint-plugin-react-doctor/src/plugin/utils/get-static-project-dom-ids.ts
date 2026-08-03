@@ -4,8 +4,8 @@ import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import { buildSourceProjectIndex } from "./build-source-project-index.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import {
-  getJsxPropStaticStringValues,
-  getStaticStringExpressionValues,
+  getJsxPropKnownStaticStringValues,
+  getKnownStaticStringExpressionValues,
 } from "./get-jsx-prop-static-string-values.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isPathInside } from "./is-path-inside.js";
@@ -34,9 +34,9 @@ const collectResolvedStaticJsxId = (
 ): void => {
   if (!idResolution.isPresent) return;
   const candidateIds = idResolution.attribute
-    ? getJsxPropStaticStringValues(idResolution.attribute, scopes)
+    ? getJsxPropKnownStaticStringValues(idResolution.attribute, scopes)
     : idResolution.expression
-      ? getStaticStringExpressionValues(idResolution.expression, scopes)
+      ? getKnownStaticStringExpressionValues(idResolution.expression, scopes)
       : null;
   for (const candidateId of candidateIds ?? []) {
     const id = candidateId?.trim();

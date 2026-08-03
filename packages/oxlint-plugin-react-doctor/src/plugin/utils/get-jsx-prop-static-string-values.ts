@@ -17,9 +17,10 @@ interface StaticStringWorkItem {
 interface StaticStringResolutionOptions {
   readonly maximumConstAliases?: number | null;
   readonly shouldFoldStaticConditions?: boolean;
+  readonly shouldKeepKnownValues?: boolean;
 }
 
-export const getStaticStringExpressionValues = (
+const resolveStaticStringExpressionValues = (
   rawExpression: EsTreeNode,
   scopes: ScopeAnalysis,
   options: StaticStringResolutionOptions = {},
@@ -29,6 +30,7 @@ export const getStaticStringExpressionValues = (
       ? MAX_CONST_RESOLUTION_HOPS
       : options.maximumConstAliases;
   const shouldFoldStaticConditions = options.shouldFoldStaticConditions ?? false;
+  const shouldKeepKnownValues = options.shouldKeepKnownValues ?? false;
   const staticStringValues: string[] = [];
   const workItems: StaticStringWorkItem[] = [
     {
@@ -43,13 +45,19 @@ export const getStaticStringExpressionValues = (
     if (!workItem) continue;
     const expression = stripParenExpression(workItem.expression);
     if (isNodeOfType(expression, "Literal")) {
-      if (typeof expression.value !== "string") return null;
+      if (typeof expression.value !== "string") {
+        if (shouldKeepKnownValues) continue;
+        return null;
+      }
       staticStringValues.push(expression.value);
       continue;
     }
     if (isNodeOfType(expression, "TemplateLiteral")) {
       const staticValue = getStaticTemplateLiteralValue(expression);
-      if (staticValue === null) return null;
+      if (staticValue === null) {
+        if (shouldKeepKnownValues) continue;
+        return null;
+      }
       staticStringValues.push(staticValue);
       continue;
     }
@@ -88,6 +96,7 @@ export const getStaticStringExpressionValues = (
         workItem.remainingConstAliases === 0 ||
         workItem.resolvingSymbols.has(symbol)
       ) {
+        if (shouldKeepKnownValues) continue;
         return null;
       }
       workItem.resolvingSymbols.add(symbol);
@@ -99,11 +108,24 @@ export const getStaticStringExpressionValues = (
       });
       continue;
     }
-    return null;
+    if (!shouldKeepKnownValues) return null;
   }
 
-  return staticStringValues;
+  return staticStringValues.length > 0 ? staticStringValues : null;
 };
+
+export const getStaticStringExpressionValues = (
+  rawExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+  options: StaticStringResolutionOptions = {},
+): ReadonlyArray<string> | null =>
+  resolveStaticStringExpressionValues(rawExpression, scopes, options);
+
+export const getKnownStaticStringExpressionValues = (
+  rawExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<string> | null =>
+  resolveStaticStringExpressionValues(rawExpression, scopes, { shouldKeepKnownValues: true });
 
 // Static-resolution big brother of `getJsxPropStringValue`: returns EVERY
 // string the attribute can statically evaluate to, or null when any
@@ -122,6 +144,7 @@ const getJsxPropStaticStringValuesWithMode = (
   scopes: ScopeAnalysis,
   maximumConstAliases: number | null,
   shouldFoldStaticConditions: boolean,
+  shouldKeepKnownValues = false,
 ): ReadonlyArray<string> | null => {
   const value = attribute.value;
   if (!value) return null;
@@ -132,6 +155,7 @@ const getJsxPropStaticStringValuesWithMode = (
     return getStaticStringExpressionValues(value.expression as EsTreeNode, scopes, {
       maximumConstAliases,
       shouldFoldStaticConditions,
+      shouldKeepKnownValues,
     });
   }
   return null;
@@ -148,3 +172,9 @@ export const getJsxPropExhaustiveStaticStringValues = (
   scopes: ScopeAnalysis,
 ): ReadonlyArray<string> | null =>
   getJsxPropStaticStringValuesWithMode(attribute, scopes, null, true);
+
+export const getJsxPropKnownStaticStringValues = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<string> | null =>
+  getJsxPropStaticStringValuesWithMode(attribute, scopes, MAX_CONST_RESOLUTION_HOPS, false, true);

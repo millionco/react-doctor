@@ -5,7 +5,7 @@ import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "../../utils/resolve-jsx-element-name.js";
-import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
+import { isContentContainerStyleScrollContainer } from "./utils/scrollview-names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -104,7 +104,7 @@ export const rnScrollviewDynamicPadding = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
       if (!elementName) return;
-      if (!SCROLLVIEW_NAMES.has(elementName) && elementName !== "FlashList") return;
+      if (!isContentContainerStyleScrollContainer(elementName)) return;
       if (elementName === "KeyboardAwareScrollView") return;
 
       for (const attr of node.attributes ?? []) {

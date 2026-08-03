@@ -22,6 +22,24 @@ const C = () => <ScrollView contentContainerStyle={{ paddingBottom: TAB_BAR_HEIG
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("flags LegendList dynamic padding like other recycler content containers", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ keyboardHeight }) => <LegendList contentContainerStyle={{ paddingBottom: keyboardHeight }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on static LegendList padding", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = () => <LegendList contentContainerStyle={{ paddingBottom: 16 }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on arithmetic over static numeric values", () => {
     const result = runRule(
       rnScrollviewDynamicPadding,

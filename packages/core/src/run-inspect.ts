@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Filter from "effect/Filter";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -542,12 +543,14 @@ export const runInspect = <HooksR = never>(
 
     const filterPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
       rawStream.pipe(
-        Stream.filterMap((diagnostic) => {
-          const filteredDiagnostic = transform.apply(diagnostic);
-          return filteredDiagnostic === null
-            ? Option.none()
-            : Option.some(filteredDiagnostic);
-        }),
+        Stream.filterMap(
+          Filter.fromPredicateOption((diagnostic: Diagnostic) => {
+            const filteredDiagnostic = transform.apply(diagnostic);
+            return filteredDiagnostic === null
+              ? Option.none()
+              : Option.some(filteredDiagnostic);
+          }),
+        ),
       );
 
     const applyPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>

@@ -305,7 +305,7 @@ describe("shouldShowAgentInstallHint", () => {
 
   it("returns false when the fallback react-doctor script exists", () => {
     writePackageJson(fixture.projectRoot, {
-      scripts: { doctor: "vitest", "react-doctor": "npx react-doctor@latest" },
+      scripts: { doctor: "vitest", "react-doctor": "npx react-doctor@0.x" },
     });
 
     expect(

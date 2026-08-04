@@ -36,7 +36,7 @@ React Doctor publishes a reviewer-tested fix recipe for every rule:
 https://www.react.doctor/prompts/rules/<plugin>/<rule>.md
 ```
 
-When a finding maps to a React Doctor rule (most will), the plan's **Target** and **Steps** must come from that prompt — fetch it and inline the recipe, never approximate it from memory. `npx react-doctor@latest rules explain <rule>` gives the same rationale locally. This is the React analog of "never approximate a value": the exact fix already exists; the plan just delivers it to the executor with the specific file, line, and surrounding code filled in.
+When a finding maps to a React Doctor rule (most will), the plan's **Target** and **Steps** must come from that prompt — fetch it and inline the recipe, never approximate it from memory. `npx react-doctor@0.x rules explain <rule>` gives the same rationale locally. This is the React analog of "never approximate a value": the exact fix already exists; the plan just delivers it to the executor with the specific file, line, and surrounding code filled in.
 
 ## Workflow
 
@@ -47,7 +47,7 @@ Get the machine map before applying judgment:
 - **Scan for evidence.** Run React Doctor once, read-only, as JSON so findings are structured (rule id, category, severity, `file:line`):
 
   ```bash
-  npx react-doctor@latest --json --json-out react-doctor-report.json
+  npx react-doctor@0.x --json --json-out react-doctor-report.json
   ```
 
   Write it outside `plans/`; delete it when done. This is your ground truth for what's technically wrong — you do not re-derive it by eye.
@@ -101,7 +101,7 @@ Then **stop and wait for the user to select** which findings become plans. If ru
 
 One plan per selected finding, using [PLAN-TEMPLATE.md](PLAN-TEMPLATE.md), written into `plans/` as `NNN-short-slug.md` (monotonic numbering; respect existing plans). Stamp each plan with the current commit (`git rev-parse --short HEAD`).
 
-Write for the weakest executor: exact file paths and current-code excerpts, the exact target code (pulled from the canonical per-rule prompt, never approximated), the repo's own conventions with an exemplar to imitate, ordered steps, hard scope boundaries, and a verification section — mechanical (`npx react-doctor@latest --scope changed` clears the diagnostic without dropping the score, plus typecheck/lint/tests) and behavioral (what to click and what to confirm in the React DevTools Profiler / "Highlight updates").
+Write for the weakest executor: exact file paths and current-code excerpts, the exact target code (pulled from the canonical per-rule prompt, never approximated), the repo's own conventions with an exemplar to imitate, ordered steps, hard scope boundaries, and a verification section — mechanical (`npx react-doctor@0.x --scope changed` clears the diagnostic without dropping the score, plus typecheck/lint/tests) and behavioral (what to click and what to confirm in the React DevTools Profiler / "Highlight updates").
 
 Finish by creating or updating `plans/README.md`: recommended execution order, dependencies between plans, and a status column.
 

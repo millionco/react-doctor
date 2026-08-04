@@ -68,7 +68,7 @@ describe("installDoctorScript", () => {
       scriptStatus: "created",
     });
     expect(readPackageJson(fixture.projectRoot)).toMatchObject({
-      scripts: { doctor: "npx react-doctor@latest" },
+      scripts: { doctor: "npx react-doctor@0.x" },
     });
     expect(readPackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
   });
@@ -82,7 +82,7 @@ describe("installDoctorScript", () => {
 
     expect(result.packageJsonPath).toBe(path.join(fixture.projectRoot, "package.json"));
     expect(readPackageJson(fixture.projectRoot)).toMatchObject({
-      scripts: { doctor: "npx react-doctor@latest" },
+      scripts: { doctor: "npx react-doctor@0.x" },
     });
     expect(readPackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
   });
@@ -109,7 +109,7 @@ describe("installDoctorScript", () => {
     });
     expect(readPackageJson(fixture.projectRoot).scripts).toEqual({
       doctor: "vitest --run",
-      "react-doctor": "npx react-doctor@latest",
+      "react-doctor": "npx react-doctor@0.x",
     });
   });
 
@@ -182,7 +182,7 @@ describe("installDoctorScript", () => {
       scriptStatus: "created",
     });
     expect(readPackageJson(fixture.projectRoot)).toMatchObject({
-      scripts: { doctor: "npx react-doctor@latest" },
+      scripts: { doctor: "npx react-doctor@0.x" },
       devDependencies: "react-doctor",
     });
   });
@@ -199,7 +199,7 @@ describe("installDoctorScript", () => {
 
     expect(result.scriptStatus).toBe("created");
     expect(readPackageJson(fixture.projectRoot)).toMatchObject({
-      scripts: { doctor: "npx react-doctor@latest" },
+      scripts: { doctor: "npx react-doctor@0.x" },
       dependencies: { "react-doctor": "^1.2.3" },
     });
     expect(readPackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");

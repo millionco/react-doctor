@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 /**
  * Classify the action's `version` input into the install spec to run. Pure and
- * exported so the branch logic (local path vs registry range vs `latest`) is
+ * exported so the branch logic (local path vs registry range vs `0.x`) is
  * unit-tested without the network. A local-path spec (this repo's self-test
  * runs the action against a built tarball / path) is NOT cacheable — its bytes
  * aren't keyed by a published version, so an install cache would be unsound.
@@ -19,7 +19,7 @@ export const classifyVersionSpec = (version) => {
   if (isLocalPath) {
     return { cacheable: false, spec: trimmed, registryRange: undefined };
   }
-  const range = trimmed || "latest";
+  const range = trimmed === "" || trimmed === "latest" ? "0.x" : trimmed;
   return { cacheable: true, spec: `react-doctor@${range}`, registryRange: range };
 };
 

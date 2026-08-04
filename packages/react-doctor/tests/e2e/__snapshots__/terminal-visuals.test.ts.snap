@@ -51,7 +51,7 @@ exports[`in-process render across terminal widths and render modes > matches the
   Performance > 1 warning
   Maintainability > 1 error
 
-  Run npx react-doctor@latest --verbose to list every error and warning
+  Run npx react-doctor@0.x --verbose to list every error and warning
 
   ┌─────┐  99 / 100 Great
   │ ◠ ◠ │  ██████████████████████████████████████████████████

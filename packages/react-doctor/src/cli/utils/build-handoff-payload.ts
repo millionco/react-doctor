@@ -74,7 +74,7 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     "",
     "Findings that share a `fixGroupId` (in diagnostics.json) are one root cause — a single fix clears all of them, so treat each `fixGroupId` as ONE task, not one per site.",
     "",
-    "Verify against the real thing, don't assume: confirm each change matches the canonical fix recipe you fetched for that rule, then re-run `npx react-doctor@latest --verbose` and check the issue is actually gone against the real tool before moving on.",
+    "Verify against the real thing, don't assume: confirm each change matches the canonical fix recipe you fetched for that rule, then re-run `npx react-doctor@0.x --verbose` and check the issue is actually gone against the real tool before moving on.",
     "",
     'Teach me as you go: for every issue you touch, explain it in plain language (no jargon) — what the problem is, why it\'s a problem, and how serious it is in human terms. Describe the real-world impact and severity concretely (e.g. "this crashes the page for users on Safari" vs. "this is a minor cleanup with no user impact") so I understand why it matters, not just what changed.',
     "",

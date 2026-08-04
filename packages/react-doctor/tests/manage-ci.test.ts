@@ -81,7 +81,7 @@ describe("runCiInstall", () => {
   it("scaffolds a GitLab merge-request job", async () => {
     await runCiInstall(baseOptions({ provider: "gitlab-ci" }));
     const content = fs.readFileSync(path.join(project.root, ".gitlab-ci.yml"), "utf8");
-    expect(content).toContain("npx react-doctor@latest --blocking none");
+    expect(content).toContain("npx react-doctor@0.x --blocking none");
   });
 });
 

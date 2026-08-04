@@ -331,7 +331,7 @@ describe("runInstallReactDoctor", () => {
 
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
       test: "vite-plus test",
-      doctor: "npx react-doctor@latest",
+      doctor: "npx react-doctor@0.x",
     });
     expect(readFixturePackageJson(fixture.projectRoot).devDependencies).toEqual({
       "react-doctor": "latest",
@@ -356,7 +356,7 @@ describe("runInstallReactDoctor", () => {
     expect(dependencyInstallCalls).toEqual([
       {
         command: "pnpm",
-        args: ["add", "--save-dev", "react-doctor@latest"],
+        args: ["add", "--save-dev", "react-doctor@0.x"],
         cwd: fixture.projectRoot,
       },
     ]);
@@ -384,12 +384,12 @@ describe("runInstallReactDoctor", () => {
     expect(dependencyInstallCalls).toEqual([
       {
         command: "npm",
-        args: ["install", "--save-dev", "react-doctor@latest"],
+        args: ["install", "--save-dev", "react-doctor@0.x"],
         cwd: fixture.projectRoot,
       },
     ]);
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
-      doctor: "npx react-doctor@latest",
+      doctor: "npx react-doctor@0.x",
     });
     expect(readFixturePackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
   });
@@ -414,7 +414,7 @@ describe("runInstallReactDoctor", () => {
 
     expect(process.exitCode).toBe(0);
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
-      doctor: "npx react-doctor@latest",
+      doctor: "npx react-doctor@0.x",
     });
     expect(readFixturePackageJson(fixture.projectRoot)).not.toHaveProperty("devDependencies");
   });
@@ -446,7 +446,7 @@ describe("runInstallReactDoctor", () => {
     expect(dependencyInstallCalls).toEqual([
       {
         command: "pnpm",
-        args: ["add", "--save-dev", "-w", "react-doctor@latest"],
+        args: ["add", "--save-dev", "-w", "react-doctor@0.x"],
         cwd: appDirectory,
       },
     ]);
@@ -485,7 +485,7 @@ describe("runInstallReactDoctor", () => {
     });
 
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
-      doctor: "npx react-doctor@latest",
+      doctor: "npx react-doctor@0.x",
     });
     expect(
       fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
@@ -535,7 +535,7 @@ describe("runInstallReactDoctor", () => {
 
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
       doctor: "vitest --run",
-      "react-doctor": "npx react-doctor@latest",
+      "react-doctor": "npx react-doctor@0.x",
     });
     expect(readFixturePackageJson(fixture.projectRoot).devDependencies).toEqual({
       "react-doctor": "latest",
@@ -560,7 +560,7 @@ describe("runInstallReactDoctor", () => {
     });
 
     expect(readFixturePackageJson(fixture.projectRoot).scripts).toEqual({
-      doctor: "npx react-doctor@latest",
+      doctor: "npx react-doctor@0.x",
     });
     expect(readFixturePackageJson(fixture.projectRoot).devDependencies).toEqual({
       "react-doctor": "^1.2.3",

@@ -141,7 +141,7 @@ const packageManagerNeedsWorkspaceFlag = (projectRoot: string): boolean =>
 
 const buildInstallCommand = (projectRoot: string): InstallReactDoctorDependencyRunnerInput => {
   const packageManager = detectPackageManager(projectRoot);
-  const packageSpecifier = `${DOCTOR_PACKAGE_NAME}@latest`;
+  const packageSpecifier = `${DOCTOR_PACKAGE_NAME}@0.x`;
   if (packageManager === "npm") {
     return {
       command: "npm",
@@ -283,7 +283,7 @@ const buildDependencyFollowUp = (
     return undefined;
   }
   const installCommand =
-    result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
+    result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@0.x`;
   return `  React Doctor still works via \`npx react-doctor\`. To install locally: ${installCommand}`;
 };
 

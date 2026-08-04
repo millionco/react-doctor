@@ -44,7 +44,7 @@ export const buildIssuePrompt = ({ row, projectName }: BuildIssuePromptInput): s
 
   lines.push(
     "",
-    `Verify with \`npx react-doctor@latest --verbose\` and confirm ${row.ruleKey} is gone before moving on.`,
+    `Verify with \`npx react-doctor@0.x --verbose\` and confirm ${row.ruleKey} is gone before moving on.`,
   );
 
   return lines.join("\n");

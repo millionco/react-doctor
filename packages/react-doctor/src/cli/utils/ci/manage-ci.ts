@@ -379,7 +379,7 @@ export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void
 
   if (provider.upgradeMajor === undefined) {
     logger.log(
-      `${provider.displayName} runs ${highlighter.info("npx react-doctor@latest")}, so it always uses the current release. Nothing to upgrade.`,
+      `${provider.displayName} runs ${highlighter.info("npx react-doctor@0.x")}, so it stays on the 0.x release line. Nothing to upgrade.`,
     );
     return;
   }

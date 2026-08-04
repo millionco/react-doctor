@@ -520,7 +520,7 @@ const buildOverflowSummaryLine = (
   const shownErrorRuleCount = Math.min(TOP_ERRORS_DISPLAY_COUNT, errorRuleGroups.length);
   if (diagnostics.length <= shownErrorRuleCount) return undefined;
 
-  const command = highlighter.bold(highlighter.info("npx react-doctor@latest --verbose"));
+  const command = highlighter.bold(highlighter.info("npx react-doctor@0.x --verbose"));
   return `  ${highlighter.dim("Run")} ${command} ${highlighter.dim("to list every error and warning")}`;
 };
 
@@ -566,7 +566,7 @@ export const buildMigrationScaleAdvisoryLines = (
     lines.push(highlighter.dim(`${TOP_ERROR_DETAIL_INDENT}${guidanceLine}`));
   }
 
-  const command = highlighter.info("npx react-doctor@latest <path>");
+  const command = highlighter.info("npx react-doctor@0.x <path>");
   lines.push(
     `${TOP_ERROR_DETAIL_INDENT}${highlighter.dim("Scope it down one area at a time:")} ${command}`,
   );

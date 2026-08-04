@@ -39,7 +39,7 @@ import termios
 import time
 
 REPOSITORY_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CLI_BINARY_PATH = os.path.join(REPOSITORY_ROOT, "packages", "react-doctor", "dist", "cli.js")
+DEFAULT_CLI_BINARY_PATH = os.path.join(REPOSITORY_ROOT, "packages", "react-doctor", "dist", "cli.js")
 
 # If the prompt is still open this long after the CLI started, the event loop
 # is being held open correctly. The regression self-exits within ~100ms of the
@@ -218,7 +218,7 @@ def read_pty_until(master_fd, process, captured_output, deadline, marker=None):
     return captured_output
 
 
-def run_prompt_in_pty(fixture_directory, delayed_git_directory):
+def run_prompt_in_pty(cli_binary_path, fixture_directory, delayed_git_directory):
     child_environment = {
         key: value
         for key, value in os.environ.items()
@@ -235,7 +235,7 @@ def run_prompt_in_pty(fixture_directory, delayed_git_directory):
         struct.pack("HHHH", TERMINAL_ROWS, TERMINAL_COLUMNS, 0, 0),
     )
     process = subprocess.Popen(
-        [NODE_BINARY_PATH, CLI_BINARY_PATH, fixture_directory, "--no-lint", "--no-dead-code", "--no-score"],
+        [NODE_BINARY_PATH, cli_binary_path, fixture_directory, "--no-lint", "--no-dead-code", "--no-score"],
         stdin=slave_fd,
         stdout=slave_fd,
         stderr=slave_fd,
@@ -285,6 +285,7 @@ def main():
     preparation_mode = parser.add_mutually_exclusive_group()
     preparation_mode.add_argument("--prepare-fixture")
     preparation_mode.add_argument("--prepare-git-wrapper")
+    parser.add_argument("--cli-binary", default=DEFAULT_CLI_BINARY_PATH)
     arguments = parser.parse_args()
     if arguments.prepare_fixture:
         fixture_directory = os.path.abspath(arguments.prepare_fixture)
@@ -297,8 +298,9 @@ def main():
         create_delayed_git_wrapper(fixture_directory, resolve_git_binary())
         return
 
-    if not os.path.isfile(CLI_BINARY_PATH):
-        fail(f"Built CLI missing at {CLI_BINARY_PATH}. Run `pnpm build` first.")
+    cli_binary_path = os.path.abspath(arguments.cli_binary)
+    if not os.path.isfile(cli_binary_path):
+        fail(f"Built CLI missing at {cli_binary_path}. Run `pnpm build` first.")
 
     fixture_directory = tempfile.mkdtemp(prefix="react-doctor-tty-smoke-")
     try:
@@ -306,6 +308,7 @@ def main():
         git_binary_path = initialize_git_repository(fixture_directory)
         delayed_git_directory = create_delayed_git_wrapper(fixture_directory, git_binary_path)
         exited_by_itself, scan_feedback_rendered, output = run_prompt_in_pty(
+            cli_binary_path,
             fixture_directory,
             delayed_git_directory,
         )

@@ -222,15 +222,16 @@ const main = (): void => {
       process.exit(1);
     }
 
-    const defaultScanResult = runCommand({
-      command: process.execPath,
-      args: [binaryPath, FIXTURE_DIRECTORY, "--no-score", "--no-dead-code", "--blocking", "none"],
-      cwd: installDirectory,
-    });
-    if (!defaultScanResult.stdout.includes("React Doctor")) {
-      console.error("Installed CLI did not render the default report.");
-      console.error("stdout:", defaultScanResult.stdout.slice(0, 2_000));
-      process.exit(1);
+    if (process.platform !== "win32") {
+      runCommand({
+        command: "python3",
+        args: [
+          path.join(REPOSITORY_ROOT, "scripts/smoke-tty-prompt.py"),
+          "--cli-binary",
+          binaryPath,
+        ],
+        cwd: installDirectory,
+      });
     }
 
     console.log(

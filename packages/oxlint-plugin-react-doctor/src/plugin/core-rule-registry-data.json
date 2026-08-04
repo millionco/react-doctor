@@ -7744,7 +7744,6 @@
       "framework": "global",
       "requires": ["react"],
       "tags": ["react-jsx-only"],
-      "defaultEnabled": false,
       "isScanRule": false
     }
   },

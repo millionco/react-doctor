@@ -1,5 +1,7 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
@@ -500,6 +502,7 @@ const literalsEqual = (a: EsTreeNode, b: EsTreeNode): boolean =>
 const resolveValueNode = (
   node: EsTreeNode,
   writes: ReadonlyMap<string, EsTreeNode>,
+  scopes: ScopeAnalysis,
   depth: number,
   seen: ReadonlySet<string>,
 ): EsTreeNode | null => {
@@ -509,7 +512,18 @@ const resolveValueNode = (
     if (seen.has(current.name)) return null;
     const written = writes.get(current.name);
     if (written)
-      return resolveValueNode(written, writes, depth + 1, new Set(seen).add(current.name));
+      return resolveValueNode(written, writes, scopes, depth + 1, new Set(seen).add(current.name));
+    const symbol = scopes.symbolFor(current);
+    const initializer = symbol ? getDirectUnreassignedInitializer(symbol) : null;
+    if (initializer) {
+      return resolveValueNode(
+        initializer,
+        writes,
+        scopes,
+        depth + 1,
+        new Set(seen).add(current.name),
+      );
+    }
     return current;
   }
   if (
@@ -524,7 +538,7 @@ const resolveValueNode = (
     !current.computed &&
     isNodeOfType(current.property, "Identifier")
   ) {
-    const objectValue = resolveValueNode(current.object, writes, depth + 1, seen);
+    const objectValue = resolveValueNode(current.object, writes, scopes, depth + 1, seen);
     if (objectValue && isNodeOfType(objectValue, "ObjectExpression")) {
       const propertyKey = current.property.name;
       const properties = objectValue.properties ?? [];
@@ -537,7 +551,7 @@ const resolveValueNode = (
           ((isNodeOfType(property.key, "Identifier") && property.key.name === propertyKey) ||
             (isNodeOfType(property.key, "Literal") && property.key.value === propertyKey))
         ) {
-          return resolveValueNode(property.value, writes, depth + 1, seen);
+          return resolveValueNode(property.value, writes, scopes, depth + 1, seen);
         }
       }
     }
@@ -550,10 +564,11 @@ const resolveValueNode = (
 const resolveToNumber = (
   node: EsTreeNode,
   writes: ReadonlyMap<string, EsTreeNode>,
+  scopes: ScopeAnalysis,
   depth: number,
   seen: ReadonlySet<string>,
 ): number | null => {
-  const value = resolveValueNode(node, writes, depth, seen);
+  const value = resolveValueNode(node, writes, scopes, depth, seen);
   if (value && isNodeOfType(value, "Literal") && typeof value.value === "number")
     return value.value;
   const current = unwrapChain(node);
@@ -563,7 +578,7 @@ const resolveToNumber = (
     isNodeOfType(current.property, "Identifier") &&
     current.property.name === "length"
   ) {
-    const objectValue = resolveValueNode(current.object, writes, depth, seen);
+    const objectValue = resolveValueNode(current.object, writes, scopes, depth, seen);
     if (objectValue && isNodeOfType(objectValue, "ArrayExpression")) {
       const elements = objectValue.elements ?? [];
       if (!elements.some((element) => element && isNodeOfType(element, "SpreadElement"))) {
@@ -578,14 +593,15 @@ const provablyEqualAfterWrites = (
   left: EsTreeNode,
   right: EsTreeNode,
   writes: ReadonlyMap<string, EsTreeNode>,
+  scopes: ScopeAnalysis,
   depth: number,
   seen: ReadonlySet<string>,
 ): boolean => {
-  const leftNumber = resolveToNumber(left, writes, depth, seen);
-  const rightNumber = resolveToNumber(right, writes, depth, seen);
+  const leftNumber = resolveToNumber(left, writes, scopes, depth, seen);
+  const rightNumber = resolveToNumber(right, writes, scopes, depth, seen);
   if (leftNumber !== null && rightNumber !== null) return leftNumber === rightNumber;
-  const a = resolveValueNode(left, writes, depth, seen);
-  const b = resolveValueNode(right, writes, depth, seen);
+  const a = resolveValueNode(left, writes, scopes, depth, seen);
+  const b = resolveValueNode(right, writes, scopes, depth, seen);
   if (!a || !b) return false;
   if (literalsEqual(a, b)) return true;
   if (isUndefinedValue(a) && isUndefinedValue(b)) return true;
@@ -595,10 +611,45 @@ const provablyEqualAfterWrites = (
 const provablyFalsyAfterWrites = (
   node: EsTreeNode,
   writes: ReadonlyMap<string, EsTreeNode>,
+  scopes: ScopeAnalysis,
   depth: number,
   seen: ReadonlySet<string>,
 ): boolean => {
-  const value = resolveValueNode(node, writes, depth, seen);
+  const current = unwrapChain(node);
+  if (isNodeOfType(current, "Identifier")) {
+    const symbol = scopes.symbolFor(current);
+    const initializer = symbol ? getDirectUnreassignedInitializer(symbol) : null;
+    if (initializer && !seen.has(current.name)) {
+      return provablyFalsyAfterWrites(
+        initializer,
+        writes,
+        scopes,
+        depth + 1,
+        new Set(seen).add(current.name),
+      );
+    }
+  }
+  if (isNodeOfType(current, "LogicalExpression")) {
+    if (current.operator === "&&") {
+      return (
+        provablyFalsyAfterWrites(current.left, writes, scopes, depth + 1, seen) ||
+        provablyFalsyAfterWrites(current.right, writes, scopes, depth + 1, seen)
+      );
+    }
+    if (current.operator === "||") {
+      return (
+        provablyFalsyAfterWrites(current.left, writes, scopes, depth + 1, seen) &&
+        provablyFalsyAfterWrites(current.right, writes, scopes, depth + 1, seen)
+      );
+    }
+  }
+  if (
+    isNodeOfType(current, "BinaryExpression") &&
+    (current.operator === "!==" || current.operator === "!=")
+  ) {
+    return provablyEqualAfterWrites(current.left, current.right, writes, scopes, depth + 1, seen);
+  }
+  const value = resolveValueNode(node, writes, scopes, depth, seen);
   if (value) {
     if (isUndefinedValue(value)) return true;
     if (isNodeOfType(value, "Literal")) {
@@ -608,7 +659,7 @@ const provablyFalsyAfterWrites = (
     }
     // Array / object literals are truthy.
   }
-  const asNumber = resolveToNumber(node, writes, depth, seen);
+  const asNumber = resolveToNumber(node, writes, scopes, depth, seen);
   return asNumber === 0;
 };
 
@@ -616,6 +667,7 @@ const provablyFalsyAfterWrites = (
 const guardProvenAfterWrites = (
   test: EsTreeNode,
   writes: ReadonlyMap<string, EsTreeNode>,
+  scopes: ScopeAnalysis,
   depth: number,
   seen: ReadonlySet<string>,
 ): boolean => {
@@ -624,33 +676,33 @@ const guardProvenAfterWrites = (
   if (isNodeOfType(node, "LogicalExpression")) {
     if (node.operator === "&&") {
       return (
-        guardProvenAfterWrites(node.left, writes, depth + 1, seen) &&
-        guardProvenAfterWrites(node.right, writes, depth + 1, seen)
+        guardProvenAfterWrites(node.left, writes, scopes, depth + 1, seen) &&
+        guardProvenAfterWrites(node.right, writes, scopes, depth + 1, seen)
       );
     }
     if (node.operator === "||") {
       return (
-        guardProvenAfterWrites(node.left, writes, depth + 1, seen) ||
-        guardProvenAfterWrites(node.right, writes, depth + 1, seen)
+        guardProvenAfterWrites(node.left, writes, scopes, depth + 1, seen) ||
+        guardProvenAfterWrites(node.right, writes, scopes, depth + 1, seen)
       );
     }
     return false;
   }
   if (isNodeOfType(node, "UnaryExpression") && node.operator === "!") {
-    return provablyFalsyAfterWrites(node.argument, writes, depth + 1, seen);
+    return provablyFalsyAfterWrites(node.argument, writes, scopes, depth + 1, seen);
   }
   if (isNodeOfType(node, "BinaryExpression")) {
     if (node.operator === "===" || node.operator === "==") {
-      return provablyEqualAfterWrites(node.left, node.right, writes, depth + 1, seen);
+      return provablyEqualAfterWrites(node.left, node.right, writes, scopes, depth + 1, seen);
     }
-    const leftNumber = resolveToNumber(node.left, writes, depth + 1, seen);
-    const rightNumber = resolveToNumber(node.right, writes, depth + 1, seen);
+    const leftNumber = resolveToNumber(node.left, writes, scopes, depth + 1, seen);
+    const rightNumber = resolveToNumber(node.right, writes, scopes, depth + 1, seen);
     if (leftNumber !== null && rightNumber !== null) {
       return numericComparisonHolds(node.operator, leftNumber, rightNumber);
     }
     return false;
   }
-  const value = resolveValueNode(node, writes, depth + 1, seen);
+  const value = resolveValueNode(node, writes, scopes, depth + 1, seen);
   if (value) {
     if (isNodeOfType(value, "ArrayExpression") || isNodeOfType(value, "ObjectExpression"))
       return true;
@@ -838,7 +890,7 @@ export const noSelfUpdatingEffect = defineRule({
         const effectConvergesByGuard =
           everySetterCallIsTopLevel(callback, setterNames, setterCallNodes) &&
           earlyReturnGuardTests.some((test) =>
-            guardProvenAfterWrites(test, topLevelWrites, 0, new Set<string>()),
+            guardProvenAfterWrites(test, topLevelWrites, context.scopes, 0, new Set<string>()),
           );
         if (effectConvergesByGuard) continue;
 

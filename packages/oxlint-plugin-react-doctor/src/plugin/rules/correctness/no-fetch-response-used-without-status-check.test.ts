@@ -238,6 +238,38 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a proven local status validator guards body consumption", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const responseSucceeded = (response) => {
+        if (typeof response.ok === "boolean") return response.ok;
+        return typeof response.status !== "number" ||
+          (response.status >= 200 && response.status < 300);
+      };
+      async function load() {
+        const response = await fetch("/api/keys");
+        if (!responseSucceeded(response)) throw new Error("Unable to refresh");
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports an opaque local predicate", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const responseSucceeded = (response) => response.headers.has("x-success");
+      async function load() {
+        const response = await fetch("/api/keys");
+        if (!responseSucceeded(response)) throw new Error("Unable to refresh");
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet when ok/status is checked through destructuring", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,

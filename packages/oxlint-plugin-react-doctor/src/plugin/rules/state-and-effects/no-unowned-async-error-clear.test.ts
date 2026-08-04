@@ -3,6 +3,166 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noUnownedAsyncErrorClear } from "./no-unowned-async-error-clear.js";
 
 describe("no-unowned-async-error-clear", () => {
+  it("flags request-scoped error state cleared after an unowned async completion", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useState } from "react";
+      function RequestCard({ currentRequest, respond }) {
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const result = await respond(request);
+          if (result.ok) setDeliveryError(null);
+          else setDeliveryError({ requestId: request.requestId, reason: result.reason });
+        };
+        return <button onClick={() => deliver(currentRequest)}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an identity guard before request-scoped error completion", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useState } from "react";
+      function RequestCard({ currentRequest, respond }) {
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const result = await respond(request);
+          if (request.requestId !== currentRequest.requestId) return;
+          if (result.ok) setDeliveryError(null);
+          else setDeliveryError({ requestId: request.requestId, reason: result.reason });
+        };
+        return <button onClick={() => deliver(currentRequest)}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a request identity comparison that does not control the clear", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useState } from "react";
+      function RequestCard({ currentRequest, respond }) {
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const result = await respond(request);
+          const isCurrentRequest = request.requestId === currentRequest.requestId;
+          if (result.ok) setDeliveryError(null);
+          else setDeliveryError({ requestId: request.requestId, reason: result.reason });
+          return isCurrentRequest;
+        };
+        return <button onClick={() => deliver(currentRequest)}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a clear behind a request comparison with an unguarded alternative", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useState } from "react";
+      function RequestCard({ currentRequest, respond }) {
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const result = await respond(request);
+          if (!result.ok) {
+            setDeliveryError({ requestId: request.requestId, reason: result.reason });
+          }
+          if (request.requestId === currentRequest.requestId || result.forceClear) {
+            setDeliveryError(null);
+          }
+        };
+        return <button onClick={() => deliver(currentRequest)}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a clear when every path into its branch proves request ownership", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useState } from "react";
+      function RequestCard({ currentRequest, respond }) {
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const result = await respond(request);
+          if (result.ok && request.requestId === currentRequest.requestId) {
+            setDeliveryError(null);
+          } else if (!result.ok) {
+            setDeliveryError({ requestId: request.requestId, reason: result.reason });
+          }
+        };
+        return <button onClick={() => deliver(currentRequest)}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a clear after an ownership exit that can fall through", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useState } from "react";
+      function RequestCard({ currentRequest, respond }) {
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const result = await respond(request);
+          if (request.requestId !== currentRequest.requestId && result.cancelled) return;
+          if (result.ok) setDeliveryError(null);
+          else setDeliveryError({ requestId: request.requestId, reason: result.reason });
+        };
+        return <button onClick={() => deliver(currentRequest)}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an unowned promise completion that replaces keyed delivery state", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useState } from "react";
+      function useResponseDelivery(requestId, outcome) {
+        const [state, setState] = useState(null);
+        outcome.then((result) => {
+          setState({
+            requestId,
+            pending: false,
+            error: result.ok ? null : result.error,
+          });
+        });
+        return state;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags request-scoped activity cleared by an older async completion", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useState } from "react";
+      function PermissionCard({ requestId, send }) {
+        const [isDelivering, setIsDelivering] = useState(false);
+        const deliver = async () => {
+          setIsDelivering(true);
+          try {
+            await send();
+          } finally {
+            setIsDelivering(false);
+          }
+        };
+        return <button onClick={deliver} disabled={isDelivering}>{requestId}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a stale completion that clears error ownership for a newer request", () => {
     const result = runRule(
       noUnownedAsyncErrorClear,

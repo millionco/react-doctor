@@ -389,6 +389,24 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
+  it("does not flag a list element with a key in a local object spread", () => {
+    expectPass(`
+      options.map((option) => {
+        const selectProps = { key: String(option.value), value: option.value };
+        return <SelectListOption {...selectProps} />;
+      });
+    `);
+  });
+
+  it("still flags a list element with a keyless local object spread", () => {
+    expectFail(`
+      options.map((option) => {
+        const selectProps = { value: option.value };
+        return <SelectListOption {...selectProps} />;
+      });
+    `);
+  });
+
   // cloudscape property-filter permutations: the spread resolves to a local
   // `const` object literal that provably carries no `key`, so a key
   // written after it creates no ambiguity.

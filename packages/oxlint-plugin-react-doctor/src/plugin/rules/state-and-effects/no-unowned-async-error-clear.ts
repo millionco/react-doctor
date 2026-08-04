@@ -11,6 +11,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
@@ -23,6 +24,12 @@ const COMPONENT_METADATA_PROPERTY_NAMES = new Set(["displayName", "propTypes"]);
 interface RequestOwnerState {
   componentFunction: EsTreeNode;
   ownerIdentityReferences: OwnerIdentityReference[];
+  setterSymbol: SymbolDescriptor;
+}
+
+interface RequestScopedState {
+  componentFunction: EsTreeNode;
+  isBooleanActivityState: boolean;
   setterSymbol: SymbolDescriptor;
 }
 
@@ -43,6 +50,12 @@ const isNullLiteral = (node: EsTreeNode | null | undefined): boolean => {
   return isNodeOfType(expression, "Literal") && expression.value === null;
 };
 
+const isBooleanLiteral = (node: EsTreeNode | null | undefined, value: boolean): boolean => {
+  if (!node) return false;
+  const expression = stripParenExpression(node);
+  return isNodeOfType(expression, "Literal") && expression.value === value;
+};
+
 const expressionContainsNull = (node: EsTreeNode): boolean => {
   let hasNull = false;
   walkAst(node, (child) => {
@@ -54,6 +67,44 @@ const expressionContainsNull = (node: EsTreeNode): boolean => {
   });
   return hasNull;
 };
+
+const expressionContainsNonNullValue = (node: EsTreeNode): boolean => {
+  const expression = stripParenExpression(node);
+  if (isNullLiteral(expression)) return false;
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return (
+      expressionContainsNonNullValue(expression.consequent) ||
+      expressionContainsNonNullValue(expression.alternate)
+    );
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    return (
+      expressionContainsNonNullValue(expression.left) ||
+      expressionContainsNonNullValue(expression.right)
+    );
+  }
+  return true;
+};
+
+const nodeContainsRequestIdentity = (node: EsTreeNode): boolean => {
+  let containsRequestIdentity = false;
+  walkAst(node, (child) => {
+    if (containsRequestIdentity) return false;
+    if (
+      (isNodeOfType(child, "Identifier") && /request(?:Id)?$/i.test(child.name)) ||
+      (isNodeOfType(child, "MemberExpression") &&
+        /requestId$/i.test(getStaticPropertyName(child) ?? ""))
+    ) {
+      containsRequestIdentity = true;
+      return false;
+    }
+  });
+  return containsRequestIdentity;
+};
+
+const functionReceivesRequestIdentity = (functionNode: EsTreeNode): boolean =>
+  isFunctionLike(functionNode) &&
+  functionNode.params.some((parameter) => nodeContainsRequestIdentity(parameter));
 
 const getRequestIdentityMember = (
   node: EsTreeNode,
@@ -171,6 +222,39 @@ const getRequestOwnerState = (
   return ownerIdentityReferences.length > 0
     ? { componentFunction, ownerIdentityReferences, setterSymbol }
     : null;
+};
+
+const getRequestScopedState = (
+  declarator: EsTreeNodeOfType<"VariableDeclarator">,
+  context: RuleContext,
+): RequestScopedState | null => {
+  if (
+    !isNodeOfType(declarator.id, "ArrayPattern") ||
+    !isNodeOfType(declarator.init, "CallExpression") ||
+    !isReactApiCall(declarator.init, "useState", context.scopes, {
+      allowGlobalReactNamespace: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return null;
+  }
+  const stateIdentifier = declarator.id.elements[0];
+  const setterIdentifier = declarator.id.elements[1];
+  const setterSymbol = isNodeOfType(setterIdentifier, "Identifier")
+    ? context.scopes.symbolFor(setterIdentifier)
+    : null;
+  const componentFunction = findEnclosingFunction(declarator);
+  const isBooleanActivityState =
+    isBooleanLiteral(declarator.init.arguments[0], false) &&
+    Boolean(
+      isNodeOfType(stateIdentifier, "Identifier") &&
+      /pending|loading|delivering/i.test(stateIdentifier.name),
+    );
+  if (!isNullLiteral(declarator.init.arguments[0]) && !isBooleanActivityState) return null;
+  if (!setterSymbol || !componentFunction || !functionReceivesRequestIdentity(componentFunction)) {
+    return null;
+  }
+  return { componentFunction, isBooleanActivityState, setterSymbol };
 };
 
 const openingElementHasKey = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
@@ -360,20 +444,223 @@ const findUnsafeOwnerClear = (
   return unsafeClear;
 };
 
+const conditionProvesRequestOwnership = (condition: EsTreeNode, whenTruthy: boolean): boolean => {
+  const expression = stripParenExpression(condition);
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    return conditionProvesRequestOwnership(expression.argument, !whenTruthy);
+  }
+  if (isNodeOfType(expression, "BinaryExpression")) {
+    const isRequestIdentityComparison =
+      nodeContainsRequestIdentity(expression.left) && nodeContainsRequestIdentity(expression.right);
+    if (!isRequestIdentityComparison) return false;
+    if (["==", "==="].includes(expression.operator)) return whenTruthy;
+    if (["!=", "!=="].includes(expression.operator)) return !whenTruthy;
+    return false;
+  }
+  if (!isNodeOfType(expression, "LogicalExpression")) return false;
+  const leftProvesOwnership = conditionProvesRequestOwnership(expression.left, whenTruthy);
+  const rightProvesOwnership = conditionProvesRequestOwnership(expression.right, whenTruthy);
+  if (expression.operator === "&&") {
+    return whenTruthy
+      ? leftProvesOwnership || rightProvesOwnership
+      : leftProvesOwnership && rightProvesOwnership;
+  }
+  if (expression.operator === "||") {
+    return whenTruthy
+      ? leftProvesOwnership && rightProvesOwnership
+      : leftProvesOwnership || rightProvesOwnership;
+  }
+  return false;
+};
+
+const callIsInOwnershipProvenBranch = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  asyncBoundary: EsTreeNode,
+): boolean => {
+  let ancestor = call.parent;
+  while (ancestor && ancestor !== asyncBoundary) {
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      if (
+        isAstDescendant(call, ancestor.consequent) &&
+        conditionProvesRequestOwnership(ancestor.test, true)
+      ) {
+        return true;
+      }
+      if (
+        ancestor.alternate &&
+        isAstDescendant(call, ancestor.alternate) &&
+        conditionProvesRequestOwnership(ancestor.test, false)
+      ) {
+        return true;
+      }
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const callFollowsOwnershipExitGuard = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  asyncBoundary: EsTreeNode,
+): boolean => {
+  let ancestor = call.parent;
+  while (ancestor && ancestor !== asyncBoundary) {
+    if (isNodeOfType(ancestor, "BlockStatement")) {
+      for (const statement of ancestor.body) {
+        if (isAstDescendant(call, statement)) break;
+        if (!isNodeOfType(statement, "IfStatement")) continue;
+        if (
+          statementAlwaysExits(statement.consequent) &&
+          conditionProvesRequestOwnership(statement.test, false)
+        ) {
+          return true;
+        }
+        if (
+          statement.alternate &&
+          statementAlwaysExits(statement.alternate) &&
+          conditionProvesRequestOwnership(statement.test, true)
+        ) {
+          return true;
+        }
+      }
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const callIsOwnershipGuarded = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  asyncBoundary: EsTreeNode,
+): boolean =>
+  callIsInOwnershipProvenBranch(call, asyncBoundary) ||
+  callFollowsOwnershipExitGuard(call, asyncBoundary);
+
+const collectSetterCalls = (
+  functionNode: EsTreeNode,
+  setterSymbol: SymbolDescriptor,
+  context: RuleContext,
+): EsTreeNodeOfType<"CallExpression">[] => {
+  const calls: EsTreeNodeOfType<"CallExpression">[] = [];
+  walkOwnFunctionScope(functionNode, (child) => {
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      context.scopes.symbolFor(child.callee)?.id === setterSymbol.id
+    ) {
+      calls.push(child);
+    }
+  });
+  return calls;
+};
+
+const findUnsafeRequestScopedClear = (
+  state: RequestScopedState,
+  context: RuleContext,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  if (componentIsKeyedAtEveryLocalUse(state.componentFunction, context)) return null;
+  let unsafeClear: EsTreeNodeOfType<"CallExpression"> | null = null;
+  walkAst(state.componentFunction, (child) => {
+    if (unsafeClear) return false;
+    if (child === state.componentFunction || !isFunctionLike(child)) return;
+    let completionCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+    let activityStartCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+    if (child.async) {
+      let firstAwaitEnd: number | null = null;
+      walkOwnFunctionScope(child, (functionChild) => {
+        if (isNodeOfType(functionChild, "AwaitExpression")) {
+          firstAwaitEnd =
+            firstAwaitEnd === null
+              ? functionChild.range[1]
+              : Math.min(firstAwaitEnd, functionChild.range[1]);
+        }
+      });
+      if (firstAwaitEnd !== null) {
+        const awaitBoundaryEnd = firstAwaitEnd;
+        const setterCalls = collectSetterCalls(child, state.setterSymbol, context);
+        completionCalls = setterCalls.filter((call) => call.range[0] >= awaitBoundaryEnd);
+        activityStartCalls = setterCalls.filter((call) => call.range[0] < awaitBoundaryEnd);
+      }
+    } else {
+      const callExpression = child.parent;
+      if (
+        callExpression &&
+        isNodeOfType(callExpression, "CallExpression") &&
+        callExpression.arguments.some((argument) => argument === child) &&
+        isNodeOfType(callExpression.callee, "MemberExpression") &&
+        getStaticPropertyName(callExpression.callee) === "then"
+      ) {
+        completionCalls = collectSetterCalls(child, state.setterSymbol, context);
+      }
+    }
+    if (completionCalls.length === 0) return false;
+    if (state.isBooleanActivityState) {
+      const startsActivity = activityStartCalls.some((call) =>
+        isBooleanLiteral(call.arguments[0], true),
+      );
+      unsafeClear = startsActivity
+        ? (completionCalls.find(
+            (call) =>
+              isBooleanLiteral(call.arguments[0], false) && !callIsOwnershipGuarded(call, child),
+          ) ?? null)
+        : null;
+      return unsafeClear ? false : undefined;
+    }
+    if (!nodeContainsRequestIdentity(child)) return false;
+    const hasClear = completionCalls.some((call) => {
+      const argument = call.arguments[0];
+      return Boolean(argument && expressionContainsNull(argument));
+    });
+    const hasFailure = completionCalls.some((call) => {
+      const argument = call.arguments[0];
+      return Boolean(argument && expressionContainsNonNullValue(argument));
+    });
+    if (!hasClear || !hasFailure) return false;
+    unsafeClear =
+      completionCalls.find((call) => {
+        const argument = call.arguments[0];
+        return Boolean(
+          argument &&
+          !isFunctionLike(stripParenExpression(argument)) &&
+          expressionContainsNull(argument) &&
+          !callIsOwnershipGuarded(call, child),
+        );
+      }) ?? null;
+    return unsafeClear ? false : undefined;
+  });
+  return unsafeClear;
+};
+
 export const noUnownedAsyncErrorClear = defineRule({
   id: "no-unowned-async-error-clear",
   title: "Stale async response clears newer request state",
   severity: "warn",
   tags: ["react-jsx-only"],
-  defaultEnabled: false,
   recommendation:
     "Guard async completion by request identity, perform an ownership-aware functional state update, or key the state-owning component by request ID.",
-  create: (context: RuleContext) => ({
-    VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-      const state = getRequestOwnerState(node, context);
-      if (!state) return;
-      const unsafeClear = findUnsafeOwnerClear(state, context);
-      if (unsafeClear) context.report({ node: unsafeClear, message: MESSAGE });
-    },
-  }),
+  create: (context: RuleContext) => {
+    const reportedComponentFunctions = new Set<EsTreeNode>();
+    return {
+      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
+        const state = getRequestOwnerState(node, context);
+        const requestScopedState = state ? null : getRequestScopedState(node, context);
+        const componentFunction = state?.componentFunction ?? requestScopedState?.componentFunction;
+        if (
+          (!state && !requestScopedState) ||
+          !componentFunction ||
+          reportedComponentFunctions.has(componentFunction)
+        ) {
+          return;
+        }
+        let unsafeClear: EsTreeNodeOfType<"CallExpression"> | null = null;
+        if (state) unsafeClear = findUnsafeOwnerClear(state, context);
+        if (requestScopedState) {
+          unsafeClear = findUnsafeRequestScopedClear(requestScopedState, context);
+        }
+        if (!unsafeClear) return;
+        reportedComponentFunctions.add(componentFunction);
+        context.report({ node: unsafeClear, message: MESSAGE });
+      },
+    };
+  },
 });

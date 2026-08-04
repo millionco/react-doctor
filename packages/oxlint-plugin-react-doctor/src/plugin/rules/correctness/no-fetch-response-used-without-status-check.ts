@@ -12,10 +12,13 @@ import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
+import { resolveExactLocalFunction } from "../../utils/resolve-exact-local-function.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 
 const BODY_CONSUMER_METHODS = new Set(["json", "text", "blob", "arrayBuffer", "formData"]);
 const STATUS_CHECK_PROPERTIES = new Set(["ok", "status"]);
@@ -428,6 +431,61 @@ const statusCheckGuardsNode = (statusReferences: EsTreeNode[], target: EsTreeNod
   return false;
 };
 
+const expressionReadsStatusProperty = (
+  expression: EsTreeNode,
+  parameterSymbolId: number,
+  context: RuleContext,
+): boolean => {
+  let readsStatusProperty = false;
+  walkAst(expression, (child) => {
+    if (readsStatusProperty) return false;
+    if (!isNodeOfType(child, "MemberExpression")) return;
+    const receiver = stripGroupingParens(child.object as EsTreeNode);
+    if (
+      isNodeOfType(receiver, "Identifier") &&
+      context.scopes.symbolFor(receiver)?.id === parameterSymbolId &&
+      STATUS_CHECK_PROPERTIES.has(getStaticPropertyName(child) ?? "")
+    ) {
+      readsStatusProperty = true;
+      return false;
+    }
+  });
+  return readsStatusProperty;
+};
+
+const localValidatorChecksResponseStatus = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  responseReference: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const responseArgumentIndex = call.arguments.findIndex(
+    (argument) => argument === responseReference,
+  );
+  if (responseArgumentIndex < 0) return false;
+  const validator = resolveExactLocalFunction(call.callee, context.scopes);
+  if (!validator || !isFunctionLike(validator)) return false;
+  const parameter = validator.params[responseArgumentIndex];
+  if (!parameter || !isNodeOfType(parameter, "Identifier")) return false;
+  const parameterSymbol = context.scopes.symbolFor(parameter);
+  if (!parameterSymbol) return false;
+  const returnedExpressions: EsTreeNode[] = [];
+  if (!isNodeOfType(validator.body, "BlockStatement")) {
+    returnedExpressions.push(validator.body);
+  } else {
+    walkOwnFunctionScope(validator, (child) => {
+      if (isNodeOfType(child, "ReturnStatement") && child.argument) {
+        returnedExpressions.push(child.argument);
+      }
+    });
+  }
+  return (
+    returnedExpressions.length > 0 &&
+    returnedExpressions.every((returnedExpression) =>
+      expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
+    )
+  );
+};
+
 const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
   let chainLink: EsTreeNode = fetchCall;
   while (true) {
@@ -669,10 +727,13 @@ const reportUnguarded = ({
       ) {
         validatorName = callee.property.name;
       }
-      return Boolean(
-        validatorName &&
-        /^(?:assert|check|ensure|require|throw|validate)/i.test(validatorName) &&
-        nodeDominatesNode(parent, consumption, context),
+      const isKnownValidatorName = Boolean(
+        validatorName && /^(?:assert|check|ensure|require|throw|validate)/i.test(validatorName),
+      );
+      return (
+        (isKnownValidatorName ||
+          localValidatorChecksResponseStatus(parent, reference.identifier, context)) &&
+        nodeDominatesNode(parent, consumption, context)
       );
     });
   });

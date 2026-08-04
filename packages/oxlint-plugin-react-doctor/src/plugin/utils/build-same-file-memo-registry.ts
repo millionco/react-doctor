@@ -14,11 +14,8 @@ export type MemoStatus = "memoised" | "not-memoised" | "unknown";
 // `React.forwardRef` and `lazy` / `React.lazy` are deliberately
 // excluded — they forward props but don't skip re-renders when props
 // haven't changed (`lazy` only defers loading; the wrapped component
-// stays unresolvable, so its memo status is "unknown").
-// `memo(forwardRef(fn))` is still detected because the outermost call
-// is `memo`. `lazy` / `React.lazy` are also excluded — `lazy` only
-// code-splits; the resulting component re-renders on every parent
-// render like a plain component and performs NO props-equality bailout.
+// stays unresolvable, so its memo status is "unknown"). `memo(forwardRef(fn))`
+// is still detected because the outermost call is `memo`.
 const HOC_NAMES_FOR_MEMOISATION: ReadonlySet<string> = new Set([
   "memo",
   "React.memo",
@@ -29,19 +26,21 @@ const HOC_NAMES_FOR_MEMOISATION: ReadonlySet<string> = new Set([
 
 const isMemoisingCall = (call: EsTreeNode): boolean => {
   if (!isNodeOfType(call, "CallExpression")) return false;
-  const name = flattenCalleeName(call.callee as EsTreeNode);
+  const name = flattenCalleeName(call.callee);
   return name !== null && HOC_NAMES_FOR_MEMOISATION.has(name);
+};
+
+const unwrapTopLevelDeclaration = (statement: EsTreeNode): EsTreeNode | null => {
+  if (isNodeOfType(statement, "ExportNamedDeclaration")) return statement.declaration;
+  if (isNodeOfType(statement, "ExportDefaultDeclaration")) return statement.declaration;
+  return statement;
 };
 
 export const buildSameFileMemoRegistry = (program: EsTreeNode): Map<string, MemoStatus> => {
   const registry = new Map<string, MemoStatus>();
   if (!isNodeOfType(program, "Program")) return registry;
   for (const statement of program.body) {
-    const root = isNodeOfType(statement as { type: string } as never, "ExportNamedDeclaration")
-      ? ((statement as { declaration: EsTreeNode | null }).declaration as EsTreeNode | null)
-      : isNodeOfType(statement as { type: string } as never, "ExportDefaultDeclaration")
-        ? ((statement as { declaration: EsTreeNode | null }).declaration as EsTreeNode | null)
-        : (statement as EsTreeNode);
+    const root = unwrapTopLevelDeclaration(statement);
     if (!root) continue;
     // `const X = memo(...)` / `const X = forwardRef(...)` / plain
     // `const X = (...) => ...` / `const X = function () {}`.
@@ -50,7 +49,7 @@ export const buildSameFileMemoRegistry = (program: EsTreeNode): Map<string, Memo
         if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
         if (!isNodeOfType(declarator.id, "Identifier")) continue;
         if (!declarator.init) continue;
-        const init = declarator.init as EsTreeNode;
+        const init = declarator.init;
         if (isMemoisingCall(init)) {
           registry.set(declarator.id.name, "memoised");
         } else if (

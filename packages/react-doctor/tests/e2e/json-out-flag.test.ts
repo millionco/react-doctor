@@ -122,4 +122,24 @@ describe.skipIf(!hasBuiltCli)("--json-out flag", () => {
     expect(report.schemaVersion).toBe(3);
     expect(report.diagnostics).toEqual([]);
   }, 60_000);
+
+  it("writes a JSON error to stdout when the output path is a directory", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "json-out-directory", {
+      files: {
+        "src/App.tsx": `export const App = () => null;\n`,
+      },
+    });
+    const outputDirectory = path.join(projectDirectory, "reports");
+    fs.mkdirSync(outputDirectory);
+
+    const { stdout, exitCode } = await runCli(
+      [".", "--json", "--json-out", outputDirectory, "--no-score"],
+      projectDirectory,
+    );
+
+    expect(exitCode).toBe(1);
+    const report = JSON.parse(stdout);
+    expect(report.ok).toBe(false);
+    expect(report.error.message).toContain("--json-out must point to a file");
+  }, 60_000);
 });

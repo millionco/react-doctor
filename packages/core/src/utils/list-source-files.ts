@@ -1,13 +1,18 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
-import { GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
+import { COOPERATIVE_YIELD_BUDGET_MS, GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
+import {
+  collectGitLinguistIgnoredPaths,
+  collectGitLinguistIgnoredPathsCooperative,
+} from "./collect-git-linguist-ignored-paths.js";
 import { collectTypeScriptEmitDuplicateJsPaths } from "./collect-typescript-emit-duplicate-js-paths.js";
 import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
 import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
 import { walkSourceTreeFiles } from "./walk-source-tree-files.js";
+import { yieldToEventLoop } from "./yield-to-event-loop.js";
 
 // Stats each candidate once (the same stat the minified gate already paid),
 // drops files that sniff as large minified bundles, and keeps the size so the
@@ -30,8 +35,50 @@ const collectSizedSourceFiles = (
   return entries;
 };
 
-const gitLsFiles = (rootDirectory: string, flags: ReadonlyArray<string>): string[] | null => {
-  const result = spawnSync("git", ["ls-files", "-z", ...flags], {
+const collectSizedSourceFilesCooperative = async (
+  rootDirectory: string,
+  relativePaths: ReadonlyArray<string>,
+  signal?: AbortSignal,
+): Promise<SourceFileEntry[]> => {
+  const entries: SourceFileEntry[] = [];
+  let sliceStartedAt = performance.now();
+  for (const relativePath of relativePaths) {
+    signal?.throwIfAborted();
+    const absolutePath = path.resolve(rootDirectory, relativePath);
+    const sizeBytes = statSourceFileSize(absolutePath);
+    if (!isLargeMinifiedFile(absolutePath, sizeBytes)) {
+      entries.push({ path: relativePath, sizeBytes: sizeBytes ?? 0 });
+    }
+    if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+      await yieldToEventLoop();
+      sliceStartedAt = performance.now();
+    }
+  }
+  return entries;
+};
+
+interface GitSourceFilePaths {
+  readonly trackedPaths: string[];
+  readonly untrackedPaths: string[];
+}
+
+const parseGitSourceFilePaths = (output: string): GitSourceFilePaths => {
+  const trackedPaths = new Set<string>();
+  const untrackedPaths: string[] = [];
+  for (const entry of output.split("\0")) {
+    if (entry.length === 0) continue;
+    const trackedPath = /^[0-7]{6} [0-9a-f]+ [0-3]\t([\s\S]+)$/.exec(entry)?.[1];
+    if (trackedPath === undefined) {
+      untrackedPaths.push(entry);
+    } else {
+      trackedPaths.add(trackedPath);
+    }
+  }
+  return { trackedPaths: [...trackedPaths], untrackedPaths };
+};
+
+const listGitSourceFilePaths = (rootDirectory: string): GitSourceFilePaths | null => {
+  const result = spawnSync("git", ["ls-files", "-z", "--stage", "--others", "--exclude-standard"], {
     cwd: rootDirectory,
     encoding: "utf-8",
     maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
@@ -39,20 +86,14 @@ const gitLsFiles = (rootDirectory: string, flags: ReadonlyArray<string>): string
   if (result.error || result.status !== 0) {
     return null;
   }
-  return result.stdout.split("\0").filter((filePath) => filePath.length > 0);
+  return parseGitSourceFilePaths(result.stdout);
 };
 
-const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
-  // HACK: --recurse-submodules is incompatible with --others /
-  // --exclude-standard (git rejects the combination). Without this
-  // match, every git-mode call silently exited non-zero and the scan
-  // always fell back to the much slower filesystem walk below, also
-  // skipping submodule files entirely.
-  const trackedPaths = gitLsFiles(rootDirectory, ["--cached"]);
-  const untrackedPaths = gitLsFiles(rootDirectory, ["--others", "--exclude-standard"]);
-  if (trackedPaths === null || untrackedPaths === null) {
-    return null;
-  }
+const collectGitCandidateSourceFilePaths = (
+  rootDirectory: string,
+  paths: GitSourceFilePaths,
+): string[] => {
+  const { trackedPaths, untrackedPaths } = paths;
   const emitDuplicateJsPaths = collectTypeScriptEmitDuplicateJsPaths({
     trackedPaths: new Set(trackedPaths),
     untrackedPaths,
@@ -67,6 +108,52 @@ const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
   );
 };
 
+const filterGitSourceFilePaths = (rootDirectory: string, paths: GitSourceFilePaths): string[] => {
+  const candidatePaths = collectGitCandidateSourceFilePaths(rootDirectory, paths);
+  const linguistIgnoredPaths = collectGitLinguistIgnoredPaths(rootDirectory, candidatePaths);
+  return candidatePaths.filter((filePath) => !linguistIgnoredPaths.has(filePath));
+};
+
+const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
+  const paths = listGitSourceFilePaths(rootDirectory);
+  return paths === null ? null : filterGitSourceFilePaths(rootDirectory, paths);
+};
+
+const listSourceFilesViaGitCooperative = async (
+  rootDirectory: string,
+  signal?: AbortSignal,
+): Promise<string[] | null> => {
+  const paths = await new Promise<GitSourceFilePaths | null>((resolve, reject) => {
+    signal?.throwIfAborted();
+    execFile(
+      "git",
+      ["ls-files", "-z", "--stage", "--others", "--exclude-standard"],
+      {
+        cwd: rootDirectory,
+        encoding: "utf-8",
+        killSignal: "SIGKILL",
+        maxBuffer: GIT_LS_FILES_MAX_BUFFER_BYTES,
+        signal,
+      },
+      (error, stdout) => {
+        if (signal?.aborted) {
+          reject(signal.reason);
+          return;
+        }
+        resolve(error ? null : parseGitSourceFilePaths(stdout));
+      },
+    );
+  });
+  if (paths === null) return null;
+  const candidatePaths = collectGitCandidateSourceFilePaths(rootDirectory, paths);
+  const linguistIgnoredPaths = await collectGitLinguistIgnoredPathsCooperative(
+    rootDirectory,
+    candidatePaths,
+    signal,
+  );
+  return candidatePaths.filter((filePath) => !linguistIgnoredPaths.has(filePath));
+};
+
 const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
   const filePaths: string[] = [];
   for (const { absolutePath, name } of walkSourceTreeFiles(rootDirectory)) {
@@ -77,6 +164,37 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
   return filePaths;
 };
 
+const listSourceFilesViaFilesystemCooperative = async (
+  rootDirectory: string,
+  signal?: AbortSignal,
+): Promise<string[]> => {
+  const filePaths: string[] = [];
+  let sliceStartedAt = performance.now();
+  for (const { absolutePath, name } of walkSourceTreeFiles(rootDirectory)) {
+    signal?.throwIfAborted();
+    if (isLintableSourceFile(name)) {
+      filePaths.push(path.relative(rootDirectory, absolutePath).replace(/\\/g, "/"));
+    }
+    if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+      await yieldToEventLoop();
+      sliceStartedAt = performance.now();
+    }
+  }
+  return filePaths;
+};
+
+const listSourceFilePaths = (rootDirectory: string): string[] =>
+  (listSourceFilesViaGit(rootDirectory) ?? listSourceFilesViaFilesystem(rootDirectory)).sort();
+
+const listSourceFilePathsCooperative = async (
+  rootDirectory: string,
+  signal?: AbortSignal,
+): Promise<string[]> =>
+  (
+    (await listSourceFilesViaGitCooperative(rootDirectory, signal)) ??
+    (await listSourceFilesViaFilesystemCooperative(rootDirectory, signal))
+  ).sort();
+
 // Returns every source file under `rootDirectory` paired with its byte size
 // (relative paths, forward-slash separators). Prefers a single `git ls-files`
 // call when the directory is a git repository — much faster than the fallback
@@ -84,14 +202,19 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
 // minified gate's existing stat, captured rather than discarded, so the lint
 // pass can order batches largest-first at zero extra syscall cost.
 export const listSourceFilesWithSize = (rootDirectory: string): ReadonlyArray<SourceFileEntry> =>
-  collectSizedSourceFiles(
-    rootDirectory,
-    // Sort whichever discovery path ran: the filesystem walk's readdir order is
-    // OS-dependent, and `git ls-files` orders cached vs. untracked entries by
-    // its own rules — sorting here makes both paths enumerate one identical,
-    // repeatable order for the same tree.
-    (listSourceFilesViaGit(rootDirectory) ?? listSourceFilesViaFilesystem(rootDirectory)).sort(),
-  );
+  collectSizedSourceFiles(rootDirectory, listSourceFilePaths(rootDirectory));
+
+export const listSourceFilesCooperative = async (
+  rootDirectory: string,
+  signal?: AbortSignal,
+): Promise<string[]> =>
+  (
+    await collectSizedSourceFilesCooperative(
+      rootDirectory,
+      await listSourceFilePathsCooperative(rootDirectory, signal),
+      signal,
+    )
+  ).map((entry) => entry.path);
 
 // Returns every source file under `rootDirectory` (relative paths,
 // forward-slash separators). The size-free view of `listSourceFilesWithSize`

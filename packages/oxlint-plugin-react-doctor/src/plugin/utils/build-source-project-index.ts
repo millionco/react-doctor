@@ -27,6 +27,15 @@ export interface SourceProjectIndex {
   readonly hasOpaqueMdxConsumerSurface: boolean;
 }
 
+export interface SourceProjectIndexInput {
+  readonly rootDirectory: string;
+  readonly currentFilePath: string;
+  readonly currentProgramNode: EsTreeNodeOfType<"Program">;
+  readonly currentScopes: ScopeAnalysis;
+  readonly requiredModuleSources?: ReadonlyArray<string>;
+  readonly knownModuleSources?: ReadonlyArray<string>;
+}
+
 const SOURCE_PROJECT_FILE_PATTERN = /\.[cm]?[jt]sx?$/i;
 const SOURCE_PROJECT_DECLARATION_FILE_PATTERN = /\.d\.[cm]?[jt]s$/i;
 const SOURCE_PROJECT_MDX_FILE_PATTERN = /\.mdx$/i;
@@ -113,6 +122,26 @@ const listProductionSourceFiles = (
   return { sourceFilePaths, htmlFilePaths, hasOpaqueMdxConsumerSurface };
 };
 
+const sourceFilesMayImportRequiredModule = (
+  sourceFilePaths: ReadonlyArray<string>,
+  requiredModuleSources: ReadonlyArray<string>,
+): boolean => {
+  for (const sourceFilePath of sourceFilePaths) {
+    let sourceText: string;
+    try {
+      sourceText = fs.readFileSync(sourceFilePath, "utf8");
+    } catch {
+      return true;
+    }
+    for (const moduleSource of requiredModuleSources) {
+      if (sourceText.includes(`"${moduleSource}"`) || sourceText.includes(`'${moduleSource}'`)) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 const getRuntimeModuleSource = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "ImportDeclaration")) {
     if (isTypeOnlyImport(node)) return null;
@@ -172,14 +201,33 @@ const indexModuleSources = (
   });
 };
 
-export const buildSourceProjectIndex = (
-  rootDirectory: string,
-  currentFilePath: string,
-  currentProgramNode: EsTreeNodeOfType<"Program">,
-  currentScopes: ScopeAnalysis,
-): SourceProjectIndex | null => {
+export const buildSourceProjectIndex = ({
+  rootDirectory,
+  currentFilePath,
+  currentProgramNode,
+  currentScopes,
+  requiredModuleSources = [],
+  knownModuleSources,
+}: SourceProjectIndexInput): SourceProjectIndex | null => {
+  if (
+    requiredModuleSources.length > 0 &&
+    knownModuleSources !== undefined &&
+    !requiredModuleSources.some((moduleSource) => knownModuleSources.includes(moduleSource))
+  ) {
+    return null;
+  }
   const productionSourceFiles = listProductionSourceFiles(rootDirectory);
   if (!productionSourceFiles) return null;
+  if (
+    requiredModuleSources.length > 0 &&
+    knownModuleSources === undefined &&
+    !sourceFilesMayImportRequiredModule(
+      productionSourceFiles.sourceFilePaths,
+      requiredModuleSources,
+    )
+  ) {
+    return null;
+  }
   const modulesByFilePath = new Map<string, SourceProjectModule>();
   for (const filePath of productionSourceFiles.sourceFilePaths) {
     if (filePath === currentFilePath) {

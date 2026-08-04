@@ -26,6 +26,7 @@ export interface OxlintConfigOptions {
   runtimeGlobals?: ReadonlyArray<string>;
   unpluginAutoImportGlobalScopes?: ReadonlyArray<UnpluginAutoImportGlobalScope>;
   serverAuthFunctionNames?: ReadonlyArray<string>;
+  projectIndexModuleSources?: ReadonlyArray<string>;
   severityControls?: RuleSeverityControls;
   /**
    * User-declared plugins from `react-doctor.config.json`'s
@@ -131,6 +132,7 @@ export const createOxlintConfig = ({
   runtimeGlobals,
   unpluginAutoImportGlobalScopes,
   serverAuthFunctionNames,
+  projectIndexModuleSources,
   severityControls,
   userPlugins = [],
   disableReactHooksJsPlugin = false,
@@ -293,6 +295,9 @@ export const createOxlintConfig = ({
           : {}),
         ...(serverAuthFunctionNames && serverAuthFunctionNames.length > 0
           ? { serverAuthFunctionNames: [...serverAuthFunctionNames] }
+          : {}),
+        ...(projectIndexModuleSources !== undefined
+          ? { projectIndexModuleSources: [...projectIndexModuleSources] }
           : {}),
       },
     },

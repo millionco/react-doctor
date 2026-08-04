@@ -1,3 +1,4 @@
+import { LEGACY_SHADOW_STYLE_PROPERTIES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { EMPTY_RULE_VISITORS } from "../../utils/empty-rule-visitors.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
@@ -10,8 +11,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const IOS_SHADOW_KEYS = new Set(["shadowColor", "shadowOffset", "shadowOpacity", "shadowRadius"]);
 const ANDROID_SHADOW_KEY = "elevation";
-
-const LEGACY_SHADOW_KEYS = new Set([...IOS_SHADOW_KEYS, ANDROID_SHADOW_KEY]);
 
 const collectPropertyKeyNames = (
   objectExpression: EsTreeNodeOfType<"ObjectExpression">,
@@ -120,7 +119,7 @@ const reportLegacyShadowProperty = (
     if (!isNodeOfType(property, "Property")) continue;
     if (!isNodeOfType(property.key, "Identifier")) continue;
     const keyName = property.key.name;
-    if (!LEGACY_SHADOW_KEYS.has(keyName)) continue;
+    if (!LEGACY_SHADOW_STYLE_PROPERTIES.has(keyName)) continue;
     // `{ zIndex: 4, elevation: 4 }` with no iOS shadow keys is the canonical
     // Android stacking-order idiom, not a shadow effect — a boxShadow string
     // can't replace the z-ordering it exists for.

@@ -52,6 +52,27 @@ const result = (overrides: Partial<InspectResult> = {}): InspectResult => ({
 });
 
 describe("buildJsonReport", () => {
+  it("lists workspace projects skipped before they started", () => {
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [],
+      skippedProjects: [
+        { directory: "/repo/apps/admin", reason: "max-duration" },
+        { directory: "/repo/apps/web", reason: "max-duration" },
+      ],
+      totalElapsedMilliseconds: 10_000,
+    });
+
+    expect(report.projects).toEqual([]);
+    expect(report.skippedProjects).toEqual([
+      { directory: "/repo/apps/admin", reason: "max-duration" },
+      { directory: "/repo/apps/web", reason: "max-duration" },
+    ]);
+  });
+
   it("emits a v3 report with deterministic diagnostic identity and exact coverage", () => {
     const report = buildJsonReport({
       version: "1.2.3",

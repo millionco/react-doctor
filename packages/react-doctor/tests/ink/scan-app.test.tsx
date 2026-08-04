@@ -69,7 +69,8 @@ describe("ScanApp", () => {
     const { lastFrame, unmount } = render(<ScanApp store={store} />);
     const frame = lastFrame() ?? "";
     expect(frame).toContain("Linting source files");
-    expect(frame).toContain("1 found");
+    expect(frame).toContain("react-doctor/rules-of-hooks");
+    expect(frame).not.toContain("found");
     unmount();
   });
 
@@ -245,6 +246,31 @@ describe("ScanApp", () => {
     unmount();
   });
 
+  it("wraps the no-score explanation within the terminal width", async () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage:
+        "Score unavailable (could not reach the score API). Want something custom to your company? Contact us at https://react.doctor/enterprise.",
+    });
+
+    const { lastFrame, stdout, unmount } = render(<ScanApp store={store} />);
+    resizeTerminal(stdout, { columns: 50 });
+    await flush();
+
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("https://react.doctor/enterprise");
+    expect(frame.split("\n").every((line) => line.length <= 50)).toBe(true);
+    unmount();
+  });
+
   it("does not show a clean state when lint hard-fails", () => {
     const store = createScanStore();
     store.setReport({
@@ -282,6 +308,98 @@ describe("ScanApp", () => {
     });
 
     const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain(
+      "No issues detected, but dead-code checks failed — results are incomplete.",
+    );
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
+  it("shows incomplete checks when the scan also found issues", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({})],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      lintFailureReason: "Oxlint failed.",
+      skippedChecks: ["lint", "security-scan"],
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("Lint did not run: Oxlint failed.");
+    expect(lastFrame()).toContain("security-scan checks failed — results are incomplete.");
+    expect(lastFrame()).not.toContain("No issues detected");
+    unmount();
+  });
+
+  it("does not show a clean state when projects were skipped", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      incompleteMessage: "2 projects were skipped because scanning failed.",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("2 projects were skipped because scanning failed.");
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
+  it("shows lint failures when projects were also skipped", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      lintFailureReason: "Oxlint failed.",
+      incompleteMessage: "2 projects were skipped because scanning failed.",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("2 projects were skipped because scanning failed.");
+    expect(lastFrame()).toContain("Lint did not run: Oxlint failed.");
+    expect(lastFrame()).not.toContain("No issues found");
+    unmount();
+  });
+
+  it("shows skipped checks when projects were also skipped", () => {
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [],
+      score: null,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+      skippedChecks: ["dead-code"],
+      incompleteMessage: "2 projects were skipped because scanning failed.",
+    });
+
+    const { lastFrame, unmount } = render(<ScanApp store={store} />);
+    expect(lastFrame()).toContain("2 projects were skipped because scanning failed.");
     expect(lastFrame()).toContain(
       "No issues detected, but dead-code checks failed — results are incomplete.",
     );

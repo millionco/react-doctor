@@ -6,23 +6,36 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   buildSkippedChecks,
+  type ChangedFileLineRanges,
   computeDiagnosticDelta,
   createOxlintSpawnSlots,
   DEFAULT_SHOW_WARNINGS,
+  type Diagnostic,
+  type DiagnosticSurface,
   filterDiagnosticsForSurface,
+  filterPathsOutsideDirectories,
   filterSourceFiles,
   highlighter,
+  type InspectOptions,
+  type InspectResult,
   OXLINT_NODE_REQUIREMENT,
   OxlintConcurrency,
   PerFileLintCacheEnabled,
+  type Progress,
+  type ProjectInfo,
+  type ReactDoctorConfig,
   resolveScanTarget,
   resolveScanConcurrency,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
+  type ScoreResult,
+  type Reporter,
   SidecarLintCacheEnabled,
+  type WorkerSlots,
+  yieldToEventLoop,
 } from "@react-doctor/core";
 import type * as Layer from "effect/Layer";
-import type { Progress, Reporter, WorkerSlots } from "@react-doctor/core";
+import { activeScanAbortRegistry } from "./cli/utils/active-scan-abort-registry.js";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
 import {
@@ -38,16 +51,6 @@ import { recordRunEvent } from "./cli/utils/build-run-event.js";
 import { resolveWorkerTelemetry } from "./cli/utils/resolve-worker-telemetry.js";
 import { countDeadlineSkippedFiles } from "./cli/utils/count-deadline-skipped-files.js";
 import { countDroppedLintFiles } from "./cli/utils/count-dropped-lint-files.js";
-import type {
-  ChangedFileLineRanges,
-  Diagnostic,
-  DiagnosticSurface,
-  InspectOptions,
-  InspectResult,
-  ProjectInfo,
-  ReactDoctorConfig,
-  ScoreResult,
-} from "@react-doctor/core";
 import { toForwardSlashes } from "./cli/utils/path-format.js";
 import { diagnosticIntersectsLineRanges } from "./cli/utils/diagnostic-intersects-line-ranges.js";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
@@ -55,6 +58,7 @@ import { materializeBaselineFiles } from "./cli/utils/materialize-baseline-files
 import { createSourceLineReader } from "./cli/utils/read-source-line.js";
 import { createDiagnosticEvidenceReader } from "./cli/utils/read-diagnostic-evidence.js";
 import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
+import { hasIncompleteScoreAnalysis } from "./cli/utils/has-incomplete-score-analysis.js";
 import { buildEmptyReportMessage } from "./cli/utils/build-empty-report-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import {
@@ -75,7 +79,6 @@ import {
   shouldRecordOnboarding,
 } from "./cli/utils/onboarding-pacing.js";
 import { hasCompletedOnboarding, markOnboardingComplete } from "./cli/utils/onboarding-state.js";
-import { printProjectDetection } from "./cli/utils/render-project-detection.js";
 import {
   printBrandingOnlyHeader,
   printNoScoreHeader,
@@ -87,9 +90,11 @@ import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
 import {
   buildScanResultCacheKey,
+  createScanResultCacheInvocationState,
   createScanResultCache,
   shouldStoreScanPayload,
   type CachedScanPayload,
+  type ScanResultCacheInvocationState,
 } from "./cli/utils/scan-result-cache.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
@@ -99,11 +104,9 @@ const silentConsole = makeNoopConsole();
 interface OxlintInvocationRuntime {
   readonly concurrency: number;
   readonly spawnSlots: WorkerSlots;
+  readonly abortSignal: AbortSignal;
+  readonly scanResultCacheInvocationState: ScanResultCacheInvocationState;
 }
-
-const runConsole = (effect: Effect.Effect<void>): void => {
-  Effect.runSync(effect);
-};
 
 const recordOnboardingCompletion = (options: ResolvedInspectOptions): void => {
   const forceOnboarding = isOnboardingForced();
@@ -163,6 +166,8 @@ export interface InspectUiLayers {
 }
 
 export interface ReactDoctorInspectOptions extends InspectOptions {
+  /** Internal: source-file count collected once for a workspace batch. */
+  precomputedSourceFileCount?: number;
   categoryFilters?: string[];
   includedTags?: ReadonlySet<string>;
   includeTagDefaults?: boolean;
@@ -175,6 +180,10 @@ export interface ReactDoctorInspectOptions extends InspectOptions {
    * the deadline is derived from `maxDurationMs` at call start.
    */
   deadlineEpochMs?: number;
+  /** Internal: descendant projects covered by sibling scans in the same workspace batch. */
+  excludedProjectDirectories?: ReadonlyArray<string>;
+  /** Internal: this scan owns dead-code findings for its excluded descendants. */
+  retainExcludedProjectDeadCodeDiagnostics?: boolean;
   /** See {@link InspectUiLayers}. */
   uiLayers?: InspectUiLayers;
 }
@@ -227,6 +236,12 @@ export interface ResolvedInspectOptions {
   supplyChainManifestChanged: boolean;
   /** Interactive UI layer overrides, or `null` for the static console path. */
   uiLayers: InspectUiLayers | null;
+  /** Descendant projects covered by sibling scans in the same workspace batch. */
+  excludedProjectDirectories: ReadonlyArray<string>;
+  /** Whether this scan owns dead-code findings for excluded descendants. */
+  retainExcludedProjectDeadCodeDiagnostics: boolean;
+  /** Source-file count collected once for a workspace batch. */
+  precomputedSourceFileCount: number | undefined;
 }
 
 const buildIgnoredTags = (
@@ -280,18 +295,20 @@ const mergeInspectOptions = (
     baseline: inputOptions.baseline ?? null,
     changedLineRanges: inputOptions.changedLineRanges ?? null,
     supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
+    excludedProjectDirectories: inputOptions.excludedProjectDirectories ?? [],
+    retainExcludedProjectDeadCodeDiagnostics:
+      inputOptions.retainExcludedProjectDeadCodeDiagnostics ?? false,
+    precomputedSourceFileCount: inputOptions.precomputedSourceFileCount,
   };
 };
 
 // The scan-config slice of the wide event, shared by the success and failure
 // emit paths (the failure path has no `result`, so it can only supply config).
-// The return type is inferred and checked at the call sites, which spread it
-// into the full `RunEventInput` — a missing field surfaces there.
 // Reconstruct the resolved scope from the engine inputs (the CLI resolved it
 // from `--scope`, but `inspect()` only sees its effects): a baseline ref means
 // `changed`, line ranges mean `lines`, any other diff means `files`, else `full`.
-// A degraded `lines` / `changed` run carries neither, so it reads as `files` —
-// matching what actually ran.
+// A degraded `lines` run carries no ranges, so it reads as `files`; degraded
+// baseline runs keep `changed` and rely on the baseline-degraded fields.
 const deriveScope = (options: ResolvedInspectOptions): string => {
   if (options.baseline) return "changed";
   if (options.changedLineRanges !== null) return "lines";
@@ -354,7 +371,8 @@ const inspectWithOxlintRuntime = async (
   const isConcurrentScan = inputOptions.concurrentScan === true;
   if (!isConcurrentScan) resetSentryRunState();
 
-  const hasConfigOverride = inputOptions.configOverride !== undefined;
+  const configOverride = inputOptions.configOverride;
+  const hasConfigOverride = configOverride !== undefined;
   // When the caller pre-loaded a config (CLI's `inspectAction` does
   // this so it can render the rootDir-redirect hint before the scan
   // starts), use it verbatim. Otherwise, run the canonical scan-target
@@ -374,7 +392,7 @@ const inspectWithOxlintRuntime = async (
   let configSourceDirectory: string | null;
   if (hasConfigOverride) {
     scanDirectory = directory;
-    userConfig = inputOptions.configOverride ?? null;
+    userConfig = configOverride;
     configSourceDirectory = inputOptions.configSourceDirectory ?? null;
   } else {
     const scanTarget = await resolveScanTarget(directory);
@@ -385,14 +403,10 @@ const inspectWithOxlintRuntime = async (
 
   const options = mergeInspectOptions(inputOptions, userConfig);
 
-  // HACK: spinner.ts still has module-level silent state (used by
-  // printProjectDetection's internal spinner() calls). Mirror the
-  // silent flag here until that file moves to a Progress service in
-  // a follow-up PR. Console-side silent is handled by swapping the
-  // global Console reference for `silentConsole` inside the program
-  // (see `runInspectWithRuntime`). Concurrent batch members never touch
-  // the shared flag — overlapping save/restore pairs would race — so the
-  // pool owner (the CLI) silences spinners once around the whole batch.
+  // HACK: spinner.ts still has module-level silent state for imperative CLI
+  // helpers. Concurrent batch members never touch the shared flag — overlapping
+  // save/restore pairs would race — so the pool owner (the CLI) silences
+  // spinners once around the whole batch.
   const ownsSpinnerSilence = options.silent && !isConcurrentScan;
   const wasSpinnerSilent = isSpinnerSilent();
   if (ownsSpinnerSilence) setSpinnerSilent(true);
@@ -448,12 +462,23 @@ export const createInvocationInspect = (
   const concurrency = resolveScanConcurrency(
     requestedOxlintConcurrency ?? Effect.runSync(OxlintConcurrency),
   );
-  const oxlintRuntime: OxlintInvocationRuntime = {
-    concurrency,
-    spawnSlots: createOxlintSpawnSlots(concurrency),
+  const spawnSlots = createOxlintSpawnSlots(concurrency);
+  const scanResultCacheInvocationState = createScanResultCacheInvocationState();
+  return async (directory, inputOptions = {}) => {
+    const abortController = new AbortController();
+    const unregisterAbortController = activeScanAbortRegistry.register(abortController);
+    try {
+      const oxlintRuntime: OxlintInvocationRuntime = {
+        concurrency,
+        spawnSlots,
+        abortSignal: abortController.signal,
+        scanResultCacheInvocationState,
+      };
+      return await inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
+    } finally {
+      unregisterAbortController();
+    }
   };
-  return (directory, inputOptions = {}) =>
-    inspectWithOxlintRuntime(directory, inputOptions, oxlintRuntime);
 };
 
 export const inspect = async (
@@ -510,14 +535,33 @@ const runBaselineComparison = async (
   params: RunBaselineComparisonInput,
 ): Promise<BaselineComparison | null> => {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
+  const baselineIncludePaths = filterPathsOutsideDirectories({
+    rootDirectory: params.directory,
+    relativePaths: params.options.includePaths,
+    excludedDirectories: params.options.excludedProjectDirectories,
+  });
+  const baselineBaseFiles = params.baseFiles
+    ? filterPathsOutsideDirectories({
+        rootDirectory: params.directory,
+        relativePaths: params.baseFiles,
+        excludedDirectories: params.options.excludedProjectDirectories,
+      })
+    : undefined;
+  const baselineHeadFiles = params.headFiles
+    ? filterPathsOutsideDirectories({
+        rootDirectory: params.directory,
+        relativePaths: params.headFiles,
+        excludedDirectories: params.options.excludedProjectDirectories,
+      })
+    : undefined;
   // If materialization throws before the snapshot (and its cleanup) exists,
   // remove the temp dir we just created so it can't leak.
   const snapshot = await materializeBaselineFiles({
     directory: params.directory,
     ref: params.baselineRef,
-    files: params.options.includePaths,
-    baseFiles: params.baseFiles,
-    headFiles: params.headFiles,
+    files: baselineIncludePaths,
+    baseFiles: baselineBaseFiles,
+    headFiles: baselineHeadFiles,
     tempDirectory,
   }).catch((error: unknown) => {
     rmSync(tempDirectory, { recursive: true, force: true });
@@ -533,7 +577,7 @@ const runBaselineComparison = async (
     const baseFiles = new Set(snapshot.baseFiles.map(toForwardSlashes));
     const trackedHeadFiles = new Set(snapshot.headFiles.map(toForwardSlashes));
     const expectedHeadFiles = new Set(trackedHeadFiles);
-    for (const filePath of params.options.includePaths) {
+    for (const filePath of baselineIncludePaths) {
       const normalizedFilePath = toForwardSlashes(filePath);
       if (!baseFiles.has(normalizedFilePath)) expectedHeadFiles.add(normalizedFilePath);
     }
@@ -580,6 +624,7 @@ const runBaselineComparison = async (
         // The base-ref lint shares the invocation deadline, so a --max-duration
         // budget bounds the whole run, not just the head scan.
         deadlineEpochMs: params.deadlineEpochMs ?? undefined,
+        signal: params.oxlintRuntime.abortSignal,
       },
       {},
     );
@@ -596,6 +641,7 @@ const runBaselineComparison = async (
           Effect.provideService(Console.Console, silentConsole),
         ),
       ),
+      { signal: params.oxlintRuntime.abortSignal },
     );
     // A failed OR budget-truncated base lint leaves base findings
     // unreliable/incomplete, which would mislabel pre-existing head issues as
@@ -645,18 +691,17 @@ const runInspectWithRuntime = async (
   oxlintRuntime: OxlintInvocationRuntime,
 ): Promise<InspectResult> => {
   const isDiffMode = options.includePaths.length > 0;
-  // Pre-check oxlint native binding the same way the legacy entry
-  // point did: `resolveOxlintNode` prints its own warnings / upgrade
-  // hints and returns `null` when the binding can't be loaded. In
-  // that mode the orchestrator runs with `Linter.layerOf([])` so the
-  // rest of the pipeline (project detection, score, rendering) still
-  // happens with `skippedChecks: ["lint"]` surfacing the missed
-  // coverage.
+  // Pre-check oxlint native binding before the orchestrator:
+  // `resolveOxlintNode` prints its own warnings / upgrade hints and returns
+  // `null` when the binding can't be loaded. In that mode the orchestrator
+  // runs with `Linter.layerOf([])` so the rest of the pipeline still happens
+  // with `skippedChecks: ["lint"]` surfacing the missed coverage.
   const resolvedNodeBinaryPath = await resolveOxlintNode(
     options.lint,
     options.scoreOnly || options.silent,
   );
   const lintBindingMissing = options.lint && !resolvedNodeBinaryPath;
+  await yieldToEventLoop();
   const cacheKey = buildScanResultCacheKey({
     projectDirectory: directory,
     version: VERSION,
@@ -665,20 +710,16 @@ const runInspectWithRuntime = async (
     userConfig,
     hasConfigOverride,
     configSourceDirectory,
+    invocationState: oxlintRuntime.scanResultCacheInvocationState,
   });
   const scanResultCache = cacheKey === null ? null : createScanResultCache(directory);
-  const cachedPayload = cacheKey === null ? null : (scanResultCache?.lookup(cacheKey) ?? null);
+  const cachedPayload =
+    cacheKey === null || scanResultCache === null ? null : scanResultCache.lookup(cacheKey);
   if (cachedPayload) {
     recordSentryProjectContext(cachedPayload.project, rootSentrySpan, {
       concurrentScan: options.concurrentScan,
     });
     recordCount(METRIC.projectDetected, 1);
-    await renderCachedProjectDetection({
-      payload: cachedPayload,
-      options,
-      userConfig,
-      isDiffMode,
-    });
     const baselineDegraded =
       Boolean(options.baseline) && isDiffMode && cachedPayload.baselineDelta === undefined;
     const result = await renderAndRecordScan({
@@ -729,6 +770,7 @@ const runInspectWithRuntime = async (
   const program = runInspectEffect(
     {
       directory,
+      precomputedSourceFileCount: options.precomputedSourceFileCount,
       includePaths: options.includePaths,
       customRulesOnly: options.customRulesOnly,
       respectInlineDisables: options.respectInlineDisables,
@@ -745,12 +787,14 @@ const runInspectWithRuntime = async (
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
       supplyChainManifestChanged: options.supplyChainManifestChanged,
-      concurrentScan: options.concurrentScan,
       deadlineEpochMs: deadlineEpochMs ?? undefined,
+      signal: oxlintRuntime.abortSignal,
+      excludedProjectDirectories: options.excludedProjectDirectories,
+      retainExcludedProjectDeadCodeDiagnostics: options.retainExcludedProjectDeadCodeDiagnostics,
     },
     {
-      beforeLint: (projectInfo, lintIncludePaths) =>
-        Effect.gen(function* () {
+      beforeLint: (projectInfo) =>
+        Effect.sync(() => {
           // Attach the discovered project shape to Sentry as early as possible
           // (this hook fires right after project discovery) so crashes, the run
           // transaction, and every subsequent metric carry it. No-op when
@@ -759,15 +803,6 @@ const runInspectWithRuntime = async (
             concurrentScan: options.concurrentScan,
           });
           recordCount(METRIC.projectDetected, 1);
-          if (options.scoreOnly || options.suppressRendering) return;
-          const lintSourceFileCount = lintIncludePaths?.length ?? projectInfo.sourceFileCount;
-          yield* printProjectDetection({
-            projectInfo,
-            userConfig,
-            isDiffMode,
-            includePaths: options.includePaths,
-            lintSourceFileCount,
-          });
         }),
     },
   );
@@ -788,7 +823,9 @@ const runInspectWithRuntime = async (
     ? program.pipe(Effect.provide(layers), Effect.provideService(Console.Console, silentConsole))
     : program.pipe(Effect.provide(layers));
   const programWithLayers = applyObservability(baseProgram, rootSentrySpan);
-  const output = await Effect.runPromise(restoreLegacyThrow(programWithLayers));
+  const output = await Effect.runPromise(restoreLegacyThrow(programWithLayers), {
+    signal: oxlintRuntime.abortSignal,
+  });
 
   const didLintFail = lintBindingMissing || output.didLintFail;
   const lintFailureReason = lintBindingMissing
@@ -808,7 +845,7 @@ const runInspectWithRuntime = async (
     lintFailureReason !== null
   ) {
     if (output.lintFailureReasonKind === "native-binding-missing") {
-      runConsole(
+      Effect.runSync(
         Console.log(
           highlighter.gray(
             `  Upgrade to Node ${OXLINT_NODE_REQUIREMENT} or run: npx -p oxlint@latest react-doctor@latest`,
@@ -816,7 +853,7 @@ const runInspectWithRuntime = async (
         ),
       );
     } else {
-      runConsole(Console.error(highlighter.error(lintFailureReason)));
+      Effect.runSync(Console.error(highlighter.error(lintFailureReason)));
     }
   }
 
@@ -899,6 +936,7 @@ const runInspectWithRuntime = async (
       : output.lintFailureReasonKind,
     supplyChainOverlapTimedOut: output.supplyChainOverlapTimedOut,
     securityScanFailed: output.securityScanFailed,
+    securityScanFailureReason: output.securityScanFailureReason,
     suppressedRuleCounts: output.suppressedRuleCounts,
   };
   // A degraded baseline (requested but no delta — e.g. a transient base-lint
@@ -950,6 +988,7 @@ interface FinalizeInput {
   deadCodeFailureReason: string | null;
   supplyChainOverlapTimedOut: boolean;
   securityScanFailed: boolean;
+  securityScanFailureReason: string | null;
   directory: string;
   scannedFileCount: number;
   scannedFilePaths: ReadonlyArray<string>;
@@ -963,13 +1002,6 @@ interface FinalizeInput {
   deadCodeSummaryCacheHits: number | null;
   deadCodeSummaryCacheMisses: number | null;
   baselineDelta: InspectResult["baselineDelta"];
-}
-
-interface RenderCachedProjectDetectionInput {
-  readonly payload: CachedScanPayload;
-  readonly options: ResolvedInspectOptions;
-  readonly userConfig: ReactDoctorConfig | null;
-  readonly isDiffMode: boolean;
 }
 
 interface RenderAndRecordScanInput {
@@ -1025,24 +1057,6 @@ const runMaybeSilent = <A, E, R>(
 ): Effect.Effect<A, E, R> =>
   silent ? effect.pipe(Effect.provideService(Console.Console, silentConsole)) : effect;
 
-const renderCachedProjectDetection = async (
-  input: RenderCachedProjectDetectionInput,
-): Promise<void> => {
-  if (input.options.scoreOnly || input.options.suppressRendering) return;
-  await Effect.runPromise(
-    runMaybeSilent(
-      printProjectDetection({
-        projectInfo: input.payload.project,
-        userConfig: input.userConfig,
-        isDiffMode: input.isDiffMode,
-        includePaths: input.options.includePaths,
-        lintSourceFileCount: input.payload.scannedFileCount,
-      }),
-      input.options.silent,
-    ),
-  );
-};
-
 const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<InspectResult> => {
   const finalizeInput: FinalizeInput = {
     options: input.options,
@@ -1058,6 +1072,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     deadCodeFailureReason: input.payload.deadCodeFailureReason,
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
     securityScanFailed: input.payload.securityScanFailed ?? false,
+    securityScanFailureReason: input.payload.securityScanFailureReason ?? null,
     directory: input.payload.directory,
     scannedFileCount: input.payload.scannedFileCount,
     scannedFilePaths: input.payload.scannedFilePaths,
@@ -1139,6 +1154,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       deadCodeFailureReason,
       supplyChainOverlapTimedOut,
       securityScanFailed,
+      securityScanFailureReason,
       directory,
       scannedFileCount,
       scannedFilePaths,
@@ -1162,10 +1178,14 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       deadCodeFailureReason,
       supplyChainOverlapTimedOut,
       securityScanFailed,
+      securityScanFailureReason,
     });
     const hasSkippedChecks = skippedChecks.length > 0;
-
-    const noScoreMessage = buildNoScoreMessage(options.noScore, options.scoreDisabledMessage);
+    const noScoreMessage = buildNoScoreMessage({
+      isScoreDisabled: options.noScore,
+      isAnalysisIncomplete: hasIncompleteScoreAnalysis(skippedChecks),
+      disabledMessage: options.scoreDisabledMessage,
+    });
 
     const buildResult = (): InspectResult => ({
       diagnostics: [...diagnostics],

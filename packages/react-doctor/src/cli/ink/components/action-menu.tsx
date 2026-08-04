@@ -1,11 +1,11 @@
 import figures from "figures";
 import { Box, Text, useInput } from "ink";
-import { useState } from "react";
 import type { ReactNode } from "react";
 import {
   TUI_REPORT_ACTION_MENU_ITEM_GAP_ROWS,
   TUI_REPORT_ACTION_MENU_MARGIN_ROWS,
 } from "../../utils/constants.js";
+import { useState } from "../react-runtime.js";
 
 export interface ActionMenuAction {
   readonly id: string;

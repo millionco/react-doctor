@@ -18,12 +18,14 @@ const EXECUTION_RISK_MESSAGE =
 const scanWithBareCalls = scanByPattern({
   shouldScan: () => true,
   pattern: EXECUTION_WITH_BARE_CALLS_PATTERN,
+  ignoreStringLiterals: true,
   message: EXECUTION_RISK_MESSAGE,
 });
 
 const scanWithoutBareCalls = scanByPattern({
   shouldScan: () => true,
   pattern: EXECUTION_WITHOUT_BARE_CALLS_PATTERN,
+  ignoreStringLiterals: true,
   message: EXECUTION_RISK_MESSAGE,
 });
 
@@ -36,9 +38,8 @@ export const importMetadataExecutionRisk = defineRule({
   // The taint word must sit inside the execution call's own statement —
   // a window that crosses statements self-flags on unrelated `import` lines
   // (e.g. `import { exec } from "node:child_process"` followed by any import).
-  // `(?<!["'])...(?!["'])` keeps quote-wrapped static arguments
-  // (`spawnSync("claude", ["plugin", ...])`) from counting as taint — a
-  // literal word is an argument value the attacker does not control.
+  // String-literal contents are blanked before matching, while template
+  // interpolations remain code, so static commands do not count as taint.
   // Case-sensitive on purpose: the execution APIs are exact-case, and a
   // case-insensitive taint word matches SCREAMING constants (`PLUGIN_ID`)
   // and camelCase type names (`WorkflowMetadata`) that are not data.

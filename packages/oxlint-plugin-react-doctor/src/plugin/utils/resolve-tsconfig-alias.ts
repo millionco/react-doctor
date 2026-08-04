@@ -4,7 +4,7 @@ import {
   CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS,
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
-import { isProbeRecorderActive, recordContentProbe } from "./cross-file-probe-recorder.js";
+import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
 
 interface ResolvedTsconfig {
@@ -164,8 +164,17 @@ interface TsconfigLookup {
   readonly probedContentPaths: ReadonlySet<string>;
 }
 
+interface CachedTsconfigLookup extends TsconfigLookup {
+  readonly directoryCount: number;
+}
+
+interface DirectoryTsconfigProbes {
+  readonly directory: string;
+  readonly probedContentPaths: ReadonlySet<string>;
+}
+
 const configByFilePath = new Map<string, CacheEntry>();
-const nearestTsconfigByDirectory = new Map<string, TsconfigLookup>();
+const nearestTsconfigByDirectory = new Map<string, CachedTsconfigLookup>();
 
 const loadTsconfigCached = (configFilePath: string): TsconfigLookup => {
   // A missing entry config resolves to null without reading anything else,
@@ -202,16 +211,31 @@ const loadTsconfigCached = (configFilePath: string): TsconfigLookup => {
   return { config, probedContentPaths: new Set(probedChainPaths) };
 };
 
-// Walks up from `fromDirectory` for the nearest tsconfig/jsconfig. The
-// directory result is cached only while dependency probes are active. Core
-// clears it at each scan boundary, so the sidecar collector avoids repeating
-// the same ancestor stats while long-lived direct resolver callers still pick
-// up tsconfig edits and newly-added configs immediately.
+const cacheVisitedTsconfigDirectories = (
+  visitedDirectories: ReadonlyArray<DirectoryTsconfigProbes>,
+  resolvedLookup: TsconfigLookup,
+  resolvedDirectoryCount: number,
+): void => {
+  const inheritedContentPaths = new Set(resolvedLookup.probedContentPaths);
+  let directoryCount = resolvedDirectoryCount;
+  for (let index = visitedDirectories.length - 1; index >= 0; index--) {
+    const visitedDirectory = visitedDirectories[index];
+    directoryCount++;
+    for (const probedContentPath of visitedDirectory.probedContentPaths) {
+      inheritedContentPaths.add(probedContentPath);
+    }
+    nearestTsconfigByDirectory.set(visitedDirectory.directory, {
+      config: resolvedLookup.config,
+      directoryCount,
+      probedContentPaths: new Set(inheritedContentPaths),
+    });
+  }
+};
+
+// Walks up from `fromDirectory` for the nearest tsconfig/jsconfig. Core clears
+// the path-compressed directory results at each scan boundary.
 const findNearestTsconfig = (fromDirectory: string): ResolvedTsconfig | null => {
-  const shouldUseDirectoryCache = isProbeRecorderActive();
-  const cached = shouldUseDirectoryCache
-    ? nearestTsconfigByDirectory.get(fromDirectory)
-    : undefined;
+  const cached = nearestTsconfigByDirectory.get(fromDirectory);
   if (cached !== undefined) {
     for (const probedContentPath of cached.probedContentPaths) {
       recordContentProbe(probedContentPath);
@@ -219,34 +243,74 @@ const findNearestTsconfig = (fromDirectory: string): ResolvedTsconfig | null => 
     return cached.config;
   }
 
-  const probedContentPaths = new Set<string>();
+  const visitedDirectories: DirectoryTsconfigProbes[] = [];
   let currentDirectory = fromDirectory;
   for (let level = 0; level < CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS; level++) {
+    const cachedAncestor = nearestTsconfigByDirectory.get(currentDirectory);
+    const remainingDirectoryCount = CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS - level;
+    if (cachedAncestor !== undefined && cachedAncestor.directoryCount <= remainingDirectoryCount) {
+      for (const probedContentPath of cachedAncestor.probedContentPaths) {
+        recordContentProbe(probedContentPath);
+      }
+      cacheVisitedTsconfigDirectories(
+        visitedDirectories,
+        cachedAncestor,
+        cachedAncestor.directoryCount,
+      );
+      return cachedAncestor.config;
+    }
+
+    const directoryContentPaths = new Set<string>();
     for (const fileName of TSCONFIG_FILE_NAMES) {
       const lookup = loadTsconfigCached(path.join(currentDirectory, fileName));
       for (const probedContentPath of lookup.probedContentPaths) {
-        probedContentPaths.add(probedContentPath);
+        directoryContentPaths.add(probedContentPath);
       }
       if (lookup.config) {
-        if (shouldUseDirectoryCache) {
-          nearestTsconfigByDirectory.set(fromDirectory, {
+        visitedDirectories.push({
+          directory: currentDirectory,
+          probedContentPaths: directoryContentPaths,
+        });
+        cacheVisitedTsconfigDirectories(
+          visitedDirectories,
+          {
             config: lookup.config,
-            probedContentPaths,
-          });
-        }
+            probedContentPaths: new Set(),
+          },
+          0,
+        );
         return lookup.config;
       }
     }
+    visitedDirectories.push({
+      directory: currentDirectory,
+      probedContentPaths: directoryContentPaths,
+    });
     const parentDirectory = path.dirname(currentDirectory);
-    if (parentDirectory === currentDirectory) break;
+    if (parentDirectory === currentDirectory) {
+      cacheVisitedTsconfigDirectories(
+        visitedDirectories,
+        {
+          config: null,
+          probedContentPaths: new Set(),
+        },
+        0,
+      );
+      return null;
+    }
     currentDirectory = parentDirectory;
   }
-  if (shouldUseDirectoryCache) {
-    nearestTsconfigByDirectory.set(fromDirectory, {
-      config: null,
-      probedContentPaths,
-    });
+  const probedContentPaths = new Set<string>();
+  for (const visitedDirectory of visitedDirectories) {
+    for (const probedContentPath of visitedDirectory.probedContentPaths) {
+      probedContentPaths.add(probedContentPath);
+    }
   }
+  nearestTsconfigByDirectory.set(fromDirectory, {
+    config: null,
+    directoryCount: visitedDirectories.length,
+    probedContentPaths,
+  });
   return null;
 };
 

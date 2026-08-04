@@ -10,6 +10,7 @@ import type { ScanStore, TuiHandoffRequest } from "./scan-store.js";
 
 export interface ScanAppProps {
   readonly store: ScanStore;
+  readonly displayMode?: "scan" | "report";
   readonly launchableAgents?: ReadonlyArray<CliAgentId>;
   readonly onHandoff?: (request: TuiHandoffRequest) => void;
   readonly canAddToCi?: boolean;
@@ -19,6 +20,7 @@ export interface ScanAppProps {
 
 export const ScanApp = ({
   store,
+  displayMode = "report",
   launchableAgents,
   onHandoff,
   canAddToCi,
@@ -33,7 +35,7 @@ export const ScanApp = ({
     exit();
   };
 
-  if (snapshot.phase === "summary" && snapshot.summary) {
+  if (displayMode === "report" && snapshot.phase === "summary" && snapshot.summary) {
     return (
       <Summary
         summary={snapshot.summary}
@@ -47,7 +49,7 @@ export const ScanApp = ({
     );
   }
 
-  if (snapshot.phase === "report" && snapshot.report) {
+  if (displayMode === "report" && snapshot.phase === "report" && snapshot.report) {
     return (
       <Report
         report={snapshot.report}
@@ -64,7 +66,6 @@ export const ScanApp = ({
   return (
     <Scanning
       progressText={snapshot.progress}
-      liveCount={snapshot.liveCount}
       recent={snapshot.liveDiagnostics.slice(-TUI_RECENT_LIVE_DIAGNOSTIC_COUNT)}
     />
   );

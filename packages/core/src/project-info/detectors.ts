@@ -126,7 +126,12 @@ const readResolvedCompilerOptions = (
   extendsDepth: number,
   visitedPaths: ReadonlySet<string>,
 ): TsConfigCompilerOptions | null => {
-  const realPath = fs.realpathSync.native(tsConfigPath);
+  let realPath: string;
+  try {
+    realPath = fs.realpathSync.native(tsConfigPath);
+  } catch {
+    return null;
+  }
   if (visitedPaths.has(realPath)) return null;
 
   const tsConfig = readTsConfig(realPath);
@@ -1197,6 +1202,7 @@ const configExpressionMayDefineProperty = (
   expression: ts.Expression,
   propertyName: string,
   analysis: ConfigExpressionAnalysis,
+  visitedExpressions: ReadonlySet<ts.Expression> = new Set(),
 ): boolean => {
   let resolvedExpression = expression;
   while (
@@ -1208,6 +1214,9 @@ const configExpressionMayDefineProperty = (
   ) {
     resolvedExpression = resolvedExpression.expression;
   }
+  if (visitedExpressions.has(resolvedExpression)) return true;
+  const nextVisitedExpressions = new Set(visitedExpressions);
+  nextVisitedExpressions.add(resolvedExpression);
   if (ts.isIdentifier(resolvedExpression)) {
     if (analysis.localBindings.has(resolvedExpression.text)) {
       const localReference = analysis.localBindings.get(resolvedExpression.text);
@@ -1216,40 +1225,72 @@ const configExpressionMayDefineProperty = (
             localReference.expression,
             propertyName,
             localReference.analysis,
+            nextVisitedExpressions,
           )
         : true;
     }
     const scopedBinding = getScopedConfigBinding(resolvedExpression);
     if (scopedBinding.wasFound) {
       return scopedBinding.initializer
-        ? configExpressionMayDefineProperty(scopedBinding.initializer, propertyName, analysis)
+        ? configExpressionMayDefineProperty(
+            scopedBinding.initializer,
+            propertyName,
+            analysis,
+            nextVisitedExpressions,
+          )
         : true;
     }
     const topLevelBinding = getTopLevelBinding(analysis.sourceFile, resolvedExpression.text);
     return topLevelBinding && ts.isExpression(topLevelBinding)
-      ? configExpressionMayDefineProperty(topLevelBinding, propertyName, analysis)
+      ? configExpressionMayDefineProperty(
+          topLevelBinding,
+          propertyName,
+          analysis,
+          nextVisitedExpressions,
+        )
       : true;
   }
   if (ts.isConditionalExpression(resolvedExpression)) {
     if (isStaticallyTruthyConfigExpression(resolvedExpression.condition, analysis)) {
-      return configExpressionMayDefineProperty(resolvedExpression.whenTrue, propertyName, analysis);
+      return configExpressionMayDefineProperty(
+        resolvedExpression.whenTrue,
+        propertyName,
+        analysis,
+        nextVisitedExpressions,
+      );
     }
     if (isStaticallyDisabledConfigExpression(resolvedExpression.condition, analysis)) {
       return configExpressionMayDefineProperty(
         resolvedExpression.whenFalse,
         propertyName,
         analysis,
+        nextVisitedExpressions,
       );
     }
     return (
-      configExpressionMayDefineProperty(resolvedExpression.whenTrue, propertyName, analysis) ||
-      configExpressionMayDefineProperty(resolvedExpression.whenFalse, propertyName, analysis)
+      configExpressionMayDefineProperty(
+        resolvedExpression.whenTrue,
+        propertyName,
+        analysis,
+        nextVisitedExpressions,
+      ) ||
+      configExpressionMayDefineProperty(
+        resolvedExpression.whenFalse,
+        propertyName,
+        analysis,
+        nextVisitedExpressions,
+      )
     );
   }
   if (!ts.isObjectLiteralExpression(resolvedExpression)) return true;
   return resolvedExpression.properties.some((property) => {
     if (ts.isSpreadAssignment(property)) {
-      return configExpressionMayDefineProperty(property.expression, propertyName, analysis);
+      return configExpressionMayDefineProperty(
+        property.expression,
+        propertyName,
+        analysis,
+        nextVisitedExpressions,
+      );
     }
     if (
       ts.isPropertyAssignment(property) ||
@@ -1434,7 +1475,13 @@ const analyzeConfigModuleExport = (
   if (visitedModules.has(moduleVisitKey)) return false;
   const nextVisitedModules = new Set(visitedModules);
   nextVisitedModules.add(moduleVisitKey);
-  const sourceFile = parseConfigSourceFile(filePath, fs.readFileSync(filePath, "utf-8"));
+  let sourceText: string;
+  try {
+    sourceText = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return false;
+  }
+  const sourceFile = parseConfigSourceFile(filePath, sourceText);
   return analyzeConfigSourceFileExport(
     sourceFile,
     filePath,

@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
 import type { PackageJson, ProjectInfo } from "../types/index.js";
@@ -46,6 +45,10 @@ export { listWorkspacePackages } from "./workspaces.js";
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();
 
+export interface DiscoverProjectOptions {
+  readonly sourceFileCount?: number;
+}
+
 // HACK: paired with clearConfigCache — exposed so programmatic API
 // consumers can re-detect after the project's package.json /
 // tsconfig.json / monorepo manifests change between diagnose() calls.
@@ -64,9 +67,12 @@ export const clearProjectCache = (): void => {
  * framework-agnostic rules. Throws only when the directory has nothing
  * to scan (no enclosing project and no source files of its own).
  */
-const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
-  const sourceFileCount = countSourceFiles(directory);
-  const hasOwnTsConfig = fs.existsSync(path.join(directory, "tsconfig.json"));
+const discoverProjectWithoutPackageJson = (
+  directory: string,
+  options: DiscoverProjectOptions,
+): ProjectInfo => {
+  const sourceFileCount = options.sourceFileCount ?? countSourceFiles(directory);
+  const hasOwnTsConfig = isFile(path.join(directory, "tsconfig.json"));
 
   const enclosingProjectRoot = findNearestAncestorPackageJson(directory);
   const enclosingProject =
@@ -148,13 +154,20 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
   };
 };
 
-export const discoverProject = (directory: string): ProjectInfo => {
+export const discoverProject = (
+  directory: string,
+  options: DiscoverProjectOptions = {},
+): ProjectInfo => {
   const cached = cachedProjectInfos.get(directory);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return options.sourceFileCount === undefined
+      ? cached
+      : { ...cached, sourceFileCount: options.sourceFileCount };
+  }
 
   const packageJsonPath = path.join(directory, "package.json");
   if (!isFile(packageJsonPath)) {
-    const synthesized = discoverProjectWithoutPackageJson(directory);
+    const synthesized = discoverProjectWithoutPackageJson(directory, options);
     cachedProjectInfos.set(directory, synthesized);
     return synthesized;
   }
@@ -248,8 +261,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
   const zodVersion = zod.version;
 
   const projectName = packageJson.name ?? path.basename(directory);
-  const hasTypeScript = fs.existsSync(path.join(directory, "tsconfig.json"));
-  const sourceFileCount = countSourceFiles(directory);
+  const hasTypeScript = isFile(path.join(directory, "tsconfig.json"));
+  const sourceFileCount = options.sourceFileCount ?? countSourceFiles(directory);
 
   // The gates below are semantic, not perf: `expoVersion` / `nextjsVersion`
   // etc. must stay `null` unless the project actually classifies for them,

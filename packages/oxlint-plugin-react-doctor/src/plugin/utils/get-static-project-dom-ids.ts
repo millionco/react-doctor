@@ -157,12 +157,12 @@ export const getStaticProjectDomIds = (
   }
 
   const currentFilePath = normalizeFilename(input.currentFilePath);
-  const projectIndex = buildSourceProjectIndex(
+  const projectIndex = buildSourceProjectIndex({
     rootDirectory,
     currentFilePath,
-    input.currentProgramNode,
-    input.currentScopes,
-  );
+    currentProgramNode: input.currentProgramNode,
+    currentScopes: input.currentScopes,
+  });
   if (!projectIndex) {
     cachedStaticDomIdsByRootDirectory.set(rootDirectory, null);
     return null;

@@ -3,8 +3,7 @@ import { buildSentryScope } from "./build-sentry-scope.js";
 import { toSpanAttributes } from "./to-span-attributes.js";
 
 // Sentry metric attributes accept primitives; `null`/`undefined` denote an
-// absent signal and are dropped so a missing value never becomes a misleading
-// `"null"` attribute (mirrors `toSpanAttributes` for spans).
+// absent signal and are dropped by `toSpanAttributes`.
 export interface MetricAttributes {
   [attributeName: string]: string | number | boolean | null | undefined;
 }
@@ -13,17 +12,6 @@ interface MetricOptions {
   readonly unit?: string;
   readonly attributes?: MetricAttributes;
 }
-
-const cleanAttributes = (
-  attributes: MetricAttributes | undefined,
-): Record<string, string | number | boolean> => {
-  const cleaned: Record<string, string | number | boolean> = {};
-  if (!attributes) return cleaned;
-  for (const [key, value] of Object.entries(attributes)) {
-    if (value !== null && value !== undefined) cleaned[key] = value;
-  }
-  return cleaned;
-};
 
 // Every metric carries the run snapshot (and the scanned project, once
 // discovered) merged from the same lazy `buildSentryScope()` projection the
@@ -36,7 +24,7 @@ const withRunAttributes = (
   attributes: MetricAttributes | undefined,
 ): Record<string, string | number | boolean> => ({
   ...toSpanAttributes(buildSentryScope().tags),
-  ...cleanAttributes(attributes),
+  ...toSpanAttributes(attributes ?? {}),
 });
 
 /**

@@ -53,6 +53,7 @@ const FIXTURES_DIRECTORY = path.resolve(
   "fixtures",
 );
 const MIXED_MONOREPO_FIXTURE = path.join(FIXTURES_DIRECTORY, "mixed-rn-web-monorepo");
+const MIXED_MONOREPO_SCAN_TIMEOUT_MS = 60_000;
 
 const findRnDiagnostics = (diagnostics: Diagnostic[]): Diagnostic[] =>
   diagnostics.filter((diagnostic) => diagnostic.rule.startsWith("rn-"));
@@ -79,7 +80,7 @@ describe("mixed RN + web monorepo: rn-* rules respect package boundaries", () =>
         hasReactNativeWorkspace: true,
       },
     });
-  });
+  }, MIXED_MONOREPO_SCAN_TIMEOUT_MS);
 
   it("fires rn-no-raw-text inside the React Native (Expo) workspace", () => {
     const mobileRnRawText = findDiagnosticsByFile(

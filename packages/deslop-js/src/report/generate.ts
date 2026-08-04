@@ -259,7 +259,6 @@ export const generateReport = (
       misclassifiedDependencies: [],
       redundantAliases: [],
       errors: [],
-      contextStatus: "typescript-load-failed",
     };
   }
   for (const semanticError of semanticResult.errors) {

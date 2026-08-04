@@ -4,9 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-const buildIdentifierMessage = (name: string): string =>
-  `The later spread of \`${name}\` silently overrides the earlier one.`;
-const buildMemberMessage = (name: string): string =>
+const buildSpreadOverrideMessage = (name: string): string =>
   `The later spread of \`${name}\` silently overrides the earlier one.`;
 
 const flattenMemberExpressionName = (node: EsTreeNode): string | null => {
@@ -46,14 +44,13 @@ export const jsxPropsNoSpreadMulti = defineRule({
       for (const attribute of node.attributes) {
         if (!isNodeOfType(attribute, "JSXSpreadAttribute")) continue;
         const argument = stripParenExpression(attribute.argument);
-        const isIdentifier = isNodeOfType(argument, "Identifier");
         const name = flattenMemberExpressionName(argument);
         if (!name) continue;
         if (seenNames.has(name)) {
           if (!reportedNames.has(name)) {
             context.report({
               node: attribute,
-              message: isIdentifier ? buildIdentifierMessage(name) : buildMemberMessage(name),
+              message: buildSpreadOverrideMessage(name),
             });
             reportedNames.add(name);
           }

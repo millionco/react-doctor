@@ -76,7 +76,21 @@ const getBrowserslistProtectionRequirement = (
 
     let requirement: "noopener" | "noreferrer" | undefined;
     let hasUnsupportedTarget = false;
-    for (const browserTarget of browserslist(queries)) {
+    const previousIgnoreOldData = process.env.BROWSERSLIST_IGNORE_OLD_DATA;
+    // HACK: the bundled Browserslist database belongs to React Doctor, so users cannot update it
+    // from the scanned project and its maintenance warning must not corrupt interactive output.
+    let browserTargets: string[] = [];
+    try {
+      process.env.BROWSERSLIST_IGNORE_OLD_DATA = "true";
+      browserTargets = browserslist(queries);
+    } finally {
+      if (previousIgnoreOldData === undefined) {
+        delete process.env.BROWSERSLIST_IGNORE_OLD_DATA;
+      } else {
+        process.env.BROWSERSLIST_IGNORE_OLD_DATA = previousIgnoreOldData;
+      }
+    }
+    for (const browserTarget of browserTargets) {
       const browserRequirement = getBrowserProtectionRequirement(browserTarget);
       if (browserRequirement === "unsupported") hasUnsupportedTarget = true;
       if (browserRequirement === "noreferrer") requirement = "noreferrer";

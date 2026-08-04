@@ -33,6 +33,10 @@ import { Project } from "../src/services/project.js";
 import { Reporter, ReporterCapture } from "../src/services/reporter.js";
 import { Score } from "../src/services/score.js";
 import { SupplyChain } from "../src/services/supply-chain.js";
+import {
+  DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE,
+  DEAD_CODE_WORKER_TIMEOUT_MS,
+} from "../src/constants.js";
 
 const temporaryDirectories: string[] = [];
 afterAll(() => {
@@ -126,8 +130,7 @@ const layersOf = (config: {
   reactDoctorConfig?: ReactDoctorConfig | null;
   scoreLayer?: Layer.Layer<Score>;
   // Pins the dead-code/lint overlap mode. Defaults to "off" so emit-order
-  // assertions stay deterministic regardless of the test box's free memory
-  // (the "auto" gate reads `os.freemem()`); overlap tests opt into "on".
+  // assertions stay deterministic; overlap tests opt into "on".
   deadCodeOverlap?: "auto" | "on" | "off";
 }) =>
   Layer.mergeAll(
@@ -176,6 +179,29 @@ describe("runInspect — phase timeouts & overall deadline", () => {
       Reporter.layerNoop,
       overrides.refOverrides,
     );
+
+  it("leaves lint and the overall scan unbounded when no timeout is configured", async () => {
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, runDeadCode: false }).pipe(
+        Effect.provide(
+          baseTimeoutLayers({
+            linter: Layer.mock(Linter, {
+              run: () => Stream.fromEffect(Effect.as(Effect.sleep("50 millis"), lintDiagnostic)),
+            }),
+            deadCode: DeadCode.layerOf([]),
+            refOverrides: Layer.mergeAll(
+              Layer.succeed(LintPhaseTimeoutMs, null),
+              Layer.succeed(DeadCodePhaseTimeoutMs, null),
+              Layer.succeed(ScanDeadlineMs, null),
+            ),
+          }),
+        ),
+      ),
+    );
+
+    expect(output.didLintFail).toBe(false);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toContain("no-derived-state");
+  });
 
   it("caps the dead-code phase into didDeadCodeFail without sinking the rest of the scan", async () => {
     const output = await Effect.runPromise(
@@ -299,6 +325,99 @@ const overlapLayersOf = (config: {
   );
 
 describe("runInspect — happy path", () => {
+  it("keeps descendant projects out of ancestor lint and dead-code results", async () => {
+    let lintIncludePaths: ReadonlyArray<string> | undefined;
+    let didDeadCodeReceiveIgnorePatterns = false;
+    let discoveredSourceFileCount: number | undefined;
+    const deadCodeWorkerTimeouts: Array<number | undefined> = [];
+    const descendantSourceFileCount =
+      Math.floor(DEAD_CODE_WORKER_TIMEOUT_MS / DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE) + 1;
+    const sourceFiles = new Map<string, string>([
+      ["/repo/src/root.tsx", "export const Root = null;"],
+    ]);
+    for (
+      let sourceFileIndex = 0;
+      sourceFileIndex < descendantSourceFileCount;
+      sourceFileIndex += 1
+    ) {
+      sourceFiles.set(
+        `/repo/packages/web/src/file-${sourceFileIndex}.tsx`,
+        `export const value${sourceFileIndex} = null;`,
+      );
+    }
+    const layers = Layer.mergeAll(
+      Layer.mock(Project, {
+        discover: (input) => {
+          discoveredSourceFileCount = input.sourceFileCount;
+          return Effect.succeed({
+            ...sampleProject,
+            sourceFileCount: input.sourceFileCount ?? 0,
+          });
+        },
+      }),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+      Files.layerInMemory(sourceFiles),
+      Layer.mock(Linter, {
+        run: (input) => {
+          lintIncludePaths = input.includePaths;
+          return Stream.empty;
+        },
+      }),
+      LintPartialFailures.layerLive,
+      Layer.mock(DeadCode, {
+        run: (input) => {
+          deadCodeWorkerTimeouts.push(input.workerTimeoutMs);
+          didDeadCodeReceiveIgnorePatterns = "ignorePatterns" in input;
+          return Stream.fromIterable([
+            deadCodeDiagnostic,
+            {
+              ...deadCodeDiagnostic,
+              filePath: "packages/web/src/Unused.tsx",
+            },
+          ]);
+        },
+      }),
+      Git.layerOf({}),
+      Score.layerOf({ score: 85, label: "Good" }),
+      SupplyChain.layerOf([]),
+      Progress.layerNoop,
+      Reporter.layerNoop,
+      Layer.succeed(DeadCodeOverlap, "off"),
+    );
+
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        excludedProjectDirectories: ["/repo/packages/web"],
+        suppressScanSummary: true,
+      }).pipe(Effect.provide(layers)),
+    );
+
+    expect(lintIncludePaths).toEqual(["src/root.tsx"]);
+    expect(didDeadCodeReceiveIgnorePatterns).toBe(false);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual(["src/Unused.tsx"]);
+    expect(output.scannedFilePaths).toEqual([path.resolve("/repo/src/root.tsx")]);
+    expect(discoveredSourceFileCount).toBe(1);
+
+    const workspaceOutput = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        excludedProjectDirectories: ["/repo/packages/web"],
+        retainExcludedProjectDeadCodeDiagnostics: true,
+        suppressScanSummary: true,
+      }).pipe(Effect.provide(layers)),
+    );
+
+    expect(workspaceOutput.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "packages/web/src/Unused.tsx",
+      "src/Unused.tsx",
+    ]);
+    expect(deadCodeWorkerTimeouts).toEqual([
+      DEAD_CODE_WORKER_TIMEOUT_MS,
+      (descendantSourceFileCount + 1) * DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE,
+    ]);
+  });
+
   it("collects diagnostics from Linter, DeadCode, and emits them through Reporter", async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
@@ -557,10 +676,8 @@ describe("runInspect — missing React dependency", () => {
       Reporter.layerNoop,
     );
 
-    // Note: runInspect doesn't currently check reactVersion (that check
-    // happens in the legacy inspect.ts before calling). For PR 5 the api
-    // package adds the boundary check. This test verifies the orchestrator
-    // *would* propagate a tagged error if one came from Project.
+    // Project discovery errors are thrown before runInspect in public entry
+    // points. This pins how the orchestrator propagates a tagged project error.
     const explicitFailLayers = Layer.mergeAll(
       Layer.mock(Project, {
         discover: () =>
@@ -619,9 +736,8 @@ describe("runInspect — mid-stream lint failure", () => {
       SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
-      // Pin the sequential path so this test doesn't fork dead-code on a
-      // high-memory box (the "auto" gate reads os.freemem()); the fork+interrupt
-      // path is covered by the dedicated overlap test below.
+      // Pin the sequential path; the fork+interrupt path is covered by the
+      // dedicated overlap test below.
       Layer.succeed(DeadCodeOverlap, "off"),
     );
     const output = await Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layers)));
@@ -655,8 +771,7 @@ describe("runInspect — dead-code failure", () => {
       SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
-      // Pin overlap off so the path under test is deterministic regardless of
-      // the box's free memory (the "auto" gate reads os.freemem()).
+      // Pin overlap off so the path under test is deterministic.
       Layer.succeed(DeadCodeOverlap, "off"),
     );
     const output = await Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layers)));
@@ -754,51 +869,6 @@ describe("runInspect — dead-code/lint overlap", () => {
     // contract is preserved even though the layer would have "succeeded".
     expect(output.diagnostics).toHaveLength(0);
     expect(output.didDeadCodeFail).toBe(false);
-  });
-
-  it("never takes the gated overlap for a concurrent batch member (shared memory budget)", async () => {
-    // The "auto" gate reads this scan's own os.freemem(), blind to sibling
-    // scans in a concurrent batch, so a concurrent member must stay sequential
-    // regardless of how much memory a CI box reports — otherwise N siblings
-    // would each fork an 8 GB worker and sum past the single-scan budget.
-    const output = await Effect.runPromise(
-      runInspect({ ...baseInput, concurrentScan: true }).pipe(
-        Effect.provide(
-          layersOf({
-            diagnostics: [lintDiagnostic],
-            deadCode: [deadCodeDiagnostic],
-            deadCodeOverlap: "auto",
-          }),
-        ),
-      ),
-    );
-    expect(output.deadCodeOverlapped).toBe(false);
-    // Output is unchanged — it just ran sequentially.
-    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
-      "no-derived-state",
-      "unused-file",
-    ]);
-  });
-
-  it("still overlaps a concurrent batch member when overlap is explicitly forced on", async () => {
-    // `"on"` is an operator override ("I own this box"), so it wins over the
-    // concurrent-scan auto-gate guard.
-    const output = await Effect.runPromise(
-      runInspect({ ...baseInput, concurrentScan: true }).pipe(
-        Effect.provide(
-          layersOf({
-            diagnostics: [lintDiagnostic],
-            deadCode: [deadCodeDiagnostic],
-            deadCodeOverlap: "on",
-          }),
-        ),
-      ),
-    );
-    expect(output.deadCodeOverlapped).toBe(true);
-    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
-      "no-derived-state",
-      "unused-file",
-    ]);
   });
 });
 
@@ -1197,6 +1267,32 @@ describe("runInspect — supply-chain lint overlap", () => {
     expect(output.supplyChainOverlapTimedOut).toBe(true);
     expect(output.diagnostics.map((d) => d.rule)).toEqual(["no-derived-state"]);
     expect(output.didLintFail).toBe(false);
+  });
+
+  it("caps supply-chain work to the remaining max-duration budget", async () => {
+    let supplyChainTimeoutMs: number | undefined;
+    const hungSupplyChain = Layer.mock(SupplyChain, {
+      run: (input) => {
+        supplyChainTimeoutMs = input.timeoutMs;
+        return Stream.fromEffect(Effect.never);
+      },
+    });
+    const deadlineBudgetMs = 100;
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, deadlineEpochMs: Date.now() + deadlineBudgetMs }).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: hungSupplyChain,
+            overlapTimeoutMs: 5_000,
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+
+    expect(supplyChainTimeoutMs).toBeLessThanOrEqual(deadlineBudgetMs);
+    expect(output.supplyChainOverlapTimedOut).toBe(true);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual(["no-derived-state"]);
   });
 
   it("does not cut a slow-but-healthy supply-chain run that finishes within budget", async () => {

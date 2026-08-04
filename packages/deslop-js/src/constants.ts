@@ -95,8 +95,6 @@ export const SCRIPT_EXTENSIONLESS_FILE_PATTERN =
 export const SCRIPT_CONFIG_FILE_PATTERN =
   /--config\s+([\w./@-]+\.(?:ts|tsx|js|jsx|mts|mjs|cts|cjs))/;
 
-export const SCRIPT_ENTRY_PATTERNS: string[] = [];
-
 export const DEFAULT_ENTRY_GLOBS = [
   "src/index.{ts,tsx,js,jsx}",
   "src/main.{ts,tsx,js,jsx}",
@@ -335,7 +333,7 @@ export const MAX_ANALYSIS_ERRORS = 5000;
 export const MAX_ERROR_DETAIL_LENGTH = 1000;
 
 // Bumped to 2: per-file entries carry a content-hash repair witness (`h`).
-export const SUMMARY_CACHE_SCHEMA_VERSION = 3;
+export const SUMMARY_CACHE_SCHEMA_VERSION = 4;
 
 export const SUMMARY_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 

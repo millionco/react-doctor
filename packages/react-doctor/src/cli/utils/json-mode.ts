@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { buildJsonReportError } from "@react-doctor/core";
 import type { JsonReport, JsonReportMode } from "@react-doctor/core";
+import { CliInputError } from "./cli-input-error.js";
 import { INTERNAL_ERROR_JSON_FALLBACK } from "./constants.js";
 import { makeNoopConsole } from "./noop-console.js";
 import { VERSION } from "./version.js";
@@ -59,9 +60,16 @@ export const enableJsonMode = ({ compact, directory, outputFile }: EnableJsonMod
     directory,
     startTime: performance.now(),
     mode: "full",
-    outputFile: outputFile ?? null,
+    outputFile: null,
   };
   installSilentConsole();
+  if (outputFile) {
+    const resolvedOutputFile = path.resolve(outputFile);
+    if (fs.existsSync(resolvedOutputFile) && !fs.statSync(resolvedOutputFile).isFile()) {
+      throw new CliInputError(`--json-out must point to a file, not ${resolvedOutputFile}.`);
+    }
+    context.outputFile = outputFile;
+  }
 };
 
 export const isJsonModeActive = (): boolean => context !== null;

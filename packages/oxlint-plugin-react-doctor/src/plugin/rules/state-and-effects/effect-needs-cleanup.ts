@@ -173,9 +173,31 @@ interface ReactRefEffectAnalysis {
   usageByRefSymbolId: Map<number, ReactRefEffectUsage>;
 }
 
+interface EffectRetainedInvocation {
+  call: EsTreeNodeOfType<"CallExpression">;
+  isDirect: boolean;
+}
+
+interface FileReleaseCallIndex {
+  identifierCallsByName: Map<string, EsTreeNode[]>;
+  potentialNonTimerCalls: EsTreeNode[];
+}
+
 const REACT_REF_EFFECT_ANALYSIS_CACHE = new WeakMap<
   RuleContext,
   WeakMap<EsTreeNode, ReactRefEffectAnalysis>
+>();
+const EFFECT_RETAINED_INVOCATIONS_CACHE = new WeakMap<
+  RuleContext,
+  WeakMap<EsTreeNode, Map<EsTreeNode, EffectRetainedInvocation[]>>
+>();
+const FILE_RELEASE_CALL_INDEX_CACHE = new WeakMap<
+  RuleContext,
+  WeakMap<EsTreeNode, FileReleaseCallIndex>
+>();
+const COMPONENT_EFFECT_CALLS_CACHE = new WeakMap<
+  RuleContext,
+  WeakMap<EsTreeNode, EsTreeNodeOfType<"CallExpression">[]>
 >();
 
 const RESOURCE_NOUN_BY_KIND = {
@@ -4467,6 +4489,126 @@ const hasCollectionMutationBeforeRelease = (
   const isCollectionKeyRelevantAt = (collectionKey: string | null, sourceStart: number): boolean =>
     collectionKey !== null &&
     sourceStart <= (collectionMutationLimits.get(collectionKey) ?? Number.NEGATIVE_INFINITY);
+  const doesNodeMutateCollection = (
+    node: EsTreeNode,
+    executionStart: number,
+    visitedFunctions: ReadonlySet<EsTreeNode>,
+    doesReturnEscape: boolean,
+  ): boolean => {
+    if (
+      doesReturnEscape &&
+      isNodeOfType(node, "ReturnStatement") &&
+      isCollectionKeyRelevantAt(resolveExpressionKey(node.argument, context), executionStart)
+    ) {
+      return true;
+    }
+    if (isNodeOfType(node, "AssignmentExpression")) {
+      const assignmentKey = resolveExpressionKey(node.left, context);
+      const assignmentTarget = stripParenExpression(node.left);
+      const assignedValueKey = resolveExpressionKey(node.right, context);
+      return (
+        (isCollectionKeyRelevantAt(assignedValueKey, executionStart) &&
+          !isCollectionKeyRelevantAt(assignmentKey, executionStart)) ||
+        Boolean(
+          assignmentKey &&
+          [...collectionMutationLimits].some(
+            ([collectionKey, mutationLimit]) =>
+              executionStart <= mutationLimit &&
+              (assignmentKey === collectionKey || assignmentKey === `${collectionKey}.length`),
+          ),
+        ) ||
+        (isNodeOfType(assignmentTarget, "MemberExpression") &&
+          assignmentTarget.computed &&
+          isCollectionKeyRelevantAt(
+            resolveExpressionKey(assignmentTarget.object, context),
+            executionStart,
+          ))
+      );
+    }
+    if (isNodeOfType(node, "UnaryExpression") && node.operator === "delete") {
+      const deletedMember = stripParenExpression(node.argument);
+      return (
+        isNodeOfType(deletedMember, "MemberExpression") &&
+        isCollectionKeyRelevantAt(
+          resolveExpressionKey(deletedMember.object, context),
+          executionStart,
+        )
+      );
+    }
+    if (isNodeOfType(node, "UpdateExpression")) {
+      const updatedKey = resolveExpressionKey(node.argument, context);
+      return Boolean(
+        updatedKey &&
+        [...collectionMutationLimits].some(
+          ([collectionKey, mutationLimit]) =>
+            executionStart <= mutationLimit && updatedKey === `${collectionKey}.length`,
+        ),
+      );
+    }
+    if (!isNodeOfType(node, "CallExpression") && !isNodeOfType(node, "NewExpression")) {
+      return false;
+    }
+    const doesReceiveCollection = node.arguments.some((argument) => {
+      if (!isAstNode(argument)) return false;
+      const argumentKey = resolveExpressionKey(argument, context);
+      return (
+        isCollectionKeyRelevantAt(argumentKey, executionStart) &&
+        resolveIteratorCollectionKey(argument, context) === null
+      );
+    });
+    const callee = stripParenExpression(node.callee);
+    const isArrayFromCopy =
+      isNodeOfType(node, "CallExpression") &&
+      isNodeOfType(callee, "MemberExpression") &&
+      !callee.computed &&
+      isNodeOfType(callee.object, "Identifier") &&
+      callee.object.name === "Array" &&
+      context.scopes.isGlobalReference(callee.object) &&
+      isNodeOfType(callee.property, "Identifier") &&
+      callee.property.name === "from";
+    if (doesReceiveCollection && !isArrayFromCopy) return true;
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      !callee.computed &&
+      isNodeOfType(callee.property, "Identifier") &&
+      (REPLAY_ENTRY_DROPPING_ARRAY_METHOD_NAMES.has(callee.property.name) ||
+        REPLAY_ENTRY_DROPPING_COLLECTION_METHOD_NAMES.has(callee.property.name)) &&
+      isCollectionKeyRelevantAt(resolveExpressionKey(callee.object, context), executionStart)
+    ) {
+      return true;
+    }
+    if (!isNodeOfType(node, "CallExpression")) return false;
+    const executedFunctions = [
+      resolveExactLocalFunction(node.callee, context.scopes),
+      ...node.arguments.flatMap((argument) =>
+        isAstNode(argument) && isSynchronousIteratorCallbackCall(node, argument)
+          ? [resolveExactLocalFunction(argument, context.scopes)]
+          : [],
+      ),
+    ];
+    return executedFunctions.some((executedFunction) => {
+      if (
+        !executedFunction ||
+        !isFunctionLike(executedFunction) ||
+        executedFunction.generator ||
+        visitedFunctions.has(executedFunction)
+      ) {
+        return false;
+      }
+      const nextVisitedFunctions = new Set(visitedFunctions);
+      nextVisitedFunctions.add(executedFunction);
+      let didExecutedFunctionMutateCollection = false;
+      walkAst(executedFunction.body, (executedNode: EsTreeNode) => {
+        if (didExecutedFunctionMutateCollection) return false;
+        if (executedNode !== executedFunction.body && isFunctionLike(executedNode)) return false;
+        if (doesNodeMutateCollection(executedNode, executionStart, nextVisitedFunctions, false)) {
+          didExecutedFunctionMutateCollection = true;
+          return false;
+        }
+      });
+      return didExecutedFunctionMutateCollection;
+    });
+  };
   let programNode = usageNode;
   while (programNode.parent) programNode = programNode.parent;
   let didFindMutation = false;
@@ -4479,104 +4621,7 @@ const hasCollectionMutationBeforeRelease = (
     const isAfterRegistration = setupOwnerFunctions.has(ownerFunction) && childStart > usageStart;
     const isBeforeRelease = cleanupOwnerFunctions.has(ownerFunction) && childStart < releaseStart;
     if (!isAfterRegistration && !isBeforeRelease) return;
-    if (
-      isNodeOfType(child, "ReturnStatement") &&
-      isCollectionKeyRelevantAt(resolveExpressionKey(child.argument, context), childStart)
-    ) {
-      didFindMutation = true;
-      return false;
-    }
-    if (isNodeOfType(child, "AssignmentExpression")) {
-      const assignmentKey = resolveExpressionKey(child.left, context);
-      const assignmentTarget = stripParenExpression(child.left);
-      const assignedValueKey = resolveExpressionKey(child.right, context);
-      if (
-        isCollectionKeyRelevantAt(assignedValueKey, childStart) &&
-        !isCollectionKeyRelevantAt(assignmentKey, childStart)
-      ) {
-        didFindMutation = true;
-        return false;
-      }
-      if (
-        (assignmentKey &&
-          [...collectionMutationLimits].some(
-            ([collectionKey, mutationLimit]) =>
-              childStart <= mutationLimit &&
-              (assignmentKey === collectionKey || assignmentKey === `${collectionKey}.length`),
-          )) ||
-        (isNodeOfType(assignmentTarget, "MemberExpression") &&
-          assignmentTarget.computed &&
-          isCollectionKeyRelevantAt(
-            resolveExpressionKey(assignmentTarget.object, context),
-            childStart,
-          ))
-      ) {
-        didFindMutation = true;
-        return false;
-      }
-      return;
-    }
-    if (isNodeOfType(child, "UnaryExpression") && child.operator === "delete") {
-      const deletedMember = stripParenExpression(child.argument);
-      if (!isNodeOfType(deletedMember, "MemberExpression")) return;
-      if (
-        isCollectionKeyRelevantAt(resolveExpressionKey(deletedMember.object, context), childStart)
-      ) {
-        didFindMutation = true;
-        return false;
-      }
-      return;
-    }
-    if (isNodeOfType(child, "UpdateExpression")) {
-      const updatedKey = resolveExpressionKey(child.argument, context);
-      if (
-        updatedKey &&
-        [...collectionMutationLimits].some(
-          ([collectionKey, mutationLimit]) =>
-            childStart <= mutationLimit && updatedKey === `${collectionKey}.length`,
-        )
-      ) {
-        didFindMutation = true;
-        return false;
-      }
-      return;
-    }
-    if (isNodeOfType(child, "CallExpression") || isNodeOfType(child, "NewExpression")) {
-      const doesReceiveCollection = child.arguments.some((argument) => {
-        if (!isAstNode(argument)) return false;
-        const argumentKey = resolveExpressionKey(argument, context);
-        return (
-          isCollectionKeyRelevantAt(argumentKey, childStart) &&
-          resolveIteratorCollectionKey(argument, context) === null
-        );
-      });
-      const childCallee = stripParenExpression(child.callee);
-      const isArrayFromCopy =
-        isNodeOfType(child, "CallExpression") &&
-        isNodeOfType(childCallee, "MemberExpression") &&
-        !childCallee.computed &&
-        isNodeOfType(childCallee.object, "Identifier") &&
-        childCallee.object.name === "Array" &&
-        context.scopes.isGlobalReference(childCallee.object) &&
-        isNodeOfType(childCallee.property, "Identifier") &&
-        childCallee.property.name === "from";
-      if (doesReceiveCollection && !isArrayFromCopy) {
-        didFindMutation = true;
-        return false;
-      }
-    }
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const callee = stripParenExpression(child.callee);
-    if (
-      !isNodeOfType(callee, "MemberExpression") ||
-      callee.computed ||
-      !isNodeOfType(callee.property, "Identifier") ||
-      (!REPLAY_ENTRY_DROPPING_ARRAY_METHOD_NAMES.has(callee.property.name) &&
-        !REPLAY_ENTRY_DROPPING_COLLECTION_METHOD_NAMES.has(callee.property.name)) ||
-      !isCollectionKeyRelevantAt(resolveExpressionKey(callee.object, context), childStart)
-    ) {
-      return;
-    }
+    if (!doesNodeMutateCollection(child, childStart, new Set(), true)) return;
     didFindMutation = true;
     return false;
   });
@@ -5394,8 +5439,43 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
   const anyNode = usage.node;
   let programNode: EsTreeNode = anyNode;
   while (programNode.parent) programNode = programNode.parent;
+  let indexesByProgram = FILE_RELEASE_CALL_INDEX_CACHE.get(context);
+  if (!indexesByProgram) {
+    indexesByProgram = new WeakMap();
+    FILE_RELEASE_CALL_INDEX_CACHE.set(context, indexesByProgram);
+  }
+  let releaseCallIndex = indexesByProgram.get(programNode);
+  if (!releaseCallIndex) {
+    const identifierCallsByName = new Map<string, EsTreeNode[]>();
+    const potentialNonTimerCalls: EsTreeNode[] = [];
+    walkAst(programNode, (child: EsTreeNode) => {
+      const callNode = isNodeOfType(child, "ChainExpression") ? child.expression : child;
+      if (!isNodeOfType(callNode, "CallExpression")) return;
+      const callee = isNodeOfType(callNode.callee, "ChainExpression")
+        ? callNode.callee.expression
+        : callNode.callee;
+      if (isNodeOfType(callee, "Identifier")) {
+        const namedCalls = identifierCallsByName.get(callee.name) ?? [];
+        namedCalls.push(child);
+        identifierCallsByName.set(callee.name, namedCalls);
+        potentialNonTimerCalls.push(child);
+      } else if (getReleaseVerbName(child)) {
+        potentialNonTimerCalls.push(child);
+      }
+    });
+    releaseCallIndex = { identifierCallsByName, potentialNonTimerCalls };
+    indexesByProgram.set(programNode, releaseCallIndex);
+  }
+  let candidates: ReadonlyArray<EsTreeNode>;
+  if (usage.kind === "timer") {
+    const expectedCleanupName =
+      usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
+    candidates = releaseCallIndex.identifierCallsByName.get(expectedCleanupName) ?? [];
+  } else {
+    candidates = releaseCallIndex.potentialNonTimerCalls;
+  }
   let didFindRelease = false;
-  walkAst(programNode, (child: EsTreeNode) => {
+  const inspectCandidate = (child: EsTreeNode): void | false => {
     if (didFindRelease) return false;
     if (
       doesReleaseCallMatchUsage(child, usage, context) &&
@@ -5404,7 +5484,10 @@ const fileContainsReleaseForUsage = (usage: SubscribeLikeUsage, context: RuleCon
       didFindRelease = true;
       return false;
     }
-  });
+  };
+  for (const candidate of candidates) {
+    if (inspectCandidate(candidate) === false) break;
+  }
   return didFindRelease;
 };
 
@@ -5820,24 +5903,35 @@ const hasGuaranteedRefOwnedUnmountCleanup = (
 ): boolean => {
   const componentFunction = findEnclosingFunction(retainedFunction);
   if (!componentFunction || !isFunctionLike(componentFunction)) return false;
-  let didFindCleanupEffect = false;
-  walkAst(componentFunction.body, (child: EsTreeNode) => {
-    if (didFindCleanupEffect) return false;
-    if (
-      !isNodeOfType(child, "CallExpression") ||
-      findEnclosingFunction(child) !== componentFunction ||
-      !isReactApiCall(child, "useEffect", context.scopes)
-    ) {
-      return;
-    }
-    const effectStatement = findTransparentExpressionRoot(child).parent;
+  let effectCallsByComponent = COMPONENT_EFFECT_CALLS_CACHE.get(context);
+  if (!effectCallsByComponent) {
+    effectCallsByComponent = new WeakMap();
+    COMPONENT_EFFECT_CALLS_CACHE.set(context, effectCallsByComponent);
+  }
+  let effectCalls = effectCallsByComponent.get(componentFunction);
+  if (!effectCalls) {
+    const collectedEffectCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+    walkAst(componentFunction.body, (child: EsTreeNode) => {
+      if (
+        isNodeOfType(child, "CallExpression") &&
+        findEnclosingFunction(child) === componentFunction &&
+        isReactApiCall(child, "useEffect", context.scopes)
+      ) {
+        collectedEffectCalls.push(child);
+      }
+    });
+    effectCalls = collectedEffectCalls;
+    effectCallsByComponent.set(componentFunction, effectCalls);
+  }
+  for (const effectCall of effectCalls) {
+    const effectStatement = findTransparentExpressionRoot(effectCall).parent;
     if (
       !isNodeOfType(effectStatement, "ExpressionStatement") ||
       effectStatement.parent !== componentFunction.body
     ) {
-      return;
+      continue;
     }
-    const effectCallback = getEffectCallback(child);
+    const effectCallback = getEffectCallback(effectCall);
     if (
       effectCallback &&
       effectReturnsRefOwnedCleanup(
@@ -5848,11 +5942,10 @@ const hasGuaranteedRefOwnedUnmountCleanup = (
         context,
       )
     ) {
-      didFindCleanupEffect = true;
-      return false;
+      return true;
     }
-  });
-  return didFindCleanupEffect;
+  }
+  return false;
 };
 
 const isUseSyncExternalStoreSubscribeFunction = (
@@ -6501,11 +6594,6 @@ const isInlineRetainedHandlerFunction = (
   return isPassedInline && findRenderPhaseComponentOrHook(parentNode, context.scopes) !== null;
 };
 
-interface EffectRetainedInvocation {
-  call: EsTreeNodeOfType<"CallExpression">;
-  isDirect: boolean;
-}
-
 interface InvocationArgumentValue {
   isDefinitelyUndefined: boolean;
   truthiness: "falsy" | "truthy" | "unknown";
@@ -6768,7 +6856,25 @@ const getEffectRetainedInvocations = (
   if (!isFunctionLike(retainedFunction)) return [];
   const componentFunction = findEnclosingFunction(retainedFunction);
   if (!componentFunction || !isFunctionLike(componentFunction)) return [];
-  const invocations: EffectRetainedInvocation[] = [];
+  let invocationsByComponent = EFFECT_RETAINED_INVOCATIONS_CACHE.get(context);
+  if (!invocationsByComponent) {
+    invocationsByComponent = new WeakMap();
+    EFFECT_RETAINED_INVOCATIONS_CACHE.set(context, invocationsByComponent);
+  }
+  const cachedInvocations = invocationsByComponent.get(componentFunction);
+  if (cachedInvocations) return cachedInvocations.get(retainedFunction) ?? [];
+
+  const invocationsByRetainedFunction = new Map<EsTreeNode, EffectRetainedInvocation[]>();
+  const recordInvocation = (
+    targetFunction: EsTreeNode | null,
+    call: EsTreeNodeOfType<"CallExpression">,
+    isDirect: boolean,
+  ): void => {
+    if (!targetFunction) return;
+    const invocations = invocationsByRetainedFunction.get(targetFunction) ?? [];
+    invocations.push({ call, isDirect });
+    invocationsByRetainedFunction.set(targetFunction, invocations);
+  };
   walkAst(componentFunction.body, (child: EsTreeNode) => {
     if (
       !isNodeOfType(child, "CallExpression") ||
@@ -6787,19 +6893,21 @@ const getEffectRetainedInvocations = (
       ) {
         return;
       }
-      const isDirectInvocation =
-        resolveRefOwnedCleanupFunction(effectChild.callee, context) === retainedFunction;
-      const isSynchronousIteratorInvocation = effectChild.arguments.some(
-        (argument) =>
-          isAstNode(argument) &&
-          resolveRefOwnedCleanupFunction(argument, context) === retainedFunction &&
-          isSynchronousIteratorCallbackCall(effectChild, argument),
+      recordInvocation(
+        resolveRefOwnedCleanupFunction(effectChild.callee, context),
+        effectChild,
+        true,
       );
-      if (isDirectInvocation) invocations.push({ call: effectChild, isDirect: true });
-      if (isSynchronousIteratorInvocation) invocations.push({ call: effectChild, isDirect: false });
+      for (const argument of effectChild.arguments) {
+        if (!isAstNode(argument) || !isSynchronousIteratorCallbackCall(effectChild, argument)) {
+          continue;
+        }
+        recordInvocation(resolveRefOwnedCleanupFunction(argument, context), effectChild, false);
+      }
     });
   });
-  return invocations;
+  invocationsByComponent.set(componentFunction, invocationsByRetainedFunction);
+  return invocationsByRetainedFunction.get(retainedFunction) ?? [];
 };
 
 export const effectNeedsCleanup = defineRule({

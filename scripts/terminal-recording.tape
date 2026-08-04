@@ -9,6 +9,7 @@ Set TypingSpeed 35ms
 Set Framerate 30
 Set CursorBlink false
 Set Theme "Catppuccin Mocha"
+Set WaitTimeout 60s
 
 Hide
 Type "source scripts/setup-terminal-recording.sh"

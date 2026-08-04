@@ -2455,6 +2455,9 @@ export const noEffectChain = defineRule({
 
       const useStateBindings = collectUseStateBindings(componentBody, context.scopes);
       if (useStateBindings.length === 0) return;
+      const effectCalls = findTopLevelEffectCalls(componentBody, context.scopes);
+      if (effectCalls.length < 2) return;
+
       const setterToStateName = new Map<string, string>();
       const stateSymbolIds = new Map<string, number>();
       const setterSymbolIdToStateName = new Map<number, string>();
@@ -2477,7 +2480,7 @@ export const noEffectChain = defineRule({
       const stateSymbolIdSet = new Set(stateSymbolIds.values());
 
       const effectInfos: EffectInfo[] = [];
-      for (const effectCall of findTopLevelEffectCalls(componentBody, context.scopes)) {
+      for (const effectCall of effectCalls) {
         const callback = getEffectCallback(effectCall, context.scopes);
         if (!callback || !isFunctionLike(callback) || callback.async) continue;
         const analysisFunctions = collectSynchronouslyInvokedFunctions(callback, context.scopes);

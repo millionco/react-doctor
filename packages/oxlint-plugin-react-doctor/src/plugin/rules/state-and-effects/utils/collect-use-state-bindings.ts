@@ -5,19 +5,30 @@ import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
 import { isSetterIdentifier } from "../../../utils/is-setter-identifier.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 
+export interface UseStateBinding {
+  readonly valueName: string;
+  readonly setterName: string;
+  readonly declarator: EsTreeNodeOfType<"VariableDeclarator">;
+}
+
+const useStateBindingsByScopes = new WeakMap<
+  ScopeAnalysis,
+  WeakMap<EsTreeNode, ReadonlyArray<UseStateBinding>>
+>();
+
 export const collectUseStateBindings = (
   componentBody: EsTreeNode,
   scopes: ScopeAnalysis,
-): Array<{
-  valueName: string;
-  setterName: string;
-  declarator: EsTreeNodeOfType<"VariableDeclarator">;
-}> => {
-  const bindings: Array<{
-    valueName: string;
-    setterName: string;
-    declarator: EsTreeNodeOfType<"VariableDeclarator">;
-  }> = [];
+): ReadonlyArray<UseStateBinding> => {
+  let bindingsByComponent = useStateBindingsByScopes.get(scopes);
+  if (!bindingsByComponent) {
+    bindingsByComponent = new WeakMap();
+    useStateBindingsByScopes.set(scopes, bindingsByComponent);
+  }
+  const cachedBindings = bindingsByComponent.get(componentBody);
+  if (cachedBindings) return cachedBindings;
+
+  const bindings: UseStateBinding[] = [];
   if (!isNodeOfType(componentBody, "BlockStatement")) return bindings;
 
   for (const statement of componentBody.body ?? []) {
@@ -44,5 +55,6 @@ export const collectUseStateBindings = (
       });
     }
   }
+  bindingsByComponent.set(componentBody, bindings);
   return bindings;
 };

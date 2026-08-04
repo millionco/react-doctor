@@ -4,7 +4,6 @@ import * as fs from "node:fs";
 import {
   ensureTrailingNewline,
   LEGACY_HOOK_RUNNER_RELATIVE_PATH,
-  NON_BLOCKING_REACT_DOCTOR_COMMAND,
   REACT_DOCTOR_COMMAND,
   runGit,
 } from "./git-hook-shared.js";
@@ -129,5 +128,3 @@ export const installDirectGitHook = (options: InstallGitHookOptions): InstallGit
     status: didHookExist ? "updated" : "created",
   };
 };
-
-export { NON_BLOCKING_REACT_DOCTOR_COMMAND, REACT_DOCTOR_COMMAND };

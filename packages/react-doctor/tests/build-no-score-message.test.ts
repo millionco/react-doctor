@@ -4,20 +4,31 @@ import { buildNoScoreMessage } from "../src/cli/utils/build-no-score-message.js"
 
 describe("buildNoScoreMessage", () => {
   it("points --no-score users to enterprise contact", () => {
-    expect(buildNoScoreMessage(true)).toBe(
+    expect(buildNoScoreMessage({ isScoreDisabled: true })).toBe(
       `Score disabled by --no-score. Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`,
     );
   });
 
   it("points score API failures to enterprise contact", () => {
-    expect(buildNoScoreMessage(false)).toBe(
+    expect(buildNoScoreMessage({ isScoreDisabled: false })).toBe(
       `Score unavailable (could not reach the score API). Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`,
     );
   });
 
   it("accepts a focused-scan explanation", () => {
-    expect(buildNoScoreMessage(true, "Design scans do not affect the React health score.")).toBe(
+    expect(
+      buildNoScoreMessage({
+        isScoreDisabled: true,
+        disabledMessage: "Design scans do not affect the React health score.",
+      }),
+    ).toBe(
       `Design scans do not affect the React health score. Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`,
+    );
+  });
+
+  it("explains when incomplete analysis suppressed the score", () => {
+    expect(buildNoScoreMessage({ isScoreDisabled: false, isAnalysisIncomplete: true })).toBe(
+      `Score not shown because lint or dead-code analysis could not complete. Want something custom to your company? Contact us at ${ENTERPRISE_CONTACT_URL}.`,
     );
   });
 });

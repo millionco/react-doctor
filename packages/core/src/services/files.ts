@@ -4,11 +4,19 @@ import * as Layer from "effect/Layer";
 import * as path from "node:path";
 import { isDirectory as isDirectoryNode, isFile as isFileNode } from "../project-info/index.js";
 import { createNodeReadFileLinesSync } from "../read-file-lines-node.js";
-import { listSourceFiles as listSourceFilesNode } from "../utils/list-source-files.js";
+import {
+  listSourceFiles as listSourceFilesNode,
+  listSourceFilesCooperative as listSourceFilesCooperativeNode,
+} from "../utils/list-source-files.js";
 
 interface ReadLinesInput {
   readonly filePath: string;
   readonly rootDirectory: string;
+}
+
+interface ListSourceFilesInput {
+  readonly rootDirectory: string;
+  readonly signal?: AbortSignal;
 }
 
 export class Files extends Context.Service<
@@ -16,6 +24,9 @@ export class Files extends Context.Service<
   {
     readonly readLines: (input: ReadLinesInput) => Effect.Effect<ReadonlyArray<string> | null>;
     readonly listSourceFiles: (rootDirectory: string) => Effect.Effect<ReadonlyArray<string>>;
+    readonly listSourceFilesCooperative: (
+      input: ListSourceFilesInput,
+    ) => Effect.Effect<ReadonlyArray<string>>;
     readonly isFile: (filePath: string) => Effect.Effect<boolean>;
     readonly isDirectory: (filePath: string) => Effect.Effect<boolean>;
   }
@@ -26,6 +37,8 @@ export class Files extends Context.Service<
       readLines: (input) =>
         Effect.sync(() => createNodeReadFileLinesSync(input.rootDirectory)(input.filePath)),
       listSourceFiles: (rootDirectory) => Effect.sync(() => listSourceFilesNode(rootDirectory)),
+      listSourceFilesCooperative: (input) =>
+        Effect.promise(() => listSourceFilesCooperativeNode(input.rootDirectory, input.signal)),
       isFile: (filePath) => Effect.sync(() => isFileNode(filePath)),
       isDirectory: (filePath) => Effect.sync(() => isDirectoryNode(filePath)),
     }),
@@ -52,6 +65,17 @@ export class Files extends Context.Service<
           }),
         listSourceFiles: (rootDirectory) =>
           Effect.sync(() => {
+            const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
+            const files: string[] = [];
+            for (const absolute of tree.keys()) {
+              if (!absolute.startsWith(prefix)) continue;
+              files.push(absolute.slice(prefix.length));
+            }
+            return files;
+          }),
+        listSourceFilesCooperative: (input) =>
+          Effect.sync(() => {
+            const rootDirectory = input.rootDirectory;
             const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
             const files: string[] = [];
             for (const absolute of tree.keys()) {

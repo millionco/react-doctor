@@ -38,10 +38,17 @@ const translateProjectInfoError = (cause: unknown, directory: string): ReactDoct
   return new ReactDoctorError({ reason: new ProjectDiscoveryFailed({ directory, cause }) });
 };
 
+export interface ProjectDiscoveryInput {
+  readonly directory: string;
+  readonly sourceFileCount?: number;
+}
+
 export class Project extends Context.Service<
   Project,
   {
-    readonly discover: (directory: string) => Effect.Effect<ProjectInfo, ReactDoctorError>;
+    readonly discover: (
+      input: ProjectDiscoveryInput,
+    ) => Effect.Effect<ProjectInfo, ReactDoctorError>;
   }
 >()("react-doctor/Project") {
   static readonly layerNode = Layer.succeed(
@@ -52,10 +59,11 @@ export class Project extends Context.Service<
       // `react-doctor-evals/src/Runner.ts` / `ReactDoctorV2.ts` —
       // free observability with zero runtime cost when no tracer
       // layer is provided.
-      discover: Effect.fn("Project.discover")(function* (directory: string) {
+      discover: Effect.fn("Project.discover")(function* (input: ProjectDiscoveryInput) {
         return yield* Effect.try({
-          try: () => discoverProjectSync(directory),
-          catch: (cause) => translateProjectInfoError(cause, directory),
+          try: () =>
+            discoverProjectSync(input.directory, { sourceFileCount: input.sourceFileCount }),
+          catch: (cause) => translateProjectInfoError(cause, input.directory),
         });
       }),
     }),

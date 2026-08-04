@@ -35,10 +35,6 @@ const resolveSettings = (
   return map;
 };
 
-// Member-chain flattening for JS expressions (e.g. `React.Fragment`,
-// `Module.Component`) reuses the canonical `flattenCalleeName` helper.
-const flattenMemberName = flattenCalleeName;
-
 // Port of `oxc_linter::rules::react::forbid_elements`. Driven by a
 // settings list — `forbid: ["button", { element: "Modal", message: "use
 // Button" }, ...]`. Each item matches against the JSX element name or
@@ -90,7 +86,7 @@ export const forbidElements = defineRule({
           const isLeadingUnderscore = firstChar === 95 /* _ */;
           if (isPascalCase || isLeadingUnderscore) elementName = firstArgument.name;
         } else if (isNodeOfType(firstArgument, "MemberExpression")) {
-          elementName = flattenMemberName(firstArgument);
+          elementName = flattenCalleeName(firstArgument);
         }
         if (!elementName || !forbidMap.has(elementName)) return;
         context.report({

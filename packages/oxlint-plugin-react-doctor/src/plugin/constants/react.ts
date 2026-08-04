@@ -1,4 +1,4 @@
-import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "./library.js";
+import { FETCH_CALLEE_NAMES } from "./library.js";
 import { TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES } from "./dom.js";
 
 export const INDEX_PARAMETER_NAMES = new Set(["index", "idx", "i"]);
@@ -246,25 +246,6 @@ export const EXTERNAL_SYNC_MEMBER_METHOD_NAMES = new Set([
   "post",
   "put",
   "patch",
-]);
-
-// HACK: `get`, `head`, `options` are HTTP verbs but ALSO names of
-// universal data-structure methods (`Map.get`, `URLSearchParams.get`,
-// `FormData.get`, `Headers.get`, `WeakMap.get`, `Set.has`, etc.). We
-// only treat them as external-sync calls when the receiver is a
-// recognized HTTP-client-shaped name. Lets the `axios.get(...)`
-// cascade case work without false-classifying `params.get('id')` as
-// external sync.
-//
-// Layered on top of `FETCH_MEMBER_OBJECTS` (the canonical HTTP-client
-// receiver list used by `containsFetchCall`) so adding a new client
-// name in one place propagates to both detectors.
-export const EXTERNAL_SYNC_HTTP_CLIENT_RECEIVERS = new Set([
-  ...FETCH_MEMBER_OBJECTS,
-  "api",
-  "client",
-  "http",
-  "fetcher",
 ]);
 
 export const EXTERNAL_SYNC_AMBIGUOUS_HTTP_METHOD_NAMES = new Set([

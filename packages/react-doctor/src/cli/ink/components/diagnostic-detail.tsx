@@ -1,9 +1,9 @@
 import { getCategoryImpact } from "@react-doctor/core";
 import { Box, Text } from "ink";
-import { useMemo } from "react";
 import { buildCodeFrame } from "../../utils/build-code-frame.js";
 import { TUI_DETAIL_INDENT_COLUMNS, TUI_REPORT_SECTION_GAP_ROWS } from "../../utils/constants.js";
 import type { DiagnosticRow } from "../lib/diagnostic-rows.js";
+import { useMemo } from "../react-runtime.js";
 import { severityVariant } from "../lib/severity-variants.js";
 import { TuiLink } from "./tui-link.js";
 

@@ -29,6 +29,18 @@ vi.mock("../src/cli/utils/should-use-tui.js", () => ({
   shouldUseTui: vi.fn(() => true),
 }));
 
+vi.mock("../src/cli/utils/resolve-scope.js", () => ({
+  warnDeprecatedDiff: vi.fn(),
+}));
+
+vi.mock("../src/cli/utils/validate-mode-flags.js", () => ({
+  validateModeFlags: vi.fn(),
+}));
+
+vi.mock("../src/cli/utils/warn-deprecated-fail-on.js", () => ({
+  warnDeprecatedFailOn: vi.fn(),
+}));
+
 vi.mock("@react-doctor/core", () => ({
   resolveScanTarget: vi.fn(async (directory: string) => ({
     resolvedDirectory: directory,
@@ -47,7 +59,10 @@ import { runProjectMigrations } from "../src/cli/utils/cli-migrations.js";
 import { METRIC } from "../src/cli/utils/constants.js";
 import { recordCount } from "../src/cli/utils/record-metric.js";
 import { resolveCliInspectOptions } from "../src/cli/utils/resolve-cli-inspect-options.js";
+import { warnDeprecatedDiff } from "../src/cli/utils/resolve-scope.js";
 import { shouldUseTui } from "../src/cli/utils/should-use-tui.js";
+import { validateModeFlags } from "../src/cli/utils/validate-mode-flags.js";
+import { warnDeprecatedFailOn } from "../src/cli/utils/warn-deprecated-fail-on.js";
 
 describe("runScanCommand", () => {
   const previousExitCode = process.exitCode;
@@ -67,7 +82,15 @@ describe("runScanCommand", () => {
   });
 
   it("runs the interactive report with the root scan flags", async () => {
-    const flags = { blocking: "warning", project: "app", score: false, yes: true };
+    const flags = {
+      blocking: undefined,
+      diff: false,
+      failOn: "warning",
+      project: "app",
+      score: false,
+      scope: "full",
+      yes: true,
+    };
 
     await runScanCommand({ directory: "/tmp/project", flags, invocationCommand: "inspect" });
 
@@ -85,26 +108,18 @@ describe("runScanCommand", () => {
       projectFlag: "app",
       skipPrompts: true,
       blocking: "warning",
+      flags,
     });
     expect(recordCount).toHaveBeenCalledWith(METRIC.cliInvoked, 1, { command: "inspect" });
     expect(resolveScanTarget).toHaveBeenCalledWith("/tmp/project", { allowAmbiguous: true });
     expect(runProjectMigrations).toHaveBeenCalledWith(path.resolve("/tmp/project"));
+    expect(validateModeFlags).toHaveBeenCalledWith(flags);
+    expect(warnDeprecatedFailOn).toHaveBeenCalledWith(flags, null);
+    expect(warnDeprecatedDiff).toHaveBeenCalledWith(flags, null);
     expect(inspectAction).not.toHaveBeenCalled();
   });
 
-  it("uses the stable renderer when project config requires diff semantics", async () => {
-    vi.mocked(shouldUseTui).mockReturnValueOnce(true).mockReturnValueOnce(false);
-    const flags = {};
-
-    await runScanCommand({ directory: "/tmp/project", flags, invocationCommand: "inspect" });
-
-    expect(runProjectMigrations).toHaveBeenCalledWith(path.resolve("/tmp/project"));
-    expect(inspectAction).toHaveBeenCalledWith("/tmp/project", flags, "inspect");
-    expect(runScanApp).not.toHaveBeenCalled();
-    expect(recordCount).not.toHaveBeenCalled();
-  });
-
-  it("uses the stable renderer when the TUI gate rejects the environment or flags", async () => {
+  it("uses headless output when the TUI gate rejects the environment or flags", async () => {
     vi.mocked(shouldUseTui).mockReturnValue(false);
     const flags = { json: true };
 

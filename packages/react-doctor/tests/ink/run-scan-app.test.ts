@@ -248,7 +248,7 @@ describe("runScanApp", () => {
 
     try {
       const scanPromise = runScanApp({ directory: rootDirectory });
-      await Promise.resolve();
+      await vi.waitFor(() => expect(render).toHaveBeenCalled());
       const selectionRenderer = vi.mocked(render).mock.results[0]?.value;
 
       clearActiveTuiRenderer();

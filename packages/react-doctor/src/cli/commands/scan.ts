@@ -7,7 +7,10 @@ import type { InspectFlags } from "../utils/inspect-flags.js";
 import { isNonInteractiveEnvironment } from "../utils/is-non-interactive-environment.js";
 import { recordCount } from "../utils/record-metric.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
+import { warnDeprecatedDiff } from "../utils/resolve-scope.js";
 import { shouldUseTui } from "../utils/should-use-tui.js";
+import { validateModeFlags } from "../utils/validate-mode-flags.js";
+import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
 
 export interface RunScanCommandInput {
   readonly directory: string;
@@ -35,10 +38,9 @@ export const runScanCommand = async (input: RunScanCommandInput): Promise<void> 
 
   await runProjectMigrations(path.resolve(input.directory));
   const scanTarget = await resolveScanTarget(input.directory, { allowAmbiguous: true });
-  if (!shouldUseTui({ ...tuiEnvironment, userConfig: scanTarget.userConfig })) {
-    await inspectAction(input.directory, input.flags, input.invocationCommand);
-    return;
-  }
+  validateModeFlags(input.flags);
+  warnDeprecatedFailOn(input.flags, scanTarget.userConfig);
+  warnDeprecatedDiff(input.flags, scanTarget.userConfig);
   recordCount(METRIC.cliInvoked, 1, { command: input.invocationCommand });
   const { runScanApp } = await import("../ink/run-scan-app.js");
   const { shouldFail } = await runScanApp({
@@ -47,7 +49,8 @@ export const runScanCommand = async (input: RunScanCommandInput): Promise<void> 
     options: resolveCliInspectOptions(input.flags, null),
     projectFlag: input.flags.project,
     skipPrompts: input.flags.yes ?? false,
-    blocking: input.flags.blocking,
+    blocking: input.flags.blocking ?? input.flags.failOn,
+    flags: input.flags,
   });
   if (shouldFail) process.exitCode = 1;
 };

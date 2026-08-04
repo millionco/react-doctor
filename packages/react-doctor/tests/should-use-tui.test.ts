@@ -25,41 +25,38 @@ describe("shouldUseTui", () => {
     ["stdin without raw mode", { supportsRawMode: false }],
     ["Node 21", { nodeMajorVersion: 21 }],
     ["dumb terminal", { terminalName: "dumb" }],
-  ])("uses the stable renderer in a %s", (_name, overrides) => {
+  ])("uses headless output in a %s", (_name, overrides) => {
     expect(shouldUseTui(makeInput(overrides))).toBe(false);
   });
 
   it.each([
-    ["verbose output", { verbose: true }],
-    ["diagnostic output directory", { outputDir: "diagnostics" }],
     ["score-only output", { score: true }],
     ["JSON output", { json: true }],
     ["compact JSON output", { jsonCompact: true }],
     ["JSON output file", { jsonOut: "report.json" }],
     ["staged scope", { staged: true }],
-    ["explicit scope", { scope: "changed" }],
-    ["base branch", { base: "main" }],
-    ["untracked files", { includeUntracked: true }],
-    ["deprecated diff scope", { diff: true }],
-    ["deprecated full diff scope", { diff: false }],
     ["changed-file input", { changedFilesFrom: "files.txt" }],
-    ["debug output", { debug: true }],
-    ["deprecated failure gate", { failOn: "warning" }],
-  ])("uses the stable renderer for %s", (_name, flags: InspectFlags) => {
+  ])("uses headless output for %s", (_name, flags: InspectFlags) => {
     expect(shouldUseTui(makeInput({ flags }))).toBe(false);
   });
 
   it("keeps supported scan controls in the TUI", () => {
     const flags: InspectFlags = {
       blocking: "warning",
+      base: "main",
       category: "Security",
       deadCode: false,
+      debug: true,
+      diff: false,
+      failOn: "warning",
       lint: false,
       maxDuration: "30",
+      outputDir: "diagnostics",
       parallel: false,
       project: "app",
       respectInlineDisables: false,
       score: false,
+      scope: "full",
       supplyChain: false,
       telemetry: false,
       warnings: false,
@@ -69,18 +66,19 @@ describe("shouldUseTui", () => {
     expect(shouldUseTui(makeInput({ flags }))).toBe(true);
   });
 
-  it.each([
-    ["changed scope", { scope: "changed" }],
-    ["legacy diff scope", { diff: true }],
-    ["base-driven scope selection", { base: "main" }],
-  ])("uses the stable renderer for config-defined %s", (_name, userConfig) => {
-    expect(shouldUseTui(makeInput({ userConfig }))).toBe(false);
+  it("keeps verbose output in the TUI", () => {
+    expect(shouldUseTui(makeInput({ flags: { verbose: true } }))).toBe(true);
   });
 
-  it.each([[{ scope: "full" }], [{ diff: false }], [{ diff: "false" }]])(
-    "keeps a config-defined full scan in the TUI",
-    (userConfig) => {
-      expect(shouldUseTui(makeInput({ userConfig }))).toBe(true);
-    },
-  );
+  it.each([
+    ["changed scope", { scope: "changed" }],
+    ["untracked files", { scope: "files", includeUntracked: true }],
+    ["deprecated diff scope", { diff: true }],
+  ])("keeps %s in the TUI", (_name, flags: InspectFlags) => {
+    expect(shouldUseTui(makeInput({ flags }))).toBe(true);
+  });
+
+  it("does not let project config change an interactive renderer", () => {
+    expect(shouldUseTui(makeInput())).toBe(true);
+  });
 });

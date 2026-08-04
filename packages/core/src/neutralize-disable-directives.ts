@@ -9,6 +9,57 @@ import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
 
+interface NeutralizedFileLease {
+  originalContent: string;
+  referenceCount: number;
+}
+
+const neutralizedFileLeases = new Map<string, NeutralizedFileLease>();
+
+interface NeutralizationInitialization {
+  readonly rootDirectory: string;
+  readonly done: Promise<void>;
+}
+
+const activeNeutralizationInitializations = new Set<NeutralizationInitialization>();
+
+const directoriesOverlap = (left: string, right: string): boolean => {
+  const isWithin = (parent: string, candidate: string): boolean => {
+    const relativePath = path.relative(parent, candidate);
+    return (
+      relativePath.length === 0 ||
+      (!relativePath.startsWith(`..${path.sep}`) &&
+        relativePath !== ".." &&
+        !path.isAbsolute(relativePath))
+    );
+  };
+  return isWithin(left, right) || isWithin(right, left);
+};
+
+const withOverlappingInitializationLock = async <Value>(
+  rootDirectory: string,
+  operation: () => Promise<Value>,
+): Promise<Value> => {
+  const blockers = [...activeNeutralizationInitializations]
+    .filter((initialization) => directoriesOverlap(initialization.rootDirectory, rootDirectory))
+    .map((initialization) => initialization.done);
+  let release!: () => void;
+  const done = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const initialization = { rootDirectory, done };
+  // Register before waiting so a third overlapping scan queues behind both
+  // this call and the initialization that this call is waiting for.
+  activeNeutralizationInitializations.add(initialization);
+  await Promise.all(blockers);
+  try {
+    return await operation();
+  } finally {
+    activeNeutralizationInitializations.delete(initialization);
+    release();
+  }
+};
+
 const findFilesWithDisableDirectivesViaGit = async (
   rootDirectory: string,
   includePaths?: string[],
@@ -84,25 +135,81 @@ const findFilesWithDisableDirectives = async (
   (await findFilesWithDisableDirectivesViaGit(rootDirectory, includePaths)) ??
   findFilesWithDisableDirectivesViaFilesystem(rootDirectory, includePaths);
 
+interface NeutralizationOptions {
+  /** Test seam for deterministically exercising asynchronous discovery races. */
+  readonly findFiles?: (rootDirectory: string, includePaths?: string[]) => Promise<string[]>;
+}
+
 const neutralizeContent = (content: string): string =>
   content
     .replaceAll("eslint-disable", "eslint_disable")
     .replaceAll("oxlint-disable", "oxlint_disable");
 
+const collectNeutralizationCandidatePaths = (
+  rootDirectory: string,
+  discoveredRelativePaths: ReadonlyArray<string>,
+  includePaths?: ReadonlyArray<string>,
+): ReadonlySet<string> => {
+  const resolvedRootDirectory = fs.realpathSync(rootDirectory);
+  const requestedPaths =
+    includePaths && includePaths.length > 0
+      ? new Set(
+          includePaths.flatMap((includePath) => {
+            try {
+              return [fs.realpathSync(path.resolve(resolvedRootDirectory, includePath))];
+            } catch {
+              return [];
+            }
+          }),
+        )
+      : null;
+  const candidatePaths = new Set<string>();
+
+  for (const relativePath of discoveredRelativePaths) {
+    try {
+      candidatePaths.add(fs.realpathSync(path.resolve(resolvedRootDirectory, relativePath)));
+    } catch {
+      continue;
+    }
+  }
+
+  for (const leasedPath of neutralizedFileLeases.keys()) {
+    const relativePath = path.relative(resolvedRootDirectory, leasedPath);
+    const isInsideRoot =
+      relativePath.length === 0 ||
+      (!relativePath.startsWith(`..${path.sep}`) &&
+        relativePath !== ".." &&
+        !path.isAbsolute(relativePath));
+    if (!isInsideRoot || (requestedPaths && !requestedPaths.has(leasedPath))) continue;
+    candidatePaths.add(leasedPath);
+  }
+
+  return candidatePaths;
+};
+
 export const neutralizeDisableDirectives = async (
   rootDirectory: string,
   includePaths?: string[],
+  options: NeutralizationOptions = {},
 ): Promise<() => void> => {
-  const filePaths = await findFilesWithDisableDirectives(rootDirectory, includePaths);
-  const originalContents = new Map<string, string>();
+  const resolvedRootDirectory = fs.realpathSync(rootDirectory);
+  const leasedPaths = new Set<string>();
 
   let isRestored = false;
   const restore = () => {
     if (isRestored) return;
     isRestored = true;
-    for (const [absolutePath, originalContent] of originalContents) {
+    for (const absolutePath of leasedPaths) {
+      const lease = neutralizedFileLeases.get(absolutePath);
+      if (!lease) continue;
+      lease.referenceCount -= 1;
+      if (lease.referenceCount > 0) continue;
+      // This lease no longer represents an active neutralization even when
+      // the write fails. Keeping a zero-reference entry would let a later
+      // scan adopt stale original content and overwrite a newer file.
+      neutralizedFileLeases.delete(absolutePath);
       try {
-        fs.writeFileSync(absolutePath, originalContent);
+        fs.writeFileSync(absolutePath, lease.originalContent);
       } catch (error) {
         // HACK: surface failed restores so the user can manually revert.
         // Silently swallowing left source files with `eslint_disable` /
@@ -126,21 +233,61 @@ export const neutralizeDisableDirectives = async (
   const onExit = () => restore();
   process.once("exit", onExit);
 
-  for (const relativePath of filePaths) {
-    const absolutePath = path.join(rootDirectory, relativePath);
+  const leaseCandidatePath = (absolutePath: string): void => {
+    if (leasedPaths.has(absolutePath)) return;
+    const existingLease = neutralizedFileLeases.get(absolutePath);
+    if (existingLease) {
+      existingLease.referenceCount += 1;
+      leasedPaths.add(absolutePath);
+      return;
+    }
 
     let originalContent: string;
     try {
       originalContent = fs.readFileSync(absolutePath, "utf-8");
     } catch {
-      continue;
+      return;
     }
 
     const neutralizedContent = neutralizeContent(originalContent);
     if (neutralizedContent !== originalContent) {
-      originalContents.set(absolutePath, originalContent);
       fs.writeFileSync(absolutePath, neutralizedContent);
+      neutralizedFileLeases.set(absolutePath, { originalContent, referenceCount: 1 });
+      leasedPaths.add(absolutePath);
     }
+  };
+
+  try {
+    await withOverlappingInitializationLock(resolvedRootDirectory, async () => {
+      // Adopt active leases before the asynchronous discovery. This prevents
+      // their owners from restoring the files while git grep is observing the
+      // neutralized spellings. The overlap lock also prevents a newer nested
+      // scan from neutralizing and fully restoring a file while this discovery
+      // is still in flight.
+      for (const absolutePath of collectNeutralizationCandidatePaths(
+        resolvedRootDirectory,
+        [],
+        includePaths,
+      )) {
+        if (neutralizedFileLeases.has(absolutePath)) leaseCandidatePath(absolutePath);
+      }
+
+      const discoveredRelativePaths = await (options.findFiles ?? findFilesWithDisableDirectives)(
+        resolvedRootDirectory,
+        includePaths,
+      );
+      for (const absolutePath of collectNeutralizationCandidatePaths(
+        resolvedRootDirectory,
+        discoveredRelativePaths,
+        includePaths,
+      )) {
+        leaseCandidatePath(absolutePath);
+      }
+    });
+  } catch (error) {
+    restore();
+    process.removeListener("exit", onExit);
+    throw error;
   }
 
   return () => {

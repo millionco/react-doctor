@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { REACT_DOCTOR_RULE_REGISTRY } from "oxlint-plugin-react-doctor/core";
+import type { Capability } from "oxlint-plugin-react-doctor/core";
 import type {
   CleanedDiagnostic,
   Diagnostic,
@@ -121,7 +122,7 @@ const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string |
   if (!rule) return undefined;
   if (rule.recommendationFor) {
     const capabilities = getCapabilities(project);
-    const conditionalRecommendation = rule.recommendationFor((capability) =>
+    const conditionalRecommendation = rule.recommendationFor((capability: Capability) =>
       capabilities.has(capability),
     );
     if (conditionalRecommendation !== undefined) return conditionalRecommendation;

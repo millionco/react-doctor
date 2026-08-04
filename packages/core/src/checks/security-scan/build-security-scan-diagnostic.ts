@@ -3,7 +3,11 @@ import type { Diagnostic } from "../../types/index.js";
 
 export interface SecurityScanRuleEntry {
   readonly id: string;
-  readonly rule: Pick<Rule, "severity" | "title" | "recommendation">;
+  readonly rule: {
+    readonly severity: Rule["severity"];
+    readonly title?: Rule["title"];
+    readonly recommendation?: Rule["recommendation"];
+  };
 }
 
 // Shared shape for every security-scan diagnostic. Metadata is

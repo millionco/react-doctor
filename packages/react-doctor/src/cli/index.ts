@@ -475,10 +475,13 @@ program
     }),
   );
 
-// HACK: when stdout is piped into a process that closes early (e.g.
+// HACK: when output is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next
 // write. Exit cleanly instead of dumping a stack trace.
 process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EPIPE") process.exit(0);
+});
+process.stderr.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EPIPE") process.exit(0);
 });
 

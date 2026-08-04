@@ -1853,6 +1853,12 @@ describe("discoverProject", () => {
       expected: false,
     },
     {
+      name: "property-before-circular-config-spread",
+      config:
+        "const first = { plugins: [], ...second }; const second = { ...first }; export default first;",
+      expected: false,
+    },
+    {
       name: "shadowed-function-declaration",
       config:
         "import compiler from 'babel-plugin-react-compiler'; const makeConfig = () => { function compiler() {} return { plugins: [compiler] }; }; export default makeConfig();",

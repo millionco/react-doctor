@@ -288,9 +288,6 @@ importers:
       ink:
         specifier: ^7.1.0
         version: 7.1.0(@types/react@19.2.14)(react@19.2.5)
-      ink-link:
-        specifier: ^5.0.0
-        version: 5.0.0(ink@7.1.0(@types/react@19.2.14)(react@19.2.5))
       ink-spinner:
         specifier: ^5.0.0
         version: 5.0.0(ink@7.1.0(@types/react@19.2.14)(react@19.2.5))(react@19.2.5)
@@ -315,6 +312,9 @@ importers:
       react:
         specifier: 19.2.5
         version: 19.2.5
+      terminal-link:
+        specifier: ^5.0.0
+        version: 5.0.0
       typescript:
         specifier: '>=5.0.4 <6'
         version: 5.9.3
@@ -3386,12 +3386,6 @@ packages:
   ini@7.0.0:
     resolution: {integrity: sha512-ifK0CgjALofS5bkrcTy4RaQ9Vx2Knf/eLeIO+NaswQEpH1UblrtTSCIvN71qQDMq0PeQ/SSPojvEJp9vvvfr+w==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
-
-  ink-link@5.0.0:
-    resolution: {integrity: sha512-TFDXc/0mwUW7LMjsr0/LeLxPVV5BnHDuDQff9RCgP4rb3R+V/4dIwGBZbCevcJZtQnVcW+Iz1LUrUbpq+UDwYA==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      ink: '>=6'
 
   ink-spinner@5.0.0:
     resolution: {integrity: sha512-EYEasbEjkqLGyPOUc8hBJZNuC5GvXGMLu0w5gdTNskPc7Izc5vO3tdQEYnzvshucyGCBXc86ig0ujXPMWaQCdA==}
@@ -7308,11 +7302,6 @@ snapshots:
   inherits@2.0.4: {}
 
   ini@7.0.0: {}
-
-  ink-link@5.0.0(ink@7.1.0(@types/react@19.2.14)(react@19.2.5)):
-    dependencies:
-      ink: 7.1.0(@types/react@19.2.14)(react@19.2.5)
-      terminal-link: 5.0.0
 
   ink-spinner@5.0.0(ink@7.1.0(@types/react@19.2.14)(react@19.2.5))(react@19.2.5):
     dependencies:

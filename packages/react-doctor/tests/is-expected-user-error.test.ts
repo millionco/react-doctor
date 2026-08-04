@@ -7,6 +7,7 @@ import {
   NotADirectoryError,
   OxlintSpawnFailed,
   PackageJsonNotFoundError,
+  ProjectDiscoveryFailed,
   ProjectNotFoundError,
   ReactDoctorError,
 } from "@react-doctor/core";
@@ -90,6 +91,19 @@ describe("isExpectedUserError", () => {
     expect(
       isExpectedUserError(
         Object.assign(new Error("EROFS: read-only file system"), { code: "EROFS" }),
+      ),
+    ).toBe(true);
+    expect(
+      isExpectedUserError(
+        new ReactDoctorError({
+          reason: new ProjectDiscoveryFailed({
+            directory: "/cloud/project",
+            cause: Object.assign(new Error("ETIMEDOUT: scandir"), {
+              code: "ETIMEDOUT",
+              syscall: "scandir",
+            }),
+          }),
+        }),
       ),
     ).toBe(true);
   });

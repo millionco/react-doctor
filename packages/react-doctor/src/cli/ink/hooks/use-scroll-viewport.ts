@@ -1,8 +1,8 @@
 import { useInput } from "ink";
-import { useRef, useState } from "react";
 import { TUI_HALF_PAGE_DIVISOR } from "../../utils/constants.js";
 import { clampNumber } from "../../utils/clamp-number.js";
 import { resolveVisibleStart } from "../../utils/resolve-visible-start.js";
+import { useRef, useState } from "../react-runtime.js";
 
 export interface ScrollViewport {
   readonly selectedIndex: number;

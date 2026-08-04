@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   SCORE_HEADER_ANIMATION_FRAME_COUNT,
   SCORE_HEADER_ANIMATION_FRAME_DELAY_MS,
@@ -6,6 +5,7 @@ import {
   SCORE_PROJECTION_FRAME_DELAY_MS,
 } from "../../utils/constants.js";
 import { easeOutCubic } from "../../utils/ease-out-cubic.js";
+import { useEffect, useState } from "../react-runtime.js";
 
 export interface UseAnimatedScoreOptions {
   readonly score: number;

@@ -1,4 +1,4 @@
-import * as fs from "node:fs";
+import fs from "node:fs";
 import { isErrnoException } from "../utils/is-errno-exception.js";
 
 // Discovery crawls an unknown tree best-effort: a directory we can't enumerate
@@ -7,12 +7,15 @@ import { isErrnoException } from "../utils/is-errno-exception.js";
 // filesystems that reject the scandir outright (`EINVAL`, REACT-DOCTOR-N).
 const IGNORABLE_READDIR_ERROR_CODES = new Set([
   "EACCES",
+  "EBUSY",
   "EPERM",
   "ENOENT",
   "ENOTDIR",
   "EINVAL",
   "ELOOP",
   "ENAMETOOLONG",
+  "ETIMEDOUT",
+  "UNKNOWN",
 ]);
 
 const isIgnorableReaddirError = (error: unknown): boolean =>

@@ -318,22 +318,22 @@ export const inspectAction = async (
   const startTime = performance.now();
   let scanStartupSpinner: ReturnType<ReturnType<typeof spinner>["start"]> | null = null;
 
-  if (isJsonMode) {
-    enableJsonMode({
-      compact: Boolean(flags.jsonCompact),
-      directory: requestedDirectory,
-      outputFile: flags.jsonOut,
-    });
-    // `--json-out` only takes effect in JSON mode, so the adoption metric lives
-    // here too — outside the guard it would also count `--json-out` without
-    // `--json`, where the flag is a no-op.
-    if (flags.jsonOut) recordCount(METRIC.jsonOutUsed, 1);
-  }
-  // Recorded after JSON mode is enabled so the metric's run attributes reflect
-  // the true `jsonMode` (run context is rebuilt per emit in `record-metric.ts`).
-  recordCount(METRIC.cliInvoked, 1, { command: invocationCommand });
-
   try {
+    if (isJsonMode) {
+      enableJsonMode({
+        compact: Boolean(flags.jsonCompact),
+        directory: requestedDirectory,
+        outputFile: flags.jsonOut,
+      });
+      // `--json-out` only takes effect in JSON mode, so the adoption metric lives
+      // here too — outside the guard it would also count `--json-out` without
+      // `--json`, where the flag is a no-op.
+      if (flags.jsonOut) recordCount(METRIC.jsonOutUsed, 1);
+    }
+    // Recorded after JSON mode is enabled so the metric's run attributes reflect
+    // the true `jsonMode` (run context is rebuilt per emit in `record-metric.ts`).
+    recordCount(METRIC.cliInvoked, 1, { command: invocationCommand });
+
     validateModeFlags(flags);
 
     if (flags.staged) setJsonReportMode("staged");

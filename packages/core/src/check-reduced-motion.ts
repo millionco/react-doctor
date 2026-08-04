@@ -562,9 +562,10 @@ const collectScriptMotionEvidence = (
     }
 
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
-      const tagEvidence = ts.isJsxNamespacedName(node.tagName)
-        ? EMPTY_MOTION_EXPRESSION_EVIDENCE
-        : resolveMotionExpressionEvidence(node.tagName, typeChecker, program);
+      const tagEvidence =
+        ts.isIdentifier(node.tagName) || ts.isPropertyAccessExpression(node.tagName)
+          ? resolveMotionExpressionEvidence(node.tagName, typeChecker, program)
+          : EMPTY_MOTION_EXPRESSION_EVIDENCE;
       if (tagEvidence.isMotionComponent || tagEvidence.isMotionComponentFactory) {
         evidence.hasMotionUse = true;
       }

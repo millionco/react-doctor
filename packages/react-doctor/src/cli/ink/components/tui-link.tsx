@@ -1,5 +1,6 @@
-import Link from "ink-link";
+import { Text, Transform } from "ink";
 import type { ReactNode } from "react";
+import terminalLink from "terminal-link";
 
 export interface TuiLinkProps {
   readonly children: ReactNode;
@@ -7,7 +8,7 @@ export interface TuiLinkProps {
 }
 
 export const TuiLink = ({ children, url }: TuiLinkProps) => (
-  <Link url={url} fallback={false}>
-    {children}
-  </Link>
+  <Transform transform={(text) => terminalLink(text, url, { fallback: false })}>
+    <Text>{children}</Text>
+  </Transform>
 );

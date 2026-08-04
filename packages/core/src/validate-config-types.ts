@@ -2,6 +2,7 @@ import type {
   DiagnosticFileContext,
   DiagnosticSurface,
   ReactDoctorConfig,
+  ReactDoctorIgnoreOverride,
   RuleSeverityOverride,
   SurfaceControls,
 } from "./types/index.js";
@@ -125,6 +126,57 @@ const validateStringArrayField = (fieldName: string, value: unknown): string[] |
     );
     return false;
   });
+};
+
+const validateIgnoreOverride = (
+  rawOverride: unknown,
+  index: number,
+): ReactDoctorIgnoreOverride | undefined => {
+  const fieldName = `ignore.overrides[${index}]`;
+  if (!isRecord(rawOverride)) {
+    warnConfigIssue(
+      `config field "${fieldName}" must be an object (got ${typeof rawOverride}); ignoring this override.`,
+    );
+    return undefined;
+  }
+  const files = validateStringArrayField(`${fieldName}.files`, rawOverride.files);
+  if (files === undefined) return undefined;
+  const validatedOverride: ReactDoctorIgnoreOverride = { files };
+  if (rawOverride.rules !== undefined) {
+    const rules = validateStringArrayField(`${fieldName}.rules`, rawOverride.rules);
+    if (rules !== undefined) validatedOverride.rules = rules;
+  }
+  return validatedOverride;
+};
+
+const validateIgnoreField = (
+  rawIgnore: unknown,
+): NonNullable<ReactDoctorConfig["ignore"]> | undefined => {
+  if (!isRecord(rawIgnore)) {
+    warnConfigIssue(
+      `config field "ignore" must be an object (got ${typeof rawIgnore}); ignoring this field.`,
+    );
+    return undefined;
+  }
+  const validatedIgnore: NonNullable<ReactDoctorConfig["ignore"]> = {};
+  for (const fieldName of ["rules", "files", "tags"] as const) {
+    if (rawIgnore[fieldName] === undefined) continue;
+    const validatedValues = validateStringArrayField(`ignore.${fieldName}`, rawIgnore[fieldName]);
+    if (validatedValues !== undefined) validatedIgnore[fieldName] = validatedValues;
+  }
+  if (rawIgnore.overrides !== undefined) {
+    if (!Array.isArray(rawIgnore.overrides)) {
+      warnConfigIssue(
+        `config field "ignore.overrides" must be an array (got ${typeof rawIgnore.overrides}); ignoring this field.`,
+      );
+    } else {
+      validatedIgnore.overrides = rawIgnore.overrides.flatMap((rawOverride, index) => {
+        const validatedOverride = validateIgnoreOverride(rawOverride, index);
+        return validatedOverride ? [validatedOverride] : [];
+      });
+    }
+  }
+  return validatedIgnore;
 };
 
 const validateSurfaceControls = (
@@ -268,6 +320,7 @@ export const validateConfigTypes = (config: ReactDoctorConfig): ReactDoctorConfi
       validateStringArrayField(fieldName, value),
     );
   }
+  applyFieldValidator(config, validated, "ignore", validateIgnoreField);
   applyFieldValidator(config, validated, "surfaces", validateSurfacesField);
   for (const fieldName of SEVERITY_FIELD_NAMES) {
     applyFieldValidator(config, validated, fieldName, (value) =>

@@ -35,6 +35,7 @@ describe("resolveTuiScanScope", () => {
       resolveTuiScanScope({ directory: "/repo", flags: {}, userConfig: null }),
     ).resolves.toEqual({
       baselineDiffPlan: null,
+      baselineIntended: false,
       baselineRef: null,
       changedLineRanges: null,
       diffInfo: null,
@@ -75,6 +76,7 @@ describe("resolveTuiScanScope", () => {
     expect(getDiffInfo).toHaveBeenCalledWith("/repo", undefined, false);
     expect(resolveMergeBaseRef).not.toHaveBeenCalled();
     expect(getBaselineDiffPlan).toHaveBeenCalledWith("/repo", "base-commit");
+    expect(plan.baselineIntended).toBe(true);
     expect(plan.baselineRef).toBe("base-commit");
     expect(plan.scope).toBe("changed");
   });

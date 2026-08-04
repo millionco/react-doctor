@@ -433,6 +433,7 @@ interface ScanExecutionContext {
 interface CompletedTuiScan {
   readonly scans: ReadonlyArray<SurfaceFilterableScan>;
   readonly diagnostics: ReadonlyArray<Diagnostic>;
+  readonly diagnosticsAreGateExempt?: boolean;
   readonly scoreResult: ScoreResult | null;
   readonly projectName: string;
   readonly scannedFileCount: number;
@@ -491,7 +492,11 @@ const runMountedScan = async (
     }
     await executePendingActions();
     return {
-      shouldFail: shouldFailScanGate({ scans: completedScan.scans, blockingLevel }),
+      shouldFail: shouldFailScanGate({
+        scans: completedScan.scans,
+        blockingLevel,
+        diagnosticsAreGateExempt: completedScan.diagnosticsAreGateExempt,
+      }),
     };
   } catch (error) {
     mountedRenderer.dispose();
@@ -567,6 +572,7 @@ const runSingleProjectScan = async (
     return {
       scans: [{ result, config: projectScan.config }],
       diagnostics: reportSelection.diagnostics,
+      diagnosticsAreGateExempt: scopePlan.baselineIntended && result.baselineDelta === undefined,
       scoreResult: result.score,
       projectName: result.project.projectName,
       scannedFileCount: result.scannedFileCount ?? 0,
@@ -608,16 +614,18 @@ const runMultiProjectScan = async (
     return { shouldFail: false };
   }
   const projectCount = projectScans.length;
-  const rootProjectScan = projectScans.find(
-    ({ projectScan }) => path.resolve(projectScan.directory) === path.resolve(rootDirectory),
-  )?.projectScan;
+  const rootProjectScan = discoveredProjectScans.find(
+    (projectScan) => path.resolve(projectScan.directory) === path.resolve(rootDirectory),
+  );
   const workspaceDeadCodeOwner = resolveWorkspaceDeadCodeOwner({
     rootDirectory,
-    projectDirectories: projectScans.map(({ projectScan }) => projectScan.directory),
+    projectDirectories: discoveredProjectScans.map((projectScan) => projectScan.directory),
     isRootDeadCodeEnabled: input.options?.deadCode ?? rootProjectScan?.config?.deadCode ?? true,
   });
   if (workspaceDeadCodeOwner !== null) {
-    recordCount(METRIC.scanWorkspaceDeadCodeShared, 1, { projectCount });
+    recordCount(METRIC.scanWorkspaceDeadCodeShared, 1, {
+      projectCount: discoveredProjectScans.length,
+    });
   }
   const presentation = resolveScanPresentation(
     input,
@@ -680,8 +688,7 @@ const runMultiProjectScan = async (
             }),
           },
           concurrentScan: true,
-          excludedProjectDirectories: projectScans
-            .map(({ projectScan: candidateProjectScan }) => candidateProjectScan)
+          excludedProjectDirectories: discoveredProjectScans
             .filter((candidateProjectScan) =>
               isPathInsideDirectory(candidateProjectScan.directory, projectScan.directory),
             )
@@ -800,6 +807,11 @@ const runMultiProjectScan = async (
     return {
       scans: results,
       diagnostics: combinedDiagnostics,
+      diagnosticsAreGateExempt:
+        scopePlan.baselineIntended &&
+        (skippedProjects.length > 0 ||
+          results.length === 0 ||
+          results.some(({ result }) => result.baselineDelta === undefined)),
       scoreResult: summary.aggregateScore,
       projectName: summary.projectName,
       scannedFileCount,

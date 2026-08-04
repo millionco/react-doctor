@@ -14,6 +14,7 @@ import { validateIncludeUntrackedScope } from "./validate-mode-flags.js";
 
 export interface TuiScanScopePlan {
   readonly baselineDiffPlan: GitBaselineDiffPlan | null;
+  readonly baselineIntended: boolean;
   readonly baselineRef: string | null;
   readonly changedLineRanges: ReadonlyArray<ChangedFileLineRanges> | null;
   readonly diffInfo: DiffInfo | null;
@@ -75,6 +76,7 @@ export const resolveTuiScanScope = async (
 
   return {
     baselineDiffPlan,
+    baselineIntended: scope === "changed" && diffInfo !== null && !diffInfo.isCurrentChanges,
     baselineRef,
     changedLineRanges,
     diffInfo,

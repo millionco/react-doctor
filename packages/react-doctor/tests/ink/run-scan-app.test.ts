@@ -2,8 +2,13 @@ import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import { render } from "ink";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { InspectResult, ResolvedScanTarget, WorkspacePackage } from "@react-doctor/core";
-import { Reporter, resolveScanTarget } from "@react-doctor/core";
+import type {
+  DiffInfo,
+  InspectResult,
+  ResolvedScanTarget,
+  WorkspacePackage,
+} from "@react-doctor/core";
+import { getBaselineDiffPlan, getDiffInfo, Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
 import { clearActiveTuiRenderer } from "../../src/cli/utils/active-tui-renderer.js";
@@ -92,6 +97,8 @@ vi.mock("@react-doctor/core", async (importOriginal) => {
         mapInput: (input: Input) => Promise<Output>,
       ): Promise<Output[]> => Promise.all(inputs.map(mapInput)),
     ),
+    getBaselineDiffPlan: vi.fn(),
+    getDiffInfo: vi.fn(),
   };
 });
 
@@ -380,6 +387,76 @@ describe("runScanApp", () => {
     );
   });
 
+  it("preserves workspace dead-code ownership when a scoped scan skips the root", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const diffInfo: DiffInfo = {
+      currentBranch: "feature",
+      baseBranch: "main",
+      changedFiles: ["apps/web/package.json"],
+      isCurrentChanges: true,
+    };
+    vi.mocked(getDiffInfo).mockResolvedValue(diffInfo);
+    mockState.projectDirectories.push(rootDirectory, webDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
+
+    await runScanApp({
+      directory: rootDirectory,
+      flags: { scope: "files" },
+      skipPrompts: true,
+    });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      webDirectory,
+      expect.objectContaining({ deadCode: false }),
+    );
+  });
+
+  it("excludes unchanged nested projects from a scoped ancestor scan", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const webDirectory = "/repo/apps/web";
+    const diffInfo: DiffInfo = {
+      currentBranch: "feature",
+      baseBranch: "main",
+      changedFiles: ["src/app.tsx"],
+      isCurrentChanges: true,
+    };
+    vi.mocked(getDiffInfo).mockResolvedValue(diffInfo);
+    mockState.projectDirectories.push(rootDirectory, webDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.scanTargets.set(
+      webDirectory,
+      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({
+      directory: rootDirectory,
+      flags: { scope: "files" },
+      skipPrompts: true,
+    });
+
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      rootDirectory,
+      expect.objectContaining({ excludedProjectDirectories: [webDirectory] }),
+    );
+  });
+
   it("scans aliased selections that resolve to one project root once", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
@@ -585,6 +662,37 @@ describe("runScanApp", () => {
       skipPrompts: true,
     });
     expect(surfaceExcludedResult.shouldFail).toBe(false);
+  });
+
+  it("keeps diagnostics advisory when an intended baseline cannot be computed", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const rootDirectory = "/repo";
+    const diffInfo: DiffInfo = {
+      currentBranch: "feature",
+      baseBranch: "main",
+      diffBaseRef: "base-commit",
+      changedFiles: ["src/app.tsx"],
+      isCurrentChanges: false,
+    };
+    vi.mocked(getDiffInfo).mockResolvedValue(diffInfo);
+    vi.mocked(getBaselineDiffPlan).mockResolvedValue(null);
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, {
+      ...buildInspectResult(rootDirectory),
+      diagnostics: [buildDiagnostic({ severity: "error" })],
+    });
+
+    const result = await runScanApp({
+      directory: rootDirectory,
+      flags: { scope: "changed" },
+      skipPrompts: true,
+    });
+
+    expect(result.shouldFail).toBe(false);
   });
 
   it("applies the CLI surface and category filter to the TUI report", async () => {

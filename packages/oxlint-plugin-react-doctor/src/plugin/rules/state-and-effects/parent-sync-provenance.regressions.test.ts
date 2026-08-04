@@ -317,6 +317,35 @@ describe("parent-sync provenance matrix", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports typed reducer state destructured from an immutable tuple alias", () => {
+    const code = `import * as React from "react";
+      import * as Types from "./types";
+      import reducer, { INITIAL_STATE } from "./reducer";
+      import { Model, createParser } from "./model";
+      type Props<CellType> = { data: CellType[]; onChange?: (data: CellType[]) => void };
+      const Spreadsheet = <CellType,>(props: Props<CellType>) => {
+        const { onChange = () => {} } = props;
+        type State = Types.StoreState<CellType>;
+        const initialState = React.useMemo(() => {
+          const parser = (props.createParser || createParser) as Types.Parser;
+          const model = new Model(parser, props.data);
+          return { ...INITIAL_STATE, model } as State;
+        }, [props.createParser, props.data]);
+        const reducerElements = React.useReducer(
+          reducer as unknown as React.Reducer<State, Types.Action>,
+          initialState,
+        );
+        const [state] = reducerElements;
+        React.useEffect(() => {
+          if (state.model.data !== props.data) onChange(state.model.data);
+        }, [state.model.data, onChange, props.data]);
+        return null;
+      };`;
+    const result = runRule(noPassDataToParent, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   const mustNotReportCases: ParentSyncProvenanceCase[] = [
     {
       name: "userland useEffectEvent wrappers",

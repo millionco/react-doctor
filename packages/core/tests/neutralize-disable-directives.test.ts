@@ -75,4 +75,35 @@ describe("neutralizeDisableDirectives — build-output exclusion", () => {
     expect(readNestedFile("dist/bundle.js")).toContain("eslint-disable");
     restore();
   });
+
+  it("keeps a shared file neutralized until every overlapping scan releases it", async () => {
+    writeNestedFile("packages/app/src/app.tsx", SOURCE);
+
+    const restoreRepositoryScan = await neutralizeDisableDirectives(temporaryDirectory);
+    const restorePackageScan = await neutralizeDisableDirectives(
+      path.join(temporaryDirectory, "packages/app"),
+    );
+
+    restoreRepositoryScan();
+    expect(readNestedFile("packages/app/src/app.tsx")).toContain("eslint_disable");
+
+    restorePackageScan();
+    expect(readNestedFile("packages/app/src/app.tsx")).toContain("eslint-disable");
+  });
+
+  it("shares an active lease with an overlapping explicit file scan", async () => {
+    writeNestedFile("packages/app/src/app.tsx", SOURCE);
+
+    const restoreRepositoryScan = await neutralizeDisableDirectives(temporaryDirectory);
+    const restoreExplicitScan = await neutralizeDisableDirectives(
+      path.join(temporaryDirectory, "packages/app"),
+      ["src/app.tsx"],
+    );
+
+    restoreExplicitScan();
+    expect(readNestedFile("packages/app/src/app.tsx")).toContain("eslint_disable");
+
+    restoreRepositoryScan();
+    expect(readNestedFile("packages/app/src/app.tsx")).toContain("eslint-disable");
+  });
 });

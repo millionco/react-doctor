@@ -41,6 +41,7 @@ import {
   isProp,
   isRefCall,
   isRefCurrent,
+  isReducerState,
   isState,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
@@ -1572,6 +1573,7 @@ export const noPassDataToParent = defineRule({
               return getDownstreamRefs(analysis, argument as EsTreeNode);
             })
             .flatMap((argumentRef) => {
+              if (isReducerState(analysis, argumentRef)) return [argumentRef];
               if (
                 isExternallyDrivenState(analysis, argumentRef) ||
                 getLocalHookExternalStateProof(analysis, argumentRef, context.scopes) === true
@@ -1626,6 +1628,7 @@ export const noPassDataToParent = defineRule({
           const isSomeArgsData = argsUpstreamRefs.some((argRef) => {
             const argIdentifier = argRef.identifier as unknown as EsTreeNode;
             if (isTypeScriptTypePosition(argIdentifier)) return false;
+            if (isReducerState(analysis, argRef)) return true;
             if (isUseStateIdentifier(argIdentifier)) return false;
             if (isProp(analysis, argRef)) return false;
             if (isUseRefIdentifier(argIdentifier)) return false;

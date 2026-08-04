@@ -9,6 +9,13 @@ import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
 
+interface NeutralizedFileLease {
+  originalContent: string;
+  referenceCount: number;
+}
+
+const neutralizedFileLeases = new Map<string, NeutralizedFileLease>();
+
 const findFilesWithDisableDirectivesViaGit = async (
   rootDirectory: string,
   includePaths?: string[],
@@ -89,20 +96,71 @@ const neutralizeContent = (content: string): string =>
     .replaceAll("eslint-disable", "eslint_disable")
     .replaceAll("oxlint-disable", "oxlint_disable");
 
+const collectNeutralizationCandidatePaths = (
+  rootDirectory: string,
+  discoveredRelativePaths: ReadonlyArray<string>,
+  includePaths?: ReadonlyArray<string>,
+): ReadonlySet<string> => {
+  const resolvedRootDirectory = fs.realpathSync(rootDirectory);
+  const requestedPaths = includePaths && includePaths.length > 0
+    ? new Set(
+        includePaths.flatMap((includePath) => {
+          try {
+            return [fs.realpathSync(path.resolve(resolvedRootDirectory, includePath))];
+          } catch {
+            return [];
+          }
+        }),
+      )
+    : null;
+  const candidatePaths = new Set<string>();
+
+  for (const relativePath of discoveredRelativePaths) {
+    try {
+      candidatePaths.add(fs.realpathSync(path.resolve(resolvedRootDirectory, relativePath)));
+    } catch {
+      continue;
+    }
+  }
+
+  for (const leasedPath of neutralizedFileLeases.keys()) {
+    const relativePath = path.relative(resolvedRootDirectory, leasedPath);
+    const isInsideRoot =
+      relativePath.length === 0 ||
+      (!relativePath.startsWith(`..${path.sep}`) &&
+        relativePath !== ".." &&
+        !path.isAbsolute(relativePath));
+    if (!isInsideRoot || (requestedPaths && !requestedPaths.has(leasedPath))) continue;
+    candidatePaths.add(leasedPath);
+  }
+
+  return candidatePaths;
+};
+
 export const neutralizeDisableDirectives = async (
   rootDirectory: string,
   includePaths?: string[],
 ): Promise<() => void> => {
-  const filePaths = await findFilesWithDisableDirectives(rootDirectory, includePaths);
-  const originalContents = new Map<string, string>();
+  const discoveredRelativePaths = await findFilesWithDisableDirectives(rootDirectory, includePaths);
+  const candidatePaths = collectNeutralizationCandidatePaths(
+    rootDirectory,
+    discoveredRelativePaths,
+    includePaths,
+  );
+  const leasedPaths = new Set<string>();
 
   let isRestored = false;
   const restore = () => {
     if (isRestored) return;
     isRestored = true;
-    for (const [absolutePath, originalContent] of originalContents) {
+    for (const absolutePath of leasedPaths) {
+      const lease = neutralizedFileLeases.get(absolutePath);
+      if (!lease) continue;
+      lease.referenceCount -= 1;
+      if (lease.referenceCount > 0) continue;
       try {
-        fs.writeFileSync(absolutePath, originalContent);
+        fs.writeFileSync(absolutePath, lease.originalContent);
+        neutralizedFileLeases.delete(absolutePath);
       } catch (error) {
         // HACK: surface failed restores so the user can manually revert.
         // Silently swallowing left source files with `eslint_disable` /
@@ -126,8 +184,13 @@ export const neutralizeDisableDirectives = async (
   const onExit = () => restore();
   process.once("exit", onExit);
 
-  for (const relativePath of filePaths) {
-    const absolutePath = path.join(rootDirectory, relativePath);
+  for (const absolutePath of candidatePaths) {
+    const existingLease = neutralizedFileLeases.get(absolutePath);
+    if (existingLease) {
+      existingLease.referenceCount += 1;
+      leasedPaths.add(absolutePath);
+      continue;
+    }
 
     let originalContent: string;
     try {
@@ -138,8 +201,9 @@ export const neutralizeDisableDirectives = async (
 
     const neutralizedContent = neutralizeContent(originalContent);
     if (neutralizedContent !== originalContent) {
-      originalContents.set(absolutePath, originalContent);
       fs.writeFileSync(absolutePath, neutralizedContent);
+      neutralizedFileLeases.set(absolutePath, { originalContent, referenceCount: 1 });
+      leasedPaths.add(absolutePath);
     }
   }
 

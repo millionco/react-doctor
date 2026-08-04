@@ -55,20 +55,21 @@ const installSilentConsole = (): void => {
 };
 
 export const enableJsonMode = ({ compact, directory, outputFile }: EnableJsonModeInput): void => {
-  if (outputFile) {
-    const resolvedOutputFile = path.resolve(outputFile);
-    if (fs.existsSync(resolvedOutputFile) && !fs.statSync(resolvedOutputFile).isFile()) {
-      throw new CliInputError(`--json-out must point to a file, not ${resolvedOutputFile}.`);
-    }
-  }
   context = {
     compact,
     directory,
     startTime: performance.now(),
     mode: "full",
-    outputFile: outputFile ?? null,
+    outputFile: null,
   };
   installSilentConsole();
+  if (outputFile) {
+    const resolvedOutputFile = path.resolve(outputFile);
+    if (fs.existsSync(resolvedOutputFile) && !fs.statSync(resolvedOutputFile).isFile()) {
+      throw new CliInputError(`--json-out must point to a file, not ${resolvedOutputFile}.`);
+    }
+    context.outputFile = outputFile;
+  }
 };
 
 export const isJsonModeActive = (): boolean => context !== null;

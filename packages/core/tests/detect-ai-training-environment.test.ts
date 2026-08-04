@@ -24,8 +24,11 @@ describe("detectAiTrainingEnvironment", () => {
   it("does not match credentials or broad development environment markers", () => {
     expect(
       detectAiTrainingEnvironment({
+        AZURE_ML_MODEL_DIR: "/tmp/model",
+        AZUREML_MODEL_DIR: "/var/azureml-app/azureml-models/example/1",
         CUDA_VISIBLE_DEVICES: "0",
         CURSOR_AGENT: "1",
+        DET_MASTER: "https://determined.example",
         HF_HOME: "/tmp/huggingface",
         HF_TOKEN: "token",
         HARBOR_URL: "https://harbor.example",

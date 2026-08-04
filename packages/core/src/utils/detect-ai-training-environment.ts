@@ -10,8 +10,6 @@ const AI_TRAINING_BY_ENVIRONMENT_VARIABLE: ReadonlyArray<readonly [string, strin
   ["SM_TRAINING_ENV", "sagemaker"],
   ["TRAINING_JOB_ARN", "sagemaker"],
   ["AZUREML_RUN_ID", "azure-ml"],
-  ["AZURE_ML_MODEL_DIR", "azure-ml"],
-  ["DET_MASTER", "determined-ai"],
   ["FLYTE_INTERNAL_EXECUTION_ID", "flyte"],
   ["KFP_POD_NAME", "kubeflow-pipelines"],
   ["KAGGLE_KERNEL_RUN_TYPE", "kaggle"],

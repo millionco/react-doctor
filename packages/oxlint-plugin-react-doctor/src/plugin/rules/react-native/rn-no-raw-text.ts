@@ -7,7 +7,6 @@ import {
 } from "../../constants/react-native.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 import { SVG_TAGS } from "../../constants/svg-tags.js";
-import { containsJsxElement } from "../../utils/contains-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isInsidePlatformOsWebBranch } from "../../utils/is-inside-platform-os-web-branch.js";
@@ -173,9 +172,6 @@ export const rnNoRawText = defineRule({
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         isDomComponentFile = hasDirective(programNode, "use dom");
-        // A file with no JSX never fires the JSXElement visitor, so the
-        // wrapper classification would go unread — skip the fixpoint walk.
-        if (!containsJsxElement(programNode)) return;
         const childrenForwarding = collectTextWrapperComponents(
           programNode,
           isTextHandlingComponent,

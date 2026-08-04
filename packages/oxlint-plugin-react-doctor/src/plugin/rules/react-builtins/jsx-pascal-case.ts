@@ -1,6 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const buildMessage = (componentName: string, allowAllCaps: boolean): string =>
@@ -34,16 +34,6 @@ const resolveSettings = (
     allowLeadingUnderscore: ruleSettings.allowLeadingUnderscore ?? true,
     ignore: ruleSettings.ignore ?? [],
   };
-};
-
-const flattenMemberName = (node: EsTreeNode): string | null => {
-  if (isNodeOfType(node, "JSXIdentifier")) return node.name;
-  if (isNodeOfType(node, "JSXMemberExpression")) {
-    const objectName = flattenMemberName(node.object);
-    if (!objectName) return null;
-    return `${objectName}.${node.property.name}`;
-  }
-  return null;
 };
 
 const isAsciiUppercase = (charCode: number): boolean => charCode >= 65 && charCode <= 90;
@@ -191,7 +181,7 @@ export const jsxPascalCase = defineRule({
           fullName = `${elementName.namespace.name}:${elementName.name.name}`;
         } else if (isNodeOfType(elementName, "JSXMemberExpression")) {
           isMember = true;
-          fullName = flattenMemberName(elementName);
+          fullName = flattenJsxName(elementName);
         }
         if (!fullName) return;
         // OXC quirk: after computing the full name, if its first

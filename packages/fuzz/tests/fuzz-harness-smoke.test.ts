@@ -192,6 +192,21 @@ describe("fuzz harness oracles", () => {
     expect(castReceiver?.mustPreserveVerdict).toBe(true);
   });
 
+  it("keeps receiver wrappers from joining semicolonless statements", () => {
+    const variants = buildVerdictPreservingVariants(
+      `const state = React.useState(false)
+React.useEffect(() => {
+  setTimeout(() => {}, 100)
+}, [])`,
+      "fixture.tsx",
+    );
+    for (const variant of variants.filter((candidate) =>
+      candidate.label.endsWith("call receivers"),
+    )) {
+      expect(variant.code).toContain("\n;(React");
+    }
+  });
+
   it("catches a rule that keys off incidental source shape", () => {
     const commentSensitiveRule: Rule = {
       id: "fuzz-smoke-invariant",

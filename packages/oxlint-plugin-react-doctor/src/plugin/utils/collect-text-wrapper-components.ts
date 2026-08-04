@@ -414,6 +414,11 @@ export interface ChildrenForwardingComponents {
   nonTextWrappers: ReadonlySet<string>;
 }
 
+interface ComponentDeclaration {
+  readonly componentName: string;
+  readonly definitionNode: EsTreeNode;
+}
+
 export type ChildrenForwardingKind = "text" | "nonText" | "unknown";
 
 // Classifies a component definition by where it forwards its `children`:
@@ -515,7 +520,12 @@ export const collectTextWrapperComponents = (
   const wrappers = new Set<string>();
   const nonTextWrappers = new Set<string>();
   const componentBindingCounts = new Map<string, number>();
+  const componentDeclarations: ComponentDeclaration[] = [];
+  let didContainJsxElement = false;
   walkAst(programNode, (node) => {
+    if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
+      didContainJsxElement = true;
+    }
     let componentName: string | null = null;
     if (
       (isNodeOfType(node, "ImportSpecifier") ||
@@ -534,14 +544,23 @@ export const collectTextWrapperComponents = (
     }
     if (!componentName || !isReactComponentName(componentName)) return;
     componentBindingCounts.set(componentName, (componentBindingCounts.get(componentName) ?? 0) + 1);
+    if (isNodeOfType(node, "VariableDeclarator") && node.init) {
+      componentDeclarations.push({ componentName, definitionNode: node.init });
+    } else if (
+      isNodeOfType(node, "FunctionDeclaration") ||
+      isNodeOfType(node, "ClassDeclaration")
+    ) {
+      componentDeclarations.push({ componentName, definitionNode: node });
+    }
   });
+  if (!didContainJsxElement) return { textWrappers: wrappers, nonTextWrappers };
   const isTextHandlingElement = (elementName: string, contextNode: EsTreeNode): boolean =>
     isTextHandlingRoot(elementName, contextNode) || wrappers.has(elementName);
   const isNonTextHostElement = (elementName: string, contextNode: EsTreeNode): boolean =>
     isNonTextHostRoot(elementName, contextNode) || nonTextWrappers.has(elementName);
 
-  const recordDeclaration = (componentName: string | null, definitionNode: EsTreeNode | null) => {
-    if (componentName && componentBindingCounts.get(componentName) !== 1) return;
+  const recordDeclaration = (componentName: string, definitionNode: EsTreeNode): void => {
+    if (componentBindingCounts.get(componentName) !== 1) return;
     recordWrapperFromDeclaration(
       componentName,
       definitionNode,
@@ -555,18 +574,9 @@ export const collectTextWrapperComponents = (
   while (true) {
     const wrappersSizeBeforePass = wrappers.size;
     const nonTextSizeBeforePass = nonTextWrappers.size;
-    walkAst(programNode, (node) => {
-      if (isNodeOfType(node, "VariableDeclarator")) {
-        const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
-        recordDeclaration(componentName, node.init ?? null);
-      } else if (
-        isNodeOfType(node, "FunctionDeclaration") ||
-        isNodeOfType(node, "ClassDeclaration")
-      ) {
-        const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
-        recordDeclaration(componentName, node);
-      }
-    });
+    for (const declaration of componentDeclarations) {
+      recordDeclaration(declaration.componentName, declaration.definitionNode);
+    }
     if (
       wrappers.size === wrappersSizeBeforePass &&
       nonTextWrappers.size === nonTextSizeBeforePass

@@ -88,7 +88,6 @@ export const NOOP_TELEMETRY: Telemetry = {
  */
 export interface WorkspaceProject {
   readonly directory: string;
-  readonly name: string;
 }
 
 /**
@@ -201,8 +200,6 @@ export interface Scheduler {
   readonly enqueue: (request: ScanRequestInput) => void;
   /** Cancel all pending + in-flight scans for a project (e.g. on close). */
   readonly cancelProject: (projectDirectory: string) => void;
-  /** Number of scans currently queued or running (for tests / status). */
-  readonly pendingCount: () => number;
   readonly dispose: () => void;
 }
 

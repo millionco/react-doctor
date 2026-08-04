@@ -10,15 +10,6 @@ interface MergeAndFilterOptions {
 }
 
 /**
- * Back-compat alias: the streaming pipeline holds its caches in
- * per-pipeline closures that are garbage-collected when the pipeline
- * goes out of scope, so there is nothing to clear at module scope. The
- * public CLI's `clearCaches()` still calls this for symmetry with the
- * other `clear*` helpers.
- */
-export const clearAutoSuppressionCaches = (): void => {};
-
-/**
  * Array-shaped wrapper over `buildDiagnosticPipeline` for legacy
  * callers and tests. Production code uses the streaming pipeline
  * inside `runInspect`; this thin shim runs the same per-element

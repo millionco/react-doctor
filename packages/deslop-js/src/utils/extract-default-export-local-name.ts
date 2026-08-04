@@ -1,5 +1,4 @@
-import type { ExportDefaultDeclaration } from "@oxc-project/types";
-import type { Expression } from "@oxc-project/types";
+import type { ExportDefaultDeclaration, Expression } from "@oxc-project/types";
 
 const extractIdentifierFromCallArguments = (expression: Expression): string | undefined => {
   if (expression.type !== "CallExpression") return undefined;

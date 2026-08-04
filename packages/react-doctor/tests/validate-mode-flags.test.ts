@@ -32,8 +32,8 @@ describe("validateModeFlags", () => {
     expect(() => validateModeFlags({ debug: true })).not.toThrow();
   });
 
-  it("allows --yes and --full together (skip prompts + force a full scan are orthogonal)", () => {
-    expect(() => validateModeFlags({ yes: true, full: true })).not.toThrow();
+  it("allows --yes and --scope full together (skip prompts + force a full scan are orthogonal)", () => {
+    expect(() => validateModeFlags({ yes: true, scope: "full" })).not.toThrow();
   });
 
   it("rejects --scope combined with the deprecated --diff alias", () => {

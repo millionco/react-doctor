@@ -1,5 +1,45 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.4
+
+### Patch Changes
+
+- [#1547](https://github.com/millionco/react-doctor/pull/1547) [`f7dbdfa`](https://github.com/millionco/react-doctor/commit/f7dbdfa399bddb16c5d0e4ba180fb3a1d297448d) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid treating a resource failure latch as an all-state prop reset.
+
+- [#1561](https://github.com/millionco/react-doctor/pull/1561) [`44922d6`](https://github.com/millionco/react-doctor/commit/44922d67821680d6622809be43bc5b951e294a6e) Thanks [@aidenybai](https://github.com/aidenybai)! - Limit missing button type diagnostics to form-owned buttons and report broken literal fragment links.
+
+- [#1562](https://github.com/millionco/react-doctor/pull/1562) [`cc28626`](https://github.com/millionco/react-doctor/commit/cc2862666bf694fe8de84d66f3d276ce023c3c41) Thanks [@aidenybai](https://github.com/aidenybai)! - Add an opt-in diagnostic for effects that let externally controlled selection changes move focus.
+
+- [#1545](https://github.com/millionco/react-doctor/pull/1545) [`b02bc69`](https://github.com/millionco/react-doctor/commit/b02bc694f134fc856ad1e17304a93e0aba3e31a6) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect local state chains isolated from an effect's external resource cleanup path.
+
+- [#1563](https://github.com/millionco/react-doctor/pull/1563) [`85e1052`](https://github.com/millionco/react-doctor/commit/85e1052289a7a9cb7ba09bf5fb6d991415bca979) Thanks [@aidenybai](https://github.com/aidenybai)! - Add an opt-in diagnostic for stale-request guards backed by passively synchronized owner refs.
+
+- [#1556](https://github.com/millionco/react-doctor/pull/1556) [`4c61080`](https://github.com/millionco/react-doctor/commit/4c610803cb5af467776a275a7c27c9e916c08280) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect stale async responses that clear error state owned by a newer request.
+
+- [#1560](https://github.com/millionco/react-doctor/pull/1560) [`02e3188`](https://github.com/millionco/react-doctor/commit/02e3188d4b307c04cc8cbf0395b50fe20755d7c7) Thanks [@aidenybai](https://github.com/aidenybai)! - Add Three.js and React Three Fiber rules that recommend instanced meshes for repeated meshes sharing geometry and material.
+
+- [#1549](https://github.com/millionco/react-doctor/pull/1549) [`48ec9a8`](https://github.com/millionco/react-doctor/commit/48ec9a802077749f3ec7534a5cac00397d4dd4df) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep large workspace scans responsive by reducing TUI redraws, cooperatively enumerating source files, excluding source explicitly marked generated or vendored by repository attributes, precomputing workspace project file counts in one pass, reusing source listings for configured ignores, reusing repository cache fingerprints across workspace projects, running root-owned dead-code analysis once instead of again for every child project, sizing that shared pass from the full workspace tree, balancing lint batches, detecting cross-file renderer capabilities once before workers start, skipping unnecessary whole-project source indexes, capping automatic lint parallelism before its contention cliff, removing redundant binding-marker work from semantic analysis, and lowering lint subprocess priority so foreground applications remain responsive. Remove implicit lint and whole-scan deadlines while enforcing explicitly configured deadlines on active subprocesses, preserve partial security findings without marking disabled passes incomplete, list queued projects skipped at the deadline, show every incomplete-result warning, retry scores after a contended workspace pool settles, terminate every subprocess and clear the active TUI on cancellation or quit, suppress bundled Browserslist maintenance warnings, memoize module-resolution filesystem probes, path-compress config lookup walks, bound recursive helper analysis, index repeated class-member lookups, and visit each alias binding once. Project selection now uses a disposable terminal screen while bounded scan progress and the final report stay inline, workspace indexing is labeled immediately, scan progress uses a smoother spinner, long score fallbacks wrap within the terminal, incomplete analysis is no longer mislabeled as a score API outage, `--no-cache` disables every cache layer for the run, precomputed project counts remain accurate across discovery-cache hits, fixed command literals no longer trigger imported-metadata security findings, and extensionless module paths passed to dynamic loaders no longer produce unused-file findings.
+
+- [#1559](https://github.com/millionco/react-doctor/pull/1559) [`afd60db`](https://github.com/millionco/react-doctor/commit/afd60dbe694a20feeba3b15e594ebf36d15f9af5) Thanks [@skoshx](https://github.com/skoshx)! - Recognize callable listener disposers, exhaustive cleanup of mapped subscription collections, and guarded timers owned by effect-local helpers in `effect-needs-cleanup`.
+
+- [#1568](https://github.com/millionco/react-doctor/pull/1568) [`3466fe1`](https://github.com/millionco/react-doctor/commit/3466fe11d7b2962ec26f9853d573a5d886a6b441) Thanks [@aidenybai](https://github.com/aidenybai)! - Make effect cleanup analysis scale linearly across files with many retained timer and listener callbacks.
+
+- [#1557](https://github.com/millionco/react-doctor/pull/1557) [`4e4740d`](https://github.com/millionco/react-doctor/commit/4e4740dde3bd9c4c62a7efdf5c858293fab7b5eb) Thanks [@aidenybai](https://github.com/aidenybai)! - Ignore TypeScript type-only identifiers when tracing data passed to parent callbacks.
+
+- [#1038](https://github.com/millionco/react-doctor/pull/1038) [`a34d6a1`](https://github.com/millionco/react-doctor/commit/a34d6a159e9eed004ba3d2b1f37b4dc463a08482) Thanks [@cursor](https://github.com/apps/cursor)! - Apply React Native content-container checks to LegendList consistently with FlashList.
+
+- [#1554](https://github.com/millionco/react-doctor/pull/1554) [`91ebe85`](https://github.com/millionco/react-doctor/commit/91ebe85fdc3731219d558f7253cfee7976783c41) Thanks [@aidenybai](https://github.com/aidenybai)! - Report symbol-only controls that lack a meaningful accessible name.
+
+- [#1564](https://github.com/millionco/react-doctor/pull/1564) [`3a93a34`](https://github.com/millionco/react-doctor/commit/3a93a34beb050a4b55a34b5ac3f6f5b23a07be58) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize callable subscription disposers, exhaustive disposer collections, and guarded effect-local timer cleanup paths.
+
+- [#1544](https://github.com/millionco/react-doctor/pull/1544) [`8a22de1`](https://github.com/millionco/react-doctor/commit/8a22de1263826531e7c0c5eeccac860739570b2a) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting `rerender-lazy-ref-init` for empty built-in registry constructors.
+
+- [#1550](https://github.com/millionco/react-doctor/pull/1550) [`19f2148`](https://github.com/millionco/react-doctor/commit/19f2148e0004278b31d63863d9116b9a4f1f1c0f) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize image layout space reserved by imported CSS dimensions, aspect ratios, and definite parent sizing.
+
+- [#1546](https://github.com/millionco/react-doctor/pull/1546) [`7f29eca`](https://github.com/millionco/react-doctor/commit/7f29ecaa32a1b399098d531e4002bb2f666158db) Thanks [@aidenybai](https://github.com/aidenybai)! - Ignore resource-keyed media failure latch resets in no-adjust-state-on-prop-change.
+
+- [#1555](https://github.com/millionco/react-doctor/pull/1555) [`37427c9`](https://github.com/millionco/react-doctor/commit/37427c915ca3d7ae219900f3c17d04e6840a8796) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize observer reconnect helpers that release each replacement and the latest observer on cleanup.
+
 ## 0.9.3
 
 ### Patch Changes

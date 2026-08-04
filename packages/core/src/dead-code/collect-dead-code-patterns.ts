@@ -1,7 +1,7 @@
-import fs from "node:fs";
 import path from "node:path";
 import { collectIgnorePatterns } from "../collect-ignore-patterns.js";
 import { readIgnoreFile } from "../read-ignore-file.js";
+import { failOpenReadJson } from "../utils/fail-open-read-json.js";
 import { isRecord } from "../utils/is-record.js";
 
 interface KnipWorkspaceConfig {
@@ -17,25 +17,17 @@ interface KnipConfig {
 
 const KNIP_JSON_FILENAME = "knip.json";
 
-const readJsonFileSafe = (filePath: string): unknown | null => {
-  let rawContents: string;
-  try {
-    rawContents = fs.readFileSync(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-  try {
-    return JSON.parse(rawContents);
-  } catch {
-    return null;
-  }
-};
-
 const readKnipConfig = (rootDirectory: string): KnipConfig | null => {
-  const knipJson = readJsonFileSafe(path.join(rootDirectory, KNIP_JSON_FILENAME));
+  const knipJson = failOpenReadJson<unknown | null>(
+    path.join(rootDirectory, KNIP_JSON_FILENAME),
+    null,
+  );
   if (isRecord(knipJson)) return knipJson;
 
-  const packageJson = readJsonFileSafe(path.join(rootDirectory, "package.json"));
+  const packageJson = failOpenReadJson<unknown | null>(
+    path.join(rootDirectory, "package.json"),
+    null,
+  );
   const packageKnipConfig = isRecord(packageJson) ? packageJson.knip : null;
   return isRecord(packageKnipConfig) ? packageKnipConfig : null;
 };

@@ -1,10 +1,10 @@
 import path from "node:path";
 import {
-  clearAutoSuppressionCaches,
   clearConfigCache,
   clearIgnorePatternsCache,
   clearMinifiedFileCache,
   clearPackageJsonCache,
+  clearPackageRoleCache,
   clearProjectCache,
   discoverReactSubprojects,
   messageFromUnknown,
@@ -44,9 +44,7 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
       try {
         for (const workspacePackage of discoverReactSubprojects(root)) {
           const directory = normalizeDirectory(workspacePackage.directory);
-          if (!seen.has(directory)) {
-            seen.set(directory, { directory, name: workspacePackage.name });
-          }
+          if (!seen.has(directory)) seen.set(directory, { directory });
         }
       } catch (error) {
         logger.warn(`Project discovery failed for ${root}: ${messageFromUnknown(error)}`);
@@ -79,8 +77,8 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
       clearProjectCache();
       clearConfigCache();
       clearPackageJsonCache();
+      clearPackageRoleCache();
       clearIgnorePatternsCache();
-      clearAutoSuppressionCaches();
       clearMinifiedFileCache();
       projects = null;
     },

@@ -112,34 +112,39 @@ export const noMutableInDeps = defineRule({
       componentParams: ReadonlyArray<EsTreeNode> = [],
     ): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
+      const mutableDependencyCandidates: EsTreeNode[] = [];
+      walkAst(componentBody, (child: EsTreeNode) => {
+        if (!isNodeOfType(child, "CallExpression")) return;
+        if (!isReactHookCall(child, HOOKS_WITH_DEPS, context.scopes)) return;
+        const depsNode = child.arguments[1];
+        if (!isNodeOfType(depsNode, "ArrayExpression")) return;
+        for (const element of depsNode.elements) {
+          if (isNodeOfType(element, "MemberExpression")) {
+            mutableDependencyCandidates.push(element);
+          }
+        }
+      });
+      if (mutableDependencyCandidates.length === 0) return;
+
       const useRefBindingNames = collectUseRefBindingNames(componentBody, context.scopes);
       const localBindingNames = collectLocalBindingNames(componentBody);
       for (const param of componentParams) collectPatternNames(param, localBindingNames);
 
-      walkAst(componentBody, (child: EsTreeNode) => {
-        if (!isNodeOfType(child, "CallExpression")) return;
-        if (!isReactHookCall(child, HOOKS_WITH_DEPS, context.scopes)) return;
-        if ((child.arguments?.length ?? 0) < 2) return;
-        const depsNode = child.arguments[1];
-        if (!isNodeOfType(depsNode, "ArrayExpression")) return;
-
-        for (const element of depsNode.elements ?? []) {
-          if (!element) continue;
-          const issue = findMutableDepIssue(element, useRefBindingNames, localBindingNames);
-          if (!issue) continue;
-          if (issue.kind === "ref-current") {
-            context.report({
-              node: element,
-              message: `Changing "${issue.rootName}.current" does not re-render the component, so this dependency will not make the effect run again.`,
-            });
-          } else {
-            context.report({
-              node: element,
-              message: `Values like "${issue.rootName}.*" can change without re-rendering the component, so this dependency will not make the effect run again.`,
-            });
-          }
+      for (const element of mutableDependencyCandidates) {
+        const issue = findMutableDepIssue(element, useRefBindingNames, localBindingNames);
+        if (!issue) continue;
+        if (issue.kind === "ref-current") {
+          context.report({
+            node: element,
+            message: `Changing "${issue.rootName}.current" does not re-render the component, so this dependency will not make the effect run again.`,
+          });
+        } else {
+          context.report({
+            node: element,
+            message: `Values like "${issue.rootName}.*" can change without re-rendering the component, so this dependency will not make the effect run again.`,
+          });
         }
-      });
+      }
     };
 
     return {

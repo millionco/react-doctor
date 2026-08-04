@@ -202,7 +202,7 @@ describe("runScanApp", () => {
     vi.clearAllMocks();
   });
 
-  it("uses a disposable screen for project selection", async () => {
+  it("keeps terminal scrollback visible during project selection", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
     const originalIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -227,7 +227,7 @@ describe("runScanApp", () => {
     }
 
     expect(vi.mocked(render).mock.calls[0]?.[1]).toEqual({
-      alternateScreen: true,
+      alternateScreen: false,
       exitOnCtrlC: false,
     });
   });

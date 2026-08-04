@@ -2501,6 +2501,7 @@ const findFirstAwaitAfter = (awaitSites: ReadonlyArray<AwaitSite>, start: number
 };
 
 const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void => {
+  if (!isFunctionLike(functionNode) || !functionNode.async) return;
   const awaitSites: AwaitSite[] = [];
   const settersByKey = new Map<string, SetterCall[]>();
   const registerHelperResets = (callNode: EsTreeNodeOfType<"CallExpression">): void => {

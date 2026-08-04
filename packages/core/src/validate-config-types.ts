@@ -7,6 +7,7 @@ import type {
 } from "./types/index.js";
 import { DIAGNOSTIC_SURFACES, isDiagnosticSurface } from "./diagnostic-surface.js";
 import { DIAGNOSTIC_CATEGORY_BUCKETS } from "./constants.js";
+import { isRecord } from "./utils/is-record.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 const VALID_RULE_SEVERITIES: ReadonlyArray<RuleSeverityOverride> = ["error", "warn", "off"];
@@ -81,9 +82,6 @@ const SEVERITY_FIELD_NAMES = ["rules", "categories"] as const satisfies Readonly
   keyof ReactDoctorConfig
 >;
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const formatType = (value: unknown): string =>
   typeof value === "string" ? `"${value}"` : typeof value;
 
@@ -133,7 +131,7 @@ const validateSurfaceControls = (
   surface: DiagnosticSurface,
   rawControls: unknown,
 ): SurfaceControls | undefined => {
-  if (!isPlainObject(rawControls)) {
+  if (!isRecord(rawControls)) {
     warnConfigIssue(
       `config field "surfaces.${surface}" must be an object (got ${typeof rawControls}); ignoring this surface.`,
     );
@@ -171,7 +169,7 @@ const validateSurfaceControls = (
 const validateSurfacesField = (
   rawSurfaces: unknown,
 ): Partial<Record<DiagnosticSurface, SurfaceControls>> | undefined => {
-  if (!isPlainObject(rawSurfaces)) {
+  if (!isRecord(rawSurfaces)) {
     warnConfigIssue(
       `config field "surfaces" must be an object (got ${typeof rawSurfaces}); ignoring this field.`,
     );
@@ -202,7 +200,7 @@ const validateSeverityMap = (
   rawMap: unknown,
   keysAreCategories = false,
 ): Record<string, RuleSeverityOverride> | undefined => {
-  if (!isPlainObject(rawMap)) {
+  if (!isRecord(rawMap)) {
     warnConfigIssue(
       `config field "${fieldName}" must be an object (got ${typeof rawMap}); ignoring this field.`,
     );

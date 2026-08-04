@@ -1,7 +1,13 @@
-import { REACT_DOCTOR_SCAN_RULES } from "oxlint-plugin-react-doctor/core";
-import type { FileScan, ScannedFile } from "oxlint-plugin-react-doctor/core";
-import { buildSecurityScanDiagnostic } from "./checks/security-scan/build-security-scan-diagnostic.js";
-import type { SecurityScanRuleEntry } from "./checks/security-scan/build-security-scan-diagnostic.js";
+import {
+  REACT_DOCTOR_SCAN_RULES,
+  type Capability,
+  type FileScan,
+  type ScannedFile,
+} from "oxlint-plugin-react-doctor/core";
+import {
+  buildSecurityScanDiagnostic,
+  type SecurityScanRuleEntry,
+} from "./checks/security-scan/build-security-scan-diagnostic.js";
 import { collectSecurityScanFiles } from "./checks/security-scan/collect-security-scan-files.js";
 import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.js";
@@ -10,7 +16,6 @@ import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
 import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
 import { shouldEnableRuleByDefaultStatus } from "./utils/should-enable-rule-by-default-status.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
-import type { Capability } from "oxlint-plugin-react-doctor/core";
 
 export interface CheckSecurityScanOptions {
   readonly project?: ProjectInfo;

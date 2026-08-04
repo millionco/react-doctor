@@ -296,6 +296,31 @@ const computeDeclaredDepKey = (entry: EsTreeNode): string | null => {
   return null;
 };
 
+const isBooleanGuardReference = (identifier: EsTreeNode): boolean => {
+  let current = findTransparentExpressionRoot(identifier);
+  while (current.parent) {
+    const parent = current.parent;
+    if (
+      (isNodeOfType(parent, "IfStatement") ||
+        isNodeOfType(parent, "WhileStatement") ||
+        isNodeOfType(parent, "DoWhileStatement") ||
+        isNodeOfType(parent, "ConditionalExpression")) &&
+      parent.test === current
+    ) {
+      return true;
+    }
+    if (
+      (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") ||
+      isNodeOfType(parent, "LogicalExpression")
+    ) {
+      current = parent;
+      continue;
+    }
+    return false;
+  }
+  return false;
+};
+
 const depsArrayContainsIdentifier = (
   depsArgument: EsTreeNode | undefined,
   identifierName: string,
@@ -351,6 +376,7 @@ const collectCaptureDepKeys = (
   callback: EsTreeNode,
   scopes: ScopeAnalysis,
   declaredExactBindingKeys?: ReadonlySet<string>,
+  declaredKeys?: ReadonlySet<string>,
   allowSoleWriterEffectGuards = false,
 ): CaptureCollection => {
   const keys = new Set<string>();
@@ -389,6 +415,13 @@ const collectCaptureDepKeys = (
     }
     const depKey = computeDepKey(reference);
     if (!depKey) continue;
+    if (
+      depKey === symbol.name &&
+      isBooleanGuardReference(reference.identifier) &&
+      [...(declaredKeys ?? [])].some((declaredKey) => declaredKey.startsWith(`${symbol.name}.`))
+    ) {
+      continue;
+    }
     if (isStableRefContainerCapture(symbol, depKey, scopes)) {
       stableCapturedNames.add(depKey);
       continue;
@@ -1988,6 +2021,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           callbackToAnalyze ?? callbackArgument,
           context.scopes,
           declaredExactBindingKeys,
+          declaredKeys,
           SOLE_WRITER_GUARD_HOOKS.has(hookName),
         );
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);

@@ -7,6 +7,36 @@ import { exhaustiveDeps } from "./exhaustive-deps.js";
 import { clearExhaustiveDepsSuppressionCache } from "./exhaustive-deps-suppression.js";
 
 describe("react-builtins/exhaustive-deps — regressions", () => {
+  it("accepts a member dependency when the bare object read is only its null guard", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `function History({ versions, onlyShowMine, currentUser }) {
+        return useMemo(() => {
+          let filtered = [...versions];
+          if (onlyShowMine && currentUser) {
+            filtered = filtered.filter((version) =>
+              version.editors.some((editor) => editor.toString() === currentUser.uid)
+            );
+          }
+          return filtered;
+        }, [versions, onlyShowMine, currentUser?.uid]);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still requires object identity when the callback consumes the object value", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `function Profile({ currentUser }) {
+        return useMemo(() => normalizeUser(currentUser), [currentUser?.uid]);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("does not analyze unconfigured custom callback Hooks without dependency arrays", () => {
     const code = `
       import { useCallback, useEffect, useRef } from "react";

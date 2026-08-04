@@ -636,6 +636,12 @@ const spreadExpressionHasKey = (expression: EsTreeNode, depth: number): boolean 
 const spreadCanOverwriteKey = (spreadAttribute: EsTreeNodeOfType<"JSXSpreadAttribute">): boolean =>
   spreadExpressionHasKey(spreadAttribute.argument, 0);
 
+const hasKeyCarryingSpread = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
+  openingElement.attributes.some(
+    (attribute) =>
+      isNodeOfType(attribute, "JSXSpreadAttribute") && spreadCanOverwriteKey(attribute),
+  );
+
 const checkKeyBeforeSpread = (
   context: Parameters<Rule["create"]>[0],
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
@@ -743,6 +749,7 @@ export const jsxKey = defineRule({
         if (!enclosingContext) return;
         if (isWithinChildrenToArray(node)) return;
         if (hasJsxKeyAttribute(openingElement)) return;
+        if (hasKeyCarryingSpread(openingElement)) return;
         if (hasCallExpressionSpread(openingElement)) return;
         if (enclosingContext.kind === "iterator") {
           const iterationItemName = resolveIterationItemName(enclosingContext.callExpression);

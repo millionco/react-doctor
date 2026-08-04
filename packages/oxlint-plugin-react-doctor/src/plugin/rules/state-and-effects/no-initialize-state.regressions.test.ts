@@ -3,6 +3,50 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noInitializeState } from "./no-initialize-state.js";
 
 describe("no-initialize-state — regressions", () => {
+  it.each([
+    [
+      "an aliased hydration gate",
+      `function Content({ content }) {
+        const [mounted, setMounted] = useState(false);
+        useEffect(() => setMounted(true), []);
+        const isSSR = typeof window === "undefined";
+        const shouldRenderContent = !isSSR && mounted;
+        return <main>{shouldRenderContent ? <section>{content}</section> : null}</main>;
+      }`,
+    ],
+    [
+      "a shell value passed through rendered children",
+      `function Layout({ children, toolbarProps }) {
+        const [useShell, setUseShell] = useState(true);
+        useEffect(() => setUseShell(false), []);
+        const shellToolbarProps = useShell ? buildToolbarProps() : null;
+        return <>{children(toolbarProps ?? shellToolbarProps)}</>;
+      }`,
+    ],
+    [
+      "a hydration fallback alias",
+      `function Toolbar({ toolbarProps }) {
+        const [hydrated, setHydrated] = useState(false);
+        useEffect(() => setHydrated(true), []);
+        const effectiveToolbarProps = toolbarProps ?? (hydrated ? null : buildToolbarProps());
+        return <ToolbarView {...effectiveToolbarProps} />;
+      }`,
+    ],
+    [
+      "a mounted branch",
+      `function Background({ src, mime }) {
+        const [isMounted, setIsMounted] = useState(false);
+        useEffect(() => setIsMounted(true), []);
+        if (isMounted && src && mime) return <img src={src} />;
+        return null;
+      }`,
+    ],
+  ])("reports %s", (_name, code) => {
+    const result = runRule(noInitializeState, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a mount effect seeds a non-deterministic id", () => {
     const result = runRule(
       noInitializeState,
@@ -37,6 +81,19 @@ describe("no-initialize-state — regressions", () => {
         const [now, setNow] = useState(null);
         useEffect(() => { setNow(new Date().toLocaleTimeString()); }, []);
         return <time>{now}</time>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a mount effect replaces one string literal with another", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Greeting() {
+        const [text, setText] = useState("");
+        useEffect(() => setText("Hello"), []);
+        return <span>{text}</span>;
       }`,
     );
     expect(result.parseErrors).toEqual([]);

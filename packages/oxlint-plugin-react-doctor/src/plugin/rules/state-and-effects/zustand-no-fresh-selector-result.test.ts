@@ -473,4 +473,74 @@ describe("zustand-no-fresh-selector-result", () => {
       2,
     );
   });
+
+  it("does not flag setState updater callbacks from destructuring", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useGuidedTourStore = create((set) => ({ guidedTours: {}, setState: set }));
+        const { setState } = useGuidedTourStore;
+        setState((state) => ({
+          guidedTours: { ...state.guidedTours, foo: "bar" },
+        }));
+      `,
+      0,
+    );
+  });
+
+  it("does not flag setState updater callbacks from property access", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useGuidedTourStore = create((set) => ({ guidedTours: {}, setState: set }));
+        const setMenuState = useGuidedTourStore.setState;
+        setMenuState((state) => ({ guidedTours: state.guidedTours }));
+      `,
+      0,
+    );
+  });
+
+  it("does not flag getState, subscribe, or getInitialState calls", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create(() => ({ count: 0, items: [] }));
+        const { getState, subscribe, getInitialState } = useStore;
+        const currentState = getState();
+        const unsub = subscribe((state) => ({ derived: state.items.map(x => x.id) }));
+        const initial = getInitialState();
+      `,
+      0,
+    );
+  });
+
+  it("still flags legitimate selectors that return fresh objects", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create(() => ({ count: 0, items: [] }));
+        const summary = useStore((state) => ({ count: state.count, items: state.items }));
+      `,
+      1,
+    );
+  });
+
+  it("does not flag setState with devtools arguments", () => {
+    expectDiagnosticCount(
+      `
+        import { create } from "zustand";
+        const useStore = create(() => ({ filters: [] }));
+        const { setState } = useStore;
+        setState(
+          (state) =>
+            state.filters.includes(value)
+              ? {}
+              : { filters: [...state.filters, value] },
+          false,
+          "addFilter",
+        );
+      `,
+      0,
+    );
+  });
 });

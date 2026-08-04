@@ -145,6 +145,8 @@ const resolveZustandBoundStore = (
   );
 };
 
+const ZUSTAND_STORE_API_METHODS = new Set(["setState", "getState", "subscribe", "getInitialState"]);
+
 const getZustandSelectorCall = (
   callExpression: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
@@ -160,6 +162,11 @@ const getZustandSelectorCall = (
       return null;
     }
     return { selector, storeCreatorFunction: null };
+  }
+
+  const callee = stripParenExpression(callExpression.callee);
+  if (isNodeOfType(callee, "Identifier") && ZUSTAND_STORE_API_METHODS.has(callee.name)) {
+    return null;
   }
 
   const boundStore = resolveZustandBoundStore(callExpression.callee, scopes);

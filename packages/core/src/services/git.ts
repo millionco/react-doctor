@@ -903,7 +903,16 @@ export class Git extends Context.Service<
               changedFiles,
               isCurrentChanges: false,
             } satisfies GitDiffSelection;
-          }).pipe(Effect.withSpan("Git.diffSelection")),
+          }).pipe(
+            Effect.catchReasons(
+              "ReactDoctorError",
+              {
+                GitInvocationFailed: () => Effect.succeed(null),
+              },
+              (_reason, error) => Effect.fail(error),
+            ),
+            Effect.withSpan("Git.diffSelection"),
+          ),
         stagedFilePaths: (directory) =>
           runGit(directory, [
             "diff",

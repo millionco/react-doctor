@@ -1,5 +1,4 @@
 import { Box, Text, useInput } from "ink";
-import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   METRIC,
@@ -15,6 +14,7 @@ import { buildIssuePrompt } from "../lib/build-issue-prompt.js";
 import type { DiagnosticListEntry } from "../lib/diagnostic-list-entries.js";
 import type { DiagnosticRow } from "../lib/diagnostic-rows.js";
 import type { DiagnosticListLayout } from "../lib/resolve-report-layout.js";
+import { useEffect, useMemo, useRef, useState } from "../react-runtime.js";
 import { DiagnosticDetail } from "./diagnostic-detail.js";
 import { DiagnosticItem } from "./diagnostic-item.js";
 import { StatusBar } from "./status-bar.js";

@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { GITHUB_ACTIONS_SETUP_URL } from "@react-doctor/core";
 import type { ScoreResult } from "@react-doctor/core";
@@ -15,6 +14,7 @@ import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { buildDiagnosticListEntries } from "../lib/diagnostic-list-entries.js";
 import { buildDiagnosticRows } from "../lib/diagnostic-rows.js";
 import { resolveReportLayout } from "../lib/resolve-report-layout.js";
+import { useEffect, useMemo, useRef, useState } from "../react-runtime.js";
 import type { ScanReport, TuiHandoffRequest } from "../scan-store.js";
 import type { ActionMenuAction } from "./action-menu.js";
 import { AgentHandoff } from "./agent-handoff.js";

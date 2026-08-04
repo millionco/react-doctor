@@ -152,6 +152,17 @@ export const App = () => <Framer.motion.div>moving</Framer.motion.div>;
     expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
   });
 
+  it("ignores JSX namespaced tags", () => {
+    writePackageJson();
+    writeNestedFile(
+      "src/app.tsx",
+      `export const App = () => <svg:path>still</svg:path>;
+`,
+    );
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
+  });
+
   it("reports a Reorder item", () => {
     writePackageJson();
     writeNestedFile(

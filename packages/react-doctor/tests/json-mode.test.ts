@@ -197,4 +197,18 @@ describe("json-mode lifecycle", () => {
     expect(() => JSON.parse(fileContent)).not.toThrow();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
+
+  it("rejects a directory passed as the output file", () => {
+    const outputDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "json-mode-output-directory-"));
+
+    expect(() =>
+      enableJsonMode({
+        compact: false,
+        directory: "/tmp/foo",
+        outputFile: outputDirectory,
+      }),
+    ).toThrow("--json-out must point to a file");
+
+    fs.rmSync(outputDirectory, { recursive: true, force: true });
+  });
 });

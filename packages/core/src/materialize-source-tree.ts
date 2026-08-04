@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "./constants.js";
 import type { ReactDoctorError } from "./errors.js";
+import { isFile } from "./project-info/fs-utils.js";
 import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 
 export interface MaterializedTree {
@@ -61,7 +62,7 @@ export const materializeSourceTree = (input: {
           const sourcePath = path.join(input.directory, subdirectory, configFilename);
           const targetPath = path.resolve(resolvedTempDirectory, subdirectory, configFilename);
           if (!isPathInsideDirectory(targetPath, resolvedTempDirectory)) continue;
-          if (fs.existsSync(sourcePath) && !fs.existsSync(targetPath)) {
+          if (isFile(sourcePath) && !fs.existsSync(targetPath)) {
             fs.mkdirSync(path.dirname(targetPath), { recursive: true });
             fs.cpSync(sourcePath, targetPath);
           }

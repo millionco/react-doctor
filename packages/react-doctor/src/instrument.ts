@@ -7,6 +7,7 @@ import {
 } from "./cli/utils/constants.js";
 import { isDebugFlagEnabled } from "./cli/utils/is-debug-flag.js";
 import { isEnvFlagEnabled } from "./cli/utils/is-env-flag-enabled.js";
+import { isExpectedUserError } from "./cli/utils/is-expected-user-error.js";
 import { scrubSentryEvent } from "./cli/utils/scrub-sentry-event.js";
 import { scrubSentryMetric } from "./cli/utils/scrub-sentry-metric.js";
 import {
@@ -85,32 +86,37 @@ export const initializeSentry = (): void => {
     ? FULL_TRACES_SAMPLE_RATE
     : resolveTracesSampleRate();
   const { tags, contexts } = buildSentryScope();
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN || SENTRY_DSN,
-    release: resolveSentryRelease(),
-    environment: resolveSentryEnvironment(),
-    // Anonymized telemetry: never attach the user's IP address.
-    sendDefaultPii: false,
-    tracesSampleRate: resolvedTracesSampleRate,
-    debug: isEnvFlagEnabled(process.env.SENTRY_DEBUG),
-    // Seed the scope so the run snapshot rides along with *every* event,
-    // including performance transactions — not just captured exceptions.
-    // (Only `run` exists at init; the scanned `project` context is added later
-    // once a scan discovers it.)
-    initialScope: { tags, contexts },
-    // Anonymize every outgoing event/transaction: strip hostname/IP/device
-    // identity, drop captured local variables, and scrub home-directory paths
-    // and known secrets from all remaining strings. Returns `null` to drop the
-    // event if scrubbing fails, so un-anonymized data is never sent.
-    beforeSend: (event) => scrubSentryEvent(event),
-    beforeSendTransaction: (event) => scrubSentryEvent(event),
-    // Same anonymization contract for Application Metrics (counters/distributions):
-    // drop the `server.address` hostname attribute and scrub paths/secrets from
-    // attribute values, dropping the metric on failure. Metrics are enabled by
-    // default and flow independently of `tracesSampleRate`. The run + project
-    // snapshot is merged onto each metric at emit time (see `record-metric.ts`),
-    // mirroring how `buildSentryScope` rebuilds event tags, so metrics track
-    // runtime state instead of a stale init-time snapshot.
-    beforeSendMetric: (metric) => scrubSentryMetric(metric),
-  });
+  try {
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN || SENTRY_DSN,
+      release: resolveSentryRelease(),
+      environment: resolveSentryEnvironment(),
+      // Anonymized telemetry: never attach the user's IP address.
+      sendDefaultPii: false,
+      tracesSampleRate: resolvedTracesSampleRate,
+      debug: isEnvFlagEnabled(process.env.SENTRY_DEBUG),
+      // Seed the scope so the run snapshot rides along with *every* event,
+      // including performance transactions — not just captured exceptions.
+      // (Only `run` exists at init; the scanned `project` context is added later
+      // once a scan discovers it.)
+      initialScope: { tags, contexts },
+      // Anonymize every outgoing event/transaction: strip hostname/IP/device
+      // identity, drop captured local variables, and scrub home-directory paths
+      // and known secrets from all remaining strings. Returns `null` to drop the
+      // event if scrubbing fails, so un-anonymized data is never sent.
+      beforeSend: (event, hint) =>
+        isExpectedUserError(hint.originalException) ? null : scrubSentryEvent(event),
+      beforeSendTransaction: (event) => scrubSentryEvent(event),
+      // Same anonymization contract for Application Metrics (counters/distributions):
+      // drop the `server.address` hostname attribute and scrub paths/secrets from
+      // attribute values, dropping the metric on failure. Metrics are enabled by
+      // default and flow independently of `tracesSampleRate`. The run + project
+      // snapshot is merged onto each metric at emit time (see `record-metric.ts`),
+      // mirroring how `buildSentryScope` rebuilds event tags, so metrics track
+      // runtime state instead of a stale init-time snapshot.
+      beforeSendMetric: (metric) => scrubSentryMetric(metric),
+    });
+  } catch {
+    resolvedTracesSampleRate = 0;
+  }
 };

@@ -1,7 +1,7 @@
-import * as fs from "node:fs";
+import fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { readDirectoryEntries } from "@react-doctor/core";
 
 let temporaryRoot: string;
@@ -11,6 +11,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
 });
 
@@ -38,6 +39,20 @@ describe("readDirectoryEntries", () => {
 
     expect(readDirectoryEntries(path.join(filePath, "child"))).toEqual([]);
   });
+
+  it.each(["EBUSY", "ETIMEDOUT", "UNKNOWN"])(
+    "returns no entries when directory access fails with %s",
+    (code) => {
+      vi.spyOn(fs, "readdirSync").mockImplementationOnce(() => {
+        throw Object.assign(new Error(`${code}: simulated scandir failure`), {
+          code,
+          syscall: "scandir",
+        });
+      });
+
+      expect(readDirectoryEntries(temporaryRoot)).toEqual([]);
+    },
+  );
 });
 
 // POSIX-only: Windows runners can't create symlinks without elevation and map

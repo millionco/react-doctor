@@ -1,7 +1,6 @@
 import path from "node:path";
 import figures from "figures";
 import { Box, Text, useInput } from "ink";
-import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { WorkspacePackage } from "@react-doctor/core";
 import {
@@ -19,6 +18,7 @@ import { resolveVisibleStart } from "../../utils/resolve-visible-start.js";
 import { useExitOnCtrlC } from "../hooks/use-exit-on-ctrl-c.js";
 import { useStdoutDimensions } from "../hooks/use-stdout-dimensions.js";
 import { fuzzyMatch } from "../lib/fuzzy-match.js";
+import { useEffect, useMemo, useRef, useState } from "../react-runtime.js";
 
 export interface ProjectSelectProps {
   readonly packages: ReadonlyArray<WorkspacePackage>;

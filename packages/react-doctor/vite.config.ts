@@ -63,17 +63,26 @@ export default defineConfig({
     {
       entry: { cli: "./src/cli/index.ts" },
       deps: {
-        // Inline pure-JS CLI deps so `npm i react-doctor` skips
-        // ~15 transitive installs (commander, ora, and ora's spinner
-        // / cursor / log-symbols / string-width chain). Native
-        // (oxlint), the lint plugin, prompts (we monkey-patch it via
-        // require so the runtime copy must be on disk), agent-install
-        // (its jsonc-parser/yaml/toml transitives ship as UMD that
-        // doesn't bundle cleanly), and the typescript compiler all
-        // stay external.
+        // Inline pure-JS CLI deps and the Ink/React renderer so the inspected
+        // project cannot supply a missing or incompatible React peer. Native
+        // dependencies, Yoga's WASM module, prompts (we monkey-patch it via
+        // require), agent-install (its config parsers ship as UMD), and the
+        // TypeScript compiler stay external.
         // `yaml` (pure JS, no native deps) backs the `ci config` in-place
         // workflow editor; inline it so end users get no extra install.
-        alwaysBundle: ["commander", "ora", "yaml"],
+        alwaysBundle: [
+          "commander",
+          "ink",
+          "ink-spinner",
+          "ora",
+          "react",
+          "react-devtools-core",
+          "react/jsx-runtime",
+          "react/jsx-dev-runtime",
+          "react-reconciler",
+          "scheduler",
+          "yaml",
+        ],
         neverBundle: [
           "@astrojs/compiler",
           // Sentry bundles its own OpenTelemetry instrumentation chain
@@ -117,16 +126,7 @@ export default defineConfig({
           "oxlint-plugin-react-doctor",
           "prompts",
           "typescript",
-          // The interactive Ink report (lazy-loaded for `experimental-tui`).
-          // Ink pulls `yoga-layout` (a wasm module) and React resolves
-          // `react/jsx-runtime` via the automatic JSX transform — both break
-          // when inlined, so keep them external and let Node resolve them from
-          // node_modules on install.
-          "ink",
-          "ink-spinner",
-          "react",
-          "react/jsx-runtime",
-          "react/jsx-dev-runtime",
+          "yoga-layout",
         ],
       },
       dts: true,

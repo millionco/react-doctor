@@ -285,12 +285,6 @@ importers:
       figures:
         specifier: ^6.1.0
         version: 6.1.0
-      ink:
-        specifier: ^7.1.0
-        version: 7.1.0(@types/react@19.2.14)(react@19.2.5)
-      ink-spinner:
-        specifier: ^5.0.0
-        version: 5.0.0(ink@7.1.0(@types/react@19.2.14)(react@19.2.5))(react@19.2.5)
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
@@ -309,12 +303,6 @@ importers:
       prompts:
         specifier: ^2.4.2
         version: 2.4.2
-      react:
-        specifier: 19.2.5
-        version: 19.2.5
-      terminal-link:
-        specifier: ^5.0.0
-        version: 5.0.0
       typescript:
         specifier: '>=5.0.4 <6'
         version: 5.9.3
@@ -330,6 +318,9 @@ importers:
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
+      yoga-layout:
+        specifier: ~3.2.1
+        version: 3.2.1
     devDependencies:
       '@react-doctor/api':
         specifier: workspace:*
@@ -355,12 +346,24 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      ink:
+        specifier: ^7.1.0
+        version: 7.1.0(@types/react@19.2.14)(react-devtools-core@7.0.1)(react@19.2.5)
+      ink-spinner:
+        specifier: ^5.0.0
+        version: 5.0.0(ink@7.1.0(@types/react@19.2.14)(react-devtools-core@7.0.1)(react@19.2.5))(react@19.2.5)
       ink-testing-library:
         specifier: ^4.0.0
         version: 4.0.0(@types/react@19.2.14)
       ora:
         specifier: ^9.4.0
         version: 9.4.0
+      react:
+        specifier: 19.2.5
+        version: 19.2.5
+      react-devtools-core:
+        specifier: ^7.0.1
+        version: 7.0.1
 
   packages/vscode-react-doctor:
     dependencies:
@@ -3319,10 +3322,6 @@ packages:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
 
-  has-flag@5.0.1:
-    resolution: {integrity: sha512-CsNUt5x9LUdx6hnk/E2SZLsDyvfqANZSUq4+D3D8RzDJ2M+HDTIkF60ibS1vHaK55vzgiZw1bEPFG9yH7l33wA==}
-    engines: {node: '>=12'}
-
   has-symbols@1.1.0:
     resolution: {integrity: sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==}
     engines: {node: '>= 0.4'}
@@ -3982,6 +3981,9 @@ packages:
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
 
+  react-devtools-core@7.0.1:
+    resolution: {integrity: sha512-C3yNvRHaizlpiASzy7b9vbnBGLrhvdhl1CbdU6EnZgxPNbai60szdLtl+VL76UNOt5bOoVTOz5rNWZxgGt+Gsw==}
+
   react-reconciler@0.33.0:
     resolution: {integrity: sha512-KetWRytFv1epdpJc3J4G75I4WrplZE5jOL7Yq0p34+OVOKF4Se7WrdIdVC45XsSSmUTlht2FM/fM1FZb1mfQeA==}
     engines: {node: '>=0.10.0'}
@@ -4177,17 +4179,9 @@ packages:
   stubborn-utils@1.0.2:
     resolution: {integrity: sha512-zOh9jPYI+xrNOyisSelgym4tolKTJCQd5GBhK0+0xJvcYDcwlOoxF/rnFKQ2KRZknXSG9jWAp66fwP6AxN9STg==}
 
-  supports-color@10.2.2:
-    resolution: {integrity: sha512-SS+jx45GF1QjgEXQx4NJZV9ImqmO2NPz5FNsIHrsDjh2YsHnawpan7SNQ1o8NuhrbHZy9AZhIoCUiCeaW/C80g==}
-    engines: {node: '>=18'}
-
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
-
-  supports-hyperlinks@4.5.0:
-    resolution: {integrity: sha512-ZW2OvfeCXrNTbLakPUzjQG922EeGCOteFSVoek5DKStTh898wf7zgtuFlzQN8HfZCxC3Eh02yJVrRW51hADf+w==}
-    engines: {node: '>=20'}
 
   tagged-tag@1.0.0:
     resolution: {integrity: sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng==}
@@ -4200,10 +4194,6 @@ packages:
   term-size@2.2.1:
     resolution: {integrity: sha512-wK0Ri4fOGjv/XPy8SBHZChl8CM7uMc5VML7SqiQ0zG7+J5Vr+RMQDoHa2CNT6KHUnTGIXH34UDMkPzAUyapBZg==}
     engines: {node: '>=8'}
-
-  terminal-link@5.0.0:
-    resolution: {integrity: sha512-qFAy10MTMwjzjU8U16YS4YoZD+NQLHzLssFMNqgravjbvIPNiqkGFR4yjhJfmY9R5OFU7+yHxc6y+uGHkKwLRA==}
-    engines: {node: '>=20'}
 
   terminal-size@4.0.1:
     resolution: {integrity: sha512-avMLDQpUI9I5XFrklECw1ZEUPJhqzcwSWsyyI8blhRLT+8N1jLJWLWWYQpB2q2xthq8xDvjZPISVh53T/+CLYQ==}
@@ -4457,6 +4447,18 @@ packages:
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
     engines: {node: '>=10'}
+
+  ws@7.5.13:
+    resolution: {integrity: sha512-rsKI6xDBFVf4r/x8XyChGK04QR/XHroxs/jUcoWvtEZM8TPU/X/uIY9B1CsSzYws9ZJb/6bbBu7dPhFW00CAoA==}
+    engines: {node: '>=8.3.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: ^5.0.2
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
 
   ws@8.20.0:
     resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
@@ -7244,8 +7246,6 @@ snapshots:
 
   has-flag@4.0.0: {}
 
-  has-flag@5.0.1: {}
-
   has-symbols@1.1.0: {}
 
   has-tostringtag@1.0.2:
@@ -7303,17 +7303,17 @@ snapshots:
 
   ini@7.0.0: {}
 
-  ink-spinner@5.0.0(ink@7.1.0(@types/react@19.2.14)(react@19.2.5))(react@19.2.5):
+  ink-spinner@5.0.0(ink@7.1.0(@types/react@19.2.14)(react-devtools-core@7.0.1)(react@19.2.5))(react@19.2.5):
     dependencies:
       cli-spinners: 2.9.2
-      ink: 7.1.0(@types/react@19.2.14)(react@19.2.5)
+      ink: 7.1.0(@types/react@19.2.14)(react-devtools-core@7.0.1)(react@19.2.5)
       react: 19.2.5
 
   ink-testing-library@4.0.0(@types/react@19.2.14):
     optionalDependencies:
       '@types/react': 19.2.14
 
-  ink@7.1.0(@types/react@19.2.14)(react@19.2.5):
+  ink@7.1.0(@types/react@19.2.14)(react-devtools-core@7.0.1)(react@19.2.5):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0
@@ -7343,6 +7343,7 @@ snapshots:
       yoga-layout: 3.2.1
     optionalDependencies:
       '@types/react': 19.2.14
+      react-devtools-core: 7.0.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -7922,6 +7923,14 @@ snapshots:
 
   queue-microtask@1.2.3: {}
 
+  react-devtools-core@7.0.1:
+    dependencies:
+      shell-quote: 1.10.0
+      ws: 7.5.13
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   react-reconciler@0.33.0(react@19.2.5):
     dependencies:
       react: 19.2.5
@@ -8122,16 +8131,9 @@ snapshots:
 
   stubborn-utils@1.0.2: {}
 
-  supports-color@10.2.2: {}
-
   supports-color@7.2.0:
     dependencies:
       has-flag: 4.0.0
-
-  supports-hyperlinks@4.5.0:
-    dependencies:
-      has-flag: 5.0.1
-      supports-color: 10.2.2
 
   tagged-tag@1.0.0: {}
 
@@ -8144,11 +8146,6 @@ snapshots:
       yallist: 5.0.0
 
   term-size@2.2.1: {}
-
-  terminal-link@5.0.0:
-    dependencies:
-      ansi-escapes: 7.3.0
-      supports-hyperlinks: 4.5.0
 
   terminal-size@4.0.1: {}
 
@@ -8437,6 +8434,8 @@ snapshots:
       ansi-styles: 4.3.0
       string-width: 4.2.3
       strip-ansi: 6.0.1
+
+  ws@7.5.13: {}
 
   ws@8.20.0: {}
 

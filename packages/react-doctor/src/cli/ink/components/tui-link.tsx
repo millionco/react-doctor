@@ -1,14 +1,18 @@
 import { Text, Transform } from "ink";
 import type { ReactNode } from "react";
-import terminalLink from "terminal-link";
+import { formatHyperlink } from "../../utils/format-hyperlink.js";
+import { supportsHyperlinks } from "../../utils/supports-hyperlinks.js";
 
 export interface TuiLinkProps {
   readonly children: ReactNode;
   readonly url: string;
 }
 
-export const TuiLink = ({ children, url }: TuiLinkProps) => (
-  <Transform transform={(text) => terminalLink(text, url, { fallback: false })}>
-    <Text>{children}</Text>
-  </Transform>
-);
+export const TuiLink = ({ children, url }: TuiLinkProps) => {
+  const shouldFormatHyperlink = supportsHyperlinks();
+  return (
+    <Transform transform={(text) => (shouldFormatHyperlink ? formatHyperlink(text, url) : text)}>
+      <Text>{children}</Text>
+    </Transform>
+  );
+};

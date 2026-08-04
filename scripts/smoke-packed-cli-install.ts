@@ -25,6 +25,11 @@ const FORBIDDEN_INSTALLED_PACKAGES: readonly string[] = [
   "ini",
   "effect",
   "@effect/platform-node-shared",
+  "ink",
+  "ink-link",
+  "ink-spinner",
+  "react-devtools-core",
+  "react-reconciler",
 ];
 const COMMAND_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -109,7 +114,15 @@ const main = (): void => {
     fs.mkdirSync(installDirectory);
     fs.writeFileSync(
       path.join(installDirectory, "package.json"),
-      `${JSON.stringify({ name: "react-doctor-packed-cli-smoke", private: true }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          name: "react-doctor-packed-cli-smoke",
+          private: true,
+          dependencies: { react: "18.3.1" },
+        },
+        null,
+        2,
+      )}\n`,
     );
 
     // Pack the CLI together with its unbundled workspace dependencies:
@@ -206,6 +219,17 @@ const main = (): void => {
       console.error("Installed CLI did not produce a schema-valid JsonReport.");
       console.error("stdout:", scanResult.stdout.slice(0, 2_000));
       console.error("cause:", cause);
+      process.exit(1);
+    }
+
+    const defaultScanResult = runCommand({
+      command: process.execPath,
+      args: [binaryPath, FIXTURE_DIRECTORY, "--no-score", "--no-dead-code", "--blocking", "none"],
+      cwd: installDirectory,
+    });
+    if (!defaultScanResult.stdout.includes("React Doctor")) {
+      console.error("Installed CLI did not render the default report.");
+      console.error("stdout:", defaultScanResult.stdout.slice(0, 2_000));
       process.exit(1);
     }
 

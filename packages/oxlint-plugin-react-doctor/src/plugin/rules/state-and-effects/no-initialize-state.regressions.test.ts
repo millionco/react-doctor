@@ -120,6 +120,27 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when the mount effect starts a repeating state transition", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Status() {
+        const [animate, setAnimate] = useState(false);
+        useEffect(() => {
+          const interval = setInterval(() => {
+            setAnimate(true);
+            setTimeout(() => setAnimate(false), 1000);
+          }, 1000);
+          setAnimate(true);
+          setTimeout(() => setAnimate(false), 1000);
+          return () => clearInterval(interval);
+        }, []);
+        return <output className={animate ? "pulse" : undefined} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when a mount effect stores a socket its cleanup closes", () => {
     const result = runRule(
       noInitializeState,

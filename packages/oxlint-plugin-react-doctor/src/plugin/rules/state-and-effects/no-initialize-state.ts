@@ -3,7 +3,6 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { readStaticBoolean } from "../../utils/read-static-boolean.js";
@@ -64,28 +63,20 @@ const isRenderControllingMountSentinel = (
     ? context.scopes.symbolFor(setterCallee)
     : null;
   if (!setterSymbol) return false;
-  let cleanupWritesState = false;
+  let hasAdditionalStateWrite = false;
   walkAst(effectCallback, (child) => {
-    if (cleanupWritesState) return false;
+    if (hasAdditionalStateWrite) return false;
     if (
-      !isNodeOfType(child, "ReturnStatement") ||
-      !child.argument ||
-      !isFunctionLike(child.argument)
+      child !== setterCall &&
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      context.scopes.symbolFor(child.callee)?.id === setterSymbol.id
     ) {
-      return;
+      hasAdditionalStateWrite = true;
+      return false;
     }
-    walkAst(child.argument, (cleanupChild) => {
-      if (
-        isNodeOfType(cleanupChild, "CallExpression") &&
-        isNodeOfType(cleanupChild.callee, "Identifier") &&
-        context.scopes.symbolFor(cleanupChild.callee)?.id === setterSymbol.id
-      ) {
-        cleanupWritesState = true;
-        return false;
-      }
-    });
   });
-  if (cleanupWritesState) return false;
+  if (hasAdditionalStateWrite) return false;
   const stateSymbol = context.scopes.symbolFor(stateIdentifier);
   const renderFunction = findEnclosingFunction(fact.stateDeclarator);
   return Boolean(

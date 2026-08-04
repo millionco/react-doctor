@@ -1,17 +1,23 @@
+// rule: zustand-no-fresh-selector-result
+// verdict: pass
+// weakness: alias-guard
+// source: millionco/react-doctor#1575
+
 import { create } from "zustand";
 
 interface GuidedTourStore {
-  guidedTours: Record<string, any>;
+  guidedTours: Record<string, boolean>;
 }
 
-const useGuidedTourStore = create<GuidedTourStore>((set) => ({
+const useGuidedTourStore = create<GuidedTourStore>(() => ({
   guidedTours: {},
 }));
 
-const { setState } = useGuidedTourStore;
+const { setState: updateGuidedTourStore } = useGuidedTourStore;
+const updateGuidedTourStoreAlias = updateGuidedTourStore;
 
-setState((state) => ({
-  guidedTours: { ...state.guidedTours, foo: "bar" },
+updateGuidedTourStoreAlias((state) => ({
+  guidedTours: { ...state.guidedTours, foo: true },
 }));
 
 const setMenuState = useGuidedTourStore.setState;
@@ -19,11 +25,9 @@ setMenuState((state) => ({
   guidedTours: state.guidedTours,
 }));
 
-setState(
+updateGuidedTourStore(
   (state) =>
-    state.guidedTours["test"]
-      ? {}
-      : { guidedTours: { ...state.guidedTours, test: true } },
+    state.guidedTours["test"] ? {} : { guidedTours: { ...state.guidedTours, test: true } },
   false,
   "addGuidedTour",
 );

@@ -474,15 +474,17 @@ describe("zustand-no-fresh-selector-result", () => {
     );
   });
 
-  it("does not flag setState updater callbacks from destructuring", () => {
+  it("does not flag imperative API callbacks from destructuring or alias chains", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
-        const useGuidedTourStore = create((set) => ({ guidedTours: {}, setState: set }));
-        const { setState } = useGuidedTourStore;
-        setState((state) => ({
+        const useGuidedTourStore = create(() => ({ guidedTours: {} }));
+        const { setState: updateStore, subscribe: listenToStore } = useGuidedTourStore;
+        const updateStoreAlias = updateStore;
+        updateStoreAlias((state) => ({
           guidedTours: { ...state.guidedTours, foo: "bar" },
         }));
+        listenToStore((state) => ({ guidedTours: state.guidedTours }));
       `,
       0,
     );
@@ -492,7 +494,7 @@ describe("zustand-no-fresh-selector-result", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
-        const useGuidedTourStore = create((set) => ({ guidedTours: {}, setState: set }));
+        const useGuidedTourStore = create(() => ({ guidedTours: {} }));
         const setMenuState = useGuidedTourStore.setState;
         setMenuState((state) => ({ guidedTours: state.guidedTours }));
       `,
@@ -500,28 +502,16 @@ describe("zustand-no-fresh-selector-result", () => {
     );
   });
 
-  it("does not flag getState, subscribe, or getInitialState calls", () => {
+  it("still flags bound stores named like imperative API methods", () => {
     expectDiagnosticCount(
       `
         import { create } from "zustand";
-        const useStore = create(() => ({ count: 0, items: [] }));
-        const { getState, subscribe, getInitialState } = useStore;
-        const currentState = getState();
-        const unsub = subscribe((state) => ({ derived: state.items.map(x => x.id) }));
-        const initial = getInitialState();
+        const setState = create(() => ({ count: 0 }));
+        const subscribe = create(() => ({ items: [] }));
+        const summary = setState((state) => ({ count: state.count }));
+        const items = subscribe((state) => [...state.items]);
       `,
-      0,
-    );
-  });
-
-  it("still flags legitimate selectors that return fresh objects", () => {
-    expectDiagnosticCount(
-      `
-        import { create } from "zustand";
-        const useStore = create(() => ({ count: 0, items: [] }));
-        const summary = useStore((state) => ({ count: state.count, items: state.items }));
-      `,
-      1,
+      2,
     );
   });
 

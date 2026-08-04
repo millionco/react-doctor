@@ -1,0 +1,1348 @@
+import type ts from "typescript";
+
+export enum ReactAppProofStatus {
+  Proved = "proved",
+  Refuted = "refuted",
+  Incomplete = "incomplete",
+}
+
+export enum ReactObligationStatus {
+  Proved = "proved",
+  Violated = "violated",
+  Unknown = "unknown",
+}
+
+export enum ReactProofClaim {
+  ActionState = "action-state",
+  BoundaryCoverage = "boundary-coverage",
+  CallableRefFreshness = "callable-ref-freshness",
+  ClassConstruction = "class-construction",
+  ClassStateTransitions = "class-state-transitions",
+  ComponentIdentity = "component-identity",
+  ComponentInvocation = "component-invocation",
+  ContextTopology = "context-topology",
+  ErrorBoundary = "error-boundary",
+  AsyncEffectOwnership = "async-effect-ownership",
+  EffectCleanup = "effect-cleanup",
+  EffectDependencies = "effect-dependencies",
+  EffectEventUsage = "effect-event-usage",
+  EffectStateUpdates = "effect-state-updates",
+  ExternalStoreConsistency = "external-store-consistency",
+  FormActions = "form-actions",
+  FormStatus = "form-status",
+  HostControl = "host-control",
+  HookOrder = "hook-order",
+  HookOwnership = "hook-ownership",
+  HookStateTransitions = "hook-state-transitions",
+  HydrationEquivalence = "hydration-equivalence",
+  ImperativeHandle = "imperative-handle",
+  LazySuspense = "lazy-suspense",
+  MemoDependencies = "memo-dependencies",
+  MemoEquivalence = "memo-equivalence",
+  OptimisticState = "optimistic-state",
+  ReactNodeFlow = "react-node-flow",
+  ReconciliationIdentity = "reconciliation-identity",
+  ReducerPurity = "reducer-purity",
+  ReducerTransitions = "reducer-transitions",
+  RefAccess = "ref-access",
+  RenderPurity = "render-purity",
+  ScheduledCallbackLifetime = "scheduled-callback-lifetime",
+  TransitionActions = "transition-actions",
+  UseResource = "use-resource",
+}
+
+export enum ReactUnitKind {
+  ClassComponent = "class-component",
+  Component = "component",
+  Hook = "hook",
+  InvalidHookOwner = "invalid-hook-owner",
+}
+
+export enum ReactClassComponentBase {
+  Component = "Component",
+  PureComponent = "PureComponent",
+}
+
+export enum ReactSemanticEdgeKind {
+  CallsHook = "calls-hook",
+  RendersComponent = "renders-component",
+}
+
+export enum ReactEffectDependencyMode {
+  Inline = "inline",
+  Missing = "missing",
+  Opaque = "opaque",
+}
+
+export enum ReactCompilerFactStatus {
+  Complete = "complete",
+  Incomplete = "incomplete",
+}
+
+export enum ReactExecutionPhase {
+  ActionStateReducer = "action-state-reducer",
+  ClassConstruction = "class-construction",
+  ClassMount = "class-mount",
+  ClassUnmount = "class-unmount",
+  ClassUpdate = "class-update",
+  Deferred = "deferred",
+  EffectCleanup = "effect-cleanup",
+  EffectEvent = "effect-event",
+  EffectSetup = "effect-setup",
+  Event = "event",
+  ExternalStoreSubscription = "external-store-subscription",
+  FormAction = "form-action",
+  ImperativeHandle = "imperative-handle",
+  OptimisticReducer = "optimistic-reducer",
+  OptimisticUpdater = "optimistic-updater",
+  Render = "render",
+  ServerRender = "server-render",
+  StateTransition = "state-transition",
+  TransitionAction = "transition-action",
+}
+
+export enum ReactSemanticCallbackKind {
+  ActionStateReducer = "action-state-reducer",
+  ClassMount = "class-mount",
+  ClassStateUpdater = "class-state-updater",
+  ClassUnmount = "class-unmount",
+  ClassUpdate = "class-update",
+  ComponentRender = "component-render",
+  EffectCleanup = "effect-cleanup",
+  EffectEvent = "effect-event",
+  EffectSetup = "effect-setup",
+  EventHandler = "event-handler",
+  ExternalStoreSnapshot = "external-store-snapshot",
+  ExternalStoreSubscribe = "external-store-subscribe",
+  FormAction = "form-action",
+  HookStateUpdater = "hook-state-updater",
+  ImperativeHandleFactory = "imperative-handle-factory",
+  ImperativeHandleMethod = "imperative-handle-method",
+  MemoFactory = "memo-factory",
+  MemoizedCallback = "memoized-callback",
+  OptimisticReducer = "optimistic-reducer",
+  OptimisticUpdater = "optimistic-updater",
+  Reducer = "reducer",
+  ReducerInitializer = "reducer-initializer",
+  ResourceCallback = "resource-callback",
+  ScheduledCallback = "scheduled-callback",
+  ServerSnapshot = "server-snapshot",
+  TransitionAction = "transition-action",
+}
+
+export enum ReactSemanticFunctionCallKind {
+  Captured = "captured",
+  Direct = "direct",
+  Parameter = "parameter",
+  Property = "property",
+  SynchronousCallback = "synchronous-callback",
+}
+
+export interface ReactProofLocation {
+  filePath: string;
+  line: number;
+  column: number;
+}
+
+export interface ReactProofEvidence {
+  description: string;
+  location: ReactProofLocation;
+  trace: ReadonlyArray<string>;
+}
+
+export interface ReactProofObligation {
+  claim: ReactProofClaim;
+  status: ReactObligationStatus;
+  summary: string;
+  evidence: ReadonlyArray<ReactProofEvidence>;
+}
+
+export interface ReactUnitProof {
+  name: string;
+  kind: ReactUnitKind;
+  location: ReactProofLocation;
+  obligations: ReadonlyArray<ReactProofObligation>;
+}
+
+export interface ReactSemanticUnit {
+  id: string;
+  name: string;
+  kind: ReactUnitKind;
+  location: ReactProofLocation;
+  classComponentBase: ReactClassComponentBase | null;
+  canBeRenderRoot: boolean;
+  sourceComplete: boolean;
+}
+
+export interface ReactSemanticEdge {
+  kind: ReactSemanticEdgeKind;
+  sourceId: string;
+  targetId: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactSemanticHookCall {
+  id: string;
+  ownerId: string;
+  name: string;
+  targetId: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactSemanticEffect {
+  id: string;
+  ownerId: string;
+  hookName: string;
+  location: ReactProofLocation;
+  callbackResolved: boolean;
+  dependencyMode: ReactEffectDependencyMode;
+  dependencies: ReadonlyArray<string>;
+  captures: ReadonlyArray<string>;
+  hasCleanup: boolean;
+  setupCallbackId: string | null;
+  cleanupCallbackIds: ReadonlyArray<string>;
+}
+
+export enum ReactIdentityStability {
+  Stable = "stable",
+  Unstable = "unstable",
+  Unknown = "unknown",
+}
+
+export enum ReactCallableRefFreshness {
+  EventSynchronized = "event-synchronized",
+  PassiveLag = "passive-lag",
+  Unknown = "unknown",
+}
+
+export enum ReactSchedulerKind {
+  AnimationFrame = "animation-frame",
+  IdleCallback = "idle-callback",
+  Immediate = "immediate",
+  Interval = "interval",
+  Microtask = "microtask",
+  Timeout = "timeout",
+}
+
+export enum ReactSchedulerCancellationStatus {
+  Guaranteed = "guaranteed",
+  Missing = "missing",
+  Unknown = "unknown",
+}
+
+export enum ReactEffectResourceKind {
+  EventListener = "event-listener",
+  IntersectionObserver = "intersection-observer",
+  MutationObserver = "mutation-observer",
+  Observer = "observer",
+  ResizeObserver = "resize-observer",
+}
+
+export enum ReactEffectResourceDisposalStatus {
+  Guaranteed = "guaranteed",
+  Missing = "missing",
+  Unknown = "unknown",
+}
+
+export enum ReactAsyncOwnershipStatus {
+  Guarded = "guarded",
+  Unguarded = "unguarded",
+  Unknown = "unknown",
+}
+
+export enum ReactProofCertificateStatus {
+  Invalid = "invalid",
+  Valid = "valid",
+}
+
+export interface ReactProofCertificateFailure {
+  description: string;
+  subjectId: string;
+}
+
+export interface ReactProofCertificateCheck {
+  status: ReactProofCertificateStatus;
+  failures: ReadonlyArray<ReactProofCertificateFailure>;
+}
+
+export interface ReactAsyncEffectTaskDescriptor {
+  effectCall: ts.CallExpression;
+  evidenceDescription: string;
+  evidenceNode: ts.Node;
+  stateWriteNames: ReadonlyArray<string>;
+  status: ReactAsyncOwnershipStatus;
+  taskNode: ts.Node;
+}
+
+export interface ReactSemanticAsyncTask {
+  id: string;
+  ownerId: string;
+  effectId: string;
+  location: ReactProofLocation;
+  stateWrites: ReadonlyArray<string>;
+  ownershipStatus: ReactAsyncOwnershipStatus;
+}
+
+export interface ReactSemanticEffectEvent {
+  id: string;
+  ownerId: string;
+  name: string;
+  location: ReactProofLocation;
+  callbackId: string | null;
+  identityStability: ReactIdentityStability;
+}
+
+export interface ReactSemanticExternalStore {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  subscribeCallbackIds: ReadonlyArray<string>;
+  subscribeComplete: boolean;
+  snapshotCallbackIds: ReadonlyArray<string>;
+  snapshotComplete: boolean;
+  serverSnapshotCallbackIds: ReadonlyArray<string>;
+  serverSnapshotComplete: boolean;
+  serverSnapshotProvided: boolean;
+}
+
+export interface ReactSemanticContext {
+  id: string;
+  name: string;
+  location: ReactProofLocation;
+  defaultValueText: string;
+}
+
+export interface ReactSemanticContextProvider {
+  id: string;
+  ownerId: string;
+  contextId: string;
+  location: ReactProofLocation;
+  valueProvided: boolean;
+  valueText: string | null;
+}
+
+export interface ReactSemanticContextConsumer {
+  id: string;
+  ownerId: string;
+  contextId: string | null;
+  hookName: string;
+  location: ReactProofLocation;
+  sourceProviderIds: ReadonlyArray<string>;
+  usesDefaultValue: boolean;
+  topologyComplete: boolean;
+}
+
+export interface ReactSemanticRender {
+  id: string;
+  ownerId: string;
+  targetId: string;
+  location: ReactProofLocation;
+  kind: ReactSemanticRenderKind;
+  sourceRenderId: string | null;
+  containerRenderId: string | null;
+  slotPropName: string | null;
+  topologyOwnerIds: ReadonlyArray<string>;
+  activeContextProviderIds: ReadonlyArray<string>;
+  contextTopologyComplete: boolean;
+  activeFormIds: ReadonlyArray<string>;
+  formTopologyComplete: boolean;
+}
+
+export enum ReactSemanticRenderKind {
+  Direct = "direct",
+  Slot = "slot",
+  SlotInput = "slot-input",
+}
+
+export enum ReactLazyDeclarationStatus {
+  ModuleStable = "module-stable",
+  RenderUnstable = "render-unstable",
+}
+
+export enum ReactLazyLoaderStatus {
+  Invalid = "invalid",
+  Opaque = "opaque",
+  Valid = "valid",
+}
+
+export enum ReactSuspenseCoverageStatus {
+  Covered = "covered",
+  OutsideBoundary = "outside-boundary",
+  Unknown = "unknown",
+}
+
+export enum ReactErrorBoundaryProtocolStatus {
+  Invalid = "invalid",
+  Unknown = "unknown",
+  Valid = "valid",
+}
+
+export enum ReactErrorBoundaryCoverageStatus {
+  Covered = "covered",
+  OutsideBoundary = "outside-boundary",
+  Unknown = "unknown",
+}
+
+export enum ReactRenderFailureKind {
+  ExplicitThrow = "explicit-throw",
+}
+
+export enum ReactUseResourceKind {
+  Invalid = "invalid",
+  Thenable = "thenable",
+  Unknown = "unknown",
+}
+
+export enum ReactUseResourceIdentityStatus {
+  Stable = "stable",
+  Unstable = "unstable",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticSuspenseBoundary {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  renderIds: ReadonlyArray<string>;
+}
+
+export interface ReactSemanticLazyComponent {
+  id: string;
+  name: string;
+  location: ReactProofLocation;
+  declarationOwnerId: string | null;
+  canBeRenderRoot: boolean;
+  identityResolved: boolean;
+  declarationStatus: ReactLazyDeclarationStatus;
+  loaderStatus: ReactLazyLoaderStatus;
+  renderIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticLazyRender {
+  id: string;
+  ownerId: string;
+  lazyComponentId: string;
+  location: ReactProofLocation;
+  topologyBoundaryIds: ReadonlyArray<string>;
+  sourceBoundaryIds: ReadonlyArray<string>;
+  inheritsOwnerBoundary: boolean;
+  outsideBoundary: boolean;
+  topologyComplete: boolean;
+  sourceComplete: boolean;
+  coverageStatus: ReactSuspenseCoverageStatus;
+  complete: boolean;
+}
+
+export interface ReactSemanticErrorBoundaryDefinition {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  derivedStateLocation: ReactProofLocation | null;
+  componentDidCatchLocation: ReactProofLocation | null;
+  fallbackStateKey: string | null;
+  derivedStateStatus: ReactErrorBoundaryProtocolStatus;
+  fallbackRenderStatus: ReactErrorBoundaryProtocolStatus;
+  instanceIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticErrorBoundary {
+  id: string;
+  ownerId: string;
+  definitionId: string;
+  location: ReactProofLocation;
+  renderIds: ReadonlyArray<string>;
+}
+
+export interface ReactSemanticRenderFailure {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  kind: ReactRenderFailureKind;
+  sourceBoundaryIds: ReadonlyArray<string>;
+  outsideBoundary: boolean;
+  topologyComplete: boolean;
+  sourceComplete: boolean;
+  coverageStatus: ReactErrorBoundaryCoverageStatus;
+  complete: boolean;
+}
+
+export interface ReactSemanticUseResource {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  kind: ReactUseResourceKind;
+  identityStatus: ReactUseResourceIdentityStatus;
+  sourceSuspenseBoundaryIds: ReadonlyArray<string>;
+  outsideSuspenseBoundary: boolean;
+  suspenseTopologyComplete: boolean;
+  suspenseCoverageStatus: ReactSuspenseCoverageStatus;
+  sourceErrorBoundaryIds: ReadonlyArray<string>;
+  outsideErrorBoundary: boolean;
+  errorTopologyComplete: boolean;
+  errorCoverageStatus: ReactErrorBoundaryCoverageStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactHydrationRootKind {
+  Client = "client",
+  ServerInteractive = "server-interactive",
+  ServerStatic = "server-static",
+}
+
+export enum ReactHydrationPrefixStatus {
+  Known = "known",
+  Unknown = "unknown",
+}
+
+export enum ReactHydrationRootExecutionStatus {
+  Module = "module",
+  Unknown = "unknown",
+}
+
+export enum ReactHydrationHazardKind {
+  BrowserGlobal = "browser-global",
+  EnvironmentBranch = "environment-branch",
+  LocaleFormatting = "locale-formatting",
+}
+
+export enum ReactHydrationStatus {
+  Equivalent = "equivalent",
+  Mismatched = "mismatched",
+  NotHydrated = "not-hydrated",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticHydrationRoot {
+  id: string;
+  apiName: string;
+  kind: ReactHydrationRootKind;
+  targetId: string | null;
+  identifierPrefix: string | null;
+  prefixStatus: ReactHydrationPrefixStatus;
+  executionStatus: ReactHydrationRootExecutionStatus;
+  location: ReactProofLocation;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticHydrationHazard {
+  id: string;
+  ownerId: string;
+  kind: ReactHydrationHazardKind;
+  description: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactSemanticHydration {
+  id: string;
+  ownerId: string;
+  clientRootIds: ReadonlyArray<string>;
+  interactiveServerRootIds: ReadonlyArray<string>;
+  staticServerRootIds: ReadonlyArray<string>;
+  hazardIds: ReadonlyArray<string>;
+  status: ReactHydrationStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactHostControlKind {
+  CheckableInput = "checkable-input",
+  FileInput = "file-input",
+  Select = "select",
+  SelectMultiple = "select-multiple",
+  TextInput = "text-input",
+  Textarea = "textarea",
+  Unknown = "unknown",
+}
+
+export enum ReactHostControlValueStatus {
+  Absent = "absent",
+  Defined = "defined",
+  MaySwitch = "may-switch",
+  Nullish = "nullish",
+  Unknown = "unknown",
+}
+
+export enum ReactHostControlMutabilityStatus {
+  Editable = "editable",
+  Immutable = "immutable",
+  Unknown = "unknown",
+}
+
+export enum ReactHostControlUpdateStatus {
+  Conditional = "conditional",
+  Deferred = "deferred",
+  Exact = "exact",
+  Missing = "missing",
+  NotRequired = "not-required",
+  Opaque = "opaque",
+  WrongValue = "wrong-value",
+}
+
+export enum ReactHostControlStatus {
+  Invalid = "invalid",
+  Resolved = "resolved",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticHostControl {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  kind: ReactHostControlKind;
+  controlledPropName: string;
+  controlledPropPresent: boolean | null;
+  defaultPropName: string;
+  defaultPropPresent: boolean | null;
+  stateName: string | null;
+  setterName: string | null;
+  valueStatus: ReactHostControlValueStatus;
+  mutabilityStatus: ReactHostControlMutabilityStatus;
+  updateStatus: ReactHostControlUpdateStatus;
+  callbackIds: ReadonlyArray<string>;
+  transitionIds: ReadonlyArray<string>;
+  status: ReactHostControlStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticSlotFlow {
+  id: string;
+  ownerId: string;
+  sourceRenderId: string;
+  containerRenderId: string | null;
+  propName: string | null;
+  renderIds: ReadonlyArray<string>;
+  location: ReactProofLocation;
+  sourceComplete: boolean;
+  placementComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticCallback {
+  id: string;
+  ownerId: string;
+  kind: ReactSemanticCallbackKind;
+  phase: ReactExecutionPhase;
+  name: string;
+  location: ReactProofLocation;
+  captures: ReadonlyArray<string>;
+  stateWrites: ReadonlyArray<string>;
+}
+
+export interface ReactSemanticReachableFunction {
+  id: string;
+  ownerId: string;
+  rootCallbackId: string;
+  name: string;
+  phase: ReactExecutionPhase;
+  location: ReactProofLocation;
+  isConditionallyReached: boolean;
+}
+
+export interface ReactSemanticFunctionCall {
+  id: string;
+  ownerId: string;
+  rootCallbackId: string;
+  sourceFunctionId: string;
+  targetFunctionId: string;
+  kind: ReactSemanticFunctionCallKind;
+  phase: ReactExecutionPhase;
+  location: ReactProofLocation;
+  sourceParameterIndex: number | null;
+  callArgumentIndex: number | null;
+  sourcePropertyPath: ReadonlyArray<string>;
+  isConditionallyReached: boolean;
+}
+
+export interface ReactSemanticEventBinding {
+  id: string;
+  ownerId: string;
+  eventName: string;
+  location: ReactProofLocation;
+  callbackIds: ReadonlyArray<string>;
+  complete: boolean;
+}
+
+export interface ReactSemanticCallbackGuard {
+  id: string;
+  polarity: boolean;
+}
+
+export interface ReactSemanticCallbackPropAlternative {
+  callbackId: string;
+  guards: ReadonlyArray<ReactSemanticCallbackGuard>;
+}
+
+export interface ReactSemanticCallbackPropFlow {
+  id: string;
+  renderId: string;
+  renderOwnerId: string;
+  targetOwnerId: string;
+  propName: string;
+  phase: ReactExecutionPhase;
+  location: ReactProofLocation;
+  alternatives: ReadonlyArray<ReactSemanticCallbackPropAlternative>;
+  callbackIds: ReadonlyArray<string>;
+  complete: boolean;
+}
+
+export interface ReactSemanticCallableRef {
+  id: string;
+  ownerId: string;
+  name: string;
+  location: ReactProofLocation;
+  updateHookName: string | null;
+  updateLocation: ReactProofLocation | null;
+  invocationCallIds: ReadonlyArray<string>;
+  invocationCallbackIds: ReadonlyArray<string>;
+  invocationLocations: ReadonlyArray<ReactProofLocation>;
+  freshness: ReactCallableRefFreshness;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactMemoComparatorKind {
+  Custom = "custom",
+  DefaultShallow = "default-shallow",
+}
+
+export enum ReactMemoComparatorStatus {
+  Equivalent = "equivalent",
+  OmittedObservedProp = "omitted-observed-prop",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticMemoPropObservation {
+  path: string;
+  location: ReactProofLocation;
+  valueCanVary: boolean;
+}
+
+export interface ReactSemanticMemoComparatorTruePath {
+  equalPropPaths: ReadonlyArray<string>;
+  sourceComplete: boolean;
+}
+
+export interface ReactSemanticMemoComparator {
+  id: string;
+  ownerId: string | null;
+  kind: ReactMemoComparatorKind;
+  location: ReactProofLocation;
+  comparatorLocation: ReactProofLocation | null;
+  observations: ReadonlyArray<ReactSemanticMemoPropObservation>;
+  truePaths: ReadonlyArray<ReactSemanticMemoComparatorTruePath>;
+  observationComplete: boolean;
+  analysisComplete: boolean;
+  status: ReactMemoComparatorStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactImperativeHandleRefKind {
+  ForwardedRef = "forwarded-ref",
+  RefProp = "ref-prop",
+}
+
+export enum ReactImperativeHandleStatus {
+  ImpureFactory = "impure-factory",
+  MissingDependency = "missing-dependency",
+  Opaque = "opaque",
+  Resolved = "resolved",
+}
+
+export interface ReactSemanticImperativeHandle {
+  id: string;
+  ownerId: string;
+  refKind: ReactImperativeHandleRefKind | null;
+  refName: string | null;
+  location: ReactProofLocation;
+  factoryCallbackId: string | null;
+  dependencyMode: ReactEffectDependencyMode;
+  dependencies: ReadonlyArray<string>;
+  captures: ReadonlyArray<string>;
+  factoryPurity: ReactObligationStatus;
+  methodIds: ReadonlyArray<string>;
+  bindingIds: ReadonlyArray<string>;
+  factoryComplete: boolean;
+  shapeComplete: boolean;
+  targetComplete: boolean;
+  bindingComplete: boolean;
+  status: ReactImperativeHandleStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticImperativeHandleMethod {
+  id: string;
+  ownerId: string;
+  handleId: string;
+  name: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactSemanticImperativeHandleBinding {
+  id: string;
+  ownerId: string;
+  handleId: string;
+  renderId: string;
+  refName: string;
+  refLocation: ReactProofLocation;
+  location: ReactProofLocation;
+  invocationIds: ReadonlyArray<string>;
+  referenceComplete: boolean;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticImperativeHandleInvocation {
+  id: string;
+  ownerId: string;
+  handleId: string;
+  methodId: string;
+  bindingId: string;
+  location: ReactProofLocation;
+  callerCallbackIds: ReadonlyArray<string>;
+  methodCallbackIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticScheduler {
+  id: string;
+  ownerId: string;
+  effectId: string | null;
+  registrationCallbackId: string;
+  kind: ReactSchedulerKind;
+  phase: ReactExecutionPhase;
+  location: ReactProofLocation;
+  callbackIds: ReadonlyArray<string>;
+  callbackComplete: boolean;
+  cancellationStatus: ReactSchedulerCancellationStatus;
+  cancellationLocations: ReadonlyArray<ReactProofLocation>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticEffectResource {
+  id: string;
+  ownerId: string;
+  effectId: string | null;
+  acquisitionCallbackId: string;
+  kind: ReactEffectResourceKind;
+  phase: ReactExecutionPhase;
+  location: ReactProofLocation;
+  activationLocations: ReadonlyArray<ReactProofLocation>;
+  callbackIds: ReadonlyArray<string>;
+  callbackComplete: boolean;
+  disposalStatus: ReactEffectResourceDisposalStatus;
+  disposalLocations: ReadonlyArray<ReactProofLocation>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticClassLifecycle {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  constructionId: string;
+  mountCallbackId: string | null;
+  unmountCallbackId: string | null;
+  updateCallbackId: string | null;
+  resourceIds: ReadonlyArray<string>;
+  schedulerIds: ReadonlyArray<string>;
+  stateWriteIds: ReadonlyArray<string>;
+  transitionIds: ReadonlyArray<string>;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactClassConstructionIssueKind {
+  InvalidStateValue = "invalid-state-value",
+  InvalidSuperCall = "invalid-super-call",
+  MissingStateInitialization = "missing-state-initialization",
+  MultipleStateInitializations = "multiple-state-initializations",
+  SetStateCall = "set-state-call",
+  SideEffect = "side-effect",
+  UnsupportedConstructorStatement = "unsupported-constructor-statement",
+  UnsupportedInitializer = "unsupported-initializer",
+}
+
+export enum ReactClassConstructionIssueStatus {
+  Unknown = "unknown",
+  Violated = "violated",
+}
+
+export enum ReactClassConstructionStatus {
+  Invalid = "invalid",
+  Unknown = "unknown",
+  Valid = "valid",
+}
+
+export enum ReactClassStateInitializationKind {
+  ConstructorAssignment = "constructor-assignment",
+  Multiple = "multiple",
+  None = "none",
+  PublicField = "public-field",
+}
+
+export enum ReactClassStateInitializationRequirement {
+  Conditional = "conditional",
+  None = "none",
+  Required = "required",
+}
+
+export interface ReactSemanticClassConstructionIssue {
+  kind: ReactClassConstructionIssueKind;
+  location: ReactProofLocation;
+  status: ReactClassConstructionIssueStatus;
+}
+
+export interface ReactSemanticClassConstruction {
+  id: string;
+  ownerId: string;
+  phase: ReactExecutionPhase.ClassConstruction;
+  location: ReactProofLocation;
+  constructorLocation: ReactProofLocation | null;
+  initializationKind: ReactClassStateInitializationKind;
+  initializationLocation: ReactProofLocation | null;
+  stateRequirement: ReactClassStateInitializationRequirement;
+  issues: ReadonlyArray<ReactSemanticClassConstructionIssue>;
+  status: ReactClassConstructionStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactClassStateUpdaterStatus {
+  Impure = "impure",
+  Noop = "noop",
+  Object = "object",
+  Pure = "pure",
+  Unknown = "unknown",
+}
+
+export enum ReactClassUpdateCycleStatus {
+  Bounded = "bounded",
+  Guaranteed = "guaranteed",
+  None = "none",
+  Unknown = "unknown",
+}
+
+export enum ReactClassStateWriteKind {
+  Assignment = "assignment",
+  Delete = "delete",
+  MutatingCall = "mutating-call",
+  ReferenceEscape = "reference-escape",
+  Update = "update",
+}
+
+export enum ReactClassStateWriteStatus {
+  Forbidden = "forbidden",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticClassStateWrite {
+  id: string;
+  ownerId: string;
+  callbackId: string;
+  phase:
+    | ReactExecutionPhase.ClassMount
+    | ReactExecutionPhase.ClassUnmount
+    | ReactExecutionPhase.ClassUpdate
+    | ReactExecutionPhase.Deferred
+    | ReactExecutionPhase.StateTransition;
+  location: ReactProofLocation;
+  kind: ReactClassStateWriteKind;
+  status: ReactClassStateWriteStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticClassStateTransition {
+  id: string;
+  ownerId: string;
+  lifecycleCallbackId: string;
+  updaterCallbackId: string | null;
+  phase: ReactExecutionPhase.ClassMount | ReactExecutionPhase.ClassUpdate;
+  location: ReactProofLocation;
+  guardLocations: ReadonlyArray<ReactProofLocation>;
+  updaterStatus: ReactClassStateUpdaterStatus;
+  cycleStatus: ReactClassUpdateCycleStatus;
+  commitCallbackProvided: boolean;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactHookStateUpdaterStatus {
+  DirectValue = "direct-value",
+  Impure = "impure",
+  Pure = "pure",
+  SetterEscape = "setter-escape",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticHookStateTransition {
+  id: string;
+  ownerId: string;
+  stateName: string;
+  setterName: string;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  updaterCallbackId: string | null;
+  updaterStatus: ReactHookStateUpdaterStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactReducerDispatchKind {
+  Call = "call",
+  Escape = "escape",
+}
+
+export enum ReactReducerDispatchStatus {
+  Escape = "escape",
+  Owned = "owned",
+  Reducer = "reducer",
+  Render = "render",
+  Unknown = "unknown",
+}
+
+export enum ReactReducerPurityStatus {
+  Impure = "impure",
+  Opaque = "opaque",
+  Pure = "pure",
+}
+
+export enum ReactReducerReturnStatus {
+  Absent = "absent",
+  MayFallThrough = "may-fall-through",
+  MayThrow = "may-throw",
+  Opaque = "opaque",
+  Total = "total",
+}
+
+export interface ReactSemanticReducer {
+  id: string;
+  ownerId: string;
+  stateName: string;
+  dispatcherName: string;
+  location: ReactProofLocation;
+  reducerCallbackId: string | null;
+  initializerCallbackId: string | null;
+  reducerPurity: ReactReducerPurityStatus;
+  initializerPurity: ReactReducerPurityStatus;
+  reducerReturnStatus: ReactReducerReturnStatus;
+  initializerReturnStatus: ReactReducerReturnStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticReducerDispatch {
+  id: string;
+  ownerId: string;
+  reducerId: string;
+  kind: ReactReducerDispatchKind;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  status: ReactReducerDispatchStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactActionStateReducerStatus {
+  Opaque = "opaque",
+  Resolved = "resolved",
+}
+
+export enum ReactActionStateDispatchStatus {
+  Action = "action",
+  OutsideAction = "outside-action",
+  Render = "render",
+  SetterEscape = "setter-escape",
+  Unknown = "unknown",
+}
+
+export enum ReactActionStateDispatchKind {
+  ActionProp = "action-prop",
+  Call = "call",
+  Escape = "escape",
+}
+
+export interface ReactSemanticActionState {
+  id: string;
+  ownerId: string;
+  stateName: string;
+  dispatcherName: string;
+  location: ReactProofLocation;
+  reducerCallbackId: string | null;
+  reducerStatus: ReactActionStateReducerStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticActionStateDispatch {
+  id: string;
+  ownerId: string;
+  actionStateId: string;
+  kind: ReactActionStateDispatchKind;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  status: ReactActionStateDispatchStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactFormActionKind {
+  Form = "form",
+  Submitter = "submitter",
+}
+
+export enum ReactFormActionStatus {
+  Opaque = "opaque",
+  Resolved = "resolved",
+  UnsupportedControl = "unsupported-control",
+}
+
+export interface ReactSemanticFormAction {
+  id: string;
+  ownerId: string;
+  kind: ReactFormActionKind;
+  propName: string;
+  location: ReactProofLocation;
+  actionCallbackIds: ReadonlyArray<string>;
+  status: ReactFormActionStatus;
+  callbackComplete: boolean;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactFormStatusTopologyStatus {
+  OutsideForm = "outside-form",
+  Resolved = "resolved",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticForm {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactSemanticFormStatus {
+  id: string;
+  ownerId: string;
+  location: ReactProofLocation;
+  sourceFormIds: ReadonlyArray<string>;
+  outsideForm: boolean;
+  status: ReactFormStatusTopologyStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactOptimisticReducerStatus {
+  Absent = "absent",
+  Impure = "impure",
+  Pure = "pure",
+  Unknown = "unknown",
+}
+
+export enum ReactOptimisticActionStatus {
+  Action = "action",
+  OutsideAction = "outside-action",
+  Render = "render",
+  Unknown = "unknown",
+}
+
+export interface ReactSemanticOptimisticState {
+  id: string;
+  ownerId: string;
+  stateName: string;
+  setterName: string;
+  location: ReactProofLocation;
+  reducerCallbackId: string | null;
+  reducerStatus: ReactOptimisticReducerStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactSemanticOptimisticUpdate {
+  id: string;
+  ownerId: string;
+  optimisticStateId: string;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  updaterCallbackId: string | null;
+  updaterStatus: ReactHookStateUpdaterStatus;
+  actionStatus: ReactOptimisticActionStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export enum ReactTransitionStarterKind {
+  Global = "global",
+  Hook = "hook",
+}
+
+export enum ReactTransitionActionStatus {
+  Async = "async",
+  ControlledInput = "controlled-input",
+  Opaque = "opaque",
+  StarterEscape = "starter-escape",
+  Synchronous = "synchronous",
+  UnknownControl = "unknown-control",
+}
+
+export interface ReactSemanticTransitionAction {
+  id: string;
+  ownerId: string;
+  starterKind: ReactTransitionStarterKind;
+  location: ReactProofLocation;
+  executionCallbackIds: ReadonlyArray<string>;
+  actionCallbackId: string | null;
+  controlledStateNames: ReadonlyArray<string>;
+  unknownControlStateNames: ReadonlyArray<string>;
+  status: ReactTransitionActionStatus;
+  sourceComplete: boolean;
+  complete: boolean;
+}
+
+export interface ReactCompilerInstructionFact {
+  id: string;
+  valueKind: string;
+  lvalueId: string;
+  effect: string;
+  reactive: boolean;
+  location: ReactProofLocation | null;
+}
+
+export interface ReactCompilerBlockFact {
+  id: string;
+  kind: string;
+  predecessors: ReadonlyArray<string>;
+  successors: ReadonlyArray<string>;
+  instructions: ReadonlyArray<ReactCompilerInstructionFact>;
+  terminalKind: string;
+}
+
+export interface ReactCompilerFunctionFact {
+  id: string;
+  functionType: string;
+  location: ReactProofLocation | null;
+  entryBlockId: string;
+  blocks: ReadonlyArray<ReactCompilerBlockFact>;
+}
+
+export interface ReactCompilerFailure {
+  description: string;
+  location: ReactProofLocation;
+}
+
+export interface ReactCompilerGraph {
+  version: string;
+  phase: string;
+  status: ReactCompilerFactStatus;
+  functions: ReadonlyArray<ReactCompilerFunctionFact>;
+  failures: ReadonlyArray<ReactCompilerFailure>;
+}
+
+export interface ReactSemanticGraph {
+  schemaVersion: number;
+  actionStates: ReadonlyArray<ReactSemanticActionState>;
+  actionStateDispatches: ReadonlyArray<ReactSemanticActionStateDispatch>;
+  units: ReadonlyArray<ReactSemanticUnit>;
+  edges: ReadonlyArray<ReactSemanticEdge>;
+  hookCalls: ReadonlyArray<ReactSemanticHookCall>;
+  effects: ReadonlyArray<ReactSemanticEffect>;
+  effectEvents: ReadonlyArray<ReactSemanticEffectEvent>;
+  externalStores: ReadonlyArray<ReactSemanticExternalStore>;
+  asyncTasks: ReadonlyArray<ReactSemanticAsyncTask>;
+  contexts: ReadonlyArray<ReactSemanticContext>;
+  contextProviders: ReadonlyArray<ReactSemanticContextProvider>;
+  contextConsumers: ReadonlyArray<ReactSemanticContextConsumer>;
+  errorBoundaryDefinitions: ReadonlyArray<ReactSemanticErrorBoundaryDefinition>;
+  errorBoundaries: ReadonlyArray<ReactSemanticErrorBoundary>;
+  renderFailures: ReadonlyArray<ReactSemanticRenderFailure>;
+  useResources: ReadonlyArray<ReactSemanticUseResource>;
+  hydrationRoots: ReadonlyArray<ReactSemanticHydrationRoot>;
+  hydrationHazards: ReadonlyArray<ReactSemanticHydrationHazard>;
+  hydrations: ReadonlyArray<ReactSemanticHydration>;
+  hostControls: ReadonlyArray<ReactSemanticHostControl>;
+  suspenseBoundaries: ReadonlyArray<ReactSemanticSuspenseBoundary>;
+  lazyComponents: ReadonlyArray<ReactSemanticLazyComponent>;
+  lazyRenders: ReadonlyArray<ReactSemanticLazyRender>;
+  renders: ReadonlyArray<ReactSemanticRender>;
+  slotFlows: ReadonlyArray<ReactSemanticSlotFlow>;
+  callbacks: ReadonlyArray<ReactSemanticCallback>;
+  reachableFunctions: ReadonlyArray<ReactSemanticReachableFunction>;
+  functionCalls: ReadonlyArray<ReactSemanticFunctionCall>;
+  eventBindings: ReadonlyArray<ReactSemanticEventBinding>;
+  callbackPropFlows: ReadonlyArray<ReactSemanticCallbackPropFlow>;
+  callableRefs: ReadonlyArray<ReactSemanticCallableRef>;
+  memoComparators: ReadonlyArray<ReactSemanticMemoComparator>;
+  imperativeHandles: ReadonlyArray<ReactSemanticImperativeHandle>;
+  imperativeHandleMethods: ReadonlyArray<ReactSemanticImperativeHandleMethod>;
+  imperativeHandleBindings: ReadonlyArray<ReactSemanticImperativeHandleBinding>;
+  imperativeHandleInvocations: ReadonlyArray<ReactSemanticImperativeHandleInvocation>;
+  schedulers: ReadonlyArray<ReactSemanticScheduler>;
+  resources: ReadonlyArray<ReactSemanticEffectResource>;
+  classConstructions: ReadonlyArray<ReactSemanticClassConstruction>;
+  classLifecycles: ReadonlyArray<ReactSemanticClassLifecycle>;
+  classStateWrites: ReadonlyArray<ReactSemanticClassStateWrite>;
+  classStateTransitions: ReadonlyArray<ReactSemanticClassStateTransition>;
+  formActions: ReadonlyArray<ReactSemanticFormAction>;
+  forms: ReadonlyArray<ReactSemanticForm>;
+  formStatuses: ReadonlyArray<ReactSemanticFormStatus>;
+  hookStateTransitions: ReadonlyArray<ReactSemanticHookStateTransition>;
+  reducers: ReadonlyArray<ReactSemanticReducer>;
+  reducerDispatches: ReadonlyArray<ReactSemanticReducerDispatch>;
+  optimisticStates: ReadonlyArray<ReactSemanticOptimisticState>;
+  optimisticUpdates: ReadonlyArray<ReactSemanticOptimisticUpdate>;
+  transitionActions: ReadonlyArray<ReactSemanticTransitionAction>;
+  compiler: ReactCompilerGraph;
+}
+
+export interface ReactProofSummary {
+  files: number;
+  units: number;
+  proved: number;
+  violated: number;
+  unknown: number;
+}
+
+export interface ReactAppProofReport {
+  schemaVersion: number;
+  status: ReactAppProofStatus;
+  rootDirectory: string;
+  graph: ReactSemanticGraph;
+  units: ReadonlyArray<ReactUnitProof>;
+  projectEvidence: ReadonlyArray<ReactProofEvidence>;
+  summary: ReactProofSummary;
+}
+
+export interface ProveReactAppInput {
+  rootDirectory: string;
+  tsconfigPath?: string;
+}
+
+export interface ReactUnitDescriptor {
+  name: string;
+  kind: ReactUnitKind;
+  node: ts.Node;
+  classNode?: ts.ClassDeclaration;
+  classComponentBase?: ReactClassComponentBase;
+  functionNode?: ts.FunctionLikeDeclaration;
+  invalidHookCalls?: ReadonlyArray<ts.CallExpression>;
+  sourceComplete: boolean;
+}
+
+export interface ReactAnalysisContext {
+  program: ts.Program;
+  typeChecker: ts.TypeChecker;
+  rootDirectory: string;
+  graph?: ReactSemanticGraph;
+}

@@ -1,0 +1,38 @@
+{
+  "name": "@react-doctor/prover",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Whole-application React semantic prover.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && vp pack",
+    "smoke:build": "node scripts/smoke-built-package.mjs",
+    "test": "vp test run",
+    "test:runtime": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@babel/core": "8.0.1",
+    "babel-plugin-react-compiler": "1.0.0",
+    "typescript": ">=5.0.4 <7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "^25.6.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "react": "19.2.5",
+    "react-dom": "19.2.5"
+  },
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "extends": "../proved-chat/tsconfig.json",
+  "include": ["src", "../react-shim.d.ts"]
+}

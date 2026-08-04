@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ESNext", "DOM"],
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src", "tests", "vite.config.ts"]
+}

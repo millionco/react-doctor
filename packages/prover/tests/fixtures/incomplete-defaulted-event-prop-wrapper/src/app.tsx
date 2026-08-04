@@ -1,0 +1,19 @@
+interface ActionButtonProperties {
+  onActivate?: () => void;
+}
+
+const fallbackActivation = () => undefined;
+
+const ActionButton = ({ onActivate = fallbackActivation }: ActionButtonProperties) => {
+  const handleClick = () => onActivate();
+  return (
+    <button type="button" onClick={handleClick}>
+      Activate
+    </button>
+  );
+};
+
+export const Application = () => {
+  const recordActivation = () => undefined;
+  return <ActionButton onActivate={recordActivation} />;
+};

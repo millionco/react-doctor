@@ -6,12 +6,14 @@ import {
 import { MUTATING_ARRAY_METHODS, PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import type { BasicBlock } from "../../semantic/control-flow-graph.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { createProgramGatedVisitors } from "../../utils/create-program-gated-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
 import {
   getImportedNameFromModule,
+  hasImportFromModules,
   isNamespaceImportFromModule,
 } from "../../utils/find-import-source-for-name.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -37,6 +39,7 @@ import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import {
   stripParenExpression,
@@ -83,6 +86,7 @@ const COERCIVE_GLOBAL_NAMES: ReadonlySet<string> = new Set([
 ]);
 const NON_CONSUMING_UNARY_OPERATORS: ReadonlySet<string> = new Set(["!", "typeof", "void"]);
 const SITEMAP_FILE_PATTERN = new RegExp(`^sitemap\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`);
+const NEXT_HEADERS_MODULES: ReadonlyArray<string> = ["next/headers"];
 const MESSAGE =
   "This Next.js request API returns a Promise. Synchronous property access warns in Next.js 15 and is removed in Next.js 16; await it or unwrap it with React `use()`.";
 
@@ -132,6 +136,15 @@ interface ProjectedClearingSitesInput {
   symbol: SymbolDescriptor;
   targetOwner: EsTreeNode | null;
 }
+
+const isNextSitemapFile = (context: RuleContext): boolean => {
+  const basename = path.basename(context.filename ?? "");
+  const normalizedFilename = normalizeFilename(context.filename ?? "");
+  return (
+    (isInProjectDirectory(context, "app") || normalizedFilename.startsWith("app/")) &&
+    SITEMAP_FILE_PATTERN.test(basename)
+  );
+};
 
 const resolvesToImportBinding = (context: RuleContext, identifier: EsTreeNode): boolean =>
   findVisibleSymbol(identifier, context.scopes)?.kind === "import";
@@ -357,10 +370,7 @@ const getOfficialAsyncPropContract = (
   functionNode: EsTreeNode,
 ): OfficialAsyncPropContract | null => {
   const basename = path.basename(context.filename ?? "");
-  const normalizedFilename = normalizeFilename(context.filename ?? "");
-  const isSitemapFile =
-    (isInProjectDirectory(context, "app") || normalizedFilename.startsWith("app/")) &&
-    SITEMAP_FILE_PATTERN.test(basename);
+  const isSitemapFile = isNextSitemapFile(context);
   if (!isSitemapFile && !isFrameworkRouteOrSpecialFilename(context, "next")) return null;
   const program = findProgramRoot(functionNode);
   if (!program) return null;
@@ -3063,6 +3073,179 @@ const memberExpressionIsDirectlyUnwrapped = (
   );
 };
 
+const createActiveVisitors = (context: RuleContext): RuleVisitors => ({
+  FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
+    reportNestedOfficialParameterDestructure(context, node);
+  },
+  FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
+    reportNestedOfficialParameterDestructure(context, node);
+  },
+  ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
+    reportNestedOfficialParameterDestructure(context, node);
+  },
+  MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
+    if (node.computed) reportOfficialDirectValueConsumption(context, node.property);
+    if (memberExpressionIsAssignmentTarget(node)) {
+      const assignment = findTransparentExpressionRoot(node).parent;
+      if (
+        assignment &&
+        isNodeOfType(assignment, "AssignmentExpression") &&
+        assignment.operator !== "="
+      ) {
+        reportDirectSynchronousConsumption(context, node);
+      }
+      return;
+    }
+    if (memberExpressionIsDirectlyUnwrapped(context, node)) {
+      return;
+    }
+    const source = findPendingDynamicApiSource(context, node.object);
+    if (!source) return;
+    if (isPromiseSettleAccess(context, node)) return;
+    context.report({ node: source, message: MESSAGE });
+  },
+  VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
+    if (!node.init) return;
+    reportDirectDestructure(context, node.init, node.id);
+    if (isNodeOfType(node.id, "Identifier")) {
+      reportAssignedPendingExpression(context, node.init, node.id);
+    } else {
+      reportPatternAssignedPendingExpressions(context, node.id, node.init);
+      reportOfficialPropsPatternAliases(context, node.id, node.init);
+    }
+  },
+  AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
+    if (node.operator === "=") {
+      reportDirectDestructure(context, node.right, node.left);
+      if (!isNodeOfType(stripParenExpression(node.left), "Identifier")) {
+        reportPatternAssignedPendingExpressions(context, node.left, node.right);
+        reportOfficialPropsPatternAliases(context, node.left, node.right);
+      }
+    } else if (node.operator !== "&&=" && node.operator !== "||=" && node.operator !== "??=") {
+      if (!isNodeOfType(stripParenExpression(node.left), "MemberExpression")) {
+        reportDirectSynchronousConsumption(context, node.left);
+      }
+      return;
+    }
+    const assignmentTarget = stripParenExpression(node.left);
+    if (!isNodeOfType(assignmentTarget, "Identifier")) return;
+    if (node.operator === "&&=" || node.operator === "||=" || node.operator === "??=") {
+      if (
+        expressionMayRetainOfficialPendingValue(context, assignmentTarget) ||
+        capturedSymbolMayBePendingAtInvocation(context, assignmentTarget)
+      ) {
+        context.report({ node: assignmentTarget, message: MESSAGE });
+      }
+    }
+    reportAssignedPendingExpression(context, node.right, assignmentTarget);
+  },
+  UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
+    reportDirectSynchronousConsumption(context, node.argument);
+  },
+  Property(node: EsTreeNodeOfType<"Property">) {
+    if (node.computed) reportOfficialDirectValueConsumption(context, node.key);
+  },
+  ConditionalExpression(node: EsTreeNodeOfType<"ConditionalExpression">) {
+    reportOfficialDirectValueConsumption(context, node.test);
+  },
+  LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
+    reportOfficialDirectValueConsumption(context, node.left);
+  },
+  IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
+    reportOfficialDirectValueConsumption(context, node.test);
+  },
+  WhileStatement(node: EsTreeNodeOfType<"WhileStatement">) {
+    reportOfficialDirectValueConsumption(context, node.test);
+  },
+  DoWhileStatement(node: EsTreeNodeOfType<"DoWhileStatement">) {
+    reportOfficialDirectValueConsumption(context, node.test);
+  },
+  ForStatement(node: EsTreeNodeOfType<"ForStatement">) {
+    if (node.test) reportOfficialDirectValueConsumption(context, node.test);
+  },
+  SwitchStatement(node: EsTreeNodeOfType<"SwitchStatement">) {
+    reportOfficialDirectValueConsumption(context, node.discriminant);
+  },
+  SpreadElement(node: EsTreeNodeOfType<"SpreadElement">) {
+    reportDirectSynchronousConsumption(context, node.argument);
+  },
+  ForInStatement(node: EsTreeNodeOfType<"ForInStatement">) {
+    reportDirectSynchronousConsumption(context, node.right);
+  },
+  ForOfStatement(node: EsTreeNodeOfType<"ForOfStatement">) {
+    reportDirectSynchronousConsumption(context, node.right);
+  },
+  YieldExpression(node: EsTreeNodeOfType<"YieldExpression">) {
+    if (!node.delegate || !node.argument) return;
+    reportDirectSynchronousConsumption(context, node.argument);
+  },
+  BinaryExpression(node: EsTreeNodeOfType<"BinaryExpression">) {
+    if (node.operator === "in") {
+      reportDirectSynchronousConsumption(context, node.right);
+      reportOfficialDirectValueConsumption(context, node.left);
+      return;
+    }
+    reportOfficialDirectValueConsumption(context, node.left);
+    reportOfficialDirectValueConsumption(context, node.right);
+  },
+  UnaryExpression(node: EsTreeNodeOfType<"UnaryExpression">) {
+    if (node.operator !== "void") reportOfficialDirectValueConsumption(context, node.argument);
+  },
+  TemplateLiteral(node: EsTreeNodeOfType<"TemplateLiteral">) {
+    if (
+      node.parent &&
+      isNodeOfType(node.parent, "TaggedTemplateExpression") &&
+      node.parent.quasi === node
+    ) {
+      const directTag = stripParenExpression(node.parent.tag);
+      const aliasSymbol = isNodeOfType(directTag, "Identifier")
+        ? resolveConstIdentifierAlias(directTag, context.scopes)
+        : null;
+      const tag = stripParenExpression(
+        aliasSymbol?.kind === "const" && aliasSymbol.initializer
+          ? aliasSymbol.initializer
+          : directTag,
+      );
+      if (!isNodeOfType(tag, "MemberExpression")) return;
+      const receiver = stripParenExpression(tag.object);
+      if (
+        !isNodeOfType(receiver, "Identifier") ||
+        receiver.name !== "String" ||
+        !context.scopes.isGlobalReference(receiver) ||
+        getResolvedStaticPropertyName(tag, context.scopes) !== "raw"
+      ) {
+        return;
+      }
+    }
+    for (const expression of node.expressions) {
+      reportOfficialDirectValueConsumption(context, expression);
+    }
+  },
+  JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
+    if (isAstNode(node.expression)) {
+      reportOfficialDirectValueConsumption(context, node.expression);
+    }
+  },
+  CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+    for (const argument of node.arguments) {
+      if (isNodeOfType(argument, "SpreadElement")) continue;
+      if (isGlobalEnumerationCallForArgument(context, node, argument)) {
+        reportDirectSynchronousConsumption(context, argument);
+      }
+      if (isGlobalCoercionCallForArgument(context, node, argument)) {
+        reportOfficialDirectValueConsumption(context, argument);
+      }
+    }
+  },
+  NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
+    for (const argument of node.arguments) {
+      if (isNodeOfType(argument, "SpreadElement")) continue;
+      if (!isGlobalIterableConstructorForArgument(context, node, argument)) continue;
+      reportDirectSynchronousConsumption(context, argument);
+    }
+  },
+});
+
 export const nextjsAsyncDynamicApiNotAwaited = defineRule({
   id: "nextjs-async-dynamic-api-not-awaited",
   title: "Synchronous Next.js request API access",
@@ -3071,176 +3254,12 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
   severity: "error",
   recommendation:
     "Await `cookies()`, `headers()`, `draftMode()`, and async route `params` or `searchParams`, or unwrap their promises with React `use()`, before reading properties.",
-  create: (context: RuleContext) => ({
-    FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-      reportNestedOfficialParameterDestructure(context, node);
-    },
-    FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
-      reportNestedOfficialParameterDestructure(context, node);
-    },
-    ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-      reportNestedOfficialParameterDestructure(context, node);
-    },
-    MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
-      if (node.computed) reportOfficialDirectValueConsumption(context, node.property);
-      if (memberExpressionIsAssignmentTarget(node)) {
-        const assignment = findTransparentExpressionRoot(node).parent;
-        if (
-          assignment &&
-          isNodeOfType(assignment, "AssignmentExpression") &&
-          assignment.operator !== "="
-        ) {
-          reportDirectSynchronousConsumption(context, node);
-        }
-        return;
-      }
-      if (memberExpressionIsDirectlyUnwrapped(context, node)) {
-        return;
-      }
-      const source = findPendingDynamicApiSource(context, node.object);
-      if (!source) return;
-      if (isPromiseSettleAccess(context, node)) return;
-      context.report({ node: source, message: MESSAGE });
-    },
-    VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-      if (!node.init) return;
-      reportDirectDestructure(context, node.init, node.id);
-      if (isNodeOfType(node.id, "Identifier")) {
-        reportAssignedPendingExpression(context, node.init, node.id);
-      } else {
-        reportPatternAssignedPendingExpressions(context, node.id, node.init);
-        reportOfficialPropsPatternAliases(context, node.id, node.init);
-      }
-    },
-    AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
-      if (node.operator === "=") {
-        reportDirectDestructure(context, node.right, node.left);
-        if (!isNodeOfType(stripParenExpression(node.left), "Identifier")) {
-          reportPatternAssignedPendingExpressions(context, node.left, node.right);
-          reportOfficialPropsPatternAliases(context, node.left, node.right);
-        }
-      } else if (node.operator !== "&&=" && node.operator !== "||=" && node.operator !== "??=") {
-        if (!isNodeOfType(stripParenExpression(node.left), "MemberExpression")) {
-          reportDirectSynchronousConsumption(context, node.left);
-        }
-        return;
-      }
-      const assignmentTarget = stripParenExpression(node.left);
-      if (!isNodeOfType(assignmentTarget, "Identifier")) return;
-      if (node.operator === "&&=" || node.operator === "||=" || node.operator === "??=") {
-        if (
-          expressionMayRetainOfficialPendingValue(context, assignmentTarget) ||
-          capturedSymbolMayBePendingAtInvocation(context, assignmentTarget)
-        ) {
-          context.report({ node: assignmentTarget, message: MESSAGE });
-        }
-      }
-      reportAssignedPendingExpression(context, node.right, assignmentTarget);
-    },
-    UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
-      reportDirectSynchronousConsumption(context, node.argument);
-    },
-    Property(node: EsTreeNodeOfType<"Property">) {
-      if (node.computed) reportOfficialDirectValueConsumption(context, node.key);
-    },
-    ConditionalExpression(node: EsTreeNodeOfType<"ConditionalExpression">) {
-      reportOfficialDirectValueConsumption(context, node.test);
-    },
-    LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
-      reportOfficialDirectValueConsumption(context, node.left);
-    },
-    IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
-      reportOfficialDirectValueConsumption(context, node.test);
-    },
-    WhileStatement(node: EsTreeNodeOfType<"WhileStatement">) {
-      reportOfficialDirectValueConsumption(context, node.test);
-    },
-    DoWhileStatement(node: EsTreeNodeOfType<"DoWhileStatement">) {
-      reportOfficialDirectValueConsumption(context, node.test);
-    },
-    ForStatement(node: EsTreeNodeOfType<"ForStatement">) {
-      if (node.test) reportOfficialDirectValueConsumption(context, node.test);
-    },
-    SwitchStatement(node: EsTreeNodeOfType<"SwitchStatement">) {
-      reportOfficialDirectValueConsumption(context, node.discriminant);
-    },
-    SpreadElement(node: EsTreeNodeOfType<"SpreadElement">) {
-      reportDirectSynchronousConsumption(context, node.argument);
-    },
-    ForInStatement(node: EsTreeNodeOfType<"ForInStatement">) {
-      reportDirectSynchronousConsumption(context, node.right);
-    },
-    ForOfStatement(node: EsTreeNodeOfType<"ForOfStatement">) {
-      reportDirectSynchronousConsumption(context, node.right);
-    },
-    YieldExpression(node: EsTreeNodeOfType<"YieldExpression">) {
-      if (!node.delegate || !node.argument) return;
-      reportDirectSynchronousConsumption(context, node.argument);
-    },
-    BinaryExpression(node: EsTreeNodeOfType<"BinaryExpression">) {
-      if (node.operator === "in") {
-        reportDirectSynchronousConsumption(context, node.right);
-        reportOfficialDirectValueConsumption(context, node.left);
-        return;
-      }
-      reportOfficialDirectValueConsumption(context, node.left);
-      reportOfficialDirectValueConsumption(context, node.right);
-    },
-    UnaryExpression(node: EsTreeNodeOfType<"UnaryExpression">) {
-      if (node.operator !== "void") reportOfficialDirectValueConsumption(context, node.argument);
-    },
-    TemplateLiteral(node: EsTreeNodeOfType<"TemplateLiteral">) {
-      if (
-        node.parent &&
-        isNodeOfType(node.parent, "TaggedTemplateExpression") &&
-        node.parent.quasi === node
-      ) {
-        const directTag = stripParenExpression(node.parent.tag);
-        const aliasSymbol = isNodeOfType(directTag, "Identifier")
-          ? resolveConstIdentifierAlias(directTag, context.scopes)
-          : null;
-        const tag = stripParenExpression(
-          aliasSymbol?.kind === "const" && aliasSymbol.initializer
-            ? aliasSymbol.initializer
-            : directTag,
-        );
-        if (!isNodeOfType(tag, "MemberExpression")) return;
-        const receiver = stripParenExpression(tag.object);
-        if (
-          !isNodeOfType(receiver, "Identifier") ||
-          receiver.name !== "String" ||
-          !context.scopes.isGlobalReference(receiver) ||
-          getResolvedStaticPropertyName(tag, context.scopes) !== "raw"
-        ) {
-          return;
-        }
-      }
-      for (const expression of node.expressions) {
-        reportOfficialDirectValueConsumption(context, expression);
-      }
-    },
-    JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
-      if (isAstNode(node.expression)) {
-        reportOfficialDirectValueConsumption(context, node.expression);
-      }
-    },
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      for (const argument of node.arguments) {
-        if (isNodeOfType(argument, "SpreadElement")) continue;
-        if (isGlobalEnumerationCallForArgument(context, node, argument)) {
-          reportDirectSynchronousConsumption(context, argument);
-        }
-        if (isGlobalCoercionCallForArgument(context, node, argument)) {
-          reportOfficialDirectValueConsumption(context, argument);
-        }
-      }
-    },
-    NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
-      for (const argument of node.arguments) {
-        if (isNodeOfType(argument, "SpreadElement")) continue;
-        if (!isGlobalIterableConstructorForArgument(context, node, argument)) continue;
-        reportDirectSynchronousConsumption(context, argument);
-      }
-    },
-  }),
+  create: (context: RuleContext) =>
+    createProgramGatedVisitors({
+      createVisitors: () => createActiveVisitors(context),
+      shouldAnalyzeProgram: (programNode) =>
+        hasImportFromModules(programNode, NEXT_HEADERS_MODULES) ||
+        isNextSitemapFile(context) ||
+        isFrameworkRouteOrSpecialFilename(context, "next"),
+    }),
 });

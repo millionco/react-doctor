@@ -533,6 +533,8 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
 
     let guardAliasNames: ReadonlySet<string> = NO_GUARD_ALIASES;
     let browserOnlyGuardEndOffsetsByGlobalName = new Map<string, number[]>();
+    let programNode: EsTreeNodeOfType<"Program"> | null = null;
+    let didAnalyzeGuards = false;
 
     const importedGuardResolutionByName = new Map<string, ImportedGuardResolution>();
     let importedGuardResolutionCount = 0;
@@ -585,6 +587,17 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     };
 
     const reportRead = (node: EsTreeNode, globalName: string): void => {
+      if (!isEvaluatedAtImportTime(node)) return;
+      if (!didAnalyzeGuards && programNode) {
+        guardAliasNames = collectGuardAliasNames(programNode);
+        browserOnlyGuardEndOffsetsByGlobalName = collectBrowserOnlyGuardEndOffsets(
+          programNode,
+          context,
+          guardAliasNames,
+          classifyImportedGuardIdentifier,
+        );
+        didAnalyzeGuards = true;
+      }
       if (
         browserOnlyGuardEndOffsetsByGlobalName
           .get(globalName)
@@ -592,7 +605,6 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
       ) {
         return;
       }
-      if (!isEvaluatedAtImportTime(node)) return;
       if (
         isGuardedAgainstSsrCrash(
           node,
@@ -611,13 +623,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
 
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        guardAliasNames = collectGuardAliasNames(node);
-        browserOnlyGuardEndOffsetsByGlobalName = collectBrowserOnlyGuardEndOffsets(
-          node,
-          context,
-          guardAliasNames,
-          classifyImportedGuardIdentifier,
-        );
+        programNode = node;
       },
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
         if (!BROWSER_GLOBAL_NAMES.has(node.name)) return;

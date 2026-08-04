@@ -210,15 +210,16 @@ export const rerenderStateOnlyInHandlers = defineRule({
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const bindings = collectUseStateBindings(componentBody, context.scopes);
       if (bindings.length === 0) return;
-
-      const renderReachableExpressions = collectRenderReachableExpressions(componentBody);
-      if (renderReachableExpressions.length === 0) return;
-
       const {
         dependencyGraph,
         directRenderNames: cachedDirectRenderNames,
         renderReachableNames: cachedRenderReachableNames,
       } = getComponentRenderDependencyAnalysis(componentBody, context.scopes);
+      if (bindings.every((binding) => cachedRenderReachableNames.has(binding.valueName))) return;
+
+      const renderReachableExpressions = collectRenderReachableExpressions(componentBody);
+      if (renderReachableExpressions.length === 0) return;
+
       const directRenderNames = new Set(cachedDirectRenderNames);
       const renderReachableNames = new Set(cachedRenderReachableNames);
       // A top-level `void someState;` is the deliberate "re-render to

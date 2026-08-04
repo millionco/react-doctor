@@ -3,11 +3,13 @@ import type {
   ScopeDescriptor,
   SymbolDescriptor,
 } from "../../semantic/scope-analysis.js";
+import { createProgramGatedVisitors } from "../../utils/create-program-gated-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
@@ -17,6 +19,7 @@ import { isWithinAssignmentTarget } from "../../utils/is-within-assignment-targe
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 interface ProxyPath {
   readonly rootKey: string;
@@ -36,6 +39,7 @@ interface SnapshotTarget {
 }
 
 const VALTIO_REACT_MODULE_SOURCES = new Set(["valtio", "valtio/react"]);
+const VALTIO_REACT_MODULE_SOURCE_LIST = [...VALTIO_REACT_MODULE_SOURCES];
 const REACT_DEPENDENCY_ARRAY_HOOK_NAMES = new Set([
   "useCallback",
   "useEffect",
@@ -404,6 +408,84 @@ const wasTargetReplacedBeforeRead = (
     );
   });
 
+const createActiveVisitors = (context: RuleContext): RuleVisitors => {
+  const snapshotTargets: SnapshotTarget[] = [];
+  const identifierCandidates: EsTreeNode[] = [];
+  const writeTargets: EsTreeNode[] = [];
+  return {
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      const snapshotTarget = getSnapshotTarget(node, context);
+      if (snapshotTarget) snapshotTargets.push(snapshotTarget);
+    },
+    Identifier(node: EsTreeNodeOfType<"Identifier">) {
+      if (context.scopes.referenceFor(node)) identifierCandidates.push(node);
+    },
+    AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
+      writeTargets.push(...collectAssignmentWriteTargets(node.left));
+    },
+    UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
+      writeTargets.push(node.argument);
+    },
+    "Program:exit"() {
+      const reportedExpressions = new Set<EsTreeNode>();
+      for (const identifier of identifierCandidates) {
+        const readExpression = findOutermostMemberRead(identifier);
+        if (
+          reportedExpressions.has(readExpression) ||
+          (isWithinAssignmentTarget(readExpression) &&
+            !isReadPositionWithinAssignmentTarget(readExpression)) ||
+          isSnapshotArgument(readExpression, context.scopes)
+        ) {
+          continue;
+        }
+        const readAliasCaptures = new Map<number, ProxyAliasCapture>();
+        const readPath = resolveProxyPath(
+          readExpression,
+          context.scopes,
+          new Set(),
+          null,
+          readAliasCaptures,
+        );
+        const readPosition = readExpression.range?.[0];
+        const ownerFunction = findRenderPhaseComponentOrHook(readExpression, context.scopes);
+        if (!readPath || typeof readPosition !== "number" || !ownerFunction) continue;
+        const readScope = context.scopes.scopeFor(readExpression);
+        const matchingTarget = snapshotTargets.find(
+          (target) =>
+            target.ownerFunction === ownerFunction &&
+            target.declarationEnd < readPosition &&
+            target.snapshotBindingScopes.some((bindingScope) =>
+              isScopeWithin(readScope, bindingScope),
+            ) &&
+            isPathPrefix(target.path, readPath) &&
+            (readAliasCaptures.size === 0 ||
+              [...readAliasCaptures.values()].some(
+                (aliasCapture) =>
+                  isPathPrefix(aliasCapture.path, target.path) ||
+                  (isPathPrefix(target.path, aliasCapture.path) &&
+                    readPath.properties.length > aliasCapture.path.properties.length),
+              )) &&
+            !wasTargetReplacedBeforeRead(
+              target,
+              readPosition,
+              writeTargets,
+              readAliasCaptures,
+              context,
+            ),
+        );
+        if (
+          !matchingTarget ||
+          isStableProxyDependency(readExpression, readPath, matchingTarget, context.scopes)
+        ) {
+          continue;
+        }
+        reportedExpressions.add(readExpression);
+        context.report({ node: readExpression, message: MESSAGE });
+      }
+    },
+  };
+};
+
 export const valtioNoProxyReadInRender = defineRule({
   id: "valtio-no-proxy-read-in-render",
   title: "Valtio proxy read during render",
@@ -411,81 +493,10 @@ export const valtioNoProxyReadInRender = defineRule({
   recommendation:
     "Read reactive render values from useSnapshot. Reserve the mutable proxy for event handlers, effects, and other callbacks that need the latest value.",
   requires: ["valtio:1"],
-  create: (context: RuleContext) => {
-    const snapshotTargets: SnapshotTarget[] = [];
-    const identifierCandidates: EsTreeNode[] = [];
-    const writeTargets: EsTreeNode[] = [];
-    return {
-      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        const snapshotTarget = getSnapshotTarget(node, context);
-        if (snapshotTarget) snapshotTargets.push(snapshotTarget);
-      },
-      Identifier(node: EsTreeNodeOfType<"Identifier">) {
-        if (context.scopes.referenceFor(node)) identifierCandidates.push(node);
-      },
-      AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
-        writeTargets.push(...collectAssignmentWriteTargets(node.left));
-      },
-      UpdateExpression(node: EsTreeNodeOfType<"UpdateExpression">) {
-        writeTargets.push(node.argument);
-      },
-      "Program:exit"() {
-        const reportedExpressions = new Set<EsTreeNode>();
-        for (const identifier of identifierCandidates) {
-          const readExpression = findOutermostMemberRead(identifier);
-          if (
-            reportedExpressions.has(readExpression) ||
-            (isWithinAssignmentTarget(readExpression) &&
-              !isReadPositionWithinAssignmentTarget(readExpression)) ||
-            isSnapshotArgument(readExpression, context.scopes)
-          ) {
-            continue;
-          }
-          const readAliasCaptures = new Map<number, ProxyAliasCapture>();
-          const readPath = resolveProxyPath(
-            readExpression,
-            context.scopes,
-            new Set(),
-            null,
-            readAliasCaptures,
-          );
-          const readPosition = readExpression.range?.[0];
-          const ownerFunction = findRenderPhaseComponentOrHook(readExpression, context.scopes);
-          if (!readPath || typeof readPosition !== "number" || !ownerFunction) continue;
-          const readScope = context.scopes.scopeFor(readExpression);
-          const matchingTarget = snapshotTargets.find(
-            (target) =>
-              target.ownerFunction === ownerFunction &&
-              target.declarationEnd < readPosition &&
-              target.snapshotBindingScopes.some((bindingScope) =>
-                isScopeWithin(readScope, bindingScope),
-              ) &&
-              isPathPrefix(target.path, readPath) &&
-              (readAliasCaptures.size === 0 ||
-                [...readAliasCaptures.values()].some(
-                  (aliasCapture) =>
-                    isPathPrefix(aliasCapture.path, target.path) ||
-                    (isPathPrefix(target.path, aliasCapture.path) &&
-                      readPath.properties.length > aliasCapture.path.properties.length),
-                )) &&
-              !wasTargetReplacedBeforeRead(
-                target,
-                readPosition,
-                writeTargets,
-                readAliasCaptures,
-                context,
-              ),
-          );
-          if (
-            !matchingTarget ||
-            isStableProxyDependency(readExpression, readPath, matchingTarget, context.scopes)
-          ) {
-            continue;
-          }
-          reportedExpressions.add(readExpression);
-          context.report({ node: readExpression, message: MESSAGE });
-        }
-      },
-    };
-  },
+  create: (context: RuleContext) =>
+    createProgramGatedVisitors({
+      createVisitors: () => createActiveVisitors(context),
+      shouldAnalyzeProgram: (programNode) =>
+        hasImportFromModules(programNode, VALTIO_REACT_MODULE_SOURCE_LIST),
+    }),
 });

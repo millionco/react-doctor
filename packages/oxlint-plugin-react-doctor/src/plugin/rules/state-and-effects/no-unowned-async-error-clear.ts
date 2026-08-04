@@ -11,6 +11,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
@@ -443,25 +444,97 @@ const findUnsafeOwnerClear = (
   return unsafeClear;
 };
 
-const callIsOwnershipGuarded = (
+const conditionProvesRequestOwnership = (condition: EsTreeNode, whenTruthy: boolean): boolean => {
+  const expression = stripParenExpression(condition);
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "!") {
+    return conditionProvesRequestOwnership(expression.argument, !whenTruthy);
+  }
+  if (isNodeOfType(expression, "BinaryExpression")) {
+    const isRequestIdentityComparison =
+      nodeContainsRequestIdentity(expression.left) && nodeContainsRequestIdentity(expression.right);
+    if (!isRequestIdentityComparison) return false;
+    if (["==", "==="].includes(expression.operator)) return whenTruthy;
+    if (["!=", "!=="].includes(expression.operator)) return !whenTruthy;
+    return false;
+  }
+  if (!isNodeOfType(expression, "LogicalExpression")) return false;
+  const leftProvesOwnership = conditionProvesRequestOwnership(expression.left, whenTruthy);
+  const rightProvesOwnership = conditionProvesRequestOwnership(expression.right, whenTruthy);
+  if (expression.operator === "&&") {
+    return whenTruthy
+      ? leftProvesOwnership || rightProvesOwnership
+      : leftProvesOwnership && rightProvesOwnership;
+  }
+  if (expression.operator === "||") {
+    return whenTruthy
+      ? leftProvesOwnership && rightProvesOwnership
+      : leftProvesOwnership || rightProvesOwnership;
+  }
+  return false;
+};
+
+const callIsInOwnershipProvenBranch = (
   call: EsTreeNodeOfType<"CallExpression">,
   asyncBoundary: EsTreeNode,
 ): boolean => {
-  let hasIdentityComparisonBeforeWrite = false;
-  walkAst(asyncBoundary, (child) => {
-    if (hasIdentityComparisonBeforeWrite || child.range[0] >= call.range[0]) return false;
-    if (
-      isNodeOfType(child, "BinaryExpression") &&
-      ["==", "===", "!=", "!=="].includes(child.operator) &&
-      nodeContainsRequestIdentity(child.left) &&
-      nodeContainsRequestIdentity(child.right)
-    ) {
-      hasIdentityComparisonBeforeWrite = true;
-      return false;
+  let ancestor = call.parent;
+  while (ancestor && ancestor !== asyncBoundary) {
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      if (
+        isAstDescendant(call, ancestor.consequent) &&
+        conditionProvesRequestOwnership(ancestor.test, true)
+      ) {
+        return true;
+      }
+      if (
+        ancestor.alternate &&
+        isAstDescendant(call, ancestor.alternate) &&
+        conditionProvesRequestOwnership(ancestor.test, false)
+      ) {
+        return true;
+      }
     }
-  });
-  return hasIdentityComparisonBeforeWrite;
+    ancestor = ancestor.parent;
+  }
+  return false;
 };
+
+const callFollowsOwnershipExitGuard = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  asyncBoundary: EsTreeNode,
+): boolean => {
+  let ancestor = call.parent;
+  while (ancestor && ancestor !== asyncBoundary) {
+    if (isNodeOfType(ancestor, "BlockStatement")) {
+      for (const statement of ancestor.body) {
+        if (isAstDescendant(call, statement)) break;
+        if (!isNodeOfType(statement, "IfStatement")) continue;
+        if (
+          statementAlwaysExits(statement.consequent) &&
+          conditionProvesRequestOwnership(statement.test, false)
+        ) {
+          return true;
+        }
+        if (
+          statement.alternate &&
+          statementAlwaysExits(statement.alternate) &&
+          conditionProvesRequestOwnership(statement.test, true)
+        ) {
+          return true;
+        }
+      }
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const callIsOwnershipGuarded = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  asyncBoundary: EsTreeNode,
+): boolean =>
+  callIsInOwnershipProvenBranch(call, asyncBoundary) ||
+  callFollowsOwnershipExitGuard(call, asyncBoundary);
 
 const collectSetterCalls = (
   functionNode: EsTreeNode,

@@ -1,0 +1,16 @@
+{
+  "name": "skipped-deps-test",
+  "main": "src/index.ts",
+  "dependencies": {
+    "react": "^18.0.0",
+    "expo-status-bar": "^2.0.0",
+    "@react-navigation/native": "^6.0.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.0.0",
+    "typescript": "^5.0.0",
+    "webpack-cli": "^5.0.0",
+    "mkdirp": "^3.0.0"
+  }
+}

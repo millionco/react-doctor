@@ -39,6 +39,9 @@ const deadExportsByFile = (result: ScanResult, fixtureDir: string): Record<strin
 const staleDependencyNames = (result: ScanResult): string[] =>
   result.unusedDependencies.map((dep) => dep.name).sort();
 
+const skippedDependencyNames = (result: ScanResult): string[] =>
+  result.skippedDependencies.map((dep) => dep.name).sort();
+
 describe("simple-app", () => {
   it("should detect orphan file", async () => {
     const result = await scanFixture("simple-app");
@@ -85,6 +88,53 @@ describe("simple-app", () => {
     const result = await scanFixture("simple-app");
     const deps = staleDependencyNames(result);
     assert.ok(deps.includes("react"), `react should be unused since never imported, got: ${deps}`);
+  });
+});
+
+describe("skipped-deps-test", () => {
+  it("should track dependencies skipped due to allowlisted prefixes", async () => {
+    const result = await scanFixture("skipped-deps-test");
+    const skipped = skippedDependencyNames(result);
+    
+    assert.ok(
+      skipped.includes("expo-status-bar"),
+      `expo-status-bar should be skipped (expo- prefix), got: ${skipped}`,
+    );
+    assert.ok(
+      skipped.includes("@react-navigation/native"),
+      `@react-navigation/native should be skipped (@react-navigation/ prefix), got: ${skipped}`,
+    );
+    assert.ok(
+      skipped.includes("@types/lodash"),
+      `@types/lodash should be skipped (@types/ prefix), got: ${skipped}`,
+    );
+    assert.ok(
+      skipped.includes("webpack-cli"),
+      `webpack-cli should be skipped (webpack- prefix), got: ${skipped}`,
+    );
+  });
+
+  it("should provide descriptive reasons for skipped dependencies", async () => {
+    const result = await scanFixture("skipped-deps-test");
+    
+    const expoSkipped = result.skippedDependencies.find((dep) => dep.name === "expo-status-bar");
+    assert.ok(expoSkipped, "expo-status-bar should be in skipped list");
+    assert.match(expoSkipped.reason, /expo-/i, "reason should mention expo- prefix");
+    assert.match(expoSkipped.reason, /allowlisted prefix/i, "reason should mention allowlisted prefix");
+    
+    const typesSkipped = result.skippedDependencies.find((dep) => dep.name === "@types/lodash");
+    assert.ok(typesSkipped, "@types/lodash should be in skipped list");
+    assert.match(typesSkipped.reason, /@types\//i, "reason should mention @types/ prefix");
+    assert.equal(typesSkipped.isDevDependency, true, "@types/lodash should be marked as dev dependency");
+  });
+
+  it("should still flag genuinely unused dependencies", async () => {
+    const result = await scanFixture("skipped-deps-test");
+    const unused = staleDependencyNames(result);
+    const skipped = skippedDependencyNames(result);
+    
+    assert.ok(unused.includes("lodash"), `lodash should be unused, got: ${unused}`);
+    assert.ok(!skipped.includes("lodash"), `lodash should not be skipped, got: ${skipped}`);
   });
 });
 

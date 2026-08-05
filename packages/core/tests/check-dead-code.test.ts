@@ -3,9 +3,30 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { checkDeadCode } from "../src/check-dead-code.js";
+import { collectDeadCodePatterns } from "../src/dead-code/collect-dead-code-patterns.js";
 import { resolveReactDoctorCacheDir } from "../src/utils/resolve-react-doctor-cache-dir.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-check-dead-code-"));
+
+interface KnipModuleConfigCase {
+  readonly filename: string;
+  readonly source: string;
+}
+
+const KNIP_MODULE_CONFIG_CASES: ReadonlyArray<KnipModuleConfigCase> = [
+  {
+    filename: "knip.config.js",
+    source: 'export default { ignore: ["src/generated.ts"] };\n',
+  },
+  {
+    filename: "knip.config.mjs",
+    source: 'export default { ignore: ["src/generated.ts"] };\n',
+  },
+  {
+    filename: "knip.config.cjs",
+    source: 'module.exports = { ignore: ["src/generated.ts"] };\n',
+  },
+];
 
 afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -185,6 +206,70 @@ describe("checkDeadCode", () => {
     expect(capturedInput?.entryPatterns).toContain("packages/*/src/main.ts");
     expect(capturedInput?.ignorePatterns).toContain("src/generated.ts");
     expect(capturedInput?.ignorePatterns).toContain("packages/*/src/fixtures.ts");
+  });
+
+  it("loads entry and ignore patterns from knip.config.ts", async () => {
+    const directory = setupProject("knip-typescript-worker-input", {
+      "src/index.ts": "export const used = 1;\n",
+      "knip.config.ts":
+        'const sourceDirectory: string = "src";\n' +
+        "export default async () => ({\n" +
+        "  entry: [`${sourceDirectory}/custom-entry.ts`],\n" +
+        "  ignore: [`${sourceDirectory}/generated.ts`],\n" +
+        '  workspaces: { "packages/*": { entry: ["src/main.ts"], ignore: ["src/fixtures.ts"] } },\n' +
+        "});\n",
+    });
+    let capturedInput: {
+      entryPatterns: ReadonlyArray<string>;
+      ignorePatterns: ReadonlyArray<string>;
+    } | null = null;
+
+    await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: (input) => {
+        capturedInput = input;
+        return {
+          result: Promise.resolve({
+            unusedFiles: [],
+            unusedExports: [],
+            unusedDependencies: [],
+            circularDependencies: [],
+          }),
+        };
+      },
+    });
+
+    expect(capturedInput?.entryPatterns).toContain("src/custom-entry.ts");
+    expect(capturedInput?.entryPatterns).toContain("packages/*/src/main.ts");
+    expect(capturedInput?.ignorePatterns).toContain("src/generated.ts");
+    expect(capturedInput?.ignorePatterns).toContain("packages/*/src/fixtures.ts");
+  });
+
+  for (const configCase of KNIP_MODULE_CONFIG_CASES) {
+    it(`loads ignore patterns from ${configCase.filename}`, async () => {
+      const directory = setupProject(`knip-${configCase.filename}`, {
+        "src/index.ts": "export const used = 1;\n",
+        [configCase.filename]: configCase.source,
+      });
+
+      const patterns = await collectDeadCodePatterns(directory);
+      expect(patterns.ignorePatterns).toContain("src/generated.ts");
+    });
+  }
+
+  it("reloads a Knip module configuration after it changes", async () => {
+    const directory = setupProject("knip-config-reload", {
+      "src/index.ts": "export const used = 1;\n",
+      "knip.config.ts": 'export default { ignore: ["src/first.ts"] };\n',
+    });
+    const configFilePath = path.join(directory, "knip.config.ts");
+
+    expect((await collectDeadCodePatterns(directory)).ignorePatterns).toContain("src/first.ts");
+    fs.writeFileSync(configFilePath, 'export default { ignore: ["src/second.ts"] };\n');
+
+    const reloadedPatterns = await collectDeadCodePatterns(directory);
+    expect(reloadedPatterns.ignorePatterns).toContain("src/second.ts");
+    expect(reloadedPatterns.ignorePatterns).not.toContain("src/first.ts");
   });
 
   it("maps unused exports, dependencies, and cycles from worker results", async () => {

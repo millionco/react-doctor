@@ -7,6 +7,7 @@ import { ANALYZED_MANIFEST_FILENAMES, DEFAULT_EXTENSIONS } from "deslop-js/analy
 import type { Diagnostic } from "../types/index.js";
 import { DEAD_CODE_CACHE_FILENAME, DEAD_CODE_CACHE_SCHEMA_VERSION } from "../constants.js";
 import { Diagnostic as DiagnosticSchema } from "../schemas.js";
+import { KNIP_CONFIG_FILENAMES } from "./knip-config-filenames.js";
 import { atomicWriteJson } from "../utils/atomic-write-json.js";
 import { failOpenReadJson } from "../utils/fail-open-read-json.js";
 import { hashFileContents } from "../utils/hash-file-contents.js";
@@ -75,11 +76,11 @@ interface PersistedDeadCodeResultCache {
 const ANALYZED_FILE_EXTENSIONS = new Set(DEFAULT_EXTENSIONS);
 
 // Beyond what deslop itself reads, the dead-code PASS also depends on:
-// `knip.json` (read core-side by `collect-dead-code-patterns.ts` to derive
-// the entry/ignore patterns) and `deno.lock` (an extra proxy for installed
+// Knip configuration (read core-side by `collect-dead-code-patterns.ts` to
+// derive the entry/ignore patterns) and `deno.lock` (an extra proxy for installed
 // `node_modules` metadata — deslop reads installed packages' bin/peer fields,
 // which only change through an install that rewrites a lockfile).
-const CORE_SIDE_MANIFEST_NAMES = ["knip.json", "deno.lock"];
+const CORE_SIDE_MANIFEST_NAMES = [...KNIP_CONFIG_FILENAMES, "deno.lock"];
 
 const ANALYZED_MANIFEST_NAMES = new Set([
   ...ANALYZED_MANIFEST_FILENAMES,

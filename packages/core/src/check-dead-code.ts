@@ -2,10 +2,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Diagnostic } from "./types/index.js";
-import {
-  collectDeadCodeEntryPatterns,
-  collectDeadCodeIgnorePatterns,
-} from "./dead-code/collect-dead-code-patterns.js";
+import { collectDeadCodePatterns } from "./dead-code/collect-dead-code-patterns.js";
 import {
   collectAnalyzedFileStats,
   computeDeadCodeCacheKey,
@@ -569,8 +566,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   const rootDirectory = toCanonicalPath(options.rootDirectory);
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
-  const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
-  const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory);
+  const { entryPatterns, ignorePatterns } = await collectDeadCodePatterns(rootDirectory);
   const tsConfigPath = resolveTsConfigPath(rootDirectory);
   const deslopJsModuleSpecifier =
     options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js");

@@ -6,6 +6,7 @@ import { ANALYZED_MANIFEST_FILENAMES, DEFAULT_EXTENSIONS } from "deslop-js/analy
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "../src/types/index.js";
 import { checkDeadCode } from "../src/check-dead-code.js";
+import { KNIP_CONFIG_FILENAMES } from "../src/dead-code/knip-config-filenames.js";
 import {
   collectAnalyzedFileStats,
   computeDeadCodeCacheKey,
@@ -159,6 +160,18 @@ describe("fingerprinted file sets (imported from deslop-js/analyzed-inputs)", ()
         true,
       );
       fs.rmSync(probePath);
+    }
+  });
+
+  it("stats every Knip configuration file React Doctor reads", () => {
+    const directory = setupProject("stat-knip-config-coverage", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    for (const filename of KNIP_CONFIG_FILENAMES) {
+      const filePath = path.join(directory, filename);
+      fs.writeFileSync(filePath, "export default {};\n");
+      expect(collectAnalyzedFileStats(directory).has(filename), filename).toBe(true);
+      fs.rmSync(filePath);
     }
   });
 

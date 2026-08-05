@@ -13,7 +13,6 @@ React Doctor deterministically scans your codebase and finds issues across state
 
 Works across React frameworks and React-enabled sites - Next.js, Vite, Astro, TanStack, React Native, Expo, you name it.
 
-
 [Website →](https://react.doctor/docs)
 
 ## Install

@@ -223,6 +223,69 @@ describe("React Bench PR 488 false-positive regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still reports a reset paired with a plain superseded property write", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `import { useEffect, useState } from "react";
+      const Editor = ({ documentId }) => {
+        const [draft, setDraft] = useState("");
+        const status = { superseded: false };
+        useEffect(() => {
+          status.superseded = true;
+          setDraft("");
+        }, [documentId]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still reports a reset paired with an unrelated listener cleanup", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `import { useEffect, useState } from "react";
+      const Editor = ({ documentId }) => {
+        const [draft, setDraft] = useState("");
+        useEffect(() => {
+          setDraft("");
+          const handleResize = () => {};
+          window.addEventListener("resize", handleResize);
+          return () => window.removeEventListener("resize", handleResize);
+        }, [documentId]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts state synchronized by a locally owned observer", () => {
+    const result = runRule(
+      noResetAllStateOnPropChange,
+      `import { useEffect, useState } from "react";
+      const Outline = ({ items }) => {
+        const [activeId, setActiveId] = useState("");
+        useEffect(() => {
+          const observer = new IntersectionObserver((entries) => {
+            const activeEntry = entries.find((entry) => entry.isIntersecting);
+            if (activeEntry) setActiveId(activeEntry.target.id);
+          });
+          items.forEach((item) => observer.observe(item));
+          return () => observer.disconnect();
+        }, [items]);
+        return activeId;
+      };`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("accepts component-scope timer cleanup delegated through a stable helper", () => {
     const result = runRule(
       effectNeedsCleanup,
@@ -378,6 +441,25 @@ describe("React Bench PR 488 false-positive regressions", () => {
 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports state synchronization when the callback also clears on cleanup", () => {
+    const result = runRule(
+      noPropCallbackInEffect,
+      `import { useEffect, useState } from "react";
+      const Editor = ({ onChange }) => {
+        const [draft, setDraft] = useState("");
+        useEffect(() => {
+          onChange(draft);
+          return () => onChange(null);
+        }, [draft, onChange]);
+        return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+      };`,
+      { forceJsx: true },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it.each([noPassLiveStateToParent, noPropCallbackInEffect])(

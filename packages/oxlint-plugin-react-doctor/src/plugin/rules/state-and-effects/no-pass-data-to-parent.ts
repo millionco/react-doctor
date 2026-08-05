@@ -286,6 +286,16 @@ const hasMutableBindingWrite = (reference: Reference): boolean =>
   );
 
 const TRANSPARENT_PROP_VALUE_HOOK_NAMES: ReadonlySet<string> = new Set(["useMemo", "useRef"]);
+const TRANSPARENT_GLOBAL_VALUE_NAMES: ReadonlySet<string> = new Set([
+  "Array",
+  "Boolean",
+  "JSON",
+  "Math",
+  "Number",
+  "Object",
+  "String",
+  "undefined",
+]);
 
 const isOpaqueHookResultReference = (
   analysis: ProgramAnalysis,
@@ -314,6 +324,51 @@ const isOpaqueHookResultReference = (
     }),
   );
 
+const isOpaqueCallResultReference = (
+  analysis: ProgramAnalysis,
+  reference: Reference,
+  scopes: ScopeAnalysis,
+): boolean =>
+  Boolean(
+    reference.resolved?.defs.some((definition) => {
+      const declarator = definition.node as unknown as EsTreeNode;
+      if (!isNodeOfType(declarator, "VariableDeclarator") || !declarator.init) return false;
+      const initializer = stripParenExpression(declarator.init as EsTreeNode);
+      if (!isNodeOfType(initializer, "CallExpression")) return false;
+      if (isReactHookCall(initializer, TRANSPARENT_PROP_VALUE_HOOK_NAMES, scopes)) return false;
+      const callee = stripParenExpression(initializer.callee);
+      const calleeName = isNodeOfType(callee, "Identifier")
+        ? callee.name
+        : getStaticMemberPropertyName(callee);
+      if (calleeName && isComparisonMemoizerHookName(calleeName)) return false;
+      const calleeRoot = isNodeOfType(callee, "MemberExpression")
+        ? stripParenExpression(callee.object)
+        : callee;
+      if (
+        isNodeOfType(calleeRoot, "Identifier") &&
+        scopes.isGlobalReference(calleeRoot) &&
+        TRANSPARENT_GLOBAL_VALUE_NAMES.has(calleeRoot.name)
+      ) {
+        return false;
+      }
+      const calleeReference = isNodeOfType(calleeRoot, "Identifier")
+        ? getRef(analysis, calleeRoot)
+        : null;
+      return (
+        !calleeReference || !isComponentPropOriginatedReference(analysis, calleeReference, scopes)
+      );
+    }),
+  );
+
+const isOpaqueGlobalValueReference = (reference: Reference, scopes: ScopeAnalysis): boolean => {
+  const identifier = reference.identifier as unknown as EsTreeNode;
+  return (
+    isNodeOfType(identifier, "Identifier") &&
+    scopes.isGlobalReference(identifier) &&
+    !TRANSPARENT_GLOBAL_VALUE_NAMES.has(identifier.name)
+  );
+};
+
 const isComponentPropOriginatedReference = (
   analysis: ProgramAnalysis,
   reference: Reference,
@@ -328,6 +383,8 @@ const isComponentPropOriginatedReference = (
       hasMutableBindingWrite(provenanceReference) ||
       isState(analysis, provenanceReference) ||
       isOpaqueHookResultReference(analysis, provenanceReference, scopes) ||
+      isOpaqueCallResultReference(analysis, provenanceReference, scopes) ||
+      isOpaqueGlobalValueReference(provenanceReference, scopes) ||
       isCustomHookStateResultReference(analysis, provenanceReference, scopes),
   );
 };
@@ -349,6 +406,8 @@ const hasComponentPropOriginWithoutChildState = (
       hasMutableBindingWrite(reference) ||
       isState(analysis, reference) ||
       isOpaqueHookResultReference(analysis, reference, scopes) ||
+      isOpaqueCallResultReference(analysis, reference, scopes) ||
+      isOpaqueGlobalValueReference(reference, scopes) ||
       isCustomHookStateResultReference(analysis, reference, scopes),
   );
 };
@@ -364,10 +423,12 @@ const isTransparentComponentPropEchoExpression = (
   const reference = getRef(analysis, candidate);
   if (!reference || isProp(analysis, reference)) return Boolean(reference);
   if (hasMutableBindingWrite(reference)) return false;
-  const declarators = reference.resolved?.defs
-    .map((definition) => definition.node as unknown as EsTreeNode)
-    .filter((definitionNode) => isNodeOfType(definitionNode, "VariableDeclarator"));
-  if (declarators?.length !== 1) return false;
+  const declarators: EsTreeNode[] = [];
+  for (const definition of reference.resolved?.defs ?? []) {
+    const definitionNode = definition.node as unknown as EsTreeNode;
+    if (isNodeOfType(definitionNode, "VariableDeclarator")) declarators.push(definitionNode);
+  }
+  if (declarators.length !== 1) return false;
   const declarator = declarators[0];
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator") || !declarator.init) {
     return false;

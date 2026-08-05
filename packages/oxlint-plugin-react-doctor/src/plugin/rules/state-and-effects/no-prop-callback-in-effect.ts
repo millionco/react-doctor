@@ -302,10 +302,18 @@ export const noPropCallbackInEffect = defineRule({
               context.scopes,
             ),
         );
-        const stateDependencyReferences = analysis
-          ? [...reactStateDeps, ...customHookStateDeps].flatMap((element) =>
+        const reactStateDependencyReferences = analysis
+          ? reactStateDeps.flatMap((element) =>
               getStateDependencyReferences(analysis, element, propStackTracker.isPropName),
             )
+          : [];
+        const stateDependencyReferences = analysis
+          ? [
+              ...reactStateDependencyReferences,
+              ...customHookStateDeps.flatMap((element) =>
+                getStateDependencyReferences(analysis, element, propStackTracker.isPropName),
+              ),
+            ]
           : [];
         const stateLikeDeps = [...reactStateDeps, ...customHookStateDeps];
         if (stateLikeDeps.length === 0) return;
@@ -384,12 +392,17 @@ export const noPropCallbackInEffect = defineRule({
           const calleeName = getPropCallbackName(child);
           if (!calleeName) return;
           if (analysis) {
-            if (cleanupPropCallbackNames.has(calleeName)) return;
             const doesUseStateDependency = doesCallUseStateDependency(
               analysis,
               child,
               stateDependencyReferences,
             );
+            const doesUseReactStateDependency = doesCallUseStateDependency(
+              analysis,
+              child,
+              reactStateDependencyReferences,
+            );
+            if (cleanupPropCallbackNames.has(calleeName) && !doesUseReactStateDependency) return;
             if (
               !doesUseStateDependency &&
               (reactStateDeps.length === 0 ||

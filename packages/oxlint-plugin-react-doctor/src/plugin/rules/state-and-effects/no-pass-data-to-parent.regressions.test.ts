@@ -62,6 +62,37 @@ export const MultiSelectField = ({ onPendingChange }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("still flags child-produced call data mixed with a prop fallback", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+const Child = ({ categories, onChange }) => {
+  useEffect(() => {
+    const savedValue = readSavedValue();
+    onChange(savedValue || categories[0].id);
+  }, [categories, onChange]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags global mutable data indexed by a prop", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `import { useEffect } from "react";
+const Child = ({ animationId, onFrame }) => {
+  useEffect(() => {
+    onFrame(window.ANIMATION_DATA[animationId]);
+  }, [animationId, onFrame]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when a callback parameter is passed through a parent callback", () => {
     const result = runRule(
       noPassDataToParent,

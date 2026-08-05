@@ -10,8 +10,11 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findForwardedFreshHookDependencies } from "../../utils/find-forwarded-fresh-hook-dependencies.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getStaticKeyName } from "../../utils/get-static-key-name.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { getSymbolTypeAnnotation } from "../../utils/get-symbol-type-annotation.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -56,6 +59,7 @@ import {
   symbolHasStableValue,
 } from "./exhaustive-deps-symbol-stability.js";
 import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
+import { symbolHasReactComponentTypeAnnotation } from "../../utils/symbol-has-react-component-type-annotation.js";
 
 // Port of `oxc_linter::rules::react::exhaustive_deps`. Diffs the
 // closure-captured set of an effect / memo callback against its
@@ -955,6 +959,168 @@ const isUndefinedExpression = (node: EsTreeNode, scopes: ScopeAnalysis): boolean
   );
 };
 
+const getComponentPropsType = (
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  const bindingProperty = symbol.bindingIdentifier.parent;
+  const bindingPattern = bindingProperty?.parent;
+  if (isNodeOfType(bindingPattern, "ObjectPattern")) {
+    const annotation = bindingPattern.typeAnnotation;
+    if (annotation && isNodeOfType(annotation, "TSTypeAnnotation")) {
+      return annotation.typeAnnotation;
+    }
+  }
+  const componentFunction = findEnclosingFunction(symbol.bindingIdentifier);
+  if (!componentFunction) return null;
+  const functionRoot = findTransparentExpressionRoot(componentFunction);
+  const declarator = functionRoot.parent;
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.init !== functionRoot ||
+    !isNodeOfType(declarator.id, "Identifier")
+  ) {
+    return null;
+  }
+  const componentSymbol = scopes.symbolFor(declarator.id);
+  if (!componentSymbol || !symbolHasReactComponentTypeAnnotation(componentSymbol, scopes)) {
+    return null;
+  }
+  const annotation = declarator.id.typeAnnotation;
+  if (!annotation || !isNodeOfType(annotation, "TSTypeAnnotation")) return null;
+  const componentType = annotation.typeAnnotation;
+  return isNodeOfType(componentType, "TSTypeReference")
+    ? (componentType.typeArguments?.params[0] ?? null)
+    : null;
+};
+
+const getNamedPropsPropertyType = (
+  typeNode: EsTreeNode,
+  propertyName: string,
+  referenceNode: EsTreeNode,
+  visitedTypeNames: ReadonlySet<string> = new Set(),
+): EsTreeNode | null => {
+  if (isNodeOfType(typeNode, "TSTypeAnnotation")) {
+    return getNamedPropsPropertyType(
+      typeNode.typeAnnotation,
+      propertyName,
+      referenceNode,
+      visitedTypeNames,
+    );
+  }
+  if (isNodeOfType(typeNode, "TSIntersectionType")) {
+    for (const memberType of typeNode.types) {
+      const propertyType = getNamedPropsPropertyType(
+        memberType,
+        propertyName,
+        referenceNode,
+        visitedTypeNames,
+      );
+      if (propertyType) return propertyType;
+    }
+    return null;
+  }
+  if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
+    return getNamedPropsPropertyType(
+      typeNode.typeAnnotation,
+      propertyName,
+      referenceNode,
+      visitedTypeNames,
+    );
+  }
+  const members = isNodeOfType(typeNode, "TSTypeLiteral")
+    ? typeNode.members
+    : isNodeOfType(typeNode, "TSInterfaceDeclaration")
+      ? typeNode.body.body
+      : null;
+  if (members) {
+    for (const member of members) {
+      if (
+        !isNodeOfType(member, "TSPropertySignature") ||
+        getStaticKeyName(member.key) !== propertyName
+      ) {
+        continue;
+      }
+      return member.typeAnnotation?.typeAnnotation ?? null;
+    }
+    return null;
+  }
+  if (
+    !isNodeOfType(typeNode, "TSTypeReference") ||
+    !isNodeOfType(typeNode.typeName, "Identifier") ||
+    visitedTypeNames.has(typeNode.typeName.name)
+  ) {
+    return null;
+  }
+  const nextVisitedTypeNames = new Set(visitedTypeNames).add(typeNode.typeName.name);
+  for (const declaration of findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name)) {
+    const propertyType = getNamedPropsPropertyType(
+      declaration,
+      propertyName,
+      referenceNode,
+      nextVisitedTypeNames,
+    );
+    if (propertyType) return propertyType;
+  }
+  return null;
+};
+
+const typeExcludesNull = (
+  typeNode: EsTreeNode,
+  referenceNode: EsTreeNode,
+  visitedTypeNames: ReadonlySet<string> = new Set(),
+): boolean => {
+  if (isNodeOfType(typeNode, "TSTypeAnnotation")) {
+    return typeExcludesNull(typeNode.typeAnnotation, referenceNode, visitedTypeNames);
+  }
+  if (
+    isNodeOfType(typeNode, "TSNullKeyword") ||
+    isNodeOfType(typeNode, "TSAnyKeyword") ||
+    isNodeOfType(typeNode, "TSUnknownKeyword")
+  ) {
+    return false;
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    return typeNode.types.every((memberType) =>
+      typeExcludesNull(memberType, referenceNode, visitedTypeNames),
+    );
+  }
+  if (
+    !isNodeOfType(typeNode, "TSTypeReference") ||
+    !isNodeOfType(typeNode.typeName, "Identifier")
+  ) {
+    return true;
+  }
+  if (visitedTypeNames.has(typeNode.typeName.name)) return false;
+  const declarations = findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name);
+  if (declarations.length === 0) return true;
+  const nextVisitedTypeNames = new Set(visitedTypeNames).add(typeNode.typeName.name);
+  return declarations.every((declaration) =>
+    isNodeOfType(declaration, "TSTypeAliasDeclaration")
+      ? typeExcludesNull(declaration.typeAnnotation, referenceNode, nextVisitedTypeNames)
+      : true,
+  );
+};
+
+const controlledValueTypeExcludesNull = (
+  controlledValue: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const candidate = unwrapExpression(controlledValue);
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (!symbol) return false;
+  const directType = getSymbolTypeAnnotation(symbol);
+  if (directType) return typeExcludesNull(directType, candidate);
+  const bindingProperty = symbol.bindingIdentifier.parent;
+  if (!isNodeOfType(bindingProperty, "Property")) return false;
+  const propertyName = getStaticKeyName(bindingProperty.key);
+  const propsType = getComponentPropsType(symbol, scopes);
+  if (!propertyName || !propsType) return false;
+  const propertyType = getNamedPropsPropertyType(propsType, propertyName, candidate);
+  return Boolean(propertyType && typeExcludesNull(propertyType, candidate));
+};
+
 const isProvablyNonNullishStateInitializer = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -1046,7 +1212,9 @@ const isControlledStateSelection = (node: EsTreeNode, scopes: ScopeAnalysis): bo
   }
   const stateInitializer = getReactStateInitializer(candidate.alternate, scopes);
   return Boolean(
-    stateInitializer && isProvablyNonNullishStateInitializer(stateInitializer, scopes),
+    stateInitializer &&
+    isProvablyNonNullishStateInitializer(stateInitializer, scopes) &&
+    controlledValueTypeExcludesNull(controlledValue, scopes),
   );
 };
 

@@ -1558,7 +1558,13 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
 
     it("accepts an unreachable fresh fallback after controlled-state narrowing", () => {
       const code = `
-        function RangeSelect({ defaultValue, value, onChange, placeholder }) {
+        interface RangeSelectProps {
+          defaultValue?: string[];
+          value?: string[];
+          onChange: (value: string[]) => void;
+          placeholder: string;
+        }
+        function RangeSelect({ defaultValue, value, onChange, placeholder }: RangeSelectProps) {
           const [internalSelectedOptions] = useState(defaultValue ?? []);
           const isControlled = value !== undefined;
           const selectedOptions = (isControlled ? value : internalSelectedOptions) ?? [];
@@ -1579,7 +1585,13 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
 
     it("accepts the controlled value as the non-nullish state initializer", () => {
       const code = `
-        function RangeSelect({ value, onChange, placeholder }) {
+        import React from "react";
+        interface RangeSelectProps {
+          value?: string[];
+          onChange: (value: string[]) => void;
+          placeholder: string;
+        }
+        const RangeSelect: React.FC<RangeSelectProps> = ({ value, onChange, placeholder }) => {
           const [internalSelectedOptions] = useState(value ?? []);
           const isControlled = value !== undefined;
           const selectedOptions = (isControlled ? value : internalSelectedOptions) ?? [];
@@ -1592,7 +1604,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
             [selectedOptions, placeholder],
           );
           return [handleRangeChange, displayText];
-        }
+        };
       `;
       const result = runRule(exhaustiveDeps, code);
       expect(result.parseErrors).toEqual([]);
@@ -1617,6 +1629,25 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       const code = `
         function RangeSelect({ value, onChange }) {
           const [internalSelectedOptions] = useState();
+          const isControlled = value !== undefined;
+          const selectedOptions = (isControlled ? value : internalSelectedOptions) ?? [];
+          return useCallback(() => onChange(selectedOptions), [selectedOptions, onChange]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("selectedOptions");
+      expect(messages).toContain("rebuilt every render");
+    });
+
+    it("still reports a controlled-state fallback when the controlled value may be null", () => {
+      const code = `
+        function RangeSelect({ value, onChange }: {
+          value?: string[] | null;
+          onChange: (value: string[]) => void;
+        }) {
+          const [internalSelectedOptions] = useState<string[]>([]);
           const isControlled = value !== undefined;
           const selectedOptions = (isControlled ? value : internalSelectedOptions) ?? [];
           return useCallback(() => onChange(selectedOptions), [selectedOptions, onChange]);

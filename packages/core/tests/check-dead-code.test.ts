@@ -187,6 +187,93 @@ describe("checkDeadCode", () => {
     expect(capturedInput?.ignorePatterns).toContain("packages/*/src/fixtures.ts");
   });
 
+  it("honors unused-file ignore patterns from knip.config.ts", async () => {
+    const directory = setupProject("knip-config-ts-ignore", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/knipignored.ts": "export const ignored = 1;\n",
+      "knip.config.ts": 'export default { ignore: ["src/knipignored.ts"] };\n',
+    });
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged.some((entry) => entry.endsWith("knipignored.ts"))).toBe(false);
+  });
+
+  it("honors unused-file ignore patterns from knip.config.js", async () => {
+    const directory = setupProject("knip-config-js-ignore", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/knipignored.ts": "export const ignored = 1;\n",
+      "knip.config.js": 'export default { ignore: ["src/knipignored.ts"] };\n',
+    });
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged.some((entry) => entry.endsWith("knipignored.ts"))).toBe(false);
+  });
+
+  it("honors unused-file ignore patterns from knip.config.mjs", async () => {
+    const directory = setupProject("knip-config-mjs-ignore", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/knipignored.ts": "export const ignored = 1;\n",
+      "knip.config.mjs": 'export default { ignore: ["src/knipignored.ts"] };\n',
+    });
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged.some((entry) => entry.endsWith("knipignored.ts"))).toBe(false);
+  });
+
+  it("prefers knip.config.ts over knip.json", async () => {
+    const directory = setupProject("knip-config-ts-precedence", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/config-ts-ignored.ts": "export const ignored = 1;\n",
+      "src/json-ignored.ts": "export const ignored = 1;\n",
+      "knip.config.ts": 'export default { ignore: ["src/config-ts-ignored.ts"] };\n',
+      "knip.json": JSON.stringify({ ignore: ["src/json-ignored.ts"] }),
+    });
+
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged.some((entry) => entry.endsWith("config-ts-ignored.ts"))).toBe(false);
+    expect(flagged.some((entry) => entry.endsWith("json-ignored.ts"))).toBe(true);
+  });
+
+  it("forwards knip.config.ts entry and ignore patterns including workspaces", async () => {
+    const directory = setupProject("knip-config-ts-workspaces", {
+      "src/index.ts": "export const used = 1;\n",
+      "knip.config.ts": `export default {
+        entry: ["src/custom-entry.ts"],
+        ignore: ["src/generated.ts"],
+        workspaces: {
+          "packages/*": {
+            entry: ["src/main.ts"],
+            ignore: ["src/fixtures.ts"],
+          },
+        },
+      };\n`,
+    });
+    let capturedInput: {
+      entryPatterns: ReadonlyArray<string>;
+      ignorePatterns: ReadonlyArray<string>;
+    } | null = null;
+
+    await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: (input) => {
+        capturedInput = input;
+        return {
+          result: Promise.resolve({
+            unusedFiles: [],
+            unusedExports: [],
+            unusedDependencies: [],
+            circularDependencies: [],
+          }),
+        };
+      },
+    });
+
+    expect(capturedInput?.entryPatterns).toContain("src/custom-entry.ts");
+    expect(capturedInput?.entryPatterns).toContain("packages/*/src/main.ts");
+    expect(capturedInput?.ignorePatterns).toContain("src/generated.ts");
+    expect(capturedInput?.ignorePatterns).toContain("packages/*/src/fixtures.ts");
+  });
+
   it("maps unused exports, dependencies, and cycles from worker results", async () => {
     const directory = setupProject("worker-result-shapes", {
       "src/index.ts": "export const used = 1;\n",

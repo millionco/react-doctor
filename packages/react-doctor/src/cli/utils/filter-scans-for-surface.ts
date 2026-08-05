@@ -15,13 +15,6 @@ export interface SurfaceFilterableScan {
    * exactly as they would to a standalone scan of that module.
    */
   readonly config: ReactDoctorConfig | null;
-  /**
-   * Where to read source from when rendering a code frame, when that is not
-   * `result.project.rootDirectory`. A `--staged` scan runs against a snapshot
-   * of the index, so the worktree copy can differ from what was scanned —
-   * reading it would print the wrong lines under index line numbers.
-   */
-  readonly frameSourceRoot?: string;
 }
 
 export const filterScansForSurface = (

@@ -6,15 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { filterDiagnosticsForSurface } from "@react-doctor/core";
 import type { ReactDoctorConfig } from "@react-doctor/core";
 import { inspect } from "../src/inspect.js";
-import { computeProjectedScore } from "../src/cli/utils/compute-score-projection.js";
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
 import { setupReactProject } from "./regressions/_helpers.js";
-
-vi.mock("../src/cli/utils/compute-score-projection.js", () => ({
-  computeProjectedScore: vi.fn(async () => null),
-}));
-
-const mockedComputeProjectedScore = vi.mocked(computeProjectedScore);
 
 vi.mock("ora", () => ({
   default: () => ({
@@ -92,7 +85,6 @@ describe("inspect — score surface filter", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    mockedComputeProjectedScore.mockClear();
   });
 
   it("strips `design`-tagged diagnostics before they are sent to the score API", async () => {
@@ -133,7 +125,7 @@ describe("inspect — score surface filter", () => {
   });
 
   it(
-    "projects score gains from production diagnostics while retaining test and story findings",
+    "keeps test and story findings while the score surface selects production diagnostics",
     { timeout: 60_000 },
     async () => {
       const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-score-projection-"));
@@ -175,8 +167,6 @@ describe("inspect — score surface filter", () => {
           "story",
           undefined,
         ]);
-        expect(mockedComputeProjectedScore).toHaveBeenCalledTimes(1);
-        const [topErrorSource, rescoreSource] = mockedComputeProjectedScore.mock.calls[0];
         const scoreDiagnostics = filterDiagnosticsForSurface(
           result.diagnostics,
           "score",
@@ -193,8 +183,6 @@ describe("inspect — score surface filter", () => {
               (reactDoctorPlugin.rules[diagnostic.rule]?.tags?.includes("design") ?? false),
           ),
         ).toBe(false);
-        expect(topErrorSource).toEqual(scoreDiagnostics);
-        expect(rescoreSource).toEqual(scoreDiagnostics);
       } finally {
         consoleSpy.mockRestore();
         fs.rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -203,7 +191,7 @@ describe("inspect — score surface filter", () => {
   );
 
   it(
-    "projects explicitly included test and story diagnostics with their production sibling",
+    "includes test and story diagnostics when the score surface opts into them",
     { timeout: 60_000 },
     async () => {
       const temporaryDirectory = fs.mkdtempSync(
@@ -236,8 +224,6 @@ describe("inspect — score surface filter", () => {
           configOverride,
         });
 
-        expect(mockedComputeProjectedScore).toHaveBeenCalledTimes(1);
-        const [topErrorSource, rescoreSource] = mockedComputeProjectedScore.mock.calls[0];
         const scoreDiagnostics = filterDiagnosticsForSurface(
           result.diagnostics,
           "score",
@@ -246,8 +232,6 @@ describe("inspect — score surface filter", () => {
         expect(
           scoreDiagnostics.filter((diagnostic) => diagnostic.fileContext !== undefined),
         ).toHaveLength(2);
-        expect(topErrorSource).toEqual(scoreDiagnostics);
-        expect(rescoreSource).toEqual(scoreDiagnostics);
       } finally {
         consoleSpy.mockRestore();
         fs.rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -255,49 +239,49 @@ describe("inspect — score surface filter", () => {
     },
   );
 
-  it(
-    "does not project a score-eligible rule excluded from the CLI",
-    { timeout: 60_000 },
-    async () => {
-      const temporaryDirectory = fs.mkdtempSync(
-        path.join(os.tmpdir(), "rd-score-projection-cli-excluded-"),
-      );
-      const projectDirectory = setupReactProject(temporaryDirectory, "app", {
-        files: { "src/List.tsx": INDEX_KEY_LIST_SOURCE },
+  it("keeps CLI exclusions independent from the score surface", { timeout: 60_000 }, async () => {
+    const temporaryDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "rd-score-projection-cli-excluded-"),
+    );
+    const projectDirectory = setupReactProject(temporaryDirectory, "app", {
+      files: { "src/List.tsx": INDEX_KEY_LIST_SOURCE },
+    });
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    stubScoreFetchAndCapture();
+    vi.stubEnv("REACT_DOCTOR_NO_CACHE", "1");
+
+    try {
+      const configOverride: ReactDoctorConfig = {
+        surfaces: {
+          cli: { excludeRules: ["react-doctor/no-array-index-as-key"] },
+          score: { includeRules: ["react-doctor/no-array-index-as-key"] },
+        },
+      };
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: false,
+        noScore: false,
+        warnings: true,
+        configOverride,
       });
-      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      stubScoreFetchAndCapture();
-      vi.stubEnv("REACT_DOCTOR_NO_CACHE", "1");
 
-      try {
-        const configOverride: ReactDoctorConfig = {
-          surfaces: {
-            cli: { excludeRules: ["react-doctor/no-array-index-as-key"] },
-            score: { includeRules: ["react-doctor/no-array-index-as-key"] },
-          },
-        };
-        await inspect(projectDirectory, {
-          lint: true,
-          deadCode: false,
-          noScore: false,
-          warnings: true,
-          configOverride,
-        });
-
-        expect(mockedComputeProjectedScore).toHaveBeenCalledTimes(1);
-        const [topErrorSource, rescoreSource] = mockedComputeProjectedScore.mock.calls[0];
-        expect(
-          topErrorSource.some((diagnostic) => diagnostic.rule === "no-array-index-as-key"),
-        ).toBe(false);
-        expect(
-          rescoreSource.some((diagnostic) => diagnostic.rule === "no-array-index-as-key"),
-        ).toBe(true);
-      } finally {
-        consoleSpy.mockRestore();
-        fs.rmSync(temporaryDirectory, { recursive: true, force: true });
-      }
-    },
-  );
+      const cliDiagnostics = filterDiagnosticsForSurface(result.diagnostics, "cli", configOverride);
+      const scoreDiagnostics = filterDiagnosticsForSurface(
+        result.diagnostics,
+        "score",
+        configOverride,
+      );
+      expect(cliDiagnostics.some((diagnostic) => diagnostic.rule === "no-array-index-as-key")).toBe(
+        false,
+      );
+      expect(
+        scoreDiagnostics.some((diagnostic) => diagnostic.rule === "no-array-index-as-key"),
+      ).toBe(true);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
 
   // Regression for the Bugbot finding on #271: the `cli` outputSurface
   // used to short-circuit to the raw diagnostic list, which silently

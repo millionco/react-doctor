@@ -165,29 +165,8 @@ export const CI_TRUST_COMPANIES = "PayPal, Rippling, and Alibaba";
 
 export const SCORE_HEADER_ANIMATION_FRAME_COUNT = 40;
 export const SCORE_HEADER_ANIMATION_FRAME_DELAY_MS = 50;
-export const PERFECT_SCORE_RAINBOW_FRAME_COUNT = 16;
-export const PERFECT_SCORE_RAINBOW_FRAME_DELAY_MS = 50;
-
-// First-run onboarding animation cadences: welcome typewriter + holds, the
-// category count-up, and the score projection.
-export const WELCOME_TYPEWRITER_CHAR_DELAY_MS = 16;
-export const WELCOME_INTER_LINE_DELAY_MS = 250;
-export const WELCOME_EXPLANATION_HOLD_MS = 1000;
-// The category breakdown reveals one issue at a time (errors then warnings,
-// category by category). Small/medium breakdowns step by a single unit per
-// frame; `MAX_STEPS` caps the frame budget so a huge repo's reveal stays short
-// (the per-step increment grows instead).
-export const CATEGORY_COUNTUP_MAX_STEPS = 24;
-export const CATEGORY_COUNTUP_FRAME_DELAY_MS = 70;
-// Beat to hold on the settled category tally before the detail blocks reveal,
-// so the at-a-glance breakdown reads before the report scrolls on.
-export const CATEGORY_COUNTUP_SETTLE_HOLD_MS = 1000;
 export const SCORE_PROJECTION_FRAME_COUNT = 16;
 export const SCORE_PROJECTION_FRAME_DELAY_MS = 35;
-// Terminal rows from the cursor (sitting just after the "you could improve"
-// line) up to the score bar, so the projection redraw lands on the bar row:
-// improve line, blank, face-bottom, branding, bar.
-export const SCORE_PROJECTION_BAR_ROWS_ABOVE_CURSOR = 5;
 
 // Floor for the terminal-aware typographic measure (`resolveMeasureWidth`).
 // A terminal narrower than this is pathological; clamp here so prose can't
@@ -198,15 +177,6 @@ export const MIN_MEASURE_WIDTH_CHARS = 24;
 // header clamps it to the columns left of the doctor face). Below this the bar
 // stops conveying the score proportionally, so we let it sit at this width.
 export const SCORE_BAR_MIN_WIDTH_CHARS = 10;
-
-// Keep one column free at the right edge so a full-width line can't trip the
-// terminal's auto-margin into a soft wrap, which breaks the in-place `\r`
-// redraws (the score-bar animation and the welcome typewriter).
-export const RIGHT_EDGE_SAFETY_COLUMNS = 1;
-
-// Visible columns the box border + padding adds around a code frame
-// (`│ ` … ` │` in box-text.ts). Reserved when fitting a box to the terminal.
-export const BOX_BORDER_WIDTH_CHARS = 4;
 
 // Minimum `VTE_VERSION` (GNOME Terminal, Tilix, and other VTE-based emulators)
 // that renders OSC 8 hyperlinks — VTE added support in 0.50 (reported as 5000).

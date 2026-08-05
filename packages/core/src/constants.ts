@@ -750,8 +750,8 @@ export const MIN_SHARED_FIX_SITE_COUNT = 2;
 // in the JSON output.
 export const FIX_GROUP_ID_LENGTH_CHARS = 16;
 
-// How many of the highest-priority error rules to surface in the
-// "Top N errors you should fix" header above the category breakdown.
+// How many of the highest-priority error rules to use for projected scores
+// and agent handoff recommendations.
 export const TOP_ERRORS_DISPLAY_COUNT = 3;
 
 // A single rule firing across this many distinct files is a migration, not a

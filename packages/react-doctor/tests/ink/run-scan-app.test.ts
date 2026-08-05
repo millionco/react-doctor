@@ -141,13 +141,9 @@ vi.mock("../../src/cli/utils/set-up-github-actions.js", () => ({
   }),
 }));
 
-vi.mock("../../src/cli/utils/render-summary.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/cli/utils/render-summary.js")>();
-  return {
-    ...actual,
-    printFooter: vi.fn(() => Effect.sync(() => mockState.lifecycleEvents.push("footer"))),
-  };
-});
+vi.mock("../../src/cli/utils/print-footer.js", () => ({
+  printFooter: vi.fn(() => Effect.sync(() => mockState.lifecycleEvents.push("footer"))),
+}));
 
 vi.mock("../../src/cli/utils/launch-agent.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/cli/utils/launch-agent.js")>();

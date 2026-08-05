@@ -22,13 +22,13 @@ export interface InspectResult {
    * Number of files the scan reported. Distinct from
    * `project.sourceFileCount` in diff / staged mode (where only changed
    * files are scanned). Optional so non-orchestrator constructors keep
-   * working; the multi-project summary falls back to
+   * working; the multi-project report falls back to
    * `project.sourceFileCount` when absent.
    */
   scannedFileCount?: number;
   /**
    * Absolute paths of every file the scan considered. Lets the
-   * multi-project summary count UNIQUE files across projects instead of
+   * multi-project report count UNIQUE files across projects instead of
    * summing per-project counts, which double-counts shared files when one
    * workspace package's tree is nested inside another's.
    */
@@ -42,8 +42,8 @@ export interface InspectResult {
   /**
    * Wall-clock duration of the scan phase, in milliseconds. Distinct
    * from `elapsedMilliseconds` (which spans the full `inspect()` call
-   * including score fetch + rendering). Used by the multi-project
-   * summary to report combined scan time.
+   * including score fetch + reporting). Used by the multi-project
+   * report to show combined scan time.
    */
   scanElapsedMilliseconds?: number;
   /**

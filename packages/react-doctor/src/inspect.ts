@@ -61,30 +61,12 @@ import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
 import { hasIncompleteScoreAnalysis } from "./cli/utils/has-incomplete-score-analysis.js";
 import { buildEmptyReportMessage } from "./cli/utils/build-empty-report-message.js";
 import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
-import {
-  isCiOrCodingAgentEnvironment,
-  isCodingAgentEnvironment,
-} from "./cli/utils/is-ci-environment.js";
-import { computeProjectedScore } from "./cli/utils/compute-score-projection.js";
-import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
+import { isCiOrCodingAgentEnvironment } from "./cli/utils/is-ci-environment.js";
 import { filterDiagnosticsByCategories } from "./cli/utils/filter-diagnostics-by-categories.js";
-import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
-import { shouldRenderHyperlinks } from "./cli/utils/should-render-hyperlinks.js";
-import { shouldShowShareLink } from "./cli/utils/should-show-share-link.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
-import {
-  canAnimateOnboarding,
-  isOnboardingForced,
-  onboardingSectionPause,
-  shouldRecordOnboarding,
-} from "./cli/utils/onboarding-pacing.js";
-import { hasCompletedOnboarding, markOnboardingComplete } from "./cli/utils/onboarding-state.js";
-import {
-  printBrandingOnlyHeader,
-  printNoScoreHeader,
-  printScoreHeader,
-} from "./cli/utils/render-score-header.js";
-import { printDiagnosticsDump, printFooter, printSummary } from "./cli/utils/render-summary.js";
+import { printDiagnosticsDump } from "./cli/utils/print-diagnostics-dump.js";
+import { printFooter } from "./cli/utils/print-footer.js";
+import { printHeadlessReport } from "./cli/utils/print-headless-report.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
@@ -107,27 +89,6 @@ interface OxlintInvocationRuntime {
   readonly abortSignal: AbortSignal;
   readonly scanResultCacheInvocationState: ScanResultCacheInvocationState;
 }
-
-const recordOnboardingCompletion = (options: ResolvedInspectOptions): void => {
-  const forceOnboarding = isOnboardingForced();
-  const paceOnboardingSections =
-    !options.silent &&
-    !options.scoreOnly &&
-    !options.suppressRendering &&
-    !options.verbose &&
-    canAnimateOnboarding(process.stdout) &&
-    (forceOnboarding || !hasCompletedOnboarding());
-  if (
-    shouldRecordOnboarding({
-      paceOnboardingSections,
-      forceOnboarding,
-      verbose: options.verbose,
-      isNonInteractiveEnvironment: options.isNonInteractiveEnvironment,
-    })
-  ) {
-    markOnboardingComplete();
-  }
-};
 
 // Builds the `--scope lines` predicate: a diagnostic survives when its source
 // span intersects a changed range of its file. `changedLineRanges` is keyed by paths
@@ -234,7 +195,7 @@ export interface ResolvedInspectOptions {
   changedLineRanges: ReadonlyArray<ChangedFileLineRanges> | null;
   /** See `InspectOptions.supplyChainManifestChanged`. */
   supplyChainManifestChanged: boolean;
-  /** Interactive UI layer overrides, or `null` for the static console path. */
+  /** Interactive UI layer overrides, or `null` for the headless console path. */
   uiLayers: InspectUiLayers | null;
   /** Descendant projects covered by sibling scans in the same workspace batch. */
   excludedProjectDirectories: ReadonlyArray<string>;
@@ -733,7 +694,6 @@ const runInspectWithRuntime = async (
       baselineDegraded,
       wholeRepoCacheHit: true,
     });
-    recordOnboardingCompletion(options);
     return result;
   }
 
@@ -970,7 +930,6 @@ const runInspectWithRuntime = async (
     deadCodeSummaryCacheHits: output.deadCodeSummaryCacheHits,
     deadCodeSummaryCacheMisses: output.deadCodeSummaryCacheMisses,
   });
-  recordOnboardingCompletion(options);
   return result;
 };
 
@@ -989,7 +948,6 @@ interface FinalizeInput {
   supplyChainOverlapTimedOut: boolean;
   securityScanFailed: boolean;
   securityScanFailureReason: string | null;
-  directory: string;
   scannedFileCount: number;
   scannedFilePaths: ReadonlyArray<string>;
   analyzedFiles: ReadonlyArray<string>;
@@ -1073,7 +1031,6 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
     securityScanFailed: input.payload.securityScanFailed ?? false,
     securityScanFailureReason: input.payload.securityScanFailureReason ?? null,
-    directory: input.payload.directory,
     scannedFileCount: input.payload.scannedFileCount,
     scannedFilePaths: input.payload.scannedFilePaths,
     analyzedFiles: input.payload.analyzedFiles ?? [],
@@ -1155,7 +1112,6 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       supplyChainOverlapTimedOut,
       securityScanFailed,
       securityScanFailureReason,
-      directory,
       scannedFileCount,
       scannedFilePaths,
       analyzedFiles,
@@ -1240,71 +1196,29 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       return buildResult();
     }
 
-    // Report animations — the staggered section reveal, the category count-up,
-    // and the eased score-projection "ghost gain" — play on every interactive
-    // render, like the animated score bar, not just the first-run onboarding.
-    // `!silent` keeps the raw cursor writes out of JSON / piped output.
-    const animateRender =
-      !options.silent && !options.verbose && canAnimateOnboarding(process.stdout);
-    const pause = onboardingSectionPause(animateRender);
-    const useHyperlinks = shouldRenderHyperlinks(process.stdout);
     const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
-    const isDiffMode = options.includePaths.length > 0;
-    const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
-
-    if (printedDiagnostics.length === 0) {
-      yield* pause;
-      if (hasSkippedChecks) {
-        const skippedLabel = skippedChecks.join(" and ");
-        yield* Console.warn(
-          highlighter.warn(
-            `No issues detected, but ${skippedLabel} checks failed — results are incomplete.`,
-          ),
-        );
-      } else {
-        yield* Console.log(
-          highlighter.success(
-            buildEmptyReportMessage({
-              categoryFilters: options.categoryFilters,
-              demotedDiagnosticCount,
-              outputSurface: options.outputSurface,
-            }),
-          ),
-        );
-      }
-      yield* Console.log("");
-      yield* pause;
-      if (hasSkippedChecks) {
-        yield* printBrandingOnlyHeader;
-        yield* Console.log(highlighter.gray("  Score not shown — some checks could not complete."));
-      } else if (score) {
-        yield* printScoreHeader(score);
-      } else {
-        yield* printNoScoreHeader(noScoreMessage);
-      }
-      // `--output-dir` still gets its dump (and stale-file cleanup) when
-      // nothing printed — e.g. every issue was fixed since the last run.
-      if (options.outputDirectory !== null) {
-        yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory);
-      }
-      return buildResult();
-    }
-
-    yield* pause;
-    yield* Console.log("");
-    yield* printDiagnostics(
-      [...printedDiagnostics],
-      options.verbose,
-      directory,
-      buildRulePriorityMap([score]),
-      isCodingAgentEnvironment(),
-      { sectionPause: pause, animateCountUp: animateRender },
-      useHyperlinks,
-    );
     if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
       yield* printAgentGuidance();
     }
 
+    yield* printHeadlessReport({
+      diagnostics: printedDiagnostics,
+      elapsedMilliseconds,
+      emptyStateMessage: buildEmptyReportMessage({
+        categoryFilters: options.categoryFilters,
+        demotedDiagnosticCount,
+        outputSurface: options.outputSurface,
+      }),
+      noScoreMessage,
+      projectName: project.projectName,
+      scannedFileCount,
+      scoreResult: hasSkippedChecks ? null : score,
+      skippedChecks,
+    });
+
+    if (options.outputDirectory !== null || options.verbose) {
+      yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory, options.verbose);
+    }
     if (options.categoryFilters.size === 0 && demotedDiagnosticCount > 0) {
       yield* Console.log(
         highlighter.gray(
@@ -1314,48 +1228,11 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       yield* Console.log("");
     }
 
-    // Re-score with the displayed top errors removed so the score bar can
-    // show the payoff as a ghost gain segment.
-    const scoreDiagnostics = filterDiagnosticsForSurface([...diagnostics], "score", userConfig);
-    const displayedScoreDiagnostics = filterDiagnosticsForSurface(
-      [...printedDiagnostics],
-      "score",
-      userConfig,
-    );
-    const potentialScore = score
-      ? yield* Effect.promise(() =>
-          computeProjectedScore(displayedScoreDiagnostics, scoreDiagnostics, score),
-        )
-      : null;
-
-    const showShareLink = shouldShowShareLink(options);
-    yield* pause;
-    yield* printSummary({
-      diagnostics: [...printedDiagnostics],
-      elapsedMilliseconds,
-      scoreResult: score,
-      potentialScore,
-      totalSourceFileCount: lintSourceFileCount,
-      noScoreMessage,
-      verbose: options.verbose,
-      outputDirectory: options.outputDirectory,
-      animateProjection: animateRender,
-    });
-
-    if (hasSkippedChecks) {
-      const skippedLabel = skippedChecks.join(" and ");
-      yield* Console.log("");
-      yield* Console.warn(
-        highlighter.warn(`  Note: ${skippedLabel} checks failed — score may be incomplete.`),
-      );
-    }
-
-    yield* pause;
     yield* printFooter({
-      diagnostics: [...printedDiagnostics],
+      diagnostics: printedDiagnostics,
       scoreResult: score,
       projectName: project.projectName,
-      isOffline: !showShareLink,
+      isOffline: options.isCi || !options.share || score === null,
     });
 
     return buildResult();

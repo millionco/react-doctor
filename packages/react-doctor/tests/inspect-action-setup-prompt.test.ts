@@ -123,10 +123,10 @@ vi.mock("../src/cli/utils/should-skip-prompts.js", () => ({
   shouldSkipPrompts: vi.fn(() => false),
 }));
 
-vi.mock("../src/cli/utils/render-multi-project-summary.js", async () => {
+vi.mock("../src/cli/utils/print-completed-scans-headless.js", async () => {
   const Effect = await import("effect/Effect");
   return {
-    printMultiProjectSummary: vi.fn(() => Effect.void),
+    printCompletedScansHeadless: vi.fn(() => Effect.void),
   };
 });
 

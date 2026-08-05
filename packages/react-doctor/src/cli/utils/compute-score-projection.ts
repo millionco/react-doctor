@@ -1,7 +1,7 @@
 import { calculateScore, TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { buildRulePriorityMap } from "./diagnostic-grouping.js";
-import { getTopErrorRuleKeys } from "./render-diagnostics.js";
+import { getTopErrorRuleKeys } from "./get-top-error-rule-keys.js";
 
 // The score reachable by fixing the top-N errors shown to the user,
 // drawn as the "ghost" gain segment on the score bar. Computed by

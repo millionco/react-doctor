@@ -34,7 +34,6 @@ import { collectProjectSourceFileCounts } from "../utils/collect-project-source-
 import { formatSkippedProjectsMessage } from "../utils/format-skipped-projects-message.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
-import { isShareOptedOut } from "../utils/is-share-opted-out.js";
 import { isExpectedUserError } from "../utils/is-expected-user-error.js";
 import { handoffToAgent } from "../utils/handoff-to-agent.js";
 import { runProjectMigrations } from "../utils/cli-migrations.js";
@@ -45,14 +44,10 @@ import {
   writeJsonErrorReport,
   writeJsonReport,
 } from "../utils/json-mode.js";
-import { canAnimateOnboarding, isOnboardingForced } from "../utils/onboarding-pacing.js";
-import { hasCompletedOnboarding } from "../utils/onboarding-state.js";
-import { printBrandedHeader } from "../utils/print-branded-header.js";
-import { playWelcomeScene, RETURNING_USER_SPEED_MULTIPLIER } from "../utils/render-welcome.js";
 import { reportErrorToSentry } from "../utils/report-error.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
-import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
-import { printDiagnosticsDump } from "../utils/render-summary.js";
+import { printCompletedScansHeadless } from "../utils/print-completed-scans-headless.js";
+import { printDiagnosticsDump } from "../utils/print-diagnostics-dump.js";
 import { isCiOrCodingAgentEnvironment } from "../utils/is-ci-environment.js";
 import {
   disableSetupPrompt,
@@ -101,7 +96,6 @@ interface CompletedScan {
   // The merged (root + module) config the scan ran under — surface
   // filtering of its diagnostics must use this, not the root config.
   config: ReactDoctorConfig | null;
-  frameSourceRoot?: string;
 }
 
 interface StagedProjectScanContext {
@@ -388,26 +382,6 @@ export const inspectAction = async (
         projectFlag: flags.project,
       });
       return;
-    }
-
-    if (!isQuiet) {
-      // Interactive regular runs open with the animated welcome scene in place
-      // of the static branded header. `--verbose` is a power-user review mode
-      // (the same user typed `--verbose` on purpose), so the intro is skipped
-      // entirely there and the static header takes over. Returning users in
-      // regular mode get a much snappier replay (`RETURNING_USER_SPEED_MULTIPLIER`)
-      // since they've already seen the full first-run pitch.
-      const showWelcome = !flags.verbose && canAnimateOnboarding(process.stdout);
-      if (showWelcome) {
-        const isReturningUser = !isOnboardingForced() && hasCompletedOnboarding();
-        await Effect.runPromise(
-          playWelcomeScene({
-            speedMultiplier: isReturningUser ? RETURNING_USER_SPEED_MULTIPLIER : 1,
-          }),
-        );
-      } else {
-        Effect.runSync(printBrandedHeader);
-      }
     }
 
     const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
@@ -730,11 +704,6 @@ export const inspectAction = async (
             project: { ...scanResult.project, rootDirectory: projectScan.scanDirectory },
           },
           config: projectScan.projectConfig,
-          // `rootDirectory` is rewritten above so the report and the summary
-          // name real paths, but the scanned bytes are in the snapshot — code
-          // frames must read there or they show worktree lines at index
-          // numbers.
-          frameSourceRoot: projectTempDirectory,
         };
       };
 
@@ -748,47 +717,39 @@ export const inspectAction = async (
         throw error;
       });
       const completedScans = stagedBatch.completedScans;
+      snapshot.cleanup();
 
-      // The snapshot has to outlive rendering: code frames read the scanned
-      // bytes out of it, so tearing it down first would silently degrade every
-      // frame to a bare `file:line`.
-      try {
-        reportSkippedProjects({ skippedProjects, isQuiet });
-        if (!isQuiet && isMultiProject && completedScans.length > 0) {
-          const showShareLink =
-            !isShareOptedOut(completedScans, scanOptions.noScore) && !scanOptions.isCi;
-          await Effect.runPromise(
-            printMultiProjectSummary({
-              completedScans,
+      reportSkippedProjects({ skippedProjects, isQuiet });
+      if (!isQuiet && isMultiProject && completedScans.length > 0) {
+        await Effect.runPromise(
+          printCompletedScansHeadless({
+            categoryFilters,
+            completedScans,
+            elapsedMilliseconds: stagedBatch.elapsedMilliseconds,
+            noScoreMessage: "Score unavailable.",
+            outputDirectory: flags.outputDir,
+            outputSurface: scanOptions.outputSurface ?? "cli",
+            projectName: path.basename(resolvedDirectory),
+            verbose: Boolean(flags.verbose),
+          }),
+        );
+      }
+
+      // Single-project scans dump from `inspect()`, and non-quiet workspace
+      // scans from the aggregate headless report. Quiet workspace scans have
+      // neither, so write their requested dump here.
+      if (flags.outputDir && isMultiProject && isQuiet) {
+        await Effect.runPromise(
+          printDiagnosticsDump(
+            filterDiagnosticsByCategories(
+              filterScansForSurface(completedScans, scanOptions.outputSurface ?? "cli"),
               categoryFilters,
-              verbose: Boolean(flags.verbose),
-              outputDirectory: flags.outputDir,
-              isOffline: !showShareLink,
-              projectName: path.basename(resolvedDirectory),
-              totalElapsedMilliseconds: stagedBatch.elapsedMilliseconds,
-            }),
-          );
-        }
-
-        // `inspect()` dumps for a single scan, and the multi-project summary for
-        // a non-quiet monorepo scan. A quiet monorepo scan (`--json` /
-        // `--score`) has neither: rendering is suppressed and the summary is
-        // gated off, so without this `--output-dir` silently writes nothing.
-        if (flags.outputDir && isMultiProject && isQuiet) {
-          await Effect.runPromise(
-            printDiagnosticsDump(
-              filterDiagnosticsByCategories(
-                filterScansForSurface(completedScans, scanOptions.outputSurface ?? "cli"),
-                categoryFilters,
-              ),
-              flags.outputDir,
-              false,
-              "stderr",
             ),
-          );
-        }
-      } finally {
-        snapshot.cleanup();
+            flags.outputDir,
+            false,
+            "stderr",
+          ),
+        );
       }
 
       finalizeScans({
@@ -1104,17 +1065,16 @@ export const inspectAction = async (
     reportSkippedProjects({ skippedProjects, isQuiet });
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
-      const showShareLink =
-        !isShareOptedOut(completedScans, scanOptions.noScore) && !scanOptions.isCi;
       await Effect.runPromise(
-        printMultiProjectSummary({
-          completedScans,
+        printCompletedScansHeadless({
           categoryFilters,
-          verbose: Boolean(flags.verbose),
+          completedScans,
+          elapsedMilliseconds: projectBatch.elapsedMilliseconds,
+          noScoreMessage: "Score unavailable.",
           outputDirectory: flags.outputDir,
-          isOffline: !showShareLink,
+          outputSurface: scanOptions.outputSurface ?? "cli",
           projectName: path.basename(resolvedDirectory),
-          totalElapsedMilliseconds: projectBatch.elapsedMilliseconds,
+          verbose: Boolean(flags.verbose),
         }),
       );
     }
@@ -1128,8 +1088,8 @@ export const inspectAction = async (
       categoryFilters,
     );
 
-    // Single-project scans dump from `inspect()` rendering, and non-quiet
-    // monorepo scans from the multi-project summary. Everything else —
+    // Single-project scans dump from `inspect()`, and non-quiet workspace
+    // scans from the aggregate headless report. Everything else —
     // quiet workspace scans (`--json` / `--score`) and runs where every
     // project was skipped in diff mode — dumps here; quiet runs send the
     // path line to stderr to keep machine-read stdout clean.

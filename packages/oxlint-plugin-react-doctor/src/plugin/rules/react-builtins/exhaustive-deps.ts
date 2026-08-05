@@ -10,7 +10,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findForwardedFreshHookDependencies } from "../../utils/find-forwarded-fresh-hook-dependencies.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
-import { hasImportedBinding } from "../../utils/find-import-source-for-name.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticKeyName } from "../../utils/get-static-key-name.js";
@@ -1094,7 +1094,7 @@ const typeExcludesNull = (
   const declarations = findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name);
   if (declarations.length === 0) {
     return (
-      !hasImportedBinding(referenceNode, typeNode.typeName.name) &&
+      getImportSourceForName(referenceNode, typeNode.typeName.name) === null &&
       NON_NULLISH_GLOBAL_TYPE_REFERENCES.has(typeNode.typeName.name)
     );
   }

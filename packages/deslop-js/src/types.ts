@@ -184,6 +184,12 @@ export interface UnusedDependency {
   reason: string;
 }
 
+export interface SkippedDependency {
+  name: string;
+  isDevDependency: boolean;
+  reason: string;
+}
+
 export interface CircularDependency {
   files: string[];
 }
@@ -597,6 +603,7 @@ export interface ScanResult {
   unusedFiles: UnusedFile[];
   unusedExports: UnusedExport[];
   unusedDependencies: UnusedDependency[];
+  skippedDependencies: SkippedDependency[];
   circularDependencies: CircularDependency[];
   unusedTypes: UnusedType[];
   misclassifiedDependencies: MisclassifiedDependency[];

@@ -137,6 +137,12 @@ interface DeadCodeWorkerUnusedDependency {
   readonly isDevDependency: boolean;
 }
 
+interface DeadCodeWorkerSkippedDependency {
+  readonly name: string;
+  readonly isDevDependency: boolean;
+  readonly reason: string;
+}
+
 interface DeadCodeWorkerCircularDependency {
   readonly files: ReadonlyArray<string>;
 }
@@ -145,6 +151,7 @@ interface DeadCodeWorkerResult {
   readonly unusedFiles: ReadonlyArray<DeadCodeWorkerUnusedFile>;
   readonly unusedExports: ReadonlyArray<DeadCodeWorkerUnusedExport>;
   readonly unusedDependencies: ReadonlyArray<DeadCodeWorkerUnusedDependency>;
+  readonly skippedDependencies: ReadonlyArray<DeadCodeWorkerSkippedDependency>;
   readonly circularDependencies: ReadonlyArray<DeadCodeWorkerCircularDependency>;
   readonly summaryCacheStats?: DeadCodeSummaryCacheStats;
 }
@@ -189,6 +196,11 @@ process.stdin.on("end", () => {
     unusedDependencies: result.unusedDependencies.map((unusedDependency) => ({
       name: unusedDependency.name,
       isDevDependency: unusedDependency.isDevDependency,
+    })),
+    skippedDependencies: result.skippedDependencies.map((skippedDependency) => ({
+      name: skippedDependency.name,
+      isDevDependency: skippedDependency.isDevDependency,
+      reason: skippedDependency.reason,
     })),
     circularDependencies: result.circularDependencies.map((cycle) => ({
       files: cycle.files,
@@ -359,6 +371,25 @@ const parseUnusedDependencies = (value: unknown): DeadCodeWorkerUnusedDependency
   return unusedDependencies;
 };
 
+const parseSkippedDependencies = (value: unknown): DeadCodeWorkerSkippedDependency[] => {
+  const values = parseArray(value, "skippedDependencies");
+  const skippedDependencies: DeadCodeWorkerSkippedDependency[] = [];
+  for (const [index, entry] of values.entries()) {
+    if (!isRecord(entry)) {
+      throw new Error(`Dead-code worker returned invalid skippedDependencies[${index}].`);
+    }
+    skippedDependencies.push({
+      name: parseString(entry.name, `skippedDependencies[${index}].name`),
+      isDevDependency: parseBoolean(
+        entry.isDevDependency,
+        `skippedDependencies[${index}].isDevDependency`,
+      ),
+      reason: parseString(entry.reason, `skippedDependencies[${index}].reason`),
+    });
+  }
+  return skippedDependencies;
+};
+
 const parseCircularDependencies = (value: unknown): DeadCodeWorkerCircularDependency[] => {
   const values = parseArray(value, "circularDependencies");
   const circularDependencies: DeadCodeWorkerCircularDependency[] = [];
@@ -390,6 +421,7 @@ const parseDeadCodeWorkerResult = (value: unknown): DeadCodeWorkerResult => {
     unusedFiles: parseUnusedFiles(value.unusedFiles),
     unusedExports: parseUnusedExports(value.unusedExports),
     unusedDependencies: parseUnusedDependencies(value.unusedDependencies),
+    skippedDependencies: parseSkippedDependencies(value.skippedDependencies),
     circularDependencies: parseCircularDependencies(value.circularDependencies),
     ...(summaryCacheStats ? { summaryCacheStats } : {}),
   };

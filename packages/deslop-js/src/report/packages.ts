@@ -1,7 +1,13 @@
 import { resolve, join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import fg from "fast-glob";
-import type { DependencyGraph, UnusedDependency, DeslopConfig } from "../types.js";
+import type {
+  DependencyGraph,
+  DeslopConfig,
+  SkippedDependency,
+  SkippedDependencyReason,
+  UnusedDependency,
+} from "../types.js";
 import { IMPLICIT_DEPENDENCIES } from "../constants.js";
 import { extractPackageName } from "../utils/package-name.js";
 import { collectOverrideMappingsFromRecord } from "../utils/collect-override-mappings-from-record.js";
@@ -94,11 +100,16 @@ const discoverAllPackageJsonPaths = (
   return paths;
 };
 
+interface StalePackageReport {
+  unusedDependencies: UnusedDependency[];
+  skippedDependencies: SkippedDependency[];
+}
+
 export const detectStalePackages = (
   graph: DependencyGraph,
   config: DeslopConfig,
   summaryCache?: SummaryCache,
-): UnusedDependency[] => {
+): StalePackageReport => {
   const packageJsonPath = resolve(config.rootDir, "package.json");
   let packageJson: PackageJsonDependencies;
 
@@ -106,7 +117,7 @@ export const detectStalePackages = (
     const content = readFileSync(packageJsonPath, "utf-8");
     packageJson = JSON.parse(content);
   } catch {
-    return [];
+    return { unusedDependencies: [], skippedDependencies: [] };
   }
 
   const dependencies = packageJson.dependencies ?? {};
@@ -121,7 +132,12 @@ export const detectStalePackages = (
   }
 
   const declaredNames = new Set(declaredDependencies.keys());
-  const usedPackageNames = collectUsedPackages(graph);
+  const observedPackageNames = collectUsedPackages(graph);
+  const usedPackageNames = new Set(observedPackageNames);
+  const markPackageUsed = (packageName: string): void => {
+    observedPackageNames.add(packageName);
+    usedPackageNames.add(packageName);
+  };
 
   const monorepoRoot = findMonorepoRoot(config.rootDir);
   const nodeModulesSearchRoots =
@@ -152,13 +168,13 @@ export const detectStalePackages = (
       declaredNames,
       binToPackage,
     );
-    for (const packageName of scriptReferenced) usedPackageNames.add(packageName);
+    for (const packageName of scriptReferenced) markPackageUsed(packageName);
 
     const packageJsonConfigReferenced = collectPackageJsonConfigReferences(
       workspacePackageJsonPath,
       declaredNames,
     );
-    for (const packageName of packageJsonConfigReferenced) usedPackageNames.add(packageName);
+    for (const packageName of packageJsonConfigReferenced) markPackageUsed(packageName);
   }
 
   const nxProjectReferenced = collectNxProjectJsonReferences(
@@ -167,7 +183,7 @@ export const detectStalePackages = (
     binToPackage,
     summaryCache,
   );
-  for (const packageName of nxProjectReferenced) usedPackageNames.add(packageName);
+  for (const packageName of nxProjectReferenced) markPackageUsed(packageName);
 
   const configSearchRoots =
     monorepoRoot && monorepoRoot !== config.rootDir
@@ -180,10 +196,10 @@ export const detectStalePackages = (
       declaredNames,
       summaryCache,
     );
-    for (const packageName of configReferenced) usedPackageNames.add(packageName);
+    for (const packageName of configReferenced) markPackageUsed(packageName);
 
     const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot, summaryCache);
-    for (const packageName of tsconfigReferenced) usedPackageNames.add(packageName);
+    for (const packageName of tsconfigReferenced) markPackageUsed(packageName);
 
     const { packageNames: expoPluginPackageNames } = extractExpoConfigPluginEntries(
       configSearchRoot,
@@ -191,16 +207,16 @@ export const detectStalePackages = (
     );
     for (const packageName of expoPluginPackageNames) {
       if (declaredNames.has(packageName)) {
-        usedPackageNames.add(packageName);
+        markPackageUsed(packageName);
       }
     }
   }
 
   if (hasJsxFiles(graph)) {
-    if (declaredNames.has("react")) usedPackageNames.add("react");
-    if (declaredNames.has("react-dom")) usedPackageNames.add("react-dom");
-    if (declaredNames.has("react-native")) usedPackageNames.add("react-native");
-    if (declaredNames.has("react-native-web")) usedPackageNames.add("react-native-web");
+    if (declaredNames.has("react")) markPackageUsed("react");
+    if (declaredNames.has("react-dom")) markPackageUsed("react-dom");
+    if (declaredNames.has("react-native")) markPackageUsed("react-native");
+    if (declaredNames.has("react-native-web")) markPackageUsed("react-native-web");
   }
 
   if (declaredNames.has("react-dom")) {
@@ -220,11 +236,11 @@ export const detectStalePackages = (
     const hasWebFramework = webFrameworks.some(
       (framework) => declaredNames.has(framework) || usedPackageNames.has(framework),
     );
-    if (hasWebFramework) usedPackageNames.add("react-dom");
+    if (hasWebFramework) markPackageUsed("react-dom");
   }
 
   if (declaredNames.has("astro") && declaredNames.has("sharp")) {
-    usedPackageNames.add("sharp");
+    markPackageUsed("sharp");
   }
 
   if (declaredNames.has("react") && declaredNames.has("react-dom")) {
@@ -234,10 +250,10 @@ export const detectStalePackages = (
       const packageJson = JSON.parse(content);
       const peerDeps = packageJson.peerDependencies ?? {};
       if ("react" in peerDeps && declaredDependencies.get("react") === true) {
-        usedPackageNames.add("react");
+        markPackageUsed("react");
       }
       if ("react-dom" in peerDeps && declaredDependencies.get("react-dom") === true) {
-        usedPackageNames.add("react-dom");
+        markPackageUsed("react-dom");
       }
     } catch {
       // fall through
@@ -257,13 +273,33 @@ export const detectStalePackages = (
     monorepoRoot,
   );
   for (const { fromPackage, toPackage } of overrideMappings) {
-    if (declaredNames.has(toPackage)) usedPackageNames.add(toPackage);
+    if (declaredNames.has(toPackage)) markPackageUsed(toPackage);
     if (usedPackageNames.has(fromPackage) && declaredNames.has(toPackage)) {
-      usedPackageNames.add(toPackage);
+      markPackageUsed(toPackage);
     }
   }
 
   const candidateUnused = new Set<string>();
+  const skippedDependenciesByName = new Map<string, Set<SkippedDependencyReason>>();
+  const recordSkippedDependency = (
+    dependencyName: string,
+    reason: SkippedDependencyReason,
+  ): void => {
+    const reasons = skippedDependenciesByName.get(dependencyName) ?? new Set();
+    reasons.add(reason);
+    skippedDependenciesByName.set(dependencyName, reasons);
+  };
+
+  for (const [dependencyName] of declaredDependencies) {
+    if (observedPackageNames.has(dependencyName) || peerSatisfied.has(dependencyName)) continue;
+    if (isAlwaysConsideredUsed(dependencyName)) {
+      recordSkippedDependency(dependencyName, "allowlisted-name");
+    }
+    if (packagesProvidingBinary.has(dependencyName)) {
+      recordSkippedDependency(dependencyName, "provides-binary");
+    }
+  }
+
   for (const [dependencyName] of declaredDependencies) {
     if (isAlwaysConsideredUsed(dependencyName)) continue;
     if (usedPackageNames.has(dependencyName)) continue;
@@ -277,7 +313,7 @@ export const detectStalePackages = (
       summaryCache,
     );
     for (const packageName of sourceFileRescued) {
-      usedPackageNames.add(packageName);
+      markPackageUsed(packageName);
       candidateUnused.delete(packageName);
     }
   }
@@ -294,7 +330,15 @@ export const detectStalePackages = (
     });
   }
 
-  return unusedDependencies;
+  const skippedDependencies = [...skippedDependenciesByName.entries()]
+    .sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
+    .map(([name, reasons]) => ({
+      name,
+      isDevDependency: declaredDependencies.get(name) ?? false,
+      reasons: [...reasons].sort(),
+    }));
+
+  return { unusedDependencies, skippedDependencies };
 };
 
 const collectUsedPackages = (graph: DependencyGraph): Set<string> => {

@@ -38,6 +38,16 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
     lines.push("");
   }
 
+  const skippedDependencies = result.skippedDependencies ?? [];
+  if (skippedDependencies.length > 0) {
+    const dependencyLabel =
+      skippedDependencies.length === 1 ? "dependency was" : "dependencies were";
+    lines.push(
+      `Note: ${skippedDependencies.length} declared ${dependencyLabel} conservatively excluded from unused-dependency analysis (allowlisted names or binary providers).`,
+    );
+    lines.push("");
+  }
+
   if (result.circularDependencies.length > 0) {
     const cycleLabel = result.circularDependencies.length === 1 ? "cycle" : "cycles";
     lines.push(`${result.circularDependencies.length} circular ${cycleLabel}`);

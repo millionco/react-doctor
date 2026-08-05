@@ -12,7 +12,11 @@ import {
   EXIT_CODE_RUNTIME_ERROR,
   EXIT_CODE_SUCCESS,
 } from "../src/constants.js";
-import { hasCircularIssues, hasUnusedIssues } from "../src/format-result.js";
+import {
+  formatHumanReadableResult,
+  hasCircularIssues,
+  hasUnusedIssues,
+} from "../src/format-result.js";
 import { resolveAnalyzeExitCode, runAnalyze } from "../src/run-analyze.js";
 import { validateRootDirectory } from "../src/utils/validate-root-directory.js";
 import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
@@ -21,12 +25,14 @@ const testDirectory = resolve(fileURLToPath(import.meta.url), "..");
 const packageDirectory = resolve(testDirectory, "..");
 const simpleAppFixture = resolve(FIXTURES_DIR, "simple-app");
 const cycleSimpleFixture = resolve(FIXTURES_DIR, "cycle-simple");
+const workspaceLocalBinFixture = resolve(FIXTURES_DIR, "workspace-local-bin");
 const cliEntryPath = resolve(packageDirectory, "src/cli.ts");
 
 const emptyScanResult: ScanResult = {
   unusedFiles: [],
   unusedExports: [],
   unusedDependencies: [],
+  skippedDependencies: [],
   circularDependencies: [],
   unusedTypes: [],
   misclassifiedDependencies: [],
@@ -164,6 +170,14 @@ describe("hasUnusedIssues / hasCircularIssues", () => {
 });
 
 describe("runAnalyze", () => {
+  it("should explain conservatively skipped dependencies in human output", async () => {
+    const scanResult = await analyze(defineConfig({ rootDir: workspaceLocalBinFixture }));
+    const output = formatHumanReadableResult(scanResult);
+
+    assert.match(output, /2 declared dependencies were conservatively excluded/);
+    assert.match(output, /allowlisted names or binary providers/);
+  });
+
   it("should return invalid root exit code for missing directories", async () => {
     const capture = createCaptureOutput();
     const exitCode = await runAnalyze(

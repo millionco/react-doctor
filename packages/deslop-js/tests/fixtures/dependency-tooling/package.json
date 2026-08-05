@@ -31,6 +31,7 @@
     "@tauri-apps/cli": "^2.0.0",
     "@tinacms/cli": "^1.0.0",
     "@typescript/native-preview": "^7.0.0-dev",
+    "chokidar-peer": "^1.0.0",
     "axe-core": "^4.11.0",
     "babel-eslint": "^10.0.0",
     "chokidar-cli": "^3.0.0",

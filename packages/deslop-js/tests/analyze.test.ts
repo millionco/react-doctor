@@ -144,6 +144,7 @@ describe("dependency-tooling", () => {
       "@tauri-apps/cli",
       "@tinacms/cli",
       "@typescript/native-preview",
+      "chokidar-peer",
       // static bin fallback (no node_modules entry): `copy-styles` runs the
       // `cpy` bin that cpy-cli ships.
       "cpy-cli",
@@ -292,6 +293,20 @@ describe("workspace-local-bin", () => {
     assert.ok(
       !deps.includes("bin-only-tool"),
       `bin-only-tool declares a bin and is invokable outside the static scan (npx, hooks, CI) — it must not be flagged, got: ${deps}`,
+    );
+  });
+
+  it("should expose conservative dependency exemptions without reporting them as unused", async () => {
+    const result = await scanFixture("workspace-local-bin");
+    const skippedDependencies = result.skippedDependencies ?? [];
+
+    assert.deepEqual(skippedDependencies, [
+      { name: "bin-only-tool", isDevDependency: true, reasons: ["provides-binary"] },
+      { name: "expo-unused", isDevDependency: true, reasons: ["allowlisted-name"] },
+    ]);
+    assert.ok(
+      !staleDependencyNames(result).includes("expo-unused"),
+      "allowlisted dependencies must remain exempt from unused findings",
     );
   });
 });

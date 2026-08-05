@@ -144,6 +144,8 @@ export type {
   UnusedFile,
   UnusedExport,
   UnusedDependency,
+  SkippedDependency,
+  SkippedDependencyReason,
   CircularDependency,
   UnusedType,
   UnusedTypeKind,

@@ -89,6 +89,7 @@ const result = await analyze(config);
 result.unusedFiles; // files unreachable from any entry point
 result.unusedExports; // exported symbols never imported
 result.unusedDependencies; // package.json deps not imported anywhere
+result.skippedDependencies; // declared deps conservatively excluded from unused-dependency analysis
 result.circularDependencies; // import cycles
 
 // redundancy / DRY findings (syntactic, on by default)
@@ -135,6 +136,11 @@ result.totalFiles;
 result.totalExports;
 result.analysisTimeMs;
 ```
+
+`skippedDependencies` makes conservative unused-dependency exemptions explicit. It includes
+packages matched by the framework/tooling name allowlist and installed packages that provide a
+binary, because those uses can occur outside source imports and package scripts. A clean
+`unusedDependencies` result is not a verdict for those packages.
 
 ## Programmatic Options
 

@@ -184,6 +184,14 @@ export interface UnusedDependency {
   reason: string;
 }
 
+export type SkippedDependencyReason = "allowlisted-name" | "provides-binary";
+
+export interface SkippedDependency {
+  name: string;
+  isDevDependency: boolean;
+  reasons: SkippedDependencyReason[];
+}
+
 export interface CircularDependency {
   files: string[];
 }
@@ -597,6 +605,8 @@ export interface ScanResult {
   unusedFiles: UnusedFile[];
   unusedExports: UnusedExport[];
   unusedDependencies: UnusedDependency[];
+  /** Declared dependencies conservatively excluded from unused-dependency analysis. */
+  skippedDependencies?: SkippedDependency[];
   circularDependencies: CircularDependency[];
   unusedTypes: UnusedType[];
   misclassifiedDependencies: MisclassifiedDependency[];

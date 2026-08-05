@@ -74,12 +74,13 @@ export const generateReport = (
     [],
     errorSink,
   );
-  const unusedDependencies = safeReportDetector(
+  const stalePackageReport = safeReportDetector(
     "detectStalePackages",
     () => detectStalePackages(graph, config, summaryCache),
-    [],
+    { unusedDependencies: [], skippedDependencies: [] },
     errorSink,
   );
+  const unusedDependencies = stalePackageReport.unusedDependencies;
   const circularDependencies = safeReportDetector(
     "detectCycles",
     () => detectCycles(graph),
@@ -287,6 +288,7 @@ export const generateReport = (
     unusedFiles,
     unusedExports,
     unusedDependencies,
+    skippedDependencies: stalePackageReport.skippedDependencies,
     circularDependencies,
     unusedTypes: semanticResult.unusedTypes,
     misclassifiedDependencies: semanticResult.misclassifiedDependencies,

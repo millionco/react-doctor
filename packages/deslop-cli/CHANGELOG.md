@@ -1,5 +1,12 @@
 # deslop-cli
 
+## 0.9.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - deslop-js@0.9.5
+
 ## 0.9.4
 
 ### Patch Changes

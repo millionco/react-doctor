@@ -1,5 +1,25 @@
 # react-doctor
 
+## 0.9.5
+
+### Patch Changes
+
+- [#1581](https://github.com/millionco/react-doctor/pull/1581) [`274bd39`](https://github.com/millionco/react-doctor/commit/274bd39ae75e887e62af36469b6e5ad8cbe9076b) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep transient project selection out of terminal history, and preserve final interactive results when Ctrl-C prints the cancellation footer without printing a second completed-scan footer.
+
+- [#1572](https://github.com/millionco/react-doctor/pull/1572) [`212b8b4`](https://github.com/millionco/react-doctor/commit/212b8b41131dcc486ffbfde19e84b2043a9a3470) Thanks [@aidenybai](https://github.com/aidenybai)! - Prevent interactive-report crashes under Bun and pnpm, harden project and config discovery against cyclic or inaccessible inputs, and handle operational failures without reporting product crashes.
+
+- [#1573](https://github.com/millionco/react-doctor/pull/1573) [`25dbf6d`](https://github.com/millionco/react-doctor/commit/25dbf6d92524f2495e6f81bdc68b710ce434bc69) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize callable listener disposers, exhaustive cleanup of mapped subscription collections, and guarded timers owned by effect-local helpers in `effect-needs-cleanup`.
+
+- [#1577](https://github.com/millionco/react-doctor/pull/1577) [`60e4d8e`](https://github.com/millionco/react-doctor/commit/60e4d8e102f289ebf265a9c650a8737a4d88b79c) Thanks [@aidenybai](https://github.com/aidenybai)! - Bundle the interactive Ink renderer with its own React runtime so scans cannot load a missing or incompatible React version from the inspected project.
+
+- [#1578](https://github.com/millionco/react-doctor/pull/1578) [`da0647e`](https://github.com/millionco/react-doctor/commit/da0647e275c75494ec00b3657b34a17235a0f85b) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep interactive scans in the Ink dashboard when using scoped scans, verbose output, diagnostic dumps, debug mode, and deprecated compatibility flags.
+
+- [#1580](https://github.com/millionco/react-doctor/pull/1580) [`459c5d3`](https://github.com/millionco/react-doctor/commit/459c5d34dcfd4dfadbbb5fa181e124b66afe2981) Thanks [@aidenybai](https://github.com/aidenybai)! - Remove the legacy terminal renderer while preserving concise headless output for CI, pipes, staged hooks, score, JSON, and diagnostic dumps.
+
+- Updated dependencies [[`8b97fdc`](https://github.com/millionco/react-doctor/commit/8b97fdcb4014160bb2df916ad6dead9924f10266), [`25dbf6d`](https://github.com/millionco/react-doctor/commit/25dbf6d92524f2495e6f81bdc68b710ce434bc69), [`881ecfe`](https://github.com/millionco/react-doctor/commit/881ecfe674b8ae630953b5f31f418ac1f52730e1), [`0efadda`](https://github.com/millionco/react-doctor/commit/0efadda676fb773dad60b311d4d5d46c2f99be71), [`bafef41`](https://github.com/millionco/react-doctor/commit/bafef41699dec8ec228d89c831ff16c2f09f28a1)]:
+  - oxlint-plugin-react-doctor@0.9.5
+  - deslop-js@0.9.5
+
 ## 0.9.4
 
 ### Patch Changes

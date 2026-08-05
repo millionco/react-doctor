@@ -1,5 +1,19 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.5
+
+### Patch Changes
+
+- [#1569](https://github.com/millionco/react-doctor/pull/1569) [`8b97fdc`](https://github.com/millionco/react-doctor/commit/8b97fdcb4014160bb2df916ad6dead9924f10266) Thanks [@aidenybai](https://github.com/aidenybai)! - Reduce default rule scan overhead by gating framework-specific visitors and skipping expensive analyses until their prerequisite syntax is present.
+
+- [#1573](https://github.com/millionco/react-doctor/pull/1573) [`25dbf6d`](https://github.com/millionco/react-doctor/commit/25dbf6d92524f2495e6f81bdc68b710ce434bc69) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize callable listener disposers, exhaustive cleanup of mapped subscription collections, and guarded timers owned by effect-local helpers in `effect-needs-cleanup`.
+
+- [#1576](https://github.com/millionco/react-doctor/pull/1576) [`881ecfe`](https://github.com/millionco/react-doctor/commit/881ecfe674b8ae630953b5f31f418ac1f52730e1) Thanks [@skoshx](https://github.com/skoshx)! - Avoid reporting callbacks passed to destructured Zustand imperative store methods as fresh-reference selectors.
+
+- [#1579](https://github.com/millionco/react-doctor/pull/1579) [`0efadda`](https://github.com/millionco/react-doctor/commit/0efadda676fb773dad60b311d4d5d46c2f99be71) Thanks [@aidenybai](https://github.com/aidenybai)! - Preserve resource-lifecycle resets, controlled state fallbacks, and prop-originated synchronization without hiding genuine child-owned state handoffs.
+
+- [#1574](https://github.com/millionco/react-doctor/pull/1574) [`bafef41`](https://github.com/millionco/react-doctor/commit/bafef41699dec8ec228d89c831ff16c2f09f28a1) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix benchmark-confirmed false positives in dependency, key, fetch, serialization, and effect rules, and detect request-scoped async ownership races and render-controlling mount state initialization.
+
 ## 0.9.4
 
 ### Patch Changes

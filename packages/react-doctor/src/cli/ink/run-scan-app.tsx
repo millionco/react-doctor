@@ -206,7 +206,7 @@ const promptProjectSelection = (
 ): Promise<string[]> =>
   new Promise((resolve) => {
     let disposeRenderer = (): void => {};
-    recordCount(METRIC.tuiProjectSelectInlineShown);
+    recordCount(METRIC.tuiProjectSelectShown);
     const instance = render(
       <ProjectSelect
         packages={packages}
@@ -216,7 +216,7 @@ const promptProjectSelection = (
           resolve(directories);
         }}
       />,
-      { alternateScreen: false, exitOnCtrlC: false },
+      { alternateScreen: true, exitOnCtrlC: false },
     );
     disposeRenderer = registerMountedTuiRenderer(instance);
   });

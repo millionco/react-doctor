@@ -1660,6 +1660,29 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(messages).toContain("rebuilt every render");
     });
 
+    it.each(["React.ReactNode", "ImportedSelection"])(
+      "still reports a controlled-state fallback when %s nullability is unproven",
+      (controlledValueType) => {
+        const code = `
+          interface RangeSelectProps {
+            value?: ${controlledValueType};
+            onChange: (value: ${controlledValueType}) => void;
+          }
+          function RangeSelect({ value, onChange }: RangeSelectProps) {
+            const [internalValue] = useState("");
+            const isControlled = value !== undefined;
+            const selectedValue = (isControlled ? value : internalValue) ?? [];
+            return useCallback(() => onChange(selectedValue), [selectedValue, onChange]);
+          }
+        `;
+        const result = runRule(exhaustiveDeps, code);
+        expect(result.parseErrors).toEqual([]);
+        const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+        expect(messages).toContain("selectedValue");
+        expect(messages).toContain("rebuilt every render");
+      },
+    );
+
     it("still reports a controlled-state fallback when the discriminator is mutable", () => {
       const code = `
         function RangeSelect({ value, forceUncontrolled, onChange }) {

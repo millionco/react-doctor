@@ -264,6 +264,29 @@ describe("React Bench PR 488 false-positive regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each(["networkRef", "frameworkRef"])(
+    "still reports an ordinary reset paired with %s clearing",
+    (refName) => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `import { useEffect, useRef, useState } from "react";
+        const Editor = ({ documentId }) => {
+          const [draft, setDraft] = useState("");
+          const ${refName} = useRef(null);
+          useEffect(() => {
+            ${refName}.current = null;
+            setDraft("");
+          }, [documentId]);
+          return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+        };`,
+        { forceJsx: true },
+      );
+
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("accepts state synchronized by a locally owned observer", () => {
     const result = runRule(
       noResetAllStateOnPropChange,

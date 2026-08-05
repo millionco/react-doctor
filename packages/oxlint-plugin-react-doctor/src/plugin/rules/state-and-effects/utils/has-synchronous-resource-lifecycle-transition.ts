@@ -14,7 +14,7 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 
 const RESOURCE_IDENTITY_REF_NAME_PATTERN =
-  /(?:abort|activation|attempt|controller|epoch|gen|generation|localization|pending|request|session|token|version|work)(?:[A-Za-z0-9]*Refs?|s)?$/i;
+  /(?:(?:^(?:abort|activation|attempt|controller|epoch|gen|generation|localization|pending|request|session|token|version)|(?:Abort|Activation|Attempt|Controller|Epoch|Gen|Generation|Localization|Pending|Request|Session|Token|Version))[A-Za-z0-9]*|(?:^work|Work)(?:Refs?)?)$/;
 const RESOURCE_INVALIDATION_MARKER_NAMES: ReadonlySet<string> = new Set(["superseded"]);
 const RESOURCE_COLLECTION_CLEAR_METHOD_NAMES: ReadonlySet<string> = new Set(["clear"]);
 

@@ -1085,20 +1085,16 @@ const typeExcludesNull = (
       typeExcludesNull(memberType, referenceNode, visitedTypeNames),
     );
   }
-  if (
-    !isNodeOfType(typeNode, "TSTypeReference") ||
-    !isNodeOfType(typeNode.typeName, "Identifier")
-  ) {
-    return true;
-  }
+  if (!isNodeOfType(typeNode, "TSTypeReference")) return true;
+  if (!isNodeOfType(typeNode.typeName, "Identifier")) return false;
   if (visitedTypeNames.has(typeNode.typeName.name)) return false;
   const declarations = findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name);
-  if (declarations.length === 0) return true;
+  if (declarations.length === 0) return false;
   const nextVisitedTypeNames = new Set(visitedTypeNames).add(typeNode.typeName.name);
   return declarations.every((declaration) =>
     isNodeOfType(declaration, "TSTypeAliasDeclaration")
       ? typeExcludesNull(declaration.typeAnnotation, referenceNode, nextVisitedTypeNames)
-      : true,
+      : isNodeOfType(declaration, "TSInterfaceDeclaration"),
   );
 };
 

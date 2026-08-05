@@ -21,9 +21,13 @@ const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 
 describe("fuzz harness oracles", () => {
   it("reads corpus directives from CRLF files", () => {
-    const code = "// rule: example-rule\r\n// verdict: fail\r\n";
+    const code = "// rule: example-rule, second-rule\r\n// verdict: fail\r\n";
 
-    expect(RULE_DIRECTIVE_PATTERN.exec(code)?.[1]).toBe("example-rule");
+    expect(
+      RULE_DIRECTIVE_PATTERN.exec(code)?.[1]
+        ?.split(",")
+        .map((ruleId) => ruleId.trim()),
+    ).toEqual(["example-rule", "second-rule"]);
     expect(VERDICT_DIRECTIVE_PATTERN.exec(code)?.[1]).toBe("fail");
   });
 
@@ -85,29 +89,33 @@ describe("fuzz harness oracles", () => {
     let declaredVerdictCount = 0;
 
     for (const entry of corpus) {
-      const ruleId = RULE_DIRECTIVE_PATTERN.exec(entry.code)?.[1];
+      const ruleIds = RULE_DIRECTIVE_PATTERN.exec(entry.code)?.[1]
+        ?.split(",")
+        .map((ruleId) => ruleId.trim());
       const verdict = VERDICT_DIRECTIVE_PATTERN.exec(entry.code)?.[1];
       if (!verdict) continue;
       declaredVerdictCount += 1;
-      if (!ruleId) {
+      if (!ruleIds?.length) {
         verdictFailures.push(`${entry.relativePath}: missing rule`);
         continue;
       }
-      const rule = rulesById.get(ruleId);
-      if (!rule) {
-        verdictFailures.push(`${entry.relativePath}: unknown rule ${ruleId}`);
-        continue;
-      }
-      const result = runRule(rule, entry.code, {
-        filename: entry.relativePath,
-        settings: livenessFixturesById.get(ruleId)?.settings,
-        forceJsx: true,
-      });
-      const didFire = result.diagnostics.length > 0;
-      if ((verdict === "fail") !== didFire) {
-        verdictFailures.push(
-          `${entry.relativePath}: expected ${verdict}, received ${result.diagnostics.length} diagnostics`,
-        );
+      for (const ruleId of ruleIds) {
+        const rule = rulesById.get(ruleId);
+        if (!rule) {
+          verdictFailures.push(`${entry.relativePath}: unknown rule ${ruleId}`);
+          continue;
+        }
+        const result = runRule(rule, entry.code, {
+          filename: entry.relativePath,
+          settings: livenessFixturesById.get(ruleId)?.settings,
+          forceJsx: true,
+        });
+        const didFire = result.diagnostics.length > 0;
+        if ((verdict === "fail") !== didFire) {
+          verdictFailures.push(
+            `${entry.relativePath} (${ruleId}): expected ${verdict}, received ${result.diagnostics.length} diagnostics`,
+          );
+        }
       }
     }
 

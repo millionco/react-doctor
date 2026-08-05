@@ -934,19 +934,143 @@ const isRegExpLiteral = (node: EsTreeNode): boolean => {
   return Boolean((node as { regex?: unknown }).regex);
 };
 
-const isUnstableInitializer = (node: EsTreeNode | null, isNestedInitializer = false): boolean => {
+const isSameSymbol = (left: EsTreeNode, right: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const leftCandidate = unwrapExpression(left);
+  const rightCandidate = unwrapExpression(right);
+  if (!isNodeOfType(leftCandidate, "Identifier") || !isNodeOfType(rightCandidate, "Identifier")) {
+    return false;
+  }
+  const leftSymbol = scopes.symbolFor(leftCandidate);
+  const rightSymbol = scopes.symbolFor(rightCandidate);
+  return Boolean(leftSymbol && rightSymbol && leftSymbol.id === rightSymbol.id);
+};
+
+const isUndefinedExpression = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const candidate = unwrapExpression(node);
+  return (
+    (isNodeOfType(candidate, "Identifier") &&
+      candidate.name === "undefined" &&
+      scopes.isGlobalReference(candidate)) ||
+    (isNodeOfType(candidate, "UnaryExpression") && candidate.operator === "void")
+  );
+};
+
+const isProvablyNonNullishStateInitializer = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: ReadonlySet<number> = new Set(),
+): boolean => {
+  const candidate = unwrapExpression(node);
+  if (
+    isNodeOfType(candidate, "ArrayExpression") ||
+    isNodeOfType(candidate, "ObjectExpression") ||
+    isNodeOfType(candidate, "ClassExpression") ||
+    isNodeOfType(candidate, "NewExpression") ||
+    isNodeOfType(candidate, "TemplateLiteral")
+  ) {
+    return true;
+  }
+  if (isNodeOfType(candidate, "Literal")) return candidate.value !== null;
+  if (isNodeOfType(candidate, "LogicalExpression") && candidate.operator === "??") {
+    return isProvablyNonNullishStateInitializer(candidate.right, scopes, visitedSymbolIds);
+  }
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    return (
+      isProvablyNonNullishStateInitializer(candidate.consequent, scopes, visitedSymbolIds) &&
+      isProvablyNonNullishStateInitializer(candidate.alternate, scopes, visitedSymbolIds)
+    );
+  }
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    visitedSymbolIds.has(symbol.id)
+  ) {
+    return false;
+  }
+  const nextVisitedSymbolIds = new Set(visitedSymbolIds).add(symbol.id);
+  return isProvablyNonNullishStateInitializer(symbol.initializer, scopes, nextVisitedSymbolIds);
+};
+
+const getReactStateInitializer = (node: EsTreeNode, scopes: ScopeAnalysis): EsTreeNode | null => {
+  const candidate = unwrapExpression(node);
+  if (!isNodeOfType(candidate, "Identifier")) return null;
+  const stateSymbol = scopes.symbolFor(candidate);
+  const declarator = stateSymbol?.declarationNode;
+  if (
+    !stateSymbol ||
+    !declarator ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.id, "ArrayPattern") ||
+    declarator.id.elements[0] !== stateSymbol.bindingIdentifier ||
+    !isNodeOfType(declarator.init, "CallExpression") ||
+    !isReactApiCall(declarator.init, "useState", scopes, {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: true,
+      resolveNamedAliases: true,
+    })
+  ) {
+    return null;
+  }
+  const stateInitializer = declarator.init.arguments[0];
+  return isAstNode(stateInitializer) && !isNodeOfType(stateInitializer, "SpreadElement")
+    ? stateInitializer
+    : null;
+};
+
+const isControlledStateSelection = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const candidate = unwrapExpression(node);
+  if (!isNodeOfType(candidate, "ConditionalExpression")) return false;
+  const test = unwrapExpression(candidate.test);
+  if (!isNodeOfType(test, "Identifier")) return false;
+  const testSymbol = scopes.symbolFor(test);
+  const comparison = testSymbol?.initializer ? unwrapExpression(testSymbol.initializer) : null;
+  if (
+    testSymbol?.kind !== "const" ||
+    !comparison ||
+    !isNodeOfType(comparison, "BinaryExpression") ||
+    (comparison.operator !== "!==" && comparison.operator !== "!=")
+  ) {
+    return false;
+  }
+  let controlledValue: EsTreeNode | null = null;
+  if (isUndefinedExpression(comparison.right, scopes)) {
+    controlledValue = comparison.left;
+  } else if (isUndefinedExpression(comparison.left, scopes)) {
+    controlledValue = comparison.right;
+  }
+  if (!controlledValue || !isSameSymbol(candidate.consequent, controlledValue, scopes)) {
+    return false;
+  }
+  const stateInitializer = getReactStateInitializer(candidate.alternate, scopes);
+  return Boolean(
+    stateInitializer && isProvablyNonNullishStateInitializer(stateInitializer, scopes),
+  );
+};
+
+const isUnstableInitializer = (
+  node: EsTreeNode | null,
+  scopes: ScopeAnalysis,
+  isNestedInitializer = false,
+): boolean => {
   if (!node) return false;
   const stripped = unwrapExpression(node);
   if (isRegExpLiteral(stripped)) return true;
   if (isNodeOfType(stripped, "ConditionalExpression")) {
     return (
-      isUnstableInitializer(stripped.consequent, true) ||
-      isUnstableInitializer(stripped.alternate, true)
+      isUnstableInitializer(stripped.consequent, scopes, true) ||
+      isUnstableInitializer(stripped.alternate, scopes, true)
     );
   }
   if (isNodeOfType(stripped, "LogicalExpression")) {
+    if (stripped.operator === "??" && isControlledStateSelection(stripped.left, scopes)) {
+      return isUnstableInitializer(stripped.left, scopes, true);
+    }
     return (
-      isUnstableInitializer(stripped.left, true) || isUnstableInitializer(stripped.right, true)
+      isUnstableInitializer(stripped.left, scopes, true) ||
+      isUnstableInitializer(stripped.right, scopes, true)
     );
   }
   return (
@@ -970,7 +1094,7 @@ const isPotentiallyFreshComparedValue = (
   visitedSymbolIds: Set<number> = new Set(),
 ): boolean => {
   const candidate = unwrapExpression(node);
-  if (isUnstableInitializer(candidate)) return true;
+  if (isUnstableInitializer(candidate, scopes)) return true;
   if (isNodeOfType(candidate, "ConditionalExpression")) {
     return (
       isPotentiallyFreshComparedValue(candidate.consequent, scopes, visitedSymbolIds) ||
@@ -1004,7 +1128,7 @@ const isExtraDepAllowedForHook = (
   return Boolean(
     rootSymbol &&
     !symbolHasStableValue(rootSymbol, scopes) &&
-    !isUnstableInitializer(rootSymbol.initializer),
+    !isUnstableInitializer(rootSymbol.initializer, scopes),
   );
 };
 
@@ -2122,7 +2246,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
             !rootSymbol ||
             !hasDirectIdentifierDeclarator(rootSymbol) ||
             symbolHasStableValue(rootSymbol, context.scopes) ||
-            !isUnstableInitializer(rootSymbol.initializer)
+            !isUnstableInitializer(rootSymbol.initializer, context.scopes)
           ) {
             continue;
           }

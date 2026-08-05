@@ -569,8 +569,8 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   const rootDirectory = toCanonicalPath(options.rootDirectory);
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
-  const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
-  const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory);
+  const entryPatterns = await collectDeadCodeEntryPatterns(rootDirectory);
+  const ignorePatterns = await collectDeadCodeIgnorePatterns(rootDirectory);
   const tsConfigPath = resolveTsConfigPath(rootDirectory);
   const deslopJsModuleSpecifier =
     options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js");

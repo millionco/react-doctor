@@ -1,7 +1,7 @@
 import { resolve, join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import fg from "fast-glob";
-import type { DependencyGraph, UnusedDependency, DeslopConfig } from "../types.js";
+import type { DependencyGraph, UnusedDependency, SkippedDependency, DeslopConfig } from "../types.js";
 import { IMPLICIT_DEPENDENCIES } from "../constants.js";
 import { extractPackageName } from "../utils/package-name.js";
 import { collectOverrideMappingsFromRecord } from "../utils/collect-override-mappings-from-record.js";
@@ -98,7 +98,7 @@ export const detectStalePackages = (
   graph: DependencyGraph,
   config: DeslopConfig,
   summaryCache?: SummaryCache,
-): UnusedDependency[] => {
+): { unusedDependencies: UnusedDependency[]; skippedDependencies: SkippedDependency[] } => {
   const packageJsonPath = resolve(config.rootDir, "package.json");
   let packageJson: PackageJsonDependencies;
 
@@ -106,7 +106,7 @@ export const detectStalePackages = (
     const content = readFileSync(packageJsonPath, "utf-8");
     packageJson = JSON.parse(content);
   } catch {
-    return [];
+    return { unusedDependencies: [], skippedDependencies: [] };
   }
 
   const dependencies = packageJson.dependencies ?? {};
@@ -122,6 +122,7 @@ export const detectStalePackages = (
 
   const declaredNames = new Set(declaredDependencies.keys());
   const usedPackageNames = collectUsedPackages(graph);
+  const skippedDependencies: SkippedDependency[] = [];
 
   const monorepoRoot = findMonorepoRoot(config.rootDir);
   const nodeModulesSearchRoots =
@@ -144,7 +145,15 @@ export const detectStalePackages = (
 
   // Shipping a CLI binary is itself evidence of use — binaries run from
   // Makefiles, CI, git hooks, and `npx`, none of which the static scan sees.
-  for (const packageName of packagesProvidingBinary) usedPackageNames.add(packageName);
+  for (const packageName of packagesProvidingBinary) {
+    usedPackageNames.add(packageName);
+    const isDevDependency = declaredDependencies.get(packageName) ?? false;
+    skippedDependencies.push({
+      name: packageName,
+      isDevDependency,
+      reason: `provides a binary and is assumed to be used (binaries are often invoked from scripts, CI, git hooks, or via npx in ways the static scan cannot detect)`,
+    });
+  }
 
   for (const workspacePackageJsonPath of allPackageJsonPaths) {
     const scriptReferenced = collectScriptReferencedPackages(
@@ -265,8 +274,19 @@ export const detectStalePackages = (
 
   const candidateUnused = new Set<string>();
   for (const [dependencyName] of declaredDependencies) {
-    if (isAlwaysConsideredUsed(dependencyName)) continue;
     if (usedPackageNames.has(dependencyName)) continue;
+
+    const skipReason = getSkipReason(dependencyName);
+    if (skipReason) {
+      const isDevDependency = declaredDependencies.get(dependencyName) ?? false;
+      skippedDependencies.push({
+        name: dependencyName,
+        isDevDependency,
+        reason: skipReason,
+      });
+      continue;
+    }
+
     candidateUnused.add(dependencyName);
   }
 
@@ -294,7 +314,7 @@ export const detectStalePackages = (
     });
   }
 
-  return unusedDependencies;
+  return { unusedDependencies, skippedDependencies };
 };
 
 const collectUsedPackages = (graph: DependencyGraph): Set<string> => {
@@ -1005,4 +1025,21 @@ const isAlwaysConsideredUsed = (dependencyName: string): boolean => {
   if (ALWAYS_USED_PREFIXES.some((prefix) => dependencyName.startsWith(prefix))) return true;
   if (ALWAYS_USED_SUFFIXES.some((suffix) => dependencyName.endsWith(suffix))) return true;
   return false;
+};
+
+const getSkipReason = (dependencyName: string): string | undefined => {
+  if (IMPLICIT_DEPENDENCIES.has(dependencyName)) {
+    return `is an implicit dependency and is assumed to be used`;
+  }
+  for (const prefix of ALWAYS_USED_PREFIXES) {
+    if (dependencyName.startsWith(prefix)) {
+      return `matches allowlisted prefix "${prefix}" and is assumed to be used (packages with this prefix typically have side effects, auto-configuration, or indirect usage patterns that are difficult to detect statically)`;
+    }
+  }
+  for (const suffix of ALWAYS_USED_SUFFIXES) {
+    if (dependencyName.endsWith(suffix)) {
+      return `matches allowlisted suffix "${suffix}" and is assumed to be used (packages with this suffix typically have side effects or indirect usage patterns that are difficult to detect statically)`;
+    }
+  }
+  return undefined;
 };

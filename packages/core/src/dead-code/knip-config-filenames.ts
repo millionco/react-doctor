@@ -9,10 +9,6 @@ export const KNIP_CONFIG_FILENAMES: ReadonlyArray<string> = [
   ...KNIP_DATA_CONFIG_FILENAMES,
   "knip.ts",
   "knip.js",
-  "knip.mjs",
-  "knip.cjs",
   "knip.config.ts",
   "knip.config.js",
-  "knip.config.mjs",
-  "knip.config.cjs",
 ];

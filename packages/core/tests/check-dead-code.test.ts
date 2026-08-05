@@ -18,14 +18,6 @@ const KNIP_MODULE_CONFIG_CASES: ReadonlyArray<KnipModuleConfigCase> = [
     filename: "knip.config.js",
     source: 'export default { ignore: ["src/generated.ts"] };\n',
   },
-  {
-    filename: "knip.config.mjs",
-    source: 'export default { ignore: ["src/generated.ts"] };\n',
-  },
-  {
-    filename: "knip.config.cjs",
-    source: 'module.exports = { ignore: ["src/generated.ts"] };\n',
-  },
 ];
 
 afterAll(() => {
@@ -256,6 +248,19 @@ describe("checkDeadCode", () => {
       expect(patterns.ignorePatterns).toContain("src/generated.ts");
     });
   }
+
+  it("ignores module filenames outside Knip's default discovery list", async () => {
+    const directory = setupProject("knip-default-config-locations", {
+      "src/index.ts": "export const used = 1;\n",
+      "knip.mjs": 'export default { ignore: ["src/nonstandard.ts"] };\n',
+      "knip.config.cjs": 'module.exports = { ignore: ["src/nonstandard.ts"] };\n',
+      "knip.config.ts": 'export default { ignore: ["src/canonical.ts"] };\n',
+    });
+
+    const patterns = await collectDeadCodePatterns(directory);
+    expect(patterns.ignorePatterns).toContain("src/canonical.ts");
+    expect(patterns.ignorePatterns).not.toContain("src/nonstandard.ts");
+  });
 
   it("reloads a Knip module configuration after it changes", async () => {
     const directory = setupProject("knip-config-reload", {

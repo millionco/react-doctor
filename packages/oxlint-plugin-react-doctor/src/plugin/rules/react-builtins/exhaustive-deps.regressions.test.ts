@@ -1611,6 +1611,27 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it.each(["Array<string>", "ReadonlyArray<string>"])(
+      "accepts a controlled value typed with the global %s generic",
+      (controlledValueType) => {
+        const code = `
+          interface RangeSelectProps {
+            value?: ${controlledValueType};
+            onChange: (value: ${controlledValueType}) => void;
+          }
+          function RangeSelect({ value, onChange }: RangeSelectProps) {
+            const [internalSelectedOptions] = useState<${controlledValueType}>([]);
+            const isControlled = value !== undefined;
+            const selectedOptions = (isControlled ? value : internalSelectedOptions) ?? [];
+            return useCallback(() => onChange(selectedOptions), [selectedOptions, onChange]);
+          }
+        `;
+        const result = runRule(exhaustiveDeps, code);
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toEqual([]);
+      },
+    );
+
     it("still reports a fresh fallback that can be selected", () => {
       const code = `
         function RangeSelect({ value, onChange }) {
@@ -1682,6 +1703,27 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
         expect(messages).toContain("rebuilt every render");
       },
     );
+
+    it("still reports when an imported type shadows the global Array generic", () => {
+      const code = `
+        import type { Selection as Array } from "./selection";
+        interface RangeSelectProps {
+          value?: Array<string>;
+          onChange: (value: Array<string>) => void;
+        }
+        function RangeSelect({ value, onChange }: RangeSelectProps) {
+          const [internalValue] = useState<string[]>([]);
+          const isControlled = value !== undefined;
+          const selectedValue = (isControlled ? value : internalValue) ?? [];
+          return useCallback(() => onChange(selectedValue), [selectedValue, onChange]);
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("selectedValue");
+      expect(messages).toContain("rebuilt every render");
+    });
 
     it("still reports a controlled-state fallback when the discriminator is mutable", () => {
       const code = `

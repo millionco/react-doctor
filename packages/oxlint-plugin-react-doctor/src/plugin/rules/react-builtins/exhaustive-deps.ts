@@ -10,6 +10,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findForwardedFreshHookDependencies } from "../../utils/find-forwarded-fresh-hook-dependencies.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { hasImportedBinding } from "../../utils/find-import-source-for-name.js";
 import { findSameFileTypeDeclarations } from "../../utils/find-same-file-type-declaration.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticKeyName } from "../../utils/get-static-key-name.js";
@@ -90,6 +91,8 @@ const EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS: ReadonlySet<string> = new Set([
 ]);
 
 const SOLE_WRITER_GUARD_HOOKS: ReadonlySet<string> = new Set(["useEffect", "useLayoutEffect"]);
+
+const NON_NULLISH_GLOBAL_TYPE_REFERENCES: ReadonlySet<string> = new Set(["Array", "ReadonlyArray"]);
 
 const buildAdditionalHooksRegex = (additional: string): RegExp | null => {
   if (!additional) return null;
@@ -1089,7 +1092,12 @@ const typeExcludesNull = (
   if (!isNodeOfType(typeNode.typeName, "Identifier")) return false;
   if (visitedTypeNames.has(typeNode.typeName.name)) return false;
   const declarations = findSameFileTypeDeclarations(referenceNode, typeNode.typeName.name);
-  if (declarations.length === 0) return false;
+  if (declarations.length === 0) {
+    return (
+      !hasImportedBinding(referenceNode, typeNode.typeName.name) &&
+      NON_NULLISH_GLOBAL_TYPE_REFERENCES.has(typeNode.typeName.name)
+    );
+  }
   const nextVisitedTypeNames = new Set(visitedTypeNames).add(typeNode.typeName.name);
   return declarations.every((declaration) =>
     isNodeOfType(declaration, "TSTypeAliasDeclaration")

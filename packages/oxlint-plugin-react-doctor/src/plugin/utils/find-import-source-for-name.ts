@@ -57,6 +57,9 @@ const getImportLookup = (node: EsTreeNode): Map<string, ImportInfo> | null => {
   return cached;
 };
 
+export const hasImportedBinding = (contextNode: EsTreeNode, localIdentifierName: string): boolean =>
+  Boolean(getImportLookup(contextNode)?.has(localIdentifierName));
+
 // True if the enclosing module imports anything from any of `moduleSources`.
 // A cheap existence gate for detectors whose signal can only come from a
 // specific library — when the import is absent, callers skip their AST walk

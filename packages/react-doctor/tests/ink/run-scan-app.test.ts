@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import { render } from "ink";
+import { isValidElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type {
   DiffInfo,
@@ -11,7 +12,7 @@ import type {
 import { getBaselineDiffPlan, getDiffInfo, Reporter, resolveScanTarget } from "@react-doctor/core";
 import { runScanApp } from "../../src/cli/ink/run-scan-app.js";
 import type { ScanStore, TuiHandoffRequest } from "../../src/cli/ink/scan-store.js";
-import { clearActiveTuiRenderer } from "../../src/cli/utils/active-tui-renderer.js";
+import { preserveActiveTuiRendererOutput } from "../../src/cli/utils/active-tui-renderer.js";
 import { computeProjectedScore } from "../../src/cli/utils/compute-score-projection.js";
 import { inspect } from "../../src/inspect.js";
 import { buildDiagnostic, buildTestProject } from "../regressions/_helpers.js";
@@ -38,6 +39,7 @@ const mockState = vi.hoisted(() => ({
   shouldRequestHandoff: false,
   shouldSetUpCi: false,
   shouldQuit: false,
+  shouldAutoSubmitProjectSelection: true,
   scanRendererClearCount: 0,
   lifecycleEvents: new Array<string>(),
   scanStores: new Array<ScanStore>(),
@@ -51,7 +53,11 @@ vi.mock("ink", async (importOriginal) => {
   return {
     ...actual,
     render: vi.fn((node) => {
-      if (React.isValidElement<MockProjectSelectProps>(node) && node.props.packages) {
+      if (
+        React.isValidElement<MockProjectSelectProps>(node) &&
+        node.props.packages &&
+        mockState.shouldAutoSubmitProjectSelection
+      ) {
         queueMicrotask(() => node.props.onSubmit?.(mockState.projectDirectories));
       }
       if (React.isValidElement<MockScanAppProps>(node)) {
@@ -196,6 +202,7 @@ describe("runScanApp", () => {
     mockState.shouldRequestHandoff = false;
     mockState.shouldSetUpCi = false;
     mockState.shouldQuit = false;
+    mockState.shouldAutoSubmitProjectSelection = true;
     mockState.scanRendererClearCount = 0;
     mockState.lifecycleEvents.length = 0;
     mockState.scanStores.length = 0;
@@ -235,7 +242,7 @@ describe("runScanApp", () => {
     });
   });
 
-  it("clears the project selection screen through the active renderer lifecycle", async () => {
+  it("preserves the active screen in scrollback when exiting", async () => {
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const rootDirectory = "/repo";
     const originalIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -244,6 +251,7 @@ describe("runScanApp", () => {
       { name: "web", directory: "/repo/apps/web" },
       { name: "admin", directory: "/repo/apps/admin" },
     );
+    mockState.shouldAutoSubmitProjectSelection = false;
     mockState.scanTargets.set(
       rootDirectory,
       buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
@@ -254,12 +262,16 @@ describe("runScanApp", () => {
       await vi.waitFor(() => expect(render).toHaveBeenCalled());
       const selectionRenderer = vi.mocked(render).mock.results[0]?.value;
 
-      clearActiveTuiRenderer();
+      preserveActiveTuiRendererOutput();
 
-      expect(selectionRenderer?.clear).toHaveBeenCalledOnce();
+      expect(selectionRenderer?.clear).not.toHaveBeenCalled();
       expect(selectionRenderer?.unmount).toHaveBeenCalledOnce();
+      const selectionNode = vi.mocked(render).mock.calls[0]?.[0];
+      if (isValidElement<MockProjectSelectProps>(selectionNode)) {
+        selectionNode.props.onSubmit?.([]);
+      }
       await scanPromise;
-      expect(selectionRenderer?.clear).toHaveBeenCalledOnce();
+      expect(selectionRenderer?.clear).not.toHaveBeenCalled();
       expect(selectionRenderer?.unmount).toHaveBeenCalledOnce();
     } finally {
       if (originalIsTtyDescriptor) {

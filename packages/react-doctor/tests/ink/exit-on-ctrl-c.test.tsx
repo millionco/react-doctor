@@ -24,7 +24,7 @@ describe("useExitOnCtrlC", () => {
       lifecycleEvents.push("log");
     });
     registerActiveTuiRenderer({
-      clear: () => lifecycleEvents.push("clear"),
+      preserveOutput: () => lifecycleEvents.push("preserve"),
     });
 
     const { stdin, unmount } = render(<Harness />);
@@ -36,7 +36,7 @@ describe("useExitOnCtrlC", () => {
     expect(exitSpy).toHaveBeenCalledWith(130);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(DOCS_URL));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(CANONICAL_GITHUB_URL));
-    expect(lifecycleEvents.slice(0, 2)).toEqual(["clear", "log"]);
+    expect(lifecycleEvents.slice(0, 2)).toEqual(["preserve", "log"]);
     unmount();
   });
 

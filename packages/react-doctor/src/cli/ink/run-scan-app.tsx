@@ -183,6 +183,23 @@ const resolveSelectedDirectories = async (
   return promptProjectSelection(packages, rootDirectory);
 };
 
+const registerMountedTuiRenderer = (instance: ReturnType<typeof render>): (() => void) => {
+  let didDisposeRenderer = false;
+  const disposeRenderer = (shouldClearOutput: boolean): void => {
+    if (didDisposeRenderer) return;
+    didDisposeRenderer = true;
+    if (shouldClearOutput) instance.clear();
+    instance.unmount();
+  };
+  const unregisterActiveTuiRenderer = registerActiveTuiRenderer({
+    preserveOutput: () => disposeRenderer(false),
+  });
+  return () => {
+    unregisterActiveTuiRenderer();
+    disposeRenderer(true);
+  };
+};
+
 const promptProjectSelection = (
   packages: ReadonlyArray<WorkspacePackage>,
   rootDirectory: string,
@@ -201,18 +218,7 @@ const promptProjectSelection = (
       />,
       { alternateScreen: false, exitOnCtrlC: false },
     );
-    let didClearRenderer = false;
-    const clearRenderer = (): void => {
-      if (didClearRenderer) return;
-      didClearRenderer = true;
-      instance.clear();
-      instance.unmount();
-    };
-    const unregisterActiveTuiRenderer = registerActiveTuiRenderer({ clear: clearRenderer });
-    disposeRenderer = () => {
-      unregisterActiveTuiRenderer();
-      clearRenderer();
-    };
+    disposeRenderer = registerMountedTuiRenderer(instance);
   });
 
 interface ScanReportInput {
@@ -394,20 +400,9 @@ const mountScanApp = async (
       />,
       { alternateScreen: false, exitOnCtrlC: false },
     );
-    let didClearRenderer = false;
-    const clearRenderer = (): void => {
-      if (didClearRenderer) return;
-      didClearRenderer = true;
-      instance.clear();
-      instance.unmount();
-    };
-    const unregisterActiveTuiRenderer = registerActiveTuiRenderer({ clear: clearRenderer });
     return {
       instance,
-      dispose: () => {
-        unregisterActiveTuiRenderer();
-        clearRenderer();
-      },
+      dispose: registerMountedTuiRenderer(instance),
     };
   };
   const executePendingActions = async (): Promise<void> => {

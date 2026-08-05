@@ -1,5 +1,5 @@
 export interface ActiveTuiRenderer {
-  readonly clear: () => void;
+  readonly preserveOutput: () => void;
 }
 
 let activeTuiRenderer: ActiveTuiRenderer | null = null;
@@ -11,8 +11,8 @@ export const registerActiveTuiRenderer = (renderer: ActiveTuiRenderer): (() => v
   };
 };
 
-export const clearActiveTuiRenderer = (): void => {
+export const preserveActiveTuiRendererOutput = (): void => {
   const renderer = activeTuiRenderer;
   activeTuiRenderer = null;
-  renderer?.clear();
+  renderer?.preserveOutput();
 };

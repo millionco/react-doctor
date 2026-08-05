@@ -10,6 +10,7 @@ import {
   TUI_REPORT_STATUS_ROWS,
   TUI_REPORT_VIEWPORT_MARGIN_ROWS,
 } from "../../src/cli/utils/constants.js";
+import * as exitGracefullyModule from "../../src/cli/utils/exit-gracefully.js";
 import * as launchAgent from "../../src/cli/utils/launch-agent.js";
 import * as openUrlModule from "../../src/cli/utils/open-url.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
@@ -621,6 +622,38 @@ describe("ScanApp", () => {
     await flush();
 
     expect(onQuit).toHaveBeenCalledOnce();
+    unmount();
+  });
+
+  it("marks the report quit before cancelling after issue review", async () => {
+    const exitGracefullySpy = vi
+      .spyOn(exitGracefullyModule, "exitGracefully")
+      .mockImplementation(() => {});
+    const store = createScanStore();
+    const onQuit = vi.fn();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { stdin, unmount } = render(<ScanApp store={store} onQuit={onQuit} />);
+    await flush();
+    stdin.write("\r");
+    await flush();
+    stdin.write("\u001B");
+    await flush();
+    stdin.write("\u0003");
+    await flush();
+
+    expect(onQuit).toHaveBeenCalledOnce();
+    expect(exitGracefullySpy).toHaveBeenCalledOnce();
     unmount();
   });
 

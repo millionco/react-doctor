@@ -29,7 +29,7 @@ export const ScanApp = ({
 }: ScanAppProps) => {
   const snapshot = useScanStore(store);
   const { exit } = useApp();
-  useExitOnCtrlC();
+  useExitOnCtrlC(onQuit);
   const handleQuit = (): void => {
     onQuit?.();
     exit();

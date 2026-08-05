@@ -5,9 +5,10 @@ import { recordCount } from "../../utils/record-metric.js";
 
 const SHOW_CURSOR = "\u001B[?25h";
 
-export const useExitOnCtrlC = (): void => {
+export const useExitOnCtrlC = (onCancel?: () => void): void => {
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
+      onCancel?.();
       recordCount(METRIC.tuiCancelled, 1, { resourceFooter: true });
       process.stdin.setRawMode?.(false);
       process.stdout.write(SHOW_CURSOR);

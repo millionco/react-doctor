@@ -428,10 +428,11 @@ export const createServer = (
       params.capabilities.workspace?.didChangeWatchedFiles?.dynamicRegistration,
     );
     supportsWorkDoneProgress = Boolean(params.capabilities.window?.workDoneProgress);
-    const experimental = params.capabilities.experimental as
-      | { serverStatusNotification?: boolean }
-      | undefined;
-    supportsServerStatus = Boolean(experimental?.serverStatusNotification);
+    supportsServerStatus = readBooleanInitOption(
+      params.capabilities.experimental,
+      "serverStatusNotification",
+      false,
+    );
     // `onDidChangeWorkspaceFolders` throws if the client didn't advertise
     // workspace-folder support — guard the registration on this.
     supportsWorkspaceFolderChange = Boolean(params.capabilities.workspace?.workspaceFolders);
@@ -808,28 +809,28 @@ const extractUri = (argument: unknown): string | null => extractString(argument,
 
 const extractString = (argument: unknown, key: string): string | null => {
   if (argument === null || typeof argument !== "object") return null;
-  const value = (argument as Record<string, unknown>)[key];
+  const value = Reflect.get(argument, key);
   return typeof value === "string" ? value : null;
 };
 
 const asFalsePositiveReport = (argument: unknown): FalsePositiveReport | null => {
   if (argument === null || typeof argument !== "object") return null;
-  const record = argument as Record<string, unknown>;
-  const ruleId = record.ruleId;
-  if (typeof ruleId !== "string") return null;
+  const ruleId = extractString(argument, "ruleId");
+  if (ruleId === null) return null;
+  const line = Reflect.get(argument, "line");
   return {
     ruleId,
-    severity: typeof record.severity === "string" ? record.severity : "warning",
-    category: typeof record.category === "string" ? record.category : "",
-    message: typeof record.message === "string" ? record.message : "",
-    relativeFilePath: typeof record.relativeFilePath === "string" ? record.relativeFilePath : "",
-    line: typeof record.line === "number" ? record.line : 1,
+    severity: extractString(argument, "severity") ?? "warning",
+    category: extractString(argument, "category") ?? "",
+    message: extractString(argument, "message") ?? "",
+    relativeFilePath: extractString(argument, "relativeFilePath") ?? "",
+    line: typeof line === "number" ? line : 1,
   };
 };
 
 const readBooleanInitOption = (options: unknown, key: string, fallback: boolean): boolean => {
   if (options === null || typeof options !== "object") return fallback;
-  const value = (options as Record<string, unknown>)[key];
+  const value = Reflect.get(options, key);
   return typeof value === "boolean" ? value : fallback;
 };
 

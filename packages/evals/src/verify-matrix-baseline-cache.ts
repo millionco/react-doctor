@@ -10,10 +10,9 @@ import {
 } from "./constants.js";
 import type { MatrixEvaluationGroup } from "./matrix-treatment-descriptor.js";
 import { getEvaluationTimeoutSeconds } from "./utils/get-evaluation-timeout-seconds.js";
+import type { MatrixBaseArtifactVerification } from "./utils/matrix-base-artifact-binding.js";
 
-export interface MatrixBaselineArtifactVerification {
-  sha256: string;
-  byteLength: number;
+export interface MatrixBaselineArtifactVerification extends MatrixBaseArtifactVerification {
   provenanceSha256: string;
 }
 

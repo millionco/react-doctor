@@ -77,7 +77,7 @@ const wrapAsEslintRule = (ruleName: string, ruleImpl: EslintAdapterRule): Eslint
     },
     schema: [],
   },
-  create: (context: EslintRuleContext) => ruleImpl.create(context),
+  create: ruleImpl.create,
 });
 
 const eslintShapedRules: Record<string, EslintRule> = Object.fromEntries(

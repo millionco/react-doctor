@@ -7,7 +7,6 @@ import {
   PAGE_OR_LAYOUT_FILE_PATTERN,
 } from "./constants/nextjs.js";
 import {
-  CROSS_FILE_BARREL_FOLLOW_DEPTH,
   CUSTOM_HOOK_DEPENDENCY_FORWARD_DEPTH,
   DAYJS_STATE_UPDATER_DEPENDENCY_FOLLOW_DEPTH,
 } from "./constants/thresholds.js";

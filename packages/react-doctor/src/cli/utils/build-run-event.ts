@@ -121,6 +121,25 @@ export interface RunEventInput {
   readonly error?: unknown;
 }
 
+export interface RunEventConfig extends Pick<
+  RunEventInput,
+  | "scope"
+  | "parallel"
+  | "workerCount"
+  | "maxDurationMs"
+  | "lint"
+  | "deadCode"
+  | "supplyChain"
+  | "scoreOnly"
+  | "noScore"
+  | "respectInlineDisables"
+  | "showWarnings"
+  | "usedOutputDir"
+  | "ignoredTagCount"
+  | "hasCustomConfig"
+  | "userConfig"
+> {}
+
 const readEnvBoolean = (name: string): boolean | null => {
   const value = process.env[name];
   if (value === undefined) return null;

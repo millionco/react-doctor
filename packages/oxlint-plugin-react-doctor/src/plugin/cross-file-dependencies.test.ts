@@ -15,7 +15,7 @@ import {
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
 import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
 import { resetCrossFileExportCaches } from "./utils/resolve-cross-file-function-export.js";
-import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alias.js";
+import { resetTsconfigAliasCaches } from "./utils/resolve-tsconfig-alias.js";
 
 // The collectors' contract (see cross-file-dependencies.ts): for a given file,
 // the recorded probe set must contain every path whose existence or content
@@ -32,7 +32,7 @@ const DAYJS_DEPENDENCY_DAG_MAX_ANALYSIS_DURATION_MS = 2_000;
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-cross-file-deps-"));
   __clearParseSourceFileCacheForTests();
-  __clearTsconfigAliasCacheForTests();
+  resetTsconfigAliasCaches();
   resetCrossFileExportCaches();
   resetManifestCaches();
 });

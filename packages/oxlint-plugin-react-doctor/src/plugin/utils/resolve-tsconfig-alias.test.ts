@@ -4,17 +4,13 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS } from "../constants/thresholds.js";
 import { collectCrossFileProbes } from "./cross-file-probe-recorder.js";
-import {
-  __clearTsconfigAliasCacheForTests,
-  resetTsconfigAliasCaches,
-  resolveTsconfigAliasPath,
-} from "./resolve-tsconfig-alias.js";
+import { resetTsconfigAliasCaches, resolveTsconfigAliasPath } from "./resolve-tsconfig-alias.js";
 
 let temporaryDirectory: string;
 
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "tsconfig-alias-"));
-  __clearTsconfigAliasCacheForTests();
+  resetTsconfigAliasCaches();
 });
 
 afterEach(() => {

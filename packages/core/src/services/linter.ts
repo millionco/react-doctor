@@ -4,6 +4,8 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "../types/index.js";
+export type { LintFileCoverage } from "../types/run-oxlint.js";
+import type { LintFileCoverage } from "../types/run-oxlint.js";
 import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
 import {
   LintBatchOrdering,
@@ -58,11 +60,6 @@ export interface LintInput {
   ) => void;
   /** See `RunOxlintOptions.deadlineEpochMs`. */
   readonly deadlineEpochMs?: number;
-}
-
-export interface LintFileCoverage {
-  readonly candidateFiles: ReadonlyArray<string>;
-  readonly analyzedFiles: ReadonlyArray<string>;
 }
 
 /**

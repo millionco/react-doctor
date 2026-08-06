@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
-import { __clearTsconfigAliasCacheForTests } from "../../utils/resolve-tsconfig-alias.js";
+import { resetTsconfigAliasCaches } from "../../utils/resolve-tsconfig-alias.js";
 import { noMutatingReducerState } from "./no-mutating-reducer-state.js";
 
 // Cross-file tests need actual files on disk so the rule's
@@ -18,7 +18,7 @@ let temporaryDirectory: string;
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "no-mutating-reducer-xfile-"));
   __clearParseSourceFileCacheForTests();
-  __clearTsconfigAliasCacheForTests();
+  resetTsconfigAliasCaches();
 });
 
 afterEach(() => {

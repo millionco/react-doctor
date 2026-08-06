@@ -6,10 +6,10 @@ import { isFile } from "./fs-utils.js";
 import { countSourceFiles } from "./count-source-files.js";
 import {
   detectNextjsStaticExport,
-  detectPreES2023Target,
   detectReactCompiler,
   detectReactCompilerLintPlugin,
 } from "./detectors.js";
+import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
 import {
   extractDependencyInfo,
   getDependencyDeclaration,
@@ -40,7 +40,7 @@ import {
 import { clearTargetBlankOpenerProtectionCache } from "./detect-target-blank-opener-protection.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
-export { formatFrameworkName } from "./detectors.js";
+export { formatFrameworkName } from "./detect-framework.js";
 export { listWorkspacePackages } from "./workspaces.js";
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();

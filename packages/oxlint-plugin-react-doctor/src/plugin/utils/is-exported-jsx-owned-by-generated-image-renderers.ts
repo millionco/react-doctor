@@ -10,13 +10,13 @@ import { findProgramRoot } from "./find-program-root.js";
 import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { getDirectFunctionBindingIdentifier } from "./get-direct-function-binding-identifier.js";
 import { getFunctionExportNames } from "./get-function-export-names.js";
+import { getModuleSpecifierName } from "./get-module-specifier-name.js";
 import {
   getReactDoctorOptionalStringArraySetting,
   getReactDoctorStringSetting,
 } from "./get-react-doctor-setting.js";
 import { getStaticPropertyName } from "./get-static-property-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isFunctionLike } from "./is-function-like.js";
 import {
   GENERATED_IMAGE_RENDERER_MODULES,
@@ -41,32 +41,10 @@ interface GeneratedImageOwnershipState {
   didReachRenderer: boolean;
 }
 
-const getExportedSpecifierName = (
-  specifier: EsTreeNodeOfType<"ExportSpecifier">,
-): string | null => {
-  const exported = specifier.exported;
-  if (isNodeOfType(exported, "Identifier")) return exported.name;
-  return isNodeOfType(exported, "Literal") && typeof exported.value === "string"
-    ? exported.value
-    : null;
-};
-
-const getImportedSpecifierName = (
-  specifier: EsTreeNodeOfType<"ExportSpecifier">,
-): string | null => {
-  const local = specifier.local;
-  if (isNodeOfType(local, "Identifier")) return local.name;
-  return isNodeOfType(local, "Literal") && typeof local.value === "string" ? local.value : null;
-};
-
 const getImportSpecifierName = (specifier: EsTreeNode): string | null => {
   if (isNodeOfType(specifier, "ImportDefaultSpecifier")) return "default";
   if (!isNodeOfType(specifier, "ImportSpecifier")) return null;
-  const imported = specifier.imported;
-  if (isNodeOfType(imported, "Identifier")) return imported.name;
-  return isNodeOfType(imported, "Literal") && typeof imported.value === "string"
-    ? imported.value
-    : null;
+  return getModuleSpecifierName(specifier.imported);
 };
 
 const isTransparentGeneratedImageValueFlow = (
@@ -206,7 +184,7 @@ const classifySymbolReferences = (
     }
     const parent = identifier.parent;
     if (isNodeOfType(parent, "ExportSpecifier") && parent.local === identifier) {
-      const exportedName = getExportedSpecifierName(parent);
+      const exportedName = getModuleSpecifierName(parent.exported);
       if (!exportedName) return false;
       enqueueExport(state, module.filePath, exportedName);
       continue;
@@ -305,8 +283,8 @@ const classifyImportsFromExport = (
       }
       for (const specifier of statement.specifiers) {
         if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
-        if (getImportedSpecifierName(specifier) !== exportIdentity.exportedName) continue;
-        const exportedName = getExportedSpecifierName(specifier);
+        if (getModuleSpecifierName(specifier.local) !== exportIdentity.exportedName) continue;
+        const exportedName = getModuleSpecifierName(specifier.exported);
         if (!exportedName) return false;
         state.currentExportWasUsed = true;
         enqueueExport(state, module.filePath, exportedName);

@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { getModuleSpecifierName } from "./get-module-specifier-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 export interface ReExportTarget {
@@ -53,19 +54,9 @@ export const findReExportTargetsForName = (
       for (const specifier of statement.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
         if (specifier.exportKind === "type") continue;
-        const exported = specifier.exported;
-        const exportedNameSpec = isNodeOfType(exported, "Identifier")
-          ? exported.name
-          : isNodeOfType(exported, "Literal") && typeof exported.value === "string"
-            ? exported.value
-            : null;
+        const exportedNameSpec = getModuleSpecifierName(specifier.exported);
         if (exportedNameSpec !== exportedName) continue;
-        const local = specifier.local;
-        const importedName = isNodeOfType(local, "Identifier")
-          ? local.name
-          : isNodeOfType(local, "Literal") && typeof local.value === "string"
-            ? local.value
-            : null;
+        const importedName = getModuleSpecifierName(specifier.local);
         if (importedName) return [{ importedName, source: sourceValue }];
       }
     }

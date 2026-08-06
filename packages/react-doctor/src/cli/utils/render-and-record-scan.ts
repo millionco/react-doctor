@@ -3,7 +3,7 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import type { InspectResult, ReactDoctorConfig } from "@react-doctor/core";
 import type { ResolvedInspectOptions } from "../../inspect-options.js";
-import { recordRunEvent } from "./build-run-event.js";
+import { recordRunEvent, type RunEventConfig } from "./build-run-event.js";
 import { countDeadlineSkippedFiles } from "./count-deadline-skipped-files.js";
 import { countDroppedLintFiles } from "./count-dropped-lint-files.js";
 import {
@@ -25,24 +25,6 @@ export interface RenderAndRecordScanInput {
   readonly baselineDegraded: boolean;
   readonly wholeRepoCacheHit: boolean;
   readonly cacheStats?: Partial<InspectExecutionCacheStats>;
-}
-
-export interface RunEventConfig {
-  readonly scope: string;
-  readonly parallel: boolean;
-  readonly workerCount: number | undefined;
-  readonly maxDurationMs: number | null;
-  readonly lint: boolean;
-  readonly deadCode: boolean;
-  readonly supplyChain: boolean;
-  readonly scoreOnly: boolean;
-  readonly noScore: boolean;
-  readonly respectInlineDisables: boolean;
-  readonly showWarnings: boolean;
-  readonly usedOutputDir: boolean;
-  readonly ignoredTagCount: number;
-  readonly hasCustomConfig: boolean;
-  readonly userConfig: ReactDoctorConfig | null;
 }
 
 const silentConsole = makeNoopConsole();

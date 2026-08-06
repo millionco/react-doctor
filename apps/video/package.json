@@ -6,18 +6,23 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
+    "render": "tsc --noEmit && vite build && node scripts/render-video.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@react-three/fiber": "^9.7.0",
     "framer-motion": "^12.23.24",
     "react": "19.2.5",
-    "react-dom": "19.2.5"
+    "react-dom": "19.2.5",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.185.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "playwright-core": "^1.62.1",
     "typescript": "^6.0.3",
     "vite": "^7.3.1"
   }

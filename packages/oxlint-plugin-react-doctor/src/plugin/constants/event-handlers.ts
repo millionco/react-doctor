@@ -26,7 +26,7 @@ const MOUSE_EVENT_HANDLERS: ReadonlyArray<string> = [
 
 const KEYBOARD_EVENT_HANDLERS: ReadonlyArray<string> = ["onKeyDown", "onKeyPress", "onKeyUp"];
 
-export const ALL_EVENT_HANDLERS: ReadonlyArray<string> = [
+const ALL_EVENT_HANDLERS: ReadonlyArray<string> = [
   ...MOUSE_EVENT_HANDLERS,
   ...KEYBOARD_EVENT_HANDLERS,
 ];

@@ -42,7 +42,7 @@ const isStaticMethodCallOnNamedObject = (
   return !findVariableInitializer(calleeObject, calleeObject.name);
 };
 
-export const isExpressionRootedInMutableStateSource = (
+const isExpressionRootedInMutableStateSource = (
   node: EsTreeNode,
   state: MutableStateReferenceState,
 ): boolean => {
@@ -56,7 +56,7 @@ export const isExpressionRootedInMutableStateSource = (
   );
 };
 
-export const isExpressionReachableFromMutableState = (
+const isExpressionReachableFromMutableState = (
   node: EsTreeNode | null | undefined,
   state: MutableStateReferenceState,
 ): boolean => {
@@ -71,7 +71,7 @@ export const isExpressionReachableFromMutableState = (
   );
 };
 
-export const addMutableStateReferenceBindings = (
+const addMutableStateReferenceBindings = (
   pattern: EsTreeNode,
   state: MutableStateReferenceState,
 ): void => {

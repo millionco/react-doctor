@@ -9,7 +9,7 @@
 // target.
 
 // Closed set of canonical Expo-managed dependency names.
-export const EXPO_MANAGED_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
+const EXPO_MANAGED_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
   "expo",
   "expo-router",
   "@expo/cli",

@@ -6,7 +6,7 @@ import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 // closes the gate, so a decline doesn't re-nag and an accept whose workflow
 // write didn't land doesn't re-pitch (the user can re-run `react-doctor
 // install`). Bump `version` to re-pitch everyone after a reworked campaign.
-export const CI_PITCH_GATE: Gate = { id: CI_PITCH_EVENT, scope: "project" };
+const CI_PITCH_GATE: Gate = { id: CI_PITCH_EVENT, scope: "project" };
 
 export const getCiPromptConfigPath = getCliStatePath;
 

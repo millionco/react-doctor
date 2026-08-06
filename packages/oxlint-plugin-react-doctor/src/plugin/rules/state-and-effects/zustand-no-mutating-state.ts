@@ -548,7 +548,7 @@ const objectTargetReplacementDisposition = (
 ): boolean | null => {
   const propertyName = targetPath[0];
   if (!propertyName) return true;
-  let disposition: boolean | null = isPartialUpdateRoot ? false : true;
+  let disposition: boolean | null = !isPartialUpdateRoot;
   for (const property of objectExpression.properties) {
     if (isNodeOfType(property, "SpreadElement")) {
       const spreadKey = resolveExpressionKey(property.argument, context);
@@ -613,7 +613,7 @@ const objectTargetPathReplacementDisposition = (
 ): boolean | null => {
   const propertyName = targetPath[0];
   if (!propertyName) return true;
-  let disposition: boolean | null = isPartialUpdateRoot ? false : true;
+  let disposition: boolean | null = !isPartialUpdateRoot;
   for (const property of objectExpression.properties) {
     if (isNodeOfType(property, "SpreadElement")) {
       disposition = null;

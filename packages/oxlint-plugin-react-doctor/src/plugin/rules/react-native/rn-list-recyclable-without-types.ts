@@ -19,8 +19,11 @@ import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { getTransparentReactCallbackWrapperArgument } from "../../utils/get-transparent-react-callback-wrapper-argument.js";
 import { hasSymbolWriteBefore } from "../../utils/has-symbol-write-before.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isImportedFromReact, isReactApiCall } from "../../utils/is-react-api-call.js";
-import { isReactNamespaceImport } from "../../utils/is-react-api-call.js";
+import {
+  isImportedFromReact,
+  isReactApiCall,
+  isReactNamespaceImport,
+} from "../../utils/is-react-api-call.js";
 import { isJsxFragmentElement } from "../../utils/is-jsx-fragment-element.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";

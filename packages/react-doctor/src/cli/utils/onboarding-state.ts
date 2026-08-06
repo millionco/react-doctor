@@ -5,7 +5,7 @@ import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 // per machine/user. To make the guided reveal re-appear once per repo instead,
 // flip `scope` to "project" (and pass `{ projectRoot }` through) — the gate
 // machinery supports both with no other change.
-export const ONBOARDING_GATE: Gate = { id: ONBOARDING_EVENT, scope: "global" };
+const ONBOARDING_GATE: Gate = { id: ONBOARDING_EVENT, scope: "global" };
 
 export const getOnboardingConfigPath = getCliStatePath;
 

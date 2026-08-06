@@ -28,7 +28,7 @@ import { nowIso } from "./now-iso.js";
 //
 // Scope is "global" (once per machine/user) or "project" (once per repo).
 
-export type LifecycleScope = "global" | "project";
+type LifecycleScope = "global" | "project";
 
 // A `scope`-bearing thing the scope helpers below can resolve. Both `Gate` and
 // `Migration` satisfy it.

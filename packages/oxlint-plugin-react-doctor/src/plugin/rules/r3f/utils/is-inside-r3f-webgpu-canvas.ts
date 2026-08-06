@@ -46,7 +46,7 @@ const canvasCreatesWebGpuRenderer = (canvas: EsTreeNode, context: RuleContext): 
   );
 };
 
-export const isR3fWebgpuCanvasElement = (node: EsTreeNode, context: RuleContext): boolean => {
+const isR3fWebgpuCanvasElement = (node: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(node, "JSXElement")) return false;
   const moduleSource = getApiReferenceModuleSource(
     node.openingElement.name,

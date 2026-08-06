@@ -7,8 +7,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../utils/get-authoritative-jsx-attribute.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getHighestPriorityTailwindClassNameTokens } from "../../utils/get-highest-priority-tailwind-class-name-tokens.js";
-import { getJsxPropExhaustiveStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
-import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
+import {
+  getJsxPropExhaustiveStaticStringValues,
+  getJsxPropStaticStringValues,
+} from "../../utils/get-jsx-prop-static-string-values.js";
 import { getTailwindTopLevelCharacterIndices } from "../../utils/get-tailwind-top-level-character-indices.js";
 import { getTailwindTransitionPropertyEffect } from "../../utils/get-tailwind-transition-property-effect.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";

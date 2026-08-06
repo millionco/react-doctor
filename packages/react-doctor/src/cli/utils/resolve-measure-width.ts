@@ -14,7 +14,7 @@ interface ResolveClampedWidthInput {
 // `reservedColumns`, capped at `fullWidth` and floored at `minWidth`. Returns
 // `fullWidth` untouched when the column count is unknown. The single source for
 // every terminal-aware width in the CLI renderers.
-export const resolveClampedWidth = (input: ResolveClampedWidthInput): number => {
+const resolveClampedWidth = (input: ResolveClampedWidthInput): number => {
   const terminalColumns = process.stdout.columns;
   if (!terminalColumns || terminalColumns <= 0) return input.fullWidth;
   const availableColumns = terminalColumns - input.reservedColumns;

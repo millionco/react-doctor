@@ -59,7 +59,7 @@ export interface DeslopErrorJson {
   detail?: string;
 }
 
-import { MAX_ANALYSIS_ERRORS, MAX_ERROR_DETAIL_LENGTH } from "./constants.js";
+import { MAX_ERROR_DETAIL_LENGTH } from "./constants.js";
 
 const truncateDetail = (text: string): string => {
   if (text.length <= MAX_ERROR_DETAIL_LENGTH) return text;
@@ -222,33 +222,5 @@ export class DetectorError extends DeslopError {
       module: input.module ?? "report",
     });
     this.name = "DetectorError";
-  }
-}
-
-export const createDeslopError = (input: DeslopErrorInput): DeslopError => new DeslopError(input);
-
-export class DeslopErrorCollector {
-  private readonly entries: DeslopError[] = [];
-  private readonly maxEntries: number;
-
-  constructor(maxEntries: number = MAX_ANALYSIS_ERRORS) {
-    this.maxEntries = maxEntries;
-  }
-
-  push(error: DeslopError): void {
-    if (this.entries.length >= this.maxEntries) return;
-    this.entries.push(error);
-  }
-
-  pushCaught(input: DeslopErrorFromCaughtInput): void {
-    this.push(DeslopError.fromCaught(input));
-  }
-
-  snapshot(): DeslopError[] {
-    return [...this.entries];
-  }
-
-  size(): number {
-    return this.entries.length;
   }
 }

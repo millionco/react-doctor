@@ -38,7 +38,7 @@ export const buildRulePriorityMap = (
 // A rule the API didn't rank sorts after a ranked one; two unranked rules
 // (or every rule when the score is unavailable) compare equal and keep
 // their original order via `toSorted`'s stability.
-export const compareByRulePriority = (
+const compareByRulePriority = (
   ruleKeyA: string,
   ruleKeyB: string,
   rulePriority: ReadonlyMap<string, number> | undefined,

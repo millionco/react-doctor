@@ -21,10 +21,7 @@ import type { ProgramAnalysis } from "./get-program-analysis.js";
 // Bare identifier arguments (`const debounced = debounce(setN)`) still do.
 const HOOK_NAME_PATTERN = /^use[A-Z0-9]/;
 
-export const isInsideCallbackArgumentOf = (
-  identifier: EsTreeNode,
-  initializer: EsTreeNode,
-): boolean => {
+const isInsideCallbackArgumentOf = (identifier: EsTreeNode, initializer: EsTreeNode): boolean => {
   if (!isNodeOfType(initializer, "CallExpression") && !isNodeOfType(initializer, "NewExpression")) {
     return false;
   }
@@ -124,7 +121,7 @@ export const getUpstreamRefs = (analysis: ProgramAnalysis, ref: Reference): Refe
   return refs;
 };
 
-export const findDownstreamNodes = (topNode: EsTreeNode, type: string): EsTreeNode[] => {
+const findDownstreamNodes = (topNode: EsTreeNode, type: string): EsTreeNode[] => {
   const nodes: EsTreeNode[] = [];
   descend(topNode, (node) => {
     if (node.type === type) nodes.push(node);

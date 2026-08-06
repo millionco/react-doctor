@@ -5,7 +5,7 @@ import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 // closes it (an accepted-but-unmerged PR shouldn't re-prompt). When a future
 // major ships, register a new gate id (e.g. `action-upgrade-v3`) rather than
 // bumping this one, so the v2 answer stays remembered.
-export const ACTION_UPGRADE_GATE: Gate = { id: ACTION_UPGRADE_EVENT, scope: "project" };
+const ACTION_UPGRADE_GATE: Gate = { id: ACTION_UPGRADE_EVENT, scope: "project" };
 
 export const getActionUpgradePromptConfigPath = getCliStatePath;
 

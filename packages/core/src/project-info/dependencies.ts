@@ -10,7 +10,7 @@ import { isConcreteDependencyVersion, isTailwindPostcss7CompatAlias } from "./ve
 export const isCatalogReference = (version: unknown): version is string =>
   typeof version === "string" && version.startsWith("catalog:");
 
-export const extractCatalogName = (version: unknown): string | null => {
+const extractCatalogName = (version: unknown): string | null => {
   if (!isCatalogReference(version)) return null;
   const name = version.slice("catalog:".length).trim();
   return name.length > 0 ? name : null;

@@ -40,6 +40,31 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet with non-built-in method calls in catch with trailing reset (issue #1593)", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const Component = () => {
+        const [isUploading, setIsUploading] = useState(false);
+        const handleUpload = async () => {
+          setIsUploading(true);
+          try {
+            const res = await fetch("/api/upload");
+            if (res.ok) {
+              console.log("success");
+            } else {
+              toast.show({ variant: "danger", label: "Upload error", duration: 3500 });
+            }
+          } catch {
+            toast.show({ variant: "danger", label: "Upload error", duration: 3500 });
+          }
+          setIsUploading(false);
+        };
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a trailing reset when the catch rethrows, so rejection still skips it", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,

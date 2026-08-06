@@ -1326,7 +1326,12 @@ const catchHandlerCanBypassReset = (
       };
     }
     if (
-      subtreeHasAbruptSynchronousOperation(stripped, functionNode, context) &&
+      subtreeHasAbruptSynchronousOperation(
+        stripped,
+        functionNode,
+        context,
+        !doesContinuingPathReachReset,
+      ) &&
       states.some(
         (state) => !state.isCleared && !(doesContinuingPathReachReset && state.isCancellationPath),
       )
@@ -1600,6 +1605,7 @@ const subtreeHasAbruptSynchronousOperation = (
   root: EsTreeNode,
   functionBoundary: EsTreeNode,
   context: RuleContext,
+  strictMode = true,
 ): boolean => {
   let canCompleteAbruptly = false;
   walkAst(root, (candidate) => {
@@ -1610,10 +1616,42 @@ const subtreeHasAbruptSynchronousOperation = (
       canCompleteAbruptly = true;
       return false;
     }
-    if (
-      isNodeOfType(candidate, "CallExpression") &&
-      !isProvenNonThrowingSynchronousCall(candidate, context)
-    ) {
+    if (isNodeOfType(candidate, "CallExpression")) {
+      if (isProvenNonThrowingSynchronousCall(candidate, context)) return;
+      if (!strictMode) {
+        const callee = stripParenExpression(candidate.callee);
+        if (isNodeOfType(callee, "Identifier")) {
+          const localFunction = resolveExactLocalFunction(callee, context.scopes);
+          if (
+            localFunction &&
+            isFunctionLike(localFunction) &&
+            !localFunction.async &&
+            subtreeCanThrowSynchronously(localFunction, localFunction, context.scopes)
+          ) {
+            canCompleteAbruptly = true;
+            return false;
+          }
+          if (!localFunction && !context.scopes.isGlobalReference(callee)) {
+            return;
+          }
+        } else if (isNodeOfType(callee, "MemberExpression")) {
+          const receiver = stripParenExpression(callee.object);
+          if (
+            isNodeOfType(receiver, "Identifier") &&
+            !context.scopes.isGlobalReference(receiver)
+          ) {
+            canCompleteAbruptly = true;
+            return false;
+          }
+          const isKnownBuiltIn =
+            isNodeOfType(receiver, "Identifier") &&
+            context.scopes.isGlobalReference(receiver) &&
+            ["JSON", "Date", "Object", "Math", "Array", "String", "Number", "Boolean", "console"].includes(receiver.name);
+          if (!isKnownBuiltIn) {
+            return;
+          }
+        }
+      }
       canCompleteAbruptly = true;
       return false;
     }

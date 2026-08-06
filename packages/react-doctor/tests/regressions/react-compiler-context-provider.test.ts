@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { discoverProject, runOxlint } from "@react-doctor/core";
 import type { ProjectInfo } from "@react-doctor/core";
-import { setupReactProject } from "./_helpers.js";
+import { REACT_COMPILER_VITE_CONFIG, setupReactProject } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-react-compiler-context-"));
 
@@ -33,23 +33,6 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useAppState = () => useContext(AppStateContext);
-`;
-
-const compilerConfigSource = `
-import { createRequire } from "node:module";
-
-const packageRequire = createRequire(import.meta.url);
-const reactCompilerPlugin = packageRequire.resolve("babel-plugin-react-compiler");
-
-export default {
-  plugins: [
-    {
-      babel: {
-        plugins: [[reactCompilerPlugin, { target: "19" }]],
-      },
-    },
-  ],
-};
 `;
 
 afterAll(() => {
@@ -83,7 +66,7 @@ describe("issue #1448: compiler-gated context provider diagnostics", () => {
     const projectDirectory = setupReactProject(tempRoot, "with-react-compiler", {
       files: {
         "src/app-state-provider.tsx": providerSource,
-        "vite.config.ts": compilerConfigSource,
+        "vite.config.ts": REACT_COMPILER_VITE_CONFIG,
       },
     });
     const project = discoverProject(projectDirectory);

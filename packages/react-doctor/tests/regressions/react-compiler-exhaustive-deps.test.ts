@@ -3,10 +3,13 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { discoverProject, runOxlint } from "@react-doctor/core";
-import type { ProjectInfo } from "@react-doctor/core";
-import { setupReactProject } from "./_helpers.js";
+import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
+import { REACT_COMPILER_VITE_CONFIG, setupReactProject } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-react-compiler-deps-"));
+
+const EXHAUSTIVE_DEPS_RULE = "exhaustive-deps";
+const FRESH_DEPS_RULE = "no-effect-with-fresh-deps";
 
 const componentSource = `
 import { useEffect, useMemo, useCallback } from "react";
@@ -29,37 +32,17 @@ export const MyComponent = ({ count, name }) => {
 };
 `;
 
-const compilerConfigSource = `
-import { createRequire } from "node:module";
-
-const packageRequire = createRequire(import.meta.url);
-const reactCompilerPlugin = packageRequire.resolve("babel-plugin-react-compiler");
-
-export default {
-  plugins: [
-    {
-      babel: {
-        plugins: [[reactCompilerPlugin, { target: "19" }]],
-      },
-    },
-  ],
-};
-`;
-
 afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-const getExhaustiveDepsAndFreshDeps = async (
-  project: ProjectInfo,
-): Promise<Awaited<ReturnType<typeof runOxlint>>> => {
+const getExhaustiveDepsAndFreshDeps = async (project: ProjectInfo): Promise<Diagnostic[]> => {
   const diagnostics = await runOxlint({
     rootDirectory: project.rootDirectory,
     project,
   });
   return diagnostics.filter(
-    (diagnostic) =>
-      diagnostic.rule === "exhaustive-deps" || diagnostic.rule === "no-effect-with-fresh-deps",
+    (diagnostic) => diagnostic.rule === EXHAUSTIVE_DEPS_RULE || diagnostic.rule === FRESH_DEPS_RULE,
   );
 };
 
@@ -73,15 +56,15 @@ describe("issue #1591: React Compiler should suppress exhaustive-deps and no-eff
     expect(project.hasReactCompiler).toBe(false);
     const diagnostics = await getExhaustiveDepsAndFreshDeps(project);
     expect(diagnostics.length).toBeGreaterThan(0);
-    expect(diagnostics.some((d) => d.rule === "exhaustive-deps")).toBe(true);
-    expect(diagnostics.some((d) => d.rule === "no-effect-with-fresh-deps")).toBe(true);
+    expect(diagnostics.some((d) => d.rule === EXHAUSTIVE_DEPS_RULE)).toBe(true);
+    expect(diagnostics.some((d) => d.rule === FRESH_DEPS_RULE)).toBe(true);
   });
 
   it("suppresses dependency issues when React Compiler is active", async () => {
     const projectDirectory = setupReactProject(tempRoot, "with-react-compiler", {
       files: {
         "src/my-component.tsx": componentSource,
-        "vite.config.ts": compilerConfigSource,
+        "vite.config.ts": REACT_COMPILER_VITE_CONFIG,
       },
     });
     const project = discoverProject(projectDirectory);

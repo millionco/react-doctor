@@ -67,6 +67,23 @@ export interface SetupReactProjectOptions {
 // (unless skipped) `tsconfig.json`. Use `files` to drop in source code
 // or extra config files. Replaces the previous three near-duplicate
 // helpers across the regression suite.
+export const REACT_COMPILER_VITE_CONFIG = `
+import { createRequire } from "node:module";
+
+const packageRequire = createRequire(import.meta.url);
+const reactCompilerPlugin = packageRequire.resolve("babel-plugin-react-compiler");
+
+export default {
+  plugins: [
+    {
+      babel: {
+        plugins: [[reactCompilerPlugin, { target: "19" }]],
+      },
+    },
+  ],
+};
+`;
+
 export const setupReactProject = (
   parentTempDir: string,
   caseId: string,

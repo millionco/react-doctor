@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { isPathInsideDirectory } from "@react-doctor/core";
+import { isPathInsideDirectory, toCanonicalPath } from "@react-doctor/core";
 import { GH_PR_LIST_MAX } from "./constants.js";
 import { detectDefaultBranch } from "./detect-default-branch.js";
 import { isCommandAvailable } from "./is-command-available.js";
@@ -53,6 +53,26 @@ export type NotAttemptedReason =
   | "git-add-failed"
   | "git-commit-failed"
   | "git-push-failed";
+
+interface WorkflowRepositoryLocation {
+  readonly repositoryRoot: string;
+  readonly workflowRelativePath: string;
+}
+
+const resolveWorkflowRepositoryLocation = (
+  workflowPath: string,
+  repositoryRoot: string,
+): WorkflowRepositoryLocation | null => {
+  const canonicalWorkflowPath = toCanonicalPath(workflowPath);
+  const canonicalRepositoryRoot = toCanonicalPath(repositoryRoot);
+  if (!isPathInsideDirectory(canonicalWorkflowPath, canonicalRepositoryRoot)) return null;
+  return {
+    repositoryRoot: canonicalRepositoryRoot,
+    workflowRelativePath: toForwardSlashes(
+      path.relative(canonicalRepositoryRoot, canonicalWorkflowPath),
+    ),
+  };
+};
 
 // Tries `react-doctor/add-github-actions` first and appends a compact
 // timestamp suffix if a local branch already exists with that name (avoids
@@ -177,14 +197,15 @@ export const openWorkflowPullRequest = async (input: {
     path.dirname(workflowPath),
   );
   if (!repoRootProbe.success) return { status: "not-attempted", reason: "not-a-git-repo" };
-  const cwd = repoRootProbe.stdout;
-  if (!isPathInsideDirectory(workflowPath, cwd)) {
+  const repositoryLocation = resolveWorkflowRepositoryLocation(workflowPath, repoRootProbe.stdout);
+  if (repositoryLocation === null) {
     return { status: "not-attempted", reason: "workflow-outside-repository" };
   }
+  const cwd = repositoryLocation.repositoryRoot;
   // Forward slashes so the `:!` exclude pathspec and `git add` match git's
   // forward-slash-normalized repo paths on Windows (where `path.relative`
   // yields backslashes, which git's magic pathspec won't treat as separators).
-  const workflowRelative = toForwardSlashes(path.relative(cwd, workflowPath));
+  const workflowRelative = repositoryLocation.workflowRelativePath;
 
   if (!checkCommandAvailable("gh")) return { status: "not-attempted", reason: "gh-not-installed" };
   if (!(await run("gh", ["auth", "status"], cwd)).success) {
@@ -300,7 +321,13 @@ export const stageWorkflowFile = async (input: {
     path.dirname(workflowPath),
   );
   if (!repoRootProbe.success) return false;
-  if (!isPathInsideDirectory(workflowPath, repoRootProbe.stdout)) return false;
-  const workflowRelative = toForwardSlashes(path.relative(repoRootProbe.stdout, workflowPath));
-  return (await run("git", ["add", "--", workflowRelative], repoRootProbe.stdout)).success;
+  const repositoryLocation = resolveWorkflowRepositoryLocation(workflowPath, repoRootProbe.stdout);
+  if (repositoryLocation === null) return false;
+  return (
+    await run(
+      "git",
+      ["add", "--", repositoryLocation.workflowRelativePath],
+      repositoryLocation.repositoryRoot,
+    )
+  ).success;
 };

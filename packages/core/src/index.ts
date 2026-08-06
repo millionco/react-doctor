@@ -119,6 +119,7 @@ export * from "./utils/resolve-react-doctor-cache-dir.js";
 export * from "./utils/resolve-scan-concurrency.js";
 export * from "./utils/scrub-sensitive-paths.js";
 export * from "./utils/sort-diagnostics-stable.js";
+export * from "./utils/to-canonical-path.js";
 export * from "./utils/to-relative-path.js";
 export * from "./utils/warn-config-issue.js";
 export * from "./utils/yield-to-event-loop.js";

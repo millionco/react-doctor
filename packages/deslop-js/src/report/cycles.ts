@@ -4,21 +4,7 @@ import {
   MAX_TOTAL_CYCLES,
   MAX_SCC_SIZE_FOR_ENUMERATION,
 } from "../constants.js";
-
-const UNDEFINED_INDEX = -1;
-
-interface TarjanState {
-  indexCounter: number;
-  indices: number[];
-  lowlinks: number[];
-  onStack: boolean[];
-  stack: number[];
-}
-
-interface DfsFrame {
-  node: number;
-  successorPosition: number;
-}
+import { findStronglyConnectedComponents } from "../utils/find-strongly-connected-components.js";
 
 // A value-form import (`import { Props } from "./barrel"`) whose every
 // symbol resolves to a type-only export (interface / type alias) in the
@@ -98,92 +84,6 @@ const cycleHasModuleInitAccess = (cycle: number[], initAccessEdges: Set<string>)
     if (initAccessEdges.has(`${source}:${target}`)) return true;
   }
   return false;
-};
-
-const findStronglyConnectedComponents = (adjacencyList: number[][]): number[][] => {
-  const nodeCount = adjacencyList.length;
-  if (nodeCount === 0) {
-    return [];
-  }
-
-  const state: TarjanState = {
-    indexCounter: 0,
-    indices: Array(nodeCount).fill(UNDEFINED_INDEX),
-    lowlinks: Array(nodeCount).fill(0),
-    onStack: Array(nodeCount).fill(false),
-    stack: [],
-  };
-
-  const components: number[][] = [];
-  const dfsStack: DfsFrame[] = [];
-
-  for (let startNode = 0; startNode < nodeCount; startNode++) {
-    if (state.indices[startNode] !== UNDEFINED_INDEX) {
-      continue;
-    }
-
-    state.indices[startNode] = state.indexCounter;
-    state.lowlinks[startNode] = state.indexCounter;
-    state.indexCounter++;
-    state.onStack[startNode] = true;
-    state.stack.push(startNode);
-
-    dfsStack.push({ node: startNode, successorPosition: 0 });
-
-    while (dfsStack.length > 0) {
-      const frame = dfsStack[dfsStack.length - 1];
-      const successors = adjacencyList[frame.node];
-
-      if (frame.successorPosition < successors.length) {
-        const successor = successors[frame.successorPosition];
-        frame.successorPosition++;
-
-        if (state.indices[successor] === UNDEFINED_INDEX) {
-          state.indices[successor] = state.indexCounter;
-          state.lowlinks[successor] = state.indexCounter;
-          state.indexCounter++;
-          state.onStack[successor] = true;
-          state.stack.push(successor);
-
-          dfsStack.push({ node: successor, successorPosition: 0 });
-        } else if (state.onStack[successor]) {
-          state.lowlinks[frame.node] = Math.min(
-            state.lowlinks[frame.node],
-            state.indices[successor],
-          );
-        }
-      } else {
-        const currentNode = frame.node;
-        const currentLowlink = state.lowlinks[currentNode];
-        const currentIndex = state.indices[currentNode];
-        dfsStack.pop();
-
-        if (dfsStack.length > 0) {
-          const parentFrame = dfsStack[dfsStack.length - 1];
-          state.lowlinks[parentFrame.node] = Math.min(
-            state.lowlinks[parentFrame.node],
-            currentLowlink,
-          );
-        }
-
-        if (currentLowlink === currentIndex) {
-          const component: number[] = [];
-          let poppedNode: number;
-          do {
-            poppedNode = state.stack.pop()!;
-            state.onStack[poppedNode] = false;
-            component.push(poppedNode);
-          } while (poppedNode !== currentNode);
-
-          if (component.length >= 2) {
-            components.push(component);
-          }
-        }
-      }
-    }
-  }
-
-  return components;
 };
 
 const canonicalizeCycle = (cycle: number[], graph: DependencyGraph): number[] => {
@@ -270,7 +170,9 @@ const enumerateElementaryCycles = (
 export const detectCycles = (graph: DependencyGraph): CircularDependency[] => {
   const adjacencyList = buildAdjacencyList(graph);
   const initAccessEdges = buildModuleInitAccessEdgeSet(graph);
-  const components = findStronglyConnectedComponents(adjacencyList);
+  const components = findStronglyConnectedComponents(adjacencyList).filter(
+    (component) => component.length >= 2,
+  );
   const allCycles: number[][] = [];
   const seenKeys = new Set<string>();
 

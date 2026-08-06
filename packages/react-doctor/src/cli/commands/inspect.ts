@@ -64,15 +64,12 @@ import { resolveMergeBaseRef } from "../utils/materialize-baseline-files.js";
 import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
 import { resolveWorkspaceDeadCodeOwner } from "../utils/resolve-workspace-dead-code-owner.js";
 import { retryMissingProjectScores } from "../utils/retry-missing-project-scores.js";
-import {
-  resolveProjectChangedLineRanges,
-  resolveProjectDiffIncludePaths,
-} from "../utils/resolve-project-diff-include-paths.js";
+import { resolveProjectChangedLineRanges } from "../utils/resolve-project-diff-include-paths.js";
 import { resolveProjectSourceFilePaths } from "../utils/resolve-project-source-file-paths.js";
 import { resolveProjectScan, type ResolvedProjectScan } from "../utils/resolve-project-scan.js";
 import { runExplain } from "../utils/run-explain.js";
 import { runProjectScanBatch } from "../utils/run-project-scan-batch.js";
-import { projectManifestChanged } from "../utils/project-manifest-changed.js";
+import { buildProjectScanPlan } from "../utils/build-project-scan-plan.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
 import {
@@ -953,58 +950,20 @@ export const inspectAction = async (
       // diff change shouldn't pull a project into the scan (nothing to report).
       const supplyChainEnabled = flags.supplyChain ?? projectConfig?.supplyChain?.enabled !== false;
 
-      let includePaths: string[] | undefined;
-      let supplyChainManifestChanged = false;
-      const projectBaselineBaseFiles =
-        baselineDiffPlan === null
-          ? null
-          : resolveProjectSourceFilePaths(
-              resolvedDirectory,
-              scanDirectory,
-              baselineDiffPlan.baseFiles,
-            );
-      const projectBaselineHeadFiles =
-        baselineDiffPlan === null
-          ? null
-          : resolveProjectSourceFilePaths(
-              resolvedDirectory,
-              scanDirectory,
-              baselineDiffPlan.headFiles,
-            );
-      if (isDiffMode) {
-        const changedSourceFiles =
-          diffInfo === null
-            ? []
-            : resolveProjectDiffIncludePaths(resolvedDirectory, scanDirectory, diffInfo);
-        // A PR that edits this project's package.json should still have its
-        // dependencies scored, even with no changed source files — dependency
-        // health is a manifest property, not a per-file one.
-        supplyChainManifestChanged =
-          supplyChainEnabled &&
-          diffInfo !== null &&
-          projectManifestChanged(resolvedDirectory, scanDirectory, diffInfo);
-        const hasBaselineOnlyFiles = (projectBaselineBaseFiles?.length ?? 0) > 0;
-        if (
-          changedSourceFiles.length === 0 &&
-          !supplyChainManifestChanged &&
-          !hasBaselineOnlyFiles
-        ) {
-          if (!isQuiet) {
-            logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
-            logger.break();
-          }
-          return null;
+      const projectScanPlan = buildProjectScanPlan({
+        rootDirectory: resolvedDirectory,
+        projectDirectory: scanDirectory,
+        baselineDiffPlan,
+        diffInfo,
+        isDiffMode,
+        supplyChainEnabled,
+      });
+      if (projectScanPlan.shouldSkipProject) {
+        if (!isQuiet) {
+          logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
+          logger.break();
         }
-        // A changed package.json enters the scan as an include so the run
-        // stays in diff mode (lint ignores it — it's not a source file) while
-        // the supply-chain pass runs. Including it also makes the baseline pass
-        // materialize the base manifest, so the delta filters out pre-existing
-        // low-score dependencies instead of reporting them as newly introduced.
-        includePaths = [...changedSourceFiles];
-        if (includePaths.length === 0 && hasBaselineOnlyFiles) {
-          includePaths.push(...(projectBaselineBaseFiles ?? []));
-        }
-        if (supplyChainManifestChanged) includePaths.push("package.json");
+        return null;
       }
 
       if (!isQuiet && !isMultiProject) {
@@ -1015,7 +974,7 @@ export const inspectAction = async (
         deadCode: workspaceDeadCodeOwner === null ? scanOptions.deadCode : ownsWorkspaceDeadCode,
         precomputedSourceFileCount: precomputedSourceFileCounts?.get(scanDirectory),
         deadlineEpochMs: scanDeadlineEpochMs,
-        includePaths,
+        includePaths: projectScanPlan.includePaths,
         configOverride: projectConfig,
         configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
         suppressRendering: isMultiProject,
@@ -1030,19 +989,19 @@ export const inspectAction = async (
         retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
         baseline:
           baselineRef !== null &&
-          projectBaselineBaseFiles !== null &&
-          projectBaselineHeadFiles !== null
+          projectScanPlan.projectBaselineBaseFiles !== null &&
+          projectScanPlan.projectBaselineHeadFiles !== null
             ? {
                 ref: baselineRef,
-                baseFiles: projectBaselineBaseFiles,
-                headFiles: projectBaselineHeadFiles,
+                baseFiles: projectScanPlan.projectBaselineBaseFiles,
+                headFiles: projectScanPlan.projectBaselineHeadFiles,
               }
             : undefined,
         changedLineRanges:
           scope === "lines" && changedLineRanges !== null
             ? resolveProjectChangedLineRanges(resolvedDirectory, scanDirectory, changedLineRanges)
             : undefined,
-        supplyChainManifestChanged,
+        supplyChainManifestChanged: projectScanPlan.supplyChainManifestChanged,
       });
       if (!isQuiet && !isMultiProject) {
         logger.break();

@@ -1,9 +1,7 @@
-import path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
-  type ChangedFileLineRanges,
   createOxlintSpawnSlots,
   type Diagnostic,
   highlighter,
@@ -29,24 +27,19 @@ import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
 import { METRIC } from "./cli/utils/constants.js";
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
-import { toForwardSlashes } from "./cli/utils/path-format.js";
-import { diagnosticIntersectsLineRanges } from "./cli/utils/diagnostic-intersects-line-ranges.js";
+import { filterDiagnosticsByChangedLines } from "./cli/utils/filter-diagnostics-by-changed-lines.js";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveInspectOptions } from "./cli/utils/resolve-inspect-options.js";
-import { buildRunEventConfig, renderAndRecordScan } from "./cli/utils/render-and-record-scan.js";
+import { buildRunEventConfig } from "./cli/utils/render-and-record-scan.js";
 import {
   countIncompleteLintFiles,
   runBaselineComparison,
 } from "./cli/utils/run-baseline-comparison.js";
 import { getRunId } from "./cli/utils/run-id.js";
-import {
-  buildScanResultCacheKey,
-  createScanResultCacheInvocationState,
-  createScanResultCache,
-  shouldStoreScanPayload,
-  type CachedScanPayload,
-} from "./cli/utils/scan-result-cache.js";
+import { createScanResultCacheInvocationState } from "./cli/utils/scan-result-cache.js";
+import { createScanResultCacheLifecycle } from "./cli/utils/scan-result-cache-lifecycle.js";
+import type { CachedScanPayload } from "./cli/utils/scan-result-cache-payload.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
 import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "./inspect-options.js";
@@ -59,30 +52,6 @@ export type {
 } from "./inspect-options.js";
 
 const silentConsole = makeNoopConsole();
-
-// Builds the `--scope lines` predicate: a diagnostic survives when its source
-// span intersects a changed range of its file. `changedLineRanges` is keyed by paths
-// relative to `directory`; diagnostic paths are normalized the same way so
-// absolute and relative forms both match.
-const buildChangedLineMatcher = (
-  directory: string,
-  changedLineRanges: ReadonlyArray<ChangedFileLineRanges>,
-): ((diagnostic: Diagnostic) => boolean) => {
-  const rangesByFile = new Map<string, ReadonlyArray<readonly [number, number]>>();
-  for (const entry of changedLineRanges) {
-    rangesByFile.set(toForwardSlashes(entry.file), entry.ranges);
-  }
-  return (diagnostic) => {
-    const relativePath = toForwardSlashes(
-      path.isAbsolute(diagnostic.filePath)
-        ? path.relative(directory, diagnostic.filePath)
-        : diagnostic.filePath,
-    );
-    const ranges = rangesByFile.get(relativePath);
-    if (ranges === undefined) return false;
-    return diagnosticIntersectsLineRanges(diagnostic, ranges);
-  };
-};
 
 const inspectWithOxlintRuntime = async (
   directory: string,
@@ -246,37 +215,19 @@ const runInspectWithRuntime = async (
   );
   const lintBindingMissing = options.lint && !resolvedNodeBinaryPath;
   await yieldToEventLoop();
-  const cacheKey = buildScanResultCacheKey({
-    projectDirectory: directory,
-    version: VERSION,
-    nodeBinaryPath: resolvedNodeBinaryPath,
+  const scanResultCacheLifecycle = createScanResultCacheLifecycle({
+    directory,
     options,
     userConfig,
     hasConfigOverride,
     configSourceDirectory,
+    resolvedNodeBinaryPath,
     invocationState: oxlintRuntime.scanResultCacheInvocationState,
+    startTime,
+    rootSentrySpan,
   });
-  const scanResultCache = cacheKey === null ? null : createScanResultCache(directory);
-  const cachedPayload =
-    cacheKey === null || scanResultCache === null ? null : scanResultCache.lookup(cacheKey);
-  if (cachedPayload) {
-    recordSentryProjectContext(cachedPayload.project, rootSentrySpan, {
-      concurrentScan: options.concurrentScan,
-    });
-    recordCount(METRIC.projectDetected, 1);
-    const baselineDegraded =
-      Boolean(options.baseline) && isDiffMode && cachedPayload.baselineDelta === undefined;
-    const result = await renderAndRecordScan({
-      payload: cachedPayload,
-      options,
-      startTime,
-      rootSentrySpan,
-      scanMode: cachedPayload.baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
-      baselineDegraded,
-      wholeRepoCacheHit: true,
-    });
-    return result;
-  }
+  const cachedResult = scanResultCacheLifecycle.replay();
+  if (cachedResult !== null) return cachedResult;
 
   // Suppress the orchestrator-owned lint + dead-code spinners when
   // the CLI is in score-only / silent / suppressed-rendering mode (or
@@ -441,8 +392,11 @@ const runInspectWithRuntime = async (
     // Runs at the same post-lint seam as baseline (the score is already
     // computed on the full head set), so the gate, summary, and inline
     // comments all narrow together.
-    const isOnChangedLine = buildChangedLineMatcher(directory, options.changedLineRanges);
-    inspectDiagnostics = output.diagnostics.filter(isOnChangedLine);
+    inspectDiagnostics = filterDiagnosticsByChangedLines({
+      directory,
+      diagnostics: output.diagnostics,
+      changedLineRanges: options.changedLineRanges,
+    });
   }
   // Baseline was requested but no delta was produced (head/base lint failed) —
   // the run degrades to a plain diff and must not gate on the full head set.
@@ -480,27 +434,10 @@ const runInspectWithRuntime = async (
     securityScanFailureReason: output.securityScanFailureReason,
     suppressedRuleCounts: output.suppressedRuleCounts,
   };
-  // A degraded baseline (requested but no delta — e.g. a transient base-lint
-  // failure) must not be persisted: the cache key includes the baseline ref,
-  // so a stored degraded payload would replay at this HEAD/base pair until
-  // the commit changes, skipping the gate instead of re-attempting the
-  // comparison.
-  if (
-    cacheKey !== null &&
-    scanResultCache !== null &&
-    shouldStoreScanPayload(payload) &&
-    !baselineDegraded
-  ) {
-    scanResultCache.store(cacheKey, payload);
-  }
-  const result = await renderAndRecordScan({
+  return scanResultCacheLifecycle.complete({
     payload,
-    options,
-    startTime,
-    rootSentrySpan,
     scanMode: baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
     baselineDegraded,
-    wholeRepoCacheHit: false,
     cacheStats: {
       lintCacheHitFileCount: output.lintCacheHitFileCount,
       lintCacheTotalFileCount: output.lintCacheTotalFileCount,
@@ -511,5 +448,4 @@ const runInspectWithRuntime = async (
       deadCodeSummaryCacheMisses: output.deadCodeSummaryCacheMisses,
     },
   });
-  return result;
 };

@@ -5,18 +5,14 @@ import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
-  buildSkippedChecks,
   type ChangedFileLineRanges,
   computeDiagnosticDelta,
   createOxlintSpawnSlots,
   DEFAULT_SHOW_WARNINGS,
   type Diagnostic,
-  type DiagnosticSurface,
-  filterDiagnosticsForSurface,
   filterPathsOutsideDirectories,
   filterSourceFiles,
   highlighter,
-  type InspectOptions,
   type InspectResult,
   OXLINT_NODE_REQUIREMENT,
   OxlintConcurrency,
@@ -28,13 +24,10 @@ import {
   resolveScanConcurrency,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
-  type ScoreResult,
-  type Reporter,
   SidecarLintCacheEnabled,
   type WorkerSlots,
   yieldToEventLoop,
 } from "@react-doctor/core";
-import type * as Layer from "effect/Layer";
 import { activeScanAbortRegistry } from "./cli/utils/active-scan-abort-registry.js";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
@@ -57,16 +50,9 @@ import { makeNoopConsole } from "./cli/utils/noop-console.js";
 import { materializeBaselineFiles } from "./cli/utils/materialize-baseline-files.js";
 import { createSourceLineReader } from "./cli/utils/read-source-line.js";
 import { createDiagnosticEvidenceReader } from "./cli/utils/read-diagnostic-evidence.js";
-import { buildNoScoreMessage } from "./cli/utils/build-no-score-message.js";
-import { hasIncompleteScoreAnalysis } from "./cli/utils/has-incomplete-score-analysis.js";
-import { buildEmptyReportMessage } from "./cli/utils/build-empty-report-message.js";
-import { printAgentGuidance } from "./cli/utils/render-agent-guidance.js";
 import { isCiOrCodingAgentEnvironment } from "./cli/utils/is-ci-environment.js";
-import { filterDiagnosticsByCategories } from "./cli/utils/filter-diagnostics-by-categories.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
-import { printDiagnosticsDump } from "./cli/utils/print-diagnostics-dump.js";
-import { printFooter } from "./cli/utils/print-footer.js";
-import { printHeadlessReport } from "./cli/utils/print-headless-report.js";
+import { finalizeInspectResult } from "./cli/utils/finalize-inspect-result.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
 import { getRunId } from "./cli/utils/run-id.js";
@@ -80,6 +66,17 @@ import {
 } from "./cli/utils/scan-result-cache.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
+import type {
+  InspectUiLayers,
+  ReactDoctorInspectOptions,
+  ResolvedInspectOptions,
+} from "./inspect-options.js";
+
+export type {
+  InspectUiLayers,
+  ReactDoctorInspectOptions,
+  ResolvedInspectOptions,
+} from "./inspect-options.js";
 
 const silentConsole = makeNoopConsole();
 
@@ -113,97 +110,6 @@ const buildChangedLineMatcher = (
     return diagnosticIntersectsLineRanges(diagnostic, ranges);
   };
 };
-
-/**
- * CLI-only: layer overrides an interactive UI supplies so the scan streams
- * live diagnostics (and optionally progress) into it instead of the console.
- * When present, all console rendering is suppressed — the UI owns the screen
- * and reads the returned result. The scan engine never learns the UI's
- * concrete store type; it only sees these generic service layers.
- */
-export interface InspectUiLayers {
-  readonly reporter: Layer.Layer<Reporter>;
-  readonly progress?: Layer.Layer<Progress>;
-}
-
-export interface ReactDoctorInspectOptions extends InspectOptions {
-  /** Internal: source-file count collected once for a workspace batch. */
-  precomputedSourceFileCount?: number;
-  categoryFilters?: string[];
-  includedTags?: ReadonlySet<string>;
-  includeTagDefaults?: boolean;
-  scoreDisabledMessage?: string;
-  /**
-   * Internal: an absolute epoch-ms deadline shared across a workspace scan's
-   * projects. The CLI sets it so every project honors ONE `--max-duration`
-   * budget without restarting it per project, while `maxDurationMs` stays the
-   * user's configured value (so telemetry reports what they set). When unset,
-   * the deadline is derived from `maxDurationMs` at call start.
-   */
-  deadlineEpochMs?: number;
-  /** Internal: descendant projects covered by sibling scans in the same workspace batch. */
-  excludedProjectDirectories?: ReadonlyArray<string>;
-  /** Internal: this scan owns dead-code findings for its excluded descendants. */
-  retainExcludedProjectDeadCodeDiagnostics?: boolean;
-  /** See {@link InspectUiLayers}. */
-  uiLayers?: InspectUiLayers;
-}
-
-export interface ResolvedInspectOptions {
-  lint: boolean;
-  deadCode: boolean;
-  supplyChain: boolean;
-  verbose: boolean;
-  /** See `InspectOptions.outputDirectory`. `null` keeps the temp-dir default. */
-  outputDirectory: string | null;
-  scoreOnly: boolean;
-  noScore: boolean;
-  isCi: boolean;
-  isCiOrCodingAgentEnvironment: boolean;
-  isNonInteractiveEnvironment: boolean;
-  silent: boolean;
-  includePaths: string[];
-  customRulesOnly: boolean;
-  share: boolean;
-  respectInlineDisables: boolean;
-  warnings: boolean;
-  categoryFilters: ReadonlySet<string>;
-  adoptExistingLintConfig: boolean;
-  ignoredTags: ReadonlySet<string>;
-  includedTags: ReadonlySet<string>;
-  includeTagDefaults: boolean;
-  scoreDisabledMessage: string | undefined;
-  outputSurface: DiagnosticSurface;
-  suppressRendering: boolean;
-  /** See `InspectOptions.concurrentScan`. */
-  concurrentScan: boolean;
-  /** Resolved oxlint worker count, or `undefined` to keep the ambient default. */
-  concurrency: number | undefined;
-  /** Scan time budget in milliseconds, or `null` for no budget. */
-  maxDurationMs: number | null;
-  /** Baseline ref to subtract (new-only mode), or `null` for a plain scan. */
-  baseline: {
-    ref: string;
-    baseFiles?: ReadonlyArray<string>;
-    headFiles?: ReadonlyArray<string>;
-  } | null;
-  /**
-   * `--scope lines`: changed line ranges to restrict reported diagnostics to,
-   * or `null` for any other scope. An empty array still filters (a `lines`
-   * scope whose files added no lines reports nothing).
-   */
-  changedLineRanges: ReadonlyArray<ChangedFileLineRanges> | null;
-  /** See `InspectOptions.supplyChainManifestChanged`. */
-  supplyChainManifestChanged: boolean;
-  /** Interactive UI layer overrides, or `null` for the headless console path. */
-  uiLayers: InspectUiLayers | null;
-  /** Descendant projects covered by sibling scans in the same workspace batch. */
-  excludedProjectDirectories: ReadonlyArray<string>;
-  /** Whether this scan owns dead-code findings for excluded descendants. */
-  retainExcludedProjectDeadCodeDiagnostics: boolean;
-  /** Source-file count collected once for a workspace batch. */
-  precomputedSourceFileCount: number | undefined;
-}
 
 const buildIgnoredTags = (
   userConfig: ReactDoctorConfig | null,
@@ -933,35 +839,6 @@ const runInspectWithRuntime = async (
   return result;
 };
 
-interface FinalizeInput {
-  options: ResolvedInspectOptions;
-  elapsedMilliseconds: number;
-  diagnostics: ReadonlyArray<Diagnostic>;
-  score: ScoreResult | null;
-  project: InspectResult["project"];
-  userConfig: ReactDoctorConfig | null;
-  didLintFail: boolean;
-  lintFailureReason: string | null;
-  lintPartialFailures: ReadonlyArray<string>;
-  didDeadCodeFail: boolean;
-  deadCodeFailureReason: string | null;
-  supplyChainOverlapTimedOut: boolean;
-  securityScanFailed: boolean;
-  securityScanFailureReason: string | null;
-  scannedFileCount: number;
-  scannedFilePaths: ReadonlyArray<string>;
-  analyzedFiles: ReadonlyArray<string>;
-  scanElapsedMilliseconds: number;
-  lintCacheHitFileCount: number | null;
-  lintCacheTotalFileCount: number | null;
-  lintSidecarReplayedFileCount: number | null;
-  lintSidecarTotalFileCount: number | null;
-  deadCodeCacheHit: boolean | null;
-  deadCodeSummaryCacheHits: number | null;
-  deadCodeSummaryCacheMisses: number | null;
-  baselineDelta: InspectResult["baselineDelta"];
-}
-
 interface RenderAndRecordScanInput {
   readonly payload: CachedScanPayload;
   readonly options: ResolvedInspectOptions;
@@ -1009,14 +886,8 @@ interface RenderAndRecordScanInput {
   readonly deadCodeSummaryCacheMisses?: number | null;
 }
 
-const runMaybeSilent = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  silent: boolean,
-): Effect.Effect<A, E, R> =>
-  silent ? effect.pipe(Effect.provideService(Console.Console, silentConsole)) : effect;
-
 const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<InspectResult> => {
-  const finalizeInput: FinalizeInput = {
+  const finalizeInput = {
     options: input.options,
     elapsedMilliseconds: performance.now() - input.startTime,
     diagnostics: input.payload.diagnostics,
@@ -1044,8 +915,11 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     deadCodeSummaryCacheMisses: input.deadCodeSummaryCacheMisses ?? null,
     baselineDelta: input.payload.baselineDelta,
   };
+  const finalizeEffect = finalizeInspectResult(finalizeInput);
   const result = await Effect.runPromise(
-    runMaybeSilent(finalizeAndRender(finalizeInput), input.options.silent),
+    input.options.silent
+      ? finalizeEffect.pipe(Effect.provideService(Console.Console, silentConsole))
+      : finalizeEffect,
   );
   // The real worker count the scan fanned out to (resolved auto count on the
   // common parallel path, where the caller pinned no `concurrency`). A stale
@@ -1094,146 +968,3 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
   });
   return result;
 };
-
-const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =>
-  Effect.gen(function* () {
-    const {
-      options,
-      elapsedMilliseconds,
-      diagnostics,
-      score,
-      project,
-      userConfig,
-      didLintFail,
-      lintFailureReason,
-      lintPartialFailures,
-      didDeadCodeFail,
-      deadCodeFailureReason,
-      supplyChainOverlapTimedOut,
-      securityScanFailed,
-      securityScanFailureReason,
-      scannedFileCount,
-      scannedFilePaths,
-      analyzedFiles,
-      scanElapsedMilliseconds,
-      lintCacheHitFileCount,
-      lintCacheTotalFileCount,
-      lintSidecarReplayedFileCount,
-      lintSidecarTotalFileCount,
-      deadCodeCacheHit,
-      deadCodeSummaryCacheHits,
-      deadCodeSummaryCacheMisses,
-      baselineDelta,
-    } = input;
-
-    const { skippedChecks, skippedCheckReasons } = buildSkippedChecks({
-      didLintFail,
-      lintFailureReason,
-      lintPartialFailures,
-      didDeadCodeFail,
-      deadCodeFailureReason,
-      supplyChainOverlapTimedOut,
-      securityScanFailed,
-      securityScanFailureReason,
-    });
-    const hasSkippedChecks = skippedChecks.length > 0;
-    const noScoreMessage = buildNoScoreMessage({
-      isScoreDisabled: options.noScore,
-      isAnalysisIncomplete: hasIncompleteScoreAnalysis(skippedChecks),
-      disabledMessage: options.scoreDisabledMessage,
-    });
-
-    const buildResult = (): InspectResult => ({
-      diagnostics: [...diagnostics],
-      score,
-      skippedChecks,
-      ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
-      project,
-      elapsedMilliseconds,
-      scannedFileCount,
-      scannedFilePaths,
-      analyzedFiles,
-      scanElapsedMilliseconds,
-      ...(lintCacheTotalFileCount !== null
-        ? { lintCacheHitFileCount, lintCacheTotalFileCount }
-        : {}),
-      ...(lintSidecarTotalFileCount !== null
-        ? { lintSidecarReplayedFileCount, lintSidecarTotalFileCount }
-        : {}),
-      ...(deadCodeCacheHit !== null ? { deadCodeCacheHit } : {}),
-      ...(deadCodeSummaryCacheHits !== null && deadCodeSummaryCacheMisses !== null
-        ? { deadCodeSummaryCacheHits, deadCodeSummaryCacheMisses }
-        : {}),
-      ...(baselineDelta ? { baselineDelta } : {}),
-    });
-
-    if (options.suppressRendering) {
-      return buildResult();
-    }
-
-    const surfaceDiagnostics = filterDiagnosticsForSurface(
-      [...diagnostics],
-      options.outputSurface,
-      userConfig,
-    );
-    const printedDiagnostics = filterDiagnosticsByCategories(
-      surfaceDiagnostics,
-      options.categoryFilters,
-    );
-
-    if (options.scoreOnly) {
-      // The path line goes to stderr so `--score` stdout stays machine-clean.
-      if (options.outputDirectory !== null) {
-        yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory, false, "stderr");
-      }
-      if (score) {
-        yield* Console.log(`${score.score}`);
-      } else {
-        // stderr, so scripts that parse `--score` stdout (expecting a bare
-        // number) read an empty stream instead of prose when no score exists.
-        yield* Console.error(highlighter.gray(noScoreMessage));
-      }
-      return buildResult();
-    }
-
-    const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
-    if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
-      yield* printAgentGuidance();
-    }
-
-    yield* printHeadlessReport({
-      diagnostics: printedDiagnostics,
-      elapsedMilliseconds,
-      emptyStateMessage: buildEmptyReportMessage({
-        categoryFilters: options.categoryFilters,
-        demotedDiagnosticCount,
-        outputSurface: options.outputSurface,
-      }),
-      noScoreMessage,
-      projectName: project.projectName,
-      scannedFileCount,
-      scoreResult: hasSkippedChecks ? null : score,
-      skippedChecks,
-    });
-
-    if (options.outputDirectory !== null || options.verbose) {
-      yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory, options.verbose);
-    }
-    if (options.categoryFilters.size === 0 && demotedDiagnosticCount > 0) {
-      yield* Console.log(
-        highlighter.gray(
-          `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
-        ),
-      );
-      yield* Console.log("");
-    }
-
-    yield* printFooter({
-      diagnostics: printedDiagnostics,
-      scoreResult: score,
-      projectName: project.projectName,
-      isOffline: options.isCi || !options.share || score === null,
-    });
-
-    return buildResult();
-  });

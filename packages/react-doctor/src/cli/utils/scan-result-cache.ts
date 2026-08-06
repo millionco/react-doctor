@@ -24,7 +24,7 @@ import {
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
 import { getPackageJsonPath, isRecord, runGit } from "./git-hook-shared.js";
-import type { ResolvedInspectOptions } from "../../inspect.js";
+import type { ResolvedInspectOptions } from "../../inspect-options.js";
 
 export interface CachedScanPayload {
   readonly diagnostics: ReadonlyArray<Diagnostic>;

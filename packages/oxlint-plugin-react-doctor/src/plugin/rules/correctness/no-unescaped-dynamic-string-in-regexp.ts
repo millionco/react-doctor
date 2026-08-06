@@ -10,6 +10,7 @@ import { hasBindingWriteBetween } from "../../utils/has-binding-write-between.js
 import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isPropertyNamePosition } from "../../utils/is-property-name-position.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -320,17 +321,6 @@ const isRegexSourceAccess = (node: EsTreeNode): boolean =>
   !node.computed &&
   isNodeOfType(node.property, "Identifier") &&
   node.property.name === "source";
-
-// Method/property name positions (`terms.filter(...)`, `{ query: x }`) are
-// not value reads — only value-position identifiers can carry the term.
-const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "MemberExpression")) {
-    return parent.property === identifier && !parent.computed;
-  }
-  return isNodeOfType(parent, "Property") && parent.key === identifier && !parent.computed;
-};
 
 const isTypePositionIdentifier = (identifier: EsTreeNode): boolean => {
   let child = identifier;

@@ -56,7 +56,7 @@ import { retryMissingProjectScores } from "../utils/retry-missing-project-scores
 import { resolveProjectChangedLineRanges } from "../utils/resolve-project-diff-include-paths.js";
 import { resolveProjectScan, type ResolvedProjectScan } from "../utils/resolve-project-scan.js";
 import { runExplain } from "../utils/run-explain.js";
-import { runProjectScanBatch } from "../utils/run-project-scan-batch.js";
+import { type ProjectScanOutcome, runProjectScanBatch } from "../utils/run-project-scan-batch.js";
 import { buildProjectScanPlan } from "../utils/build-project-scan-plan.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
@@ -390,15 +390,17 @@ export const inspectAction = async (
             projectScans.map((projectScan) => projectScan.directory),
           )
         : null;
-    const skippedProjects: JsonReportSkippedProject[] = [];
-
-    const scanProject = async (projectScan: ResolvedProjectScan): Promise<CompletedScan | null> => {
+    const scanProject = async (
+      projectScan: ResolvedProjectScan,
+    ): Promise<ProjectScanOutcome<CompletedScan, JsonReportSkippedProject>> => {
       if (
         scanDeadlineEpochMs !== undefined &&
         remainingDeadlineBudgetMs(scanDeadlineEpochMs) === 0
       ) {
-        skippedProjects.push({ directory: projectScan.directory, reason: "max-duration" });
-        return null;
+        return {
+          status: "skipped",
+          value: { directory: projectScan.directory, reason: "max-duration" },
+        };
       }
       const scanDirectory = projectScan.directory;
       const projectConfig = projectScan.config;
@@ -421,7 +423,7 @@ export const inspectAction = async (
           logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
           logger.break();
         }
-        return null;
+        return { status: "omitted" };
       }
 
       if (!isQuiet && !isMultiProject) {
@@ -464,7 +466,10 @@ export const inspectAction = async (
       if (!isQuiet && !isMultiProject) {
         logger.break();
       }
-      return { directory: scanDirectory, result: scanResult, config: projectConfig };
+      return {
+        status: "completed",
+        value: { directory: scanDirectory, result: scanResult, config: projectConfig },
+      };
     };
 
     const projectBatch = await runProjectScanBatch({
@@ -479,6 +484,7 @@ export const inspectAction = async (
         isScoreDisabled: scanOptions.noScore ?? completedScan.config?.noScore ?? false,
       })),
     );
+    const skippedProjects = projectBatch.skippedScans;
     reportSkippedProjects({ skippedProjects, isQuiet });
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {

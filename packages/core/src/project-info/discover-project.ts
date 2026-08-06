@@ -4,11 +4,8 @@ import type { PackageJson, ProjectInfo } from "../types/index.js";
 import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
 import { isFile } from "./fs-utils.js";
 import { countSourceFiles } from "./count-source-files.js";
-import {
-  detectNextjsStaticExport,
-  detectReactCompiler,
-  detectReactCompilerLintPlugin,
-} from "./detectors.js";
+import { detectNextjsStaticExport } from "./detect-nextjs-static-export.js";
+import { detectReactCompiler, detectReactCompilerLintPlugin } from "./detect-react-compiler.js";
 import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
 import {
   extractDependencyInfo,

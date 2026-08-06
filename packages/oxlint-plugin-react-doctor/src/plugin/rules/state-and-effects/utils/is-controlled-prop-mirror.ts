@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isPropertyNamePosition } from "../../../utils/is-property-name-position.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { isEventHandlerName } from "./event-handler-reference.js";
 
@@ -30,18 +31,6 @@ const getOwnScopeBoundNames = (functionNode: EsTreeNode): ReadonlySet<string> =>
 
 const declaresBindingNamed = (functionNode: EsTreeNode, bindingName: string): boolean =>
   getOwnScopeBoundNames(functionNode).has(bindingName);
-
-const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "MemberExpression")) {
-    return parent.property === identifier && !parent.computed;
-  }
-  if (isNodeOfType(parent, "Property")) {
-    return parent.key === identifier && !parent.computed;
-  }
-  return false;
-};
 
 const referencesIdentifierNamed = (root: EsTreeNode, identifierName: string): boolean => {
   let isReferenced = false;

@@ -62,21 +62,28 @@ export class Reporter extends Context.Service<
   static readonly layerNdjson = (filePath: string): Layer.Layer<Reporter> =>
     Layer.effect(
       Reporter,
-      Effect.sync(() => {
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        const handle = fs.openSync(filePath, "a");
-        const encode = Schema.encodeUnknownSync(Diagnostic);
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          fs.mkdirSync(path.dirname(filePath), { recursive: true });
+          let handle: number | null = fs.openSync(filePath, "a");
+          const encode = Schema.encodeUnknownSync(Diagnostic);
 
-        const emit = (diagnostic: Diagnostic): Effect.Effect<void> =>
-          Effect.sync(() => {
-            fs.writeSync(handle, `${JSON.stringify(encode(diagnostic))}\n`);
+          const emit = (diagnostic: Diagnostic): Effect.Effect<void> =>
+            Effect.sync(() => {
+              if (handle === null) throw new Error("Cannot emit after Reporter.finalize");
+              fs.writeSync(handle, `${JSON.stringify(encode(diagnostic))}\n`);
+            });
+
+          const finalize = Effect.sync(() => {
+            if (handle === null) return;
+            const openHandle = handle;
+            handle = null;
+            fs.closeSync(openHandle);
           });
 
-        const finalize = Effect.sync(() => {
-          fs.closeSync(handle);
-        });
-
-        return Reporter.of({ emit, finalize });
-      }),
+          return Reporter.of({ emit, finalize });
+        }),
+        (reporter) => reporter.finalize,
+      ),
     );
 }

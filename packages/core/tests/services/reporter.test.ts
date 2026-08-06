@@ -1,6 +1,9 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Diagnostic } from "../../src/schemas.js";
 import { Reporter, ReporterCapture } from "../../src/services/reporter.js";
@@ -68,5 +71,46 @@ describe("Reporter.layerCapture", () => {
       }).pipe(Effect.provide(Layer.mergeAll(Reporter.layerCapture))),
     );
     expect(captured).toEqual([]);
+  });
+});
+
+describe("Reporter.layerNdjson", () => {
+  it("owns the file handle and allows explicit finalization to be repeated", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-reporter-"));
+    const filePath = path.join(directory, "diagnostics.ndjson");
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const reporter = yield* Reporter;
+          yield* reporter.emit(sampleDiagnostic);
+          yield* reporter.finalize;
+          yield* reporter.finalize;
+        }).pipe(Effect.provide(Reporter.layerNdjson(filePath))),
+      );
+
+      expect(fs.readFileSync(filePath, "utf8").trim()).toContain('"rule":"no-danger"');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("closes the file handle when the layer scope ends", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-reporter-"));
+    const filePath = path.join(directory, "diagnostics.ndjson");
+    try {
+      const reporter = await Effect.runPromise(
+        Effect.gen(function* () {
+          const scopedReporter = yield* Reporter;
+          yield* scopedReporter.emit(sampleDiagnostic);
+          return scopedReporter;
+        }).pipe(Effect.provide(Reporter.layerNdjson(filePath))),
+      );
+
+      const emitAfterScope = await Effect.runPromiseExit(reporter.emit(sampleDiagnostic));
+      expect(emitAfterScope._tag).toBe("Failure");
+      expect(fs.readFileSync(filePath, "utf8").trim().split("\n")).toHaveLength(1);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

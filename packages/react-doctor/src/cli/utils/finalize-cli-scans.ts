@@ -2,15 +2,13 @@ import { performance } from "node:perf_hooks";
 import {
   buildJsonReport,
   type DiffInfo,
-  hasReactRuntime,
-  type InspectResult,
   type JsonReportMode,
   type JsonReportSkippedProject,
   type ReactDoctorConfig,
 } from "@react-doctor/core";
+import { buildFinalCliScanOutcome, type CompletedScan } from "./build-final-cli-scan-outcome.js";
 import { cliLogger as logger } from "./cli-logger.js";
 import { METRIC } from "./constants.js";
-import { filterDiagnosticsByCategories } from "./filter-diagnostics-by-categories.js";
 import { formatSkippedProjectsMessage } from "./format-skipped-projects-message.js";
 import type { InspectFlags } from "./inspect-flags.js";
 import { writeJsonReport } from "./json-mode.js";
@@ -19,11 +17,7 @@ import { resolveBlockingLevel } from "./resolve-blocking-level.js";
 import { shouldFailScanGate } from "./should-fail-scan-gate.js";
 import { VERSION } from "./version.js";
 
-export interface CompletedScan {
-  readonly directory: string;
-  readonly result: InspectResult;
-  readonly config: ReactDoctorConfig | null;
-}
+export type { CompletedScan } from "./build-final-cli-scan-outcome.js";
 
 interface FinalizeCliScansInput {
   readonly completedScans: ReadonlyArray<CompletedScan>;
@@ -45,20 +39,6 @@ interface ReportSkippedProjectsInput {
   readonly isQuiet: boolean;
 }
 
-const filterCompletedScansByCategories = (
-  completedScans: ReadonlyArray<CompletedScan>,
-  categoryFilters: ReadonlySet<string>,
-): CompletedScan[] =>
-  categoryFilters.size === 0
-    ? [...completedScans]
-    : completedScans.map((scan) => ({
-        ...scan,
-        result: {
-          ...scan.result,
-          diagnostics: filterDiagnosticsByCategories(scan.result.diagnostics, categoryFilters),
-        },
-      }));
-
 export const reportSkippedProjects = (input: ReportSkippedProjectsInput): void => {
   input.skippedProjects.sort((left, right) => left.directory.localeCompare(right.directory));
   if (input.skippedProjects.length === 0) return;
@@ -73,18 +53,15 @@ export const reportSkippedProjects = (input: ReportSkippedProjectsInput): void =
 };
 
 export const finalizeCliScans = (input: FinalizeCliScansInput): void => {
-  const baselineDeltas = input.completedScans.flatMap((scan) =>
-    scan.result.baselineDelta ? [scan.result.baselineDelta] : [],
-  );
-  const baselineComputed =
-    input.skippedProjects.length === 0 &&
-    input.completedScans.length > 0 &&
-    input.completedScans.every((scan) => scan.result.baselineDelta !== undefined);
-  const baselineDegraded = input.baselineIntended && !baselineComputed;
-  const mode: JsonReportMode = baselineDegraded ? "diff" : input.mode;
-  const isReactDetected = input.completedScans.some((scan) => hasReactRuntime(scan.result.project));
+  const outcome = buildFinalCliScanOutcome({
+    completedScans: input.completedScans,
+    skippedProjects: input.skippedProjects,
+    mode: input.mode,
+    baselineIntended: input.baselineIntended,
+    categoryFilters: input.categoryFilters,
+  });
 
-  if (input.completedScans.length > 0 && !isReactDetected) {
+  if (outcome.shouldWarnNoReactDetected) {
     recordCount(METRIC.scanNoReactDetected, 1);
     logger.warn(
       `No React project detected at ${input.resolvedDirectory} — React rules were gated off; this is not the same as a clean scan.`,
@@ -92,28 +69,17 @@ export const finalizeCliScans = (input: FinalizeCliScansInput): void => {
   }
 
   if (input.isJsonMode) {
-    const baseline =
-      baselineComputed && baselineDeltas.length > 0
-        ? {
-            baseRef: baselineDeltas[0].baseRef,
-            fixedCount: baselineDeltas.reduce((total, delta) => total + delta.fixedCount, 0),
-            baseTotalCount: baselineDeltas.reduce(
-              (total, delta) => total + delta.baseTotalCount,
-              0,
-            ),
-          }
-        : undefined;
     writeJsonReport(
       buildJsonReport({
         version: VERSION,
         directory: input.resolvedDirectory,
-        mode,
+        mode: outcome.mode,
         diff: input.diff,
-        scans: filterCompletedScansByCategories(input.completedScans, input.categoryFilters),
+        scans: outcome.scansForJsonReport,
         skippedProjects: input.skippedProjects,
         totalElapsedMilliseconds: performance.now() - input.startTime,
-        baseline,
-        baselineDegraded,
+        baseline: outcome.baseline,
+        baselineDegraded: outcome.baselineDegraded,
       }),
     );
   }
@@ -122,7 +88,7 @@ export const finalizeCliScans = (input: FinalizeCliScansInput): void => {
     shouldFailScanGate({
       scans: input.completedScans,
       blockingLevel: resolveBlockingLevel(input.flags, input.userConfig),
-      diagnosticsAreGateExempt: input.isScoreOnly || baselineDegraded,
+      diagnosticsAreGateExempt: input.isScoreOnly || outcome.baselineDegraded,
     })
   ) {
     process.exitCode = 1;

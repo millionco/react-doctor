@@ -1,22 +1,6 @@
 import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
-import { ciConfigAction, ciInstallAction, ciUpgradeAction } from "./commands/ci.js";
-import { designAction } from "./commands/design.js";
-import { installAction } from "./commands/install.js";
-import { runScanCommand } from "./commands/scan.js";
-import {
-  rulesCategoryAction,
-  rulesDisableAction,
-  rulesEnableAction,
-  rulesExplainAction,
-  rulesIgnoreTagAction,
-  rulesListAction,
-  rulesSetAction,
-  rulesUnignoreTagAction,
-} from "./commands/rules.js";
-import { versionAction } from "./commands/version.js";
-import { whyAction } from "./commands/why.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
 import { ensureWindowsUtf8Console } from "./utils/ensure-windows-utf8-console.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
@@ -254,21 +238,23 @@ const program = new Command()
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderRootHelpEpilog);
 
-program.action((directory = ".", flags: InspectFlags) =>
-  runScanCommand({
+program.action(async (directory = ".", flags: InspectFlags) => {
+  const { runScanCommand } = await import("./commands/scan.js");
+  return runScanCommand({
     directory,
     flags,
     invocationCommand: "inspect",
-  }),
-);
+  });
+});
 
 program
   .command("design [directory]")
   .description("Run only the focused UI design diagnostics")
   .addHelpText("after", renderDesignHelpEpilog)
-  .action((directory, _options, command) =>
-    designAction(directory ?? ".", command.optsWithGlobals()),
-  );
+  .action(async (directory, _options, command) => {
+    const { designAction } = await import("./commands/design.js");
+    return designAction(directory ?? ".", command.optsWithGlobals());
+  });
 
 program
   .command("why <location>")
@@ -280,7 +266,10 @@ program
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .action((location, options) => whyAction(location, options));
+  .action(async (location, options) => {
+    const { whyAction } = await import("./commands/why.js");
+    return whyAction(location, options);
+  });
 
 program
   .command("install")
@@ -293,7 +282,10 @@ program
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderInstallHelpEpilog)
-  .action(installAction);
+  .action(async (options, command) => {
+    const { installAction } = await import("./commands/install.js");
+    return installAction(options, command);
+  });
 
 const providerOption: [string, string] = [
   "--provider <name>",
@@ -333,7 +325,10 @@ ci.command("install")
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderCiHelpEpilog)
-  .action((_options, command) => ciInstallAction(command.optsWithGlobals()));
+  .action(async (_options, command) => {
+    const { ciInstallAction } = await import("./commands/ci.js");
+    return ciInstallAction(command.optsWithGlobals());
+  });
 
 ci.command("config")
   .description("Change the gate, scan scope, and pull-request reporting")
@@ -350,7 +345,10 @@ ci.command("config")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .action((_options, command) => ciConfigAction(command.optsWithGlobals()));
+  .action(async (_options, command) => {
+    const { ciConfigAction } = await import("./commands/ci.js");
+    return ciConfigAction(command.optsWithGlobals());
+  });
 
 ci.command("upgrade")
   .description("Upgrade the CI workflow to the action's current major")
@@ -360,14 +358,20 @@ ci.command("upgrade")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .action((_options, command) => ciUpgradeAction(command.optsWithGlobals()));
+  .action(async (_options, command) => {
+    const { ciUpgradeAction } = await import("./commands/ci.js");
+    return ciUpgradeAction(command.optsWithGlobals());
+  });
 
 program
   .command("version")
   .description("show the version with Node and platform info")
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .action(versionAction);
+  .action(async () => {
+    const { versionAction } = await import("./commands/version.js");
+    return versionAction();
+  });
 
 const rules = program
   .command("rules")
@@ -387,55 +391,75 @@ rules
   .option("--configured", "only show rules your config has changed from the default")
   .option("--json", "output a structured JSON array")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action((_options, command) => rulesListAction(command.optsWithGlobals()));
+  .action(async (_options, command) => {
+    const { rulesListAction } = await import("./commands/rules.js");
+    return rulesListAction(command.optsWithGlobals());
+  });
 
 rules
   .command("explain <rule>")
   .description("Explain why a rule matters, its current severity, and how to configure it")
   .option("--json", "output a structured JSON object")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action((rule, _options, command) => rulesExplainAction(rule, command.optsWithGlobals()));
+  .action(async (rule, _options, command) => {
+    const { rulesExplainAction } = await import("./commands/rules.js");
+    return rulesExplainAction(rule, command.optsWithGlobals());
+  });
 
 rules
   .command("set <rule> <severity>")
   .description("Set a rule's severity: off, warn, or error")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action((rule, severity, _options, command) =>
-    rulesSetAction(rule, severity, command.optsWithGlobals()),
-  );
+  .action(async (rule, severity, _options, command) => {
+    const { rulesSetAction } = await import("./commands/rules.js");
+    return rulesSetAction(rule, severity, command.optsWithGlobals());
+  });
 
 rules
   .command("enable <rule>")
   .description("Enable a rule at its recommended severity (or pass --severity)")
   .option("--severity <level>", "severity to enable at: warn or error")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action((rule, _options, command) => rulesEnableAction(rule, command.optsWithGlobals()));
+  .action(async (rule, _options, command) => {
+    const { rulesEnableAction } = await import("./commands/rules.js");
+    return rulesEnableAction(rule, command.optsWithGlobals());
+  });
 
 rules
   .command("disable <rule>")
   .description("Disable a rule so it never runs")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action((rule, _options, command) => rulesDisableAction(rule, command.optsWithGlobals()));
+  .action(async (rule, _options, command) => {
+    const { rulesDisableAction } = await import("./commands/rules.js");
+    return rulesDisableAction(rule, command.optsWithGlobals());
+  });
 
 rules
   .command("category <category> <severity>")
   .description("Set the severity for a whole category (off, warn, error)")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action((category, severity, _options, command) =>
-    rulesCategoryAction(category, severity, command.optsWithGlobals()),
-  );
+  .action(async (category, severity, _options, command) => {
+    const { rulesCategoryAction } = await import("./commands/rules.js");
+    return rulesCategoryAction(category, severity, command.optsWithGlobals());
+  });
 
 rules
   .command("ignore-tag <tag>")
   .description("Skip a whole rule family by tag before linting (e.g. design)")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action((tag, _options, command) => rulesIgnoreTagAction(tag, command.optsWithGlobals()));
+  .action(async (tag, _options, command) => {
+    const { rulesIgnoreTagAction } = await import("./commands/rules.js");
+    return rulesIgnoreTagAction(tag, command.optsWithGlobals());
+  });
 
 rules
   .command("unignore-tag <tag>")
   .description("Stop ignoring a tag previously skipped via ignore-tag")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
-  .action((tag, _options, command) => rulesUnignoreTagAction(tag, command.optsWithGlobals()));
+  .action(async (tag, _options, command) => {
+    const { rulesUnignoreTagAction } = await import("./commands/rules.js");
+    return rulesUnignoreTagAction(tag, command.optsWithGlobals());
+  });
 
 // NOTE: `react-doctor experimental-lsp` is intentionally NOT wired through
 // commander. The bin shim (bin/react-doctor.js) fast-paths it to a dedicated
@@ -467,13 +491,14 @@ program
   .option("--max-duration <seconds>", MAX_DURATION_OPTION_DESCRIPTION)
   .option("-p, --project <names>", "scan specific workspace projects (comma-separated, or *)")
   .option("-y, --yes", "skip the project prompt and scan every discovered project")
-  .action((directory = ".", _localOptions, command) =>
-    runScanCommand({
+  .action(async (directory = ".", _localOptions, command) => {
+    const { runScanCommand } = await import("./commands/scan.js");
+    return runScanCommand({
       directory,
       flags: command.optsWithGlobals(),
       invocationCommand: "experimental-tui",
-    }),
-  );
+    });
+  });
 
 // HACK: when output is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next

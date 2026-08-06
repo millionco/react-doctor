@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import fg from "fast-glob";
 import { resolveSourcePath } from "../resolver/source-path.js";
 import {
@@ -68,25 +68,30 @@ export const findDefaultIndexEntry = (directory: string): string | undefined => 
   return undefined;
 };
 
-const findSourceFile = (baseDirectory: string, relativePath: string): string | undefined => {
-  const pathWithoutExtension = join(baseDirectory, relativePath).replace(/\.[cm]?js(x?)$/, "");
+const findSourceFileWithKnownExtension = (pathWithoutExtension: string): string | undefined => {
   for (const sourceExtension of SOURCE_EXTENSIONS) {
     const candidatePath = pathWithoutExtension + sourceExtension;
     if (existsSync(candidatePath)) return candidatePath;
   }
-  const indexCandidate = join(pathWithoutExtension, "index.ts");
-  return existsSync(indexCandidate) ? indexCandidate : undefined;
+  return undefined;
 };
 
-const findSourceFileStrict = (baseDirectory: string, relativePath: string): string | undefined => {
+const findSourceFile = (
+  baseDirectory: string,
+  relativePath: string,
+  shouldResolveDirectoryIndex = true,
+): string | undefined => {
   const pathWithoutExtension = join(baseDirectory, relativePath).replace(/\.[cm]?js(x?)$/, "");
-  for (const sourceExtension of SOURCE_EXTENSIONS) {
-    const candidatePath = pathWithoutExtension + sourceExtension;
-    if (existsSync(candidatePath)) return candidatePath;
-  }
-  const exactPath = join(baseDirectory, relativePath);
-  return existsSync(exactPath) ? exactPath : undefined;
+  const sourceFile = findSourceFileWithKnownExtension(pathWithoutExtension);
+  if (sourceFile) return sourceFile;
+  const fallbackPath = shouldResolveDirectoryIndex
+    ? join(pathWithoutExtension, "index.ts")
+    : join(baseDirectory, relativePath);
+  return existsSync(fallbackPath) ? fallbackPath : undefined;
 };
+
+const findSourceFileStrict = (baseDirectory: string, relativePath: string): string | undefined =>
+  findSourceFile(baseDirectory, relativePath, false);
 
 const resolveBuiltPathToSource = (
   builtAbsolutePath: string,
@@ -105,10 +110,15 @@ const resolveBuiltPathToSource = (
     if (!outDirectory) return undefined;
 
     const absoluteOutDirectory = resolve(rootDirectory, outDirectory);
-    const relativeToBuild = builtAbsolutePath.startsWith(absoluteOutDirectory)
-      ? builtAbsolutePath.slice(absoluteOutDirectory.length)
-      : undefined;
-    if (!relativeToBuild) return undefined;
+    const relativeToBuild = relative(absoluteOutDirectory, builtAbsolutePath);
+    if (
+      relativeToBuild.length === 0 ||
+      relativeToBuild === ".." ||
+      relativeToBuild.startsWith(`..${sep}`) ||
+      isAbsolute(relativeToBuild)
+    ) {
+      return undefined;
+    }
 
     const configuredRootDirectory = tsconfig?.compilerOptions?.rootDir;
     const sourceRoot = configuredRootDirectory

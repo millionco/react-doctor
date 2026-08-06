@@ -34,7 +34,7 @@ import { resolveProjectRelativeDirectory } from "./resolve-project-relative-dire
 import { resolveProjectScan } from "./resolve-project-scan.js";
 import { resolveProjectSourceFilePaths } from "./resolve-project-source-file-paths.js";
 import { resolveScope } from "./resolve-scope.js";
-import { runProjectScanBatch } from "./run-project-scan-batch.js";
+import { type ProjectScanOutcome, runProjectScanBatch } from "./run-project-scan-batch.js";
 import { filterScansForSurface } from "./filter-scans-for-surface.js";
 import { STAGED_PROJECT_FALLBACK_HINT, selectStagedProjects } from "./select-staged-projects.js";
 import { VERSION } from "./version.js";
@@ -284,8 +284,6 @@ export const runStagedInspect = async (input: RunStagedInspectInput): Promise<vo
       }))
       .filter((projectRun) => projectRun.includePaths.length > 0);
     const isMultiProject = stagedProjectRuns.length > 1;
-    const skippedProjects: JsonReportSkippedProject[] = [];
-
     if (stagedProjectRuns.length === 0) {
       reportEmptyStagedScan(
         emptyScanInput,
@@ -304,14 +302,16 @@ export const runStagedInspect = async (input: RunStagedInspectInput): Promise<vo
 
     const scanStagedProject = async (
       projectRun: (typeof stagedProjectRuns)[number],
-    ): Promise<CompletedScan | null> => {
+    ): Promise<ProjectScanOutcome<CompletedScan, JsonReportSkippedProject>> => {
       const { projectScan, includePaths } = projectRun;
       if (
         input.scanDeadlineEpochMs !== undefined &&
         remainingDeadlineBudgetMs(input.scanDeadlineEpochMs) === 0
       ) {
-        skippedProjects.push({ directory: projectScan.scanDirectory, reason: "max-duration" });
-        return null;
+        return {
+          status: "skipped",
+          value: { directory: projectScan.scanDirectory, reason: "max-duration" },
+        };
       }
       const projectTempDirectory = path.join(
         snapshot.tempDirectory,
@@ -341,13 +341,16 @@ export const runStagedInspect = async (input: RunStagedInspectInput): Promise<vo
           : diagnostic.filePath,
       }));
       return {
-        directory: projectScan.scanDirectory,
-        result: {
-          ...scanResult,
-          diagnostics,
-          project: { ...scanResult.project, rootDirectory: projectScan.scanDirectory },
+        status: "completed",
+        value: {
+          directory: projectScan.scanDirectory,
+          result: {
+            ...scanResult,
+            diagnostics,
+            project: { ...scanResult.project, rootDirectory: projectScan.scanDirectory },
+          },
+          config: projectScan.projectConfig,
         },
-        config: projectScan.projectConfig,
       };
     };
 
@@ -358,6 +361,7 @@ export const runStagedInspect = async (input: RunStagedInspectInput): Promise<vo
       scanProject: scanStagedProject,
     });
     const completedScans = stagedBatch.completedScans;
+    const skippedProjects = stagedBatch.skippedScans;
     reportSkippedProjects({ skippedProjects, isQuiet: input.isQuiet });
 
     if (!input.isQuiet && isMultiProject && completedScans.length > 0) {

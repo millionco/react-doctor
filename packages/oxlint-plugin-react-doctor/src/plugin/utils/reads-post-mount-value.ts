@@ -2,6 +2,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isPropertyNamePosition } from "./is-property-name-position.js";
 import { walkAst } from "./walk-ast.js";
 
 // DOM/layout reads + globals that are NOT knowable at render time. A value
@@ -176,18 +177,6 @@ export const isPostMountMemberRead = (node: EsTreeNode): boolean => {
   if (DOM_QUERY_MEMBER_NAMES.has(memberName)) return true;
   if (!LAYOUT_MEASUREMENT_MEMBER_NAMES.has(memberName)) return false;
   return isRefLikeReceiver(node.object as EsTreeNode);
-};
-
-const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "MemberExpression")) {
-    return parent.property === identifier && !parent.computed;
-  }
-  if (isNodeOfType(parent, "Property")) {
-    return parent.key === identifier && !parent.computed;
-  }
-  return false;
 };
 
 // A read of a browser global itself — NOT a same-named property on a data

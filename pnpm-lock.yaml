@@ -11,6 +11,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.70
+        version: 4.0.0-beta.70
     devDependencies:
       '@changesets/changelog-github':
         specifier: ^0.7.0

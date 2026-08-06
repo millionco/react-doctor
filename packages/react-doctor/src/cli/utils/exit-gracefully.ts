@@ -13,8 +13,12 @@ export const exitGracefully = (): void => {
   // of printing the cancellation footer twice.
   if (didStartExiting) return process.exit(SIGINT_EXIT_CODE);
   didStartExiting = true;
-  activeScanAbortRegistry.abortAll();
-  preserveActiveTuiRendererOutput();
+  try {
+    activeScanAbortRegistry.abortAll();
+  } catch {}
+  try {
+    preserveActiveTuiRendererOutput();
+  } catch {}
   try {
     if (isJsonModeActive()) {
       writeJsonErrorReport(new Error("Scan cancelled by user (SIGINT/SIGTERM)"));

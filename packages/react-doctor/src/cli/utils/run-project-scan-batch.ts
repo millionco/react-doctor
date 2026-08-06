@@ -1,6 +1,22 @@
 import { performance } from "node:perf_hooks";
 import { DEFAULT_PROJECT_SCAN_CONCURRENCY, mapWithConcurrency } from "@react-doctor/core";
+import { partitionProjectScanOutcomes, type ProjectScanOutcome } from "./project-scan-outcome.js";
 import { isSpinnerSilent, setSpinnerSilent, spinner } from "./spinner.js";
+
+export type { ProjectScanOutcome } from "./project-scan-outcome.js";
+
+interface RunProjectScanBatchInput<Project, Scan, SkippedScan> {
+  readonly projects: ReadonlyArray<Project>;
+  readonly isQuiet: boolean;
+  readonly isSilent: boolean;
+  readonly scanProject: (project: Project) => Promise<ProjectScanOutcome<Scan, SkippedScan>>;
+}
+
+interface ProjectScanBatchResult<Scan, SkippedScan> {
+  readonly completedScans: Scan[];
+  readonly skippedScans: SkippedScan[];
+  readonly elapsedMilliseconds: number;
+}
 
 /**
  * Run one scan per project through the same bounded pool as
@@ -10,15 +26,10 @@ import { isSpinnerSilent, setSpinnerSilent, spinner } from "./spinner.js";
  * overlapping save/restore pairs would race — so the batch owns that toggle once
  * around the whole run.
  *
- * A `scanProject` that returns `null` drops the project from the results: diff
- * mode skips projects with no changed source.
  */
-export const runProjectScanBatch = async <Project, Scan>(input: {
-  readonly projects: ReadonlyArray<Project>;
-  readonly isQuiet: boolean;
-  readonly isSilent: boolean;
-  readonly scanProject: (project: Project) => Promise<Scan | null>;
-}): Promise<{ completedScans: Scan[]; elapsedMilliseconds: number }> => {
+export const runProjectScanBatch = async <Project, Scan, SkippedScan>(
+  input: RunProjectScanBatchInput<Project, Scan, SkippedScan>,
+): Promise<ProjectScanBatchResult<Scan, SkippedScan>> => {
   const startTime = performance.now();
   const projectCount = input.projects.length;
   const isMultiProject = projectCount > 1;
@@ -28,7 +39,7 @@ export const runProjectScanBatch = async <Project, Scan>(input: {
   const wasSpinnerSilent = isSpinnerSilent();
   if (ownsBatchSpinnerSilence) setSpinnerSilent(true);
   let finishedProjectCount = 0;
-  let scanOutcomes: ReadonlyArray<Scan | null>;
+  let scanOutcomes: ReadonlyArray<ProjectScanOutcome<Scan, SkippedScan>>;
   try {
     scanOutcomes = await mapWithConcurrency(
       input.projects,
@@ -47,7 +58,7 @@ export const runProjectScanBatch = async <Project, Scan>(input: {
     batchSpinner?.stop();
   }
   return {
-    completedScans: scanOutcomes.filter((scanOutcome): scanOutcome is Scan => scanOutcome !== null),
+    ...partitionProjectScanOutcomes(scanOutcomes),
     elapsedMilliseconds: performance.now() - startTime,
   };
 };

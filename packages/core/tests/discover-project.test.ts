@@ -2573,47 +2573,83 @@ describe("discoverProject", () => {
     expect(projectInfo.hasReactCompilerLintPlugin).toBe(true);
   });
 
-  it("detects the official Vite 8 React Compiler preset through defineConfig re-exports", () => {
-    const projectDirectory = path.join(tempDirectory, "vite-react-compiler-preset");
-    const viteDirectory = path.join(projectDirectory, "node_modules", "vite");
-    const viteChunksDirectory = path.join(viteDirectory, "chunks");
-    fs.mkdirSync(viteChunksDirectory, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectDirectory, "package.json"),
-      JSON.stringify({
-        name: "vite-react-compiler-preset",
-        dependencies: { react: "^19.0.0" },
-        devDependencies: {
-          "@rolldown/plugin-babel": "^0.2.0",
-          "@vitejs/plugin-react": "^6.0.0",
-          vite: "^8.1.0",
-        },
-      }),
-    );
-    fs.writeFileSync(
-      path.join(viteDirectory, "package.json"),
-      JSON.stringify({
-        name: "vite",
-        type: "module",
-        exports: "./index.js",
-      }),
-    );
-    fs.writeFileSync(
-      path.join(viteDirectory, "index.js"),
-      "import { d as defineConfig } from './chunks/config.js';\nexport { defineConfig };\n",
-    );
-    fs.writeFileSync(
-      path.join(viteChunksDirectory, "config.js"),
-      "const defineConfig = (config) => config;\nexport { defineConfig as d };\n",
-    );
-    fs.writeFileSync(
-      path.join(projectDirectory, "vite.config.ts"),
-      "import { defineConfig } from 'vite';\nimport react, { reactCompilerPreset } from '@vitejs/plugin-react';\nimport babel from '@rolldown/plugin-babel';\nexport default defineConfig({ plugins: [react(), babel({ presets: [reactCompilerPreset()] })] });\n",
-    );
+  it.each([
+    {
+      configurationName: "preset",
+      compilerImports: "import react, { reactCompilerPreset } from '@vitejs/plugin-react';",
+      babelOptions: "presets: [reactCompilerPreset()]",
+    },
+    {
+      configurationName: "direct-plugin",
+      compilerImports:
+        "import jsxSyntax from '@babel/plugin-syntax-jsx';\nimport react from '@vitejs/plugin-react';\nimport reactCompiler from 'babel-plugin-react-compiler';",
+      babelOptions: "plugins: [jsxSyntax, reactCompiler]",
+    },
+  ])(
+    "detects the official Vite 8 React Compiler $configurationName through installed config wrappers",
+    ({ configurationName, compilerImports, babelOptions }) => {
+      const projectDirectory = path.join(tempDirectory, `vite-react-compiler-${configurationName}`);
+      const viteDirectory = path.join(projectDirectory, "node_modules", "vite");
+      const viteChunksDirectory = path.join(viteDirectory, "chunks");
+      const rolldownBabelDirectory = path.join(
+        projectDirectory,
+        "node_modules",
+        "@rolldown",
+        "plugin-babel",
+      );
+      fs.mkdirSync(viteChunksDirectory, { recursive: true });
+      fs.mkdirSync(rolldownBabelDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({
+          name: `vite-react-compiler-${configurationName}`,
+          dependencies: { react: "^19.0.0" },
+          devDependencies: {
+            "@babel/plugin-syntax-jsx": "^7.0.0",
+            "@rolldown/plugin-babel": "^0.2.0",
+            "@vitejs/plugin-react": "^6.0.0",
+            "babel-plugin-react-compiler": "^1.0.0",
+            vite: "^8.1.0",
+          },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(viteDirectory, "package.json"),
+        JSON.stringify({
+          name: "vite",
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+      fs.writeFileSync(
+        path.join(viteDirectory, "index.js"),
+        "import { d as defineConfig } from './chunks/config.js';\nexport { defineConfig };\n",
+      );
+      fs.writeFileSync(
+        path.join(viteChunksDirectory, "config.js"),
+        "const defineConfig = (config) => config;\nexport { defineConfig as d };\n",
+      );
+      fs.writeFileSync(
+        path.join(rolldownBabelDirectory, "package.json"),
+        JSON.stringify({
+          name: "@rolldown/plugin-babel",
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+      fs.writeFileSync(
+        path.join(rolldownBabelDirectory, "index.js"),
+        "const babelPlugin = async (rawOptions) => ({ name: '@rolldown/plugin-babel', transform() { return rawOptions; } });\nexport { babelPlugin as default };\n",
+      );
+      fs.writeFileSync(
+        path.join(projectDirectory, "vite.config.ts"),
+        `import { defineConfig } from 'vite';\n${compilerImports}\nimport babel from '@rolldown/plugin-babel';\nexport default defineConfig({ plugins: [react(), babel({ ${babelOptions} })] });\n`,
+      );
 
-    const projectInfo = discoverProject(projectDirectory);
-    expect(projectInfo.hasReactCompiler).toBe(true);
-  });
+      const projectInfo = discoverProject(projectDirectory);
+      expect(projectInfo.hasReactCompiler).toBe(true);
+    },
+  );
 
   it.each([
     { wrapperName: "withNextConfig", argument: "nextConfig", expected: true },

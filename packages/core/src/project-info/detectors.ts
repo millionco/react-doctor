@@ -2072,6 +2072,14 @@ const analyzeConfigNode = (
           ) {
             return true;
           }
+          if (
+            allowCompilerTransform &&
+            importBinding.moduleSpecifier === "@rolldown/plugin-babel" &&
+            importBinding.exportName === "default" &&
+            node.arguments.some((argument) => analyzeConfigNode(argument, analysis, false))
+          ) {
+            return true;
+          }
           const hasCompilerTransform = analyzeImportedConfig({
             analysis,
             moduleSpecifier: importBinding.moduleSpecifier,

@@ -2,12 +2,9 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   buildSkippedChecks,
-  type Diagnostic,
   filterDiagnosticsForSurface,
   highlighter,
   type InspectResult,
-  type ReactDoctorConfig,
-  type ScoreResult,
 } from "@react-doctor/core";
 import type { ResolvedInspectOptions } from "../../inspect-options.js";
 import { buildEmptyReportMessage } from "./build-empty-report-message.js";
@@ -18,26 +15,9 @@ import { printDiagnosticsDump } from "./print-diagnostics-dump.js";
 import { printFooter } from "./print-footer.js";
 import { printHeadlessReport } from "./print-headless-report.js";
 import { printAgentGuidance } from "./render-agent-guidance.js";
+import type { CachedScanPayload } from "./scan-result-cache-payload.js";
 
-interface FinalizeInspectResultInput {
-  readonly options: ResolvedInspectOptions;
-  readonly elapsedMilliseconds: number;
-  readonly diagnostics: ReadonlyArray<Diagnostic>;
-  readonly score: ScoreResult | null;
-  readonly project: InspectResult["project"];
-  readonly userConfig: ReactDoctorConfig | null;
-  readonly didLintFail: boolean;
-  readonly lintFailureReason: string | null;
-  readonly lintPartialFailures: ReadonlyArray<string>;
-  readonly didDeadCodeFail: boolean;
-  readonly deadCodeFailureReason: string | null;
-  readonly supplyChainOverlapTimedOut: boolean;
-  readonly securityScanFailed: boolean;
-  readonly securityScanFailureReason: string | null;
-  readonly scannedFileCount: number;
-  readonly scannedFilePaths: ReadonlyArray<string>;
-  readonly analyzedFiles: ReadonlyArray<string>;
-  readonly scanElapsedMilliseconds: number;
+export interface InspectExecutionCacheStats {
   readonly lintCacheHitFileCount: number | null;
   readonly lintCacheTotalFileCount: number | null;
   readonly lintSidecarReplayedFileCount: number | null;
@@ -45,22 +25,29 @@ interface FinalizeInspectResultInput {
   readonly deadCodeCacheHit: boolean | null;
   readonly deadCodeSummaryCacheHits: number | null;
   readonly deadCodeSummaryCacheMisses: number | null;
-  readonly baselineDelta: InspectResult["baselineDelta"];
+}
+
+interface FinalizeInspectResultInput {
+  readonly options: ResolvedInspectOptions;
+  readonly elapsedMilliseconds: number;
+  readonly payload: CachedScanPayload;
+  readonly cacheStats: InspectExecutionCacheStats;
 }
 
 export const finalizeInspectResult = (
   input: FinalizeInspectResultInput,
 ): Effect.Effect<InspectResult> =>
   Effect.gen(function* () {
+    const { payload, cacheStats } = input;
     const { skippedChecks, skippedCheckReasons } = buildSkippedChecks({
-      didLintFail: input.didLintFail,
-      lintFailureReason: input.lintFailureReason,
-      lintPartialFailures: input.lintPartialFailures,
-      didDeadCodeFail: input.didDeadCodeFail,
-      deadCodeFailureReason: input.deadCodeFailureReason,
-      supplyChainOverlapTimedOut: input.supplyChainOverlapTimedOut,
-      securityScanFailed: input.securityScanFailed,
-      securityScanFailureReason: input.securityScanFailureReason,
+      didLintFail: payload.didLintFail,
+      lintFailureReason: payload.lintFailureReason,
+      lintPartialFailures: payload.lintPartialFailures,
+      didDeadCodeFail: payload.didDeadCodeFail,
+      deadCodeFailureReason: payload.deadCodeFailureReason,
+      supplyChainOverlapTimedOut: payload.supplyChainOverlapTimedOut,
+      securityScanFailed: payload.securityScanFailed ?? false,
+      securityScanFailureReason: payload.securityScanFailureReason ?? null,
     });
     const hasSkippedChecks = skippedChecks.length > 0;
     const noScoreMessage = buildNoScoreMessage({
@@ -69,44 +56,47 @@ export const finalizeInspectResult = (
       disabledMessage: input.options.scoreDisabledMessage,
     });
     const result: InspectResult = {
-      diagnostics: [...input.diagnostics],
-      score: input.score,
+      diagnostics: [...payload.diagnostics],
+      score: payload.score,
       skippedChecks,
       ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
-      project: input.project,
+      project: payload.project,
       elapsedMilliseconds: input.elapsedMilliseconds,
-      scannedFileCount: input.scannedFileCount,
-      scannedFilePaths: input.scannedFilePaths,
-      analyzedFiles: input.analyzedFiles,
-      scanElapsedMilliseconds: input.scanElapsedMilliseconds,
-      ...(input.lintCacheTotalFileCount !== null
+      scannedFileCount: payload.scannedFileCount,
+      scannedFilePaths: payload.scannedFilePaths,
+      analyzedFiles: payload.analyzedFiles ?? [],
+      scanElapsedMilliseconds: payload.scanElapsedMilliseconds,
+      ...(cacheStats.lintCacheTotalFileCount !== null
         ? {
-            lintCacheHitFileCount: input.lintCacheHitFileCount,
-            lintCacheTotalFileCount: input.lintCacheTotalFileCount,
+            lintCacheHitFileCount: cacheStats.lintCacheHitFileCount,
+            lintCacheTotalFileCount: cacheStats.lintCacheTotalFileCount,
           }
         : {}),
-      ...(input.lintSidecarTotalFileCount !== null
+      ...(cacheStats.lintSidecarTotalFileCount !== null
         ? {
-            lintSidecarReplayedFileCount: input.lintSidecarReplayedFileCount,
-            lintSidecarTotalFileCount: input.lintSidecarTotalFileCount,
+            lintSidecarReplayedFileCount: cacheStats.lintSidecarReplayedFileCount,
+            lintSidecarTotalFileCount: cacheStats.lintSidecarTotalFileCount,
           }
         : {}),
-      ...(input.deadCodeCacheHit !== null ? { deadCodeCacheHit: input.deadCodeCacheHit } : {}),
-      ...(input.deadCodeSummaryCacheHits !== null && input.deadCodeSummaryCacheMisses !== null
+      ...(cacheStats.deadCodeCacheHit !== null
+        ? { deadCodeCacheHit: cacheStats.deadCodeCacheHit }
+        : {}),
+      ...(cacheStats.deadCodeSummaryCacheHits !== null &&
+      cacheStats.deadCodeSummaryCacheMisses !== null
         ? {
-            deadCodeSummaryCacheHits: input.deadCodeSummaryCacheHits,
-            deadCodeSummaryCacheMisses: input.deadCodeSummaryCacheMisses,
+            deadCodeSummaryCacheHits: cacheStats.deadCodeSummaryCacheHits,
+            deadCodeSummaryCacheMisses: cacheStats.deadCodeSummaryCacheMisses,
           }
         : {}),
-      ...(input.baselineDelta ? { baselineDelta: input.baselineDelta } : {}),
+      ...(payload.baselineDelta ? { baselineDelta: payload.baselineDelta } : {}),
     };
 
     if (input.options.suppressRendering) return result;
 
     const surfaceDiagnostics = filterDiagnosticsForSurface(
-      [...input.diagnostics],
+      [...payload.diagnostics],
       input.options.outputSurface,
-      input.userConfig,
+      payload.userConfig,
     );
     const printedDiagnostics = filterDiagnosticsByCategories(
       surfaceDiagnostics,
@@ -122,15 +112,15 @@ export const finalizeInspectResult = (
           "stderr",
         );
       }
-      if (input.score) {
-        yield* Console.log(`${input.score.score}`);
+      if (payload.score) {
+        yield* Console.log(`${payload.score.score}`);
       } else {
         yield* Console.error(highlighter.gray(noScoreMessage));
       }
       return result;
     }
 
-    const demotedDiagnosticCount = input.diagnostics.length - surfaceDiagnostics.length;
+    const demotedDiagnosticCount = payload.diagnostics.length - surfaceDiagnostics.length;
     if (input.options.isNonInteractiveEnvironment && input.options.outputSurface !== "prComment") {
       yield* printAgentGuidance();
     }
@@ -144,9 +134,9 @@ export const finalizeInspectResult = (
         outputSurface: input.options.outputSurface,
       }),
       noScoreMessage,
-      projectName: input.project.projectName,
-      scannedFileCount: input.scannedFileCount,
-      scoreResult: hasSkippedChecks ? null : input.score,
+      projectName: payload.project.projectName,
+      scannedFileCount: payload.scannedFileCount,
+      scoreResult: hasSkippedChecks ? null : payload.score,
       skippedChecks,
     });
 
@@ -168,9 +158,9 @@ export const finalizeInspectResult = (
 
     yield* printFooter({
       diagnostics: printedDiagnostics,
-      scoreResult: input.score,
-      projectName: input.project.projectName,
-      isOffline: input.options.isCi || !input.options.share || input.score === null,
+      scoreResult: payload.score,
+      projectName: payload.project.projectName,
+      isOffline: input.options.isCi || !input.options.share || payload.score === null,
     });
 
     return result;

@@ -1,31 +1,20 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
   type ChangedFileLineRanges,
-  computeDiagnosticDelta,
   createOxlintSpawnSlots,
-  DEFAULT_SHOW_WARNINGS,
   type Diagnostic,
-  filterPathsOutsideDirectories,
-  filterSourceFiles,
   highlighter,
   type InspectResult,
   OXLINT_NODE_REQUIREMENT,
   OxlintConcurrency,
-  PerFileLintCacheEnabled,
-  type Progress,
-  type ProjectInfo,
   type ReactDoctorConfig,
   resolveScanTarget,
   resolveScanConcurrency,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
-  SidecarLintCacheEnabled,
-  type WorkerSlots,
   yieldToEventLoop,
 } from "@react-doctor/core";
 import { activeScanAbortRegistry } from "./cli/utils/active-scan-abort-registry.js";
@@ -37,24 +26,19 @@ import {
   withSentryRunSpan,
 } from "./cli/utils/with-sentry-run-span.js";
 import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
-import { BASELINE_FILES_TEMP_DIR_PREFIX, METRIC } from "./cli/utils/constants.js";
+import { METRIC } from "./cli/utils/constants.js";
 import { recordCount } from "./cli/utils/record-metric.js";
-import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
-import { resolveWorkerTelemetry } from "./cli/utils/resolve-worker-telemetry.js";
-import { countDeadlineSkippedFiles } from "./cli/utils/count-deadline-skipped-files.js";
-import { countDroppedLintFiles } from "./cli/utils/count-dropped-lint-files.js";
 import { toForwardSlashes } from "./cli/utils/path-format.js";
 import { diagnosticIntersectsLineRanges } from "./cli/utils/diagnostic-intersects-line-ranges.js";
 import { makeNoopConsole } from "./cli/utils/noop-console.js";
-import { materializeBaselineFiles } from "./cli/utils/materialize-baseline-files.js";
-import { createSourceLineReader } from "./cli/utils/read-source-line.js";
-import { createDiagnosticEvidenceReader } from "./cli/utils/read-diagnostic-evidence.js";
-import { isCiOrCodingAgentEnvironment } from "./cli/utils/is-ci-environment.js";
-import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
-import { finalizeInspectResult } from "./cli/utils/finalize-inspect-result.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
-import { resolveCliCategories } from "./cli/utils/resolve-cli-categories.js";
+import { resolveInspectOptions } from "./cli/utils/resolve-inspect-options.js";
+import { buildRunEventConfig, renderAndRecordScan } from "./cli/utils/render-and-record-scan.js";
+import {
+  countIncompleteLintFiles,
+  runBaselineComparison,
+} from "./cli/utils/run-baseline-comparison.js";
 import { getRunId } from "./cli/utils/run-id.js";
 import {
   buildScanResultCacheKey,
@@ -62,15 +46,11 @@ import {
   createScanResultCache,
   shouldStoreScanPayload,
   type CachedScanPayload,
-  type ScanResultCacheInvocationState,
 } from "./cli/utils/scan-result-cache.js";
 import { isSpinnerSilent, setSpinnerSilent } from "./cli/utils/spinner.js";
 import { VERSION } from "./cli/utils/version.js";
-import type {
-  InspectUiLayers,
-  ReactDoctorInspectOptions,
-  ResolvedInspectOptions,
-} from "./inspect-options.js";
+import type { ReactDoctorInspectOptions, ResolvedInspectOptions } from "./inspect-options.js";
+import type { OxlintInvocationRuntime } from "./inspect-runtime.js";
 
 export type {
   InspectUiLayers,
@@ -79,13 +59,6 @@ export type {
 } from "./inspect-options.js";
 
 const silentConsole = makeNoopConsole();
-
-interface OxlintInvocationRuntime {
-  readonly concurrency: number;
-  readonly spawnSlots: WorkerSlots;
-  readonly abortSignal: AbortSignal;
-  readonly scanResultCacheInvocationState: ScanResultCacheInvocationState;
-}
 
 // Builds the `--scope lines` predicate: a diagnostic survives when its source
 // span intersects a changed range of its file. `changedLineRanges` is keyed by paths
@@ -108,110 +81,6 @@ const buildChangedLineMatcher = (
     const ranges = rangesByFile.get(relativePath);
     if (ranges === undefined) return false;
     return diagnosticIntersectsLineRanges(diagnostic, ranges);
-  };
-};
-
-const buildIgnoredTags = (
-  userConfig: ReactDoctorConfig | null,
-  includedTags: ReadonlySet<string>,
-): ReadonlySet<string> => {
-  const tags = new Set<string>();
-  if (userConfig?.ignore?.tags) {
-    for (const tag of userConfig.ignore.tags) tags.add(tag);
-  }
-  for (const tag of includedTags) tags.delete(tag);
-  return tags;
-};
-
-const mergeInspectOptions = (
-  inputOptions: ReactDoctorInspectOptions,
-  userConfig: ReactDoctorConfig | null,
-): ResolvedInspectOptions => {
-  const includedTags = inputOptions.includedTags ?? new Set<string>();
-  return {
-    lint: inputOptions.lint ?? userConfig?.lint ?? true,
-    deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
-    supplyChain: inputOptions.supplyChain ?? userConfig?.supplyChain?.enabled ?? true,
-    verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
-    outputDirectory: inputOptions.outputDirectory || null,
-    scoreOnly: inputOptions.scoreOnly ?? false,
-    noScore: inputOptions.noScore ?? userConfig?.noScore ?? false,
-    isCi: inputOptions.isCi ?? false,
-    isCiOrCodingAgentEnvironment: isCiOrCodingAgentEnvironment(),
-    isNonInteractiveEnvironment: isNonInteractiveEnvironment(),
-    silent: inputOptions.silent ?? false,
-    includePaths: inputOptions.includePaths ?? [],
-    customRulesOnly: includedTags.size > 0 ? false : (userConfig?.customRulesOnly ?? false),
-    share: userConfig?.share ?? true,
-    respectInlineDisables:
-      inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
-    warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
-    categoryFilters: new Set(resolveCliCategories(inputOptions.categoryFilters) ?? []),
-    adoptExistingLintConfig:
-      includedTags.size > 0 ? false : (userConfig?.adoptExistingLintConfig ?? true),
-    ignoredTags: buildIgnoredTags(userConfig, includedTags),
-    includedTags,
-    includeTagDefaults: inputOptions.includeTagDefaults ?? false,
-    scoreDisabledMessage: inputOptions.scoreDisabledMessage,
-    outputSurface: inputOptions.outputSurface ?? "cli",
-    suppressRendering: (inputOptions.suppressRendering ?? false) || inputOptions.uiLayers != null,
-    uiLayers: inputOptions.uiLayers ?? null,
-    concurrentScan: inputOptions.concurrentScan ?? false,
-    concurrency: inputOptions.concurrency,
-    maxDurationMs: inputOptions.maxDurationMs ?? null,
-    baseline: inputOptions.baseline ?? null,
-    changedLineRanges: inputOptions.changedLineRanges ?? null,
-    supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
-    excludedProjectDirectories: inputOptions.excludedProjectDirectories ?? [],
-    retainExcludedProjectDeadCodeDiagnostics:
-      inputOptions.retainExcludedProjectDeadCodeDiagnostics ?? false,
-    precomputedSourceFileCount: inputOptions.precomputedSourceFileCount,
-  };
-};
-
-// The scan-config slice of the wide event, shared by the success and failure
-// emit paths (the failure path has no `result`, so it can only supply config).
-// Reconstruct the resolved scope from the engine inputs (the CLI resolved it
-// from `--scope`, but `inspect()` only sees its effects): a baseline ref means
-// `changed`, line ranges mean `lines`, any other diff means `files`, else `full`.
-// A degraded `lines` run carries no ranges, so it reads as `files`; degraded
-// baseline runs keep `changed` and rely on the baseline-degraded fields.
-const deriveScope = (options: ResolvedInspectOptions): string => {
-  if (options.baseline) return "changed";
-  if (options.changedLineRanges !== null) return "lines";
-  return options.includePaths.length > 0 ? "files" : "full";
-};
-
-const buildRunEventConfig = (
-  options: ResolvedInspectOptions,
-  userConfig: ReactDoctorConfig | null,
-  hasCustomConfig: boolean,
-  // The worker count the scan actually resolved to (`output.scanConcurrency`),
-  // which is the real value on the auto path where `options.concurrency` is
-  // `undefined`. Omitted on the pre-scan failure path (no scan ran), where it
-  // falls back to the caller's pin.
-  resolvedWorkerCount?: number,
-) => {
-  const { workerCount, parallel } = resolveWorkerTelemetry(
-    resolvedWorkerCount,
-    options.concurrency,
-  );
-  return {
-    scope: deriveScope(options),
-    parallel,
-    workerCount,
-    maxDurationMs: options.maxDurationMs,
-    lint: options.lint,
-    deadCode: options.deadCode,
-    supplyChain: options.supplyChain,
-    scoreOnly: options.scoreOnly,
-    noScore: options.noScore,
-    respectInlineDisables: options.respectInlineDisables,
-    showWarnings: options.warnings,
-    usedOutputDir: options.outputDirectory !== null,
-    ignoredTagCount: options.ignoredTags.size,
-    hasCustomConfig,
-    userConfig,
   };
 };
 
@@ -268,7 +137,7 @@ const inspectWithOxlintRuntime = async (
     configSourceDirectory = scanTarget.configSourceDirectory;
   }
 
-  const options = mergeInspectOptions(inputOptions, userConfig);
+  const options = resolveInspectOptions(inputOptions, userConfig);
 
   // HACK: spinner.ts still has module-level silent state for imperative CLI
   // helpers. Concurrent batch members never touch the shared flag — overlapping
@@ -300,7 +169,7 @@ const inspectWithOxlintRuntime = async (
           // here, so it's omitted rather than asserted as a benign default.
           // Rethrow so error handling is unchanged.
           recordRunEvent(rootSentrySpan, {
-            ...buildRunEventConfig(options, userConfig, userConfig !== null),
+            ...buildRunEventConfig(options, userConfig),
             mode: options.includePaths.length > 0 ? "diff" : "full",
             error,
           });
@@ -354,198 +223,6 @@ export const inspect = async (
 ): Promise<InspectResult> =>
   createInvocationInspect(inputOptions.concurrency)(directory, inputOptions);
 
-interface BaselineComparison {
-  displayDiagnostics: ReadonlyArray<Diagnostic>;
-  baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
-}
-
-// Files the lint pass failed to cover — dropped (pathological batches) plus
-// deadline-skipped. Distinct from `lintPartialFailures.length`, which also
-// counts informational notes (e.g. the react-hooks-js plugin-drop) that leave
-// the lint COMPLETE. Baseline comparison is only unreliable when coverage is
-// actually incomplete, so it degrades on this count, not on any partial string.
-const countIncompleteLintFiles = (lintPartialFailures: ReadonlyArray<string>): number =>
-  countDroppedLintFiles(lintPartialFailures) + countDeadlineSkippedFiles(lintPartialFailures);
-
-interface RunBaselineComparisonInput {
-  directory: string;
-  options: ResolvedInspectOptions;
-  userConfig: ReactDoctorConfig | null;
-  /**
-   * Where `userConfig` was loaded from, so the base scan resolves
-   * `config.plugins` specifiers from the real config directory — anchoring
-   * them at the temp snapshot (which has no `node_modules` or plugin files)
-   * silently drops every custom plugin from the base side and mislabels its
-   * pre-existing findings as newly introduced.
-   */
-  configSourceDirectory: string | null;
-  headProjectInfo: ProjectInfo;
-  headDiagnostics: ReadonlyArray<Diagnostic>;
-  resolvedNodeBinaryPath: string | null;
-  baselineRef: string;
-  baseFiles?: ReadonlyArray<string>;
-  headFiles?: ReadonlyArray<string>;
-  headAnalyzedFiles: ReadonlyArray<string>;
-  /** Shared invocation deadline; bounds the base-ref lint like the head scan. */
-  deadlineEpochMs: number | null;
-  oxlintRuntime: OxlintInvocationRuntime;
-}
-
-/**
- * Runs a second, lint-only scan over the changed files as they existed at the
- * baseline ref (materialized into a temp tree with head's config) and diffs it
- * against the head diagnostics, returning only the findings the change
- * introduced plus the fixed / base counts. No score, dead-code, progress, or
- * telemetry — it's a pure comparison pass. The temp tree is always cleaned up.
- */
-const runBaselineComparison = async (
-  params: RunBaselineComparisonInput,
-): Promise<BaselineComparison | null> => {
-  const tempDirectory = mkdtempSync(path.join(tmpdir(), BASELINE_FILES_TEMP_DIR_PREFIX));
-  const baselineIncludePaths = filterPathsOutsideDirectories({
-    rootDirectory: params.directory,
-    relativePaths: params.options.includePaths,
-    excludedDirectories: params.options.excludedProjectDirectories,
-  });
-  const baselineBaseFiles = params.baseFiles
-    ? filterPathsOutsideDirectories({
-        rootDirectory: params.directory,
-        relativePaths: params.baseFiles,
-        excludedDirectories: params.options.excludedProjectDirectories,
-      })
-    : undefined;
-  const baselineHeadFiles = params.headFiles
-    ? filterPathsOutsideDirectories({
-        rootDirectory: params.directory,
-        relativePaths: params.headFiles,
-        excludedDirectories: params.options.excludedProjectDirectories,
-      })
-    : undefined;
-  // If materialization throws before the snapshot (and its cleanup) exists,
-  // remove the temp dir we just created so it can't leak.
-  const snapshot = await materializeBaselineFiles({
-    directory: params.directory,
-    ref: params.baselineRef,
-    files: baselineIncludePaths,
-    baseFiles: baselineBaseFiles,
-    headFiles: baselineHeadFiles,
-    tempDirectory,
-  }).catch((error: unknown) => {
-    rmSync(tempDirectory, { recursive: true, force: true });
-    throw error;
-  });
-  if (snapshot === null) {
-    rmSync(tempDirectory, { recursive: true, force: true });
-    return null;
-  }
-  try {
-    if (!snapshot.isComplete) return null;
-    const analyzedHeadFiles = new Set(params.headAnalyzedFiles.map(toForwardSlashes));
-    const baseFiles = new Set(snapshot.baseFiles.map(toForwardSlashes));
-    const trackedHeadFiles = new Set(snapshot.headFiles.map(toForwardSlashes));
-    const expectedHeadFiles = new Set(trackedHeadFiles);
-    for (const filePath of baselineIncludePaths) {
-      const normalizedFilePath = toForwardSlashes(filePath);
-      if (!baseFiles.has(normalizedFilePath)) expectedHeadFiles.add(normalizedFilePath);
-    }
-    if (
-      filterSourceFiles([...expectedHeadFiles]).some((filePath) => !analyzedHeadFiles.has(filePath))
-    ) {
-      return null;
-    }
-    const baseLayers = buildRuntimeLayers({
-      directory: snapshot.tempDirectory,
-      hasConfigOverride: true,
-      userConfig: params.userConfig,
-      configSourceDirectory: params.configSourceDirectory,
-      projectInfoOverride: params.headProjectInfo,
-      shouldSkipLint: !params.options.lint || !params.resolvedNodeBinaryPath,
-      shouldRunDeadCode: false,
-      shouldRunSupplyChain: params.options.supplyChain,
-      shouldComputeScore: false,
-      shouldShowProgressSpinners: false,
-      oxlintConcurrency: params.oxlintRuntime.concurrency,
-      oxlintSpawnSlots: params.oxlintRuntime.spawnSlots,
-    });
-    const baseProgram = runInspectEffect(
-      {
-        directory: snapshot.tempDirectory,
-        includePaths: snapshot.materializedFiles,
-        customRulesOnly: params.options.customRulesOnly,
-        respectInlineDisables: params.options.respectInlineDisables,
-        warnings: params.options.warnings,
-        adoptExistingLintConfig: params.options.adoptExistingLintConfig,
-        ignoredTags: params.options.ignoredTags,
-        includedTags: params.options.includedTags,
-        includeTagDefaults: params.options.includeTagDefaults,
-        nodeBinaryPath: params.resolvedNodeBinaryPath ?? undefined,
-        runDeadCode: false,
-        isCi: params.options.isCi,
-        doctorVersion: VERSION,
-        runId: getRunId(),
-        resolveLocalGithubViewerPermission: false,
-        suppressScanSummary: true,
-        // Score the base manifest too so `computeDiagnosticDelta` filters out
-        // pre-existing low-score dependencies instead of reporting them as new.
-        supplyChainManifestChanged: params.options.supplyChainManifestChanged,
-        // The base-ref lint shares the invocation deadline, so a --max-duration
-        // budget bounds the whole run, not just the head scan.
-        deadlineEpochMs: params.deadlineEpochMs ?? undefined,
-        signal: params.oxlintRuntime.abortSignal,
-      },
-      {},
-    );
-    const baseOutput = await Effect.runPromise(
-      restoreLegacyThrow(
-        baseProgram.pipe(
-          Effect.provide(baseLayers),
-          // The base snapshot lints in a per-run-unique temp dir, so its
-          // on-disk cache identity can never hit — writing would only mint an
-          // orphan per-run subdir inside the CI-persisted cache directory
-          // (unbounded growth across the action's restore→save cycles).
-          Effect.provideService(PerFileLintCacheEnabled, false),
-          Effect.provideService(SidecarLintCacheEnabled, false),
-          Effect.provideService(Console.Console, silentConsole),
-        ),
-      ),
-      { signal: params.oxlintRuntime.abortSignal },
-    );
-    // A failed OR budget-truncated base lint leaves base findings
-    // unreliable/incomplete, which would mislabel pre-existing head issues as
-    // newly introduced. Signal "no delta" (null) so the caller degrades to a
-    // plain diff — full head findings stay visible, but the run won't claim
-    // they're new or gate on them. A genuinely empty but *successful* base lint
-    // is fine — every head finding is new.
-    if (baseOutput.didLintFail || countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0) {
-      return null;
-    }
-    const hasUnscannedUntrackedSourceFiles = filterSourceFiles(
-      snapshot.untrackedFiles.map(toForwardSlashes),
-    ).some((filePath) => !analyzedHeadFiles.has(filePath));
-    const delta = computeDiagnosticDelta({
-      headDiagnostics: params.headDiagnostics,
-      baseDiagnostics: baseOutput.diagnostics,
-      readHeadLine: createSourceLineReader(params.directory),
-      readBaseLine: createSourceLineReader(snapshot.tempDirectory),
-      readHeadEvidence: createDiagnosticEvidenceReader(params.directory, {
-        resolveForwardedHandlers: true,
-      }),
-      readBaseEvidence: createDiagnosticEvidenceReader(snapshot.tempDirectory),
-    });
-    return {
-      displayDiagnostics: delta.newDiagnostics,
-      baselineDelta: {
-        baseRef: params.baselineRef,
-        fixedCount: hasUnscannedUntrackedSourceFiles ? 0 : delta.fixedCount,
-        baseTotalCount: baseOutput.diagnostics.length,
-        crossFileMatchCount: delta.crossFileMatchCount,
-      },
-    };
-  } finally {
-    snapshot.cleanup();
-  }
-};
-
 const runInspectWithRuntime = async (
   directory: string,
   options: ResolvedInspectOptions,
@@ -592,8 +269,6 @@ const runInspectWithRuntime = async (
     const result = await renderAndRecordScan({
       payload: cachedPayload,
       options,
-      userConfig,
-      hasCustomConfig: userConfig !== null,
       startTime,
       rootSentrySpan,
       scanMode: cachedPayload.baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
@@ -821,150 +496,20 @@ const runInspectWithRuntime = async (
   const result = await renderAndRecordScan({
     payload,
     options,
-    userConfig,
-    hasCustomConfig: userConfig !== null,
     startTime,
     rootSentrySpan,
     scanMode: baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
     baselineDegraded,
     wholeRepoCacheHit: false,
-    lintCacheHitFileCount: output.lintCacheHitFileCount,
-    lintCacheTotalFileCount: output.lintCacheTotalFileCount,
-    lintSidecarReplayedFileCount: output.lintSidecarReplayedFileCount,
-    lintSidecarTotalFileCount: output.lintSidecarTotalFileCount,
-    deadCodeCacheHit: output.deadCodeCacheHit,
-    deadCodeSummaryCacheHits: output.deadCodeSummaryCacheHits,
-    deadCodeSummaryCacheMisses: output.deadCodeSummaryCacheMisses,
-  });
-  return result;
-};
-
-interface RenderAndRecordScanInput {
-  readonly payload: CachedScanPayload;
-  readonly options: ResolvedInspectOptions;
-  readonly userConfig: ReactDoctorConfig | null;
-  readonly hasCustomConfig: boolean;
-  readonly startTime: number;
-  readonly rootSentrySpan: SentryRootSpan;
-  readonly scanMode: "full" | "diff" | "baseline";
-  readonly baselineDegraded: boolean;
-  /**
-   * `true` only on the whole-repo scan-result replay path (the exact-key
-   * `cachedPayload` branch, where no lint / dead-code / score work ran).
-   * Required so both call sites state it explicitly — the wide event's
-   * `cache.temperature = "turbo"` derives from this flag, never from the
-   * execution dims below happening to be null.
-   */
-  readonly wholeRepoCacheHit: boolean;
-  /**
-   * Per-file lint cache outcome for THIS scan's lint pass. Threaded outside
-   * `CachedScanPayload` on purpose — it's telemetry about the lint that ran in
-   * this process, not part of the cacheable result, so a whole-repo cache
-   * replay (where no lint ran) correctly leaves it absent.
-   */
-  readonly lintCacheHitFileCount?: number | null;
-  readonly lintCacheTotalFileCount?: number | null;
-  /**
-   * Sidecar lint cache outcome for THIS scan's lint pass. Threaded outside
-   * `CachedScanPayload` for the same reason as the lint cache stats above.
-   */
-  readonly lintSidecarReplayedFileCount?: number | null;
-  readonly lintSidecarTotalFileCount?: number | null;
-  /**
-   * Dead-code result cache outcome for THIS scan's dead-code pass. Threaded
-   * outside `CachedScanPayload` for the same reason as the lint cache stats
-   * above: a whole-repo cache replay (where no analysis ran) correctly
-   * leaves it absent.
-   */
-  readonly deadCodeCacheHit?: boolean | null;
-  /**
-   * deslop's incremental summary-cache outcome for THIS scan's dead-code
-   * analysis (files served from cached parse summaries vs freshly parsed).
-   * Same outside-the-payload contract as the fields above.
-   */
-  readonly deadCodeSummaryCacheHits?: number | null;
-  readonly deadCodeSummaryCacheMisses?: number | null;
-}
-
-const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<InspectResult> => {
-  const finalizeInput = {
-    options: input.options,
-    elapsedMilliseconds: performance.now() - input.startTime,
-    diagnostics: input.payload.diagnostics,
-    score: input.payload.score,
-    project: input.payload.project,
-    userConfig: input.payload.userConfig,
-    didLintFail: input.payload.didLintFail,
-    lintFailureReason: input.payload.lintFailureReason,
-    lintPartialFailures: input.payload.lintPartialFailures,
-    didDeadCodeFail: input.payload.didDeadCodeFail,
-    deadCodeFailureReason: input.payload.deadCodeFailureReason,
-    supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
-    securityScanFailed: input.payload.securityScanFailed ?? false,
-    securityScanFailureReason: input.payload.securityScanFailureReason ?? null,
-    scannedFileCount: input.payload.scannedFileCount,
-    scannedFilePaths: input.payload.scannedFilePaths,
-    analyzedFiles: input.payload.analyzedFiles ?? [],
-    scanElapsedMilliseconds: input.payload.scanElapsedMilliseconds,
-    lintCacheHitFileCount: input.lintCacheHitFileCount ?? null,
-    lintCacheTotalFileCount: input.lintCacheTotalFileCount ?? null,
-    lintSidecarReplayedFileCount: input.lintSidecarReplayedFileCount ?? null,
-    lintSidecarTotalFileCount: input.lintSidecarTotalFileCount ?? null,
-    deadCodeCacheHit: input.deadCodeCacheHit ?? null,
-    deadCodeSummaryCacheHits: input.deadCodeSummaryCacheHits ?? null,
-    deadCodeSummaryCacheMisses: input.deadCodeSummaryCacheMisses ?? null,
-    baselineDelta: input.payload.baselineDelta,
-  };
-  const finalizeEffect = finalizeInspectResult(finalizeInput);
-  const result = await Effect.runPromise(
-    input.options.silent
-      ? finalizeEffect.pipe(Effect.provideService(Console.Console, silentConsole))
-      : finalizeEffect,
-  );
-  // The real worker count the scan fanned out to (resolved auto count on the
-  // common parallel path, where the caller pinned no `concurrency`). A stale
-  // cache hit predating the field falls back to the caller's pin.
-  const { workerCount: resolvedWorkerCount, parallel } = resolveWorkerTelemetry(
-    input.payload.scanConcurrency,
-    input.options.concurrency,
-  );
-  recordScanMetrics({
-    result,
-    mode: input.scanMode,
-    baselineDegraded: input.baselineDegraded,
-    parallel,
-    workerCount: resolvedWorkerCount,
-    lint: input.options.lint,
-    deadCode: input.options.deadCode,
-    scoreOnly: input.options.scoreOnly,
-    noScore: input.options.noScore,
-    didLintFail: input.payload.didLintFail,
-    lintFailureReasonKind: input.payload.lintFailureReasonKind,
-    didDeadCodeFail: input.payload.didDeadCodeFail,
-    userConfig: input.userConfig,
-    suppressedRuleCounts: input.payload.suppressedRuleCounts,
-  });
-  recordRunEvent(input.rootSentrySpan, {
-    ...buildRunEventConfig(
-      input.options,
-      input.userConfig,
-      input.hasCustomConfig,
-      resolvedWorkerCount,
-    ),
-    result,
-    mode: input.scanMode,
-    gateExempt: input.baselineDegraded,
-    wholeRepoCacheHit: input.wholeRepoCacheHit,
-    didLintFail: input.payload.didLintFail,
-    lintFailureReasonKind: input.payload.lintFailureReasonKind,
-    lintPartialFailureCount: input.payload.lintPartialFailures.length,
-    lintDroppedFileCount: countDroppedLintFiles(input.payload.lintPartialFailures),
-    lintDeadlineSkippedFileCount: countDeadlineSkippedFiles(input.payload.lintPartialFailures),
-    didDeadCodeFail: input.payload.didDeadCodeFail,
-    supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
-    securityScanFailed: input.payload.securityScanFailed,
-    deadCodeOverlapped: input.payload.deadCodeOverlapped,
-    suppressedRuleCounts: input.payload.suppressedRuleCounts,
+    cacheStats: {
+      lintCacheHitFileCount: output.lintCacheHitFileCount,
+      lintCacheTotalFileCount: output.lintCacheTotalFileCount,
+      lintSidecarReplayedFileCount: output.lintSidecarReplayedFileCount,
+      lintSidecarTotalFileCount: output.lintSidecarTotalFileCount,
+      deadCodeCacheHit: output.deadCodeCacheHit,
+      deadCodeSummaryCacheHits: output.deadCodeSummaryCacheHits,
+      deadCodeSummaryCacheMisses: output.deadCodeSummaryCacheMisses,
+    },
   });
   return result;
 };

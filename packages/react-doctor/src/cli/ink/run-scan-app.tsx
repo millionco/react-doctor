@@ -23,7 +23,7 @@ import type {
   WorkspacePackage,
 } from "@react-doctor/core";
 import { createInvocationInspect } from "../../inspect.js";
-import type { ReactDoctorInspectOptions } from "../../inspect.js";
+import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
 import { hasIncompleteScoreAnalysis } from "../utils/has-incomplete-score-analysis.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";

@@ -28,15 +28,7 @@
 // rooted at `rootDir` (matching core's whole-result dead-code cache), so
 // manifest edits ABOVE the scanned root share that cache's accepted gap.
 import crypto from "node:crypto";
-import {
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { Minimatch } from "minimatch";
@@ -49,6 +41,7 @@ import {
   SUMMARY_CACHE_MAX_BYTES,
   SUMMARY_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
+import { atomicWriteFile } from "./utils/atomic-write-file.js";
 import { toPosixPath } from "./utils/to-posix-path.js";
 
 export type PackageFactKind = "substring" | "importReference";
@@ -498,17 +491,6 @@ const reviveParsedSource = (persisted: unknown): ParsedSource | null => {
         }),
     ),
   };
-};
-
-const atomicWriteFile = (filePath: string, contents: string): void => {
-  try {
-    mkdirSync(dirname(filePath), { recursive: true });
-    const temporaryPath = `${filePath}.${process.pid}.tmp`;
-    writeFileSync(temporaryPath, contents);
-    renameSync(temporaryPath, filePath);
-  } catch {
-    // A cache that cannot persist must never break the analysis.
-  }
 };
 
 const createSummaryCache = (cachePath: string, config: DeslopConfig): SummaryCache => {

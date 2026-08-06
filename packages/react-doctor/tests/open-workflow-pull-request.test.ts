@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { openWorkflowPullRequest } from "../src/cli/utils/open-workflow-pull-request.js";
+import {
+  openWorkflowPullRequest,
+  stageWorkflowFile,
+} from "../src/cli/utils/open-workflow-pull-request.js";
 import type { CommandRunner, RunCommandResult } from "../src/cli/utils/run-command.js";
 
 const succeed = (stdout = ""): RunCommandResult => ({ success: true, stdout, stderr: "" });
@@ -206,5 +209,28 @@ describe("openWorkflowPullRequest", () => {
     });
     expect(result).toEqual({ status: "not-attempted", reason: "gh-not-installed" });
     expect(invocations).not.toContain(GH_PR_LIST);
+  });
+
+  it("rejects a workflow path outside the detected repository", async () => {
+    const { run, invocations } = recordingRunner(cleanRepoResponses());
+    const result = await openWorkflowPullRequest({
+      workflowPath: "/outside/react-doctor.yml",
+      baseBranch: "main",
+      run,
+      checkCommandAvailable: () => true,
+    });
+
+    expect(result).toEqual({
+      status: "not-attempted",
+      reason: "workflow-outside-repository",
+    });
+    expect(invocations).toEqual([TOPLEVEL]);
+  });
+
+  it("does not stage a workflow path outside the detected repository", async () => {
+    const { run, invocations } = recordingRunner(cleanRepoResponses());
+
+    expect(await stageWorkflowFile({ workflowPath: "/outside/react-doctor.yml", run })).toBe(false);
+    expect(invocations).toEqual([TOPLEVEL]);
   });
 });

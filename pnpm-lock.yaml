@@ -340,9 +340,6 @@ importers:
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
-      '@xterm/headless':
-        specifier: ^6.0.0
-        version: 6.0.0
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -2714,9 +2711,6 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
-
-  '@xterm/headless@6.0.0':
-    resolution: {integrity: sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==}
 
   acorn-import-attributes@1.9.5:
     resolution: {integrity: sha512-n02Vykv5uA3eHGM/Z2dQrcD56kL8TyDb2p1+0P83PClMnC/nc+anbQRhIOWnSq4Ke/KvDPrY3C9hDtC/A3eHnQ==}
@@ -6574,8 +6568,6 @@ snapshots:
 
   '@voidzero-dev/vite-plus-win32-x64-msvc@0.1.20':
     optional: true
-
-  '@xterm/headless@6.0.0': {}
 
   acorn-import-attributes@1.9.5(acorn@8.16.0):
     dependencies:

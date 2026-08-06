@@ -912,6 +912,7 @@
       "category": "Bugs",
       "framework": "global",
       "requires": ["react"],
+      "disabledWhen": ["react-compiler"],
       "tags": ["test-noise"],
       "isScanRule": false
     }

@@ -1961,6 +1961,7 @@ export const exhaustiveDeps = defineRule({
   title: "Missing effect dependencies",
   severity: "warn",
   tags: ["test-noise"],
+  disabledWhen: ["react-compiler"],
   recommendation: `Don't blindly add missing dependencies. Read the hook callback first.
 
 Bad:

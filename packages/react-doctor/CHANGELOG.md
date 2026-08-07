@@ -1,5 +1,19 @@
 # react-doctor
 
+## 0.9.6
+
+### Patch Changes
+
+- [#1592](https://github.com/millionco/react-doctor/pull/1592) [`ac4e51f`](https://github.com/millionco/react-doctor/commit/ac4e51f6856dd0df091eed6ed4cdcb190574c048) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect React Compiler transforms passed through an installed `@rolldown/plugin-babel` wrapper.
+
+- [#1584](https://github.com/millionco/react-doctor/pull/1584) [`4b03b15`](https://github.com/millionco/react-doctor/commit/4b03b15cbea22802990e66a4dbbf067930be6361) Thanks [@aidenybai](https://github.com/aidenybai)! - Load standard JavaScript and TypeScript Knip configuration files when collecting dead-code entry and ignore patterns.
+
+- [#1596](https://github.com/millionco/react-doctor/pull/1596) [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d) Thanks [@aidenybai](https://github.com/aidenybai)! - Accept trailing loading resets after non-rethrowing catch handlers, and preserve effect-local cleanup helpers with deterministic false-positive and false-negative fuzz replay.
+
+- Updated dependencies [[`2b8bc5c`](https://github.com/millionco/react-doctor/commit/2b8bc5cf9d524594e3a3f923e463f128fd4a7ac9), [`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754), [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19), [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d)]:
+  - deslop-js@0.9.6
+  - oxlint-plugin-react-doctor@0.9.6
+
 ## 0.9.5
 
 ### Patch Changes

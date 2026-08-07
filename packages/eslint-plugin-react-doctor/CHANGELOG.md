@@ -1,5 +1,16 @@
 # eslint-plugin-react-doctor
 
+## 0.9.6
+
+### Patch Changes
+
+- [#1599](https://github.com/millionco/react-doctor/pull/1599) [`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize browser media capability and playback lifecycles without masking unrelated prop-driven state adjustments, and resolve cross-file helpers with dotted basenames.
+
+- [#1597](https://github.com/millionco/react-doctor/pull/1597) [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix derived-state detection through render-updated refs and avoid flagging finite timer lifecycle shutdowns as prop-driven state adjustments.
+
+- Updated dependencies [[`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754), [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19), [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d)]:
+  - oxlint-plugin-react-doctor@0.9.6
+
 ## 0.9.5
 
 ### Patch Changes

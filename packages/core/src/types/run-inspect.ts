@@ -1,10 +1,9 @@
 import * as Effect from "effect/Effect";
-import type { ScoreRequestMetadata } from "../calculate-score.js";
 import type { OxlintUnavailable, ReactDoctorErrorReason } from "../errors.js";
 import type { DiagnosticSurface, ReactDoctorConfig } from "./config.js";
 import type { Diagnostic, SuppressedRuleCount } from "./diagnostic.js";
 import type { ProjectInfo } from "./project-info.js";
-import type { ScoreResult } from "./score.js";
+import type { ScoreRequestMetadata, ScoreResult } from "./score.js";
 
 export interface InspectInput {
   readonly directory: string;

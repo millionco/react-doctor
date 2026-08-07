@@ -1,4 +1,25 @@
+import type { ProjectInfo } from "./project-info.js";
+
 export type RuleTier = "P0" | "P1" | "P2" | "P3";
+
+export interface CalculateScoreOptions {
+  isCi?: boolean;
+  metadata?: ScoreRequestMetadata;
+}
+
+export interface ScoreRequestMetadata {
+  repo?: string;
+  sha?: string;
+  framework?: ProjectInfo["framework"];
+  reactVersion?: string;
+  sourceFileCount?: number;
+  defaultBranch?: string;
+  doctorVersion?: string;
+  runId?: string;
+  githubEventName?: string;
+  githubActorAssociation?: string;
+  githubViewerPermission?: string;
+}
 
 export interface RulePriority {
   // Intrinsic end-user value of the rule, 0-100, or null when the rule isn't

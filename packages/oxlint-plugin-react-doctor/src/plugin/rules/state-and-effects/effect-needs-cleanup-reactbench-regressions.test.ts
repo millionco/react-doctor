@@ -1084,6 +1084,24 @@ const Delayed = ({ delay, task }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("keeps a cleanup registry whose teardown capture is conditional", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ enabled, target, type, handler }) => {
+        useEffect(() => {
+          const cleanups = [];
+          target.addEventListener(type, handler);
+          if (enabled) cleanups.push(() => target.removeEventListener(type, handler));
+          return () => cleanups.forEach((cleanup) => cleanup());
+        }, [enabled, target, type, handler]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts listener teardown delegated through a local stop helper", () => {
     const result = runRule(
       effectNeedsCleanup,
@@ -1179,6 +1197,44 @@ const Delayed = ({ delay, task }) => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("requires a mounted guard to dominate one-shot timer work", () => {
+    const resultAfterWork = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ setIsOpen }) => {
+        const mounted = useRef(true);
+        useEffect(() => () => { mounted.current = false; }, []);
+        useEffect(() => {
+          setTimeout(() => {
+            setIsOpen(true);
+            if (!mounted.current) return;
+          }, 10);
+        }, [setIsOpen]);
+        return null;
+      };`,
+    );
+    const resultNestedGuard = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ setIsOpen }) => {
+        const mounted = useRef(true);
+        useEffect(() => () => { mounted.current = false; }, []);
+        useEffect(() => {
+          setTimeout(() => {
+            const checkMounted = () => { if (!mounted.current) return; };
+            checkMounted;
+            setIsOpen(true);
+          }, 10);
+        }, [setIsOpen]);
+        return null;
+      };`,
+    );
+    expect(resultAfterWork.parseErrors).toEqual([]);
+    expect(resultAfterWork.diagnostics).toHaveLength(1);
+    expect(resultNestedGuard.parseErrors).toEqual([]);
+    expect(resultNestedGuard.diagnostics).toHaveLength(1);
   });
 
   it("accepts delayed destruction after resources are synchronously detached", () => {

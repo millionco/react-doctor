@@ -1572,7 +1572,14 @@ const identifierIsCallbackParameter = (identifier: EsTreeNode, context: RuleCont
   const callbackPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier) ?? "";
   if (!CALLBACK_PROP_NAME_PATTERN.test(callbackPropertyName)) return false;
   if (symbol.kind === "parameter") return true;
-  const property = symbol.bindingIdentifier.parent;
+  const bindingParent = symbol.bindingIdentifier.parent;
+  const bindingNode =
+    bindingParent &&
+    isNodeOfType(bindingParent, "AssignmentPattern") &&
+    bindingParent.left === symbol.bindingIdentifier
+      ? bindingParent
+      : symbol.bindingIdentifier;
+  const property = bindingNode.parent;
   const pattern = property?.parent;
   const declarator = pattern?.parent;
   if (
@@ -2184,6 +2191,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
             if (
               resolvedFunction &&
               executedFunctions.has(resolvedFunction) &&
+              !identifierIsCallbackParameter(resolvedCallee, context) &&
               (!isNodeOfType(resolvedCallee, "MemberExpression") ||
                 memberReceiverIsLocalObjectLiteral(
                   resolvedCallee,

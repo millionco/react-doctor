@@ -3956,6 +3956,30 @@ const cleanupRegistryReleasesUsage = (
       }
     });
     if (!doesReleaseUsage) return;
+    const registrationExpression = findTransparentExpressionRoot(usage.node);
+    const registrationStatement = registrationExpression.parent;
+    const appendExpression = findTransparentExpressionRoot(child);
+    const appendStatement = appendExpression.parent;
+    if (
+      !registrationStatement ||
+      !isNodeOfType(registrationStatement, "ExpressionStatement") ||
+      registrationStatement.expression !== registrationExpression ||
+      !appendStatement ||
+      !isNodeOfType(appendStatement, "ExpressionStatement") ||
+      appendStatement.expression !== appendExpression ||
+      !registrationStatement.parent ||
+      !isNodeOfType(registrationStatement.parent, "BlockStatement") ||
+      registrationStatement.parent !== appendStatement.parent
+    ) {
+      return;
+    }
+    const registrationStatementIndex = registrationStatement.parent.body.findIndex(
+      (statement) => statement.range[0] === registrationStatement.range[0],
+    );
+    const appendStatementIndex = registrationStatement.parent.body.findIndex(
+      (statement) => statement.range[0] === appendStatement.range[0],
+    );
+    if (appendStatementIndex !== registrationStatementIndex + 1) return;
     const registrySymbol = context.scopes.symbolFor(callee.object);
     const registryInitializer = registrySymbol?.initializer
       ? stripParenExpression(registrySymbol.initializer)
@@ -4117,19 +4141,25 @@ const oneShotTimerHasUnmountGuard = (usage: SubscribeLikeUsage, context: RuleCon
   const timerCallback = isFunctionLike(unwrappedTimerCallback)
     ? unwrappedTimerCallback
     : resolveStableValue(timerCallbackArgument, context);
-  if (!timerCallback || !isFunctionLike(timerCallback)) return false;
-  let guardRefSymbol: SymbolDescriptor | null = null;
-  walkAst(timerCallback.body, (child: EsTreeNode) => {
-    if (guardRefSymbol || !isNodeOfType(child, "IfStatement"))
-      return guardRefSymbol ? false : undefined;
-    if (!isEarlyExitStatement(child.consequent)) return;
-    const test = stripParenExpression(child.test);
-    if (!isNodeOfType(test, "UnaryExpression") || test.operator !== "!") return;
-    guardRefSymbol = resolveReactRefSymbol(stripParenExpression(test.argument), context.scopes, {
+  if (
+    !timerCallback ||
+    !isFunctionLike(timerCallback) ||
+    !isNodeOfType(timerCallback.body, "BlockStatement")
+  ) {
+    return false;
+  }
+  const leadingStatement = timerCallback.body.body[0];
+  if (!leadingStatement || !isNodeOfType(leadingStatement, "IfStatement")) return false;
+  if (!isEarlyExitStatement(leadingStatement.consequent)) return false;
+  const test = stripParenExpression(leadingStatement.test);
+  if (!isNodeOfType(test, "UnaryExpression") || test.operator !== "!") return false;
+  const guardRefSymbol = resolveReactRefSymbol(
+    stripParenExpression(test.argument),
+    context.scopes,
+    {
       resolveNamedAliases: true,
-    });
-    return guardRefSymbol ? false : undefined;
-  });
+    },
+  );
   if (!guardRefSymbol) return false;
   let effectFunction: EsTreeNode | null = findEnclosingFunction(usage.node);
   let owningEffectCall: EsTreeNodeOfType<"CallExpression"> | null = null;

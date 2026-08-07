@@ -1627,6 +1627,23 @@ const C=()=>{
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags defaulted callback props destructured inside the component body", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const noop = () => {};
+      const Table = (props) => {
+        const { onSelectedRowsChange = noop } = props;
+        const [, setSelectedRows] = useState([]);
+        setSelectedRows((previous) => {
+          onSelectedRowsChange(previous);
+          return previous;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     "history.pushState(null, '', href)",
     "window.history.pushState(null, '', href)",

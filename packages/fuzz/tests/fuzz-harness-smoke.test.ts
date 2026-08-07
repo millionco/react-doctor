@@ -250,7 +250,9 @@ React.useEffect(() => {
       `const Widget = ({ delay }) => {
   useEffect(() => {
     const timerId = setTimeout(refresh, delay);
-    return () => clearTimeout(timerId);
+    return () => {
+      clearTimeout(timerId);
+    };
   }, [delay]);
   return null;
 };`,
@@ -264,7 +266,31 @@ React.useEffect(() => {
     expect(helperVariant?.code).toContain(
       "const __reactDoctorFuzzCleanupCall0 = () => clearTimeout(timerId);",
     );
-    expect(helperVariant?.code).toContain("return () => __reactDoctorFuzzCleanupCall0();");
+    expect(helperVariant?.code).toContain("__reactDoctorFuzzCleanupCall0();");
     expect(runRule(NOOP_RULE, helperVariant?.code ?? "").parseErrors).toEqual([]);
+  });
+
+  it("does not hoist calls that depend on cleanup-local bindings", () => {
+    const variants = buildAstEquivalentFuzzVariants(
+      `const Widget = ({ delay }) => {
+  useEffect(() => {
+    const timerRef = { current: setTimeout(refresh, delay) };
+    return () => {
+      const timerId = timerRef.current;
+      clearTimeout(timerId);
+    };
+  }, [delay]);
+  return null;
+};`,
+      "fixture.tsx",
+      false,
+      true,
+    );
+
+    expect(
+      variants.some(
+        (variant) => variant.label === "effect cleanup calls extracted to local helpers",
+      ),
+    ).toBe(false);
   });
 });

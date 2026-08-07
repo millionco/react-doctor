@@ -102,15 +102,18 @@ const buildCleanupCallAliasVariant = (
       ) {
         return false;
       }
-      const cleanupCalls: EsTreeNode[] = [];
-      walkAst(cleanupFunction.body, (cleanupChild) => {
-        if (cleanupCalls.length > 0) return false;
-        if (cleanupChild !== cleanupFunction.body && isFunctionLike(cleanupChild)) return false;
-        if (!isNodeOfType(cleanupChild, "CallExpression") || !hasSpan(cleanupChild)) return;
-        cleanupCalls.push(cleanupChild);
-        return false;
-      });
-      const cleanupCall = cleanupCalls[0];
+      const cleanupBody = stripParenExpression(cleanupFunction.body);
+      let cleanupCall: EsTreeNode | null = null;
+      if (isNodeOfType(cleanupBody, "CallExpression")) {
+        cleanupCall = cleanupBody;
+      } else if (
+        isNodeOfType(cleanupBody, "BlockStatement") &&
+        cleanupBody.body.length === 1 &&
+        isNodeOfType(cleanupBody.body[0], "ExpressionStatement")
+      ) {
+        const cleanupExpression = stripParenExpression(cleanupBody.body[0].expression);
+        if (isNodeOfType(cleanupExpression, "CallExpression")) cleanupCall = cleanupExpression;
+      }
       if (!hasSpan(cleanupCall)) return false;
       const lineStart = code.lastIndexOf("\n", returnNode.start - 1) + 1;
       const indentation = code.slice(lineStart, returnNode.start);

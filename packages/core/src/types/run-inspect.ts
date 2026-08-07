@@ -1,4 +1,4 @@
-import * as Effect from "effect/Effect";
+import type * as Effect from "effect/Effect";
 import type { OxlintUnavailable, ReactDoctorErrorReason } from "../errors.js";
 import type { DiagnosticSurface, ReactDoctorConfig } from "./config.js";
 import type { Diagnostic, SuppressedRuleCount } from "./diagnostic.js";

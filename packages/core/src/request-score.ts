@@ -7,7 +7,13 @@ import * as Schema from "effect/Schema";
 import type * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import { FETCH_TIMEOUT_MS, SCORE_API_URL } from "./constants.js";
+import {
+  FETCH_TIMEOUT_MS,
+  HTTP_SUCCESS_STATUS_CODE_MAX_EXCLUSIVE,
+  HTTP_SUCCESS_STATUS_CODE_MIN,
+  MILLISECONDS_PER_SECOND,
+  SCORE_API_URL,
+} from "./constants.js";
 import type {
   CalculateScoreOptions,
   Diagnostic,
@@ -116,7 +122,10 @@ export const requestScore = (
         HttpClientRequest.setHeader("Content-Encoding", "gzip"),
       ),
     );
-    if (response.status < 200 || response.status >= 300) {
+    if (
+      response.status < HTTP_SUCCESS_STATUS_CODE_MIN ||
+      response.status >= HTTP_SUCCESS_STATUS_CODE_MAX_EXCLUSIVE
+    ) {
       yield* Console.warn(
         `[react-doctor] Score API returned ${describeHttpStatus(response.status)}`,
       );
@@ -129,7 +138,8 @@ export const requestScore = (
     onFailure: (error) => warnScoreFailure(describeScoreFailure(error)),
     onSuccess: (result) =>
       Option.match(result, {
-        onNone: () => warnScoreFailure(`timed out after ${FETCH_TIMEOUT_MS / 1000}s`),
+        onNone: () =>
+          warnScoreFailure(`timed out after ${FETCH_TIMEOUT_MS / MILLISECONDS_PER_SECOND}s`),
         onSome: Effect.succeed,
       }),
   });

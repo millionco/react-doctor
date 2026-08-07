@@ -37,6 +37,9 @@ export const DEFAULT_SHOW_WARNINGS = true;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
+export const HTTP_SUCCESS_STATUS_CODE_MIN = 200;
+export const HTTP_SUCCESS_STATUS_CODE_MAX_EXCLUSIVE = 300;
+
 // Upper bound for the `react:<major>` capability loop in
 // `buildCapabilities`, clamping an unvalidated package.json spec like
 // `"react": "20240101"` that would otherwise drive the loop to tens of

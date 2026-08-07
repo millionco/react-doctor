@@ -16,21 +16,8 @@ import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
 const NOOP_RULE: Rule = { id: "fuzz-smoke-noop", severity: "warn", create: () => ({}) };
-const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: ([^\r\n]+)$/m;
-const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 
 describe("fuzz harness oracles", () => {
-  it("reads corpus directives from CRLF files", () => {
-    const code = "// rule: example-rule, second-rule\r\n// verdict: fail\r\n";
-
-    expect(
-      RULE_DIRECTIVE_PATTERN.exec(code)?.[1]
-        ?.split(",")
-        .map((ruleId) => ruleId.trim()),
-    ).toEqual(["example-rule", "second-rule"]);
-    expect(VERDICT_DIRECTIVE_PATTERN.exec(code)?.[1]).toBe("fail");
-  });
-
   // Generator health: every unmutated program must parse — a snippet-pool
   // typo would otherwise silently turn iterations into parse-error skips.
   it("generates programs that all parse cleanly", () => {
@@ -89,10 +76,8 @@ describe("fuzz harness oracles", () => {
     let declaredVerdictCount = 0;
 
     for (const entry of corpus) {
-      const ruleIds = RULE_DIRECTIVE_PATTERN.exec(entry.code)?.[1]
-        ?.split(",")
-        .map((ruleId) => ruleId.trim());
-      const verdict = VERDICT_DIRECTIVE_PATTERN.exec(entry.code)?.[1];
+      const ruleIds = entry.ruleIds;
+      const verdict = entry.verdict;
       if (!verdict) continue;
       declaredVerdictCount += 1;
       if (!ruleIds?.length) {
@@ -258,5 +243,54 @@ React.useEffect(() => {
       "useInsertionEffect(__reactDoctorFuzzEffectCallback2, []);",
     );
     expect(runRule(NOOP_RULE, aliasVariant?.code ?? "").parseErrors).toEqual([]);
+  });
+
+  it("extracts effect cleanup calls to local helpers", () => {
+    const variants = buildAstEquivalentFuzzVariants(
+      `const Widget = ({ delay }) => {
+  useEffect(() => {
+    const timerId = setTimeout(refresh, delay);
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [delay]);
+  return null;
+};`,
+      "fixture.tsx",
+      false,
+      true,
+    );
+    const helperVariant = variants.find(
+      (variant) => variant.label === "effect cleanup calls extracted to local helpers",
+    );
+    expect(helperVariant?.code).toContain(
+      "const __reactDoctorFuzzCleanupCall0 = () => clearTimeout(timerId);",
+    );
+    expect(helperVariant?.code).toContain("__reactDoctorFuzzCleanupCall0();");
+    expect(runRule(NOOP_RULE, helperVariant?.code ?? "").parseErrors).toEqual([]);
+  });
+
+  it("does not hoist calls that depend on cleanup-local bindings", () => {
+    const variants = buildAstEquivalentFuzzVariants(
+      `const Widget = ({ delay }) => {
+  useEffect(() => {
+    const timerRef = { current: setTimeout(refresh, delay) };
+    return () => {
+      const timerId = timerRef.current;
+      clearTimeout(timerId);
+    };
+  }, [delay]);
+  return null;
+};`,
+      "fixture.tsx",
+      false,
+      true,
+    );
+
+    expect(
+      variants.some(
+        (variant) => variant.label === "effect cleanup calls extracted to local helpers",
+      ),
+    ).toBe(false);
   });
 });

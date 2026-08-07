@@ -26,6 +26,7 @@ const hasSpan = (node: EsTreeNode | null | undefined): node is EsTreeNode & Requ
 
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useInsertionEffect", "useLayoutEffect"]);
 const EFFECT_CALLBACK_ALIAS_PREFIX = "__reactDoctorFuzzEffectCallback";
+const CLEANUP_CALL_ALIAS_PREFIX = "__reactDoctorFuzzCleanupCall";
 
 const buildEffectCallbackAliasVariant = (
   code: string,
@@ -66,6 +67,81 @@ const buildEffectCallbackAliasVariant = (
   }
   return {
     label: "inline effect callbacks extracted to const bindings",
+    code: variantCode,
+  };
+};
+
+const buildCleanupCallAliasVariant = (
+  code: string,
+  program: EsTreeNode,
+): EquivalentVariant | null => {
+  if (code.includes(CLEANUP_CALL_ALIAS_PREFIX)) return null;
+  const replacements: SpanReplacement[] = [];
+  let cleanupCallIndex = 0;
+  walkAst(program, (node) => {
+    if (!isNodeOfType(node, "CallExpression") || !isHookCall(node, EFFECT_HOOK_NAMES)) return;
+    const callbackArgument = node.arguments[0];
+    if (!callbackArgument || isNodeOfType(callbackArgument, "SpreadElement")) return;
+    const callback = stripParenExpression(callbackArgument);
+    if (!isFunctionLike(callback) || !isNodeOfType(callback.body, "BlockStatement")) return;
+    walkAst(callback.body, (returnNode) => {
+      if (returnNode !== callback.body && isFunctionLike(returnNode)) return false;
+      if (
+        !isNodeOfType(returnNode, "ReturnStatement") ||
+        !returnNode.argument ||
+        !hasSpan(returnNode)
+      ) {
+        return;
+      }
+      const cleanupFunction = stripParenExpression(returnNode.argument);
+      if (
+        !isNodeOfType(cleanupFunction, "ArrowFunctionExpression") ||
+        cleanupFunction.async ||
+        cleanupFunction.generator ||
+        cleanupFunction.params.length > 0
+      ) {
+        return false;
+      }
+      const cleanupBody = stripParenExpression(cleanupFunction.body);
+      let cleanupCall: EsTreeNode | null = null;
+      if (isNodeOfType(cleanupBody, "CallExpression")) {
+        cleanupCall = cleanupBody;
+      } else if (
+        isNodeOfType(cleanupBody, "BlockStatement") &&
+        cleanupBody.body.length === 1 &&
+        isNodeOfType(cleanupBody.body[0], "ExpressionStatement")
+      ) {
+        const cleanupExpression = stripParenExpression(cleanupBody.body[0].expression);
+        if (isNodeOfType(cleanupExpression, "CallExpression")) cleanupCall = cleanupExpression;
+      }
+      if (!hasSpan(cleanupCall)) return false;
+      const lineStart = code.lastIndexOf("\n", returnNode.start - 1) + 1;
+      const indentation = code.slice(lineStart, returnNode.start);
+      if (!/^[\t ]*$/.test(indentation)) return false;
+      const cleanupCallName = `${CLEANUP_CALL_ALIAS_PREFIX}${cleanupCallIndex}`;
+      cleanupCallIndex += 1;
+      replacements.push(
+        {
+          start: lineStart,
+          end: lineStart,
+          text: `${indentation}const ${cleanupCallName} = () => ${code.slice(cleanupCall.start, cleanupCall.end)};\n`,
+        },
+        { start: cleanupCall.start, end: cleanupCall.end, text: `${cleanupCallName}()` },
+      );
+      return false;
+    });
+  });
+  if (replacements.length === 0) return null;
+  replacements.sort((left, right) => right.start - left.start);
+  let variantCode = code;
+  for (const replacement of replacements) {
+    variantCode =
+      variantCode.slice(0, replacement.start) +
+      replacement.text +
+      variantCode.slice(replacement.end);
+  }
+  return {
+    label: "effect cleanup calls extracted to local helpers",
     code: variantCode,
   };
 };
@@ -119,6 +195,7 @@ export const buildAstEquivalentFuzzVariants = (
   code: string,
   filename: string,
   shouldExtractEffectCallbacks = false,
+  shouldExtractCleanupCalls = false,
 ): EquivalentVariant[] => {
   const variants: EquivalentVariant[] = [];
   const program = parseProgram(code, filename);
@@ -155,6 +232,10 @@ export const buildAstEquivalentFuzzVariants = (
   if (shouldExtractEffectCallbacks) {
     const effectCallbackAliasVariant = buildEffectCallbackAliasVariant(code, program);
     if (effectCallbackAliasVariant) variants.push(effectCallbackAliasVariant);
+  }
+  if (shouldExtractCleanupCalls) {
+    const cleanupCallAliasVariant = buildCleanupCallAliasVariant(code, program);
+    if (cleanupCallAliasVariant) variants.push(cleanupCallAliasVariant);
   }
   return variants;
 };

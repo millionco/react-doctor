@@ -312,6 +312,49 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when prop-driven state accompanies scrolling a highlighted row into view", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `import { useEffect, useRef, useState } from "react";
+      function ActivityRow({ highlighted }) {
+        const [isExpanded, setIsExpanded] = useState(false);
+        const rowRef = useRef<HTMLDivElement>(null);
+        useEffect(() => {
+          if (highlighted && rowRef.current) {
+            rowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+            setIsExpanded(true);
+          }
+        }, [highlighted]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a prop change synchronizes state with measured element height", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `import { useEffect, useRef, useState } from "react";
+      function AnimatedCollapsible({ children, collapsed }) {
+        const sectionRef = useRef<HTMLHeadingElement>(null);
+        const [height, setHeight] = useState(collapsed ? 0 : undefined);
+        useEffect(() => {
+          if (!collapsed) {
+            if (sectionRef.current) {
+              setHeight(sectionRef.current.getBoundingClientRect().height);
+            }
+          } else {
+            setHeight(0);
+          }
+        }, [collapsed, children]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on the initial-sync call of a subscription effect (appflowy awareness selector)", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
@@ -628,6 +671,31 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("stays silent when a media failure latch stores the failed resource key", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function AnimatedBackground({ src, mime }) {
+          const [failedKey, setFailedKey] = useState(null);
+          const sourceKey = useMemo(() => src + "|" + mime, [src, mime]);
+          useEffect(() => {
+            setFailedKey(null);
+          }, [sourceKey]);
+          const handlePlaybackError = () => setFailedKey(sourceKey);
+          return (
+            <video
+              src={src}
+              type={mime}
+              onError={handlePlaybackError}
+              hidden={failedKey === sourceKey}
+            />
+          );
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("still reports a draft reset when unrelated media also has an error handler", () => {
       const result = runRule(
         noAdjustStateOnPropChange,
@@ -715,6 +783,71 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent when a resource failure latch is written by a playback effect", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `import { useEffect, useRef, useState } from "react";
+        function Preview({ src, mime }) {
+          const videoRef = useRef<HTMLVideoElement>(null);
+          const [playbackFailed, setPlaybackFailed] = useState(false);
+          useEffect(() => {
+            setPlaybackFailed(false);
+          }, [src, mime]);
+          useEffect(() => {
+            const video = videoRef.current;
+            if (!video) return;
+            video.play().catch(() => setPlaybackFailed(true));
+          }, [src, mime]);
+          return <video ref={videoRef} src={src} />;
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still reports an editable reset written during a playback effect", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `import { useEffect, useRef, useState } from "react";
+        function Editor({ documentId }) {
+          const videoRef = useRef<HTMLVideoElement>(null);
+          const [draft, setDraft] = useState("");
+          useEffect(() => {
+            setDraft("");
+          }, [documentId]);
+          useEffect(() => {
+            videoRef.current?.play().catch(() => setDraft("unavailable"));
+          }, [documentId]);
+          return <video ref={videoRef} src={documentId} />;
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent for a resource-key reconciliation through handler wrappers", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Preview({ src, mime }) {
+          const mediaKey = src + "|" + mime;
+          const [failedKey, setFailedKey] = useState(null);
+          useEffect(() => {
+            setFailedKey((previousFailedKey) =>
+              previousFailedKey === mediaKey ? previousFailedKey : null,
+            );
+          }, [mediaKey]);
+          const markFailed = (key) => setFailedKey(key);
+          const handleError = () => markFailed(mediaKey);
+          return <video src={src} onError={handleError} />;
+        }`,
+        { forceJsx: true },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
     });
 
     it("stays silent on an async probe whose on* handler assignments set the same state (psysonic artistHero)", () => {

@@ -36,4 +36,30 @@ describe("fuzzRuleWithStats", () => {
     expect(result.stats.executedProgramCount).toBeGreaterThan(0);
     expect(result.stats.firedProgramCount).toBeGreaterThan(0);
   });
+
+  it("replays declared corpus verdicts deterministically", () => {
+    const result = fuzzRuleWithStats(livenessRule.id, livenessRule, {
+      iterations: 0,
+      corpus: [
+        {
+          relativePath: "regressions/liveness-rule--unexpected-fire.tsx",
+          code: "const positiveLivenessMarker = true;",
+          ruleIds: [livenessRule.id],
+          verdict: "pass",
+        },
+        {
+          relativePath: "true-positives/liveness-rule--unexpected-silence.tsx",
+          code: "const negativeMarker = true;",
+          ruleIds: [livenessRule.id],
+          verdict: "fail",
+        },
+      ],
+    });
+
+    expect(result.stats.executedProgramCount).toBe(2);
+    expect(result.findings.map((finding) => finding.kind)).toEqual([
+      "verdict-mismatch",
+      "verdict-mismatch",
+    ]);
+  });
 });

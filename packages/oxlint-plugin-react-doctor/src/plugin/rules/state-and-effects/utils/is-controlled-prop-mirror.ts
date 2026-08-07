@@ -32,7 +32,7 @@ const getOwnScopeBoundNames = (functionNode: EsTreeNode): ReadonlySet<string> =>
 const declaresBindingNamed = (functionNode: EsTreeNode, bindingName: string): boolean =>
   getOwnScopeBoundNames(functionNode).has(bindingName);
 
-const referencesIdentifierNamed = (root: EsTreeNode, identifierName: string): boolean => {
+export const referencesIdentifierNamed = (root: EsTreeNode, identifierName: string): boolean => {
   let isReferenced = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
     if (isReferenced) return false;

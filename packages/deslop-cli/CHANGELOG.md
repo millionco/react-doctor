@@ -1,5 +1,14 @@
 # deslop-cli
 
+## 0.9.6
+
+### Patch Changes
+
+- [#1589](https://github.com/millionco/react-doctor/pull/1589) [`2b8bc5c`](https://github.com/millionco/react-doctor/commit/2b8bc5cf9d524594e3a3f923e463f128fd4a7ac9) Thanks [@aidenybai](https://github.com/aidenybai)! - Expose declared dependencies conservatively excluded from unused-dependency analysis and explain the exclusions in human-readable CLI output.
+
+- Updated dependencies [[`2b8bc5c`](https://github.com/millionco/react-doctor/commit/2b8bc5cf9d524594e3a3f923e463f128fd4a7ac9)]:
+  - deslop-js@0.9.6
+
 ## 0.9.5
 
 ### Patch Changes

@@ -4,6 +4,7 @@ import { analyzeScopes, type ScopeAnalysis } from "../../semantic/scope-analysis
 import { collectReturnedCleanupFunctions } from "../../utils/collect-returned-cleanup-functions.js";
 import { collectConstAliasSymbols } from "../../utils/collect-const-alias-symbols.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { doNodesCoverEveryPathFromFunctionEntry } from "../../utils/do-nodes-cover-every-path-from-function-entry.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -1325,8 +1326,11 @@ const catchHandlerCanBypassReset = (
         hasUnsafeExit: right.hasUnsafeExit,
       };
     }
+    const hasAbruptCompletion = doesContinuingPathReachReset
+      ? subtreeCallsDefinitelyThrowingLocalFunction(stripped, context)
+      : subtreeHasAbruptSynchronousOperation(stripped, functionNode, context);
     if (
-      subtreeHasAbruptSynchronousOperation(stripped, functionNode, context) &&
+      hasAbruptCompletion &&
       states.some(
         (state) => !state.isCleared && !(doesContinuingPathReachReset && state.isCancellationPath),
       )
@@ -1619,6 +1623,44 @@ const subtreeHasAbruptSynchronousOperation = (
     }
   });
   return canCompleteAbruptly;
+};
+
+const subtreeCallsDefinitelyThrowingLocalFunction = (
+  root: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  let doesDefinitelyThrow = false;
+  const localFunctionThrowCoverage = new Map<EsTreeNode, boolean>();
+  walkAst(root, (candidate) => {
+    if (doesDefinitelyThrow) return false;
+    if (candidate !== root && isFunctionLike(candidate)) return false;
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    const localFunction = resolveExactLocalFunction(candidate.callee, context.scopes);
+    if (!localFunction || !isFunctionLike(localFunction) || localFunction.async) return;
+    let doesLocalFunctionDefinitelyThrow = localFunctionThrowCoverage.get(localFunction);
+    if (doesLocalFunctionDefinitelyThrow === undefined) {
+      const escapingThrows: EsTreeNode[] = [];
+      walkOwnFunctionScope(localFunction, (helperChild) => {
+        if (
+          isNodeOfType(helperChild, "ThrowStatement") &&
+          !isInsideNonRethrowingTry(helperChild, localFunction)
+        ) {
+          escapingThrows.push(helperChild);
+        }
+      });
+      doesLocalFunctionDefinitelyThrow = doNodesCoverEveryPathFromFunctionEntry(
+        localFunction,
+        escapingThrows,
+        context,
+      );
+      localFunctionThrowCoverage.set(localFunction, doesLocalFunctionDefinitelyThrow);
+    }
+    if (doesLocalFunctionDefinitelyThrow) {
+      doesDefinitelyThrow = true;
+      return false;
+    }
+  });
+  return doesDefinitelyThrow;
 };
 
 const hasAbruptCompletionBefore = (

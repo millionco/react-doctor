@@ -40,6 +40,25 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a non-rethrowing catch performs opaque error reporting before a trailing reset", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const handleUpload = async () => {
+        setIsUploading(true);
+        try {
+          const response = await upload();
+          if (response.ok) onSuccess();
+          else toast.show({ variant: "danger", label: "Upload failed" });
+        } catch {
+          toast.show({ variant: "danger", label: "Upload failed" });
+        }
+        setIsUploading(false);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a trailing reset when the catch rethrows, so rejection still skips it", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -2993,6 +3012,29 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("reuses throw coverage across repeated local catch helper calls", () => {
+    const helperCalls = Array.from(
+      { length: STRESS_SITE_COUNT },
+      (_, callIndex) => `observe(${callIndex});`,
+    ).join("\n");
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useState } from "react";
+      const C = () => {
+        const [, setLoading] = useState(false);
+        const observe = (value) => console.info(value);
+        const run = async () => {
+          setLoading(true);
+          try { await fetch("/value"); }
+          catch { ${helperCalls} }
+          setLoading(false);
+        };
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("groups stable setter aliases by binding identity", () => {
     const aliasedReset = runRule(
       noLoadingFlagResetOutsideFinally,
@@ -3359,23 +3401,23 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("keeps potentially throwing and dynamic global calls conservative", () => {
-    const catchBodies = [
-      'JSON.parse("invalid")',
-      "Date.parse(Symbol())",
-      'Object.defineProperty(null, "value", {})',
-      "Math.round(1n)",
-      "Math.round(formatDuration())",
-      "Math.round(performance.now() - start); const start = performance.now()",
-      'String({ toString() { throw new Error("failed") } })',
-      'const method = "round"; Math[method](1)',
-      'const method = "log"; console[method](error)',
-      "console.missing(error)",
-      'const console = { log() { throw new Error("failed") } }; console.log(error)',
-      'const performance = { now() { throw new Error("failed") } }; performance.now()',
-      'const String = () => { throw new Error("failed") }; String(error)',
+  it("distinguishes opaque catch calls from provably throwing local implementations", () => {
+    const catchCases: ReadonlyArray<[string, number]> = [
+      ['JSON.parse("invalid")', 0],
+      ["Date.parse(Symbol())", 0],
+      ['Object.defineProperty(null, "value", {})', 0],
+      ["Math.round(1n)", 0],
+      ["Math.round(formatDuration())", 0],
+      ["Math.round(performance.now() - start); const start = performance.now()", 0],
+      ['String({ toString() { throw new Error("failed") } })', 0],
+      ['const method = "round"; Math[method](1)', 0],
+      ['const method = "log"; console[method](error)', 0],
+      ["console.missing(error)", 0],
+      ['const console = { log() { throw new Error("failed") } }; console.log(error)', 1],
+      ['const performance = { now() { throw new Error("failed") } }; performance.now()', 1],
+      ['const String = () => { throw new Error("failed") }; String(error)', 1],
     ];
-    for (const catchBody of catchBodies) {
+    for (const [catchBody, expectedDiagnosticCount] of catchCases) {
       const result = runRule(
         noLoadingFlagResetOutsideFinally,
         `async function run() {
@@ -3388,7 +3430,7 @@ describe("no-loading-flag-reset-outside-finally audit regressions", () => {
           setLoading(false);
         }`,
       );
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics, catchBody).toHaveLength(expectedDiagnosticCount);
     }
   });
 });

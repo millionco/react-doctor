@@ -12,11 +12,10 @@ Two seed families, split by expected rule verdict:
   genuine bug a rule must flag, kept as a mutation seed so its shape keeps
   applying pressure.
 
-The harness enforces **no firing expectations** for either family — its
-oracles are crash, slowness, verdict-preserving invariance, and verdict
-drops, and `firedProgramCount` is a coverage stat only. Whether a seed must
-or must not fire is pinned by the owning rule's unit test file, never by
-fuzzing.
+Seeds with `// verdict: pass` or `// verdict: fail` are replayed
+deterministically by both the smoke suite and targeted fuzzing. Seeds without a
+verdict remain mutation-only inputs. `firedProgramCount` is still a coverage
+stat rather than a correctness oracle for generated programs.
 
 **The evolving loop (see the `fuzz` skill):** whenever a new false positive
 is confirmed — from a user report, an RDE eval, a react-bench run, review,

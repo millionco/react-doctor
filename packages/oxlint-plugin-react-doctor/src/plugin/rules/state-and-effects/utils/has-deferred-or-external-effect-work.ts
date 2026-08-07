@@ -15,10 +15,12 @@ import { getStaticPropertyName } from "../../../utils/get-static-property-name.j
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { nodeDominatesNode } from "../../../utils/node-dominates-node.js";
 import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
 import { readStaticBoolean } from "../../../utils/read-static-boolean.js";
 import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state-pair.js";
 import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
+import type { RuleContext } from "../../../utils/rule-context.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
@@ -249,8 +251,10 @@ const isWorkRelatedToWrite = (
   writeNode: EsTreeNode,
   writeFunction: EsTreeNode,
   writeStateSymbolId: number | null,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
+  isResourceCancellation = false,
 ): boolean => {
+  const { scopes } = context;
   if (isNodeOfType(writeNode, "CallExpression") && isNodeOfType(writeNode.callee, "Identifier")) {
     const setterBinding = getRef(analysis, writeNode.callee)?.resolved;
     if (setterBinding) {
@@ -303,6 +307,14 @@ const isWorkRelatedToWrite = (
   const workRegion = getControlRegion(workAnchor, writeFunction);
   const writeRegion = getControlRegion(writeNode, writeFunction);
   if (
+    isResourceCancellation &&
+    writeRegion &&
+    doesControlRegionReadState(writeRegion, writeStateSymbolId, scopes) &&
+    nodeDominatesNode(workAnchor, writeNode, context)
+  ) {
+    return true;
+  }
+  if (
     workRegion !== null &&
     workRegion === writeRegion &&
     doesControlRegionReadState(workRegion, writeStateSymbolId, scopes)
@@ -326,9 +338,10 @@ const isWorkRelatedToWrite = (
 export const hasDeferredOrExternalEffectWork = (
   analysis: ProgramAnalysis,
   effectNode: EsTreeNode,
-  scopes: ScopeAnalysis,
+  context: RuleContext,
   writeNode: EsTreeNode,
 ): boolean => {
+  const { scopes } = context;
   const effectFunction = getEffectFn(analysis, effectNode);
   const writeFunction = findEnclosingFunction(writeNode);
   if (!effectFunction || !writeFunction) return false;
@@ -380,7 +393,7 @@ export const hasDeferredOrExternalEffectWork = (
             writeNode,
             writeFunction,
             writeStateSymbolId,
-            scopes,
+            context,
           )
         ) {
           didFindRelatedWork = true;
@@ -402,7 +415,7 @@ export const hasDeferredOrExternalEffectWork = (
             writeNode,
             writeFunction,
             writeStateSymbolId,
-            scopes,
+            context,
           )
         ) {
           didFindRelatedWork = true;
@@ -415,10 +428,11 @@ export const hasDeferredOrExternalEffectWork = (
         ? getStaticPropertyName(callee)
         : null;
       const localFunction = resolveInvokedFunction(analysis, callee, scopes);
+      const timerOperationName = resolveTimerOperationName(callee, scopes);
       const isExternalWork =
         isFetchCall(child) ||
         isSubscribeOrObserveCallExpression(child) ||
-        resolveTimerOperationName(callee, scopes) !== null ||
+        timerOperationName !== null ||
         Boolean(memberName && DEFERRED_MEMBER_NAMES.has(memberName)) ||
         Boolean(localFunction && isFunctionLike(localFunction) && localFunction.async);
       if (
@@ -432,7 +446,8 @@ export const hasDeferredOrExternalEffectWork = (
           writeNode,
           writeFunction,
           writeStateSymbolId,
-          scopes,
+          context,
+          Boolean(timerOperationName && TIMER_CLEANUP_CALLEE_NAMES.has(timerOperationName)),
         )
       ) {
         didFindRelatedWork = true;

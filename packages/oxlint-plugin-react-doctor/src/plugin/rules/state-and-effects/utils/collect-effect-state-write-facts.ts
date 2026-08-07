@@ -1793,6 +1793,7 @@ const collectFrameSetterCalls = (
 const expressionReadsStateDeclarator = (
   analysis: ProgramAnalysis,
   context: RuleContext,
+  frame: EffectExecutionFrame,
   expression: EsTreeNode,
   stateDeclarator: EsTreeNode,
 ): boolean => {
@@ -1937,6 +1938,22 @@ const expressionReadsStateDeclarator = (
     expression,
     (child: EsTreeNode): void => {
       if (readsState) return;
+      if (isNodeOfType(child, "MemberExpression") && getStaticMemberName(child) === "current") {
+        const valueEvidence = collectValueEvidence(analysis, child, frame, 1);
+        const sourceStateDeclarators = [...valueEvidence.sourceReferences]
+          .filter((reference) => isState(analysis, reference))
+          .map((reference) => getUseStateDecl(analysis, reference));
+        if (
+          sourceStateDeclarators.length > 0 &&
+          sourceStateDeclarators.every((declarator) => declarator === stateDeclarator) &&
+          !valueEvidence.hasUnknownSource &&
+          !valueEvidence.hasDeferredIntroducedValue &&
+          !valueEvidence.readsExternalValue
+        ) {
+          readsState = true;
+        }
+        return;
+      }
       if (!isNodeOfType(child, "Identifier")) return;
       const reference = getRef(analysis, child);
       if (
@@ -2003,7 +2020,13 @@ const isNodeControlledByStateInFrame = (
       isNodeOfType(cursor, "IfStatement") &&
       (isAstDescendant(child, cursor.consequent as EsTreeNode) ||
         Boolean(cursor.alternate && isAstDescendant(child, cursor.alternate as EsTreeNode))) &&
-      expressionReadsStateDeclarator(analysis, context, cursor.test as EsTreeNode, stateDeclarator)
+      expressionReadsStateDeclarator(
+        analysis,
+        context,
+        frame,
+        cursor.test as EsTreeNode,
+        stateDeclarator,
+      )
     ) {
       return true;
     }
@@ -2011,14 +2034,26 @@ const isNodeControlledByStateInFrame = (
       isNodeOfType(cursor, "ConditionalExpression") &&
       (isAstDescendant(child, cursor.consequent as EsTreeNode) ||
         isAstDescendant(child, cursor.alternate as EsTreeNode)) &&
-      expressionReadsStateDeclarator(analysis, context, cursor.test as EsTreeNode, stateDeclarator)
+      expressionReadsStateDeclarator(
+        analysis,
+        context,
+        frame,
+        cursor.test as EsTreeNode,
+        stateDeclarator,
+      )
     ) {
       return true;
     }
     if (
       isNodeOfType(cursor, "LogicalExpression") &&
       isAstDescendant(child, cursor.right as EsTreeNode) &&
-      expressionReadsStateDeclarator(analysis, context, cursor.left as EsTreeNode, stateDeclarator)
+      expressionReadsStateDeclarator(
+        analysis,
+        context,
+        frame,
+        cursor.left as EsTreeNode,
+        stateDeclarator,
+      )
     ) {
       return true;
     }
@@ -2038,6 +2073,7 @@ const isNodeControlledByStateInFrame = (
           expressionReadsStateDeclarator(
             analysis,
             context,
+            frame,
             precedingStatement.test as EsTreeNode,
             stateDeclarator,
           )

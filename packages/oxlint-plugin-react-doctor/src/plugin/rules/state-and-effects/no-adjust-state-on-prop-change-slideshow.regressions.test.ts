@@ -3,6 +3,80 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 
 describe("no-adjust-state-on-prop-change — Slideshow terminal transitions", () => {
+  it("stays silent when a disabled finite slideshow cancels its timer before stopping", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `import * as React from "react";
+      import { useTimeouts } from "../../index.js";
+      function Slideshow({ disabled }) {
+        const [playing, setPlaying] = React.useState(true);
+        const { setTimeout, clearTimeout } = useTimeouts();
+        const scheduler = React.useRef();
+        const cancelScheduler = React.useCallback(() => {
+          clearTimeout(scheduler.current);
+          scheduler.current = undefined;
+        }, [clearTimeout]);
+        React.useEffect(() => {
+          if (disabled) {
+            cancelScheduler();
+            if (playing) {
+              setPlaying(false);
+            }
+          } else if (playing) {
+            scheduler.current = setTimeout(advance, 1000);
+          }
+        }, [playing, disabled, cancelScheduler, setTimeout]);
+        return playing;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a nested state adjustment when timer scheduling precedes it", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Slideshow({ disabled }) {
+        const [playing, setPlaying] = useState(true);
+        useEffect(() => {
+          if (disabled) {
+            setTimeout(advance, 1000);
+            if (playing) {
+              setPlaying(false);
+            }
+          }
+        }, [playing, disabled]);
+        return playing;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a nested state adjustment when timer cancellation follows it", () => {
+    const result = runRule(
+      noAdjustStateOnPropChange,
+      `function Slideshow({ disabled }) {
+        const [playing, setPlaying] = useState(true);
+        const scheduler = useRef();
+        useEffect(() => {
+          if (disabled) {
+            if (playing) {
+              setPlaying(false);
+            }
+            clearTimeout(scheduler.current);
+          }
+        }, [playing, disabled]);
+        return playing;
+      }`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     ["direct transition", "cancelScheduler(); setPlaying(false);"],
     ["stable callback transition", "pause();"],

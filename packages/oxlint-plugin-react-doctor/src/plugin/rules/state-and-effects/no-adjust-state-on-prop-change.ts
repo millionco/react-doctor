@@ -92,7 +92,7 @@ export const noAdjustStateOnPropChange = defineRule({
       for (const fact of facts) {
         if (
           fact.isDeferred ||
-          hasDeferredOrExternalEffectWork(analysis, node, context.scopes, fact.callExpression)
+          hasDeferredOrExternalEffectWork(analysis, node, context, fact.callExpression)
         ) {
           continue;
         }

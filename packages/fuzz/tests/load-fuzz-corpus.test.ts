@@ -45,4 +45,21 @@ describe("loadFuzzCorpus", () => {
       MAX_CORPUS_FILES + 1,
     );
   });
+
+  it("loads declared rule IDs and verdicts", () => {
+    const directory = makeCorpusDirectory();
+    fs.writeFileSync(
+      path.join(directory, "declared.tsx"),
+      "// rule: first-rule, second-rule\r\n// verdict: pass\r\nexport const Seed = <div />;",
+    );
+
+    expect(loadFuzzCorpus(directory)).toEqual([
+      {
+        relativePath: "declared.tsx",
+        code: "// rule: first-rule, second-rule\r\n// verdict: pass\r\nexport const Seed = <div />;",
+        ruleIds: ["first-rule", "second-rule"],
+        verdict: "pass",
+      },
+    ]);
+  });
 });

@@ -26,8 +26,14 @@ const EFFECT_CALLBACK_ALIAS_RULE_IDS = new Set([
   "no-effect-chain",
   "no-fetch-in-effect",
 ]);
+const CLEANUP_CALL_ALIAS_RULE_IDS = new Set(["effect-needs-cleanup"]);
 
-export type FuzzFindingKind = "crash" | "slow" | "invariant-violation" | "verdict-drop";
+export type FuzzFindingKind =
+  | "crash"
+  | "slow"
+  | "invariant-violation"
+  | "verdict-drop"
+  | "verdict-mismatch";
 
 export interface FuzzFinding {
   ruleId: string;
@@ -223,6 +229,30 @@ export const fuzzRuleWithStats = (
     }
   }
 
+  for (const corpusEntry of corpus) {
+    if (!corpusEntry.verdict || !corpusEntry.ruleIds?.includes(ruleId)) continue;
+    const corpusOutcome = checkProgram(
+      corpusEntry.code,
+      corpusEntry.relativePath,
+      baseSeed,
+      0,
+      "declared corpus verdict",
+    );
+    if (!corpusOutcome || corpusOutcome.crashDetail !== undefined) continue;
+    const didFire = (corpusOutcome.diagnosticSignature?.length ?? 0) > 0;
+    const shouldFire = corpusEntry.verdict === "fail";
+    if (didFire === shouldFire) continue;
+    findings.push({
+      ruleId,
+      kind: "verdict-mismatch",
+      seed: baseSeed,
+      iteration: 0,
+      detail: `${corpusEntry.relativePath} declared ${corpusEntry.verdict} but produced ${corpusOutcome.diagnosticSignature?.length ?? 0} diagnostics`,
+      code: corpusEntry.code,
+      variantLabel: "declared corpus verdict",
+    });
+  }
+
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const iterationSeed = (baseSeed * 1_000_003 + iteration) >>> 0;
     const random = createSeededRandom(iterationSeed);
@@ -314,7 +344,12 @@ export const fuzzRuleWithStats = (
 
     for (const variant of [
       ...buildEquivalentFuzzVariants(code, sections),
-      ...buildAstEquivalentFuzzVariants(code, filename, EFFECT_CALLBACK_ALIAS_RULE_IDS.has(ruleId)),
+      ...buildAstEquivalentFuzzVariants(
+        code,
+        filename,
+        EFFECT_CALLBACK_ALIAS_RULE_IDS.has(ruleId),
+        CLEANUP_CALL_ALIAS_RULE_IDS.has(ruleId),
+      ),
     ]) {
       const variantOutcome = runRuleOnCode(rule, variant.code, filename);
       if (variantOutcome.hasParseErrors === true) continue;

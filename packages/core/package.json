@@ -23,12 +23,12 @@
   },
   "dependencies": {
     "@astrojs/compiler": "^4.0.0",
-    "@effect/platform-node-shared": "4.0.0-beta.70",
+    "@effect/platform-node-shared": "4.0.0-beta.102",
     "@jridgewell/trace-mapping": "^0.3.31",
     "browserslist": "^4.28.1",
     "confbox": "^0.2.4",
     "deslop-js": "workspace:*",
-    "effect": "4.0.0-beta.70",
+    "effect": "4.0.0-beta.102",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "^2.7.0",
     "oxc-resolver": "^11.24.2",
@@ -39,7 +39,7 @@
     "typescript": ">=5.0.4 <7"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-beta.70",
+    "@effect/vitest": "4.0.0-beta.102",
     "@types/node": "^25.6.0",
     "@types/picomatch": "^4.0.3",
     "@types/semver": "^7.7.1"

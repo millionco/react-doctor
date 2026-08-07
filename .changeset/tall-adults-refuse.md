@@ -6,4 +6,4 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-Harden scan orchestration and cache persistence, simplify package boundaries and analyzers, share cycle and suppression analysis, keep workflow paths inside the repository, and remove unused internals.
+Harden scan orchestration and cache persistence, modernize the Effect runtime, simplify package boundaries and analyzers, share cycle and suppression analysis, keep workflow paths inside the repository, and remove unused internals.

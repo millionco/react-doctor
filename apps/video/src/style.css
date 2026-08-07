@@ -1,0 +1,464 @@
+:root {
+  color: #d4d4d8;
+  background: #000;
+  font-family: "IBM Plex Mono", monospace;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  overflow: hidden;
+  background: #000;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.video-workspace {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+}
+
+.video-frame {
+  position: relative;
+  flex: none;
+}
+
+.video-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  transform-origin: top left;
+  background: #0a0a0a;
+}
+
+.scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.three-scene {
+  color: #d4d4d8;
+  background:
+    radial-gradient(circle at 70% 45%, rgba(255, 255, 255, 0.035), transparent 34%), #0a0a0a;
+}
+
+.three-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.16;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to right, rgba(0, 0, 0, 0.5), transparent 80%);
+}
+
+.three-ambient-glow {
+  position: absolute;
+  width: 720px;
+  height: 720px;
+  border-radius: 999px;
+  filter: blur(180px);
+  right: 70px;
+  top: 150px;
+}
+
+.three-donut-wrap {
+  position: absolute;
+  z-index: 2;
+  top: 105px;
+  right: 20px;
+  width: 940px;
+  height: 850px;
+  transform-origin: center;
+}
+
+.three-donut-stage,
+.three-donut-stage canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.three-copy {
+  position: absolute;
+  z-index: 4;
+  left: 112px;
+  width: 820px;
+}
+
+.three-intro-copy {
+  top: 262px;
+}
+
+.three-kicker,
+.three-step-label {
+  color: #eab308;
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.three-copy h2,
+.three-scan-heading h2,
+.three-final-layout h2 {
+  margin: 26px 0 24px;
+  color: #fff;
+  font-size: 78px;
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 1.06;
+}
+
+.three-intro-copy h2 {
+  width: 840px;
+  font-size: 92px;
+}
+
+.three-copy > p,
+.three-scan-heading > p,
+.three-final-layout p {
+  margin: 0;
+  color: #737373;
+  font-size: 27px;
+  letter-spacing: 0.08em;
+}
+
+.three-problem-layout,
+.three-scan-layout,
+.three-optimized-layout,
+.three-final-layout {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+}
+
+.three-problem-copy,
+.three-optimized-copy {
+  top: 92px;
+}
+
+.three-problem-copy h2,
+.three-optimized-copy h2 {
+  width: 730px;
+  margin-top: 18px;
+  font-size: 64px;
+}
+
+.three-code-card {
+  width: 780px;
+  margin-top: 38px;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: 18px;
+  background: rgba(10, 10, 10, 0.82);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
+}
+
+.three-code-card-header,
+.three-meter-heading,
+.three-meter-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.three-code-card-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: #a3a3a3;
+  font-size: 20px;
+  letter-spacing: 0.08em;
+}
+
+.three-code-card pre {
+  display: flex;
+  padding: 22px 0 26px;
+  margin: 0;
+  flex-direction: column;
+  color: #e4e4e7;
+  font-family: inherit;
+  font-size: 24px;
+  line-height: 1.72;
+}
+
+.three-code-card pre span {
+  display: block;
+  padding: 0 26px;
+  white-space: pre;
+}
+
+.three-code-card pre i {
+  display: inline-block;
+  width: 58px;
+  color: #525252;
+  font-style: normal;
+  user-select: none;
+}
+
+.three-problem-hud,
+.three-optimized-hud {
+  position: absolute;
+  z-index: 5;
+  right: 98px;
+  bottom: 88px;
+  width: 710px;
+}
+
+.three-performance-meter {
+  padding: 24px 26px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(10, 10, 10, 0.84);
+  backdrop-filter: blur(18px);
+}
+
+.three-meter-heading {
+  color: #a3a3a3;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.three-meter-graph {
+  display: flex;
+  height: 84px;
+  margin: 24px 0 16px;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.three-meter-graph span {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+}
+
+.three-meter-stats {
+  color: #737373;
+  font-size: 17px;
+}
+
+.three-warning-pill {
+  display: flex;
+  width: max-content;
+  padding: 13px 18px;
+  margin: 18px 0 0 auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 999px;
+  color: #fca5a5;
+  background: rgba(69, 10, 10, 0.72);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.three-scan-heading {
+  position: absolute;
+  top: 70px;
+  left: 100px;
+  width: 920px;
+}
+
+.three-scan-heading h2 {
+  margin: 16px 0 12px;
+  font-size: 62px;
+}
+
+.three-findings {
+  position: absolute;
+  top: 315px;
+  left: 100px;
+  display: flex;
+  width: 960px;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.three-finding-row {
+  display: flex;
+  min-height: 112px;
+  padding: 18px 20px;
+  align-items: center;
+  gap: 20px;
+  border: 1px solid;
+  border-radius: 14px;
+  background: rgba(10, 10, 10, 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.three-finding-status {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.three-finding-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.three-finding-title {
+  color: #fff;
+  font-size: 23px;
+  font-weight: 500;
+}
+
+.three-finding-detail,
+.three-finding-file {
+  color: #737373;
+  font-size: 17px;
+}
+
+.three-finding-detail {
+  margin-top: 6px;
+}
+
+.three-finding-file {
+  flex: none;
+}
+
+.three-optimized-hud {
+  bottom: 68px;
+}
+
+.three-fixed-list {
+  display: flex;
+  margin-top: 14px;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.three-fixed-list .three-finding-row {
+  min-height: 78px;
+  padding: 12px 15px;
+}
+
+.three-fixed-list .three-finding-detail {
+  display: none;
+}
+
+.three-fixed-list .three-finding-file {
+  font-size: 14px;
+}
+
+.three-final-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 52px;
+  background: rgba(10, 10, 10, 0.8);
+  backdrop-filter: blur(26px);
+  transform-origin: center;
+}
+
+.three-final-layout h2 {
+  margin: 10px 0 16px;
+  font-size: 92px;
+}
+
+.three-final-layout p {
+  color: #fff;
+  font-size: 31px;
+  letter-spacing: 0;
+}
+
+.three-corner-mark {
+  position: absolute;
+  z-index: 8;
+  right: 54px;
+  bottom: 40px;
+  opacity: 0.34;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.playback-controls {
+  position: fixed;
+  z-index: 50;
+  top: 24px;
+  left: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.playback-controls button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: white;
+  background: rgba(10, 10, 10, 0.8);
+  cursor: pointer;
+}
+
+.playback-controls button:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.playback-controls button:focus-visible,
+.playback-controls input:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 3px;
+}
+
+.playback-controls input {
+  width: 192px;
+  height: 20px;
+  cursor: ew-resize;
+  accent-color: white;
+}
+
+.playback-time {
+  min-width: 86px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

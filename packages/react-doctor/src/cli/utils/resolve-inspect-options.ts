@@ -18,6 +18,7 @@ export const resolveInspectOptions = (
   userConfig: ReactDoctorConfig | null,
 ): ResolvedInspectOptions => {
   const includedTags = inputOptions.includedTags ?? new Set<string>();
+  const hasIncludedTags = includedTags.size > 0;
   return {
     lint: inputOptions.lint ?? userConfig?.lint ?? true,
     deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
@@ -31,14 +32,15 @@ export const resolveInspectOptions = (
     isNonInteractiveEnvironment: isNonInteractiveEnvironment(),
     silent: inputOptions.silent ?? false,
     includePaths: inputOptions.includePaths ?? [],
-    customRulesOnly: includedTags.size > 0 ? false : (userConfig?.customRulesOnly ?? false),
+    customRulesOnly: hasIncludedTags ? false : (userConfig?.customRulesOnly ?? false),
     share: userConfig?.share ?? true,
     respectInlineDisables:
       inputOptions.respectInlineDisables ?? userConfig?.respectInlineDisables ?? true,
     warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
     categoryFilters: new Set(resolveCliCategories(inputOptions.categoryFilters) ?? []),
-    adoptExistingLintConfig:
-      includedTags.size > 0 ? false : (userConfig?.adoptExistingLintConfig ?? true),
+    adoptExistingLintConfig: hasIncludedTags
+      ? false
+      : (userConfig?.adoptExistingLintConfig ?? true),
     ignoredTags: resolveIgnoredTags(userConfig, includedTags),
     includedTags,
     includeTagDefaults: inputOptions.includeTagDefaults ?? false,

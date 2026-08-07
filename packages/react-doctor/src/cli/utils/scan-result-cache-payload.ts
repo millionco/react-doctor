@@ -36,6 +36,11 @@ export interface CachedScanPayload {
   readonly manifestContentHash?: string | null;
 }
 
+interface CachedScanPayloadFieldValidator {
+  readonly key: keyof CachedScanPayload;
+  readonly isValid: (value: unknown) => boolean;
+}
+
 const decodeDiagnostic = Schema.decodeUnknownSync(DiagnosticSchema);
 
 const isStringArray = (value: unknown): value is string[] =>
@@ -43,6 +48,12 @@ const isStringArray = (value: unknown): value is string[] =>
 
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
+
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+
+const isNumber = (value: unknown): value is number => typeof value === "number";
+
+const isString = (value: unknown): value is string => typeof value === "string";
 
 const isDiagnosticArray = (value: unknown): value is Diagnostic[] => {
   if (!Array.isArray(value)) return false;
@@ -82,38 +93,48 @@ const isSuppressedRuleCountArray = (value: unknown): value is SuppressedRuleCoun
       typeof entry.count === "number",
   );
 
+const REQUIRED_CACHED_SCAN_PAYLOAD_FIELDS: ReadonlyArray<CachedScanPayloadFieldValidator> = [
+  { key: "diagnostics", isValid: isDiagnosticArray },
+  { key: "score", isValid: isScoreResult },
+  { key: "project", isValid: isProjectInfo },
+  { key: "userConfig", isValid: (value) => value === null || isRecord(value) },
+  { key: "didLintFail", isValid: isBoolean },
+  { key: "lintFailureReason", isValid: isNullableString },
+  { key: "lintPartialFailures", isValid: isStringArray },
+  { key: "didDeadCodeFail", isValid: isBoolean },
+  { key: "deadCodeFailureReason", isValid: isNullableString },
+  { key: "deadCodeOverlapped", isValid: isBoolean },
+  { key: "directory", isValid: isString },
+  { key: "scannedFileCount", isValid: isNumber },
+  { key: "scannedFilePaths", isValid: isStringArray },
+  { key: "scanElapsedMilliseconds", isValid: isNumber },
+  { key: "lintFailureReasonKind", isValid: isNullableString },
+  { key: "supplyChainOverlapTimedOut", isValid: isBoolean },
+];
+
+const OPTIONAL_CACHED_SCAN_PAYLOAD_FIELDS: ReadonlyArray<CachedScanPayloadFieldValidator> = [
+  { key: "analyzedFiles", isValid: isStringArray },
+  { key: "baselineDelta", isValid: isBaselineDelta },
+  { key: "scanConcurrency", isValid: isNumber },
+  { key: "securityScanFailed", isValid: isBoolean },
+  { key: "securityScanFailureReason", isValid: isNullableString },
+  { key: "suppressedRuleCounts", isValid: isSuppressedRuleCountArray },
+  { key: "manifestContentHash", isValid: isNullableString },
+];
+
+const hasValidRequiredCachedScanPayloadFields = (value: Record<string, unknown>): boolean =>
+  REQUIRED_CACHED_SCAN_PAYLOAD_FIELDS.every((field) => field.isValid(value[field.key]));
+
+const hasValidOptionalCachedScanPayloadFields = (value: Record<string, unknown>): boolean =>
+  OPTIONAL_CACHED_SCAN_PAYLOAD_FIELDS.every(
+    (field) => value[field.key] === undefined || field.isValid(value[field.key]),
+  );
+
 const isCachedScanPayload = (value: unknown): value is CachedScanPayload => {
-  if (
-    !isRecord(value) ||
-    !isDiagnosticArray(value.diagnostics) ||
-    !isScoreResult(value.score) ||
-    !isProjectInfo(value.project) ||
-    !(value.userConfig === null || isRecord(value.userConfig)) ||
-    typeof value.didLintFail !== "boolean" ||
-    !isNullableString(value.lintFailureReason) ||
-    !isStringArray(value.lintPartialFailures) ||
-    typeof value.didDeadCodeFail !== "boolean" ||
-    !isNullableString(value.deadCodeFailureReason) ||
-    typeof value.deadCodeOverlapped !== "boolean" ||
-    typeof value.directory !== "string" ||
-    typeof value.scannedFileCount !== "number" ||
-    !isStringArray(value.scannedFilePaths) ||
-    (value.analyzedFiles !== undefined && !isStringArray(value.analyzedFiles)) ||
-    typeof value.scanElapsedMilliseconds !== "number" ||
-    (value.baselineDelta !== undefined && !isBaselineDelta(value.baselineDelta)) ||
-    !(value.lintFailureReasonKind === null || typeof value.lintFailureReasonKind === "string") ||
-    (value.scanConcurrency !== undefined && typeof value.scanConcurrency !== "number") ||
-    typeof value.supplyChainOverlapTimedOut !== "boolean" ||
-    (value.securityScanFailed !== undefined && typeof value.securityScanFailed !== "boolean") ||
-    (value.securityScanFailureReason !== undefined &&
-      !isNullableString(value.securityScanFailureReason)) ||
-    (value.suppressedRuleCounts !== undefined &&
-      !isSuppressedRuleCountArray(value.suppressedRuleCounts)) ||
-    (value.manifestContentHash !== undefined && !isNullableString(value.manifestContentHash))
-  ) {
-    return false;
-  }
-  return true;
+  if (!isRecord(value)) return false;
+  return (
+    hasValidRequiredCachedScanPayloadFields(value) && hasValidOptionalCachedScanPayloadFields(value)
+  );
 };
 
 export const decodeCachedScanPayload = (value: unknown): CachedScanPayload | null =>

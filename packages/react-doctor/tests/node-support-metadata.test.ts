@@ -28,7 +28,7 @@ const packageManifests: PackageManifestExpectation[] = [
   {
     packagePath: "package.json",
     shouldDependOnPlatformNodeShared: false,
-    shouldDependOnEffect: false,
+    shouldDependOnEffect: true,
   },
   {
     packagePath: "packages/api/package.json",

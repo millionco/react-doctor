@@ -2,19 +2,21 @@ import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import * as Effect from "effect/Effect";
 import {
+  type ChangedFileLineRanges,
   type DiffInfo,
   getBaselineDiffPlan,
   getChangedLineRanges,
   getDiffInfo,
   highlighter,
   isPathInsideDirectory,
+  type JsonReportSkippedProject,
   remainingDeadlineBudgetMs,
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
 import { createInvocationInspect } from "../../inspect.js";
+import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { flushSentry } from "../../instrument.js";
-import type { JsonReportSkippedProject } from "@react-doctor/core";
 import type { RequestedScope } from "../utils/resolve-scope.js";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { METRIC } from "../utils/constants.js";
@@ -57,7 +59,7 @@ import { resolveProjectChangedLineRanges } from "../utils/resolve-project-diff-i
 import { resolveProjectScan, type ResolvedProjectScan } from "../utils/resolve-project-scan.js";
 import { runExplain } from "../utils/run-explain.js";
 import { type ProjectScanOutcome, runProjectScanBatch } from "../utils/run-project-scan-batch.js";
-import { buildProjectScanPlan } from "../utils/build-project-scan-plan.js";
+import { buildProjectScanPlan, type ProjectScanPlan } from "../utils/build-project-scan-plan.js";
 import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
 import { resolveProjectRelativeDirectory } from "../utils/resolve-project-relative-directory.js";
@@ -90,6 +92,147 @@ interface MigrationGuardInput {
   readonly isQuiet: boolean;
   readonly isStaged: boolean;
 }
+
+interface ProjectScanExecutionContext {
+  readonly flags: InspectFlags;
+  readonly resolvedDirectory: string;
+  readonly scanOptions: CliInspectOptions;
+  readonly inspectProject: ReturnType<typeof createInvocationInspect>;
+  readonly scanDeadlineEpochMs: number | undefined;
+  readonly baselineDiffPlan: Awaited<ReturnType<typeof getBaselineDiffPlan>>;
+  readonly diffInfo: DiffInfo | null;
+  readonly isDiffMode: boolean;
+  readonly isQuiet: boolean;
+  readonly isMultiProject: boolean;
+  readonly workspaceDeadCodeOwner: string | null;
+  readonly precomputedSourceFileCounts: ReadonlyMap<string, number> | null;
+  readonly projectScans: ReadonlyArray<ResolvedProjectScan>;
+  readonly baselineRef: string | null;
+  readonly scope: RequestedScope["scope"];
+  readonly changedLineRanges: ReadonlyArray<ChangedFileLineRanges> | null;
+}
+
+interface BuildProjectInspectOptionsInput {
+  readonly context: ProjectScanExecutionContext;
+  readonly projectScan: ResolvedProjectScan;
+  readonly projectScanPlan: ProjectScanPlan;
+  readonly ownsWorkspaceDeadCode: boolean;
+}
+
+interface IsProjectSupplyChainEnabledInput {
+  readonly flags: InspectFlags;
+  readonly projectConfig: ResolvedProjectScan["config"];
+}
+
+interface RunConfiguredProjectScanInput {
+  readonly context: ProjectScanExecutionContext;
+  readonly projectScan: ResolvedProjectScan;
+}
+
+const hasScanDeadlineExpired = (scanDeadlineEpochMs: number | undefined): boolean =>
+  scanDeadlineEpochMs !== undefined && remainingDeadlineBudgetMs(scanDeadlineEpochMs) === 0;
+
+const isProjectSupplyChainEnabled = ({
+  flags,
+  projectConfig,
+}: IsProjectSupplyChainEnabledInput): boolean =>
+  flags.supplyChain ?? projectConfig?.supplyChain?.enabled !== false;
+
+const buildProjectInspectOptions = ({
+  context,
+  projectScan,
+  projectScanPlan,
+  ownsWorkspaceDeadCode,
+}: BuildProjectInspectOptionsInput): ReactDoctorInspectOptions => {
+  const scanDirectory = projectScan.directory;
+  return {
+    ...context.scanOptions,
+    deadCode:
+      context.workspaceDeadCodeOwner === null
+        ? context.scanOptions.deadCode
+        : ownsWorkspaceDeadCode,
+    precomputedSourceFileCount: context.precomputedSourceFileCounts?.get(scanDirectory),
+    deadlineEpochMs: context.scanDeadlineEpochMs,
+    includePaths: projectScanPlan.includePaths,
+    configOverride: projectScan.config,
+    configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
+    suppressRendering: context.isMultiProject,
+    concurrentScan: context.isMultiProject,
+    excludedProjectDirectories: context.projectScans
+      .filter((candidateProjectScan) =>
+        isPathInsideDirectory(candidateProjectScan.directory, scanDirectory),
+      )
+      .map((candidateProjectScan) => candidateProjectScan.directory),
+    retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
+    baseline:
+      context.baselineRef !== null &&
+      projectScanPlan.projectBaselineBaseFiles !== null &&
+      projectScanPlan.projectBaselineHeadFiles !== null
+        ? {
+            ref: context.baselineRef,
+            baseFiles: projectScanPlan.projectBaselineBaseFiles,
+            headFiles: projectScanPlan.projectBaselineHeadFiles,
+          }
+        : undefined,
+    changedLineRanges:
+      context.scope === "lines" && context.changedLineRanges !== null
+        ? resolveProjectChangedLineRanges(
+            context.resolvedDirectory,
+            scanDirectory,
+            context.changedLineRanges,
+          )
+        : undefined,
+    supplyChainManifestChanged: projectScanPlan.supplyChainManifestChanged,
+  };
+};
+
+const runConfiguredProjectScan = async ({
+  context,
+  projectScan,
+}: RunConfiguredProjectScanInput): Promise<
+  ProjectScanOutcome<CompletedScan, JsonReportSkippedProject>
+> => {
+  if (hasScanDeadlineExpired(context.scanDeadlineEpochMs)) {
+    return {
+      status: "skipped",
+      value: { directory: projectScan.directory, reason: "max-duration" },
+    };
+  }
+
+  const scanDirectory = projectScan.directory;
+  const projectConfig = projectScan.config;
+  const ownsWorkspaceDeadCode = scanDirectory === context.workspaceDeadCodeOwner;
+  const supplyChainEnabled = isProjectSupplyChainEnabled({
+    flags: context.flags,
+    projectConfig,
+  });
+  const projectScanPlan = buildProjectScanPlan({
+    rootDirectory: context.resolvedDirectory,
+    projectDirectory: scanDirectory,
+    baselineDiffPlan: context.baselineDiffPlan,
+    diffInfo: context.diffInfo,
+    isDiffMode: context.isDiffMode,
+    supplyChainEnabled,
+  });
+  if (projectScanPlan.shouldSkipProject) {
+    if (!context.isQuiet) {
+      logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
+      logger.break();
+    }
+    return { status: "omitted" };
+  }
+
+  if (!context.isQuiet && !context.isMultiProject) logger.dim("  ");
+  const scanResult = await context.inspectProject(
+    scanDirectory,
+    buildProjectInspectOptions({ context, projectScan, projectScanPlan, ownsWorkspaceDeadCode }),
+  );
+  if (!context.isQuiet && !context.isMultiProject) logger.break();
+  return {
+    status: "completed",
+    value: { directory: scanDirectory, result: scanResult, config: projectConfig },
+  };
+};
 
 /**
  * On an interactive human run, rename a pre-migration
@@ -390,93 +533,31 @@ export const inspectAction = async (
             projectScans.map((projectScan) => projectScan.directory),
           )
         : null;
-    const scanProject = async (
-      projectScan: ResolvedProjectScan,
-    ): Promise<ProjectScanOutcome<CompletedScan, JsonReportSkippedProject>> => {
-      if (
-        scanDeadlineEpochMs !== undefined &&
-        remainingDeadlineBudgetMs(scanDeadlineEpochMs) === 0
-      ) {
-        return {
-          status: "skipped",
-          value: { directory: projectScan.directory, reason: "max-duration" },
-        };
-      }
-      const scanDirectory = projectScan.directory;
-      const projectConfig = projectScan.config;
-      const ownsWorkspaceDeadCode = scanDirectory === workspaceDeadCodeOwner;
-      // The Socket supply-chain check runs by default; opted out by
-      // `--no-supply-chain` (wins) or per-project config. Off ⇒ a manifest-only
-      // diff change shouldn't pull a project into the scan (nothing to report).
-      const supplyChainEnabled = flags.supplyChain ?? projectConfig?.supplyChain?.enabled !== false;
-
-      const projectScanPlan = buildProjectScanPlan({
-        rootDirectory: resolvedDirectory,
-        projectDirectory: scanDirectory,
-        baselineDiffPlan,
-        diffInfo,
-        isDiffMode,
-        supplyChainEnabled,
-      });
-      if (projectScanPlan.shouldSkipProject) {
-        if (!isQuiet) {
-          logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
-          logger.break();
-        }
-        return { status: "omitted" };
-      }
-
-      if (!isQuiet && !isMultiProject) {
-        logger.dim("  ");
-      }
-      const scanResult = await inspectProject(scanDirectory, {
-        ...scanOptions,
-        deadCode: workspaceDeadCodeOwner === null ? scanOptions.deadCode : ownsWorkspaceDeadCode,
-        precomputedSourceFileCount: precomputedSourceFileCounts?.get(scanDirectory),
-        deadlineEpochMs: scanDeadlineEpochMs,
-        includePaths: projectScanPlan.includePaths,
-        configOverride: projectConfig,
-        configSourceDirectory: projectScan.configSourceDirectory ?? undefined,
-        suppressRendering: isMultiProject,
-        // Pool members overlap; they must not own the process-global Sentry
-        // run state (see `InspectOptions.concurrentScan`).
-        concurrentScan: isMultiProject,
-        excludedProjectDirectories: projectScans
-          .filter((candidateProjectScan) =>
-            isPathInsideDirectory(candidateProjectScan.directory, scanDirectory),
-          )
-          .map((candidateProjectScan) => candidateProjectScan.directory),
-        retainExcludedProjectDeadCodeDiagnostics: ownsWorkspaceDeadCode,
-        baseline:
-          baselineRef !== null &&
-          projectScanPlan.projectBaselineBaseFiles !== null &&
-          projectScanPlan.projectBaselineHeadFiles !== null
-            ? {
-                ref: baselineRef,
-                baseFiles: projectScanPlan.projectBaselineBaseFiles,
-                headFiles: projectScanPlan.projectBaselineHeadFiles,
-              }
-            : undefined,
-        changedLineRanges:
-          scope === "lines" && changedLineRanges !== null
-            ? resolveProjectChangedLineRanges(resolvedDirectory, scanDirectory, changedLineRanges)
-            : undefined,
-        supplyChainManifestChanged: projectScanPlan.supplyChainManifestChanged,
-      });
-      if (!isQuiet && !isMultiProject) {
-        logger.break();
-      }
-      return {
-        status: "completed",
-        value: { directory: scanDirectory, result: scanResult, config: projectConfig },
-      };
+    const projectScanExecutionContext: ProjectScanExecutionContext = {
+      flags,
+      resolvedDirectory,
+      scanOptions,
+      inspectProject,
+      scanDeadlineEpochMs,
+      baselineDiffPlan,
+      diffInfo,
+      isDiffMode,
+      isQuiet,
+      isMultiProject,
+      workspaceDeadCodeOwner,
+      precomputedSourceFileCounts,
+      projectScans,
+      baselineRef,
+      scope,
+      changedLineRanges,
     };
 
     const projectBatch = await runProjectScanBatch({
       projects: projectScans,
       isQuiet,
       isSilent: scanOptions.silent === true,
-      scanProject,
+      scanProject: (projectScan) =>
+        runConfiguredProjectScan({ context: projectScanExecutionContext, projectScan }),
     });
     const completedScans = await retryMissingProjectScores(
       projectBatch.completedScans.map((completedScan) => ({

@@ -29,6 +29,43 @@ export const resolveImportedExportName = (importSpecifier: EsTreeNode): string |
   return null;
 };
 
+const namedReExportTargetForName = (
+  statement: EsTreeNode,
+  exportedName: string,
+): ReExportTarget | null => {
+  if (!isNodeOfType(statement, "ExportNamedDeclaration")) return null;
+  if (!statement.source || statement.exportKind === "type") return null;
+  const source = statement.source.value;
+  if (typeof source !== "string") return null;
+  for (const specifier of statement.specifiers ?? []) {
+    const target = reExportTargetFromSpecifier(specifier, exportedName, source);
+    if (target) return target;
+  }
+  return null;
+};
+
+const reExportTargetFromSpecifier = (
+  specifier: EsTreeNode,
+  exportedName: string,
+  source: string,
+): ReExportTarget | null => {
+  if (!isNodeOfType(specifier, "ExportSpecifier")) return null;
+  if (specifier.exportKind === "type") return null;
+  if (getModuleSpecifierName(specifier.exported) !== exportedName) return null;
+  const importedName = getModuleSpecifierName(specifier.local);
+  return importedName ? { importedName, source } : null;
+};
+
+const exportAllTargetForName = (
+  statement: EsTreeNode,
+  exportedName: string,
+): ReExportTarget | null => {
+  if (!isNodeOfType(statement, "ExportAllDeclaration")) return null;
+  if (!statement.source || statement.exportKind === "type" || statement.exported) return null;
+  const source = statement.source.value;
+  return typeof source === "string" ? { importedName: exportedName, source } : null;
+};
+
 // Returns the source/name pairs the caller should probe to resolve
 // `exportedName` through a re-export, in priority order:
 //
@@ -47,26 +84,10 @@ export const findReExportTargetsForName = (
   if (!isNodeOfType(programRoot, "Program")) return [];
   const exportAllTargets: ReExportTarget[] = [];
   for (const statement of programRoot.body ?? []) {
-    if (isNodeOfType(statement, "ExportNamedDeclaration") && statement.source) {
-      if (statement.exportKind === "type") continue;
-      const sourceValue = statement.source.value;
-      if (typeof sourceValue !== "string") continue;
-      for (const specifier of statement.specifiers ?? []) {
-        if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
-        if (specifier.exportKind === "type") continue;
-        const exportedNameSpec = getModuleSpecifierName(specifier.exported);
-        if (exportedNameSpec !== exportedName) continue;
-        const importedName = getModuleSpecifierName(specifier.local);
-        if (importedName) return [{ importedName, source: sourceValue }];
-      }
-    }
-    if (isNodeOfType(statement, "ExportAllDeclaration") && statement.source) {
-      if (statement.exportKind === "type" || statement.exported) continue;
-      const sourceValue = statement.source.value;
-      if (typeof sourceValue === "string") {
-        exportAllTargets.push({ importedName: exportedName, source: sourceValue });
-      }
-    }
+    const namedTarget = namedReExportTargetForName(statement, exportedName);
+    if (namedTarget) return [namedTarget];
+    const exportAllTarget = exportAllTargetForName(statement, exportedName);
+    if (exportAllTarget) exportAllTargets.push(exportAllTarget);
   }
   return exportAllTargets;
 };

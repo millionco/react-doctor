@@ -60,8 +60,27 @@ interface StagedProjectScanContext {
   readonly projectConfigSourceDirectory: string | null;
 }
 
+interface ResolveStagedProjectScanContextInput {
+  readonly scanTarget: ResolvedScanTarget;
+  readonly rootDirectory: string;
+  readonly projectDirectory: string;
+  readonly isProjectExplicitlySelected: boolean;
+}
+
+interface CollectStagedProjectScanContextsInput {
+  readonly scanTarget: ResolvedScanTarget;
+  readonly rootDirectory: string;
+  readonly projectDirectories: ReadonlyArray<string>;
+  readonly isProjectExplicitlySelected: boolean;
+}
+
 interface StagedProjectScan extends StagedProjectScanContext {
   readonly stagedFiles: ReadonlyArray<string>;
+}
+
+interface StagedProjectRun {
+  readonly projectScan: StagedProjectScan;
+  readonly includePaths: ReadonlyArray<string>;
 }
 
 interface EmptyStagedScanInput {
@@ -69,6 +88,36 @@ interface EmptyStagedScanInput {
   readonly isJsonMode: boolean;
   readonly isScoreOnly: boolean;
   readonly startTime: number;
+}
+
+interface ScanStagedProjectInput {
+  readonly input: RunStagedInspectInput;
+  readonly projectRun: StagedProjectRun;
+  readonly snapshotDirectory: string;
+  readonly stagedLineRanges: Awaited<ReturnType<typeof getChangedLineRanges>>;
+  readonly isMultiProject: boolean;
+}
+
+interface RunMaterializedStagedInspectInput {
+  readonly input: RunStagedInspectInput;
+  readonly projectScans: ReadonlyArray<StagedProjectScan>;
+  readonly snapshot: Awaited<ReturnType<typeof materializeStagedFiles>>;
+  readonly stagedFileCount: number;
+  readonly stagedLineRanges: Awaited<ReturnType<typeof getChangedLineRanges>>;
+  readonly emptyScanInput: EmptyStagedScanInput;
+}
+
+interface PrintStagedBatchResultsInput {
+  readonly input: RunStagedInspectInput;
+  readonly completedScans: ReadonlyArray<CompletedScan>;
+  readonly elapsedMilliseconds: number;
+  readonly isMultiProject: boolean;
+}
+
+interface FinalizeStagedBatchInput {
+  readonly input: RunStagedInspectInput;
+  readonly completedScans: ReadonlyArray<CompletedScan>;
+  readonly skippedProjects: ReadonlyArray<JsonReportSkippedProject>;
 }
 
 const reportEmptyStagedScan = (
@@ -98,6 +147,57 @@ const reportEmptyStagedScan = (
   logger.dim(reason);
 };
 
+const resolveStagedProjectScanContext = async ({
+  scanTarget,
+  rootDirectory,
+  projectDirectory,
+  isProjectExplicitlySelected,
+}: ResolveStagedProjectScanContextInput): Promise<StagedProjectScanContext | null> => {
+  const projectScan = await resolveProjectScan(scanTarget, projectDirectory);
+  const treeRelativeDirectory = resolveProjectRelativeDirectory(
+    rootDirectory,
+    projectScan.directory,
+  );
+  if (treeRelativeDirectory === null) {
+    if (isProjectExplicitlySelected) {
+      throw new CliInputError(
+        `Project "${toRelativePath(projectDirectory, rootDirectory)}" is outside ${rootDirectory}, so it holds none of the staged files. Run --staged from a directory that contains the project.`,
+      );
+    }
+    return null;
+  }
+  return {
+    projectDirectory,
+    scanDirectory: projectScan.directory,
+    treeRelativeDirectory,
+    projectConfig: projectScan.config,
+    projectConfigSourceDirectory: projectScan.configSourceDirectory,
+  };
+};
+
+const collectStagedProjectScanContexts = async ({
+  scanTarget,
+  rootDirectory,
+  projectDirectories,
+  isProjectExplicitlySelected,
+}: CollectStagedProjectScanContextsInput): Promise<StagedProjectScanContext[]> => {
+  const projectScanContexts: StagedProjectScanContext[] = [];
+  const seenScanDirectories = new Set<string>();
+  for (const projectDirectory of projectDirectories) {
+    const projectScanContext = await resolveStagedProjectScanContext({
+      scanTarget,
+      rootDirectory,
+      projectDirectory,
+      isProjectExplicitlySelected,
+    });
+    if (projectScanContext === null) continue;
+    if (seenScanDirectories.has(projectScanContext.scanDirectory)) continue;
+    seenScanDirectories.add(projectScanContext.scanDirectory);
+    projectScanContexts.push(projectScanContext);
+  }
+  return projectScanContexts;
+};
+
 const resolveStagedProjectScanContexts = async (
   input: RunStagedInspectInput,
 ): Promise<StagedProjectScanContext[]> => {
@@ -114,54 +214,24 @@ const resolveStagedProjectScanContexts = async (
     projectFlag: flags.project,
     configProjects: configProjectsApply ? userConfig?.projects : undefined,
   });
-  const projectScanContexts: StagedProjectScanContext[] = [];
-  const seenScanDirectories = new Set<string>();
-
-  for (const projectDirectory of projectDirectories) {
-    const projectScan = await resolveProjectScan(scanTarget, projectDirectory);
-    const treeRelativeDirectory = resolveProjectRelativeDirectory(
-      rootDirectory,
-      projectScan.directory,
-    );
-    if (treeRelativeDirectory === null) {
-      if (flags.project) {
-        throw new CliInputError(
-          `Project "${toRelativePath(projectDirectory, rootDirectory)}" is outside ${rootDirectory}, so it holds none of the staged files. Run --staged from a directory that contains the project.`,
-        );
-      }
-      continue;
-    }
-    if (seenScanDirectories.has(projectScan.directory)) continue;
-    seenScanDirectories.add(projectScan.directory);
-    projectScanContexts.push({
-      projectDirectory,
-      scanDirectory: projectScan.directory,
-      treeRelativeDirectory,
-      projectConfig: projectScan.config,
-      projectConfigSourceDirectory: projectScan.configSourceDirectory,
-    });
-  }
+  const projectScanContexts = await collectStagedProjectScanContexts({
+    scanTarget,
+    rootDirectory,
+    projectDirectories,
+    isProjectExplicitlySelected: Boolean(flags.project),
+  });
 
   if (projectScanContexts.length > 0) return projectScanContexts;
 
   logger.warn(`No configured project is inside ${rootDirectory}. ${STAGED_PROJECT_FALLBACK_HINT}`);
   logger.break();
-  const rootProjectScan = await resolveProjectScan(scanTarget, rootDirectory);
-  const treeRelativeDirectory = resolveProjectRelativeDirectory(
+  const rootProjectScanContext = await resolveStagedProjectScanContext({
+    scanTarget,
     rootDirectory,
-    rootProjectScan.directory,
-  );
-  return treeRelativeDirectory === null
-    ? []
-    : [
-        {
-          projectDirectory: rootDirectory,
-          scanDirectory: rootProjectScan.directory,
-          treeRelativeDirectory,
-          projectConfig: rootProjectScan.config,
-          projectConfigSourceDirectory: rootProjectScan.configSourceDirectory,
-        },
-      ];
+    projectDirectory: rootDirectory,
+    isProjectExplicitlySelected: false,
+  });
+  return rootProjectScanContext === null ? [] : [rootProjectScanContext];
 };
 
 const assignStagedFilesToProjects = (
@@ -209,8 +279,215 @@ const collectConfigSubdirectories = (
   return [...configSubdirectories];
 };
 
+const buildStagedProjectRuns = (
+  rootDirectory: string,
+  projectScans: ReadonlyArray<StagedProjectScan>,
+  materializedStagedFiles: ReadonlySet<string>,
+): StagedProjectRun[] =>
+  projectScans
+    .map((projectScan) => ({
+      projectScan,
+      includePaths: resolveProjectSourceFilePaths(
+        rootDirectory,
+        projectScan.scanDirectory,
+        projectScan.stagedFiles.filter((stagedFile) => materializedStagedFiles.has(stagedFile)),
+      ),
+    }))
+    .filter((projectRun) => projectRun.includePaths.length > 0);
+
+const scanStagedProject = async ({
+  input,
+  projectRun,
+  snapshotDirectory,
+  stagedLineRanges,
+  isMultiProject,
+}: ScanStagedProjectInput): Promise<
+  ProjectScanOutcome<CompletedScan, JsonReportSkippedProject>
+> => {
+  const { projectScan, includePaths } = projectRun;
+  if (
+    input.scanDeadlineEpochMs !== undefined &&
+    remainingDeadlineBudgetMs(input.scanDeadlineEpochMs) === 0
+  ) {
+    return {
+      status: "skipped",
+      value: { directory: projectScan.scanDirectory, reason: "max-duration" },
+    };
+  }
+
+  const rootDirectory = input.scanTarget.resolvedDirectory;
+  const projectTempDirectory = path.join(snapshotDirectory, projectScan.treeRelativeDirectory);
+  const scanResult = await input.inspectProject(projectTempDirectory, {
+    ...input.scanOptions,
+    deadlineEpochMs: input.scanDeadlineEpochMs,
+    includePaths: [...includePaths],
+    configOverride: projectScan.projectConfig,
+    configSourceDirectory: projectScan.projectConfigSourceDirectory ?? undefined,
+    changedLineRanges:
+      stagedLineRanges === null
+        ? undefined
+        : resolveProjectChangedLineRanges(
+            rootDirectory,
+            projectScan.scanDirectory,
+            stagedLineRanges,
+          ),
+    suppressRendering: isMultiProject,
+    concurrentScan: isMultiProject,
+  });
+  const diagnostics = scanResult.diagnostics.map((diagnostic) => ({
+    ...diagnostic,
+    filePath: path.isAbsolute(diagnostic.filePath)
+      ? diagnostic.filePath.replaceAll(projectTempDirectory, () => projectScan.scanDirectory)
+      : diagnostic.filePath,
+  }));
+  return {
+    status: "completed",
+    value: {
+      directory: projectScan.scanDirectory,
+      result: {
+        ...scanResult,
+        diagnostics,
+        project: { ...scanResult.project, rootDirectory: projectScan.scanDirectory },
+      },
+      config: projectScan.projectConfig,
+    },
+  };
+};
+
+const reportUnmaterializedStagedFiles = (
+  unmaterializedFileCount: number,
+  stagedFileCount: number,
+  isQuiet: boolean,
+): void => {
+  if (unmaterializedFileCount === 0 || isQuiet) return;
+  const stagedFileLabel = `staged file${stagedFileCount === 1 ? "" : "s"}`;
+  logger.warn(
+    `Skipped ${unmaterializedFileCount} of ${stagedFileCount} ${stagedFileLabel}; they could not be snapshotted from the index.`,
+  );
+  logger.break();
+};
+
+const printStagedBatchResults = async ({
+  input,
+  completedScans,
+  elapsedMilliseconds,
+  isMultiProject,
+}: PrintStagedBatchResultsInput): Promise<void> => {
+  const { flags, scanOptions } = input;
+  const outputSurface = scanOptions.outputSurface ?? "cli";
+  if (!input.isQuiet && isMultiProject && completedScans.length > 0) {
+    await Effect.runPromise(
+      printCompletedScansHeadless({
+        categoryFilters: input.categoryFilters,
+        completedScans,
+        elapsedMilliseconds,
+        noScoreMessage: "Score unavailable.",
+        outputDirectory: flags.outputDir,
+        outputSurface,
+        projectName: path.basename(input.scanTarget.resolvedDirectory),
+        verbose: Boolean(flags.verbose),
+      }),
+    );
+  }
+  if (!flags.outputDir || !isMultiProject || !input.isQuiet) return;
+  await Effect.runPromise(
+    printDiagnosticsDump(
+      filterDiagnosticsByCategories(
+        filterScansForSurface(completedScans, outputSurface),
+        input.categoryFilters,
+      ),
+      flags.outputDir,
+      false,
+      "stderr",
+    ),
+  );
+};
+
+const finalizeStagedBatch = ({
+  input,
+  completedScans,
+  skippedProjects,
+}: FinalizeStagedBatchInput): void => {
+  const { flags, scanTarget } = input;
+  finalizeCliScans({
+    completedScans,
+    skippedProjects,
+    mode: "staged",
+    diff: null,
+    baselineIntended: false,
+    isJsonMode: input.isJsonMode,
+    isScoreOnly: input.isScoreOnly,
+    flags,
+    categoryFilters: input.categoryFilters,
+    userConfig: scanTarget.userConfig,
+    resolvedDirectory: scanTarget.resolvedDirectory,
+    startTime: input.startTime,
+  });
+};
+
+const runMaterializedStagedInspect = async ({
+  input,
+  projectScans,
+  snapshot,
+  stagedFileCount,
+  stagedLineRanges,
+  emptyScanInput,
+}: RunMaterializedStagedInspectInput): Promise<void> => {
+  const { scanTarget, scanOptions } = input;
+  const resolvedDirectory = scanTarget.resolvedDirectory;
+  const projectRuns = buildStagedProjectRuns(
+    resolvedDirectory,
+    projectScans,
+    new Set(snapshot.stagedFiles),
+  );
+  if (projectRuns.length === 0) {
+    reportEmptyStagedScan(
+      emptyScanInput,
+      `Could not read any of the ${stagedFileCount} staged file${stagedFileCount === 1 ? "" : "s"} out of the index, so nothing was scanned. An unusually large staged file is the usual cause.`,
+      "warn",
+    );
+    return;
+  }
+
+  reportUnmaterializedStagedFiles(
+    snapshot.unmaterializedFiles.length,
+    stagedFileCount,
+    input.isQuiet,
+  );
+
+  const isMultiProject = projectRuns.length > 1;
+  const stagedBatch = await runProjectScanBatch({
+    projects: projectRuns,
+    isQuiet: input.isQuiet,
+    isSilent: scanOptions.silent === true,
+    scanProject: (projectRun) =>
+      scanStagedProject({
+        input,
+        projectRun,
+        snapshotDirectory: snapshot.tempDirectory,
+        stagedLineRanges,
+        isMultiProject,
+      }),
+  });
+  const completedScans = stagedBatch.completedScans;
+  const skippedProjects = stagedBatch.skippedScans;
+  reportSkippedProjects({ skippedProjects, isQuiet: input.isQuiet });
+  await printStagedBatchResults({
+    input,
+    completedScans,
+    elapsedMilliseconds: stagedBatch.elapsedMilliseconds,
+    isMultiProject,
+  });
+
+  finalizeStagedBatch({
+    input,
+    completedScans,
+    skippedProjects,
+  });
+};
+
 export const runStagedInspect = async (input: RunStagedInspectInput): Promise<void> => {
-  const { flags, scanTarget, scanOptions } = input;
+  const { flags, scanTarget } = input;
   const resolvedDirectory = scanTarget.resolvedDirectory;
   const emptyScanInput: EmptyStagedScanInput = {
     directory: resolvedDirectory,
@@ -272,139 +549,13 @@ export const runStagedInspect = async (input: RunStagedInspectInput): Promise<vo
   });
 
   try {
-    const materializedStagedFiles = new Set(snapshot.stagedFiles);
-    const stagedProjectRuns = stagedProjectScans
-      .map((projectScan) => ({
-        projectScan,
-        includePaths: resolveProjectSourceFilePaths(
-          resolvedDirectory,
-          projectScan.scanDirectory,
-          projectScan.stagedFiles.filter((stagedFile) => materializedStagedFiles.has(stagedFile)),
-        ),
-      }))
-      .filter((projectRun) => projectRun.includePaths.length > 0);
-    const isMultiProject = stagedProjectRuns.length > 1;
-    if (stagedProjectRuns.length === 0) {
-      reportEmptyStagedScan(
-        emptyScanInput,
-        `Could not read any of the ${stagedFileCount} staged file${stagedFileCount === 1 ? "" : "s"} out of the index, so nothing was scanned. An unusually large staged file is the usual cause.`,
-        "warn",
-      );
-      return;
-    }
-    if (snapshot.unmaterializedFiles.length > 0 && !input.isQuiet) {
-      const stagedFileLabel = `staged file${stagedFileCount === 1 ? "" : "s"}`;
-      logger.warn(
-        `Skipped ${snapshot.unmaterializedFiles.length} of ${stagedFileCount} ${stagedFileLabel}; they could not be snapshotted from the index.`,
-      );
-      logger.break();
-    }
-
-    const scanStagedProject = async (
-      projectRun: (typeof stagedProjectRuns)[number],
-    ): Promise<ProjectScanOutcome<CompletedScan, JsonReportSkippedProject>> => {
-      const { projectScan, includePaths } = projectRun;
-      if (
-        input.scanDeadlineEpochMs !== undefined &&
-        remainingDeadlineBudgetMs(input.scanDeadlineEpochMs) === 0
-      ) {
-        return {
-          status: "skipped",
-          value: { directory: projectScan.scanDirectory, reason: "max-duration" },
-        };
-      }
-      const projectTempDirectory = path.join(
-        snapshot.tempDirectory,
-        projectScan.treeRelativeDirectory,
-      );
-      const scanResult = await input.inspectProject(projectTempDirectory, {
-        ...scanOptions,
-        deadlineEpochMs: input.scanDeadlineEpochMs,
-        includePaths: [...includePaths],
-        configOverride: projectScan.projectConfig,
-        configSourceDirectory: projectScan.projectConfigSourceDirectory ?? undefined,
-        changedLineRanges:
-          stagedLineRanges === null
-            ? undefined
-            : resolveProjectChangedLineRanges(
-                resolvedDirectory,
-                projectScan.scanDirectory,
-                stagedLineRanges,
-              ),
-        suppressRendering: isMultiProject,
-        concurrentScan: isMultiProject,
-      });
-      const diagnostics = scanResult.diagnostics.map((diagnostic) => ({
-        ...diagnostic,
-        filePath: path.isAbsolute(diagnostic.filePath)
-          ? diagnostic.filePath.replaceAll(projectTempDirectory, () => projectScan.scanDirectory)
-          : diagnostic.filePath,
-      }));
-      return {
-        status: "completed",
-        value: {
-          directory: projectScan.scanDirectory,
-          result: {
-            ...scanResult,
-            diagnostics,
-            project: { ...scanResult.project, rootDirectory: projectScan.scanDirectory },
-          },
-          config: projectScan.projectConfig,
-        },
-      };
-    };
-
-    const stagedBatch = await runProjectScanBatch({
-      projects: stagedProjectRuns,
-      isQuiet: input.isQuiet,
-      isSilent: scanOptions.silent === true,
-      scanProject: scanStagedProject,
-    });
-    const completedScans = stagedBatch.completedScans;
-    const skippedProjects = stagedBatch.skippedScans;
-    reportSkippedProjects({ skippedProjects, isQuiet: input.isQuiet });
-
-    if (!input.isQuiet && isMultiProject && completedScans.length > 0) {
-      await Effect.runPromise(
-        printCompletedScansHeadless({
-          categoryFilters: input.categoryFilters,
-          completedScans,
-          elapsedMilliseconds: stagedBatch.elapsedMilliseconds,
-          noScoreMessage: "Score unavailable.",
-          outputDirectory: flags.outputDir,
-          outputSurface: scanOptions.outputSurface ?? "cli",
-          projectName: path.basename(resolvedDirectory),
-          verbose: Boolean(flags.verbose),
-        }),
-      );
-    }
-    if (flags.outputDir && isMultiProject && input.isQuiet) {
-      await Effect.runPromise(
-        printDiagnosticsDump(
-          filterDiagnosticsByCategories(
-            filterScansForSurface(completedScans, scanOptions.outputSurface ?? "cli"),
-            input.categoryFilters,
-          ),
-          flags.outputDir,
-          false,
-          "stderr",
-        ),
-      );
-    }
-
-    finalizeCliScans({
-      completedScans,
-      skippedProjects,
-      mode: "staged",
-      diff: null,
-      baselineIntended: false,
-      isJsonMode: input.isJsonMode,
-      isScoreOnly: input.isScoreOnly,
-      flags,
-      categoryFilters: input.categoryFilters,
-      userConfig: scanTarget.userConfig,
-      resolvedDirectory,
-      startTime: input.startTime,
+    await runMaterializedStagedInspect({
+      input,
+      projectScans: stagedProjectScans,
+      snapshot,
+      stagedFileCount,
+      stagedLineRanges,
+      emptyScanInput,
     });
   } finally {
     snapshot.cleanup();

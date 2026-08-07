@@ -1,6 +1,11 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
-import { filterDiagnosticsForSurface, highlighter, type InspectResult } from "@react-doctor/core";
+import {
+  type Diagnostic,
+  filterDiagnosticsForSurface,
+  highlighter,
+  type InspectResult,
+} from "@react-doctor/core";
 import type { ResolvedInspectOptions } from "../../inspect-options.js";
 import { buildEmptyReportMessage } from "./build-empty-report-message.js";
 import { buildInspectResult, type InspectExecutionCacheStats } from "./build-inspect-result.js";
@@ -22,13 +27,129 @@ interface FinalizeInspectResultInput {
   readonly cacheStats: InspectExecutionCacheStats;
 }
 
+interface InspectPresentation {
+  readonly diagnostics: Diagnostic[];
+  readonly demotedDiagnosticCount: number;
+}
+
+interface PrintScoreOnlyInspectResultInput {
+  readonly options: ResolvedInspectOptions;
+  readonly payload: CachedScanPayload;
+  readonly diagnostics: Diagnostic[];
+  readonly noScoreMessage: string;
+}
+
+interface PrintFullInspectResultInput extends FinalizeInspectResultInput, InspectPresentation {
+  readonly result: InspectResult;
+  readonly noScoreMessage: string;
+}
+
+interface PrintFullInspectResultDetailsInput extends InspectPresentation {
+  readonly options: ResolvedInspectOptions;
+  readonly payload: CachedScanPayload;
+}
+
+const buildInspectPresentation = ({
+  options,
+  payload,
+}: FinalizeInspectResultInput): InspectPresentation => {
+  const surfaceDiagnostics = filterDiagnosticsForSurface(
+    [...payload.diagnostics],
+    options.outputSurface,
+    payload.userConfig,
+  );
+  return {
+    diagnostics: filterDiagnosticsByCategories(surfaceDiagnostics, options.categoryFilters),
+    demotedDiagnosticCount: payload.diagnostics.length - surfaceDiagnostics.length,
+  };
+};
+
+const printScoreOnlyInspectResult = ({
+  options,
+  payload,
+  diagnostics,
+  noScoreMessage,
+}: PrintScoreOnlyInspectResultInput): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    if (options.outputDirectory !== null) {
+      yield* printDiagnosticsDump(diagnostics, options.outputDirectory, false, "stderr");
+    }
+    if (payload.score) {
+      yield* Console.log(`${payload.score.score}`);
+      return;
+    }
+    yield* Console.error(highlighter.gray(noScoreMessage));
+  });
+
+const printFullInspectResultDetails = ({
+  options,
+  payload,
+  diagnostics,
+  demotedDiagnosticCount,
+}: PrintFullInspectResultDetailsInput): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    if (options.outputDirectory !== null || options.verbose) {
+      yield* printDiagnosticsDump(diagnostics, options.outputDirectory, options.verbose);
+    }
+    if (options.categoryFilters.size === 0 && demotedDiagnosticCount > 0) {
+      yield* Console.log(
+        highlighter.gray(
+          `  ${demotedDiagnosticCount} demoted from the ${options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
+        ),
+      );
+      yield* Console.log("");
+    }
+    yield* printFooter({
+      diagnostics,
+      scoreResult: payload.score,
+      projectName: payload.project.projectName,
+      isOffline: options.isCi || !options.share || payload.score === null,
+    });
+  });
+
+const printFullInspectResult = ({
+  options,
+  elapsedMilliseconds,
+  payload,
+  result,
+  diagnostics,
+  demotedDiagnosticCount,
+  noScoreMessage,
+}: PrintFullInspectResultInput): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
+      yield* printAgentGuidance();
+    }
+
+    yield* printHeadlessReport({
+      diagnostics,
+      elapsedMilliseconds,
+      emptyStateMessage: buildEmptyReportMessage({
+        categoryFilters: options.categoryFilters,
+        demotedDiagnosticCount,
+        outputSurface: options.outputSurface,
+      }),
+      noScoreMessage,
+      projectName: payload.project.projectName,
+      scannedFileCount: payload.scannedFileCount,
+      scoreResult: result.skippedChecks.length > 0 ? null : payload.score,
+      skippedChecks: result.skippedChecks,
+    });
+
+    yield* printFullInspectResultDetails({
+      options,
+      payload,
+      diagnostics,
+      demotedDiagnosticCount,
+    });
+  });
+
 export const finalizeInspectResult = (
   input: FinalizeInspectResultInput,
 ): Effect.Effect<InspectResult> =>
   Effect.gen(function* () {
     const { payload } = input;
     const result = buildInspectResult(input);
-    const hasSkippedChecks = result.skippedChecks.length > 0;
     const noScoreMessage = buildNoScoreMessage({
       isScoreDisabled: input.options.noScore,
       isAnalysisIncomplete: hasIncompleteScoreAnalysis(result.skippedChecks),
@@ -37,74 +158,23 @@ export const finalizeInspectResult = (
 
     if (input.options.suppressRendering) return result;
 
-    const surfaceDiagnostics = filterDiagnosticsForSurface(
-      [...payload.diagnostics],
-      input.options.outputSurface,
-      payload.userConfig,
-    );
-    const printedDiagnostics = filterDiagnosticsByCategories(
-      surfaceDiagnostics,
-      input.options.categoryFilters,
-    );
+    const presentation = buildInspectPresentation(input);
 
     if (input.options.scoreOnly) {
-      if (input.options.outputDirectory !== null) {
-        yield* printDiagnosticsDump(
-          printedDiagnostics,
-          input.options.outputDirectory,
-          false,
-          "stderr",
-        );
-      }
-      if (payload.score) {
-        yield* Console.log(`${payload.score.score}`);
-      } else {
-        yield* Console.error(highlighter.gray(noScoreMessage));
-      }
+      yield* printScoreOnlyInspectResult({
+        options: input.options,
+        payload,
+        diagnostics: presentation.diagnostics,
+        noScoreMessage,
+      });
       return result;
     }
 
-    const demotedDiagnosticCount = payload.diagnostics.length - surfaceDiagnostics.length;
-    if (input.options.isNonInteractiveEnvironment && input.options.outputSurface !== "prComment") {
-      yield* printAgentGuidance();
-    }
-
-    yield* printHeadlessReport({
-      diagnostics: printedDiagnostics,
-      elapsedMilliseconds: input.elapsedMilliseconds,
-      emptyStateMessage: buildEmptyReportMessage({
-        categoryFilters: input.options.categoryFilters,
-        demotedDiagnosticCount,
-        outputSurface: input.options.outputSurface,
-      }),
+    yield* printFullInspectResult({
+      ...input,
+      ...presentation,
+      result,
       noScoreMessage,
-      projectName: payload.project.projectName,
-      scannedFileCount: payload.scannedFileCount,
-      scoreResult: hasSkippedChecks ? null : payload.score,
-      skippedChecks: result.skippedChecks,
-    });
-
-    if (input.options.outputDirectory !== null || input.options.verbose) {
-      yield* printDiagnosticsDump(
-        printedDiagnostics,
-        input.options.outputDirectory,
-        input.options.verbose,
-      );
-    }
-    if (input.options.categoryFilters.size === 0 && demotedDiagnosticCount > 0) {
-      yield* Console.log(
-        highlighter.gray(
-          `  ${demotedDiagnosticCount} demoted from the ${input.options.outputSurface} surface (e.g. design cleanup) — run \`npx react-doctor@latest .\` locally for the full list.`,
-        ),
-      );
-      yield* Console.log("");
-    }
-
-    yield* printFooter({
-      diagnostics: printedDiagnostics,
-      scoreResult: payload.score,
-      projectName: payload.project.projectName,
-      isOffline: input.options.isCi || !input.options.share || payload.score === null,
     });
 
     return result;

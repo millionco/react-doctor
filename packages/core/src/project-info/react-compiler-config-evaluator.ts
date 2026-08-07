@@ -210,6 +210,11 @@ interface ScopedConfigBinding {
   readonly initializer: ts.Expression | null;
 }
 
+interface CommonJsConfigExportMatch {
+  readonly node: ts.Node;
+  readonly strategy: "source-order" | "append-mutation" | "replace-mutation";
+}
+
 const bindingNameContainsIdentifier = (
   bindingName: ts.BindingName,
   identifierName: string,
@@ -494,6 +499,33 @@ const isNodeCreateRequireCall = (node: ts.Node, analysis: ConfigExpressionAnalys
   );
 };
 
+const isUnshadowedGlobalRequireIdentifier = (
+  identifier: ts.Identifier,
+  analysis: ConfigExpressionAnalysis,
+): boolean =>
+  identifier.text === "require" &&
+  !hasTopLevelValueBinding(analysis.sourceFile, identifier.text) &&
+  getImportBinding(analysis.sourceFile, identifier.text) === null;
+
+const isNodeRequireResolverIdentifier = (
+  identifier: ts.Identifier,
+  analysis: ConfigExpressionAnalysis,
+): boolean => {
+  if (analysis.localBindings.has(identifier.text)) return false;
+  const scopedBinding = getScopedConfigBinding(identifier);
+  const resolverInitializer = scopedBinding.wasFound
+    ? scopedBinding.initializer
+    : getTopLevelBinding(analysis.sourceFile, identifier.text);
+  if (!scopedBinding.wasFound && resolverInitializer === null) {
+    return isUnshadowedGlobalRequireIdentifier(identifier, analysis);
+  }
+  return Boolean(
+    resolverInitializer &&
+    isConstantVariableInitializer(resolverInitializer) &&
+    isNodeCreateRequireCall(resolverInitializer, analysis),
+  );
+};
+
 const getNodeRequireResolveModuleSpecifier = (
   callExpression: ts.CallExpression,
   analysis: ConfigExpressionAnalysis,
@@ -506,31 +538,9 @@ const getNodeRequireResolveModuleSpecifier = (
   if (propertyName !== "resolve") return null;
   if (isNodeCreateRequireCall(target.expression, analysis)) return moduleSpecifierNode.text;
   if (!ts.isIdentifier(target.expression)) return null;
-
-  const resolverIdentifier = target.expression;
-  if (analysis.localBindings.has(resolverIdentifier.text)) return null;
-  const scopedBinding = getScopedConfigBinding(resolverIdentifier);
-  const topLevelBinding = scopedBinding.wasFound
-    ? null
-    : getTopLevelBinding(analysis.sourceFile, resolverIdentifier.text);
-  const resolverInitializer = scopedBinding.wasFound ? scopedBinding.initializer : topLevelBinding;
-  if (
-    resolverInitializer === null &&
-    !scopedBinding.wasFound &&
-    resolverIdentifier.text === "require" &&
-    !hasTopLevelValueBinding(analysis.sourceFile, resolverIdentifier.text) &&
-    getImportBinding(analysis.sourceFile, resolverIdentifier.text) === null
-  ) {
-    return moduleSpecifierNode.text;
-  }
-  if (
-    !resolverInitializer ||
-    !isConstantVariableInitializer(resolverInitializer) ||
-    !isNodeCreateRequireCall(resolverInitializer, analysis)
-  ) {
-    return null;
-  }
-  return moduleSpecifierNode.text;
+  return isNodeRequireResolverIdentifier(target.expression, analysis)
+    ? moduleSpecifierNode.text
+    : null;
 };
 
 interface ReactCompilerFlagState {
@@ -807,6 +817,78 @@ const getReactCompilerFlagState = (
   return null;
 };
 
+const getSelectedIdentifierObjectProperty = (
+  identifier: ts.Identifier,
+  propertyName: string,
+  analysis: ConfigExpressionAnalysis,
+  visitedExpressions: Set<ts.Expression>,
+): ConfigPropertyReference | null => {
+  if (analysis.localBindings.has(identifier.text)) {
+    const localReference = analysis.localBindings.get(identifier.text);
+    return localReference?.expression
+      ? getSelectedObjectProperty(
+          localReference.expression,
+          propertyName,
+          localReference.analysis,
+          visitedExpressions,
+        )
+      : null;
+  }
+  const scopedBinding = getScopedConfigBinding(identifier);
+  if (scopedBinding.wasFound) {
+    return scopedBinding.initializer
+      ? getSelectedObjectProperty(
+          scopedBinding.initializer,
+          propertyName,
+          analysis,
+          visitedExpressions,
+        )
+      : null;
+  }
+  const topLevelBinding = getTopLevelBinding(analysis.sourceFile, identifier.text);
+  return topLevelBinding && ts.isExpression(topLevelBinding)
+    ? getSelectedObjectProperty(topLevelBinding, propertyName, analysis, visitedExpressions)
+    : null;
+};
+
+const getDirectObjectPropertyReference = (
+  property: ts.ObjectLiteralElementLike,
+  propertyName: string,
+  analysis: ConfigExpressionAnalysis,
+): ConfigPropertyReference | null => {
+  if (ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === propertyName) {
+    return { node: property.initializer, analysis };
+  }
+  if (ts.isMethodDeclaration(property) && getStaticPropertyName(property.name) === propertyName) {
+    return { node: property, analysis };
+  }
+  if (ts.isShorthandPropertyAssignment(property) && property.name.text === propertyName) {
+    return { node: property.name, analysis };
+  }
+  return null;
+};
+
+const getSelectedObjectLiteralProperty = (
+  objectLiteral: ts.ObjectLiteralExpression,
+  propertyName: string,
+  analysis: ConfigExpressionAnalysis,
+  visitedExpressions: Set<ts.Expression>,
+): ConfigPropertyReference | null => {
+  for (const property of [...objectLiteral.properties].reverse()) {
+    const directProperty = getDirectObjectPropertyReference(property, propertyName, analysis);
+    if (directProperty) return directProperty;
+    if (!ts.isSpreadAssignment(property)) continue;
+    const spreadProperty = getSelectedObjectProperty(
+      property.expression,
+      propertyName,
+      analysis,
+      visitedExpressions,
+    );
+    if (spreadProperty) return spreadProperty;
+  }
+  return null;
+};
+
 const getSelectedObjectProperty = (
   expression: ts.Expression,
   propertyName: string,
@@ -817,58 +899,21 @@ const getSelectedObjectProperty = (
   if (visitedExpressions.has(resolvedExpression)) return null;
   visitedExpressions.add(resolvedExpression);
   if (ts.isIdentifier(resolvedExpression)) {
-    if (analysis.localBindings.has(resolvedExpression.text)) {
-      const localReference = analysis.localBindings.get(resolvedExpression.text);
-      return localReference?.expression
-        ? getSelectedObjectProperty(
-            localReference.expression,
-            propertyName,
-            localReference.analysis,
-            visitedExpressions,
-          )
-        : null;
-    }
-    const scopedBinding = getScopedConfigBinding(resolvedExpression);
-    if (scopedBinding.wasFound) {
-      return scopedBinding.initializer
-        ? getSelectedObjectProperty(
-            scopedBinding.initializer,
-            propertyName,
-            analysis,
-            visitedExpressions,
-          )
-        : null;
-    }
-    const topLevelBinding = getTopLevelBinding(analysis.sourceFile, resolvedExpression.text);
-    return topLevelBinding && ts.isExpression(topLevelBinding)
-      ? getSelectedObjectProperty(topLevelBinding, propertyName, analysis, visitedExpressions)
-      : null;
+    return getSelectedIdentifierObjectProperty(
+      resolvedExpression,
+      propertyName,
+      analysis,
+      visitedExpressions,
+    );
   }
-  if (!ts.isObjectLiteralExpression(resolvedExpression)) return null;
-  for (const property of [...resolvedExpression.properties].reverse()) {
-    if (
-      ts.isPropertyAssignment(property) &&
-      getStaticPropertyName(property.name) === propertyName
-    ) {
-      return { node: property.initializer, analysis };
-    }
-    if (ts.isMethodDeclaration(property) && getStaticPropertyName(property.name) === propertyName) {
-      return { node: property, analysis };
-    }
-    if (ts.isShorthandPropertyAssignment(property) && property.name.text === propertyName) {
-      return { node: property.name, analysis };
-    }
-    if (ts.isSpreadAssignment(property)) {
-      const spreadProperty = getSelectedObjectProperty(
-        property.expression,
+  return ts.isObjectLiteralExpression(resolvedExpression)
+    ? getSelectedObjectLiteralProperty(
+        resolvedExpression,
         propertyName,
         analysis,
         visitedExpressions,
-      );
-      if (spreadProperty) return spreadProperty;
-    }
-  }
-  return null;
+      )
+    : null;
 };
 
 const configExpressionMayDefineProperty = (
@@ -970,9 +1015,153 @@ const configExpressionMayDefineProperty = (
   });
 };
 
-const getExportedConfigNodes = (sourceFile: ts.SourceFile, exportName: string): ts.Node[] => {
+const getNamedObjectLiteralExportNode = (
+  objectLiteral: ts.ObjectLiteralExpression,
+  exportName: string,
+): ts.Node | null => {
+  for (const property of [...objectLiteral.properties].reverse()) {
+    if (ts.isPropertyAssignment(property) && getStaticPropertyName(property.name) === exportName) {
+      return property.initializer;
+    }
+    if (ts.isShorthandPropertyAssignment(property) && property.name.text === exportName) {
+      return property.name;
+    }
+  }
+  return null;
+};
+
+const getCommonJsRootConfigExportMatch = (
+  assignment: ts.BinaryExpression,
+  sourceFile: ts.SourceFile,
+  exportName: string,
+): CommonJsConfigExportMatch | null => {
+  if (!isCommonJsConfigExportAssignment(assignment, sourceFile)) return null;
+  if (exportName === "default") {
+    return {
+      node: assignment.right,
+      strategy: "replace-mutation",
+    };
+  }
+  if (!ts.isObjectLiteralExpression(assignment.right)) return null;
+  const exportedNode = getNamedObjectLiteralExportNode(assignment.right, exportName);
+  return exportedNode ? { node: exportedNode, strategy: "source-order" } : null;
+};
+
+const getCommonJsPropertyConfigExportMatch = (
+  assignment: ts.BinaryExpression,
+  sourceFile: ts.SourceFile,
+  exportName: string,
+): CommonJsConfigExportMatch | null => {
+  if (assignment.left.getText(sourceFile) === `exports.${exportName}`) {
+    return {
+      node: assignment.right,
+      strategy: "source-order",
+    };
+  }
+  if (
+    exportName !== "default" ||
+    (!ts.isPropertyAccessExpression(assignment.left) &&
+      !ts.isElementAccessExpression(assignment.left))
+  ) {
+    return null;
+  }
+
+  const assignmentObjectText = assignment.left.expression.getText(sourceFile);
+  const assignmentPropertyName = getAccessedPropertyName(assignment.left);
+  if (
+    !assignmentPropertyName ||
+    (assignmentObjectText !== "module.exports" &&
+      assignmentObjectText !== "exports" &&
+      assignmentObjectText !== "exports.default")
+  ) {
+    return null;
+  }
+  return {
+    node: assignment,
+    strategy: "append-mutation",
+  };
+};
+
+const getCommonJsConfigExportMatch = (
+  statement: ts.Statement,
+  sourceFile: ts.SourceFile,
+  exportName: string,
+): CommonJsConfigExportMatch | null => {
+  if (
+    !ts.isExpressionStatement(statement) ||
+    !ts.isBinaryExpression(statement.expression) ||
+    statement.expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken
+  ) {
+    return null;
+  }
+  return (
+    getCommonJsRootConfigExportMatch(statement.expression, sourceFile, exportName) ??
+    getCommonJsPropertyConfigExportMatch(statement.expression, sourceFile, exportName)
+  );
+};
+
+const getExportedVariableInitializerNodes = (
+  statement: ts.Statement,
+  exportName: string,
+): ts.Expression[] => {
+  if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) return [];
+  const exportedNodes: ts.Expression[] = [];
+  for (const declaration of statement.declarationList.declarations) {
+    if (
+      ts.isIdentifier(declaration.name) &&
+      declaration.name.text === exportName &&
+      declaration.initializer
+    ) {
+      exportedNodes.push(declaration.initializer);
+    }
+  }
+  return exportedNodes;
+};
+
+const getLocalNamedExportNodes = (statement: ts.Statement, exportName: string): ts.Node[] => {
+  if (
+    !ts.isExportDeclaration(statement) ||
+    statement.moduleSpecifier ||
+    !statement.exportClause ||
+    !ts.isNamedExports(statement.exportClause)
+  ) {
+    return [];
+  }
   const exportedNodes: ts.Node[] = [];
-  const commonJsExportedNodes: ts.Node[] = [];
+  for (const exportSpecifier of statement.exportClause.elements) {
+    if (exportSpecifier.name.text === exportName) {
+      exportedNodes.push(exportSpecifier.propertyName ?? exportSpecifier.name);
+    }
+  }
+  return exportedNodes;
+};
+
+const getDefaultEsmConfigExportNodes = (statement: ts.Statement, exportName: string): ts.Node[] => {
+  if (exportName !== "default") return [];
+  if (ts.isExportAssignment(statement)) return [statement.expression];
+  if (!ts.isFunctionDeclaration(statement) && !ts.isClassDeclaration(statement)) return [];
+  if (!hasExportModifier(statement)) return [];
+  const isDefaultExport = ts
+    .getModifiers(statement)
+    ?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword);
+  return isDefaultExport ? [statement] : [];
+};
+
+const getEsmConfigExportNodes = (statement: ts.Statement, exportName: string): ts.Node[] => {
+  const exportedNodes = getDefaultEsmConfigExportNodes(statement, exportName);
+  exportedNodes.push(...getExportedVariableInitializerNodes(statement, exportName));
+  if (
+    ts.isFunctionDeclaration(statement) &&
+    hasExportModifier(statement) &&
+    statement.name?.text === exportName
+  ) {
+    exportedNodes.push(statement);
+  }
+  exportedNodes.push(...getLocalNamedExportNodes(statement, exportName));
+  return exportedNodes;
+};
+
+const getExportedConfigNodes = (sourceFile: ts.SourceFile, exportName: string): ts.Node[] => {
   const isJsonConfig =
     sourceFile.fileName.endsWith(".json") || path.basename(sourceFile.fileName) === ".babelrc";
   if (isJsonConfig && exportName === "default") {
@@ -981,110 +1170,20 @@ const getExportedConfigNodes = (sourceFile: ts.SourceFile, exportName: string): 
     );
   }
 
+  const exportedNodes: ts.Node[] = [];
+  const commonJsExportedNodes: ts.Node[] = [];
   for (const statement of sourceFile.statements) {
-    if (exportName === "default" && ts.isExportAssignment(statement)) {
-      exportedNodes.push(statement.expression);
-    }
-    if (
-      exportName === "default" &&
-      (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) &&
-      hasExportModifier(statement) &&
-      ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)
-    ) {
-      exportedNodes.push(statement);
-    }
-    if (
-      ts.isExpressionStatement(statement) &&
-      isCommonJsConfigExportAssignment(statement.expression, sourceFile) &&
-      exportName === "default"
-    ) {
-      commonJsExportedNodes.length = 0;
-      commonJsExportedNodes.push(statement.expression.right);
+    exportedNodes.push(...getEsmConfigExportNodes(statement, exportName));
+    const commonJsExportMatch = getCommonJsConfigExportMatch(statement, sourceFile, exportName);
+    if (!commonJsExportMatch) continue;
+    if (commonJsExportMatch.strategy === "source-order") {
+      exportedNodes.push(commonJsExportMatch.node);
       continue;
     }
-    if (
-      ts.isExpressionStatement(statement) &&
-      isCommonJsConfigExportAssignment(statement.expression, sourceFile) &&
-      exportName !== "default" &&
-      ts.isObjectLiteralExpression(statement.expression.right)
-    ) {
-      for (const property of [...statement.expression.right.properties].reverse()) {
-        if (
-          ts.isPropertyAssignment(property) &&
-          getStaticPropertyName(property.name) === exportName
-        ) {
-          exportedNodes.push(property.initializer);
-          break;
-        }
-        if (ts.isShorthandPropertyAssignment(property) && property.name.text === exportName) {
-          exportedNodes.push(property.name);
-          break;
-        }
-      }
+    if (commonJsExportMatch.strategy === "replace-mutation") {
+      commonJsExportedNodes.length = 0;
     }
-    if (
-      ts.isExpressionStatement(statement) &&
-      ts.isBinaryExpression(statement.expression) &&
-      statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      statement.expression.left.getText(sourceFile) === `exports.${exportName}`
-    ) {
-      exportedNodes.push(statement.expression.right);
-    }
-    if (
-      exportName === "default" &&
-      ts.isExpressionStatement(statement) &&
-      ts.isBinaryExpression(statement.expression) &&
-      statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      (ts.isPropertyAccessExpression(statement.expression.left) ||
-        ts.isElementAccessExpression(statement.expression.left))
-    ) {
-      const assignmentTarget = statement.expression.left;
-      const assignmentObjectText = assignmentTarget.expression.getText(sourceFile);
-      const assignmentPropertyName = ts.isPropertyAccessExpression(assignmentTarget)
-        ? assignmentTarget.name.text
-        : assignmentTarget.argumentExpression &&
-            ts.isStringLiteralLike(assignmentTarget.argumentExpression)
-          ? assignmentTarget.argumentExpression.text
-          : null;
-      if (
-        assignmentPropertyName &&
-        (assignmentObjectText === "module.exports" ||
-          assignmentObjectText === "exports" ||
-          assignmentObjectText === "exports.default")
-      ) {
-        commonJsExportedNodes.push(statement.expression);
-        continue;
-      }
-    }
-    if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        if (
-          ts.isIdentifier(declaration.name) &&
-          declaration.name.text === exportName &&
-          declaration.initializer
-        ) {
-          exportedNodes.push(declaration.initializer);
-        }
-      }
-    }
-    if (
-      ts.isFunctionDeclaration(statement) &&
-      hasExportModifier(statement) &&
-      statement.name?.text === exportName
-    ) {
-      exportedNodes.push(statement);
-    }
-    if (
-      ts.isExportDeclaration(statement) &&
-      !statement.moduleSpecifier &&
-      statement.exportClause &&
-      ts.isNamedExports(statement.exportClause)
-    ) {
-      for (const exportSpecifier of statement.exportClause.elements) {
-        if (exportSpecifier.name.text === exportName)
-          exportedNodes.push(exportSpecifier.propertyName ?? exportSpecifier.name);
-      }
-    }
+    commonJsExportedNodes.push(commonJsExportMatch.node);
   }
   return [...exportedNodes, ...commonJsExportedNodes];
 };

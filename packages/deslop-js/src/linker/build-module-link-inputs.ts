@@ -20,6 +20,17 @@ interface ModuleLinkInputsResult {
   errors: DeslopError[];
 }
 
+interface ModuleResolutionContext {
+  errors: DeslopError[];
+  resolveModule: (specifier: string, fromFile: string) => ResolvedImport;
+}
+
+interface StyleDiscoveryContext extends ModuleResolutionContext {
+  discoveredFilePaths: Set<string>;
+  pendingStyleFilePaths: Set<string>;
+  styleFileQueue: string[];
+}
+
 const STYLE_EXTENSIONS = [".css", ".scss"];
 
 const isStyleFile = (filePath: string): boolean =>
@@ -31,6 +42,113 @@ const unresolvedImport = (): ResolvedImport => ({
   packageName: undefined,
 });
 
+const resolveImport = (
+  context: ModuleResolutionContext,
+  specifier: string,
+  fromFilePath: string,
+  failureMessage: string,
+): ResolvedImport => {
+  try {
+    return context.resolveModule(specifier, fromFilePath);
+  } catch (resolveError) {
+    context.errors.push(
+      new ResolverError({
+        severity: "warning",
+        message: failureMessage,
+        path: fromFilePath,
+        detail: describeUnknownError(resolveError),
+      }),
+    );
+    return unresolvedImport();
+  }
+};
+
+const expandImportGlob = (
+  specifier: string,
+  fromFilePath: string,
+  errors: DeslopError[],
+): string[] => {
+  try {
+    return fg.sync(specifier, {
+      cwd: dirname(fromFilePath),
+      absolute: true,
+      onlyFiles: true,
+      ignore: ["**/node_modules/**"],
+    });
+  } catch (globError) {
+    errors.push(
+      new WorkspaceError({
+        code: "workspace-discovery-failed",
+        message: `fast-glob threw on import glob "${specifier}"`,
+        path: fromFilePath,
+        detail: describeUnknownError(globError),
+      }),
+    );
+    return [];
+  }
+};
+
+const collectSourceImports = (
+  parsedModule: ParsedSource,
+  filePath: string,
+  context: ModuleResolutionContext,
+): Map<string, ResolvedImport> => {
+  const resolvedImports = new Map<string, ResolvedImport>();
+  for (const importInfo of parsedModule.imports) {
+    if (importInfo.isGlob) {
+      for (const expandedFilePath of expandImportGlob(
+        importInfo.specifier,
+        filePath,
+        context.errors,
+      )) {
+        resolvedImports.set(expandedFilePath, {
+          resolvedPath: expandedFilePath,
+          isExternal: false,
+          packageName: undefined,
+        });
+      }
+      resolvedImports.set(importInfo.specifier, unresolvedImport());
+      continue;
+    }
+    resolvedImports.set(
+      importInfo.specifier,
+      resolveImport(
+        context,
+        importInfo.specifier,
+        filePath,
+        `moduleResolver.resolveModule threw on specifier "${importInfo.specifier}"`,
+      ),
+    );
+  }
+  return resolvedImports;
+};
+
+const collectReExportImports = (
+  parsedModule: ParsedSource,
+  filePath: string,
+  resolvedImports: Map<string, ResolvedImport>,
+  context: ModuleResolutionContext,
+): void => {
+  for (const exportInfo of parsedModule.exports) {
+    if (
+      !exportInfo.isReExport ||
+      !exportInfo.reExportSource ||
+      resolvedImports.has(exportInfo.reExportSource)
+    ) {
+      continue;
+    }
+    resolvedImports.set(
+      exportInfo.reExportSource,
+      resolveImport(
+        context,
+        exportInfo.reExportSource,
+        filePath,
+        `moduleResolver.resolveModule threw on specifier "${exportInfo.reExportSource}"`,
+      ),
+    );
+  }
+};
+
 const buildSourceModuleLinkInputs = (
   options: BuildModuleLinkInputsOptions,
 ): ModuleLinkInputsResult => {
@@ -39,72 +157,16 @@ const buildSourceModuleLinkInputs = (
   const testEntryPaths = new Set(options.resolvedEntries.testEntries);
   const alwaysUsedFilePaths = new Set(options.resolvedEntries.alwaysUsedFiles);
   const graphInputs: ModuleLinkInput[] = [];
+  const resolutionContext: ModuleResolutionContext = {
+    errors,
+    resolveModule: options.resolveModule,
+  };
 
   for (let fileIndex = 0; fileIndex < options.files.length; fileIndex++) {
     const file = options.files[fileIndex];
     const parsedModule = options.parsedModules[fileIndex];
-    const resolvedImports = new Map<string, ResolvedImport>();
-    const safelyResolveImport = (specifier: string): ResolvedImport => {
-      try {
-        return options.resolveModule(specifier, file.path);
-      } catch (resolveError) {
-        errors.push(
-          new ResolverError({
-            severity: "warning",
-            message: `moduleResolver.resolveModule threw on specifier "${specifier}"`,
-            path: file.path,
-            detail: describeUnknownError(resolveError),
-          }),
-        );
-        return unresolvedImport();
-      }
-    };
-
-    for (const importInfo of parsedModule.imports) {
-      if (importInfo.isGlob) {
-        let expandedFilePaths: string[] = [];
-        try {
-          expandedFilePaths = fg.sync(importInfo.specifier, {
-            cwd: dirname(file.path),
-            absolute: true,
-            onlyFiles: true,
-            ignore: ["**/node_modules/**"],
-          });
-        } catch (globError) {
-          errors.push(
-            new WorkspaceError({
-              code: "workspace-discovery-failed",
-              message: `fast-glob threw on import glob "${importInfo.specifier}"`,
-              path: file.path,
-              detail: describeUnknownError(globError),
-            }),
-          );
-        }
-        for (const expandedFilePath of expandedFilePaths) {
-          resolvedImports.set(expandedFilePath, {
-            resolvedPath: expandedFilePath,
-            isExternal: false,
-            packageName: undefined,
-          });
-        }
-        resolvedImports.set(importInfo.specifier, unresolvedImport());
-        continue;
-      }
-      resolvedImports.set(importInfo.specifier, safelyResolveImport(importInfo.specifier));
-    }
-
-    for (const exportInfo of parsedModule.exports) {
-      if (
-        exportInfo.isReExport &&
-        exportInfo.reExportSource &&
-        !resolvedImports.has(exportInfo.reExportSource)
-      ) {
-        resolvedImports.set(
-          exportInfo.reExportSource,
-          safelyResolveImport(exportInfo.reExportSource),
-        );
-      }
-    }
+    const resolvedImports = collectSourceImports(parsedModule, file.path, resolutionContext);
+    collectReExportImports(parsedModule, file.path, resolvedImports, resolutionContext);
 
     graphInputs.push({
       fileId: file,
@@ -122,6 +184,65 @@ const buildSourceModuleLinkInputs = (
   return { graphInputs, errors };
 };
 
+const findUndiscoveredStyleFilePath = (
+  resolvedImport: ResolvedImport,
+  discoveredFilePaths: ReadonlySet<string>,
+): string | undefined => {
+  const resolvedPath = resolvedImport.resolvedPath;
+  if (
+    !resolvedPath ||
+    discoveredFilePaths.has(resolvedPath) ||
+    !isStyleFile(resolvedPath) ||
+    !existsSync(resolvedPath)
+  ) {
+    return undefined;
+  }
+  return resolvedPath;
+};
+
+const collectPendingStyleFilePaths = (
+  sourceGraphInputs: ModuleLinkInput[],
+  discoveredFilePaths: ReadonlySet<string>,
+): Set<string> => {
+  const pendingStyleFilePaths = new Set<string>();
+  for (const graphInput of sourceGraphInputs) {
+    for (const resolvedImport of graphInput.resolvedImports.values()) {
+      if (resolvedImport.isExternal) continue;
+      const styleFilePath = findUndiscoveredStyleFilePath(resolvedImport, discoveredFilePaths);
+      if (styleFilePath) pendingStyleFilePaths.add(styleFilePath);
+    }
+  }
+  return pendingStyleFilePaths;
+};
+
+const collectStyleImports = (
+  parsedStyleModule: ParsedSource,
+  styleFilePath: string,
+  context: StyleDiscoveryContext,
+): Map<string, ResolvedImport> => {
+  const resolvedStyleImports = new Map<string, ResolvedImport>();
+  for (const importInfo of parsedStyleModule.imports) {
+    const resolvedImport = resolveImport(
+      context,
+      importInfo.specifier,
+      styleFilePath,
+      `moduleResolver.resolveModule threw on style import "${importInfo.specifier}"`,
+    );
+    resolvedStyleImports.set(importInfo.specifier, resolvedImport);
+
+    const importedStyleFilePath = findUndiscoveredStyleFilePath(
+      resolvedImport,
+      context.discoveredFilePaths,
+    );
+    if (!importedStyleFilePath || context.pendingStyleFilePaths.has(importedStyleFilePath)) {
+      continue;
+    }
+    context.pendingStyleFilePaths.add(importedStyleFilePath);
+    context.styleFileQueue.push(importedStyleFilePath);
+  }
+  return resolvedStyleImports;
+};
+
 const buildStyleModuleLinkInputs = (
   options: BuildModuleLinkInputsOptions,
   sourceGraphInputs: ModuleLinkInput[],
@@ -129,56 +250,29 @@ const buildStyleModuleLinkInputs = (
   const errors: DeslopError[] = [];
   const graphInputs: ModuleLinkInput[] = [];
   const discoveredFilePaths = new Set(options.files.map((file) => file.path));
-  const pendingStyleFilePaths = new Set<string>();
-  for (const graphInput of sourceGraphInputs) {
-    for (const resolvedImport of graphInput.resolvedImports.values()) {
-      if (
-        resolvedImport.resolvedPath &&
-        !resolvedImport.isExternal &&
-        !discoveredFilePaths.has(resolvedImport.resolvedPath) &&
-        isStyleFile(resolvedImport.resolvedPath) &&
-        existsSync(resolvedImport.resolvedPath)
-      ) {
-        pendingStyleFilePaths.add(resolvedImport.resolvedPath);
-      }
-    }
-  }
-
+  const pendingStyleFilePaths = collectPendingStyleFilePaths(
+    sourceGraphInputs,
+    discoveredFilePaths,
+  );
   const styleFileQueue = [...pendingStyleFilePaths].sort();
+  const discoveryContext: StyleDiscoveryContext = {
+    discoveredFilePaths,
+    errors,
+    pendingStyleFilePaths,
+    resolveModule: options.resolveModule,
+    styleFileQueue,
+  };
   let nextFileIndex = options.files.length;
   for (let queueIndex = 0; queueIndex < styleFileQueue.length; queueIndex++) {
     const styleFilePath = styleFileQueue[queueIndex];
     if (discoveredFilePaths.has(styleFilePath)) continue;
 
     const parsedStyleModule = parseSourceFile(styleFilePath);
-    const resolvedStyleImports = new Map<string, ResolvedImport>();
-    for (const importInfo of parsedStyleModule.imports) {
-      let resolvedImport: ResolvedImport;
-      try {
-        resolvedImport = options.resolveModule(importInfo.specifier, styleFilePath);
-      } catch (styleResolveError) {
-        errors.push(
-          new ResolverError({
-            severity: "warning",
-            message: `moduleResolver.resolveModule threw on style import "${importInfo.specifier}"`,
-            path: styleFilePath,
-            detail: describeUnknownError(styleResolveError),
-          }),
-        );
-        resolvedImport = unresolvedImport();
-      }
-      resolvedStyleImports.set(importInfo.specifier, resolvedImport);
-      if (
-        resolvedImport.resolvedPath &&
-        !discoveredFilePaths.has(resolvedImport.resolvedPath) &&
-        isStyleFile(resolvedImport.resolvedPath) &&
-        !pendingStyleFilePaths.has(resolvedImport.resolvedPath) &&
-        existsSync(resolvedImport.resolvedPath)
-      ) {
-        pendingStyleFilePaths.add(resolvedImport.resolvedPath);
-        styleFileQueue.push(resolvedImport.resolvedPath);
-      }
-    }
+    const resolvedStyleImports = collectStyleImports(
+      parsedStyleModule,
+      styleFilePath,
+      discoveryContext,
+    );
 
     graphInputs.push({
       fileId: { index: nextFileIndex, path: styleFilePath },

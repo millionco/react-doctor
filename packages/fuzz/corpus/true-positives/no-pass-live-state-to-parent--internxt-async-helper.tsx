@@ -1,6 +1,7 @@
 // rule: no-pass-live-state-to-parent
+// verdict: fail
 // weakness: alias-guard
-// source: Internxt useTrashPagination launch-day trial
+// source: React Bench Internxt useTrashPagination representative trial 2UPR6Vm
 
 import { useCallback, useEffect, useState } from "react";
 

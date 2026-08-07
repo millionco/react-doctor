@@ -468,6 +468,53 @@ const localValidatorChecksResponseStatus = (
   if (!parameter || !isNodeOfType(parameter, "Identifier")) return false;
   const parameterSymbol = context.scopes.symbolFor(parameter);
   if (!parameterSymbol) return false;
+  const hasResponseShapeGuard =
+    isNodeOfType(validator.body, "BlockStatement") &&
+    validator.body.body.some((statement) => {
+      if (!isNodeOfType(statement, "IfStatement") || !isEarlyExitStatement(statement.consequent)) {
+        return false;
+      }
+      let hasTypedStatusProperty = false;
+      walkAst(statement.test, (child) => {
+        if (
+          hasTypedStatusProperty ||
+          !isNodeOfType(child, "BinaryExpression") ||
+          !["==", "==="].includes(child.operator)
+        ) {
+          return hasTypedStatusProperty ? false : undefined;
+        }
+        const typeofExpression = isNodeOfType(child.left, "UnaryExpression")
+          ? child.left
+          : isNodeOfType(child.right, "UnaryExpression")
+            ? child.right
+            : null;
+        const typeLiteral = typeofExpression === child.left ? child.right : child.left;
+        if (
+          !typeofExpression ||
+          typeofExpression.operator !== "typeof" ||
+          !isNodeOfType(typeLiteral, "Literal") ||
+          typeof typeLiteral.value !== "string" ||
+          !isNodeOfType(typeofExpression.argument, "MemberExpression")
+        ) {
+          return;
+        }
+        const receiver = stripGroupingParens(typeofExpression.argument.object as EsTreeNode);
+        const propertyName = getStaticPropertyName(typeofExpression.argument);
+        if (
+          isNodeOfType(receiver, "Identifier") &&
+          context.scopes.symbolFor(receiver)?.id === parameterSymbol.id &&
+          ((propertyName === "ok" && typeLiteral.value === "boolean") ||
+            (propertyName === "status" && typeLiteral.value === "number"))
+        ) {
+          hasTypedStatusProperty = true;
+          return false;
+        }
+      });
+      return (
+        hasTypedStatusProperty &&
+        expressionReadsStatusProperty(statement.consequent, parameterSymbol.id, context)
+      );
+    });
   const returnedExpressions: EsTreeNode[] = [];
   if (!isNodeOfType(validator.body, "BlockStatement")) {
     returnedExpressions.push(validator.body);
@@ -478,11 +525,20 @@ const localValidatorChecksResponseStatus = (
       }
     });
   }
+  const statusAwareReturns = returnedExpressions.filter((returnedExpression) =>
+    expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
+  );
   return (
-    returnedExpressions.length > 0 &&
-    returnedExpressions.every((returnedExpression) =>
-      expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
-    )
+    statusAwareReturns.length > 0 &&
+    returnedExpressions.every((returnedExpression) => {
+      if (statusAwareReturns.includes(returnedExpression)) return true;
+      const fallback = stripGroupingParens(returnedExpression);
+      return (
+        hasResponseShapeGuard &&
+        isNodeOfType(fallback, "Literal") &&
+        typeof fallback.value === "boolean"
+      );
+    })
   );
 };
 
@@ -700,6 +756,34 @@ const reportUnguarded = ({
     });
   });
 
+  const consumptionResultIsGuardedBeforeUse = (
+    consumption: EsTreeNode,
+    statusReferences: EsTreeNode[],
+  ): boolean => {
+    let resultExpression = findTransparentExpressionRoot(consumption);
+    if (
+      resultExpression.parent &&
+      isNodeOfType(resultExpression.parent, "AwaitExpression") &&
+      resultExpression.parent.argument === resultExpression
+    ) {
+      resultExpression = findTransparentExpressionRoot(resultExpression.parent);
+    }
+    const declarator = resultExpression.parent;
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      declarator.init !== resultExpression ||
+      !isNodeOfType(declarator.id, "Identifier")
+    ) {
+      return false;
+    }
+    const resultSymbol = context.scopes.symbolFor(declarator.id);
+    if (!resultSymbol || resultSymbol.references.length === 0) return false;
+    return resultSymbol.references.every((reference) =>
+      statusCheckGuardsNode(statusReferences, reference.identifier),
+    );
+  };
+
   const everyConsumptionIsGuarded = consumptions.every((consumption) => {
     if (
       directStatusReferences.length > 0 &&
@@ -710,6 +794,13 @@ const reportUnguarded = ({
     if (
       destructuredStatusReferences.length > 0 &&
       statusCheckGuardsNode(destructuredStatusReferences, consumption)
+    ) {
+      return true;
+    }
+    const allStatusReferences = [...directStatusReferences, ...destructuredStatusReferences];
+    if (
+      allStatusReferences.length > 0 &&
+      consumptionResultIsGuardedBeforeUse(consumption, allStatusReferences)
     ) {
       return true;
     }

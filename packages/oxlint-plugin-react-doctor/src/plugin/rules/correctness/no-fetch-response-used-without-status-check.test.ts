@@ -155,7 +155,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags when the status is read only after the body is consumed", () => {
+  it("accepts parsing before an immediate status guard when the body is unused beforehand", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `const load = async () => {
@@ -165,6 +165,21 @@ describe("no-fetch-response-used-without-status-check", () => {
         return body;
       };`,
     );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags parsing before a status guard when the parsed body is used first", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const load = async () => {
+        const response = await fetch("/api/items");
+        const body = await response.json();
+        render(body);
+        if (!response.ok) throw new Error("failed");
+        return body;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
 
@@ -249,6 +264,26 @@ describe("no-fetch-response-used-without-status-check", () => {
       async function load() {
         const response = await fetch("/api/keys");
         if (!responseSucceeded(response)) throw new Error("Unable to refresh");
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a typed status helper with a boolean fallback before body consumption", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const isSuccessResponse = (response) => {
+        if (typeof response.ok === "boolean") return response.ok;
+        if (typeof response.status === "number") {
+          return response.status >= 200 && response.status < 300;
+        }
+        return true;
+      };
+      async function load() {
+        const response = await fetch("/api/keys");
+        if (!isSuccessResponse(response)) throw new Error("Refresh failed");
         return response.json();
       }`,
     );

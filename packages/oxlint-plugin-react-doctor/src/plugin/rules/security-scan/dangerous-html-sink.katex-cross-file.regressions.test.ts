@@ -135,6 +135,53 @@ describe("security-scan/dangerous-html-sink — cross-file KaTeX provenance", ()
     }
   });
 
+  it("follows a safe KaTeX HTML field returned across a helper boundary", () => {
+    const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-result-"));
+    try {
+      writeFileSync(
+        join(directory, "render-math.ts"),
+        `import katex from "katex";
+         export const renderMath = (value: string, displayMode: boolean) => ({
+           displayMode,
+           html: katex.renderToString(value, { displayMode, throwOnError: false }),
+         });`,
+      );
+      writeFileSync(
+        join(directory, "render-unsafe-math.ts"),
+        `import katex from "katex";
+         export const renderMath = (value: string) => ({
+           html: katex.renderToString(value, { trust: true }),
+         });`,
+      );
+      const safeFindings =
+        dangerousHtmlSink.scan?.({
+          absolutePath: join(directory, "math.tsx"),
+          relativePath: "src/math.tsx",
+          content: `import { renderMath } from "./render-math";
+            export const Math = ({ value, displayMode }: Props) => {
+              const renderedMath = renderMath(value, displayMode);
+              return <span dangerouslySetInnerHTML={{ __html: renderedMath.html }} />;
+            };`,
+          isGeneratedBundle: false,
+        }) ?? [];
+      const unsafeFindings =
+        dangerousHtmlSink.scan?.({
+          absolutePath: join(directory, "unsafe-math.tsx"),
+          relativePath: "src/unsafe-math.tsx",
+          content: `import { renderMath } from "./render-unsafe-math";
+            export const Math = ({ value }: Props) => {
+              const renderedMath = renderMath(value);
+              return <span dangerouslySetInnerHTML={{ __html: renderedMath.html }} />;
+            };`,
+          isGeneratedBundle: false,
+        }) ?? [];
+      expect(safeFindings).toHaveLength(0);
+      expect(unsafeFindings).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves dependent and destructured defaults across a KaTeX helper boundary", () => {
     const directory = mkdtempSync(join(tmpdir(), "react-doctor-katex-defaults-"));
     try {

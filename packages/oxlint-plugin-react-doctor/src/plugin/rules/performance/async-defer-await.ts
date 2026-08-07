@@ -118,6 +118,7 @@ const CANCELLATION_GUARD_NAMES: ReadonlySet<string> = new Set([
   "isActive",
   "stale",
   "isStale",
+  "ignore",
   "signal",
   "abortSignal",
   "abortController",

@@ -459,4 +459,47 @@ describe("no-stale-timer-ref", () => {
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("stays quiet when a compound exit guard only protects clearing and resetting", () => {
+    const result = runRule(
+      noStaleTimerRef,
+      `import { useEffect, useRef } from "react";
+      const PermissionCard = ({ countdown, tick }) => {
+        const timerRef = useRef(null);
+        useEffect(() => {
+          timerRef.current = setInterval(tick, 1000);
+        }, [tick]);
+        useEffect(() => {
+          if (countdown !== 0 || !timerRef.current) return;
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }, [countdown]);
+        const respond = () => {
+          if (timerRef.current) clearInterval(timerRef.current);
+        };
+        return <button onClick={respond}>Respond</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still reports when an exit guard gates business behavior on timer pendingness", () => {
+    const result = runRule(
+      noStaleTimerRef,
+      `import { useRef } from "react";
+      const PermissionCard = ({ tick, complete }) => {
+        const timerRef = useRef(null);
+        timerRef.current = setInterval(tick, 1000);
+        const respond = () => {
+          if (!timerRef.current) return;
+          clearInterval(timerRef.current);
+          complete();
+        };
+        return <button onClick={respond}>Respond</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

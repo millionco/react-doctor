@@ -11,6 +11,7 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isReactHookCall } from "../../utils/is-react-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
@@ -114,6 +115,27 @@ const isClearGuardIfIdiom = (
   });
 };
 
+const isEarlyExitBeforeClearIdiom = (
+  ifStatement: EsTreeNodeOfType<"IfStatement">,
+  refName: string,
+): boolean => {
+  if (ifStatement.alternate || !isEarlyExitStatement(ifStatement.consequent)) return false;
+  const block = ifStatement.parent;
+  if (!block || !isNodeOfType(block, "BlockStatement")) return false;
+  const guardIndex = block.body.findIndex(
+    (statement) => statement.range[0] === ifStatement.range[0],
+  );
+  if (guardIndex < 0 || guardIndex === block.body.length - 1) return false;
+  return block.body.slice(guardIndex + 1).every((statement) => {
+    if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+    const expression = stripParenExpression(statement.expression);
+    return (
+      isClearCallOnRef(expression, refName) ||
+      (isAssignmentToRefCurrent(expression, refName) && isNullishResetExpression(expression.right))
+    );
+  });
+};
+
 interface RefCurrentConditionClimb {
   conditionRoot: EsTreeNode;
   logicalAncestors: EsTreeNodeOfType<"LogicalExpression">[];
@@ -173,7 +195,10 @@ const isPendingSignalRead = (refCurrentMember: EsTreeNode, refName: string): boo
     climbBooleanProjection(refCurrentMember);
   const conditionParent = conditionRoot.parent;
   if (isNodeOfType(conditionParent, "IfStatement") && conditionParent.test === conditionRoot) {
-    return !isClearGuardIfIdiom(conditionParent, refName);
+    return !(
+      isClearGuardIfIdiom(conditionParent, refName) ||
+      isEarlyExitBeforeClearIdiom(conditionParent, refName)
+    );
   }
   if (
     (isNodeOfType(conditionParent, "ConditionalExpression") ||

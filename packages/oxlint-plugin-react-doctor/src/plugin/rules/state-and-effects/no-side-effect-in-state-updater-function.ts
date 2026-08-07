@@ -105,6 +105,7 @@ const GLOBAL_SCHEDULER_CALL_NAMES = new Set([
 ]);
 const GLOBAL_SIDE_EFFECT_CALL_NAMES = new Set(["fetch"]);
 const GLOBAL_OBJECT_RECEIVER_NAMES = new Set(["globalThis", "self", "window"]);
+const HISTORY_MUTATION_METHOD_NAMES = new Set(["pushState", "replaceState"]);
 const INTERNATIONALIZED_DATE_IMMUTABLE_METHOD_NAMES = new Set(["add", "set"]);
 const DAYJS_IMMUTABLE_METHOD_NAMES = new Set(["add", "set"]);
 const DAYJS_MODULE_NAME = "dayjs";
@@ -1539,13 +1540,55 @@ const getCallName = (call: EsTreeNodeOfType<"CallExpression">): string | null =>
   return isNodeOfType(callee, "MemberExpression") ? getStaticPropertyName(callee) : null;
 };
 
+const isGlobalHistoryMutationCall = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  const callee = stripParenExpression(call.callee);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    !HISTORY_MUTATION_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(callee.object);
+  if (isNodeOfType(receiver, "Identifier")) {
+    return receiver.name === "history" && context.scopes.isGlobalReference(receiver);
+  }
+  if (!isNodeOfType(receiver, "MemberExpression")) return false;
+  if (getStaticPropertyName(receiver) !== "history") return false;
+  const globalReceiver = stripParenExpression(receiver.object);
+  return Boolean(
+    isNodeOfType(globalReceiver, "Identifier") &&
+    GLOBAL_OBJECT_RECEIVER_NAMES.has(globalReceiver.name) &&
+    context.scopes.isGlobalReference(globalReceiver),
+  );
+};
+
 const identifierIsCallbackParameter = (identifier: EsTreeNode, context: RuleContext): boolean => {
   if (!isNodeOfType(identifier, "Identifier")) return false;
   const symbol = context.scopes.symbolFor(identifier);
-  if (symbol?.kind !== "parameter") return false;
-  return CALLBACK_PROP_NAME_PATTERN.test(
-    getDestructuredBindingPropertyName(symbol.bindingIdentifier) ?? "",
-  );
+  if (!symbol) return false;
+  const callbackPropertyName = getDestructuredBindingPropertyName(symbol.bindingIdentifier) ?? "";
+  if (!CALLBACK_PROP_NAME_PATTERN.test(callbackPropertyName)) return false;
+  if (symbol.kind === "parameter") return true;
+  const property = symbol.bindingIdentifier.parent;
+  const pattern = property?.parent;
+  const declarator = pattern?.parent;
+  if (
+    !property ||
+    !isNodeOfType(property, "Property") ||
+    !pattern ||
+    !isNodeOfType(pattern, "ObjectPattern") ||
+    !declarator ||
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    declarator.id !== pattern ||
+    !declarator.init ||
+    !isNodeOfType(declarator.init, "Identifier")
+  ) {
+    return false;
+  }
+  return context.scopes.symbolFor(declarator.init)?.kind === "parameter";
 };
 
 const callStartsPromiseChain = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
@@ -1818,6 +1861,9 @@ const callHasSideEffectName = (
   invocationReferenceNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
+  if (isGlobalHistoryMutationCall(call, context)) {
+    return true;
+  }
   const callName = getCallName(call);
   if (!callName) return false;
   const callee = stripParenExpression(call.callee);

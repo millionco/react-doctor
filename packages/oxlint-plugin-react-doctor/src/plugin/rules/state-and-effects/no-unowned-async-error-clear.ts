@@ -91,7 +91,9 @@ const nodeContainsRequestIdentity = (node: EsTreeNode): boolean => {
   walkAst(node, (child) => {
     if (containsRequestIdentity) return false;
     if (
-      (isNodeOfType(child, "Identifier") && /request(?:Id)?$/i.test(child.name)) ||
+      (isNodeOfType(child, "Identifier") &&
+        (/(?:request(?:Id)?(?:Ref)?|activeRequestIdRef)$/i.test(child.name) ||
+          /^(?:sentFor|targetId)$/i.test(child.name))) ||
       (isNodeOfType(child, "MemberExpression") &&
         /requestId$/i.test(getStaticPropertyName(child) ?? ""))
     ) {

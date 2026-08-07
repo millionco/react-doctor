@@ -391,6 +391,44 @@ const getFunctionHtmlProof = (
   return returnProofs.length === 0 ? SAFE_STATIC_HTML_PROOF : combineHtmlProofs(returnProofs);
 };
 
+const getFunctionPropertyHtmlProof = (
+  functionNode: EsTreeNode,
+  propertyName: string,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number>,
+  parameterProofs: ReadonlyMap<number, KatexHtmlProof> = new Map(),
+): KatexHtmlProof => {
+  if (!isFunctionLike(functionNode)) return UNKNOWN_HTML_PROOF;
+  const returnedExpressions: EsTreeNode[] = [];
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) {
+    returnedExpressions.push(functionNode.body);
+  } else {
+    const functionBody = functionNode.body;
+    walkAst(functionBody, (child) => {
+      if (child !== functionBody && isFunctionLike(child)) return false;
+      if (
+        isNodeOfType(child, "ReturnStatement") &&
+        child.argument &&
+        !isReturnStatementStaticallyUnreachable(child, functionBody)
+      ) {
+        returnedExpressions.push(child.argument);
+      }
+    });
+  }
+  if (returnedExpressions.length === 0) return UNKNOWN_HTML_PROOF;
+  const propertyProofs = returnedExpressions.map((returnedExpression) => {
+    const propertyValue = getOrderedObjectPropertyValue(returnedExpression, propertyName);
+    if (!propertyValue.isKnown || propertyValue.value === null) return UNKNOWN_HTML_PROOF;
+    return getKatexHtmlProof(
+      propertyValue.value,
+      scopes,
+      new Set(visitedSymbolIds),
+      parameterProofs,
+    );
+  });
+  return combineHtmlProofs(propertyProofs);
+};
+
 const getLocalFunctionNode = (
   node: EsTreeNode,
   scopes: ScopeAnalysis,
@@ -504,6 +542,7 @@ const getFunctionParameterOptionsProofs = (
 const getCrossFileFunctionProof = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
+  returnPropertyName?: string,
 ): KatexHtmlProof | null => {
   const expression = stripParenExpression(call.callee);
   if (!isNodeOfType(expression, "Identifier")) return null;
@@ -533,7 +572,14 @@ const getCrossFileFunctionProof = (
     resolvedScopes,
   );
   return withKatexParameterOptionsProofs(resolvedScopes, optionsProofs, () =>
-    getFunctionHtmlProof(resolved.functionNode, resolvedScopes, new Set()),
+    returnPropertyName
+      ? getFunctionPropertyHtmlProof(
+          resolved.functionNode,
+          returnPropertyName,
+          resolvedScopes,
+          new Set(),
+        )
+      : getFunctionHtmlProof(resolved.functionNode, resolvedScopes, new Set()),
   );
 };
 
@@ -738,6 +784,29 @@ export const getKatexHtmlProof = (
   }
   if (isNodeOfType(node, "CallExpression")) {
     return getKatexCallProof(node, scopes, visitedSymbolIds, parameterProofs);
+  }
+  if (isNodeOfType(node, "MemberExpression")) {
+    const propertyName = getStaticPropertyName(node);
+    const receiver = stripParenExpression(node.object);
+    if (propertyName && isNodeOfType(receiver, "Identifier")) {
+      const receiverSymbol = scopes.referenceFor(receiver)?.resolvedSymbol;
+      const receiverInitializer = receiverSymbol?.initializer
+        ? stripParenExpression(receiverSymbol.initializer)
+        : null;
+      if (
+        receiverSymbol?.kind === "const" &&
+        receiverInitializer &&
+        isNodeOfType(receiverInitializer, "CallExpression")
+      ) {
+        const crossFilePropertyProof = getCrossFileFunctionProof(
+          receiverInitializer,
+          scopes,
+          propertyName,
+        );
+        if (crossFilePropertyProof?.containsKatex) return crossFilePropertyProof;
+      }
+    }
+    return UNKNOWN_HTML_PROOF;
   }
   if (isNodeOfType(node, "TemplateLiteral")) {
     return getTemplateLiteralProof(node, scopes, visitedSymbolIds, parameterProofs);

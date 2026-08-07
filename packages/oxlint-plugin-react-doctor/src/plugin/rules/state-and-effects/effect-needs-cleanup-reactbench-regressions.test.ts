@@ -1044,4 +1044,201 @@ const Delayed = ({ delay, task }) => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("accepts listener teardown collected in a cleanup registry", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ targets, type, handler }) => {
+        useEffect(() => {
+          const cleanups = [];
+          targets.forEach((target) => {
+            target.addEventListener(type, handler);
+            cleanups.push(() => target.removeEventListener(type, handler));
+          });
+          return () => cleanups.forEach((cleanup) => cleanup());
+        }, [targets, type, handler]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps a cleanup registry that can drop registered teardowns", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ target, type, handler }) => {
+        useEffect(() => {
+          const cleanups = [];
+          target.addEventListener(type, handler);
+          cleanups.push(() => target.removeEventListener(type, handler));
+          cleanups.pop();
+          return () => cleanups.forEach((cleanup) => cleanup());
+        }, [target, type, handler]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts listener teardown delegated through a local stop helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ handleMouseMove }) => {
+        const stopDragging = () => window.removeEventListener("mousemove", handleMouseMove);
+        useEffect(() => {
+          window.addEventListener("mousemove", handleMouseMove);
+          return () => stopDragging();
+        }, [handleMouseMove]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts symmetric nested listener iteration", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ enabledEvents, elementRefs, isCaptureEvent }) => {
+        useEffect(() => {
+          enabledEvents.forEach(({ event, listener }) =>
+            elementRefs.forEach((ref) => ref.addEventListener(event, listener, isCaptureEvent(event)))
+          );
+          return () => enabledEvents.forEach(({ event, listener }) =>
+            elementRefs.forEach((ref) => ref.removeEventListener(event, listener, isCaptureEvent(event)))
+          );
+        }, [enabledEvents, elementRefs]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an inert one-shot callback-ref timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+      const C = () => {
+        const suppressClickRef = useRef(false);
+        const attach = useCallback((node) => {
+          if (!node) return;
+          suppressClickRef.current = true;
+          setTimeout(() => { suppressClickRef.current = false; }, 100);
+        }, []);
+        return <div ref={attach} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a one-shot timer guarded by cleanup-backed mounted state", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ setIsOpen }) => {
+        const mounted = useRef(true);
+        useEffect(() => () => { mounted.current = false; }, []);
+        useEffect(() => {
+          setTimeout(() => {
+            if (!mounted.current) return;
+            setIsOpen(true);
+          }, 10);
+        }, [setIsOpen]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps a mounted guard whose cleanup invalidation is conditional", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ enabled, setIsOpen }) => {
+        const mounted = useRef(true);
+        useEffect(() => () => {
+          if (enabled) mounted.current = false;
+        }, [enabled]);
+        useEffect(() => {
+          setTimeout(() => {
+            if (!mounted.current) return;
+            setIsOpen(true);
+          }, 10);
+        }, [setIsOpen]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts delayed destruction after resources are synchronously detached", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+      const C = () => {
+        const documentsRef = useRef(new Map());
+        const clearDocuments = useCallback(() => {
+          const documents = Array.from(documentsRef.current.values());
+          documentsRef.current.clear();
+          if (documents.length === 0) return;
+          setTimeout(() => documents.forEach((document) => document.destroy()), 0);
+        }, []);
+        return <button onClick={clearDocuments}>Clear</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an object-held timer released through a cleanup helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ delay, open }) => {
+        const pendingShowRef = useRef(null);
+        const cancelPendingShow = () => {
+          if (pendingShowRef.current) clearTimeout(pendingShowRef.current.timer);
+          pendingShowRef.current = null;
+        };
+        useEffect(() => {
+          pendingShowRef.current = { timer: setTimeout(open, delay) };
+          return () => cancelPendingShow();
+        }, [delay, open]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a subscription token released through a cleanup helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ timer, tick }) => {
+        const run = useRef({ loopID: null });
+        const cancelCurrentRun = () => {
+          if (run.current.loopID) timer.unsubscribe(run.current.loopID);
+          run.current.loopID = null;
+        };
+        useEffect(() => {
+          run.current.loopID = timer.subscribe(tick);
+          return () => cancelCurrentRun();
+        }, [timer, tick]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

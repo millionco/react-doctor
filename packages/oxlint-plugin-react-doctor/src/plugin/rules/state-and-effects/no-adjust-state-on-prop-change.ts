@@ -97,13 +97,13 @@ export const noAdjustStateOnPropChange = defineRule({
           continue;
         }
         if (
-          fact.matchesStateInitializer &&
           hasResourceLifecycleSetterWriter(
             analysis,
             context,
             fact.setterReference,
             node,
             dependencyReferences,
+            fact.matchesStateInitializer,
           )
         ) {
           continue;

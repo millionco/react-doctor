@@ -1,11 +1,14 @@
 import {
+  EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES,
   EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS,
   TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES,
   TIMER_CLEANUP_CALLEE_NAMES,
 } from "../../../constants/dom.js";
 import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "../../../constants/library.js";
+import { analyzeScopes } from "../../../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { resolveImportedExportName } from "../../../utils/find-exported-function-body.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getFinalSequenceExpressionValue } from "../../../utils/get-final-sequence-expression-value.js";
 import { getDestructuredBindingPropertyName } from "../../../utils/get-destructured-binding-property-name.js";
@@ -15,10 +18,12 @@ import { getStaticPropertyName } from "../../../utils/get-static-property-name.j
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isProvenBrowserApiReceiver } from "../../../utils/is-proven-browser-api-receiver.js";
 import { nodeDominatesNode } from "../../../utils/node-dominates-node.js";
 import { isReactHookCall } from "../../../utils/is-react-hook-call.js";
 import { readStaticBoolean } from "../../../utils/read-static-boolean.js";
 import { resolveReactUseStatePair } from "../../../utils/resolve-react-use-state-pair.js";
+import { resolveCrossFileFunctionExportWithFilePath } from "../../../utils/resolve-cross-file-function-export.js";
 import { resolveExactLocalFunction } from "../../../utils/resolve-exact-local-function.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
@@ -54,6 +59,66 @@ const SYNCHRONOUS_ITERATOR_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "reduceRight",
   "some",
 ]);
+
+const crossFileScopeAnalysisByProgram = new WeakMap<EsTreeNode, ScopeAnalysis>();
+
+const isExternalDomSyncMemberCall = (
+  callExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return false;
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const memberName = getStaticPropertyName(callee);
+  return Boolean(
+    memberName &&
+    EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES.has(memberName) &&
+    isProvenBrowserApiReceiver(callee.object, "dom-event-target", scopes),
+  );
+};
+
+const isImportedExternalDomSyncCall = (
+  callExpression: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  if (!isNodeOfType(callExpression, "CallExpression") || !context.filename) return false;
+  const callee = stripParenExpression(callExpression.callee);
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(callee);
+  if (!symbol || symbol.kind !== "import") return false;
+  const importSpecifier = symbol.declarationNode;
+  const importDeclaration = importSpecifier.parent;
+  const exportedName = resolveImportedExportName(importSpecifier);
+  if (
+    !exportedName ||
+    !isNodeOfType(importDeclaration, "ImportDeclaration") ||
+    typeof importDeclaration.source.value !== "string"
+  ) {
+    return false;
+  }
+  const importedFunction = resolveCrossFileFunctionExportWithFilePath(
+    context.filename,
+    importDeclaration.source.value,
+    exportedName,
+  );
+  if (!importedFunction || !isFunctionLike(importedFunction.functionNode)) return false;
+  let importedScopes = crossFileScopeAnalysisByProgram.get(importedFunction.programNode);
+  if (!importedScopes) {
+    importedScopes = analyzeScopes(importedFunction.programNode);
+    crossFileScopeAnalysisByProgram.set(importedFunction.programNode, importedScopes);
+  }
+  let didFindExternalDomSync = false;
+  const importedFunctionBody = importedFunction.functionNode.body;
+  walkAst(importedFunctionBody, (child) => {
+    if (didFindExternalDomSync) return false;
+    if (child !== importedFunctionBody && isFunctionLike(child)) return false;
+    if (isExternalDomSyncMemberCall(child, importedScopes)) {
+      didFindExternalDomSync = true;
+      return false;
+    }
+  });
+  return didFindExternalDomSync;
+};
 
 const resolveInvokedFunction = (
   analysis: ProgramAnalysis,
@@ -253,8 +318,17 @@ const isWorkRelatedToWrite = (
   writeStateSymbolId: number | null,
   context: RuleContext,
   isResourceCancellation = false,
+  isExternalDomStateSync = false,
 ): boolean => {
   const { scopes } = context;
+  let workAnchor = workNode;
+  if (workFunction !== writeFunction) {
+    const invocationEdge = invocationPath.findLast(
+      (candidateEdge) => candidateEdge.parentFunction === writeFunction,
+    );
+    if (!invocationEdge) return false;
+    workAnchor = invocationEdge.callExpression;
+  }
   if (isNodeOfType(writeNode, "CallExpression") && isNodeOfType(writeNode.callee, "Identifier")) {
     const setterBinding = getRef(analysis, writeNode.callee)?.resolved;
     if (setterBinding) {
@@ -272,6 +346,25 @@ const isWorkRelatedToWrite = (
         }
       });
       if (writesSameState) return true;
+      if (isExternalDomStateSync) {
+        let hasRelatedStateWrite = false;
+        walkAst(writeFunction, (child) => {
+          if (hasRelatedStateWrite) return false;
+          if (child !== writeFunction && isFunctionLike(child)) return false;
+          if (
+            !isNodeOfType(child, "CallExpression") ||
+            !isNodeOfType(child.callee, "Identifier") ||
+            getRef(analysis, child.callee)?.resolved !== setterBinding
+          ) {
+            return;
+          }
+          if (isAstDescendant(workAnchor, child) || nodeDominatesNode(workAnchor, child, context)) {
+            hasRelatedStateWrite = true;
+            return false;
+          }
+        });
+        if (hasRelatedStateWrite) return true;
+      }
     }
   }
   if (propDependencyBindings.size > 0) {
@@ -295,14 +388,6 @@ const isWorkRelatedToWrite = (
     if ([...propDependencyBindings].every((propBinding) => workPropBindings.has(propBinding))) {
       return true;
     }
-  }
-  let workAnchor = workNode;
-  if (workFunction !== writeFunction) {
-    const invocationEdge = invocationPath.findLast(
-      (candidateEdge) => candidateEdge.parentFunction === writeFunction,
-    );
-    if (!invocationEdge) return false;
-    workAnchor = invocationEdge.callExpression;
   }
   const workRegion = getControlRegion(workAnchor, writeFunction);
   const writeRegion = getControlRegion(writeNode, writeFunction);
@@ -429,8 +514,11 @@ export const hasDeferredOrExternalEffectWork = (
         : null;
       const localFunction = resolveInvokedFunction(analysis, callee, scopes);
       const timerOperationName = resolveTimerOperationName(callee, scopes);
+      const isExternalDomSyncCall =
+        isExternalDomSyncMemberCall(child, scopes) || isImportedExternalDomSyncCall(child, context);
       const isExternalWork =
         isFetchCall(child) ||
+        isExternalDomSyncCall ||
         isSubscribeOrObserveCallExpression(child) ||
         timerOperationName !== null ||
         Boolean(memberName && DEFERRED_MEMBER_NAMES.has(memberName)) ||
@@ -448,6 +536,7 @@ export const hasDeferredOrExternalEffectWork = (
           writeStateSymbolId,
           context,
           Boolean(timerOperationName && TIMER_CLEANUP_CALLEE_NAMES.has(timerOperationName)),
+          isExternalDomSyncCall,
         )
       ) {
         didFindRelatedWork = true;

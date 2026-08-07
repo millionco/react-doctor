@@ -76,7 +76,7 @@ const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
   return false;
 };
 
-const referencesIdentifierNamed = (root: EsTreeNode, identifierName: string): boolean => {
+export const referencesIdentifierNamed = (root: EsTreeNode, identifierName: string): boolean => {
   let isReferenced = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
     if (isReferenced) return false;

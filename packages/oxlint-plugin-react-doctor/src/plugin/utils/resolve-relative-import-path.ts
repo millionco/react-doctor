@@ -46,7 +46,7 @@ const getExistingDirectoryPath = (directoryPath: string): string | null => {
 
 const getModuleFilePathCandidates = (modulePath: string): string[] => {
   const extension = path.extname(modulePath);
-  if (!extension) {
+  if (!MODULE_FILE_EXTENSIONS.includes(extension)) {
     return MODULE_FILE_EXTENSIONS.map((moduleExtension) => `${modulePath}${moduleExtension}`);
   }
 

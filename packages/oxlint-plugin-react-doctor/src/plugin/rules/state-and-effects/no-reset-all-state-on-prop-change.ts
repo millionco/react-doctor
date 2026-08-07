@@ -1252,7 +1252,14 @@ const findPropUsedToResetAllState = (
   if (hasSynchronousResourceLifecycleTransition(effectFn, context.scopes)) return null;
   if (
     stateSetterRefs.every((setterReference) =>
-      hasResourceLifecycleSetterWriter(analysis, context, setterReference, useEffectNode, depsRefs),
+      hasResourceLifecycleSetterWriter(
+        analysis,
+        context,
+        setterReference,
+        useEffectNode,
+        depsRefs,
+        true,
+      ),
     )
   ) {
     return null;

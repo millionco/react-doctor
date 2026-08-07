@@ -1627,7 +1627,15 @@ const matchesStateInitializer = (
   if (!isNodeOfType(stateDeclarator.init, "CallExpression")) return false;
   const writtenValue = callExpression.arguments?.[0];
   const initializerValue = stateDeclarator.init.arguments?.[0];
-  if (!writtenValue || !initializerValue) return false;
+  if (!writtenValue) return false;
+  if (!initializerValue) {
+    const unwrappedWrittenValue = stripParenExpression(writtenValue as EsTreeNode);
+    return (
+      isNodeOfType(unwrappedWrittenValue, "Identifier") &&
+      unwrappedWrittenValue.name === "undefined" &&
+      !getRef(analysis, unwrappedWrittenValue)?.resolved
+    );
+  }
   const unwrappedInitializer = stripParenExpression(initializerValue as EsTreeNode);
   if (
     isNodeOfType(unwrappedInitializer, "LogicalExpression") &&

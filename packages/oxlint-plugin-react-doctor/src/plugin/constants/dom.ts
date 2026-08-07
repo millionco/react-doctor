@@ -74,6 +74,7 @@ export const EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS = new Set([
 
 export const EXTERNAL_SYNC_DOM_MEMBER_METHOD_NAMES = new Set([
   "blur",
+  "canPlayType",
   "focus",
   "getBoundingClientRect",
   "getClientRects",

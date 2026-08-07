@@ -1254,6 +1254,23 @@ describe("discoverProject", () => {
     expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
   });
 
+  it("detects React Compiler from package.json babel config", () => {
+    const projectDirectory = path.join(tempDirectory, "package-json-babel-react-compiler");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "package-json-babel-react-compiler",
+        dependencies: { react: "^18.0.0" },
+        babel: {
+          plugins: ["babel-plugin-react-compiler"],
+        },
+      }),
+    );
+
+    expect(discoverProject(projectDirectory).hasReactCompiler).toBe(true);
+  });
+
   it("detects React Compiler from its compatibility runtime", () => {
     const projectDirectory = path.join(tempDirectory, "runtime-react-compiler");
     fs.mkdirSync(projectDirectory, { recursive: true });

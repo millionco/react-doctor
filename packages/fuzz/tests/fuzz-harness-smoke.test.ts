@@ -53,6 +53,7 @@ describe("fuzz harness oracles", () => {
     const seedRelativePaths = fs
       .readdirSync(corpusDirectory, { encoding: "utf8", recursive: true })
       .filter((relativePath) => /\.(tsx|ts|jsx|js)$/.test(relativePath))
+      .map((relativePath) => relativePath.split(path.sep).join("/"))
       .sort();
     expect(corpus.length).toBeGreaterThan(MAX_CORPUS_FILES);
     expect(corpus.map((entry) => entry.relativePath).sort()).toEqual(seedRelativePaths);

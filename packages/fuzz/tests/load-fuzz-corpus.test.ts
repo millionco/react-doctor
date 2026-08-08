@@ -78,4 +78,15 @@ describe("loadFuzzCorpus", () => {
 
     expect(loadFuzzCorpus(directory)).toEqual([]);
   });
+
+  it("returns portable relative paths for nested seeds", () => {
+    const directory = makeCorpusDirectory();
+    const nestedDirectory = path.join(directory, "nested", "deeper");
+    fs.mkdirSync(nestedDirectory, { recursive: true });
+    fs.writeFileSync(path.join(nestedDirectory, "declared.tsx"), "export const value = 1;");
+
+    expect(loadFuzzCorpus(directory).map((entry) => entry.relativePath)).toEqual([
+      "nested/deeper/declared.tsx",
+    ]);
+  });
 });

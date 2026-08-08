@@ -118,7 +118,7 @@ export const loadFuzzCorpus = (
     try {
       const code = fs.readFileSync(fullPath, "utf8");
       entries.push({
-        relativePath: path.relative(corpusDirectory, fullPath),
+        relativePath: path.relative(corpusDirectory, fullPath).split(path.sep).join("/"),
         code,
         ...readCorpusDirectives(code),
       });

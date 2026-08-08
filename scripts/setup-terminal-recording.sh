@@ -46,12 +46,23 @@ unset AMP_THREAD_ID AGENT_THREAD_ID AGENT
 react-doctor() {
   node "$TERMINAL_RECORDING_REPOSITORY_ROOT/packages/react-doctor/dist/cli.js" "$@"
 }
-export -f react-doctor
+
+run-terminal-recording-clean-scan() {
+  clear
+  react-doctor --no-lint --no-dead-code --no-supply-chain --no-score
+  printf '\nterminal-e2e-first-run-finished\n'
+}
+
+run-terminal-recording-tui-scan() {
+  clear
+  react-doctor --no-score --no-supply-chain --project app-a
+  printf '\nterminal-e2e-second-run-finished\n'
+}
 
 use-terminal-recording-tui-fixture() {
   cd "$TERMINAL_RECORDING_TUI_DIRECTORY"
+  printf 'terminal-e2e-tui-fixture-ready\n'
 }
-export -f use-terminal-recording-tui-fixture
 
 cd "$TERMINAL_RECORDING_DIRECTORY"
 clear

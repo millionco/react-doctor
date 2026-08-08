@@ -5,6 +5,8 @@ import {
 } from "./read-system-concurrency-facts.js";
 import { resolveScanConcurrency } from "./resolve-scan-concurrency.js";
 
+export interface AutoScanConcurrencyFacts extends SystemConcurrencyFacts {}
+
 /**
  * Auto lint-worker count: the smaller of the (cgroup-CPU-aware) core count and
  * the number of `PER_WORKER_MEM_BUDGET_BYTES` workers that fit in available
@@ -23,7 +25,7 @@ import { resolveScanConcurrency } from "./resolve-scan-concurrency.js";
  * limited, and ceiling cases without mocking `os` or the filesystem.
  */
 export const resolveAutoScanConcurrency = (
-  facts: SystemConcurrencyFacts = readSystemConcurrencyFacts(),
+  facts: AutoScanConcurrencyFacts = readSystemConcurrencyFacts(),
 ): number => {
   const availableMemoryBytes = Math.min(
     facts.totalMemoryBytes,

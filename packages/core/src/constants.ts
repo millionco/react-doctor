@@ -627,6 +627,10 @@ export const JSX_OPENER_SCAN_MAX_LINES = 32;
 // Larger gaps stop being intentional suppressions and become noise.
 export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;
 
+export const MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE = 5;
+
+export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
+
 // `minimumReleaseAge` in `pnpm-workspace.yaml` is denominated in
 // minutes. 7 days × 24 h × 60 min = 10080. Surfaced as the
 // recommended starting point for the supply-chain hardening check.
@@ -771,6 +775,10 @@ export const CODE_FRAME_LINES_BELOW = 1;
 // data literal) only produces an unreadable wall of text in the terminal,
 // so we fall back to the bare `file:line` reference instead.
 export const CODE_FRAME_MAX_LINE_LENGTH_CHARS = 200;
+
+export const CODE_FRAME_BATCH_MAX_SPAN_LINES = 20;
+
+export const OUTPUT_DETAIL_WRAP_WIDTH_CHARS = 88;
 
 // Typographic "measure" — the line length (in characters) we wrap
 // prose explanations to for comfortable reading. Kept short (well under

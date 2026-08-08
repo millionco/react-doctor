@@ -190,4 +190,24 @@ export class Linter extends Context.Service<
         run: () => Stream.fromIterable(diagnostics),
       }),
     );
+
+  static readonly layerComposite = (
+    backends: ReadonlyArray<Linter["Service"]>,
+  ): Layer.Layer<Linter> =>
+    Layer.succeed(
+      Linter,
+      Linter.of({
+        run: (input) => {
+          if (backends.length === 0) {
+            return Stream.empty;
+          }
+
+          let diagnostics = backends[0].run(input);
+          for (let index = 1; index < backends.length; index++) {
+            diagnostics = diagnostics.pipe(Stream.concat(backends[index].run(input)));
+          }
+          return diagnostics;
+        },
+      }),
+    );
 }

@@ -2,6 +2,9 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { Diagnostic } from "../schemas.js";
 
 /**
@@ -50,4 +53,25 @@ export class Reporter extends Context.Service<
       }),
     ),
   ).pipe(Layer.provideMerge(ReporterCapture.layer));
+
+  static readonly layerNdjson = (filePath: string): Layer.Layer<Reporter> =>
+    Layer.effect(
+      Reporter,
+      Effect.sync(() => {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        const fileHandle = fs.openSync(filePath, "a");
+        const encodeDiagnostic = Schema.encodeUnknownSync(Diagnostic);
+
+        const emit = (diagnostic: Diagnostic): Effect.Effect<void> =>
+          Effect.sync(() => {
+            fs.writeSync(fileHandle, `${JSON.stringify(encodeDiagnostic(diagnostic))}\n`);
+          });
+
+        const finalize = Effect.sync(() => {
+          fs.closeSync(fileHandle);
+        });
+
+        return Reporter.of({ emit, finalize });
+      }),
+    );
 }

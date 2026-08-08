@@ -50,10 +50,11 @@ export const reportErrorToSentry = async (error: unknown): Promise<string | unde
       scope.setTags(tags);
       if (runTrace) {
         // Spans live in Axiom now, so Sentry's own trace linkage no longer
-        // reaches them. Tag the crash with the Axiom trace id and the run id so
-        // a Sentry issue can be pivoted straight into the run's trace — this
-        // replaces what `setPropagationContext` used to give for free.
-        scope.setTags({ axiomTraceId: runTrace.traceId, runId: getRunId() });
+        // reaches them. Carry the Axiom trace id and the run id so a Sentry
+        // issue can be pivoted straight into the run's trace — as a *context*,
+        // not tags: both are unique per run, and tags are an indexed,
+        // low-cardinality dimension (see AGENTS.md on `runId`).
+        scope.setContext("axiom", { traceId: runTrace.traceId, runId: getRunId() });
         scope.setPropagationContext({
           traceId: runTrace.traceId,
           parentSpanId: runTrace.spanId,

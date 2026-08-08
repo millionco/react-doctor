@@ -14,13 +14,13 @@ import { makeNoopConsole } from "./noop-console.js";
 import { recordScanMetrics } from "./record-scan-metrics.js";
 import { resolveWorkerTelemetry } from "./resolve-worker-telemetry.js";
 import type { CachedScanPayload } from "./scan-result-cache-payload.js";
-import type { SentryRootSpan } from "./with-sentry-run-span.js";
+import type { RunRootSpan } from "./with-run-span.js";
 
 export interface RenderAndRecordScanInput {
   readonly payload: CachedScanPayload;
   readonly options: ResolvedInspectOptions;
   readonly startTime: number;
-  readonly rootSentrySpan: SentryRootSpan;
+  readonly rootSpan: RunRootSpan;
   readonly scanMode: "full" | "diff" | "baseline";
   readonly baselineDegraded: boolean;
   readonly wholeRepoCacheHit: boolean;
@@ -106,7 +106,7 @@ export const renderAndRecordScan = async (
     userConfig: input.payload.userConfig,
     suppressedRuleCounts: input.payload.suppressedRuleCounts ?? [],
   });
-  recordRunEvent(input.rootSentrySpan, {
+  recordRunEvent(input.rootSpan, {
     ...buildRunEventConfig(input.options, input.payload.userConfig, resolvedWorkerCount),
     result,
     mode: input.scanMode,

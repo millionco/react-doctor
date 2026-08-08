@@ -200,21 +200,18 @@ export const SENTRY_DSN =
 // datasets and nothing else. It still ships inside the published tarball and is
 // therefore extractable; rotation means cutting a release, and an Axiom monitor
 // on anomalous ingest volume is the detection. Overridable at runtime via
-// `AXIOM_TOKEN` for local testing against a scratch dataset.
+// `REACT_DOCTOR_AXIOM_TOKEN` for local testing against a scratch dataset.
 export const AXIOM_INGEST_TOKEN = "";
 
 // Events-type dataset receiving spans (the per-run root span carries the wide
 // event), and the Metrics-type dataset receiving counters and distributions.
 // Axiom types datasets at creation and will not accept metrics into an events
 // dataset, which is why these are separate.
+// Effect span clocks are epoch nanoseconds; `Date.now()` is milliseconds.
+export const NANOSECONDS_PER_MILLISECOND = 1_000_000n;
+
 export const AXIOM_TRACES_DATASET = "react-doctor";
 export const AXIOM_METRICS_DATASET = "react-doctor-metrics";
-
-// The language server runs for the length of an editor session, so it exports
-// on a timer rather than relying on the shutdown flush the one-shot CLI uses —
-// an editor that kills the server, or a machine that sleeps, would otherwise
-// lose everything recorded since startup.
-export const LSP_TELEMETRY_EXPORT_INTERVAL_MS = 60_000;
 
 // Sentry release identifier prefix. Releases are reported as
 // `react-doctor@<version>` so they're globally unique within the Sentry org

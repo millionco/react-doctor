@@ -5,10 +5,26 @@ import type * as Tracer from "effect/Tracer";
 import { recordRunTraceId, setActiveRunTrace } from "./active-run-trace.js";
 import { buildSentryProjectContext, setSentryProjectInfo } from "./build-sentry-project-context.js";
 import { buildSentryScope } from "./build-sentry-scope.js";
+import { NANOSECONDS_PER_MILLISECOND } from "./constants.js";
 import { getTelemetryContext } from "./telemetry-runtime.js";
 import { toSpanAttributes } from "./to-span-attributes.js";
 
 export type RunRootSpan = Tracer.Span | undefined;
+
+/**
+ * Ends the run span without letting a telemetry failure change the run's
+ * outcome — the invariant every other emit site here already holds.
+ *
+ * The failure path is the reason this matters most: a throw from `end` there
+ * would replace the user's original scan error, so a project-config mistake
+ * could surface as an exporter stack trace, be reclassified as a crash, and get
+ * reported as one.
+ */
+const endSpanSafely = (span: Tracer.Span, exit: Exit.Exit<unknown, unknown>): void => {
+  try {
+    span.end(BigInt(Date.now()) * NANOSECONDS_PER_MILLISECOND, exit);
+  } catch {}
+};
 
 /**
  * Clears the module-level run-scoped telemetry state — the current scanned
@@ -84,10 +100,10 @@ export const withRunSpan = async <T>(
 
   try {
     const result = await run(rootSpan);
-    rootSpan.end(BigInt(Date.now()) * 1_000_000n, Exit.void);
+    endSpanSafely(rootSpan, Exit.void);
     return result;
   } catch (error) {
-    rootSpan.end(BigInt(Date.now()) * 1_000_000n, Exit.fail(error));
+    endSpanSafely(rootSpan, Exit.fail(error));
     throw error;
   }
 };

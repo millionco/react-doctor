@@ -4,7 +4,15 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
+import { isTelemetryEnabled } from "./is-telemetry-enabled.js";
 import { resolveAxiomTelemetryOptions } from "./resolve-axiom-telemetry-options.js";
+
+// Both env vars are required for the user's own exporter to be active — mirror
+// `core/src/observability.ts`'s gating so this only counts OTLP as configured
+// when it would actually export.
+const isUserOtlpConfigured = (): boolean =>
+  Boolean(process.env.REACT_DOCTOR_OTLP_ENDPOINT) &&
+  Boolean(process.env.REACT_DOCTOR_OTLP_AUTH_HEADER);
 
 let telemetryScope: Scope.Closeable | null = null;
 let telemetryContext: Context.Context<never> | null = null;
@@ -38,13 +46,19 @@ export const getTelemetryContext = (
 ): Context.Context<never> | null => {
   if (isBuilt) return telemetryContext;
   isBuilt = true;
+  if (!isTelemetryEnabled()) return null;
   const options = resolveAxiomTelemetryOptions();
-  if (options === null) return null;
+  // A user who pointed React Doctor at their own collector must keep getting
+  // spans even when no first-party Axiom token is configured — `options` is
+  // null in that case, and `layerObservability(null)` resolves to the BYO
+  // exporter. Without this check an unconfigured build would silently stop
+  // exporting to their backend too.
+  if (options === null && !isUserOtlpConfigured()) return null;
   try {
     const scope = Scope.makeUnsafe();
     telemetryContext = Effect.runSync(
       Layer.buildWithScope(
-        layerObservability({ ...options, ...overrides }),
+        layerObservability(options === null ? null : { ...options, ...overrides }),
         scope,
       ) as Effect.Effect<Context.Context<never>>,
     );
@@ -74,6 +88,12 @@ export const getTelemetryContext = (
  */
 export const shutdownTelemetry = async (): Promise<void> => {
   if (pendingShutdown !== null) return pendingShutdown;
+  // Commands that never run a scan — `version`, `install`, `ci`, `rules`, and
+  // any early `inspect` exit — still record counters like `cli.invoked` into
+  // Effect's registry, but nothing on those paths builds the exporter. Building
+  // here means the registry is drained on exit rather than dropped; when a scan
+  // did run this is a no-op that returns the scope it already opened.
+  getTelemetryContext();
   const scope = telemetryScope;
   if (scope === null) return;
   telemetryScope = null;

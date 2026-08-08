@@ -79,12 +79,20 @@ describe("record-metric when telemetry is enabled", () => {
 
   it("drops null and undefined attributes instead of coercing them to strings", () => {
     withTelemetryEnabled(() => {
-      recordCount("test.absent.attributes", 1, { present: "yes", ciProvider: null });
+      recordCount("test.absent.attributes", 1, {
+        present: "yes",
+        absentSignal: null,
+        alsoAbsent: undefined,
+      });
     });
 
+    // Deliberately not a run-scope key like `ciProvider`: those are supplied by
+    // `buildSentryScope()` and a null passed at the call site is dropped rather
+    // than clearing them, so such an assertion would pass locally and fail in CI.
     const attributes = findSnapshot("test.absent.attributes")?.attributes;
     expect(attributes?.present).toBe("yes");
-    expect(attributes && "ciProvider" in attributes).toBe(false);
+    expect(attributes && "absentSignal" in attributes).toBe(false);
+    expect(attributes && "alsoAbsent" in attributes).toBe(false);
   });
 
   it("anonymizes paths in attribute values now that no beforeSendMetric hook exists", () => {

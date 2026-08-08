@@ -12,7 +12,7 @@ import {
 } from "./scan-result-cache.js";
 import type { CachedScanPayload } from "./scan-result-cache-payload.js";
 import { VERSION } from "./version.js";
-import { recordSentryProjectContext, type SentryRootSpan } from "./with-sentry-run-span.js";
+import { recordSentryProjectContext, type RunRootSpan } from "./with-run-span.js";
 
 interface CreateScanResultCacheLifecycleInput {
   readonly directory: string;
@@ -23,7 +23,7 @@ interface CreateScanResultCacheLifecycleInput {
   readonly resolvedNodeBinaryPath: string | null;
   readonly invocationState: ScanResultCacheInvocationState;
   readonly startTime: number;
-  readonly rootSentrySpan: SentryRootSpan;
+  readonly rootSpan: RunRootSpan;
 }
 
 interface CompleteScanResultCacheInput {
@@ -59,7 +59,7 @@ export const createScanResultCacheLifecycle = (
     replay: () => {
       if (cachedPayload === null) return null;
 
-      recordSentryProjectContext(cachedPayload.project, input.rootSentrySpan, {
+      recordSentryProjectContext(cachedPayload.project, input.rootSpan, {
         concurrentScan: input.options.concurrentScan,
       });
       recordCount(METRIC.projectDetected, 1);
@@ -70,7 +70,7 @@ export const createScanResultCacheLifecycle = (
         payload: cachedPayload,
         options: input.options,
         startTime: input.startTime,
-        rootSentrySpan: input.rootSentrySpan,
+        rootSpan: input.rootSpan,
         scanMode: cachedPayload.baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
         baselineDegraded,
         wholeRepoCacheHit: true,
@@ -89,7 +89,7 @@ export const createScanResultCacheLifecycle = (
         payload: completion.payload,
         options: input.options,
         startTime: input.startTime,
-        rootSentrySpan: input.rootSentrySpan,
+        rootSpan: input.rootSpan,
         scanMode: completion.scanMode,
         baselineDegraded: completion.baselineDegraded,
         wholeRepoCacheHit: false,

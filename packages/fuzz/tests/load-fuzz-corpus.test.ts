@@ -79,6 +79,19 @@ describe("loadFuzzCorpus", () => {
     expect(loadFuzzCorpus(directory)).toEqual([]);
   });
 
+  it("ignores TypeScript declaration files", () => {
+    const directory = makeCorpusDirectory();
+    const nestedDirectory = path.join(directory, "nested");
+    fs.mkdirSync(nestedDirectory);
+    fs.writeFileSync(path.join(directory, "root.d.ts"), "declare const rootValue: string;");
+    fs.writeFileSync(
+      path.join(nestedDirectory, "nested.d.ts"),
+      "declare const nestedValue: string;",
+    );
+
+    expect(loadFuzzCorpus(directory)).toEqual([]);
+  });
+
   it("returns portable relative paths for nested seeds", () => {
     const directory = makeCorpusDirectory();
     const nestedDirectory = path.join(directory, "nested", "deeper");

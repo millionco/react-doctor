@@ -214,6 +214,12 @@ export const AXIOM_INGEST_TOKEN = "xaat-31b59107-855d-4917-8fab-6dc29fb459ce";
 // Effect span clocks are epoch nanoseconds; `Date.now()` is milliseconds.
 export const NANOSECONDS_PER_MILLISECOND = 1_000_000n;
 
+// The language server runs for the length of an editor session, so it exports
+// on a timer rather than relying on the shutdown flush the one-shot CLI uses —
+// an editor that kills the server, or a machine that sleeps, would otherwise
+// lose everything recorded since startup.
+export const LSP_TELEMETRY_EXPORT_INTERVAL_MS = 60_000;
+
 export const AXIOM_TRACES_DATASET = "react-doctor";
 export const AXIOM_METRICS_DATASET = "react-doctor-metrics";
 

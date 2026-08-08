@@ -322,7 +322,9 @@ for spans: the CLI pins `tracesSampleRate: 0` and Sentry never records a span.
   datasets**. It ships in the tarball and is therefore extractable: rotation means
   cutting a release, and an Axiom monitor on anomalous ingest volume is the
   detection. `cli/utils/resolve-axiom-telemetry-options.ts` resolves it (with
-  `AXIOM_TOKEN` / `AXIOM_DOMAIN` / `AXIOM_DATASET` overrides for local testing)
+  `REACT_DOCTOR_AXIOM_TOKEN` / `_DOMAIN` / `_DATASET` overrides for local
+  testing — deliberately prefixed, since the bare `AXIOM_*` names are Axiom's
+  own and reading them would hijack the telemetry of anyone already running it)
   and returns `null` when unset, so an unconfigured build simply doesn't export.
   Core never reads these itself — keeping them CLI-side is what makes
   `@react-doctor/api` silent by construction rather than by a runtime guard.

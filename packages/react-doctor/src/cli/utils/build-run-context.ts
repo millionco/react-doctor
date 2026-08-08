@@ -54,7 +54,13 @@ export interface RunContext {
   lintBatchOrdering: "cost" | "arrival";
 }
 
-const ROOT_SUBCOMMANDS = new Set(["design", "install", "setup"]);
+// `experimental-lsp` is here so the language server's telemetry is attributed
+// to the language server. The bin shim fast-paths it to a different entry, but
+// the run context is shared, and without it every editor metric would be
+// labelled `command: "inspect"` / `origin: "cli"` and disagree with the LSP's
+// own Sentry scope.
+const LSP_COMMAND = "experimental-lsp";
+const ROOT_SUBCOMMANDS = new Set(["design", "install", "setup", LSP_COMMAND]);
 
 // `npm_config_user_agent` looks like "pnpm/9.1.0 npm/? node/v22.0.0 ...";
 // the leading token names the package manager that spawned the process.
@@ -70,7 +76,8 @@ const detectNodeMajor = (): number => {
   return Number.isNaN(major) ? 0 : major;
 };
 
-const detectOrigin = (): string => {
+const detectOrigin = (userArguments: ReadonlyArray<string>): string => {
+  if (detectCommand(userArguments) === LSP_COMMAND) return "lsp";
   if (isGitHookEnvironment()) return "git-hook";
   if (isCodingAgentEnvironment()) return "agent";
   if (isCiEnvironment()) return "ci";
@@ -99,7 +106,7 @@ export const buildRunContext = (): RunContext => {
   return {
     version: VERSION,
     runId: getRunId(),
-    origin: detectOrigin(),
+    origin: detectOrigin(userArguments),
     command: detectCommand(userArguments),
     // Scrub home-directory paths so the OS username never rides along in the
     // argument string or working directory (e.g. a directory positional, or

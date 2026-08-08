@@ -21,9 +21,9 @@ import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
 import {
   recordSentryProjectContext,
   resetSentryRunState,
-  withSentryRunSpan,
-} from "./cli/utils/with-sentry-run-span.js";
-import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
+  type RunRootSpan,
+  withRunSpan,
+} from "./cli/utils/with-run-span.js";
 import { METRIC } from "./cli/utils/constants.js";
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
@@ -117,8 +117,8 @@ const inspectWithOxlintRuntime = async (
   if (ownsSpinnerSilence) setSpinnerSilent(true);
 
   try {
-    const result = await withSentryRunSpan(
-      async (rootSentrySpan) => {
+    const result = await withRunSpan(
+      async (rootSpan) => {
         try {
           return await runInspectWithRuntime(
             scanDirectory,
@@ -128,7 +128,7 @@ const inspectWithOxlintRuntime = async (
             configSourceDirectory,
             startTime,
             deadlineEpochMs,
-            rootSentrySpan,
+            rootSpan,
             oxlintRuntime,
           );
         } catch (error) {
@@ -137,7 +137,7 @@ const inspectWithOxlintRuntime = async (
           // plus the config it ran with. The lint/dead-code outcome isn't known
           // here, so it's omitted rather than asserted as a benign default.
           // Rethrow so error handling is unchanged.
-          recordRunEvent(rootSentrySpan, {
+          recordRunEvent(rootSpan, {
             ...buildRunEventConfig(options, userConfig),
             mode: options.includePaths.length > 0 ? "diff" : "full",
             error,
@@ -200,7 +200,7 @@ const runInspectWithRuntime = async (
   configSourceDirectory: string | null,
   startTime: number,
   deadlineEpochMs: number | null,
-  rootSentrySpan: SentryRootSpan,
+  rootSpan: RunRootSpan,
   oxlintRuntime: OxlintInvocationRuntime,
 ): Promise<InspectResult> => {
   const isDiffMode = options.includePaths.length > 0;
@@ -224,7 +224,7 @@ const runInspectWithRuntime = async (
     resolvedNodeBinaryPath,
     invocationState: oxlintRuntime.scanResultCacheInvocationState,
     startTime,
-    rootSentrySpan,
+    rootSpan,
   });
   const cachedResult = scanResultCacheLifecycle.replay();
   if (cachedResult !== null) return cachedResult;
@@ -291,7 +291,7 @@ const runInspectWithRuntime = async (
           // (this hook fires right after project discovery) so crashes, the run
           // transaction, and every subsequent metric carry it. No-op when
           // Sentry/tracing is off.
-          recordSentryProjectContext(projectInfo, rootSentrySpan, {
+          recordSentryProjectContext(projectInfo, rootSpan, {
             concurrentScan: options.concurrentScan,
           });
           recordCount(METRIC.projectDetected, 1);
@@ -306,15 +306,13 @@ const runInspectWithRuntime = async (
   // check a flag itself. Driven by Effect's built-in Console
   // reference, which is `Context.Reference<Console>` with the
   // default value `globalThis.console`.
-  // `applyObservability` installs the tracing backend (user OTLP, else the
-  // Sentry tracer bridge when tracing is live, else the no-op native tracer)
-  // — see its docs for precedence. The silent toggle only swaps the Console
-  // reference, not the tracer, so observability is applied identically in both
-  // branches.
+  // `applyObservability` installs the tracing backend — see its docs. The
+  // silent toggle only swaps the Console reference, not the tracer, so
+  // observability is applied identically in both branches.
   const baseProgram = options.silent
     ? program.pipe(Effect.provide(layers), Effect.provideService(Console.Console, silentConsole))
     : program.pipe(Effect.provide(layers));
-  const programWithLayers = applyObservability(baseProgram, rootSentrySpan);
+  const programWithLayers = applyObservability(baseProgram, rootSpan);
   const output = await Effect.runPromise(restoreLegacyThrow(programWithLayers), {
     signal: oxlintRuntime.abortSignal,
   });

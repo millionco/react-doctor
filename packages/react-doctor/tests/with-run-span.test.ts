@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
   recordSentryProjectContext,
   resetSentryRunState,
-  withSentryRunSpan,
-} from "../src/cli/utils/with-sentry-run-span.js";
+  withRunSpan,
+} from "../src/cli/utils/with-run-span.js";
 import { getActiveRunTrace, setActiveRunTrace } from "../src/cli/utils/active-run-trace.js";
 import {
   getSentryProjectInfo,
@@ -67,14 +67,20 @@ describe("resetSentryRunState", () => {
   });
 });
 
-describe("withSentryRunSpan", () => {
-  it("runs the callback with no root span when Sentry tracing is disabled (under tests)", async () => {
+describe("withRunSpan", () => {
+  it("runs the callback with no root span when telemetry is disabled (under tests)", async () => {
     let receivedRootSpan: unknown = "unset";
-    const result = await withSentryRunSpan((rootSpan) => {
+    const result = await withRunSpan((rootSpan) => {
       receivedRootSpan = rootSpan;
       return Promise.resolve("done");
     });
     expect(result).toBe("done");
     expect(receivedRootSpan).toBeUndefined();
+  });
+
+  it("propagates the callback's rejection rather than swallowing it", async () => {
+    const failure = new Error("scan exploded");
+
+    await expect(withRunSpan(() => Promise.reject(failure))).rejects.toBe(failure);
   });
 });

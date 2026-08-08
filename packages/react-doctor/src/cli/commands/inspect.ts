@@ -17,6 +17,7 @@ import {
 import { createInvocationInspect } from "../../inspect.js";
 import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { flushSentry } from "../../instrument.js";
+import { shutdownTelemetry } from "../utils/telemetry-runtime.js";
 import type { RequestedScope } from "../utils/resolve-scope.js";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { METRIC } from "../utils/constants.js";
@@ -681,7 +682,7 @@ export const inspectAction = async (
     // skips `reportErrorToSentry` (and its flush), so a trace recorded when the
     // scan span started would never be delivered — flush here so the printed id
     // resolves in Sentry. Cheap no-op for the already-flushed non-user path.
-    if (isDebugFlagEnabled()) await flushSentry();
+    if (isDebugFlagEnabled()) await Promise.all([flushSentry(), shutdownTelemetry()]);
     if (isJsonMode) {
       writeJsonErrorReport(error, sentryEventId);
       process.exitCode = 1;

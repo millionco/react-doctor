@@ -1,6 +1,7 @@
 import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
+import { shutdownTelemetry } from "./utils/telemetry-runtime.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
 import { ensureWindowsUtf8Console } from "./utils/ensure-windows-utf8-console.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
@@ -540,10 +541,10 @@ Promise.resolve()
   // a silent no-op (they'd otherwise be stripped before Commander sees them).
   .then(() => assertNoRemovedFlags(process.argv))
   .then(() => program.parseAsync(argv))
-  // Deliver any queued performance transaction before the process exits on the
-  // success path; error funnels flush via `reportErrorToSentry`. The `--debug`
-  // trace id is printed from the `exit` handler above, after this flush.
-  .then(() => flushSentry())
+  // Deliver any queued telemetry before the process exits on the success path;
+  // error funnels flush via `reportErrorToSentry`. The `--debug` trace id is
+  // printed from the `exit` handler above, after this flush.
+  .then(() => Promise.all([flushSentry(), shutdownTelemetry()]))
   .catch(async (error: unknown) => {
     // Mirror the per-command policy at the top-level funnel: expected,
     // user-actionable failures skip Sentry and render as a plain message

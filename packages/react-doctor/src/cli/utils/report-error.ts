@@ -3,8 +3,10 @@ import { isReactDoctorError } from "@react-doctor/core";
 import { getActiveRunTrace, recordRunTraceId } from "./active-run-trace.js";
 import { buildSentryScope } from "./build-sentry-scope.js";
 import { METRIC, SENTRY_FLUSH_TIMEOUT_MS } from "./constants.js";
+import { shutdownTelemetry } from "./telemetry-runtime.js";
 import { isExpectedUserError } from "./is-expected-user-error.js";
 import { recordCount } from "./record-metric.js";
+import { getRunId } from "./run-id.js";
 
 /**
  * Sends an error to Sentry — enriched with a fresh snapshot of the current run
@@ -47,6 +49,11 @@ export const reportErrorToSentry = async (error: unknown): Promise<string | unde
       for (const [name, context] of Object.entries(contexts)) scope.setContext(name, context);
       scope.setTags(tags);
       if (runTrace) {
+        // Spans live in Axiom now, so Sentry's own trace linkage no longer
+        // reaches them. Tag the crash with the Axiom trace id and the run id so
+        // a Sentry issue can be pivoted straight into the run's trace — this
+        // replaces what `setPropagationContext` used to give for free.
+        scope.setTags({ axiomTraceId: runTrace.traceId, runId: getRunId() });
         scope.setPropagationContext({
           traceId: runTrace.traceId,
           parentSpanId: runTrace.spanId,
@@ -61,7 +68,9 @@ export const reportErrorToSentry = async (error: unknown): Promise<string | unde
       recordRunTraceId(scope.getPropagationContext().traceId);
       return Sentry.captureException(error);
     });
-    await Sentry.flush(SENTRY_FLUSH_TIMEOUT_MS);
+    // The crash counter (`cli.error`) above lands in Effect's metric registry,
+    // so the Axiom flush has to run on this path too — not just Sentry's.
+    await Promise.all([Sentry.flush(SENTRY_FLUSH_TIMEOUT_MS), shutdownTelemetry()]);
     return eventId;
   } catch {
     return undefined;

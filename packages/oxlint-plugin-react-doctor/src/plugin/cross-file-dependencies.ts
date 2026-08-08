@@ -531,6 +531,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ]),
     ["ink-no-raw-text", collectInkNoRawTextDependencies],
     ["client-passive-event-listeners", collectEffectValueHelperDependencies],
+    ["effect-needs-cleanup", collectEffectValueHelperDependencies],
     ["exhaustive-deps", collectForwardedHookDependencies],
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-async-dynamic-api-not-awaited", collectNearestManifestDependencies],

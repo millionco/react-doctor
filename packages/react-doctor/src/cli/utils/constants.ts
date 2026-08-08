@@ -223,13 +223,6 @@ export const AXIOM_METRICS_DATASET = "react-doctor-metrics";
 // associates artifacts with (`scripts/sentry-sourcemaps.mjs`).
 export const SENTRY_RELEASE_PREFIX = "react-doctor";
 
-// Sample every trace (100%).
-export const FULL_TRACES_SAMPLE_RATE = 1;
-
-// Default Sentry performance-tracing sample rate, still consumed by the
-// language server. The CLI pins 0 — its spans go to Axiom.
-export const SENTRY_DEFAULT_TRACES_SAMPLE_RATE = FULL_TRACES_SAMPLE_RATE;
-
 // Upper bound on how long the CLI blocks waiting for Sentry to deliver queued
 // events (errors + transactions) before the process exits. The CLI tears down
 // synchronously after rendering, so this awaited flush is what actually gets

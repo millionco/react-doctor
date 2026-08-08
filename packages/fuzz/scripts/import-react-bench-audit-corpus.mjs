@@ -5,6 +5,7 @@ import * as path from "node:path";
 const HASH_PREFIX_LENGTH = 12;
 const COMPLETE_SOURCE_START_LINE = 1;
 const CORPUS_DIRECTORY_NAME = "react-bench-0.9.7-audit";
+const DEFAULT_AUDIT_VERSION = "0.9.7";
 const TRUE_POSITIVE_SUFFIXES = new Set(["SQSmbFe", "eGYGezE"]);
 
 const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
@@ -115,10 +116,12 @@ const main = () => {
       source,
       verdict,
       rules: new Set(),
+      auditVersions: new Set(),
       callsitePaths: [],
       callsites: [],
     };
     group.rules.add(callsite.rule);
+    group.auditVersions.add(callsite.auditVersion ?? DEFAULT_AUDIT_VERSION);
     group.callsitePaths.push(callsite.reconstructedFilePath || callsite.reportedFilePath);
     group.callsites.push(callsite);
     fixtureGroups.set(fixtureSourceSha256, group);
@@ -145,7 +148,7 @@ const main = () => {
       `// rule: ${rules.join(", ")}`,
       group.verdict === "fail" ? "// verdict: fail" : "// audit-verdict: pass",
       "// weakness: react-bench-exact-callsite",
-      `// source: React Bench 0.9.7 exhaustive audit ${fixtureSourceSha256}`,
+      `// source: React Bench ${[...group.auditVersions].sort().join("+")} exhaustive audit ${fixtureSourceSha256}`,
     ].join("\n");
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, `${header}\n${group.source}`);
@@ -177,6 +180,7 @@ const main = () => {
     ].join(":");
     return {
       suffix: callsite.suffix,
+      auditVersion: callsite.auditVersion ?? DEFAULT_AUDIT_VERSION,
       task: callsite.task,
       patchSha256: callsite.patchSha256,
       rule: callsite.rule,
@@ -189,7 +193,9 @@ const main = () => {
     };
   });
   const manifest = {
-    source: "React Bench 0.9.7 exhaustive all-diffs audit",
+    source: `React Bench ${[...new Set(manifestCallsites.map((callsite) => callsite.auditVersion))]
+      .sort()
+      .join("+")} exhaustive all-diffs audit`,
     expected: {
       totalCallsites: manifestCallsites.length,
       passCallsites: manifestCallsites.filter((callsite) => callsite.verdict === "pass").length,

@@ -4935,7 +4935,10 @@ const oneShotTimerHasUnmountGuard = (usage: SubscribeLikeUsage, context: RuleCon
   const leadingStatement = timerCallback.body.body[0];
   if (!leadingStatement || !isNodeOfType(leadingStatement, "IfStatement")) return false;
   if (!isEarlyExitStatement(leadingStatement.consequent)) return false;
-  const test = stripParenExpression(leadingStatement.test);
+  let test = stripParenExpression(leadingStatement.test);
+  while (isNodeOfType(test, "LogicalExpression") && test.operator === "||") {
+    test = stripParenExpression(test.left);
+  }
   if (!isNodeOfType(test, "UnaryExpression") || test.operator !== "!") return false;
   const guardRefSymbol = resolveReactRefSymbol(
     stripParenExpression(test.argument),

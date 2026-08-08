@@ -1177,6 +1177,54 @@ const Delayed = ({ delay, task }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a one-shot timer with a leading compound unmount guard", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ setIsOpen }) => {
+        const mounted = useRef(true);
+        const requestRef = useRef(0);
+        useEffect(() => () => { mounted.current = false; }, []);
+        const show = () => {
+          const request = requestRef.current + 1;
+          requestRef.current = request;
+          setTimeout(() => {
+            if (!mounted.current || requestRef.current !== request) return;
+            setIsOpen(true);
+          }, 10);
+        };
+        useEffect(() => { show(); }, [setIsOpen]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps a compound guard that does not exit whenever unmounted", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ setIsOpen }) => {
+        const mounted = useRef(true);
+        const requestRef = useRef(0);
+        useEffect(() => () => { mounted.current = false; }, []);
+        const show = () => {
+          const request = requestRef.current + 1;
+          requestRef.current = request;
+          setTimeout(() => {
+            if (!mounted.current && requestRef.current !== request) return;
+            setIsOpen(true);
+          }, 10);
+        };
+        useEffect(() => { show(); }, [setIsOpen]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("keeps a mounted guard whose cleanup invalidation is conditional", () => {
     const result = runRule(
       effectNeedsCleanup,

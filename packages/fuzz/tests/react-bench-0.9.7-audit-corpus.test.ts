@@ -22,6 +22,7 @@ interface ReactBenchAuditFixture {
 
 interface ReactBenchAuditCallsite {
   suffix: string;
+  auditVersion: string;
   rule: string;
   filePath: string;
   reportedLine: number;
@@ -43,7 +44,7 @@ const manifest: ReactBenchAuditManifest = JSON.parse(fs.readFileSync(manifestPat
 const fixtureHeaderPattern = /^(?:\/\/[^\n]*\n){4}/;
 const sha256 = (value: string): string => crypto.createHash("sha256").update(value).digest("hex");
 
-describe("React Bench 0.9.7 exact audit corpus", () => {
+describe("React Bench exact audit corpus", () => {
   it("accounts for every audited callsite instance", () => {
     const passCallsites = manifest.callsites.filter((callsite) => callsite.verdict === "pass");
     const failCallsites = manifest.callsites.filter((callsite) => callsite.verdict === "fail");
@@ -54,6 +55,7 @@ describe("React Bench 0.9.7 exact audit corpus", () => {
     expect(failCallsites).toHaveLength(manifest.expected.failCallsites);
     expect(uniqueTrials.size).toBe(manifest.expected.uniqueTrials);
     expect(manifest.fixtures).toHaveLength(manifest.expected.uniqueFixtures);
+    expect(manifest.callsites.every((callsite) => callsite.auditVersion.length > 0)).toBe(true);
   });
 
   it("contains no duplicate callsite or source fixture", () => {

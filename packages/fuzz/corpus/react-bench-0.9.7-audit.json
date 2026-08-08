@@ -1,11 +1,11 @@
 {
-  "source": "React Bench 0.9.7 exhaustive all-diffs audit",
+  "source": "React Bench 0.9.7+0.9.8 exhaustive all-diffs audit",
   "expected": {
-    "totalCallsites": 108,
-    "passCallsites": 106,
+    "totalCallsites": 109,
+    "passCallsites": 107,
     "failCallsites": 2,
-    "uniqueTrials": 98,
-    "uniqueFixtures": 95
+    "uniqueTrials": 99,
+    "uniqueFixtures": 96
   },
   "fixtures": [
     {
@@ -111,6 +111,14 @@
         "dangerous-html-sink"
       ],
       "fixtureSourceSha256": "2156ba92f9f63b1e34de4287c2a8be0694172eb9b13e7d084ee1cb070c0c1c8c"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/2aaefa9502f4--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "2aaefa9502f425fb162e83305c71a54a70888fcd45860bd2ae1cd5f1eb7fe924"
     },
     {
       "fixture": "react-bench-0.9.7-audit/regressions/2cc99f329a93--message-markdown.tsx",
@@ -773,6 +781,7 @@
   "callsites": [
     {
       "suffix": "3hWu3XT",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "9d440906643bbfd4ba84d692ae4bbb31b8c5024306fdbe7db0e4faf05e979dcd",
       "rule": "effect-needs-cleanup",
@@ -785,6 +794,7 @@
     },
     {
       "suffix": "3QykvFu",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "50e34b461e7969525766ef246884b8168edaba8419508e5ccabd5a2eab826f21",
       "rule": "effect-needs-cleanup",
@@ -797,6 +807,7 @@
     },
     {
       "suffix": "4xT2CsQ",
+      "auditVersion": "0.9.7",
       "task": "fix-react-formidablelabs-victory-victory-animation",
       "patchSha256": "3ebdf36e959254bf59bf62587aad9aca397c813654dcd0ca5704ad365007e55d",
       "rule": "effect-needs-cleanup",
@@ -809,6 +820,7 @@
     },
     {
       "suffix": "59uRuXQ",
+      "auditVersion": "0.9.7",
       "task": "write-react-frankchen021-datastoria-199",
       "patchSha256": "48b68fba7e0c4f0d8dc117a726fda6b12810ff24ee17c0f7e8db5ddca0c3c4ba",
       "rule": "dangerous-html-sink",
@@ -821,6 +833,7 @@
     },
     {
       "suffix": "5g5yE7Y",
+      "auditVersion": "0.9.7",
       "task": "write-react-trycompai-comp-3248",
       "patchSha256": "2d2bf187f2d9fd29d059df9be27fce68b3b3bfec739a63ed66b78e7d03f6aa6b",
       "rule": "effect-needs-cleanup",
@@ -833,6 +846,7 @@
     },
     {
       "suffix": "69nChbz",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "5ec95b92f091deb0643e89080ad6d27e3d780f1edb12d212da23cff61461d5fa",
       "rule": "effect-needs-cleanup",
@@ -845,6 +859,7 @@
     },
     {
       "suffix": "6qxjfR6",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "b7ffe3c8c78b8df636ea9f806f1e37b9426ade38a79e6b2d4ea95f277e9d926e",
       "rule": "effect-needs-cleanup",
@@ -857,6 +872,7 @@
     },
     {
       "suffix": "7btopEX",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "9a9dfef8a63863155a74c5f18b7d095df09259cf357456a0fab2e6619f13938a",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -869,6 +885,7 @@
     },
     {
       "suffix": "85J9Qms",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "abcd8768305d0a56ad6e42b2b7011b9a9df36ca786e77fb09d3e8719af318b3e",
       "rule": "effect-needs-cleanup",
@@ -881,6 +898,7 @@
     },
     {
       "suffix": "8CUyZFi",
+      "auditVersion": "0.9.7",
       "task": "write-react-frankchen021-datastoria-199",
       "patchSha256": "35f0fa188e8bcefafcade62091bad1e2606417f7ce8c778b1c0e979de2cb9d23",
       "rule": "dangerous-html-sink",
@@ -893,6 +911,7 @@
     },
     {
       "suffix": "8hkokrf",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "18fd232011f370c830b7a69ff736fd63bbad2ac30d4649d59cf2c5e2a21a8023",
       "rule": "effect-needs-cleanup",
@@ -905,6 +924,7 @@
     },
     {
       "suffix": "8zgcb8x",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "fcabb9ddc5e045910ee9aa3389f901130f914705e747fe9207f40328d7c88692",
       "rule": "no-fetch-response-used-without-status-check",
@@ -917,6 +937,7 @@
     },
     {
       "suffix": "A2yzHp5",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
       "patchSha256": "3552f3a1625635e046f4969b7c3a8b6a50ea176d8a25b08cc5bb951c3cb83747",
       "rule": "effect-needs-cleanup",
@@ -929,6 +950,7 @@
     },
     {
       "suffix": "AeYgTmv",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "6a2f778f79bb5a4af543c7c19ad47d42935be2d8f25fe7dd8d227d3548d8d607",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -941,6 +963,7 @@
     },
     {
       "suffix": "aUuXhdK",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "5d31ac736a824855b6d85dd1bef7c2cc93f5b2eb6cde0f3cde11d233fc99744c",
       "rule": "effect-needs-cleanup",
@@ -953,6 +976,7 @@
     },
     {
       "suffix": "bDB9hMk",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "27224e0257275637a7c0f2fdae575cfa1f11f2ee469f15dc839046ddad59d280",
       "rule": "effect-needs-cleanup",
@@ -965,6 +989,7 @@
     },
     {
       "suffix": "bwrYqBh",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "30b31c93f72e2be620390146de2e59ef124644c28fb5207f17c628063d12e4a7",
       "rule": "effect-needs-cleanup",
@@ -977,6 +1002,7 @@
     },
     {
       "suffix": "c23ZTbu",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "f8217945b10c3d52843c2c55baf1aecc378e1cf78e7370c83ccc9980d1efcefc",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -989,6 +1015,7 @@
     },
     {
       "suffix": "cgyxiZc",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "74bcb19cea2ba81cc970dd79049f0df8f03e4a2c473d202d5fbc3d40a135a9ea",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1001,6 +1028,7 @@
     },
     {
       "suffix": "ciNLW2X",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1013,6 +1041,7 @@
     },
     {
       "suffix": "ciNLW2X",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1025,6 +1054,7 @@
     },
     {
       "suffix": "ciNLW2X",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1037,6 +1067,7 @@
     },
     {
       "suffix": "ciNLW2X",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1049,6 +1080,7 @@
     },
     {
       "suffix": "ciNLW2X",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1061,6 +1093,7 @@
     },
     {
       "suffix": "cSaK7t9",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "fc503f1acea7a0cc4f50f84f04d03778dfdf191907a630f0213288d3bae28fbf",
       "rule": "no-stale-timer-ref",
@@ -1073,6 +1106,7 @@
     },
     {
       "suffix": "dKQWsXr",
+      "auditVersion": "0.9.7",
       "task": "write-react-tracecathq-tracecat-2879",
       "patchSha256": "118ec0f98e2ece1c9a6499c747d8690648d9f3e7fdbb3a14ae740d9415e30a0c",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1085,6 +1119,7 @@
     },
     {
       "suffix": "e8STTuu",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "d6ce51b596222c08b84f8f8f00fb895a68af7bf296500471cfedaeb151325ff0",
       "rule": "effect-needs-cleanup",
@@ -1097,6 +1132,7 @@
     },
     {
       "suffix": "eaU6h9M",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "dc12b471232951f357648713700fc05b217686245e7e00eae055db53e46551e9",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1109,6 +1145,7 @@
     },
     {
       "suffix": "eaU6h9M",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "dc12b471232951f357648713700fc05b217686245e7e00eae055db53e46551e9",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1121,6 +1158,7 @@
     },
     {
       "suffix": "eGYGezE",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "bc194e8d5ba42cfc6e51efad86ab1dc9d4563db2ff76767e4d9d1ec93baf5c37",
       "rule": "effect-needs-cleanup",
@@ -1133,6 +1171,7 @@
     },
     {
       "suffix": "EjLmWwc",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "673b5194061e65af17d909a227a40227f195792c1c910a1d19e8e46e588efac4",
       "rule": "effect-needs-cleanup",
@@ -1145,6 +1184,7 @@
     },
     {
       "suffix": "FQtYvfB",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "a34e963ca9dd6fa3b6af083f41fbd26ca056e3e924ddb22fca166bd820a35eee",
       "rule": "effect-needs-cleanup",
@@ -1157,6 +1197,7 @@
     },
     {
       "suffix": "FSdzhai",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "17787ce2137779f25839e7c41bd477e4d36b779022b9103cddaff72d862954bb",
       "rule": "effect-needs-cleanup",
@@ -1169,6 +1210,7 @@
     },
     {
       "suffix": "GDrqDDq",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "0a6d0da8e1d99cdc91d9a47eae7723625520e88a43a106002e9caec699878a9b",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1181,6 +1223,7 @@
     },
     {
       "suffix": "GZasht7",
+      "auditVersion": "0.9.7",
       "task": "fix-react-formidablelabs-victory-victory-animation",
       "patchSha256": "1fe8c698c99e6dd4b3423838d8d649c1fc8fc18e533752d8fb23ffcac359096b",
       "rule": "effect-needs-cleanup",
@@ -1193,6 +1236,7 @@
     },
     {
       "suffix": "H6SaVzY",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "77f7a1446d27b93ec6994b43f9dd0167db1ca0b24e34c2447cdac2414069b10f",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1205,6 +1249,7 @@
     },
     {
       "suffix": "iGvkBMR",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "b6fa237f117ccd88000b3b5354f7c2eb913b7f6f2d5d373d0573477ee6314c3c",
       "rule": "effect-needs-cleanup",
@@ -1217,6 +1262,7 @@
     },
     {
       "suffix": "jmHkDF8",
+      "auditVersion": "0.9.7",
       "task": "write-react-frankchen021-datastoria-199",
       "patchSha256": "72c8ff7adc1fbbb8dda4633cfd9a7f2e9a53c5558a2899cba7b4c3f054c3bd41",
       "rule": "dangerous-html-sink",
@@ -1229,6 +1275,7 @@
     },
     {
       "suffix": "jmHkDF8",
+      "auditVersion": "0.9.7",
       "task": "write-react-frankchen021-datastoria-199",
       "patchSha256": "72c8ff7adc1fbbb8dda4633cfd9a7f2e9a53c5558a2899cba7b4c3f054c3bd41",
       "rule": "dangerous-html-sink",
@@ -1241,6 +1288,7 @@
     },
     {
       "suffix": "k6r9uYz",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "59d14e1139809b3bd81dcb846e6a85a48707e4c993d1bcce23ca983e9610b4cc",
       "rule": "effect-needs-cleanup",
@@ -1253,6 +1301,7 @@
     },
     {
       "suffix": "kGRjWmt",
+      "auditVersion": "0.9.7",
       "task": "write-react-azouaoui-med-react-pro-sidebar-267",
       "patchSha256": "8553a9cd038ad240c3b3d5e45d6dc2b3adbce95ae6c13e2c5f4ad0dbe0cd7a4c",
       "rule": "effect-needs-cleanup",
@@ -1265,6 +1314,7 @@
     },
     {
       "suffix": "knV9S9X",
+      "auditVersion": "0.9.7",
       "task": "write-react-trycompai-comp-3248",
       "patchSha256": "3248591a9291cd3035527f60a9826fd3e8878d4c3b475f3478138359109eb0ec",
       "rule": "effect-needs-cleanup",
@@ -1277,6 +1327,7 @@
     },
     {
       "suffix": "KWSeZDE",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "c482979f14c79b5a982ff5f27ec9f7c33c05ad3a6762e87653209e8f51e620b4",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1289,6 +1340,7 @@
     },
     {
       "suffix": "KxgQFGt",
+      "auditVersion": "0.9.7",
       "task": "write-react-tracecathq-tracecat-2879",
       "patchSha256": "c070003cf2ef2a9d9d47da4e61c84e31d3d15742e198550bf9fc684463146edf",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1301,6 +1353,7 @@
     },
     {
       "suffix": "KYUPojL",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "d42a2f4d9d37d9c60fc6f53c79de5f05952d5463f90d4be7bf650f003dbd53cb",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1313,6 +1366,7 @@
     },
     {
       "suffix": "L4YTWaY",
+      "auditVersion": "0.9.7",
       "task": "write-react-tracecathq-tracecat-2879",
       "patchSha256": "ce3a8a757d87620d94ec95a13cd47dfdfa28ece4bb4853df1b58c5ec943f2ac5",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1325,6 +1379,7 @@
     },
     {
       "suffix": "Lg6RjoG",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
       "patchSha256": "31de08516e1e623fb16c826dd7b91adf676a815d9053864f4794ad65bea9d39b",
       "rule": "effect-needs-cleanup",
@@ -1337,6 +1392,7 @@
     },
     {
       "suffix": "LjT6Gsi",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "5f384a06870ceff0d672ddf43b9e5f67cb8d4a7f74a738b68c4a99afc43e5910",
       "rule": "effect-needs-cleanup",
@@ -1349,6 +1405,7 @@
     },
     {
       "suffix": "LjT6Gsi",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "5f384a06870ceff0d672ddf43b9e5f67cb8d4a7f74a738b68c4a99afc43e5910",
       "rule": "effect-needs-cleanup",
@@ -1361,6 +1418,7 @@
     },
     {
       "suffix": "LjT6Gsi",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "5f384a06870ceff0d672ddf43b9e5f67cb8d4a7f74a738b68c4a99afc43e5910",
       "rule": "effect-needs-cleanup",
@@ -1373,6 +1431,7 @@
     },
     {
       "suffix": "Mc74ezG",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "4043adbc7c65cd51f7e5d4efe999756cea83aaf36d75a3e43fdb7e16d7164e73",
       "rule": "effect-needs-cleanup",
@@ -1385,6 +1444,7 @@
     },
     {
       "suffix": "Mc74ezG",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "4043adbc7c65cd51f7e5d4efe999756cea83aaf36d75a3e43fdb7e16d7164e73",
       "rule": "effect-needs-cleanup",
@@ -1397,6 +1457,7 @@
     },
     {
       "suffix": "mggYDtK",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "99267967e2dcfd885d6923075365d4f1133a0155fec441c03fd7b23b9db9d410",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1409,6 +1470,7 @@
     },
     {
       "suffix": "mwrqBJm",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "96fd5248b3883593d8e401d4d3969e1e93930cbb58cb4aa23a73f9173260f06c",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1421,6 +1483,7 @@
     },
     {
       "suffix": "NEqLJPs",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "1fc841f0b5c8d4774191f6b1d31c026ae164b9d14227c923574abf952b70a021",
       "rule": "effect-needs-cleanup",
@@ -1433,6 +1496,7 @@
     },
     {
       "suffix": "nqCAUTG",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "b9a70452c5e1293797061452118c5c47c0244dd5ddc781bba2518060ed58cacb",
       "rule": "effect-needs-cleanup",
@@ -1445,6 +1509,7 @@
     },
     {
       "suffix": "nWstAEn",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "63ac7bf7e641bee8352e74832a6e5df92a179670da5c5f9861a21b080217d3b9",
       "rule": "effect-needs-cleanup",
@@ -1457,6 +1522,7 @@
     },
     {
       "suffix": "nZWy2VR",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "479b770f69b88988d3d7be59227b90ca3695c1a570932126b498dc9b01129d7c",
       "rule": "effect-needs-cleanup",
@@ -1469,6 +1535,7 @@
     },
     {
       "suffix": "o7H9HZT",
+      "auditVersion": "0.9.7",
       "task": "write-react-azouaoui-med-react-pro-sidebar-267",
       "patchSha256": "fe0d20f5c9021fa2d64b55ae5fa66a77aab40bd01996b78cf925cbf74f00656b",
       "rule": "effect-needs-cleanup",
@@ -1481,6 +1548,7 @@
     },
     {
       "suffix": "p9xPe6V",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "3b4335c6675fe7be4a1ff4a914b41bca5cf20db792f4cd724d7f016f9f896fcb",
       "rule": "effect-needs-cleanup",
@@ -1493,6 +1561,7 @@
     },
     {
       "suffix": "pdWLT3f",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "96dae4bf4dddc287d12edcb8cd0c32aa3fecd7370b8d53862c8fb4b933017f25",
       "rule": "effect-needs-cleanup",
@@ -1505,6 +1574,7 @@
     },
     {
       "suffix": "pUceTHm",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "b189af65060eeb0ef11373e5f636d25036a1c915bae0a5f32617e9827b56e4b9",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1517,6 +1587,7 @@
     },
     {
       "suffix": "PyYKwCv",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "aa1548cc38552741b7c49f282b134d3c2895a9521df8a6f6ba1ff21ec91a11d1",
       "rule": "effect-needs-cleanup",
@@ -1529,6 +1600,7 @@
     },
     {
       "suffix": "qeA8ADk",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "f8fd8ca236ec655fdc0beca780f41d38aeda42b27151952fce494e03cd86694b",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1541,6 +1613,7 @@
     },
     {
       "suffix": "qFbXfoU",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "ec408d7d1e988c4174df7f6f88df45070aebb75b0feca068342f1a96ef18b2fa",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1553,6 +1626,7 @@
     },
     {
       "suffix": "qFdtj8R",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "3d236d4b03478960a19deee9e29588e2b124f47fd888712ea1e37e628b0c5cbc",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1565,6 +1639,7 @@
     },
     {
       "suffix": "RcqthL9",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "902ad30a6ce2aef9d2077b9b3d24d9e60cc43b7f9cefa4a2d39fd63650cea8ac",
       "rule": "effect-needs-cleanup",
@@ -1576,7 +1651,21 @@
       "verdict": "pass"
     },
     {
+      "suffix": "RD098RTT",
+      "auditVersion": "0.9.8",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "593ce722332373f1a794731286abd10d9d175f86688277ff7d20e085b93773eb",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 243,
+      "sourceSha256": "2aaefa9502f425fb162e83305c71a54a70888fcd45860bd2ae1cd5f1eb7fe924",
+      "snippetSha256": "2aaefa9502f425fb162e83305c71a54a70888fcd45860bd2ae1cd5f1eb7fe924",
+      "fixture": "react-bench-0.9.7-audit/regressions/2aaefa9502f4--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
       "suffix": "Rit9CTf",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
       "patchSha256": "211a6bf23fe9dbccbd7d87659c701f69771a98c909a3113656508f8c84420146",
       "rule": "effect-needs-cleanup",
@@ -1589,6 +1678,7 @@
     },
     {
       "suffix": "Rkf6hKV",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
       "patchSha256": "3564bb6f197486b9718788ce7f4127a96f8649bffe421e2e66397fcb2fc4bbbb",
       "rule": "effect-needs-cleanup",
@@ -1601,6 +1691,7 @@
     },
     {
       "suffix": "RVBWvU2",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "cbf9d3e1489a82c9e1a2c29c0a3c72f67278ead8c4068e306cb98d8521784ef2",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1613,6 +1704,7 @@
     },
     {
       "suffix": "San7nfV",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "fb7ed88b80deb87daa3939c022ae7c61fc1f2efd7dba3da0b292bc1087ca9a0f",
       "rule": "effect-needs-cleanup",
@@ -1625,6 +1717,7 @@
     },
     {
       "suffix": "SQSmbFe",
+      "auditVersion": "0.9.7",
       "task": "write-react-atomantic-portos-1698",
       "patchSha256": "ef0ebde8ac1f2ea52fcaf0d1e76b6ff189bbb98bfb5f9962e5ec5ac9aa7cfb0a",
       "rule": "no-side-effect-in-state-updater-function",
@@ -1637,6 +1730,7 @@
     },
     {
       "suffix": "t2MJVDe",
+      "auditVersion": "0.9.7",
       "task": "write-react-frankchen021-datastoria-199",
       "patchSha256": "553e95682a8a999533a15aeb75c73e42c3ff347536fba08b19fbe9b3f6802403",
       "rule": "dangerous-html-sink",
@@ -1649,6 +1743,7 @@
     },
     {
       "suffix": "TgaiL4H",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "d432b9cae5105f61a6445752524fab1668b6acc6937faca07f0e7d052635d915",
       "rule": "effect-needs-cleanup",
@@ -1661,6 +1756,7 @@
     },
     {
       "suffix": "TLDAvPL",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "26be183ac9e2b583f47f9a3d596c8a4864a7d883919e7f0fc39b136c95d036bc",
       "rule": "effect-needs-cleanup",
@@ -1673,6 +1769,7 @@
     },
     {
       "suffix": "tMA9S2M",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "3f18834dc4fb448a55bdebdb307f0b1355c781466bc785b2a27811766f890d64",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1685,6 +1782,7 @@
     },
     {
       "suffix": "tN7KTwG",
+      "auditVersion": "0.9.7",
       "task": "write-react-trycompai-comp-3248",
       "patchSha256": "1c8e1a5237b00a8ada41c1c220e02c54838c20f935e5a4ac8810d8804e737765",
       "rule": "effect-needs-cleanup",
@@ -1697,6 +1795,7 @@
     },
     {
       "suffix": "tnceAXq",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "c28ed9475ca8b27d5121678fc50e7267cb8fb695389273388acbc916b61db1bb",
       "rule": "effect-needs-cleanup",
@@ -1709,6 +1808,7 @@
     },
     {
       "suffix": "TttYXSq",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "4a1affeb67bd7243e3f4bb6f2a75083c72584c78bbb85fc708fecd74df56cd45",
       "rule": "no-unowned-async-error-clear",
@@ -1721,6 +1821,7 @@
     },
     {
       "suffix": "UA2HwrB",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
       "patchSha256": "24bf6457baf98811595e26d27a3b08f3e19ead5c89955281287b090fd21279c0",
       "rule": "effect-needs-cleanup",
@@ -1733,6 +1834,7 @@
     },
     {
       "suffix": "uhPQe3N",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "f6b7c79d6ff9f78ed02ec8670395b94493e3bf8191e5301def3d6563e3d24b33",
       "rule": "effect-needs-cleanup",
@@ -1745,6 +1847,7 @@
     },
     {
       "suffix": "UM9oWPj",
+      "auditVersion": "0.9.7",
       "task": "write-react-tracecathq-tracecat-2879",
       "patchSha256": "7527a41ee5ed681296a52012d9c6b03b2a9a1feca61d22fcb9b5c117aa0be8d5",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1757,6 +1860,7 @@
     },
     {
       "suffix": "ums2Ccx",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "e74cbf1e459ea694ac2724a9c34a00a1e10bde099eabff21be06b7a5697520c5",
       "rule": "effect-needs-cleanup",
@@ -1769,6 +1873,7 @@
     },
     {
       "suffix": "uoccKA3",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "65f727cedaf9e016e95755ec40e76a62f48a614c83411b841a1b29438eea565b",
       "rule": "effect-needs-cleanup",
@@ -1781,6 +1886,7 @@
     },
     {
       "suffix": "uRcmhcd",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "cbc42e621c17fb9fbff067f96333c6cc47b14b379a2e336197d0d75add9bf417",
       "rule": "effect-needs-cleanup",
@@ -1793,6 +1899,7 @@
     },
     {
       "suffix": "UrywCLy",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "015d99597a90703b3c590200dddd0e7bc4b7a0f6d8b37fd07cc17c59a8971df2",
       "rule": "effect-needs-cleanup",
@@ -1805,6 +1912,7 @@
     },
     {
       "suffix": "uWdHdPi",
+      "auditVersion": "0.9.7",
       "task": "write-react-azouaoui-med-react-pro-sidebar-267",
       "patchSha256": "bc41f2a4a44c9f98dccba033f0ebf2d555b8b802b88347850192a6b3deaff712",
       "rule": "effect-needs-cleanup",
@@ -1817,6 +1925,7 @@
     },
     {
       "suffix": "VGJPmx2",
+      "auditVersion": "0.9.7",
       "task": "write-react-frankchen021-datastoria-199",
       "patchSha256": "aca46e43abdf46ad8ce44ea5385c03ec22e69f5524b89bed5d6a9d887b5b84d6",
       "rule": "dangerous-html-sink",
@@ -1829,6 +1938,7 @@
     },
     {
       "suffix": "vGnjrGU",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "6c1cf630eff15a3259ddff16a61b45010b5f3631a58646c32be329def5bfd01e",
       "rule": "effect-needs-cleanup",
@@ -1841,6 +1951,7 @@
     },
     {
       "suffix": "vvZxJVi",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "3597f86327172ed067f5f6adbef55bed663a266f120fdca7ee5e09ef4cbeba21",
       "rule": "effect-needs-cleanup",
@@ -1853,6 +1964,7 @@
     },
     {
       "suffix": "vzVGFfV",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
       "patchSha256": "a8c3171df27f0062f628b91e322e418fed424f7809f31f208aa47ee7c10400f5",
       "rule": "effect-needs-cleanup",
@@ -1865,6 +1977,7 @@
     },
     {
       "suffix": "wArJTKh",
+      "auditVersion": "0.9.7",
       "task": "fix-react-reacttooltip-react-tooltip-1205",
       "patchSha256": "aab2db9fd5e0ee63bc5dcee4dd6f7c77411ed458db3037d20df4c3548ed9cf63",
       "rule": "effect-needs-cleanup",
@@ -1877,6 +1990,7 @@
     },
     {
       "suffix": "wbjdCnA",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "7d3fb572a30cab4e64843dca534f8c60eb72902af1451fcb7daa30d707310915",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1889,6 +2003,7 @@
     },
     {
       "suffix": "wDv3fd7",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "64986c53093cae322b521af4282cbc795e7dae9ff7602d5b4b9da2d29a2ba799",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1901,6 +2016,7 @@
     },
     {
       "suffix": "wDv3fd7",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "64986c53093cae322b521af4282cbc795e7dae9ff7602d5b4b9da2d29a2ba799",
       "rule": "no-unowned-async-error-clear",
@@ -1913,6 +2029,7 @@
     },
     {
       "suffix": "wNxChFj",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "c57e5bad622d9e5e3c5d8d0da37f7bc926dfb6a693a4077e6e077915a01cd8cb",
       "rule": "effect-needs-cleanup",
@@ -1925,6 +2042,7 @@
     },
     {
       "suffix": "x7VUyKi",
+      "auditVersion": "0.9.7",
       "task": "write-react-tracecathq-tracecat-2879",
       "patchSha256": "1a78dd843384fd36d5339f6ffa1296fdb4ff44fb4f81fa50acfe17e634f52854",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1937,6 +2055,7 @@
     },
     {
       "suffix": "Xye9UXr",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
       "patchSha256": "d8f2330e71d383f3ff558152442e8f9102eb0a6a38441c73a97f160d0432829a",
       "rule": "effect-needs-cleanup",
@@ -1949,6 +2068,7 @@
     },
     {
       "suffix": "ydQnRk9",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "eeb5e9ce0278b4f6e5ad15aae0badb1fb6bce3674188dfd13bbeb9b3c6dae63a",
       "rule": "no-fetch-response-used-without-status-check",
@@ -1961,6 +2081,7 @@
     },
     {
       "suffix": "YFKtagN",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "dc085eb656bd57f7e798e4e2191e32af7e08373aead6b0b647493680334af511",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1973,6 +2094,7 @@
     },
     {
       "suffix": "yfTmUkt",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "6c60185fc5f0499dbb49243bb3cec0fec3f20c768298a5850d90100f520643a3",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1985,6 +2107,7 @@
     },
     {
       "suffix": "yGj7iPo",
+      "auditVersion": "0.9.7",
       "task": "write-react-tombelieber-claude-view-70",
       "patchSha256": "7d5aa3fae5442d4ba8dccde4e005667d4683fcfbc0fb27884a830c8abccdb823",
       "rule": "no-loading-flag-reset-outside-finally",
@@ -1997,6 +2120,7 @@
     },
     {
       "suffix": "yHA8h9X",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "86c5f18ac8caad1a23a9057a796aefce3123e2652711be174bd481f6647d82ab",
       "rule": "no-fetch-response-used-without-status-check",
@@ -2009,6 +2133,7 @@
     },
     {
       "suffix": "z288GAh",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "a89a6282bcd9e722c5b68cd1983888c40bf2d2f5196db66d87bc46386d2d4e8e",
       "rule": "no-fetch-response-used-without-status-check",
@@ -2021,6 +2146,7 @@
     },
     {
       "suffix": "zcWaWWS",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "309e776b61d9d52520f03c4ccfe239cd58547e1e6615016853ff8f8b24cd051b",
       "rule": "no-fetch-response-used-without-status-check",
@@ -2033,6 +2159,7 @@
     },
     {
       "suffix": "ZFcupSH",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-sofn-xyz-mailing-settings",
       "patchSha256": "b49c1a1c2830e2b62b79dba2ad3e64e0e0f358c43eb898cef039b575f02eb1d4",
       "rule": "no-fetch-response-used-without-status-check",
@@ -2045,6 +2172,7 @@
     },
     {
       "suffix": "zozDEMR",
+      "auditVersion": "0.9.7",
       "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
       "patchSha256": "4fd2ae2fa864e6f9a463e485e0e7422c27a1bc0230f4970bfd3a2537b5f87888",
       "rule": "effect-needs-cleanup",
@@ -2057,6 +2185,7 @@
     },
     {
       "suffix": "zY62bGN",
+      "auditVersion": "0.9.7",
       "task": "write-react-pedropalau-react-bnb-gallery-185",
       "patchSha256": "9a03c994a034ebcb32ee460d8f6733b0cd48ebf9f7b7202f76140a0fa1dd6acc",
       "rule": "effect-needs-cleanup",

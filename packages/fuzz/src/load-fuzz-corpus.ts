@@ -13,7 +13,7 @@ export interface FuzzCorpusLoadOptions {
   maximumFiles?: number;
 }
 
-const CORPUS_FILE_PATTERN = /\.(tsx|jsx)$/;
+const CORPUS_FILE_PATTERN = /\.(tsx|ts|jsx|js)$/;
 const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: (.+)$/m;
 const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "dist", "build", "coverage"]);

@@ -2,9 +2,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
-import * as Schema from "effect/Schema";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { Diagnostic } from "../schemas.js";
 
 /**
@@ -53,37 +50,4 @@ export class Reporter extends Context.Service<
       }),
     ),
   ).pipe(Layer.provideMerge(ReporterCapture.layer));
-
-  /**
-   * Append-only NDJSON reporter. Schema-encodes each diagnostic at
-   * the wire boundary so the eval harness reads back via the same
-   * `Diagnostic` schema.
-   */
-  static readonly layerNdjson = (filePath: string): Layer.Layer<Reporter> =>
-    Layer.effect(
-      Reporter,
-      Effect.acquireRelease(
-        Effect.sync(() => {
-          fs.mkdirSync(path.dirname(filePath), { recursive: true });
-          let handle: number | null = fs.openSync(filePath, "a");
-          const encode = Schema.encodeUnknownSync(Diagnostic);
-
-          const emit = (diagnostic: Diagnostic): Effect.Effect<void> =>
-            Effect.sync(() => {
-              if (handle === null) throw new Error("Cannot emit after Reporter.finalize");
-              fs.writeSync(handle, `${JSON.stringify(encode(diagnostic))}\n`);
-            });
-
-          const finalize = Effect.sync(() => {
-            if (handle === null) return;
-            const openHandle = handle;
-            handle = null;
-            fs.closeSync(openHandle);
-          });
-
-          return Reporter.of({ emit, finalize });
-        }),
-        (reporter) => reporter.finalize,
-      ),
-    );
 }

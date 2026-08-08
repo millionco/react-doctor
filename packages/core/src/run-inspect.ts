@@ -408,10 +408,10 @@ export const runInspect = <HooksR = never>(
     // fail-open `[]` + a `timedOut` marker — the same outcome class as a Socket
     // outage. The deadline is measured FROM FORK (before lint), so it bounds a
     // hung undici socket without depending on how long lint takes. (On the rare
-    // timeout, a stateful `Reporter` — only `layerNdjson`, which has no in-tree
-    // consumer — may hold supply-chain emits from before the deadline that the
-    // returned `[]` omits; production `Reporter.layerNoop` makes emit a no-op,
-    // and the returned `diagnostics`/score only ever read the joined value.)
+    // timeout, a stateful reporter may hold supply-chain emits from before the
+    // deadline that the returned `[]` omits; production `Reporter.layerNoop`
+    // makes emit a no-op, and the returned diagnostics/score only read the
+    // joined value.)
     // When skipped, the fork takes the empty branch so the join below stays
     // unconditional (mirroring the viewer-permission fiber above).
     const capToDeadline = (phaseTimeoutMs: number): number =>
@@ -514,6 +514,9 @@ export const runInspect = <HooksR = never>(
       deadCodeParseConcurrency === undefined
         ? scanConcurrency
         : Math.max(MIN_SCAN_CONCURRENCY, scanConcurrency - deadCodeParseConcurrency);
+    let deadCodeCacheHit: boolean | null = null;
+    let deadCodeSummaryCacheHits: number | null = null;
+    let deadCodeSummaryCacheMisses: number | null = null;
 
     // Runs either forked (overlap) or inline (sequential) with the same pipeline
     // + failure Ref. Building this is side-effect-free; the worker spawns only
@@ -604,9 +607,6 @@ export const runInspect = <HooksR = never>(
     let lintCacheTotalFileCount: number | null = null;
     let lintSidecarReplayedFileCount: number | null = null;
     let lintSidecarTotalFileCount: number | null = null;
-    let deadCodeCacheHit: boolean | null = null;
-    let deadCodeSummaryCacheHits: number | null = null;
-    let deadCodeSummaryCacheMisses: number | null = null;
     const lintFileCoverageState: { value: LintFileCoverage | null } = { value: null };
 
     const baseLintStream = linterService

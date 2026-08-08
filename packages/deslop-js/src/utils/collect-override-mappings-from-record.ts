@@ -1,6 +1,6 @@
 import { extractOverrideTargetPackage } from "./extract-override-target.js";
 
-interface OverrideMapping {
+export interface OverrideMapping {
   fromPackage: string;
   toPackage: string;
 }

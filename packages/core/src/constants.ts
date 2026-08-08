@@ -627,13 +627,6 @@ export const JSX_OPENER_SCAN_MAX_LINES = 32;
 // Larger gaps stop being intentional suppressions and become noise.
 export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;
 
-// In the default human output, show several category sections like an
-// audit report, but cap each section so one noisy category does not
-// bury the rest of the scan.
-export const MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE = 5;
-
-export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
-
 // `minimumReleaseAge` in `pnpm-workspace.yaml` is denominated in
 // minutes. 7 days × 24 h × 60 min = 10080. Surfaced as the
 // recommended starting point for the supply-chain hardening check.
@@ -778,17 +771,6 @@ export const CODE_FRAME_LINES_BELOW = 1;
 // data literal) only produces an unreadable wall of text in the terminal,
 // so we fall back to the bare `file:line` reference instead.
 export const CODE_FRAME_MAX_LINE_LENGTH_CHARS = 200;
-
-// When one rule hits several sites in the same file, sites whose frames
-// would overlap are merged into a single spanning frame instead of
-// rendering near-duplicate boxes. Two sites merge when the gap between
-// their lines is within this window (the frame's own context reach), and
-// a merged frame never spans more offending lines than the max below — a
-// long contiguous run is split into a few bounded frames rather than one
-// giant wall.
-export const CODE_FRAME_BATCH_MAX_SPAN_LINES = 20;
-
-export const OUTPUT_DETAIL_WRAP_WIDTH_CHARS = 88;
 
 // Typographic "measure" — the line length (in characters) we wrap
 // prose explanations to for comfortable reading. Kept short (well under

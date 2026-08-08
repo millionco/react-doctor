@@ -1,6 +1,5 @@
-import { type CliStateOptions, SETUP_HINT_EVENT, getCliStatePath } from "./cli-state-store.js";
+import { type CliStateOptions, SETUP_HINT_EVENT } from "./cli-state-store.js";
 import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
-import { hashProjectRoot } from "./hash-project-root.js";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";
 
@@ -17,11 +16,6 @@ export interface ResolveInstallSetupProjectRootOptions {
 // so it's a gate with `fireWhenUnknown: true`: an unreadable store fails safe to
 // "show again" (better than crashing a scan), matching the prior behavior.
 const SETUP_HINT_GATE: Gate = { id: SETUP_HINT_EVENT, scope: "project", fireWhenUnknown: true };
-
-export const getSetupPromptConfigPath = getCliStatePath;
-
-export const getSetupPromptProjectKey = (projectRoot: string): string =>
-  hashProjectRoot(projectRoot);
 
 export const hasDisabledSetupPrompt = (
   projectRoot: string,

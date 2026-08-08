@@ -25,10 +25,14 @@ import type {
   ExportReference,
   ImportBinding,
   MemberAccess,
-  InlineTypeContext,
-  RedundantTypePatternKind,
-  SimplifiableExpressionKind,
-  SimplifiableFunctionKind,
+  SourceModuleAnalysis,
+  SourceModuleDuplicateConstantCandidate,
+  SourceModuleIdentityWrapper,
+  SourceModuleInlineTypeLiteral,
+  SourceModuleRedundantTypePattern,
+  SourceModuleSimplifiableExpression,
+  SourceModuleSimplifiableFunction,
+  SourceModuleTypeDefinitionHash,
 } from "../types.js";
 import { getLineFromOffset, getColumnFromOffset } from "../utils/line-column.js";
 import { extractDefaultExportLocalName } from "../utils/extract-default-export-local-name.js";
@@ -44,87 +48,7 @@ import { collectSimplifiableExpressions } from "../utils/collect-simplifiable-ex
 import { collectDuplicateConstantCandidates } from "../utils/collect-duplicate-constants.js";
 import { getIdentifierName } from "../utils/oxc-ast-node.js";
 
-export interface ParsedRedundantTypePattern {
-  typeName: string;
-  kind: RedundantTypePatternKind;
-  line: number;
-  column: number;
-  reason: string;
-  suggestion: string;
-}
-
-export interface ParsedIdentityWrapper {
-  wrapperName: string;
-  wrappedExpression: string;
-  line: number;
-  column: number;
-}
-
-export interface ParsedTypeDefinitionHash {
-  typeName: string;
-  structuralHash: string;
-  line: number;
-  column: number;
-}
-
-export interface ParsedInlineTypeLiteral {
-  structuralHash: string;
-  memberCount: number;
-  preview: string;
-  context: InlineTypeContext;
-  nearestName?: string;
-  line: number;
-  column: number;
-}
-
-export interface ParsedSimplifiableFunction {
-  kind: SimplifiableFunctionKind;
-  functionName?: string;
-  line: number;
-  column: number;
-  reason: string;
-  suggestion: string;
-}
-
-export interface ParsedSimplifiableExpression {
-  kind: SimplifiableExpressionKind;
-  snippet: string;
-  line: number;
-  column: number;
-  reason: string;
-  suggestion: string;
-}
-
-export interface ParsedDuplicateConstantCandidate {
-  constantName: string;
-  literalHash: string;
-  literalPreview: string;
-  line: number;
-  column: number;
-}
-
-export interface ParsedSource {
-  imports: ImportReference[];
-  exports: ExportReference[];
-  memberAccesses: MemberAccess[];
-  wholeObjectUses: string[];
-  localIdentifierReferences: string[];
-  /**
-   * Local names of static import bindings referenced in module-init-executed
-   * positions (top-level statements outside function bodies and erased TS
-   * type positions). Cycle detection uses this to tell an initialization-
-   * order hazard from a cycle whose back edges are only dereferenced later,
-   * inside function bodies invoked after every module has initialized.
-   */
-  topLevelImportReferences: string[];
-  referencedFilenames: string[];
-  redundantTypePatterns: ParsedRedundantTypePattern[];
-  identityWrappers: ParsedIdentityWrapper[];
-  typeDefinitionHashes: ParsedTypeDefinitionHash[];
-  inlineTypeLiterals: ParsedInlineTypeLiteral[];
-  simplifiableFunctions: ParsedSimplifiableFunction[];
-  simplifiableExpressions: ParsedSimplifiableExpression[];
-  duplicateConstantCandidates: ParsedDuplicateConstantCandidate[];
+export interface ParsedSource extends SourceModuleAnalysis {
   errors: DeslopError[];
 }
 
@@ -842,9 +766,9 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     [],
   );
 
-  const redundantTypePatterns: ParsedRedundantTypePattern[] = [];
-  const identityWrappers: ParsedIdentityWrapper[] = [];
-  const typeDefinitionHashes: ParsedTypeDefinitionHash[] = [];
+  const redundantTypePatterns: SourceModuleRedundantTypePattern[] = [];
+  const identityWrappers: SourceModuleIdentityWrapper[] = [];
+  const typeDefinitionHashes: SourceModuleTypeDefinitionHash[] = [];
   safeWalk(
     "collectDryPatterns",
     () => {
@@ -865,7 +789,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     () => collectInlineTypeLiterals(program.body),
     [],
   );
-  const inlineTypeLiterals: ParsedInlineTypeLiteral[] = inlineTypeCaptures.map((capture) => ({
+  const inlineTypeLiterals: SourceModuleInlineTypeLiteral[] = inlineTypeCaptures.map((capture) => ({
     structuralHash: capture.structuralHash,
     memberCount: capture.memberCount,
     preview: capture.preview,
@@ -880,7 +804,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     () => collectSimplifiableFunctions(program.body),
     [],
   );
-  const simplifiableFunctions: ParsedSimplifiableFunction[] = simplifiableCaptures.map(
+  const simplifiableFunctions: SourceModuleSimplifiableFunction[] = simplifiableCaptures.map(
     (capture) => ({
       kind: capture.kind,
       functionName: capture.functionName,
@@ -896,7 +820,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     () => collectSimplifiableExpressions(program.body),
     [],
   );
-  const simplifiableExpressions: ParsedSimplifiableExpression[] = expressionCaptures.map(
+  const simplifiableExpressions: SourceModuleSimplifiableExpression[] = expressionCaptures.map(
     (capture) => ({
       kind: capture.kind,
       snippet: capture.snippet,
@@ -912,15 +836,14 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     () => collectDuplicateConstantCandidates(program.body),
     [],
   );
-  const duplicateConstantCandidates: ParsedDuplicateConstantCandidate[] = constantCaptures.map(
-    (capture) => ({
+  const duplicateConstantCandidates: SourceModuleDuplicateConstantCandidate[] =
+    constantCaptures.map((capture) => ({
       constantName: capture.constantName,
       literalHash: capture.literalHash,
       literalPreview: capture.literalPreview,
       line: getLineFromOffset(sourceText, capture.startOffset),
       column: getColumnFromOffset(sourceText, capture.startOffset),
-    }),
-  );
+    }));
 
   const referencedFilenames = extractReferencedFilenames(sourceText, program.body);
 
@@ -1000,9 +923,9 @@ const extractReferencedFilenames = (
 const collectDryPatterns = (
   bodyNodes: Array<Statement | ModuleDeclaration>,
   sourceText: string,
-  redundantTypePatterns: ParsedRedundantTypePattern[],
-  identityWrappers: ParsedIdentityWrapper[],
-  typeDefinitionHashes: ParsedTypeDefinitionHash[],
+  redundantTypePatterns: SourceModuleRedundantTypePattern[],
+  identityWrappers: SourceModuleIdentityWrapper[],
+  typeDefinitionHashes: SourceModuleTypeDefinitionHash[],
 ): void => {
   for (const statement of bodyNodes) {
     inspectStatement(
@@ -1018,9 +941,9 @@ const collectDryPatterns = (
 const inspectStatement = (
   statementNode: Statement | ModuleDeclaration,
   sourceText: string,
-  redundantTypePatterns: ParsedRedundantTypePattern[],
-  identityWrappers: ParsedIdentityWrapper[],
-  typeDefinitionHashes: ParsedTypeDefinitionHash[],
+  redundantTypePatterns: SourceModuleRedundantTypePattern[],
+  identityWrappers: SourceModuleIdentityWrapper[],
+  typeDefinitionHashes: SourceModuleTypeDefinitionHash[],
 ): void => {
   let declarationOfInterest: unknown = statementNode;
   if (

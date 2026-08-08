@@ -190,28 +190,4 @@ export class Linter extends Context.Service<
         run: () => Stream.fromIterable(diagnostics),
       }),
     );
-
-  /**
-   * Composite layer: runs every supplied backend in sequence and
-   * concatenates their diagnostic streams. Slot for a future
-   * second-backend integration (ESLint worker pool, sandboxed runner)
-   * — register an additional Linter instance and pass the array here
-   * without changing the orchestrator.
-   */
-  static readonly layerComposite = (
-    backends: ReadonlyArray<Linter["Service"]>,
-  ): Layer.Layer<Linter> =>
-    Layer.succeed(
-      Linter,
-      Linter.of({
-        run: (input) => {
-          if (backends.length === 0) return Stream.empty;
-          let stream = backends[0].run(input);
-          for (let index = 1; index < backends.length; index++) {
-            stream = stream.pipe(Stream.concat(backends[index].run(input)));
-          }
-          return stream;
-        },
-      }),
-    );
 }

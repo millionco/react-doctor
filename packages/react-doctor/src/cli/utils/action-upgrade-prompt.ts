@@ -1,4 +1,4 @@
-import { type CliStateOptions, ACTION_UPGRADE_EVENT, getCliStatePath } from "./cli-state-store.js";
+import { type CliStateOptions, ACTION_UPGRADE_EVENT } from "./cli-state-store.js";
 import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 
 // The `@v1` → `@v2` action-upgrade offer: a once-per-repo gate. Either answer
@@ -6,8 +6,6 @@ import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 // major ships, register a new gate id (e.g. `action-upgrade-v3`) rather than
 // bumping this one, so the v2 answer stays remembered.
 const ACTION_UPGRADE_GATE: Gate = { id: ACTION_UPGRADE_EVENT, scope: "project" };
-
-export const getActionUpgradePromptConfigPath = getCliStatePath;
 
 // Whether the upgrade offer was already answered for this repo. Fails safe to
 // "handled" on an unreadable store.

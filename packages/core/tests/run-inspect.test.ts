@@ -784,6 +784,44 @@ describe("runInspect — dead-code failure", () => {
 });
 
 describe("runInspect — dead-code/lint overlap", () => {
+  it("records synchronous cache callbacks from the overlap fiber", async () => {
+    const deadCodeWithCacheCallbacks = Layer.mock(DeadCode, {
+      run: (input) => {
+        input.onCacheOutcome?.(true);
+        input.onSummaryCacheStats?.({ hits: 7, misses: 2 });
+        return Stream.fromIterable([deadCodeDiagnostic]);
+      },
+    });
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Project.layerOf(sampleProject),
+            Config.layerOf({
+              config: null,
+              resolvedDirectory: "/repo",
+              configSourceDirectory: null,
+            }),
+            Files.layerInMemory(new Map()),
+            Linter.layerOf([lintDiagnostic]),
+            LintPartialFailures.layerLive,
+            deadCodeWithCacheCallbacks,
+            Git.layerOf({}),
+            Score.layerOf({ score: 85, label: "Good" }),
+            SupplyChain.layerOf([]),
+            Progress.layerNoop,
+            Reporter.layerNoop,
+            Layer.succeed(DeadCodeOverlap, "on"),
+          ),
+        ),
+      ),
+    );
+
+    expect(output.deadCodeCacheHit).toBe(true);
+    expect(output.deadCodeSummaryCacheHits).toBe(7);
+    expect(output.deadCodeSummaryCacheMisses).toBe(2);
+  });
+
   it("forced on: diagnostics + score identical to sequential, overlap recorded", async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {

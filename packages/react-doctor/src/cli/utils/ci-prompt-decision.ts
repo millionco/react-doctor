@@ -1,4 +1,4 @@
-import { type CliStateOptions, CI_PITCH_EVENT, getCliStatePath } from "./cli-state-store.js";
+import { type CliStateOptions, CI_PITCH_EVENT } from "./cli-state-store.js";
 import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 
 // The "Add React Doctor to CI?" pitch: a once-per-repo gate shared by `install`
@@ -7,8 +7,6 @@ import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 // write didn't land doesn't re-pitch (the user can re-run `react-doctor
 // install`). Bump `version` to re-pitch everyone after a reworked campaign.
 const CI_PITCH_GATE: Gate = { id: CI_PITCH_EVENT, scope: "project" };
-
-export const getCiPromptConfigPath = getCliStatePath;
 
 // Whether the CI pitch was already answered for this repo. Fails safe to
 // "handled" on an unreadable store so we never nag where it can't be remembered.

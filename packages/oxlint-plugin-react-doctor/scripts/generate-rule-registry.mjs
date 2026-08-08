@@ -172,24 +172,6 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "role-button-requires-complete-keyboard-activation",
 ]);
 
-// Rule ids whose source files are kept on disk but intentionally NOT
-// registered. Use sparingly — the canonical way to retire a rule is to
-// delete its file (and its tests, fixture references, etc.). This
-// skiplist exists for rules we want to stop shipping right away while
-// preserving their implementation, tests, and regression fixtures so
-// re-enabling is a one-line change. Add a brief justification next to
-// every entry.
-const RULE_IDS_TO_SKIP_REGISTRATION = new Set([
-  // The React-Compiler memoization premise didn't hold: the three
-  // canonical hooks it targeted (`useRouter`, `useSearchParams`,
-  // `useNavigation`) all return stable references, so destructuring
-  // their methods produces no measurable compiler win — and on Pages
-  // Router (`next/router`) destructuring `push` captures a stale
-  // reference. Implementation + regression suite + fixture lines kept
-  // in place; remove this entry to re-enable.
-  "react-compiler-destructure-method",
-]);
-
 // Fine-grained category → the clear, user-facing bucket the scan output
 // groups & labels by. Rules (and the buckets below) declare a detailed
 // category for intent; the reporter only ever shows these five outcome
@@ -310,7 +292,6 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       process.exit(1);
     }
     const ruleId = idMatch[1];
-    if (RULE_IDS_TO_SKIP_REGISTRATION.has(ruleId)) continue;
     const category = toBucket(categoryMatch ? categoryMatch[1] : defaultCategory);
     const severity = severityMatch[1];
     // Force POSIX separators — `path.relative()` returns backslashes on

@@ -17,6 +17,7 @@ const FIXTURES_DIRECTORY = path.resolve(
   "tests",
   "fixtures",
 );
+
 const noReactTempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-api-test-"));
 fs.writeFileSync(
   path.join(noReactTempDirectory, "package.json"),
@@ -103,15 +104,18 @@ describe("diagnose", () => {
   });
 
   it("respects lint: false by providing a no-op linter layer", async () => {
-    const result = await diagnose(path.join(FIXTURES_DIRECTORY, "basic-react"), {
-      deadCode: false,
-      lint: false,
-    });
-    const sourceDiagnostics = result.diagnostics.filter(
+    const directory = path.join(FIXTURES_DIRECTORY, "basic-react");
+    const lintEnabledResult = await diagnose(directory, { deadCode: false, lint: true });
+    const lintDisabledResult = await diagnose(directory, { deadCode: false, lint: false });
+    const lintEnabledSourceDiagnostics = lintEnabledResult.diagnostics.filter(
+      (diagnostic) => diagnostic.filePath !== "package.json",
+    );
+    const lintDisabledSourceDiagnostics = lintDisabledResult.diagnostics.filter(
       (diagnostic) => diagnostic.filePath !== "package.json",
     );
 
-    expect(sourceDiagnostics).toHaveLength(0);
+    expect(lintEnabledSourceDiagnostics.length).toBeGreaterThan(0);
+    expect(lintDisabledSourceDiagnostics).toHaveLength(0);
   });
 });
 

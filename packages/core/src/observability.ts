@@ -13,6 +13,7 @@ import {
   AXIOM_METRICS_DATASET_HEADER,
   AXIOM_METRICS_PATH,
   AXIOM_TRACES_PATH,
+  SLASH_CHAR_CODE,
   TELEMETRY_EXPORT_INTERVAL_MS,
   TELEMETRY_SHUTDOWN_TIMEOUT_MS,
 } from "./constants.js";
@@ -86,13 +87,12 @@ export const layerUserOtlp: Layer.Layer<never> = Layer.unwrap(
  * `application/x-protobuf` only. `layerProtobuf` ships with Effect and pulls in
  * no extra dependency.
  *
- * Traces and metrics are deliberately *separate* layers rather than one merged
- * layer. Effect's delta-temporality bookkeeping lives on the exporter instance,
- * so a second metrics exporter in the same process starts with no previous
- * state and re-reports every counter's full value as its delta — double-counting
- * everything. Metrics must therefore be instantiated exactly once per process
- * (at exit, by the CLI's flush), while the tracer's lifetime is the scan
- * program. Keeping them apart makes that impossible to get wrong by accident.
+ * Traces and metrics are exposed as separate layers so each signal's exporter
+ * can be reasoned about on its own, and `layerObservability` merges them for the
+ * normal case. Whichever you use, build it **exactly once per process**:
+ * Effect's delta-temporality bookkeeping lives on the metrics exporter
+ * instance, so a second one starts with no previous state and re-reports every
+ * counter's full value as its delta — double-counting everything.
  */
 const buildResource = (options: AxiomTelemetryOptions) => ({
   serviceName: TRACER_PROJECT_NAME,
@@ -102,7 +102,15 @@ const buildResource = (options: AxiomTelemetryOptions) => ({
 const buildAuthorization = (options: AxiomTelemetryOptions): string =>
   `Bearer ${Redacted.value(options.token)}`;
 
-const normalizeDomain = (domain: string): string => domain.replace(/\/+$/, "");
+// Trailing slashes are trimmed by scanning backwards rather than with a
+// `/\/+$/` replace: that pattern backtracks quadratically on a domain made
+// mostly of slashes, which CodeQL flags as a polynomial-regex denial of service
+// since the value comes in from the caller.
+const normalizeDomain = (domain: string): string => {
+  let end = domain.length;
+  while (end > 0 && domain.charCodeAt(end - 1) === SLASH_CHAR_CODE) end -= 1;
+  return domain.slice(0, end);
+};
 
 export const layerAxiomTraces = (options: AxiomTelemetryOptions): Layer.Layer<never> =>
   OtlpTracer.layer({
@@ -112,7 +120,7 @@ export const layerAxiomTraces = (options: AxiomTelemetryOptions): Layer.Layer<ne
       Authorization: buildAuthorization(options),
       [AXIOM_DATASET_HEADER]: options.tracesDataset,
     },
-    exportInterval: TELEMETRY_EXPORT_INTERVAL_MS,
+    exportInterval: options.exportIntervalMs ?? TELEMETRY_EXPORT_INTERVAL_MS,
     shutdownTimeout: TELEMETRY_SHUTDOWN_TIMEOUT_MS,
   }).pipe(
     Layer.provide(OtlpSerialization.layerProtobuf),

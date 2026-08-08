@@ -159,6 +159,8 @@ export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
 export const AXIOM_DEFAULT_DOMAIN = "https://api.axiom.co";
 
+export const SLASH_CHAR_CODE = 47;
+
 export const AXIOM_TRACES_PATH = "/v1/traces";
 
 export const AXIOM_METRICS_PATH = "/v1/metrics";

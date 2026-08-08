@@ -1,8 +1,36 @@
+import * as Cause from "effect/Cause";
+import * as Exit from "effect/Exit";
 import * as Tracer from "effect/Tracer";
 import { anonymizeText } from "./anonymize-text.js";
 
 const scrubValue = (value: unknown): unknown =>
   typeof value === "string" ? anonymizeText(value) : value;
+
+/**
+ * Anonymizes the failure a span ended with.
+ *
+ * The OTLP tracer runs `Cause.prettyErrors` over the exit and exports each
+ * result as `exception.type` / `exception.message` / `exception.stacktrace`.
+ * Stack traces are full of absolute paths, so a failing scan would ship the
+ * user's home directory even though every attribute and event is scrubbed —
+ * this is the one route into the payload that doesn't go through
+ * `span.attribute`.
+ *
+ * Interrupt-only causes are left alone: the exporter emits a fixed
+ * "Interrupted" label for them and never touches the error text.
+ */
+const scrubExit = (exit: Exit.Exit<unknown, unknown>): Exit.Exit<unknown, unknown> => {
+  if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)) return exit;
+  const errors = Cause.prettyErrors(exit.cause);
+  if (errors.length === 0) return exit;
+  const scrubbed = errors.map((error) => {
+    const anonymized = new Error(anonymizeText(error.message));
+    anonymized.name = anonymizeText(error.name);
+    anonymized.stack = error.stack === undefined ? undefined : anonymizeText(error.stack);
+    return Cause.fail(anonymized);
+  });
+  return Exit.failCause(scrubbed.reduce((left, right) => Cause.combine(left, right)));
+};
 
 const scrubAttributes = (
   attributes: Record<string, unknown> | undefined,
@@ -56,7 +84,7 @@ const wrapSpan = (span: Tracer.Span): Tracer.Span => ({
     return span.kind;
   },
   end: (endTime, exit) => {
-    span.end(endTime, exit);
+    span.end(endTime, scrubExit(exit));
   },
   attribute: (key, value) => {
     span.attribute(key, scrubValue(value));

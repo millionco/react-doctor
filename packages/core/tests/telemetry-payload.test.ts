@@ -115,6 +115,24 @@ describe("Axiom telemetry payloads", () => {
     expect(bodyText()).not.toContain(homeDirectory);
   });
 
+  it("scrubs the home directory out of the failure a span ended with", async () => {
+    const homeDirectory = os.homedir();
+    await Effect.runPromise(
+      Effect.fail(new Error(`ENOENT: ${homeDirectory}/projects/secret-app/doctor.config.ts`)).pipe(
+        Effect.withSpan("scan"),
+        Effect.provide(layerAxiomTraces(telemetryOptions())),
+        Effect.exit,
+      ),
+    );
+
+    // The OTLP tracer turns the exit into `exception.message` /
+    // `exception.stacktrace` attributes, which never pass through
+    // `span.attribute` — so this is a separate leak route from the ones above.
+    const payload = bodyText();
+    expect(payload).toContain("exception");
+    expect(payload).not.toContain(homeDirectory);
+  });
+
   it("masks secrets echoed into span attributes", async () => {
     await runWithTelemetry(
       Effect.withSpan("scan", {

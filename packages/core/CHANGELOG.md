@@ -1,5 +1,13 @@
 # @react-doctor/core
 
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies [[`3299454`](https://github.com/millionco/react-doctor/commit/3299454344b7ad44909a2d758fe1d4352b5e3e73)]:
+  - oxlint-plugin-react-doctor@0.9.7
+  - deslop-js@0.9.7
+
 ## 0.9.6
 
 ### Patch Changes

@@ -1,5 +1,7 @@
 # deslop-js
 
+## 0.9.7
+
 ## 0.9.6
 
 ### Patch Changes

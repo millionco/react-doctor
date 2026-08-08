@@ -1,5 +1,11 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.7
+
+### Patch Changes
+
+- [#1601](https://github.com/millionco/react-doctor/pull/1601) [`3299454`](https://github.com/millionco/react-doctor/commit/3299454344b7ad44909a2d758fe1d4352b5e3e73) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix React Bench false positives in async cancellation, fetch status validation, lifecycle cleanup, timer ownership, request ownership, and trusted KaTeX provenance, and detect History mutations and prop callback calls inside state updater functions.
+
 ## 0.9.6
 
 ### Patch Changes

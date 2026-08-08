@@ -1,11 +1,13 @@
-import { isPlainObject, redactSensitiveText, scrubSensitivePaths } from "@react-doctor/core";
+import { isPlainObject } from "../project-info/fs-utils.js";
+import { redactSensitiveText } from "./redact-sensitive-text.js";
+import { scrubSensitivePaths } from "./scrub-sensitive-paths.js";
 
 /**
  * Free-text fields can carry both a home-directory path (the OS username) and a
  * secret/email echoed from user code, so run both scrubbers: strip the username
  * from paths, then mask any known credential/PII shape. Shared by the Sentry
- * event scrubber ({@link scrubSentryEvent}) and metric scrubber
- * ({@link scrubSentryMetric}).
+ * event scrubber ({@link scrubSentryEvent}), the metric emitter, and the
+ * scrubbing tracer that guards everything bound for OTLP.
  */
 export const anonymizeText = (text: string): string =>
   redactSensitiveText(scrubSensitivePaths(text));

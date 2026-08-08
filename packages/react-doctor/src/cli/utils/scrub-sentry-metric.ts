@@ -1,4 +1,4 @@
-import { anonymizeInPlace } from "./anonymize-text.js";
+import { anonymizeInPlace } from "@react-doctor/core";
 
 // Structural shape rather than the SDK's exported metric type: `beforeSendMetric`
 // hands us the metric and this minimal constraint keeps the scrubber resilient

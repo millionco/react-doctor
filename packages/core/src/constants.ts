@@ -157,6 +157,38 @@ export const SCORE_BAR_WIDTH_CHARS = 50;
 
 export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
+export const AXIOM_DEFAULT_DOMAIN = "https://api.axiom.co";
+
+export const AXIOM_TRACES_PATH = "/v1/traces";
+
+export const AXIOM_METRICS_PATH = "/v1/metrics";
+
+// Axiom routes traces and metrics to different datasets, and the two signals
+// read *different* header names to pick one. This is why the Axiom layer
+// composes OtlpTracer/OtlpMetrics by hand instead of using `Otlp.layer`,
+// which passes a single `headers` object to every signal.
+export const AXIOM_DATASET_HEADER = "X-Axiom-Dataset";
+
+export const AXIOM_METRICS_DATASET_HEADER = "x-axiom-metrics-dataset";
+
+// The CLI is a short-lived process: a scan usually finishes before any
+// periodic export would fire, so telemetry is delivered by the flush that
+// runs when the layer's scope closes. The interval is set well past a
+// realistic run so the periodic path stays out of the way rather than
+// racing that flush.
+export const TELEMETRY_EXPORT_INTERVAL_MS = 600_000;
+
+// Caps how long CLI exit may block on the final telemetry flush.
+//
+// Deliberately tighter than Sentry's 2s error flush. The metrics exporter
+// passes `maxBatchSize: "disabled"`, which skips Effect's empty-buffer
+// short-circuit — so it POSTs on every scope close whether or not anything
+// was recorded. On a firewalled or offline machine that request cannot fail
+// fast, and unlike the Sentry flush (which only runs when an error occurred)
+// this one runs on every single scan. A full second is ample for a reachable
+// endpoint and keeps telemetry from dominating exit latency for everyone else.
+export const TELEMETRY_SHUTDOWN_TIMEOUT_MS = 1_000;
+
 export const ENTERPRISE_CONTACT_URL = "https://react.doctor/enterprise";
 
 export const SHARE_BASE_URL = "https://react.doctor/share";

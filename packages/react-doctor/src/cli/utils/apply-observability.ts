@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/node";
 import * as Effect from "effect/Effect";
 import * as Tracer from "effect/Tracer";
-import { layerOtlp } from "@react-doctor/core";
+import { layerUserOtlp } from "@react-doctor/core";
 import { TRACE_FLAG_SAMPLED } from "./constants.js";
 import { makeSentryTracer } from "./sentry-tracer.js";
 
@@ -45,10 +45,10 @@ export const applyObservability = <A, E, R>(
     const correlated = rootSentrySpan
       ? program.pipe(Effect.provideService(Tracer.ParentSpan, externalSpanFrom(rootSentrySpan)))
       : program;
-    return correlated.pipe(Effect.provide(layerOtlp));
+    return correlated.pipe(Effect.provide(layerUserOtlp));
   }
   if (rootSentrySpan) {
     return program.pipe(Effect.withTracer(makeSentryTracer(rootSentrySpan)));
   }
-  return program.pipe(Effect.provide(layerOtlp));
+  return program.pipe(Effect.provide(layerUserOtlp));
 };

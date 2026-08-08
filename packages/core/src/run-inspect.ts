@@ -9,6 +9,7 @@ import type { Diagnostic, DiagnosticSurface } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
 import { dedupeRelatedDiagnostics } from "./utils/dedupe-related-diagnostics.js";
 import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
+import { scrubSensitivePaths } from "./utils/scrub-sensitive-paths.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkExpoProject } from "./check-expo-project.js";
@@ -921,7 +922,7 @@ export const runInspect = <HooksR = never>(
   }).pipe(
     Effect.withSpan("runInspect", {
       attributes: {
-        "inspect.directory": input.directory,
+        "inspect.directory": scrubSensitivePaths(input.directory),
         "inspect.includePathCount": input.includePaths.length,
         "inspect.runDeadCode": input.runDeadCode,
         "inspect.isCi": input.isCi,

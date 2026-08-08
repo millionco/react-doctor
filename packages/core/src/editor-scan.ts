@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
 import { MIN_SCAN_CONCURRENCY } from "./constants.js";
 import { isReactDoctorError, type ReactDoctorError } from "./errors.js";
-import { layerOtlp } from "./observability.js";
+import { layerUserOtlp } from "./observability.js";
 import { isProjectDiscoveryError } from "./project-info/index.js";
 import { OxlintConcurrency } from "./refs.js";
 import { runInspect, type InspectOutput } from "./run-inspect.js";
@@ -236,4 +236,4 @@ const runEditorScanEffect = (input: EditorScanInput): Effect.Effect<EditorScanRe
   }).pipe(Effect.withSpan("runEditorScan"));
 
 export const runEditorScan = (input: EditorScanInput): Promise<EditorScanResult> =>
-  Effect.runPromise(runEditorScanEffect(input).pipe(Effect.provide(layerOtlp)));
+  Effect.runPromise(runEditorScanEffect(input).pipe(Effect.provide(layerUserOtlp)));

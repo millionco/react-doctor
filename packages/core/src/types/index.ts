@@ -46,6 +46,7 @@ export type {
   JsonReportV2,
   JsonReportV3,
 } from "./inspect.js";
+export type { AxiomTelemetryOptions } from "./observability.js";
 export type {
   DependencyInfo,
   Framework,

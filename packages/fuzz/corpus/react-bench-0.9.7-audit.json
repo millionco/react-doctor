@@ -1,0 +1,2071 @@
+{
+  "source": "React Bench 0.9.7 exhaustive all-diffs audit",
+  "expected": {
+    "totalCallsites": 108,
+    "passCallsites": 106,
+    "failCallsites": 2,
+    "uniqueTrials": 98,
+    "uniqueFixtures": 95
+  },
+  "fixtures": [
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/02022e387075--photo.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "02022e387075ed617314970905872a90edfda5093878c6d2605dab96c6492818"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/0aa25aab81e0--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "0aa25aab81e0842a6ab253e4190e27f97ad22101b75c44b45a413aa620fac766"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/0b01d2a7af60--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "0b01d2a7af6022d01971e58df27dcf8883d1d0dcba494853f58841078198e42e"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/0e984d6447b7--org-vcs-github-manual-form.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "0e984d6447b722b93c4635ce37b4afcb9c9c8e2cc5db113203cd1c8d1fa08835"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/1241f5c9288f--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "1241f5c9288f0409a362807ad275c9740939ac96a1a9b44b4c734fd04cc83858"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/19bdb301c2e0--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "19bdb301c2e0eb32bf27f3cea24e25cb0f40fd3ccf562858644dc9617eafc87d"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/1b511f7fb951--use-media-query.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "1b511f7fb951ea327423b69bed6cd97f4bf97e17ba1b74c9e7dba47ccd0d1a38"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/1db5986b9f56--message-markdown-katex.tsx",
+      "verdict": "pass",
+      "rules": [
+        "dangerous-html-sink"
+      ],
+      "fixtureSourceSha256": "1db5986b9f56ef83779c2104b228aee5f2a39640b2e84a2b555288bdfe1eed36"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/1de797df8edb--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "1de797df8edb80eb05988776db6fdd7ca290e56c0d0b1b27d9688414e501272a"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/20e51d0c24ac--org-vcs-github-manual-form.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "20e51d0c24ac1a5ce038afd999adce78a30a9db77b6f972bbc45e5abcaba8bc2"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/20fbf430ab90--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "20fbf430ab90e9e1a65eb31ee7e85aaddf9950c28faf8562ea9a3675dbab0e64"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/2139b9a0b3cb--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "2139b9a0b3cb92f362d1a8faf079b762a01c048d5f553591f6c08743bbd1a6b4"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/2156ba92f9f6--message-markdown.tsx",
+      "verdict": "pass",
+      "rules": [
+        "dangerous-html-sink"
+      ],
+      "fixtureSourceSha256": "2156ba92f9f63b1e34de4287c2a8be0694172eb9b13e7d084ee1cb070c0c1c8c"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/2cc99f329a93--message-markdown.tsx",
+      "verdict": "pass",
+      "rules": [
+        "dangerous-html-sink"
+      ],
+      "fixtureSourceSha256": "2cc99f329a93f528095d6236d4f35a14e46a021da05277e66fcb7eabfee8fbb4"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/2da6b12dbf0c--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "2da6b12dbf0c306566dbcaa4e5f97833a2a7d9e4b79ad0f4c1b7c2396c475393"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/2fe632e74398--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "2fe632e743980f7873a0f4f5860a1aaeaf56cc81fd3fff826c1239d6c9835edb"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/320d3caddb53--document-history-modal.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "320d3caddb53aa62715cf8235cb7009fcabf45082238a48c86e76c3ef0b70c31"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/350c5f6506a6--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "350c5f6506a6f3271eeb88e73054130858d0311cca7d05310bcd48ce4ea22491"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/3ea0621c3a6c--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "3ea0621c3a6ca7cc3ef449c0a5648393012e808428082f74483cbd2830ca6859"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/3eeb1bb0eafb--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "3eeb1bb0eafb269811429b19823d2665fbc7c6edb447f08da5a3ff59a51e4e24"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/404dd58ecef0--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "404dd58ecef08ade8f25d2a22770fd204a34ea889a6375f67e9c990502329d12"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/4249aebf5c1a--resizable-columns.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "4249aebf5c1ae9f826a34b0d7743830e6c63489baa5467c4fdb449751a1b4891"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/42eb1e74c4d3--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "42eb1e74c4d341e0423b9e4fa7192c3554a4abee66d4b86d5fdab87633a96f93"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/43daf7e2f154--org-vcs-github-manual-form.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "43daf7e2f154fd3aae4b3034edfbb219c0d4d1d752561a351d1ec0738cd1ea90"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/4ae3811bba5c--use-settings-api-keys.ts",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "4ae3811bba5c518e7a0d299f9938b59467595c5446d9111cb07c8267eab21c88"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/5402c2693b58--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "5402c2693b588e6d0b6c3deca0968fab816db417d8486f5b46287520f05f7857"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/574feea8c6da--document-history-modal.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "574feea8c6da69c408c50ebc47342f8b551cd4211ceb06d08ac2e8e141348892"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/59a185f6fb29--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "59a185f6fb296c6879f95e3ed6c096db76ebaf9c0823ee306ed59156e1fc3dde"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/62d085aca8eb--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "62d085aca8ebedc2b67f67448c5683b34938472079e05f3bdca0c1b32921b217"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/638c4a3d65a6--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "638c4a3d65a6eda027eb2dd0fe02e5ea6d8cc1d02e89dab57fe51eb654a66c2e"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/64609f5c7a70--victory-animation.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "64609f5c7a70a23c306ffadc0d360814e1f743006fbb5575445facef30abd358"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/6853fc137acb--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "6853fc137acb6a9609747b737eb64ecc3b8a71a4ad01a2f3d46293f807587a75"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/686ca2a44bc8--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "686ca2a44bc83a072d4d4dd3fd950ae2c2faf352bd0f78d1545e4fa19d01c750"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/68968a85be80--resizable-columns.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "68968a85be806aec4d1c02ef0e45de0e9ac73bf5ebaf8cdf6fa18dff42a8b1a0"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/69577fe2be43--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-stale-timer-ref"
+      ],
+      "fixtureSourceSha256": "69577fe2be434e7c4daa30621b992942c8bcf69e9d4485646ec145fcec915971"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/69fb5224c490--org-vcs-github-manual-form.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "69fb5224c4907a2f428006365b71ebb91a6d8026bb586f6666ba283a504c1ffa"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/6c1a34364649--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "6c1a34364649224a1b76c975e2f020f8d1d6ffa89f274c49e4ce4c87a1b26be1"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/73875d2bf9f9--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "73875d2bf9f9c981bcb0f81c3f535841e57afa0832c7bf64ab328bff373874b0"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/748b1bc397cd--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "748b1bc397cd7d16cca5b01f8e69a8616db6b9fa4ada78647a23acb004bfa9b5"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/true-positives/74931c270c70--editorial-health-panel.jsx",
+      "verdict": "fail",
+      "rules": [
+        "no-side-effect-in-state-updater-function"
+      ],
+      "fixtureSourceSha256": "74931c270c7093eec0c0f1a5b01c8aaf52035141e7723fac04089836143bffa5"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/7499ba110010--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "7499ba110010198fb7bb24f8d0265481830797602c0dca7dc05664a345873370"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/7b4fecc152e0--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "7b4fecc152e0492c8cfdc232c15a42a5e088d84aa8e1e31d63a5f9826b05277f"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/7d7040609f33--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "7d7040609f331e697cd4ba183e8c92e7db2a4d7647503626d73cc88af42fc3af"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/84526bd3eb45--use-zoom-pan.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "84526bd3eb455ef485e6afd6ec80058905faa7ca80e643f326a68930a633936d"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/8490cb41ffc7--use-interaction-delivery.ts",
+      "verdict": "pass",
+      "rules": [
+        "no-unowned-async-error-clear"
+      ],
+      "fixtureSourceSha256": "8490cb41ffc7f8fe9df1cc373eac769d469349d062c5dff15741faf1414f2800"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/87d233b52232--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "87d233b522326a26e57305db409c3b0459cb118400a0c3578d3de567d5b41ae4"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/89fbe92123af--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "89fbe92123afb9c44d3d11494ce0ff286bb3bd8310b347f92017e301da31fba4"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/8a59e47725ec--resizable-columns.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "8a59e47725ec5b98b0b369ead20b20b36fd0cfd5bf02a7ee0f4b61479360794a"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/8aed267fc9f7--session-interaction-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "8aed267fc9f74cb07c432311ec98d1fbec9e978fac45af289f10a6c785daf3a8"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/8c29bd10448a--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "8c29bd10448a67081d5a9b17f5a7f478d26df2185050788ab2f1386f0b713f13"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/8eddaaf353d0--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "8eddaaf353d0025c9f79ce5bc1aaabee640efe4770ad14ec3db9dca7214531c3"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/8ee310783274--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "8ee31078327445f9254306523cda5bd414e1d33870230267819bf8b8b454728a"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/8f4c45c7cc7d--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "8f4c45c7cc7d5ed7cab457200918a21e9ee9880a3333b0acf59c43c4c35eb0df"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/91c58b7194f6--victory-animation.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "91c58b7194f67a08ee8b941245198ac63acd4552dd3a0f89bf608171818d7e2a"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/9aadc8e070eb--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "9aadc8e070eb52c67246388e94e8f8476ad5d8dd1a897e72027fd263b518f377"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/9eafa62cae54--message-markdown-katex.tsx",
+      "verdict": "pass",
+      "rules": [
+        "dangerous-html-sink"
+      ],
+      "fixtureSourceSha256": "9eafa62cae5455a9ad6d612f9b01f69ef7b2580966c346f9036af82ee9f960e4"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/9f674b3e7735--document-history-modal.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "9f674b3e77356e738d6ad5becb4feef3bb7c3ba5f1842ca69eb87b5e0876e5c1"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/9ff7c381c0b7--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "9ff7c381c0b7dae0486003ba0fe1b0e277401b18a425bc716bc5f1d9b9eec469"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/a1ccbf78de79--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "a1ccbf78de79507c8d8ffad1b7fd2d4db5d2f46dabb837882b25b3d4cbcf24f2"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/a7440328fe9b--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "a7440328fe9b1ca27c2543bb61189e5b2691e4b27d9f01563ed9a6dd177ee863"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/a7536754da82--document-history-modal.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "a7536754da8275333e4798fc20af8bf23e8821f97cb133b8503bd4b72cb9644c"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/ad303439776b--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "ad303439776bec5d6f7506def51d1c9f80671ffbb7615c9aa45d29fe6072c396"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b1c60af0015d--document-history-modal.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "b1c60af0015d7b1cbd7432b7e7ea100183b9b4066d62b8222600a4e271b6a244"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b3046c95a339--photo.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "b3046c95a3398240527c1a118869f89c441006c4f1a0c4b3c466609dcfd4e7ca"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b55b3105b5c8--use-photo-zoom.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "b55b3105b5c8eebcd8c193cb2b03a6e1ad7db590a39a8aedaf0ce636e1b148b7"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b7b91aa397af--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "b7b91aa397afd52cd4d24811c91a57501e9b275787a85ce167070a785c37ba65"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b7de00f1593c--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "b7de00f1593cd40ccf55e178ec2250e1947e93540516d2625afaaef6e74b212b"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b84161521602--use-media-query.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "b84161521602cd1cdb82201ec9c3ed32dea4c388233953caa0345864a9adf710"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b972a1d91a94--use-zoom-pan.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "b972a1d91a94e7a28d3239f3b4a029c312744ee2a2dfcc0ef25a3fcb51f270a2"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b9a3bd477bfc--message-markdown.tsx",
+      "verdict": "pass",
+      "rules": [
+        "dangerous-html-sink"
+      ],
+      "fixtureSourceSha256": "b9a3bd477bfcaf071e70b13b8fcb36c3455fb860425b10ddf723b5fb4dae7ae9"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/bd45c1fb3107--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "bd45c1fb310764423e3c91c319bfeb720c93a144ce80c482c28d04d8dee12d0b"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/c0c5231b6288--session-interaction-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "c0c5231b6288f99fcdef7a416d080c6e3d2d9eb946f45d1468d861570a19a73f"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/c39fbfd1572a--settings.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "c39fbfd1572a0f4f762daebc738fe1e84b489530ac72d7b2169a4212bd55f712"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/c40197f61cef--use-interaction-delivery.ts",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally",
+        "no-unowned-async-error-clear"
+      ],
+      "fixtureSourceSha256": "c40197f61cefe5ff0e795b63469c632a57ea956ad4cff735ad1954f59e638bb2"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/c7499c3b8d33--document-history-modal.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "c7499c3b8d33f08af0fd2cd6f9025838ee09698d65f316e6282c02dc6d5c5902"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/cfa2a6a9014f--use-zoom-pan.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "cfa2a6a9014fabea1339cbc52023a3592b2ca3721331700195ede6f67c1e0a3e"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/cfba8f59f558--document-history-modal.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "cfba8f59f5589609c62c90a9a4d088fe4989a86dab2e6c17df3dfa88a54c31f3"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/d243eed72bf3--use-media-query.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "d243eed72bf3f17a3167c8a4de2b76b8db3e6715a8508f38240b3f6181a67904"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/d49e4476e519--use-zoom-pan.ts",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "d49e4476e5194438f37b15c4312560bc08bfaf2df81c5e1f39c5b9ee57ad94ed"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/d4efdcd2dae5--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "d4efdcd2dae58b970cdef97881ec32c40a2122e2052621745b6a05d2364b1ba5"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/d60c1de3106a--photo.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "d60c1de3106a7947b9e27cefa9a96264dd0d454d5daa9f38c4ff3d17d10a4f54"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/dd2168acd745--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "dd2168acd7451b6dcc80d2bebbc2589018b08b2b1eefd8747ff6d0c3969cb777"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/e06ab307c54d--org-vcs-github-manual-form.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "e06ab307c54dd24001a082b6813e8f3c4817e3e386e87a7c279622600f44557d"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/e0b7f506fe15--use-api-key-creation.ts",
+      "verdict": "pass",
+      "rules": [
+        "no-fetch-response-used-without-status-check"
+      ],
+      "fixtureSourceSha256": "e0b7f506fe1588ab00599019a67aaa2d822fe76fea1a02d1f96910faeaaa5cec"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/e25a90961bcc--gallery.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "e25a90961bccceac28be38789e68d1c1af1e9fc9408ccb7fcda7aa3bae6df9e3"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/e2e9586c3d26--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "e2e9586c3d26b3e3ef77c4be23d246068144ab96c25234ea5ccf76a52276c524"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/true-positives/e31ae15e51f0--use-zoom-pan.ts",
+      "verdict": "fail",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "e31ae15e51f07a2e0748f68765d8e14c96dbcb6c5149d39582ebede4bc1737d2"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/e5619c73acf0--session-interaction-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "e5619c73acf019b69330abf076dd41acf30cf7a7e6e3b4eff531f51ed2528f31"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/e930e34048b9--document-history-modal.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "e930e34048b908da691abf966e8ea4eba51b55c3d1523554e26ff632199dc4ca"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/ee207e98a5cd--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "ee207e98a5cde2adbb01f85f6065f0fdb2c7007bdb3d503365b280d593442919"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/f0f9d7d8bb97--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "f0f9d7d8bb9787ca873c58f37b2a354e0501a5a6a46ab47b7f8f9ac786f0a7ce"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/f591272f3d21--permission-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "f591272f3d21770b0cda7b8325d0c9399daea057d3663b8413c322e5262f5c11"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/f5f7e79451b3--tooltip.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "f5f7e79451b37690d3592fbeacb70d9a1aed6f8aa79a8b543d1b10021f77fc73"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/f896607abada--session-interaction-card.tsx",
+      "verdict": "pass",
+      "rules": [
+        "no-loading-flag-reset-outside-finally"
+      ],
+      "fixtureSourceSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/fc9cd4b5ce67--tooltip-backup.tsx",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13"
+    }
+  ],
+  "callsites": [
+    {
+      "suffix": "3hWu3XT",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "9d440906643bbfd4ba84d692ae4bbb31b8c5024306fdbe7db0e4faf05e979dcd",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-photo-zoom.ts",
+      "reportedLine": 393,
+      "sourceSha256": "8c29bd10448a67081d5a9b17f5a7f478d26df2185050788ab2f1386f0b713f13",
+      "snippetSha256": "b584c21f665de4a257bd5f1bec16d4681411d685b762397e82721f266e9a9bab",
+      "fixture": "react-bench-0.9.7-audit/regressions/8c29bd10448a--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "3QykvFu",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "50e34b461e7969525766ef246884b8168edaba8419508e5ccabd5a2eab826f21",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-photo-zoom.ts",
+      "reportedLine": 313,
+      "sourceSha256": "a1ccbf78de79507c8d8ffad1b7fd2d4db5d2f46dabb837882b25b3d4cbcf24f2",
+      "snippetSha256": "355cda4f234aebaacffb06d6b4f8b1298feaa323d34519db4d5c7f27f642d441",
+      "fixture": "react-bench-0.9.7-audit/regressions/a1ccbf78de79--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "4xT2CsQ",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "3ebdf36e959254bf59bf62587aad9aca397c813654dcd0ca5704ad365007e55d",
+      "rule": "effect-needs-cleanup",
+      "filePath": "packages/victory-core/src/victory-animation/victory-animation.tsx",
+      "reportedLine": 274,
+      "sourceSha256": "64609f5c7a70a23c306ffadc0d360814e1f743006fbb5575445facef30abd358",
+      "snippetSha256": "cba677dd770861fa9983db010eb3521906855c91846bfe456da5226b6c3d7eda",
+      "fixture": "react-bench-0.9.7-audit/regressions/64609f5c7a70--victory-animation.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "59uRuXQ",
+      "task": "write-react-frankchen021-datastoria-199",
+      "patchSha256": "48b68fba7e0c4f0d8dc117a726fda6b12810ff24ee17c0f7e8db5ddca0c3c4ba",
+      "rule": "dangerous-html-sink",
+      "filePath": "src/components/chat/message/message-markdown.tsx",
+      "reportedLine": 98,
+      "sourceSha256": "2156ba92f9f63b1e34de4287c2a8be0694172eb9b13e7d084ee1cb070c0c1c8c",
+      "snippetSha256": "8882e743e525b65b81a37244022a0e39a3ce17169c33abf3bd9c17b5b9ef8631",
+      "fixture": "react-bench-0.9.7-audit/regressions/2156ba92f9f6--message-markdown.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "5g5yE7Y",
+      "task": "write-react-trycompai-comp-3248",
+      "patchSha256": "2d2bf187f2d9fd29d059df9be27fce68b3b3bfec739a63ed66b78e7d03f6aa6b",
+      "rule": "effect-needs-cleanup",
+      "filePath": "apps/framework-editor/app/components/table/resizable-columns.tsx",
+      "reportedLine": 103,
+      "sourceSha256": "68968a85be806aec4d1c02ef0e45de0e9ac73bf5ebaf8cdf6fa18dff42a8b1a0",
+      "snippetSha256": "68968a85be806aec4d1c02ef0e45de0e9ac73bf5ebaf8cdf6fa18dff42a8b1a0",
+      "fixture": "react-bench-0.9.7-audit/regressions/68968a85be80--resizable-columns.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "69nChbz",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "5ec95b92f091deb0643e89080ad6d27e3d780f1edb12d212da23cff61461d5fa",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 452,
+      "sourceSha256": "0aa25aab81e0842a6ab253e4190e27f97ad22101b75c44b45a413aa620fac766",
+      "snippetSha256": "2d3b97251bbbe35feb7cf78c0de9bea52d96a2930e3d76dc62cabfccf011538d",
+      "fixture": "react-bench-0.9.7-audit/regressions/0aa25aab81e0--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "6qxjfR6",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "b7ffe3c8c78b8df636ea9f806f1e37b9426ade38a79e6b2d4ea95f277e9d926e",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/utils/use-zoom-pan.ts",
+      "reportedLine": 437,
+      "sourceSha256": "84526bd3eb455ef485e6afd6ec80058905faa7ca80e643f326a68930a633936d",
+      "snippetSha256": "fd18d098f9a2d5ae65b7c91d283d02165020c8e65386ea882fd44098f1ce7771",
+      "fixture": "react-bench-0.9.7-audit/regressions/84526bd3eb45--use-zoom-pan.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "7btopEX",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "9a9dfef8a63863155a74c5f18b7d095df09259cf357456a0fab2e6619f13938a",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx",
+      "reportedLine": 125,
+      "sourceSha256": "c0c5231b6288f99fcdef7a416d080c6e3d2d9eb946f45d1468d861570a19a73f",
+      "snippetSha256": "c0c5231b6288f99fcdef7a416d080c6e3d2d9eb946f45d1468d861570a19a73f",
+      "fixture": "react-bench-0.9.7-audit/regressions/c0c5231b6288--session-interaction-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "85J9Qms",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "abcd8768305d0a56ad6e42b2b7011b9a9df36ca786e77fb09d3e8719af318b3e",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/photo.tsx",
+      "reportedLine": 216,
+      "sourceSha256": "d60c1de3106a7947b9e27cefa9a96264dd0d454d5daa9f38c4ff3d17d10a4f54",
+      "snippetSha256": "952111dd99b05225c1c72cb371fcba17f594e96d70a77525c4ec7b0b62fde15a",
+      "fixture": "react-bench-0.9.7-audit/regressions/d60c1de3106a--photo.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "8CUyZFi",
+      "task": "write-react-frankchen021-datastoria-199",
+      "patchSha256": "35f0fa188e8bcefafcade62091bad1e2606417f7ce8c778b1c0e979de2cb9d23",
+      "rule": "dangerous-html-sink",
+      "filePath": "src/components/chat/message/message-markdown.tsx",
+      "reportedLine": 54,
+      "sourceSha256": "2cc99f329a93f528095d6236d4f35a14e46a021da05277e66fcb7eabfee8fbb4",
+      "snippetSha256": "5c776ac8b5adae1635223e9a979f48aca05477775f8c59b155ba540538c0cb3f",
+      "fixture": "react-bench-0.9.7-audit/regressions/2cc99f329a93--message-markdown.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "8hkokrf",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "18fd232011f370c830b7a69ff736fd63bbad2ac30d4649d59cf2c5e2a21a8023",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-photo-zoom.ts",
+      "reportedLine": 567,
+      "sourceSha256": "9aadc8e070eb52c67246388e94e8f8476ad5d8dd1a897e72027fd263b518f377",
+      "snippetSha256": "2d8e8b37746fe73dba478a2ea640f7e4895661c6843813c081da7c2df4cdee4a",
+      "fixture": "react-bench-0.9.7-audit/regressions/9aadc8e070eb--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "8zgcb8x",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "fcabb9ddc5e045910ee9aa3389f901130f914705e747fe9207f40328d7c88692",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 161,
+      "sourceSha256": "8ee31078327445f9254306523cda5bd414e1d33870230267819bf8b8b454728a",
+      "snippetSha256": "8ee31078327445f9254306523cda5bd414e1d33870230267819bf8b8b454728a",
+      "fixture": "react-bench-0.9.7-audit/regressions/8ee310783274--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "A2yzHp5",
+      "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
+      "patchSha256": "3552f3a1625635e046f4969b7c3a8b6a50ea176d8a25b08cc5bb951c3cb83747",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/document/history/DocumentHistoryModal.tsx",
+      "reportedLine": 212,
+      "sourceSha256": "b1c60af0015d7b1cbd7432b7e7ea100183b9b4066d62b8222600a4e271b6a244",
+      "snippetSha256": "02a530395c48c89e9f2dc0644a861b41a7eb801b0f555d34c72f0f7317568b41",
+      "fixture": "react-bench-0.9.7-audit/regressions/b1c60af0015d--document-history-modal.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "AeYgTmv",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "6a2f778f79bb5a4af543c7c19ad47d42935be2d8f25fe7dd8d227d3548d8d607",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 96,
+      "sourceSha256": "2139b9a0b3cb92f362d1a8faf079b762a01c048d5f553591f6c08743bbd1a6b4",
+      "snippetSha256": "2139b9a0b3cb92f362d1a8faf079b762a01c048d5f553591f6c08743bbd1a6b4",
+      "fixture": "react-bench-0.9.7-audit/regressions/2139b9a0b3cb--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "aUuXhdK",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "5d31ac736a824855b6d85dd1bef7c2cc93f5b2eb6cde0f3cde11d233fc99744c",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-zoom-pan.ts",
+      "reportedLine": 240,
+      "sourceSha256": "cfa2a6a9014fabea1339cbc52023a3592b2ca3721331700195ede6f67c1e0a3e",
+      "snippetSha256": "a28804b3d7ff75b84ff3c9ae4cb9228183eb089c029eed2d8c49a9f9b251d497",
+      "fixture": "react-bench-0.9.7-audit/regressions/cfa2a6a9014f--use-zoom-pan.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "bDB9hMk",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "27224e0257275637a7c0f2fdae575cfa1f11f2ee469f15dc839046ddad59d280",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 99,
+      "sourceSha256": "404dd58ecef08ade8f25d2a22770fd204a34ea889a6375f67e9c990502329d12",
+      "snippetSha256": "404dd58ecef08ade8f25d2a22770fd204a34ea889a6375f67e9c990502329d12",
+      "fixture": "react-bench-0.9.7-audit/regressions/404dd58ecef0--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "bwrYqBh",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "30b31c93f72e2be620390146de2e59ef124644c28fb5207f17c628063d12e4a7",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/photo.tsx",
+      "reportedLine": 195,
+      "sourceSha256": "b3046c95a3398240527c1a118869f89c441006c4f1a0c4b3c466609dcfd4e7ca",
+      "snippetSha256": "019a96e6d0e269502ba7dc2cb0ca5f474d3c38b709707569be5d256b49250467",
+      "fixture": "react-bench-0.9.7-audit/regressions/b3046c95a339--photo.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "c23ZTbu",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "f8217945b10c3d52843c2c55baf1aecc378e1cf78e7370c83ccc9980d1efcefc",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 143,
+      "sourceSha256": "2fe632e743980f7873a0f4f5860a1aaeaf56cc81fd3fff826c1239d6c9835edb",
+      "snippetSha256": "5aef84ab181f4f3f6cb6030473310a40de0aecfb0331fc7e831167591c4395c6",
+      "fixture": "react-bench-0.9.7-audit/regressions/2fe632e74398--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "cgyxiZc",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "74bcb19cea2ba81cc970dd79049f0df8f03e4a2c473d202d5fbc3d40a135a9ea",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 117,
+      "sourceSha256": "f591272f3d21770b0cda7b8325d0c9399daea057d3663b8413c322e5262f5c11",
+      "snippetSha256": "f591272f3d21770b0cda7b8325d0c9399daea057d3663b8413c322e5262f5c11",
+      "fixture": "react-bench-0.9.7-audit/regressions/f591272f3d21--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "ciNLW2X",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx",
+      "reportedLine": 113,
+      "sourceSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "snippetSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "fixture": "react-bench-0.9.7-audit/regressions/f896607abada--session-interaction-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "ciNLW2X",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx",
+      "reportedLine": 130,
+      "sourceSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "snippetSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "fixture": "react-bench-0.9.7-audit/regressions/f896607abada--session-interaction-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "ciNLW2X",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx",
+      "reportedLine": 148,
+      "sourceSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "snippetSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "fixture": "react-bench-0.9.7-audit/regressions/f896607abada--session-interaction-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "ciNLW2X",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx",
+      "reportedLine": 166,
+      "sourceSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "snippetSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "fixture": "react-bench-0.9.7-audit/regressions/f896607abada--session-interaction-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "ciNLW2X",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "6401c3e699561e75822686ef4bcdfd41c125fc1fa4e438b6c87b9b4e17cdeaaf",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx",
+      "reportedLine": 184,
+      "sourceSha256": "f896607abada053679119004e6d38261ced2d6dadee0b5e94f56145193c25ac2",
+      "snippetSha256": "0c2aae21ec6891c3affd13549aaf40f719101e430723dcdb2bac261531c21539",
+      "fixture": "react-bench-0.9.7-audit/regressions/f896607abada--session-interaction-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "cSaK7t9",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "fc503f1acea7a0cc4f50f84f04d03778dfdf191907a630f0213288d3bae28fbf",
+      "rule": "no-stale-timer-ref",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 82,
+      "sourceSha256": "69577fe2be434e7c4daa30621b992942c8bcf69e9d4485646ec145fcec915971",
+      "snippetSha256": "69577fe2be434e7c4daa30621b992942c8bcf69e9d4485646ec145fcec915971",
+      "fixture": "react-bench-0.9.7-audit/regressions/69577fe2be43--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "dKQWsXr",
+      "task": "write-react-tracecathq-tracecat-2879",
+      "patchSha256": "118ec0f98e2ece1c9a6499c747d8690648d9f3e7fdbb3a14ae740d9415e30a0c",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "frontend/src/components/organization/org-vcs-github-manual-form.tsx",
+      "reportedLine": 160,
+      "sourceSha256": "43daf7e2f154fd3aae4b3034edfbb219c0d4d1d752561a351d1ec0738cd1ea90",
+      "snippetSha256": "ee43a367ff49a5c8cd16b0d50c728138df0a79b11504ffdd1a26c0a9cc926e22",
+      "fixture": "react-bench-0.9.7-audit/regressions/43daf7e2f154--org-vcs-github-manual-form.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "e8STTuu",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "d6ce51b596222c08b84f8f8f00fb895a68af7bf296500471cfedaeb151325ff0",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-photo-zoom.ts",
+      "reportedLine": 281,
+      "sourceSha256": "3eeb1bb0eafb269811429b19823d2665fbc7c6edb447f08da5a3ff59a51e4e24",
+      "snippetSha256": "179c55193fac07d3a1499e70755eeb52c51634514fa072bbe565955ccd97295c",
+      "fixture": "react-bench-0.9.7-audit/regressions/3eeb1bb0eafb--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "eaU6h9M",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "dc12b471232951f357648713700fc05b217686245e7e00eae055db53e46551e9",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 106,
+      "sourceSha256": "7b4fecc152e0492c8cfdc232c15a42a5e088d84aa8e1e31d63a5f9826b05277f",
+      "snippetSha256": "402a9e7a32f90e04cc2e1d4455713fdeae9eb876ab0c6f2f95cce97851cc5af2",
+      "fixture": "react-bench-0.9.7-audit/regressions/7b4fecc152e0--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "eaU6h9M",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "dc12b471232951f357648713700fc05b217686245e7e00eae055db53e46551e9",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 246,
+      "sourceSha256": "7b4fecc152e0492c8cfdc232c15a42a5e088d84aa8e1e31d63a5f9826b05277f",
+      "snippetSha256": "c2c210a99f537079be389603c93d379999cd54ec0d95b5f8a640e9b1b300c0c6",
+      "fixture": "react-bench-0.9.7-audit/regressions/7b4fecc152e0--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "eGYGezE",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "bc194e8d5ba42cfc6e51efad86ab1dc9d4563db2ff76767e4d9d1ec93baf5c37",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-zoom-pan.ts",
+      "reportedLine": 435,
+      "sourceSha256": "e31ae15e51f07a2e0748f68765d8e14c96dbcb6c5149d39582ebede4bc1737d2",
+      "snippetSha256": "42074dc763d2ef455c212883068e380568cd8ead126e08ce259b7fa0f5ab4f98",
+      "fixture": "react-bench-0.9.7-audit/true-positives/e31ae15e51f0--use-zoom-pan.ts",
+      "verdict": "fail"
+    },
+    {
+      "suffix": "EjLmWwc",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "673b5194061e65af17d909a227a40227f195792c1c910a1d19e8e46e588efac4",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/photo.tsx",
+      "reportedLine": 206,
+      "sourceSha256": "02022e387075ed617314970905872a90edfda5093878c6d2605dab96c6492818",
+      "snippetSha256": "138bbd4e53efab9aac7eecae873dcd7eb033ae4ff803b922227315a63e486796",
+      "fixture": "react-bench-0.9.7-audit/regressions/02022e387075--photo.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "FQtYvfB",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "a34e963ca9dd6fa3b6af083f41fbd26ca056e3e924ddb22fca166bd820a35eee",
+      "rule": "effect-needs-cleanup",
+      "filePath": "tooltip_backup.tsx",
+      "reportedLine": 192,
+      "sourceSha256": "fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13",
+      "snippetSha256": "8418cbb06c123305da81efaa919d104fbbc9ae491f44137bb6bdfff4486a4fc9",
+      "fixture": "react-bench-0.9.7-audit/regressions/fc9cd4b5ce67--tooltip-backup.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "FSdzhai",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "17787ce2137779f25839e7c41bd477e4d36b779022b9103cddaff72d862954bb",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 284,
+      "sourceSha256": "e25a90961bccceac28be38789e68d1c1af1e9fc9408ccb7fcda7aa3bae6df9e3",
+      "snippetSha256": "1b23697b782bcc5133f3eef3e5693d6353648e9dbb1eb415eefe548ef0361c19",
+      "fixture": "react-bench-0.9.7-audit/regressions/e25a90961bcc--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "GDrqDDq",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "0a6d0da8e1d99cdc91d9a47eae7723625520e88a43a106002e9caec699878a9b",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 137,
+      "sourceSha256": "2da6b12dbf0c306566dbcaa4e5f97833a2a7d9e4b79ad0f4c1b7c2396c475393",
+      "snippetSha256": "17c76830fe58d1baf206ed6c718f87e0fd3bc5a14dab8eddd3ae078d9ff94d68",
+      "fixture": "react-bench-0.9.7-audit/regressions/2da6b12dbf0c--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "GZasht7",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "1fe8c698c99e6dd4b3423838d8d649c1fc8fc18e533752d8fb23ffcac359096b",
+      "rule": "effect-needs-cleanup",
+      "filePath": "packages/victory-core/src/victory-animation/victory-animation.tsx",
+      "reportedLine": 215,
+      "sourceSha256": "91c58b7194f67a08ee8b941245198ac63acd4552dd3a0f89bf608171818d7e2a",
+      "snippetSha256": "94536e5523fa060bc682f54aae76eb6b55be895c776e4a49be7ecdc82d70f6a5",
+      "fixture": "react-bench-0.9.7-audit/regressions/91c58b7194f6--victory-animation.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "H6SaVzY",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "77f7a1446d27b93ec6994b43f9dd0167db1ca0b24e34c2447cdac2414069b10f",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx",
+      "reportedLine": 126,
+      "sourceSha256": "e5619c73acf019b69330abf076dd41acf30cf7a7e6e3b4eff531f51ed2528f31",
+      "snippetSha256": "e5619c73acf019b69330abf076dd41acf30cf7a7e6e3b4eff531f51ed2528f31",
+      "fixture": "react-bench-0.9.7-audit/regressions/e5619c73acf0--session-interaction-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "iGvkBMR",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "b6fa237f117ccd88000b3b5354f7c2eb913b7f6f2d5d373d0573477ee6314c3c",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-photo-zoom.ts",
+      "reportedLine": 323,
+      "sourceSha256": "73875d2bf9f9c981bcb0f81c3f535841e57afa0832c7bf64ab328bff373874b0",
+      "snippetSha256": "77c665574b91f14e34162f06c75a744de712392a697f26d71acc73cb0eb2b602",
+      "fixture": "react-bench-0.9.7-audit/regressions/73875d2bf9f9--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "jmHkDF8",
+      "task": "write-react-frankchen021-datastoria-199",
+      "patchSha256": "72c8ff7adc1fbbb8dda4633cfd9a7f2e9a53c5558a2899cba7b4c3f054c3bd41",
+      "rule": "dangerous-html-sink",
+      "filePath": "src/components/chat/message/message-markdown-katex.tsx",
+      "reportedLine": 73,
+      "sourceSha256": "9eafa62cae5455a9ad6d612f9b01f69ef7b2580966c346f9036af82ee9f960e4",
+      "snippetSha256": "9eafa62cae5455a9ad6d612f9b01f69ef7b2580966c346f9036af82ee9f960e4",
+      "fixture": "react-bench-0.9.7-audit/regressions/9eafa62cae54--message-markdown-katex.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "jmHkDF8",
+      "task": "write-react-frankchen021-datastoria-199",
+      "patchSha256": "72c8ff7adc1fbbb8dda4633cfd9a7f2e9a53c5558a2899cba7b4c3f054c3bd41",
+      "rule": "dangerous-html-sink",
+      "filePath": "src/components/chat/message/message-markdown-katex.tsx",
+      "reportedLine": 78,
+      "sourceSha256": "9eafa62cae5455a9ad6d612f9b01f69ef7b2580966c346f9036af82ee9f960e4",
+      "snippetSha256": "9eafa62cae5455a9ad6d612f9b01f69ef7b2580966c346f9036af82ee9f960e4",
+      "fixture": "react-bench-0.9.7-audit/regressions/9eafa62cae54--message-markdown-katex.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "k6r9uYz",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "59d14e1139809b3bd81dcb846e6a85a48707e4c993d1bcce23ca983e9610b4cc",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 587,
+      "sourceSha256": "bd45c1fb310764423e3c91c319bfeb720c93a144ce80c482c28d04d8dee12d0b",
+      "snippetSha256": "1c87b9e1373ea03838efd5ed3ef7e9621f5869ad2a9a3b5ef05970df5ea4a44e",
+      "fixture": "react-bench-0.9.7-audit/regressions/bd45c1fb3107--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "kGRjWmt",
+      "task": "write-react-azouaoui-med-react-pro-sidebar-267",
+      "patchSha256": "8553a9cd038ad240c3b3d5e45d6dc2b3adbce95ae6c13e2c5f4ad0dbe0cd7a4c",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/useMediaQuery.tsx",
+      "reportedLine": 24,
+      "sourceSha256": "d243eed72bf3f17a3167c8a4de2b76b8db3e6715a8508f38240b3f6181a67904",
+      "snippetSha256": "d243eed72bf3f17a3167c8a4de2b76b8db3e6715a8508f38240b3f6181a67904",
+      "fixture": "react-bench-0.9.7-audit/regressions/d243eed72bf3--use-media-query.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "knV9S9X",
+      "task": "write-react-trycompai-comp-3248",
+      "patchSha256": "3248591a9291cd3035527f60a9826fd3e8878d4c3b475f3478138359109eb0ec",
+      "rule": "effect-needs-cleanup",
+      "filePath": "apps/framework-editor/app/components/table/resizable-columns.tsx",
+      "reportedLine": 88,
+      "sourceSha256": "8a59e47725ec5b98b0b369ead20b20b36fd0cfd5bf02a7ee0f4b61479360794a",
+      "snippetSha256": "8a59e47725ec5b98b0b369ead20b20b36fd0cfd5bf02a7ee0f4b61479360794a",
+      "fixture": "react-bench-0.9.7-audit/regressions/8a59e47725ec--resizable-columns.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "KWSeZDE",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "c482979f14c79b5a982ff5f27ec9f7c33c05ad3a6762e87653209e8f51e620b4",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/util/useSettingsApiKeys.ts",
+      "reportedLine": 96,
+      "sourceSha256": "4ae3811bba5c518e7a0d299f9938b59467595c5446d9111cb07c8267eab21c88",
+      "snippetSha256": "4ae3811bba5c518e7a0d299f9938b59467595c5446d9111cb07c8267eab21c88",
+      "fixture": "react-bench-0.9.7-audit/regressions/4ae3811bba5c--use-settings-api-keys.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "KxgQFGt",
+      "task": "write-react-tracecathq-tracecat-2879",
+      "patchSha256": "c070003cf2ef2a9d9d47da4e61c84e31d3d15742e198550bf9fc684463146edf",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "frontend/src/components/organization/org-vcs-github-manual-form.tsx",
+      "reportedLine": 210,
+      "sourceSha256": "e06ab307c54dd24001a082b6813e8f3c4817e3e386e87a7c279622600f44557d",
+      "snippetSha256": "b3fcaf1b394b54b8047d35e6989ee03ed615a31f80a6f02d5bfa7812a846ec61",
+      "fixture": "react-bench-0.9.7-audit/regressions/e06ab307c54d--org-vcs-github-manual-form.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "KYUPojL",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "d42a2f4d9d37d9c60fc6f53c79de5f05952d5463f90d4be7bf650f003dbd53cb",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 149,
+      "sourceSha256": "62d085aca8ebedc2b67f67448c5683b34938472079e05f3bdca0c1b32921b217",
+      "snippetSha256": "62d085aca8ebedc2b67f67448c5683b34938472079e05f3bdca0c1b32921b217",
+      "fixture": "react-bench-0.9.7-audit/regressions/62d085aca8eb--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "L4YTWaY",
+      "task": "write-react-tracecathq-tracecat-2879",
+      "patchSha256": "ce3a8a757d87620d94ec95a13cd47dfdfa28ece4bb4853df1b58c5ec943f2ac5",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "frontend/src/components/organization/org-vcs-github-manual-form.tsx",
+      "reportedLine": 109,
+      "sourceSha256": "69fb5224c4907a2f428006365b71ebb91a6d8026bb586f6666ba283a504c1ffa",
+      "snippetSha256": "1ab51cf8185a9bd9d29a6c2b300949296e90d61c7391bff41f28dd509dfbaacc",
+      "fixture": "react-bench-0.9.7-audit/regressions/69fb5224c490--org-vcs-github-manual-form.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "Lg6RjoG",
+      "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
+      "patchSha256": "31de08516e1e623fb16c826dd7b91adf676a815d9053864f4794ad65bea9d39b",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/document/history/DocumentHistoryModal.tsx",
+      "reportedLine": 210,
+      "sourceSha256": "c7499c3b8d33f08af0fd2cd6f9025838ee09698d65f316e6282c02dc6d5c5902",
+      "snippetSha256": "78e14595f0f7b579d1ef8b3a85dee9159953dcd66210391aeacf01afb61bab89",
+      "fixture": "react-bench-0.9.7-audit/regressions/c7499c3b8d33--document-history-modal.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "LjT6Gsi",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "5f384a06870ceff0d672ddf43b9e5f67cb8d4a7f74a738b68c4a99afc43e5910",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 285,
+      "sourceSha256": "ee207e98a5cde2adbb01f85f6065f0fdb2c7007bdb3d503365b280d593442919",
+      "snippetSha256": "73c2a78e08f259e7d867302443829067c721fd642b5f450334ae9bcb610170e1",
+      "fixture": "react-bench-0.9.7-audit/regressions/ee207e98a5cd--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "LjT6Gsi",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "5f384a06870ceff0d672ddf43b9e5f67cb8d4a7f74a738b68c4a99afc43e5910",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 841,
+      "sourceSha256": "ee207e98a5cde2adbb01f85f6065f0fdb2c7007bdb3d503365b280d593442919",
+      "snippetSha256": "0bc3f46b7a0859ef378b507776e9812898ba69d9774e86e2f5bd6cda86583f54",
+      "fixture": "react-bench-0.9.7-audit/regressions/ee207e98a5cd--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "LjT6Gsi",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "5f384a06870ceff0d672ddf43b9e5f67cb8d4a7f74a738b68c4a99afc43e5910",
+      "rule": "effect-needs-cleanup",
+      "filePath": "tooltip_copy.tsx",
+      "reportedLine": 192,
+      "sourceSha256": "fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13",
+      "snippetSha256": "8418cbb06c123305da81efaa919d104fbbc9ae491f44137bb6bdfff4486a4fc9",
+      "fixture": "react-bench-0.9.7-audit/regressions/fc9cd4b5ce67--tooltip-backup.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "Mc74ezG",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "4043adbc7c65cd51f7e5d4efe999756cea83aaf36d75a3e43fdb7e16d7164e73",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 281,
+      "sourceSha256": "5402c2693b588e6d0b6c3deca0968fab816db417d8486f5b46287520f05f7857",
+      "snippetSha256": "3c25216fa06ecf5002c79ee9d165d7fcbcb47d8f40bd169baeb4e3a09f997128",
+      "fixture": "react-bench-0.9.7-audit/regressions/5402c2693b58--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "Mc74ezG",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "4043adbc7c65cd51f7e5d4efe999756cea83aaf36d75a3e43fdb7e16d7164e73",
+      "rule": "effect-needs-cleanup",
+      "filePath": "tooltip-backup.tsx",
+      "reportedLine": 192,
+      "sourceSha256": "fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13",
+      "snippetSha256": "8418cbb06c123305da81efaa919d104fbbc9ae491f44137bb6bdfff4486a4fc9",
+      "fixture": "react-bench-0.9.7-audit/regressions/fc9cd4b5ce67--tooltip-backup.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "mggYDtK",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "99267967e2dcfd885d6923075365d4f1133a0155fec441c03fd7b23b9db9d410",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 150,
+      "sourceSha256": "42eb1e74c4d341e0423b9e4fa7192c3554a4abee66d4b86d5fdab87633a96f93",
+      "snippetSha256": "42eb1e74c4d341e0423b9e4fa7192c3554a4abee66d4b86d5fdab87633a96f93",
+      "fixture": "react-bench-0.9.7-audit/regressions/42eb1e74c4d3--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "mwrqBJm",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "96fd5248b3883593d8e401d4d3969e1e93930cbb58cb4aa23a73f9173260f06c",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 207,
+      "sourceSha256": "748b1bc397cd7d16cca5b01f8e69a8616db6b9fa4ada78647a23acb004bfa9b5",
+      "snippetSha256": "a56c8d1380036e171c86f9c419ac801f08d97cdb8ad8c05e0f324774478e46ec",
+      "fixture": "react-bench-0.9.7-audit/regressions/748b1bc397cd--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "NEqLJPs",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "1fc841f0b5c8d4774191f6b1d31c026ae164b9d14227c923574abf952b70a021",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 715,
+      "sourceSha256": "d4efdcd2dae58b970cdef97881ec32c40a2122e2052621745b6a05d2364b1ba5",
+      "snippetSha256": "dfc1bebe09fa6639af33eded26c6d5661cdc9640045f81077c966ee55b9ba3d5",
+      "fixture": "react-bench-0.9.7-audit/regressions/d4efdcd2dae5--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "nqCAUTG",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "b9a70452c5e1293797061452118c5c47c0244dd5ddc781bba2518060ed58cacb",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 761,
+      "sourceSha256": "686ca2a44bc83a072d4d4dd3fd950ae2c2faf352bd0f78d1545e4fa19d01c750",
+      "snippetSha256": "fb65b5f039b7da916cd38f1e7f5540f542bfcf7c6132b25b0f42880aecc392fb",
+      "fixture": "react-bench-0.9.7-audit/regressions/686ca2a44bc8--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "nWstAEn",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "63ac7bf7e641bee8352e74832a6e5df92a179670da5c5f9861a21b080217d3b9",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 291,
+      "sourceSha256": "9ff7c381c0b7dae0486003ba0fe1b0e277401b18a425bc716bc5f1d9b9eec469",
+      "snippetSha256": "c96dad4ca7be79d2b0c8c00f5f370504244200c06763c2b0541d10017fe5f51c",
+      "fixture": "react-bench-0.9.7-audit/regressions/9ff7c381c0b7--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "nZWy2VR",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "479b770f69b88988d3d7be59227b90ca3695c1a570932126b498dc9b01129d7c",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 509,
+      "sourceSha256": "1241f5c9288f0409a362807ad275c9740939ac96a1a9b44b4c734fd04cc83858",
+      "snippetSha256": "5b2b08dc65f16af50e61442bd6c5c415d069a0475e66f6d4386910472d04281e",
+      "fixture": "react-bench-0.9.7-audit/regressions/1241f5c9288f--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "o7H9HZT",
+      "task": "write-react-azouaoui-med-react-pro-sidebar-267",
+      "patchSha256": "fe0d20f5c9021fa2d64b55ae5fa66a77aab40bd01996b78cf925cbf74f00656b",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/useMediaQuery.tsx",
+      "reportedLine": 10,
+      "sourceSha256": "b84161521602cd1cdb82201ec9c3ed32dea4c388233953caa0345864a9adf710",
+      "snippetSha256": "b84161521602cd1cdb82201ec9c3ed32dea4c388233953caa0345864a9adf710",
+      "fixture": "react-bench-0.9.7-audit/regressions/b84161521602--use-media-query.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "p9xPe6V",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "3b4335c6675fe7be4a1ff4a914b41bca5cf20db792f4cd724d7f016f9f896fcb",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 599,
+      "sourceSha256": "f5f7e79451b37690d3592fbeacb70d9a1aed6f8aa79a8b543d1b10021f77fc73",
+      "snippetSha256": "341d296fbde941a9061d76662842bbd3388859baeb3c7f91ff27adf73a5effa6",
+      "fixture": "react-bench-0.9.7-audit/regressions/f5f7e79451b3--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "pdWLT3f",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "96dae4bf4dddc287d12edcb8cd0c32aa3fecd7370b8d53862c8fb4b933017f25",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 608,
+      "sourceSha256": "89fbe92123afb9c44d3d11494ce0ff286bb3bd8310b347f92017e301da31fba4",
+      "snippetSha256": "bff648159dcd37b48079ec3cb8dd95b4a9afda0cec1d5e540b6d776f27b1361a",
+      "fixture": "react-bench-0.9.7-audit/regressions/89fbe92123af--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "pUceTHm",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "b189af65060eeb0ef11373e5f636d25036a1c915bae0a5f32617e9827b56e4b9",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 140,
+      "sourceSha256": "b7de00f1593cd40ccf55e178ec2250e1947e93540516d2625afaaef6e74b212b",
+      "snippetSha256": "b7de00f1593cd40ccf55e178ec2250e1947e93540516d2625afaaef6e74b212b",
+      "fixture": "react-bench-0.9.7-audit/regressions/b7de00f1593c--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "PyYKwCv",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "aa1548cc38552741b7c49f282b134d3c2895a9521df8a6f6ba1ff21ec91a11d1",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 337,
+      "sourceSha256": "0b01d2a7af6022d01971e58df27dcf8883d1d0dcba494853f58841078198e42e",
+      "snippetSha256": "d88d835e32fb9b495f01eb867aacdd7385c3453868eaf107ddef58d523a0e1e7",
+      "fixture": "react-bench-0.9.7-audit/regressions/0b01d2a7af60--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "qeA8ADk",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "f8fd8ca236ec655fdc0beca780f41d38aeda42b27151952fce494e03cd86694b",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 161,
+      "sourceSha256": "59a185f6fb296c6879f95e3ed6c096db76ebaf9c0823ee306ed59156e1fc3dde",
+      "snippetSha256": "59a185f6fb296c6879f95e3ed6c096db76ebaf9c0823ee306ed59156e1fc3dde",
+      "fixture": "react-bench-0.9.7-audit/regressions/59a185f6fb29--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "qFbXfoU",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "ec408d7d1e988c4174df7f6f88df45070aebb75b0feca068342f1a96ef18b2fa",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 95,
+      "sourceSha256": "a7440328fe9b1ca27c2543bb61189e5b2691e4b27d9f01563ed9a6dd177ee863",
+      "snippetSha256": "e1d935c33b8a236234815c1fb138d6f7d92693c88cf345c00dd8278859b571f9",
+      "fixture": "react-bench-0.9.7-audit/regressions/a7440328fe9b--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "qFdtj8R",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "3d236d4b03478960a19deee9e29588e2b124f47fd888712ea1e37e628b0c5cbc",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx",
+      "reportedLine": 117,
+      "sourceSha256": "8aed267fc9f74cb07c432311ec98d1fbec9e978fac45af289f10a6c785daf3a8",
+      "snippetSha256": "8aed267fc9f74cb07c432311ec98d1fbec9e978fac45af289f10a6c785daf3a8",
+      "fixture": "react-bench-0.9.7-audit/regressions/8aed267fc9f7--session-interaction-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "RcqthL9",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "902ad30a6ce2aef9d2077b9b3d24d9e60cc43b7f9cefa4a2d39fd63650cea8ac",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-photo-zoom.ts",
+      "reportedLine": 257,
+      "sourceSha256": "350c5f6506a6f3271eeb88e73054130858d0311cca7d05310bcd48ce4ea22491",
+      "snippetSha256": "6b286e95ff6ab3c0319e237be0f6d36663d735637ece1178b7d5c7bc00901a25",
+      "fixture": "react-bench-0.9.7-audit/regressions/350c5f6506a6--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "Rit9CTf",
+      "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
+      "patchSha256": "211a6bf23fe9dbccbd7d87659c701f69771a98c909a3113656508f8c84420146",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/document/history/DocumentHistoryModal.tsx",
+      "reportedLine": 221,
+      "sourceSha256": "574feea8c6da69c408c50ebc47342f8b551cd4211ceb06d08ac2e8e141348892",
+      "snippetSha256": "7a05c95ed160ff717a3de48901a0338b11102a938a9d2fc41390f0a22ee386ab",
+      "fixture": "react-bench-0.9.7-audit/regressions/574feea8c6da--document-history-modal.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "Rkf6hKV",
+      "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
+      "patchSha256": "3564bb6f197486b9718788ce7f4127a96f8649bffe421e2e66397fcb2fc4bbbb",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/document/history/DocumentHistoryModal.tsx",
+      "reportedLine": 206,
+      "sourceSha256": "320d3caddb53aa62715cf8235cb7009fcabf45082238a48c86e76c3ef0b70c31",
+      "snippetSha256": "6fd3fb0aa8b88bad550679e486c9c32bfe7a95a8c525b738938376ec78145f49",
+      "fixture": "react-bench-0.9.7-audit/regressions/320d3caddb53--document-history-modal.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "RVBWvU2",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "cbf9d3e1489a82c9e1a2c29c0a3c72f67278ead8c4068e306cb98d8521784ef2",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 210,
+      "sourceSha256": "19bdb301c2e0eb32bf27f3cea24e25cb0f40fd3ccf562858644dc9617eafc87d",
+      "snippetSha256": "b91af90a52aa9e42748ad4a0fc767a07bd892e8a19d5e571c7f876e326108c75",
+      "fixture": "react-bench-0.9.7-audit/regressions/19bdb301c2e0--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "San7nfV",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "fb7ed88b80deb87daa3939c022ae7c61fc1f2efd7dba3da0b292bc1087ca9a0f",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-zoom-pan.ts",
+      "reportedLine": 548,
+      "sourceSha256": "b972a1d91a94e7a28d3239f3b4a029c312744ee2a2dfcc0ef25a3fcb51f270a2",
+      "snippetSha256": "56faa4c404e3094ad33f151486c09ad739d02b11ca664dd144673cc9ce3fdaba",
+      "fixture": "react-bench-0.9.7-audit/regressions/b972a1d91a94--use-zoom-pan.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "SQSmbFe",
+      "task": "write-react-atomantic-portos-1698",
+      "patchSha256": "ef0ebde8ac1f2ea52fcaf0d1e76b6ff189bbb98bfb5f9962e5ec5ac9aa7cfb0a",
+      "rule": "no-side-effect-in-state-updater-function",
+      "filePath": "client/src/components/pipeline/editorial/EditorialHealthPanel.jsx",
+      "reportedLine": 190,
+      "sourceSha256": "74931c270c7093eec0c0f1a5b01c8aaf52035141e7723fac04089836143bffa5",
+      "snippetSha256": "c17fc1b9894da9e1a260bd720ebcd5a67bbf3b3d591613e6d6e74924884906bd",
+      "fixture": "react-bench-0.9.7-audit/true-positives/74931c270c70--editorial-health-panel.jsx",
+      "verdict": "fail"
+    },
+    {
+      "suffix": "t2MJVDe",
+      "task": "write-react-frankchen021-datastoria-199",
+      "patchSha256": "553e95682a8a999533a15aeb75c73e42c3ff347536fba08b19fbe9b3f6802403",
+      "rule": "dangerous-html-sink",
+      "filePath": "src/components/chat/message/message-markdown-katex.tsx",
+      "reportedLine": 86,
+      "sourceSha256": "1db5986b9f56ef83779c2104b228aee5f2a39640b2e84a2b555288bdfe1eed36",
+      "snippetSha256": "1db5986b9f56ef83779c2104b228aee5f2a39640b2e84a2b555288bdfe1eed36",
+      "fixture": "react-bench-0.9.7-audit/regressions/1db5986b9f56--message-markdown-katex.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "TgaiL4H",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "d432b9cae5105f61a6445752524fab1668b6acc6937faca07f0e7d052635d915",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 317,
+      "sourceSha256": "7d7040609f331e697cd4ba183e8c92e7db2a4d7647503626d73cc88af42fc3af",
+      "snippetSha256": "dc70dd9cdff4c3521cf1e7e6b0502d63eb40d9f0813b8553abf6d4a6e0e203e6",
+      "fixture": "react-bench-0.9.7-audit/regressions/7d7040609f33--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "TLDAvPL",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "26be183ac9e2b583f47f9a3d596c8a4864a7d883919e7f0fc39b136c95d036bc",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 651,
+      "sourceSha256": "6c1a34364649224a1b76c975e2f020f8d1d6ffa89f274c49e4ce4c87a1b26be1",
+      "snippetSha256": "a78f7078f4621613d8f5d80993a7bf2bd8094e239cfd30eff9d3fa38985913d7",
+      "fixture": "react-bench-0.9.7-audit/regressions/6c1a34364649--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "tMA9S2M",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "3f18834dc4fb448a55bdebdb307f0b1355c781466bc785b2a27811766f890d64",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 177,
+      "sourceSha256": "c39fbfd1572a0f4f762daebc738fe1e84b489530ac72d7b2169a4212bd55f712",
+      "snippetSha256": "c39fbfd1572a0f4f762daebc738fe1e84b489530ac72d7b2169a4212bd55f712",
+      "fixture": "react-bench-0.9.7-audit/regressions/c39fbfd1572a--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "tN7KTwG",
+      "task": "write-react-trycompai-comp-3248",
+      "patchSha256": "1c8e1a5237b00a8ada41c1c220e02c54838c20f935e5a4ac8810d8804e737765",
+      "rule": "effect-needs-cleanup",
+      "filePath": "apps/framework-editor/app/components/table/resizable-columns.tsx",
+      "reportedLine": 86,
+      "sourceSha256": "4249aebf5c1ae9f826a34b0d7743830e6c63489baa5467c4fdb449751a1b4891",
+      "snippetSha256": "4249aebf5c1ae9f826a34b0d7743830e6c63489baa5467c4fdb449751a1b4891",
+      "fixture": "react-bench-0.9.7-audit/regressions/4249aebf5c1a--resizable-columns.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "tnceAXq",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "c28ed9475ca8b27d5121678fc50e7267cb8fb695389273388acbc916b61db1bb",
+      "rule": "effect-needs-cleanup",
+      "filePath": "original_Tooltip.tsx",
+      "reportedLine": 192,
+      "sourceSha256": "fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13",
+      "snippetSha256": "8418cbb06c123305da81efaa919d104fbbc9ae491f44137bb6bdfff4486a4fc9",
+      "fixture": "react-bench-0.9.7-audit/regressions/fc9cd4b5ce67--tooltip-backup.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "TttYXSq",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "4a1affeb67bd7243e3f4bb6f2a75083c72584c78bbb85fc708fecd74df56cd45",
+      "rule": "no-unowned-async-error-clear",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/use-interaction-delivery.ts",
+      "reportedLine": 85,
+      "sourceSha256": "8490cb41ffc7f8fe9df1cc373eac769d469349d062c5dff15741faf1414f2800",
+      "snippetSha256": "8490cb41ffc7f8fe9df1cc373eac769d469349d062c5dff15741faf1414f2800",
+      "fixture": "react-bench-0.9.7-audit/regressions/8490cb41ffc7--use-interaction-delivery.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "UA2HwrB",
+      "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
+      "patchSha256": "24bf6457baf98811595e26d27a3b08f3e19ead5c89955281287b090fd21279c0",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/document/history/DocumentHistoryModal.tsx",
+      "reportedLine": 200,
+      "sourceSha256": "cfba8f59f5589609c62c90a9a4d088fe4989a86dab2e6c17df3dfa88a54c31f3",
+      "snippetSha256": "9c101975c6e5d64d6bc4f1a507b254e82d8952754f7c5e3959659ef90e91009a",
+      "fixture": "react-bench-0.9.7-audit/regressions/cfba8f59f558--document-history-modal.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "uhPQe3N",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "f6b7c79d6ff9f78ed02ec8670395b94493e3bf8191e5301def3d6563e3d24b33",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 316,
+      "sourceSha256": "dd2168acd7451b6dcc80d2bebbc2589018b08b2b1eefd8747ff6d0c3969cb777",
+      "snippetSha256": "c379fd577137d9d017208bf005820d5a926aadbab7bc02725890f280ec175032",
+      "fixture": "react-bench-0.9.7-audit/regressions/dd2168acd745--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "UM9oWPj",
+      "task": "write-react-tracecathq-tracecat-2879",
+      "patchSha256": "7527a41ee5ed681296a52012d9c6b03b2a9a1feca61d22fcb9b5c117aa0be8d5",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "frontend/src/components/organization/org-vcs-github-manual-form.tsx",
+      "reportedLine": 211,
+      "sourceSha256": "0e984d6447b722b93c4635ce37b4afcb9c9c8e2cc5db113203cd1c8d1fa08835",
+      "snippetSha256": "73a85d3f6f4cb77a2905b2f0df81e2f7d14e4cb16f5b7331b3f352eafe195576",
+      "fixture": "react-bench-0.9.7-audit/regressions/0e984d6447b7--org-vcs-github-manual-form.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "ums2Ccx",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "e74cbf1e459ea694ac2724a9c34a00a1e10bde099eabff21be06b7a5697520c5",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 380,
+      "sourceSha256": "ad303439776bec5d6f7506def51d1c9f80671ffbb7615c9aa45d29fe6072c396",
+      "snippetSha256": "219422687ad1d3d46ad412e9649dfd29906f8d479e2fb4aa38d20ab6e685e3f1",
+      "fixture": "react-bench-0.9.7-audit/regressions/ad303439776b--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "uoccKA3",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "65f727cedaf9e016e95755ec40e76a62f48a614c83411b841a1b29438eea565b",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-photo-zoom.ts",
+      "reportedLine": 82,
+      "sourceSha256": "6853fc137acb6a9609747b737eb64ecc3b8a71a4ad01a2f3d46293f807587a75",
+      "snippetSha256": "cfe49808157e5439374ae2443bd4b7984cc0c29c2ce2c71cb885ae68e141e313",
+      "fixture": "react-bench-0.9.7-audit/regressions/6853fc137acb--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "uRcmhcd",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "cbc42e621c17fb9fbff067f96333c6cc47b14b379a2e336197d0d75add9bf417",
+      "rule": "effect-needs-cleanup",
+      "filePath": "tooltip_backup.tsx",
+      "reportedLine": 192,
+      "sourceSha256": "fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13",
+      "snippetSha256": "8418cbb06c123305da81efaa919d104fbbc9ae491f44137bb6bdfff4486a4fc9",
+      "fixture": "react-bench-0.9.7-audit/regressions/fc9cd4b5ce67--tooltip-backup.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "UrywCLy",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "015d99597a90703b3c590200dddd0e7bc4b7a0f6d8b37fd07cc17c59a8971df2",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/use-photo-zoom.ts",
+      "reportedLine": 172,
+      "sourceSha256": "87d233b522326a26e57305db409c3b0459cb118400a0c3578d3de567d5b41ae4",
+      "snippetSha256": "b06d073c4ad3e00e5f360b879bff8ec2a59fb1b8002582179ac4d9804f33916e",
+      "fixture": "react-bench-0.9.7-audit/regressions/87d233b52232--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "uWdHdPi",
+      "task": "write-react-azouaoui-med-react-pro-sidebar-267",
+      "patchSha256": "bc41f2a4a44c9f98dccba033f0ebf2d555b8b802b88347850192a6b3deaff712",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/useMediaQuery.tsx",
+      "reportedLine": 9,
+      "sourceSha256": "1b511f7fb951ea327423b69bed6cd97f4bf97e17ba1b74c9e7dba47ccd0d1a38",
+      "snippetSha256": "1b511f7fb951ea327423b69bed6cd97f4bf97e17ba1b74c9e7dba47ccd0d1a38",
+      "fixture": "react-bench-0.9.7-audit/regressions/1b511f7fb951--use-media-query.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "VGJPmx2",
+      "task": "write-react-frankchen021-datastoria-199",
+      "patchSha256": "aca46e43abdf46ad8ce44ea5385c03ec22e69f5524b89bed5d6a9d887b5b84d6",
+      "rule": "dangerous-html-sink",
+      "filePath": "src/components/chat/message/message-markdown.tsx",
+      "reportedLine": 80,
+      "sourceSha256": "b9a3bd477bfcaf071e70b13b8fcb36c3455fb860425b10ddf723b5fb4dae7ae9",
+      "snippetSha256": "f3c5f0da0e35be65af26cc677935577562ccf5d217b73830c53a0d22b0d9a5d1",
+      "fixture": "react-bench-0.9.7-audit/regressions/b9a3bd477bfc--message-markdown.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "vGnjrGU",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "6c1cf630eff15a3259ddff16a61b45010b5f3631a58646c32be329def5bfd01e",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-photo-zoom.ts",
+      "reportedLine": 319,
+      "sourceSha256": "b55b3105b5c8eebcd8c193cb2b03a6e1ad7db590a39a8aedaf0ce636e1b148b7",
+      "snippetSha256": "026c5adcd9716b7a7da83118c91dca9c4459fed237a4c77b957095a95fd3c054",
+      "fixture": "react-bench-0.9.7-audit/regressions/b55b3105b5c8--use-photo-zoom.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "vvZxJVi",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "3597f86327172ed067f5f6adbef55bed663a266f120fdca7ee5e09ef4cbeba21",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 313,
+      "sourceSha256": "f0f9d7d8bb9787ca873c58f37b2a354e0501a5a6a46ab47b7f8f9ac786f0a7ce",
+      "snippetSha256": "53e81416341b70803d5fd18bd81f46accf92a1f1024d8873c7aa558ac4ebd7a4",
+      "fixture": "react-bench-0.9.7-audit/regressions/f0f9d7d8bb97--tooltip.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "vzVGFfV",
+      "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
+      "patchSha256": "a8c3171df27f0062f628b91e322e418fed424f7809f31f208aa47ee7c10400f5",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/document/history/DocumentHistoryModal.tsx",
+      "reportedLine": 199,
+      "sourceSha256": "a7536754da8275333e4798fc20af8bf23e8821f97cb133b8503bd4b72cb9644c",
+      "snippetSha256": "d3855262f843e2a653a4668d85f65f533b2dfe82567d5305b1ce0e39af44e601",
+      "fixture": "react-bench-0.9.7-audit/regressions/a7536754da82--document-history-modal.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "wArJTKh",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "aab2db9fd5e0ee63bc5dcee4dd6f7c77411ed458db3037d20df4c3548ed9cf63",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.backup.tsx",
+      "reportedLine": 192,
+      "sourceSha256": "fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13",
+      "snippetSha256": "8418cbb06c123305da81efaa919d104fbbc9ae491f44137bb6bdfff4486a4fc9",
+      "fixture": "react-bench-0.9.7-audit/regressions/fc9cd4b5ce67--tooltip-backup.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "wbjdCnA",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "7d3fb572a30cab4e64843dca534f8c60eb72902af1451fcb7daa30d707310915",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/util/useApiKeyCreation.ts",
+      "reportedLine": 104,
+      "sourceSha256": "e0b7f506fe1588ab00599019a67aaa2d822fe76fea1a02d1f96910faeaaa5cec",
+      "snippetSha256": "e0b7f506fe1588ab00599019a67aaa2d822fe76fea1a02d1f96910faeaaa5cec",
+      "fixture": "react-bench-0.9.7-audit/regressions/e0b7f506fe15--use-api-key-creation.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "wDv3fd7",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "64986c53093cae322b521af4282cbc795e7dae9ff7602d5b4b9da2d29a2ba799",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/hooks/useInteractionDelivery.ts",
+      "reportedLine": 51,
+      "sourceSha256": "c40197f61cefe5ff0e795b63469c632a57ea956ad4cff735ad1954f59e638bb2",
+      "snippetSha256": "c40197f61cefe5ff0e795b63469c632a57ea956ad4cff735ad1954f59e638bb2",
+      "fixture": "react-bench-0.9.7-audit/regressions/c40197f61cef--use-interaction-delivery.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "wDv3fd7",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "64986c53093cae322b521af4282cbc795e7dae9ff7602d5b4b9da2d29a2ba799",
+      "rule": "no-unowned-async-error-clear",
+      "filePath": "packages/shared/src/hooks/useInteractionDelivery.ts",
+      "reportedLine": 43,
+      "sourceSha256": "c40197f61cefe5ff0e795b63469c632a57ea956ad4cff735ad1954f59e638bb2",
+      "snippetSha256": "c40197f61cefe5ff0e795b63469c632a57ea956ad4cff735ad1954f59e638bb2",
+      "fixture": "react-bench-0.9.7-audit/regressions/c40197f61cef--use-interaction-delivery.ts",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "wNxChFj",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "c57e5bad622d9e5e3c5d8d0da37f7bc926dfb6a693a4077e6e077915a01cd8cb",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/gallery.tsx",
+      "reportedLine": 771,
+      "sourceSha256": "20fbf430ab90e9e1a65eb31ee7e85aaddf9950c28faf8562ea9a3675dbab0e64",
+      "snippetSha256": "203ba14eaa2817f51d1b7e89e113e9ae77cd961304308c112da11d85bbc24b59",
+      "fixture": "react-bench-0.9.7-audit/regressions/20fbf430ab90--gallery.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "x7VUyKi",
+      "task": "write-react-tracecathq-tracecat-2879",
+      "patchSha256": "1a78dd843384fd36d5339f6ffa1296fdb4ff44fb4f81fa50acfe17e634f52854",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "frontend/src/components/organization/org-vcs-github-manual-form.tsx",
+      "reportedLine": 177,
+      "sourceSha256": "20e51d0c24ac1a5ce038afd999adce78a30a9db77b6f972bbc45e5abcaba8bc2",
+      "snippetSha256": "e860fa5007fbf3e6c0ba0766b597d40adb360e049a252c009211700c18460f85",
+      "fixture": "react-bench-0.9.7-audit/regressions/20e51d0c24ac--org-vcs-github-manual-form.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "Xye9UXr",
+      "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
+      "patchSha256": "d8f2330e71d383f3ff558152442e8f9102eb0a6a38441c73a97f160d0432829a",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/document/history/DocumentHistoryModal.tsx",
+      "reportedLine": 221,
+      "sourceSha256": "e930e34048b908da691abf966e8ea4eba51b55c3d1523554e26ff632199dc4ca",
+      "snippetSha256": "1080c52e03216744937a1e3db2ccf33eae2471a2903d2b80b32fa6b3514bf601",
+      "fixture": "react-bench-0.9.7-audit/regressions/e930e34048b9--document-history-modal.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "ydQnRk9",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "eeb5e9ce0278b4f6e5ad15aae0badb1fb6bce3674188dfd13bbeb9b3c6dae63a",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 194,
+      "sourceSha256": "b7b91aa397afd52cd4d24811c91a57501e9b275787a85ce167070a785c37ba65",
+      "snippetSha256": "2be3dc9840b2739fe055c6e4abdc8fc4f35c7e58bb5567af1ba03996c653d2e1",
+      "fixture": "react-bench-0.9.7-audit/regressions/b7b91aa397af--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "YFKtagN",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "dc085eb656bd57f7e798e4e2191e32af7e08373aead6b0b647493680334af511",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 222,
+      "sourceSha256": "1de797df8edb80eb05988776db6fdd7ca290e56c0d0b1b27d9688414e501272a",
+      "snippetSha256": "9121f6e336453457efa5ca75a6bd4b1cdc2e173925705e8acec1601670d4595b",
+      "fixture": "react-bench-0.9.7-audit/regressions/1de797df8edb--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "yfTmUkt",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "6c60185fc5f0499dbb49243bb3cec0fec3f20c768298a5850d90100f520643a3",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 146,
+      "sourceSha256": "e2e9586c3d26b3e3ef77c4be23d246068144ab96c25234ea5ccf76a52276c524",
+      "snippetSha256": "e2e9586c3d26b3e3ef77c4be23d246068144ab96c25234ea5ccf76a52276c524",
+      "fixture": "react-bench-0.9.7-audit/regressions/e2e9586c3d26--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "yGj7iPo",
+      "task": "write-react-tombelieber-claude-view-70",
+      "patchSha256": "7d5aa3fae5442d4ba8dccde4e005667d4683fcfbc0fb27884a830c8abccdb823",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx",
+      "reportedLine": 143,
+      "sourceSha256": "8eddaaf353d0025c9f79ce5bc1aaabee640efe4770ad14ec3db9dca7214531c3",
+      "snippetSha256": "bffee3fdaf479281cafe868ddc2a0311f1999d529b0ed624fa16548d233dbaa5",
+      "fixture": "react-bench-0.9.7-audit/regressions/8eddaaf353d0--permission-card.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "yHA8h9X",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "86c5f18ac8caad1a23a9057a796aefce3123e2652711be174bd481f6647d82ab",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 97,
+      "sourceSha256": "7499ba110010198fb7bb24f8d0265481830797602c0dca7dc05664a345873370",
+      "snippetSha256": "7499ba110010198fb7bb24f8d0265481830797602c0dca7dc05664a345873370",
+      "fixture": "react-bench-0.9.7-audit/regressions/7499ba110010--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "z288GAh",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "a89a6282bcd9e722c5b68cd1983888c40bf2d2f5196db66d87bc46386d2d4e8e",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 249,
+      "sourceSha256": "3ea0621c3a6ca7cc3ef449c0a5648393012e808428082f74483cbd2830ca6859",
+      "snippetSha256": "22611421d1c2e43f0e978b5a18deb58bf60652f38adcb6fe2046065506296865",
+      "fixture": "react-bench-0.9.7-audit/regressions/3ea0621c3a6c--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "zcWaWWS",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "309e776b61d9d52520f03c4ccfe239cd58547e1e6615016853ff8f8b24cd051b",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 180,
+      "sourceSha256": "8f4c45c7cc7d5ed7cab457200918a21e9ee9880a3333b0acf59c43c4c35eb0df",
+      "snippetSha256": "8f4c45c7cc7d5ed7cab457200918a21e9ee9880a3333b0acf59c43c4c35eb0df",
+      "fixture": "react-bench-0.9.7-audit/regressions/8f4c45c7cc7d--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "ZFcupSH",
+      "task": "fix-react-rdh-sofn-xyz-mailing-settings",
+      "patchSha256": "b49c1a1c2830e2b62b79dba2ad3e64e0e0f358c43eb898cef039b575f02eb1d4",
+      "rule": "no-fetch-response-used-without-status-check",
+      "filePath": "packages/cli/src/pages/settings.tsx",
+      "reportedLine": 208,
+      "sourceSha256": "638c4a3d65a6eda027eb2dd0fe02e5ea6d8cc1d02e89dab57fe51eb654a66c2e",
+      "snippetSha256": "dfd4e64e6ebf1219cd7abb6d5ca272eac0365ce72321f59a3b544a1f877fc976",
+      "fixture": "react-bench-0.9.7-audit/regressions/638c4a3d65a6--settings.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "zozDEMR",
+      "task": "fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal",
+      "patchSha256": "4fd2ae2fa864e6f9a463e485e0e7422c27a1bc0230f4970bfd3a2537b5f87888",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/document/history/DocumentHistoryModal.tsx",
+      "reportedLine": 215,
+      "sourceSha256": "9f674b3e77356e738d6ad5becb4feef3bb7c3ba5f1842ca69eb87b5e0876e5c1",
+      "snippetSha256": "e79af61c1c0749fbc734ebeee4a1be7932cdc0368e904f6409d3b3e784440e5c",
+      "fixture": "react-bench-0.9.7-audit/regressions/9f674b3e7735--document-history-modal.tsx",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "zY62bGN",
+      "task": "write-react-pedropalau-react-bnb-gallery-185",
+      "patchSha256": "9a03c994a034ebcb32ee460d8f6733b0cd48ebf9f7b7202f76140a0fa1dd6acc",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/hooks/use-zoom-pan.ts",
+      "reportedLine": 234,
+      "sourceSha256": "d49e4476e5194438f37b15c4312560bc08bfaf2df81c5e1f39c5b9ee57ad94ed",
+      "snippetSha256": "22d56e43eb94a415b04c04bc4fbae587b8e27b3bc291c401eebe926b745384fa",
+      "fixture": "react-bench-0.9.7-audit/regressions/d49e4476e519--use-zoom-pan.ts",
+      "verdict": "pass"
+    }
+  ]
+}

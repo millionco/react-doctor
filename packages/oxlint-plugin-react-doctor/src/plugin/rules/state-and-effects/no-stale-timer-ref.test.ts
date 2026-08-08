@@ -241,6 +241,30 @@ describe("no-stale-timer-ref", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a compound guard wraps a redundant clear guard", () => {
+    const result = runRule(
+      noStaleTimerRef,
+      `import { useEffect, useRef, useState } from "react";
+      const Countdown = ({ tick }) => {
+        const timerRef = useRef(null);
+        const [countdown, setCountdown] = useState(1);
+        useEffect(() => {
+          timerRef.current = setInterval(tick, 1000);
+          return () => clearInterval(timerRef.current);
+        }, [tick]);
+        useEffect(() => {
+          if (countdown === 0 && timerRef.current) {
+            if (timerRef.current) clearInterval(timerRef.current);
+          }
+        }, [countdown]);
+        return <span>{countdown}</span>;
+      };`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet for a clear inside an effect cleanup return (v1 non-goal)", () => {
     const result = runRule(
       noStaleTimerRef,

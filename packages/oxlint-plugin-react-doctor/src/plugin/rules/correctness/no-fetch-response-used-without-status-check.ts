@@ -528,15 +528,32 @@ const localValidatorChecksResponseStatus = (
   const statusAwareReturns = returnedExpressions.filter((returnedExpression) =>
     expressionReadsStatusProperty(returnedExpression, parameterSymbol.id, context),
   );
+  const booleanReturnIsStatusGuarded = (returnedExpression: EsTreeNode): boolean => {
+    const fallback = stripGroupingParens(returnedExpression);
+    if (!isNodeOfType(fallback, "Literal") || typeof fallback.value !== "boolean") return false;
+    let ancestor = fallback.parent;
+    while (ancestor && ancestor !== validator) {
+      if (
+        isNodeOfType(ancestor, "IfStatement") &&
+        isAstDescendant(fallback, ancestor.consequent) &&
+        expressionReadsStatusProperty(ancestor.test, parameterSymbol.id, context)
+      ) {
+        return true;
+      }
+      ancestor = ancestor.parent ?? null;
+    }
+    return false;
+  };
   return (
     statusAwareReturns.length > 0 &&
     returnedExpressions.every((returnedExpression) => {
       if (statusAwareReturns.includes(returnedExpression)) return true;
       const fallback = stripGroupingParens(returnedExpression);
       return (
-        hasResponseShapeGuard &&
-        isNodeOfType(fallback, "Literal") &&
-        typeof fallback.value === "boolean"
+        booleanReturnIsStatusGuarded(returnedExpression) ||
+        (hasResponseShapeGuard &&
+          isNodeOfType(fallback, "Literal") &&
+          typeof fallback.value === "boolean")
       );
     })
   );
@@ -724,6 +741,17 @@ const reportUnguarded = ({
     return [member];
   });
 
+  const allDirectStatusReferences = responseReferences.flatMap((reference) => {
+    const receiver = findTransparentExpressionRoot(reference.identifier);
+    const member = receiver.parent;
+    return member &&
+      isNodeOfType(member, "MemberExpression") &&
+      member.object === receiver &&
+      STATUS_CHECK_PROPERTIES.has(getStaticPropertyName(member) ?? "")
+      ? [member]
+      : [];
+  });
+
   const destructuredStatusReferences = responseReferences.flatMap((reference) => {
     const declarator = reference.identifier.parent;
     if (
@@ -768,20 +796,86 @@ const reportUnguarded = ({
     ) {
       resultExpression = findTransparentExpressionRoot(resultExpression.parent);
     }
-    const declarator = resultExpression.parent;
-    if (
-      !declarator ||
-      !isNodeOfType(declarator, "VariableDeclarator") ||
-      declarator.init !== resultExpression ||
-      !isNodeOfType(declarator.id, "Identifier")
-    ) {
-      return false;
-    }
-    const resultSymbol = context.scopes.symbolFor(declarator.id);
-    if (!resultSymbol || resultSymbol.references.length === 0) return false;
-    return resultSymbol.references.every((reference) =>
-      statusCheckGuardsNode(statusReferences, reference.identifier),
-    );
+    const getAssignedBinding = (expression: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+      const parent = expression.parent;
+      if (
+        parent &&
+        isNodeOfType(parent, "VariableDeclarator") &&
+        parent.init === expression &&
+        isNodeOfType(parent.id, "Identifier")
+      ) {
+        return parent.id;
+      }
+      if (
+        parent &&
+        isNodeOfType(parent, "AssignmentExpression") &&
+        parent.operator === "=" &&
+        parent.right === expression &&
+        isNodeOfType(parent.left, "Identifier")
+      ) {
+        return parent.left;
+      }
+      return null;
+    };
+    const getDerivedBinding = (reference: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+      let current = findTransparentExpressionRoot(reference);
+      while (current.parent && !isFunctionLike(current.parent)) {
+        const parent = current.parent;
+        const assignedBinding = getAssignedBinding(current);
+        if (assignedBinding) return assignedBinding;
+        if (
+          (isNodeOfType(parent, "MemberExpression") && parent.object === current) ||
+          (isNodeOfType(parent, "CallExpression") &&
+            parent.arguments.some((argument) => argument === current))
+        ) {
+          current = findTransparentExpressionRoot(parent);
+          continue;
+        }
+        return null;
+      }
+      return null;
+    };
+    const binding = getAssignedBinding(resultExpression);
+    const resultSymbol = binding ? context.scopes.symbolFor(binding) : null;
+    if (!resultSymbol) return false;
+    const symbolsById = new Map<number, typeof resultSymbol>();
+    const collectReachableSymbol = (symbol: typeof resultSymbol): void => {
+      if (symbolsById.has(symbol.id)) return;
+      symbolsById.set(symbol.id, symbol);
+      for (const reference of symbol.references) {
+        if (reference.flag !== "read") continue;
+        const derivedBinding = getDerivedBinding(reference.identifier);
+        const derivedSymbol = derivedBinding ? context.scopes.symbolFor(derivedBinding) : null;
+        if (derivedSymbol) collectReachableSymbol(derivedSymbol);
+      }
+    };
+    collectReachableSymbol(resultSymbol);
+    const guardedResultBySymbolId = new Map<number, boolean>();
+    const pendingSymbolIds = new Set<number>();
+    const usesAreGuarded = (symbolId: number): boolean => {
+      const cachedResult = guardedResultBySymbolId.get(symbolId);
+      if (cachedResult !== undefined) return cachedResult;
+      if (pendingSymbolIds.has(symbolId)) return false;
+      pendingSymbolIds.add(symbolId);
+      const symbol = symbolsById.get(symbolId);
+      if (!symbol) {
+        pendingSymbolIds.delete(symbolId);
+        return false;
+      }
+      const readReferences = symbol.references.filter((reference) => reference.flag === "read");
+      const result =
+        readReferences.length > 0 &&
+        readReferences.every((reference) => {
+          if (statusCheckGuardsNode(statusReferences, reference.identifier)) return true;
+          const derivedBinding = getDerivedBinding(reference.identifier);
+          const derivedSymbol = derivedBinding ? context.scopes.symbolFor(derivedBinding) : null;
+          return Boolean(derivedSymbol && usesAreGuarded(derivedSymbol.id));
+        });
+      pendingSymbolIds.delete(symbolId);
+      guardedResultBySymbolId.set(symbolId, result);
+      return result;
+    };
+    return usesAreGuarded(resultSymbol.id);
   };
 
   const everyConsumptionIsGuarded = consumptions.every((consumption) => {
@@ -801,6 +895,33 @@ const reportUnguarded = ({
     if (
       allStatusReferences.length > 0 &&
       consumptionResultIsGuardedBeforeUse(consumption, allStatusReferences)
+    ) {
+      return true;
+    }
+    const consumptionRoot = findTransparentExpressionRoot(consumption);
+    const awaitedConsumption =
+      consumptionRoot.parent &&
+      isNodeOfType(consumptionRoot.parent, "AwaitExpression") &&
+      consumptionRoot.parent.argument === consumptionRoot
+        ? findTransparentExpressionRoot(consumptionRoot.parent)
+        : consumptionRoot;
+    if (
+      isNodeOfType(awaitedConsumption.parent, "ExpressionStatement") &&
+      allDirectStatusReferences.some((statusReference) => {
+        if (statusReference.range[0] <= consumption.range[1]) return false;
+        let ancestor = statusReference.parent;
+        while (ancestor && !isFunctionLike(ancestor)) {
+          if (
+            isNodeOfType(ancestor, "DoWhileStatement") &&
+            isAstDescendant(consumption, ancestor.body) &&
+            isAstDescendant(statusReference, ancestor.test)
+          ) {
+            return false;
+          }
+          ancestor = ancestor.parent ?? null;
+        }
+        return true;
+      })
     ) {
       return true;
     }

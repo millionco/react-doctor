@@ -24,6 +24,7 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getDestructuredBindingPropertyName } from "../../utils/get-destructured-binding-property-name.js";
 import { getDirectUnreassignedInitializer } from "../../utils/get-direct-unreassigned-initializer.js";
+import { getFiniteStaticStringValues } from "../../utils/get-finite-static-string-values.js";
 import { getPropertyDescriptorValue } from "../../utils/get-property-descriptor-value.js";
 import { getRuntimeStaticDependencySource } from "../../utils/get-runtime-static-dependency-source.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
@@ -1545,12 +1546,12 @@ const isGlobalHistoryMutationCall = (
   context: RuleContext,
 ): boolean => {
   const callee = stripParenExpression(call.callee);
-  if (
-    !isNodeOfType(callee, "MemberExpression") ||
-    !HISTORY_MUTATION_METHOD_NAMES.has(getStaticPropertyName(callee) ?? "")
-  ) {
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  const mutationMethodNames = callee.computed
+    ? getFiniteStaticStringValues(callee.property, context)
+    : new Set([getStaticPropertyName(callee) ?? ""]);
+  if (![...mutationMethodNames].some((name) => HISTORY_MUTATION_METHOD_NAMES.has(name)))
     return false;
-  }
   const receiver = stripParenExpression(callee.object);
   if (isNodeOfType(receiver, "Identifier")) {
     return receiver.name === "history" && context.scopes.isGlobalReference(receiver);

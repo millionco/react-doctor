@@ -101,18 +101,21 @@ const isClearGuardIfIdiom = (
   refName: string,
 ): boolean => {
   if (ifStatement.alternate) return false;
-  const consequent = ifStatement.consequent;
-  const statements = isNodeOfType(consequent, "BlockStatement")
-    ? (consequent.body ?? [])
-    : [consequent];
-  return statements.every((statement) => {
+  const statementOnlyClearsRef = (statement: EsTreeNode): boolean => {
+    if (isNodeOfType(statement, "BlockStatement")) {
+      return statement.body.every(statementOnlyClearsRef);
+    }
+    if (isNodeOfType(statement, "IfStatement")) {
+      return !statement.alternate && statementOnlyClearsRef(statement.consequent);
+    }
     if (!isNodeOfType(statement, "ExpressionStatement")) return false;
     const expression = stripParenExpression(statement.expression);
     if (isClearCallOnRef(expression, refName)) return true;
     return (
       isAssignmentToRefCurrent(expression, refName) && isNullishResetExpression(expression.right)
     );
-  });
+  };
+  return statementOnlyClearsRef(ifStatement.consequent);
 };
 
 const isEarlyExitBeforeClearIdiom = (

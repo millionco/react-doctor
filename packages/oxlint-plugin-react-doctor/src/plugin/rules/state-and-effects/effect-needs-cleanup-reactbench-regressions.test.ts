@@ -1256,6 +1256,62 @@ const Delayed = ({ delay, task }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts short one-shot timers that only reset refs inside effects", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ target }) => {
+        const suppressClickRef = useRef(false);
+        const movedRef = useRef(false);
+        useEffect(() => {
+          const handleMouseUp = () => {
+            setTimeout(() => {
+              suppressClickRef.current = false;
+              movedRef.current = false;
+            }, 300);
+          };
+          target.addEventListener("mouseup", handleMouseUp);
+          return () => target.removeEventListener("mouseup", handleMouseUp);
+        }, [target]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports one-shot effect timers with observable or delayed work", () => {
+    const stateUpdateResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ setOpen, target }) => {
+        useEffect(() => {
+          const handleMouseUp = () => setTimeout(() => setOpen(false), 100);
+          target.addEventListener("mouseup", handleMouseUp);
+          return () => target.removeEventListener("mouseup", handleMouseUp);
+        }, [target]);
+        return null;
+      };`,
+    );
+    const delayedResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ target }) => {
+        const activeRef = useRef(true);
+        useEffect(() => {
+          const handleMouseUp = () => setTimeout(() => {
+            activeRef.current = false;
+          }, 301);
+          target.addEventListener("mouseup", handleMouseUp);
+          return () => target.removeEventListener("mouseup", handleMouseUp);
+        }, [target]);
+        return null;
+      };`,
+    );
+    expect(stateUpdateResult.diagnostics).toHaveLength(1);
+    expect(delayedResult.diagnostics).toHaveLength(1);
+  });
+
   it("accepts an object-held timer released through a cleanup helper", () => {
     const result = runRule(
       effectNeedsCleanup,
@@ -1277,6 +1333,163 @@ const Delayed = ({ delay, task }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a retained callback timer transferred into an object-held ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ delay, open }) => {
+        const pendingShowRef = useRef(null);
+        const cancelPendingShow = () => {
+          if (pendingShowRef.current?.timer) clearTimeout(pendingShowRef.current.timer);
+          pendingShowRef.current = null;
+        };
+        const scheduleShow = () => {
+          cancelPendingShow();
+          const timer = setTimeout(open, delay);
+          pendingShowRef.current = { timer, startedAt: Date.now() };
+        };
+        useEffect(() => {
+          scheduleShow();
+          return () => cancelPendingShow();
+        }, []);
+        return <button onClick={scheduleShow}>Show</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a parameterized retained timer with early exits and mount cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ defaultOpen, open }) => {
+        const pendingOpenRef = useRef(null);
+        const clearPendingOpen = () => {
+          if (pendingOpenRef.current?.id) clearTimeout(pendingOpenRef.current.id);
+          pendingOpenRef.current = null;
+        };
+        const startShowDelay = (delay, options, isImperative) => {
+          clearPendingOpen();
+          if (delay <= 0) {
+            open();
+            return;
+          }
+          const startTime = Date.now();
+          const id = setTimeout(() => {
+            pendingOpenRef.current = null;
+            open();
+          }, delay);
+          pendingOpenRef.current = { id, startTime, options, isImperative };
+        };
+        useEffect(() => {
+          if (defaultOpen) startShowDelay(10, null, false);
+          return () => {
+            clearPendingOpen();
+          };
+        }, []);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports retained object-held timers without complete ownership", () => {
+    const missingUnmountResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ delay, open }) => {
+        const pendingShowRef = useRef(null);
+        const scheduleShow = () => {
+          if (pendingShowRef.current?.timer) clearTimeout(pendingShowRef.current.timer);
+          const timer = setTimeout(open, delay);
+          pendingShowRef.current = { timer };
+        };
+        useEffect(() => {
+          scheduleShow();
+        }, [delay]);
+        return null;
+      };`,
+    );
+    const overwriteResult = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ delay, open, target }) => {
+        const pendingShowRef = useRef(null);
+        const scheduleShow = () => {
+          const timer = setTimeout(open, delay);
+          pendingShowRef.current = { timer };
+        };
+        useEffect(() => {
+          scheduleShow();
+          target.addEventListener("click", scheduleShow);
+          return () => {
+            target.removeEventListener("click", scheduleShow);
+            clearTimeout(pendingShowRef.current?.timer);
+          };
+        }, [target]);
+        return null;
+      };`,
+    );
+    expect(missingUnmountResult.diagnostics).toHaveLength(1);
+    expect(overwriteResult.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a ref-owned replacement timer with separate unmount cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+      const C = ({ delay, open }) => {
+        const pendingShowRef = useRef(null);
+        const cancelPendingShow = () => {
+          if (pendingShowRef.current?.timer) clearTimeout(pendingShowRef.current.timer);
+          pendingShowRef.current = null;
+        };
+        useEffect(() => () => cancelPendingShow(), []);
+        useEffect(() => {
+          const pending = pendingShowRef.current;
+          if (!pending) return;
+          clearTimeout(pending.timer);
+          const timer = setTimeout(open, delay);
+          pending.timer = timer;
+        }, [delay, open]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a mounted guard invalidated by an imported isomorphic effect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useRef } from "react";
+      import { useIsomorphicLayoutEffect } from "./use-isomorphic-layout-effect";
+      const C = ({ open }) => {
+        const mounted = useRef(false);
+        useIsomorphicLayoutEffect(() => {
+          mounted.current = true;
+          return () => {
+            mounted.current = false;
+          };
+        }, []);
+        const scheduleShow = () => {
+          setTimeout(() => {
+            if (!mounted.current) return;
+            open();
+          }, 10);
+        };
+        useIsomorphicLayoutEffect(() => {
+          scheduleShow();
+        }, []);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("accepts a subscription token released through a cleanup helper", () => {
     const result = runRule(
       effectNeedsCleanup,
@@ -1296,5 +1509,313 @@ const Delayed = ({ delay, task }) => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a disposer stored on an object before the object moves into a ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+      const C = () => {
+        const dragRef = useRef(null);
+        const beginDrag = useCallback(() => {
+          const drag = { cleanup: () => undefined };
+          const handleMove = () => undefined;
+          window.addEventListener("mousemove", handleMove);
+          drag.cleanup = () => window.removeEventListener("mousemove", handleMove);
+          dragRef.current = drag;
+        }, []);
+        const cancelDrag = useCallback(() => {
+          const drag = dragRef.current;
+          if (drag) {
+            drag.cleanup();
+            dragRef.current = null;
+          }
+        }, []);
+        useEffect(() => cancelDrag, [cancelDrag]);
+        return <button onMouseDown={beginDrag} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts callback-ref listener metadata retained as one ref session", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+      const C = () => {
+        const listenerRef = useRef(null);
+        const setNode = useCallback((element) => {
+          if (listenerRef.current) {
+            listenerRef.current.element.removeEventListener("wheel", listenerRef.current.handler);
+            listenerRef.current = null;
+          }
+          if (!element) return;
+          const handler = () => undefined;
+          element.addEventListener("wheel", handler, { passive: false });
+          listenerRef.current = { element, handler };
+        }, []);
+        return <button ref={setNode} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts symmetric listener loops over a stable filtered array", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ node }) => {
+        useEffect(() => {
+          const nodes = [node, node.closest(".owner")].filter(Boolean);
+          const handler = () => undefined;
+          for (const target of nodes) target.addEventListener("wheel", handler);
+          return () => {
+            for (const target of nodes) target.removeEventListener("wheel", handler);
+          };
+        }, [node]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a finite event-name loop stored in a ref-owned disposer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+      const C = () => {
+        const detachRef = useRef(() => undefined);
+        const detach = useCallback(() => detachRef.current(), []);
+        const attach = useCallback((kind) => {
+          detach();
+          const events = kind === "pointer" ? ["pointerup", "pointercancel"] : ["mouseup"];
+          const handler = () => undefined;
+          for (const eventName of events) window.addEventListener(eventName, handler);
+          detachRef.current = () => {
+            for (const eventName of events) window.removeEventListener(eventName, handler);
+          };
+        }, [detach]);
+        useEffect(() => detach, [detach]);
+        return <button onMouseDown={() => attach("mouse")} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts nested listener loops over stable tuple and target collections", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ primary, secondary }) => {
+        useEffect(() => {
+          const once = (handler) => (event) => handler(event);
+          const listeners = [["wheel", once(() => undefined), { passive: false }], ["mouseup", once(() => undefined)]];
+          const targets = [primary];
+          if (secondary) targets.push(secondary);
+          for (const target of targets) {
+            for (const [eventName, handler, options] of listeners) {
+              target.addEventListener(eventName, handler, options);
+            }
+          }
+          return () => {
+            for (const target of targets) {
+              for (const [eventName, handler] of listeners) {
+                target.removeEventListener(eventName, handler);
+              }
+            }
+          };
+        }, [primary, secondary]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts listeners released through an exhaustively replayed cleanup registry", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ target }) => {
+        useEffect(() => {
+          const cleanups = [];
+          const listen = (eventName, handler, options) => {
+            target.addEventListener(eventName, handler, options);
+            cleanups.push(() => target.removeEventListener(eventName, handler, options));
+          };
+          listen("wheel", () => undefined, { passive: false });
+          return () => {
+            for (const cleanup of cleanups) cleanup();
+          };
+        }, [target]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a timer on a discriminated object transferred into a cleanup-owned ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+      const C = ({ open }) => {
+        const pendingRef = useRef(null);
+        const cancel = () => {
+          if (pendingRef.current?.timer) clearInterval(pendingRef.current.timer);
+          pendingRef.current = null;
+        };
+        const schedule = useCallback(() => {
+          const pending = pendingRef.current;
+          if (pending?.source === "button") return;
+          if (pending?.source === "api") return;
+          const next = { source: "button", timer: null };
+          pendingRef.current = next;
+          next.timer = setInterval(open, 1000);
+        }, [open]);
+        useEffect(() => () => cancel(), []);
+        return <button onClick={schedule} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps a callback-ref session with mismatched stored listener metadata", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+      const C = () => {
+        const listenerRef = useRef(null);
+        const setNode = useCallback((element) => {
+          if (listenerRef.current) {
+            listenerRef.current.element.removeEventListener("wheel", listenerRef.current.handler);
+          }
+          if (!element) return;
+          const handler = () => undefined;
+          element.addEventListener("wheel", handler);
+          listenerRef.current = { element, handler: () => undefined };
+        }, []);
+        return <button ref={setNode} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a symmetric listener loop whose collection mutates before cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ first, second }) => {
+        useEffect(() => {
+          const nodes = [first, second].filter(Boolean);
+          const handler = () => undefined;
+          for (const node of nodes) node.addEventListener("wheel", handler);
+          nodes.pop();
+          return () => {
+            for (const node of nodes) node.removeEventListener("wheel", handler);
+          };
+        }, [first, second]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a tuple listener loop when one registration uses capture", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ target }) => {
+        useEffect(() => {
+          const listeners = [["wheel", () => undefined, { capture: true }]];
+          for (const [eventName, handler, options] of listeners) {
+            target.addEventListener(eventName, handler, options);
+          }
+          return () => {
+            for (const [eventName, handler] of listeners) {
+              target.removeEventListener(eventName, handler);
+            }
+          };
+        }, [target]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a cleanup registry replay that exits before every disposer runs", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+      const C = ({ target }) => {
+        useEffect(() => {
+          const cleanups = [];
+          const listen = (eventName, handler) => {
+            target.addEventListener(eventName, handler);
+            cleanups.push(() => target.removeEventListener(eventName, handler));
+          };
+          listen("wheel", () => undefined);
+          return () => {
+            for (const cleanup of cleanups) {
+              if (Math.random() > 0.5) break;
+              cleanup();
+            }
+          };
+        }, [target]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a ref timer when its discriminant guard misses a stored variant", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useEffect, useRef } from "react";
+      const C = ({ open, source }) => {
+        const pendingRef = useRef(null);
+        const cancel = () => {
+          if (pendingRef.current?.timer) clearInterval(pendingRef.current.timer);
+          pendingRef.current = null;
+        };
+        const schedule = useCallback(() => {
+          const pending = pendingRef.current;
+          if (pending?.source === "button") return;
+          if (pending?.source === "api") return;
+          const next = { source, timer: null };
+          pendingRef.current = next;
+          next.timer = setInterval(open, 1000);
+        }, [open, source]);
+        useEffect(() => () => cancel(), []);
+        return <button onClick={schedule} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("keeps a timer cleanup returned to a caller that discards it", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+      const C = ({ open }) => {
+        const schedule = useCallback(() => {
+          const timer = setInterval(open, 1000);
+          return () => clearInterval(timer);
+        }, [open]);
+        return <button onClick={schedule} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

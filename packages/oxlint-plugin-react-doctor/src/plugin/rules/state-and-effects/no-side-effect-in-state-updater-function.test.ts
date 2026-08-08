@@ -1664,6 +1664,45 @@ const C=()=>{
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each([
+    "const method = replace ? 'replaceState' : 'pushState'; window.history[method](null, '', href)",
+    "window.history[replace ? 'replaceState' : 'pushState'](null, '', href)",
+    "const suffix = 'State'; const method = 'push' + suffix; globalThis.history[method](null, '', href)",
+  ])("flags statically finite computed History API mutations: %s", (mutation) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const C = ({ href, replace }) => {
+        const [, setParams] = useState(new URLSearchParams());
+        setParams((previous) => {
+          const next = new URLSearchParams(previous);
+          ${mutation};
+          return next;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "const method = replace ? 'go' : 'back'; window.history[method]()",
+    "let method = 'pushState'; method = 'go'; window.history[method]()",
+    "const method = getMethod(); window.history[method]()",
+  ])("does not flag unknown or non-mutating computed History calls: %s", (mutation) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const C = ({ replace, getMethod }) => {
+        const [, setValue] = useState(0);
+        setValue((previous) => {
+          ${mutation};
+          return previous;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a shadowed History-like object", () => {
     const result = runRule(
       noSideEffectInStateUpdaterFunction,

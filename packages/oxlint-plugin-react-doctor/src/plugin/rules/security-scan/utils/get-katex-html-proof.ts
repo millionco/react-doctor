@@ -4,6 +4,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../../semantic/scope-an
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { getFinalSequenceExpressionValue } from "../../../utils/get-final-sequence-expression-value.js";
+import { getAssignedExpressionForWrite } from "../../../utils/get-assigned-expression-for-write.js";
 import { getImportDeclarationForSymbol } from "../../../utils/get-import-declaration-for-symbol.js";
 import { getImportedName } from "../../../utils/get-imported-name.js";
 import { getStaticLogicalExpressionResultBranches } from "../../../utils/get-static-logical-expression-result-branches.js";
@@ -155,6 +156,81 @@ const isReactUseMemo = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
 };
 
 const isAllOpeningAngleBracketsEscaped = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const getRegularExpression = (
+    expression: EsTreeNode,
+  ): { pattern: string; flags: string } | null => {
+    const value = stripParenExpression(expression);
+    if (isNodeOfType(value, "Identifier")) {
+      const symbol = resolveConstIdentifierAlias(value, scopes);
+      if (
+        !symbol ||
+        symbol.kind !== "const" ||
+        !symbol.initializer ||
+        symbol.references.some((reference) => reference.flag !== "read")
+      ) {
+        return null;
+      }
+      return getRegularExpression(symbol.initializer);
+    }
+    if (!isNodeOfType(value, "Literal") || !("regex" in value) || !value.regex) return null;
+    return value.regex;
+  };
+  const getFunctionReturnExpression = (expression: EsTreeNode): EsTreeNode | null => {
+    const value = stripParenExpression(expression);
+    if (!isFunctionLike(value)) return null;
+    if (!isNodeOfType(value.body, "BlockStatement")) return value.body;
+    if (value.body.body.length !== 1) return null;
+    const statement = value.body.body[0];
+    return statement && isNodeOfType(statement, "ReturnStatement") ? statement.argument : null;
+  };
+  const isSafeEscapeTableCallback = (expression: EsTreeNode): boolean => {
+    const callback = stripParenExpression(expression);
+    if (!isFunctionLike(callback) || callback.params.length !== 1) return false;
+    const parameter = callback.params[0];
+    const returnedExpression = getFunctionReturnExpression(callback);
+    if (
+      !parameter ||
+      !isNodeOfType(parameter, "Identifier") ||
+      !returnedExpression ||
+      !isNodeOfType(returnedExpression, "MemberExpression") ||
+      !returnedExpression.computed ||
+      !isNodeOfType(stripParenExpression(returnedExpression.property), "Identifier")
+    ) {
+      return false;
+    }
+    const property = stripParenExpression(returnedExpression.property);
+    if (
+      scopes.referenceFor(property)?.resolvedSymbol !== scopes.symbolFor(parameter) ||
+      !isNodeOfType(stripParenExpression(returnedExpression.object), "Identifier")
+    ) {
+      return false;
+    }
+    const tableIdentifier = stripParenExpression(returnedExpression.object);
+    const tableSymbol = resolveConstIdentifierAlias(tableIdentifier, scopes);
+    if (
+      !tableSymbol ||
+      tableSymbol.kind !== "const" ||
+      !tableSymbol.initializer ||
+      tableSymbol.references.some((reference) => reference.flag !== "read")
+    ) {
+      return false;
+    }
+    const openingAngleReplacement = getOrderedObjectPropertyValue(tableSymbol.initializer, "<");
+    if (
+      !openingAngleReplacement.isKnown ||
+      !openingAngleReplacement.value ||
+      !isNodeOfType(stripParenExpression(openingAngleReplacement.value), "Literal")
+    ) {
+      return false;
+    }
+    const replacement = stripParenExpression(openingAngleReplacement.value);
+    if (!isNodeOfType(replacement, "Literal")) return false;
+    return (
+      typeof replacement.value === "string" &&
+      !replacement.value.includes("<") &&
+      !replacement.value.includes("$")
+    );
+  };
   let current = stripParenExpression(node);
   let didEscapeEveryOpeningAngleBracket = false;
   while (isNodeOfType(current, "CallExpression")) {
@@ -164,25 +240,24 @@ const isAllOpeningAngleBracketsEscaped = (node: EsTreeNode, scopes: ScopeAnalysi
     if (methodName !== "replace" && methodName !== "replaceAll") return false;
     const searchValue = current.arguments[0];
     const replacementValue = current.arguments[1];
-    if (
-      !searchValue ||
-      !replacementValue ||
-      !isNodeOfType(replacementValue, "Literal") ||
-      typeof replacementValue.value !== "string" ||
-      replacementValue.value.includes("<") ||
-      replacementValue.value.includes("$")
-    ) {
-      return false;
-    }
-    if (isNodeOfType(searchValue, "Literal")) {
-      const regularExpression = "regex" in searchValue ? searchValue.regex : undefined;
-      const replacesLiteralOpeningAngleBracket =
-        methodName === "replaceAll" && searchValue.value === "<";
-      const replacesGlobalOpeningAngleBracketPattern =
-        regularExpression?.pattern === "<" && regularExpression.flags.includes("g");
-      if (replacesLiteralOpeningAngleBracket || replacesGlobalOpeningAngleBracketPattern) {
-        didEscapeEveryOpeningAngleBracket = true;
-      }
+    if (!searchValue || !replacementValue) return false;
+    const literalReplacementIsSafe =
+      isNodeOfType(replacementValue, "Literal") &&
+      typeof replacementValue.value === "string" &&
+      !replacementValue.value.includes("<") &&
+      !replacementValue.value.includes("$");
+    if (!literalReplacementIsSafe && !isSafeEscapeTableCallback(replacementValue)) return false;
+    const regularExpression = getRegularExpression(searchValue);
+    const replacesLiteralOpeningAngleBracket =
+      methodName === "replaceAll" &&
+      isNodeOfType(searchValue, "Literal") &&
+      searchValue.value === "<";
+    const replacesGlobalOpeningAngleBracketPattern =
+      Boolean(regularExpression?.flags.includes("g")) &&
+      (regularExpression?.pattern === "<" ||
+        /^\[[^\]]*<[^\]]*\]$/.test(regularExpression?.pattern ?? ""));
+    if (replacesLiteralOpeningAngleBracket || replacesGlobalOpeningAngleBracketPattern) {
+      didEscapeEveryOpeningAngleBracket = true;
     }
     current = stripParenExpression(callee.object);
   }
@@ -418,13 +493,17 @@ const getFunctionPropertyHtmlProof = (
   if (returnedExpressions.length === 0) return UNKNOWN_HTML_PROOF;
   const propertyProofs = returnedExpressions.map((returnedExpression) => {
     const propertyValue = getOrderedObjectPropertyValue(returnedExpression, propertyName);
-    if (!propertyValue.isKnown || propertyValue.value === null) return UNKNOWN_HTML_PROOF;
-    return getKatexHtmlProof(
-      propertyValue.value,
-      scopes,
-      new Set(visitedSymbolIds),
-      parameterProofs,
-    );
+    if (propertyValue.isKnown && propertyValue.value !== null) {
+      return getKatexHtmlProof(
+        propertyValue.value,
+        scopes,
+        new Set(visitedSymbolIds),
+        parameterProofs,
+      );
+    }
+    const expression = stripParenExpression(returnedExpression);
+    if (!isNodeOfType(expression, "CallExpression")) return UNKNOWN_HTML_PROOF;
+    return getCrossFileFunctionProof(expression, scopes, propertyName) ?? UNKNOWN_HTML_PROOF;
   });
   return combineHtmlProofs(propertyProofs);
 };
@@ -591,6 +670,74 @@ const getKatexCallProof = (
 ): KatexHtmlProof => {
   if (!isNodeOfType(node, "CallExpression")) return UNKNOWN_HTML_PROOF;
   const callee = stripParenExpression(node.callee);
+  if (isNodeOfType(callee, "MemberExpression") && getStaticPropertyName(callee) === "get") {
+    const receiver = stripParenExpression(callee.object);
+    if (isNodeOfType(receiver, "Identifier")) {
+      const mapSymbol = resolveConstIdentifierAlias(receiver, scopes);
+      const initializer = mapSymbol?.initializer
+        ? stripParenExpression(mapSymbol.initializer)
+        : null;
+      const initializerCallee =
+        initializer && isNodeOfType(initializer, "NewExpression")
+          ? stripParenExpression(initializer.callee)
+          : null;
+      if (
+        mapSymbol?.kind === "const" &&
+        initializer &&
+        isNodeOfType(initializer, "NewExpression") &&
+        isNodeOfType(initializerCallee, "Identifier") &&
+        initializerCallee.name === "Map" &&
+        scopes.isGlobalReference(initializerCallee) &&
+        !visitedSymbolIds.has(mapSymbol.id)
+      ) {
+        const nextVisitedSymbolIds = new Set(visitedSymbolIds);
+        nextVisitedSymbolIds.add(mapSymbol.id);
+        const setValueProofs: KatexHtmlProof[] = [];
+        let hasUnsupportedReference = false;
+        for (const reference of mapSymbol.references) {
+          const member = reference.identifier.parent;
+          if (
+            reference.flag !== "read" ||
+            !member ||
+            !isNodeOfType(member, "MemberExpression") ||
+            member.object !== reference.identifier
+          ) {
+            hasUnsupportedReference = true;
+            break;
+          }
+          const methodName = getStaticPropertyName(member);
+          if (methodName === "size") continue;
+          const call = member.parent;
+          if (!call || !isNodeOfType(call, "CallExpression") || call.callee !== member) {
+            hasUnsupportedReference = true;
+            break;
+          }
+          if (
+            ["get", "has", "keys", "values", "entries", "clear", "delete"].includes(
+              methodName ?? "",
+            )
+          ) {
+            continue;
+          }
+          if (methodName !== "set" || !call.arguments[1]) {
+            hasUnsupportedReference = true;
+            break;
+          }
+          setValueProofs.push(
+            getKatexHtmlProof(
+              call.arguments[1],
+              scopes,
+              new Set(nextVisitedSymbolIds),
+              parameterProofs,
+            ),
+          );
+        }
+        if (!hasUnsupportedReference && setValueProofs.length > 0) {
+          return combineHtmlProofs(setValueProofs);
+        }
+      }
+    }
+  }
   const isRealKatexRenderer =
     (isNodeOfType(callee, "MemberExpression") &&
       getStaticPropertyName(callee) === "renderToString" &&
@@ -770,16 +917,27 @@ export const getKatexHtmlProof = (
     const symbol = scopes.referenceFor(node)?.resolvedSymbol;
     const parameterProof = symbol ? parameterProofs.get(symbol.id) : undefined;
     if (parameterProof) return parameterProof;
-    if (
-      !symbol ||
-      symbol.kind !== "const" ||
-      !symbol.initializer ||
-      visitedSymbolIds.has(symbol.id)
-    ) {
-      return UNKNOWN_HTML_PROOF;
-    }
+    if (!symbol || visitedSymbolIds.has(symbol.id)) return UNKNOWN_HTML_PROOF;
     const nextVisitedSymbolIds = new Set(visitedSymbolIds);
     nextVisitedSymbolIds.add(symbol.id);
+    if (symbol.kind === "let" || symbol.kind === "var") {
+      const assignedExpressions: EsTreeNode[] = [];
+      if (symbol.initializer) assignedExpressions.push(symbol.initializer);
+      for (const reference of symbol.references) {
+        if (reference.flag === "read") continue;
+        const assignedExpression = getAssignedExpressionForWrite(reference.identifier);
+        if (!assignedExpression) return UNKNOWN_HTML_PROOF;
+        assignedExpressions.push(assignedExpression);
+      }
+      return assignedExpressions.length === 0
+        ? UNKNOWN_HTML_PROOF
+        : combineHtmlProofs(
+            assignedExpressions.map((expression) =>
+              getKatexHtmlProof(expression, scopes, new Set(nextVisitedSymbolIds), parameterProofs),
+            ),
+          );
+    }
+    if (symbol.kind !== "const" || !symbol.initializer) return UNKNOWN_HTML_PROOF;
     return getKatexHtmlProof(symbol.initializer, scopes, nextVisitedSymbolIds, parameterProofs);
   }
   if (isNodeOfType(node, "CallExpression")) {
@@ -798,6 +956,20 @@ export const getKatexHtmlProof = (
         receiverInitializer &&
         isNodeOfType(receiverInitializer, "CallExpression")
       ) {
+        if (isReactUseMemo(receiverInitializer.callee, scopes)) {
+          const callback = receiverInitializer.arguments[0];
+          const callbackNode = callback ? stripParenExpression(callback) : null;
+          if (callbackNode && isFunctionLike(callbackNode)) {
+            const memoizedPropertyProof = getFunctionPropertyHtmlProof(
+              callbackNode,
+              propertyName,
+              scopes,
+              new Set(visitedSymbolIds),
+              parameterProofs,
+            );
+            if (memoizedPropertyProof.containsKatex) return memoizedPropertyProof;
+          }
+        }
         const crossFilePropertyProof = getCrossFileFunctionProof(
           receiverInitializer,
           scopes,

@@ -285,9 +285,131 @@ describe("no-loading-flag-reset-outside-finally", () => {
          };
        };`,
     ];
-    for (const source of sources) {
-      expect(runRule(noLoadingFlagResetOutsideFinally, source).diagnostics).toHaveLength(0);
+    for (const [sourceIndex, source] of sources.entries()) {
+      expect(
+        runRule(noLoadingFlagResetOutsideFinally, source).diagnostics,
+        `source ${sourceIndex}`,
+      ).toHaveLength(0);
     }
+  });
+
+  it("accepts an outer render identity claimed by a ref", () => {
+    const sources = [
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = ({ requestId }) => {
+         const [, setDeliveryPending] = useState(false);
+         const requestIdRef = useRef(requestId);
+         requestIdRef.current = requestId;
+         const deliver = useCallback(async () => {
+           const attemptedRequestId = requestId;
+           setDeliveryPending(true);
+           try { await send(); }
+           finally {
+             if (requestIdRef.current === attemptedRequestId) setDeliveryPending(false);
+           }
+         }, [requestId]);
+       };`,
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = ({ requestId }) => {
+         const [, setIsSending] = useState(false);
+         const activeRequestRef = useRef(requestId);
+         activeRequestRef.current = requestId;
+         const deliver = useCallback(async (request) => {
+           setIsSending(true);
+           try { await send(request); }
+           finally {
+             if (activeRequestRef.current === request.requestId) setIsSending(false);
+           }
+         }, []);
+       };`,
+    ];
+    for (const [sourceIndex, source] of sources.entries()) {
+      expect(
+        runRule(noLoadingFlagResetOutsideFinally, source).diagnostics,
+        `source ${sourceIndex}`,
+      ).toHaveLength(0);
+    }
+  });
+
+  it("accepts stale-owner exits when success and catch both clear", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useRef, useState } from "react";
+       const Preview = () => {
+         const [, setIsLoading] = useState(false);
+         const flightRef = useRef(0);
+         const load = async () => {
+           const flight = ++flightRef.current;
+           setIsLoading(true);
+           try {
+             await fetchFeed();
+             if (flight !== flightRef.current) return;
+             setIsLoading(false);
+           } catch {
+             if (flight !== flightRef.current) return;
+             setIsLoading(false);
+           }
+         };
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts react-hook-form setValue before a mirrored catch reset", () => {
+    const runSetValueCase = (importSource: string) =>
+      runRule(
+        noLoadingFlagResetOutsideFinally,
+        `import { useForm } from "${importSource}";
+         import { useRef, useState } from "react";
+         const Preview = () => {
+           const form = useForm();
+           const [, setIsLoading] = useState(false);
+           const loadRef = useRef(0);
+           const load = async () => {
+             const load = ++loadRef.current;
+             setIsLoading(true);
+             try {
+               await readFile();
+               if (load !== loadRef.current) return;
+               setIsLoading(false);
+             } catch {
+               if (load !== loadRef.current) return;
+               form.setValue("private_key", "");
+               setIsLoading(false);
+             }
+           };
+         };`,
+      );
+    expect(runSetValueCase("react-hook-form").diagnostics).toHaveLength(0);
+    expect(runSetValueCase("userland-form").diagnostics).toHaveLength(1);
+  });
+
+  it("accepts independent generation-guarded loaders sharing a ref", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `import { useCallback, useRef, useState } from "react";
+       const Preview = () => {
+         const [, setRefreshPending] = useState(false);
+         const generationRef = useRef(0);
+         const loadFirst = useCallback(async () => {
+           const generation = ++generationRef.current;
+           setRefreshPending(true);
+           try { await fetchFirst(); }
+           finally {
+             if (generation === generationRef.current) setRefreshPending(false);
+           }
+         }, []);
+         const loadSecond = useCallback(async () => {
+           const generation = ++generationRef.current;
+           setRefreshPending(true);
+           try { await fetchSecond(); }
+           finally {
+             if (generation === generationRef.current) setRefreshPending(false);
+           }
+         }, []);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("requires a proven current-operation ownership guard around a final reset", () => {

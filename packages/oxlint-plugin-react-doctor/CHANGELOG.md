@@ -1,5 +1,11 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.9
+
+### Patch Changes
+
+- [#1606](https://github.com/millionco/react-doctor/pull/1606) [`7f028ea`](https://github.com/millionco/react-doctor/commit/7f028ea904da08bba8e108b92a0d2bfb84254f2e) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting one-shot effect timers whose callbacks exit on a leading compound unmount guard.
+
 ## 0.9.8
 
 ### Patch Changes

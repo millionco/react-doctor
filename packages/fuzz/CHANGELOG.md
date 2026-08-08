@@ -1,5 +1,12 @@
 # @react-doctor/fuzz
 
+## 0.0.27
+
+### Patch Changes
+
+- Updated dependencies [[`7f028ea`](https://github.com/millionco/react-doctor/commit/7f028ea904da08bba8e108b92a0d2bfb84254f2e)]:
+  - oxlint-plugin-react-doctor@0.9.9
+
 ## 0.0.26
 
 ### Patch Changes

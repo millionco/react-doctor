@@ -1,5 +1,11 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.11
+
+### Patch Changes
+
+- [#1615](https://github.com/millionco/react-doctor/pull/1615) [`27a39de`](https://github.com/millionco/react-doctor/commit/27a39dede7ae41adb8895aefc589800bc56e6bc9) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize cleanup ownership, invalidation guards, and retained callback lifecycles in real-world timer and subscription patterns without hiding mismatched or unowned resources.
+
 ## 0.9.10
 
 ## 0.9.9

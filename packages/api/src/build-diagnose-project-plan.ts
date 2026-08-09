@@ -95,6 +95,7 @@ export const buildDiagnoseProjectPlan = async (
   const sourceFilesByDirectory = new Map<string, ReadonlyArray<SourceFileEntry>>();
   for (const sourceFilesByProjectDirectory of groupedSourceFiles) {
     for (const [projectDirectory, sourceFiles] of sourceFilesByProjectDirectory) {
+      if (sourceFiles.length === 0) continue;
       sourceFilesByDirectory.set(projectDirectory, sourceFiles);
     }
   }

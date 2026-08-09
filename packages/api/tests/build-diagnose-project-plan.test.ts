@@ -79,4 +79,24 @@ describe("buildDiagnoseProjectPlan", () => {
     ]);
     expect(plan.every((entry) => entry.precomputedSourceFiles === undefined)).toBe(true);
   });
+
+  it("falls back to project-local discovery for empty shared inventories", async () => {
+    const rootDirectory = createWorkspace();
+    const emptyProject = createProject(rootDirectory, "empty", 0);
+    const populatedProject = createProject(rootDirectory, "populated", 1);
+
+    const plan = await buildDiagnoseProjectPlan([
+      { directory: emptyProject },
+      { directory: populatedProject },
+    ]);
+
+    const emptyProjectPlanEntry = plan.find(
+      (entry) => entry.projectDefinition.directory === emptyProject,
+    );
+    const populatedProjectPlanEntry = plan.find(
+      (entry) => entry.projectDefinition.directory === populatedProject,
+    );
+    expect(emptyProjectPlanEntry?.precomputedSourceFiles).toBeUndefined();
+    expect(populatedProjectPlanEntry?.precomputedSourceFiles).toHaveLength(1);
+  });
 });

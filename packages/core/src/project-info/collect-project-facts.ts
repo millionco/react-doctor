@@ -18,7 +18,7 @@ import {
 import { isFile } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
 import { readPackageJson } from "./package-json.js";
-import { frameworkMergeRank } from "./detectors.js";
+import { frameworkMergeRank } from "./detect-framework.js";
 import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./rn-metadata.js";
 import { isPackageJsonSsrAware } from "./ssr-metadata.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";

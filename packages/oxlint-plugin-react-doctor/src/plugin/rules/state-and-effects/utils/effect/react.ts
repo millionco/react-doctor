@@ -507,9 +507,6 @@ export const isSyncStateSetterCall = (
   isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn) &&
   !resolvesToAsyncFunction(ref);
 
-export const isPropCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
-  isEventualCallTo(analysis, ref, (innerRef) => isPropAlias(analysis, innerRef));
-
 const HANDLER_NAMED_METHOD_PATTERN = /^(on|handle)[A-Z]/;
 const SYNCHRONOUS_CALLBACK_ARGUMENT_INDEX_BY_METHOD: ReadonlyMap<string, number> = new Map([
   ["every", FIRST_ARGUMENT_INDEX],

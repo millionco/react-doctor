@@ -6,6 +6,7 @@ export interface FuzzCorpusEntry {
   relativePath: string;
   code: string;
   ruleIds?: string[];
+  sourcePath?: string;
   verdict?: "pass" | "fail";
 }
 
@@ -13,19 +14,29 @@ export interface FuzzCorpusLoadOptions {
   maximumFiles?: number;
 }
 
-const CORPUS_FILE_PATTERN = /\.(tsx|jsx)$/;
+const CORPUS_FILE_PATTERN = /\.(tsx|ts|jsx|js)(?:\.txt)?$/;
 const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: (.+)$/m;
+const SOURCE_PATH_DIRECTIVE_PATTERN = /^\/\/ file-path: (.+)$/m;
 const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
 
-const readCorpusDirectives = (code: string): Pick<FuzzCorpusEntry, "ruleIds" | "verdict"> => {
+const isCorpusFileName = (fileName: string): boolean =>
+  CORPUS_FILE_PATTERN.test(fileName) &&
+  !fileName.endsWith(".d.ts") &&
+  !fileName.endsWith(".d.ts.txt");
+
+const readCorpusDirectives = (
+  code: string,
+): Pick<FuzzCorpusEntry, "ruleIds" | "sourcePath" | "verdict"> => {
   const ruleIds = RULE_DIRECTIVE_PATTERN.exec(code)?.[1]
     ?.split(",")
     .map((ruleId) => ruleId.trim())
     .filter(Boolean);
   const verdict = VERDICT_DIRECTIVE_PATTERN.exec(code)?.[1];
-  const directives: Pick<FuzzCorpusEntry, "ruleIds" | "verdict"> = {};
+  const sourcePath = SOURCE_PATH_DIRECTIVE_PATTERN.exec(code)?.[1]?.trim();
+  const directives: Pick<FuzzCorpusEntry, "ruleIds" | "sourcePath" | "verdict"> = {};
   if (ruleIds && ruleIds.length > 0) directives.ruleIds = ruleIds;
+  if (sourcePath) directives.sourcePath = sourcePath;
   if (verdict === "pass" || verdict === "fail") directives.verdict = verdict;
   return directives;
 };
@@ -53,7 +64,7 @@ const collectCorpusFilePaths = (rootDirectory: string, budget: number): string[]
         if (!SKIPPED_DIRECTORY_NAMES.has(name)) walk(fullPath);
         continue;
       }
-      if (!CORPUS_FILE_PATTERN.test(name)) continue;
+      if (!isCorpusFileName(name)) continue;
       if (stats.size > MAX_CORPUS_FILE_BYTES || stats.size === 0) continue;
       filePaths.push(fullPath);
     }
@@ -94,7 +105,7 @@ export const loadFuzzCorpus = (
       buckets.push(collectCorpusFilePaths(fullPath, maximumFiles));
       continue;
     }
-    if (CORPUS_FILE_PATTERN.test(name) && stats.size <= MAX_CORPUS_FILE_BYTES && stats.size > 0) {
+    if (isCorpusFileName(name) && stats.size <= MAX_CORPUS_FILE_BYTES && stats.size > 0) {
       looseFiles.push(fullPath);
     }
   }
@@ -118,7 +129,7 @@ export const loadFuzzCorpus = (
     try {
       const code = fs.readFileSync(fullPath, "utf8");
       entries.push({
-        relativePath: path.relative(corpusDirectory, fullPath),
+        relativePath: path.relative(corpusDirectory, fullPath).split(path.sep).join("/"),
         code,
         ...readCorpusDirectives(code),
       });

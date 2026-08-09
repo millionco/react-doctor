@@ -64,8 +64,12 @@ jobs:
       - run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Run tests
-        if: ${{ matrix.os != 'blacksmith-8vcpu-windows-2025' }}
+        if: ${{ matrix.os != 'blacksmith-8vcpu-windows-2025' && matrix.node-version != '20.19.0' }}
         run: pnpm test
+
+      - name: Run Node 20 tests serially
+        if: ${{ matrix.node-version == '20.19.0' }}
+        run: pnpm test --concurrency=1
 
       - name: Run Windows tests serially
         if: ${{ matrix.os == 'blacksmith-8vcpu-windows-2025' }}

@@ -17,4 +17,21 @@ describe("activeScanAbortRegistry", () => {
     expect(secondActiveController.signal.aborted).toBe(true);
     expect(unregisteredController.signal.aborted).toBe(false);
   });
+
+  it("leaves controllers registered during abort callbacks active", () => {
+    const activeController = new AbortController();
+    const registeredDuringAbortController = new AbortController();
+    activeController.signal.addEventListener("abort", () => {
+      activeScanAbortRegistry.register(registeredDuringAbortController);
+    });
+    activeScanAbortRegistry.register(activeController);
+
+    activeScanAbortRegistry.abortAll();
+
+    expect(activeController.signal.aborted).toBe(true);
+    expect(registeredDuringAbortController.signal.aborted).toBe(false);
+
+    activeScanAbortRegistry.abortAll();
+    expect(registeredDuringAbortController.signal.aborted).toBe(true);
+  });
 });

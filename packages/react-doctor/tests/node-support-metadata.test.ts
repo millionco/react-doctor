@@ -28,7 +28,7 @@ const packageManifests: PackageManifestExpectation[] = [
   {
     packagePath: "package.json",
     shouldDependOnPlatformNodeShared: false,
-    shouldDependOnEffect: false,
+    shouldDependOnEffect: true,
   },
   {
     packagePath: "packages/api/package.json",
@@ -66,6 +66,8 @@ const packageBuildConfigs = [
 ];
 
 describe("Node support metadata", () => {
+  const effectVersion = readPackageJson("package.json").dependencies?.effect;
+
   it("declares the same Node range across package manifests", () => {
     for (const { packagePath } of packageManifests) {
       const packageJson = readPackageJson(packagePath);
@@ -73,7 +75,9 @@ describe("Node support metadata", () => {
     }
   });
 
-  it("does not depend on the Undici-backed Effect platform package", () => {
+  it("keeps the Effect package family aligned without the Undici-backed platform", () => {
+    expect(effectVersion).toBeDefined();
+
     for (const {
       packagePath,
       shouldDependOnPlatformNodeShared,
@@ -85,14 +89,12 @@ describe("Node support metadata", () => {
       expect(dependencies["@effect/platform-node"], packagePath).toBeUndefined();
       expect(devDependencies["@effect/platform-node"], packagePath).toBeUndefined();
 
-      const expectedSharedDependency = shouldDependOnPlatformNodeShared
-        ? "4.0.0-beta.70"
-        : undefined;
+      const expectedSharedDependency = shouldDependOnPlatformNodeShared ? effectVersion : undefined;
       expect(dependencies["@effect/platform-node-shared"], packagePath).toBe(
         expectedSharedDependency,
       );
 
-      const expectedEffectDependency = shouldDependOnEffect ? "4.0.0-beta.70" : undefined;
+      const expectedEffectDependency = shouldDependOnEffect ? effectVersion : undefined;
       expect(dependencies.effect, packagePath).toBe(expectedEffectDependency);
     }
   });

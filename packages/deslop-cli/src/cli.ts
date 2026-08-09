@@ -3,46 +3,29 @@ import { DEFAULT_ROOT_DIRECTORY, EXIT_CODE_RUNTIME_ERROR } from "./constants.js"
 import type { AnalyzeOptions } from "./types.js";
 import { runAnalyze } from "./run-analyze.js";
 import { readPackageVersion } from "./utils/read-package-version.js";
+import { parsePathMappings } from "./utils/parse-path-mappings.js";
 
-const parsePathsOption = (rawPaths: string[] | undefined): Record<string, string[]> | undefined => {
-  if (!rawPaths || rawPaths.length === 0) return undefined;
-  const pathMap: Record<string, string[]> = {};
-  for (const entry of rawPaths) {
-    const separatorIndex = entry.indexOf("=");
-    const pattern = separatorIndex === -1 ? "" : entry.slice(0, separatorIndex);
-    const target = separatorIndex === -1 ? "" : entry.slice(separatorIndex + 1);
-    if (!pattern || !target) {
-      process.stderr.write(
-        `deslop: ignoring malformed --paths entry "${entry}" (expected "alias=target", e.g. "@app/*=src/*")\n`,
-      );
-      continue;
-    }
-    const existing = pathMap[pattern];
-    if (existing) {
-      existing.push(target);
-    } else {
-      pathMap[pattern] = [target];
-    }
+const toAnalyzeOptions = (root: string | undefined, optionValues: OptionValues): AnalyzeOptions => {
+  const parsedPathMappings = parsePathMappings(optionValues.paths);
+  for (const invalidEntry of parsedPathMappings.invalidEntries) {
+    process.stderr.write(
+      `deslop: ignoring malformed --paths entry "${invalidEntry}" (expected "alias=target", e.g. "@app/*=src/*")\n`,
+    );
   }
-  return Object.keys(pathMap).length > 0 ? pathMap : undefined;
+  return {
+    root: root ?? DEFAULT_ROOT_DIRECTORY,
+    entry: optionValues.entry,
+    ignore: optionValues.ignore,
+    extensions: optionValues.extensions,
+    tsconfig: optionValues.tsconfig,
+    paths: parsedPathMappings.paths,
+    reportTypes: Boolean(optionValues.reportTypes),
+    includeEntryExports: Boolean(optionValues.includeEntryExports),
+    json: Boolean(optionValues.json),
+    failOnIssues: Boolean(optionValues.failOnIssues),
+    failOnCycles: Boolean(optionValues.failOnCycles),
+  };
 };
-
-const toAnalyzeOptions = (
-  root: string | undefined,
-  optionValues: OptionValues,
-): AnalyzeOptions => ({
-  root: root ?? DEFAULT_ROOT_DIRECTORY,
-  entry: optionValues.entry,
-  ignore: optionValues.ignore,
-  extensions: optionValues.extensions,
-  tsconfig: optionValues.tsconfig,
-  paths: parsePathsOption(optionValues.paths),
-  reportTypes: Boolean(optionValues.reportTypes),
-  includeEntryExports: Boolean(optionValues.includeEntryExports),
-  json: Boolean(optionValues.json),
-  failOnIssues: Boolean(optionValues.failOnIssues),
-  failOnCycles: Boolean(optionValues.failOnCycles),
-});
 
 const runAnalyzeAction = async (
   root: string | undefined,

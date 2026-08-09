@@ -1,5 +1,53 @@
 # eslint-plugin-react-doctor
 
+## 0.9.11
+
+### Patch Changes
+
+- Updated dependencies [[`27a39de`](https://github.com/millionco/react-doctor/commit/27a39dede7ae41adb8895aefc589800bc56e6bc9)]:
+  - oxlint-plugin-react-doctor@0.9.11
+
+## 0.9.10
+
+### Patch Changes
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.9.10
+
+## 0.9.9
+
+### Patch Changes
+
+- Updated dependencies [[`7f028ea`](https://github.com/millionco/react-doctor/commit/7f028ea904da08bba8e108b92a0d2bfb84254f2e)]:
+  - oxlint-plugin-react-doctor@0.9.9
+
+## 0.9.8
+
+### Patch Changes
+
+- [#1590](https://github.com/millionco/react-doctor/pull/1590) [`13138a4`](https://github.com/millionco/react-doctor/commit/13138a4af515938a49a2e467d3922d2ef4f35fb4) Thanks [@aidenybai](https://github.com/aidenybai)! - Harden scan orchestration and cache persistence, modernize the Effect runtime, simplify package boundaries and analyzers, share cycle and suppression analysis, keep workflow paths inside the repository, and remove unused internals.
+
+- Updated dependencies [[`f27fd5d`](https://github.com/millionco/react-doctor/commit/f27fd5d136371c8164675ddf52da3742e248f7d8), [`13138a4`](https://github.com/millionco/react-doctor/commit/13138a4af515938a49a2e467d3922d2ef4f35fb4)]:
+  - oxlint-plugin-react-doctor@0.9.8
+
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies [[`3299454`](https://github.com/millionco/react-doctor/commit/3299454344b7ad44909a2d758fe1d4352b5e3e73)]:
+  - oxlint-plugin-react-doctor@0.9.7
+
+## 0.9.6
+
+### Patch Changes
+
+- [#1599](https://github.com/millionco/react-doctor/pull/1599) [`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize browser media capability and playback lifecycles without masking unrelated prop-driven state adjustments, and resolve cross-file helpers with dotted basenames.
+
+- [#1597](https://github.com/millionco/react-doctor/pull/1597) [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix derived-state detection through render-updated refs and avoid flagging finite timer lifecycle shutdowns as prop-driven state adjustments.
+
+- Updated dependencies [[`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754), [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19), [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d)]:
+  - oxlint-plugin-react-doctor@0.9.6
+
 ## 0.9.5
 
 ### Patch Changes

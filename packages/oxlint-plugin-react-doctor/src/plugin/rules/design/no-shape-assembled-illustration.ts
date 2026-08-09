@@ -171,14 +171,11 @@ const getStaticBooleanAttributeState = (
   if (!attribute) return false;
   if (!attribute.value) return true;
   const value = attribute.value;
-  if (isNodeOfType(value, "Literal"))
-    return value.value === false || value.value === null ? false : true;
+  if (isNodeOfType(value, "Literal")) return value.value !== false && value.value !== null;
   if (!isNodeOfType(value, "JSXExpressionContainer")) return null;
   const expression = stripParenExpression(value.expression);
   return isNodeOfType(expression, "Literal")
-    ? expression.value === false || expression.value === null
-      ? false
-      : true
+    ? expression.value !== false && expression.value !== null
     : null;
 };
 

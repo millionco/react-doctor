@@ -1,6 +1,6 @@
 import type { OxlintRuleSeverity } from "./types.js";
 
-export interface ExternalRule {
+interface ExternalRule {
   readonly key: string;
   readonly source: "react-compiler";
   readonly severity: OxlintRuleSeverity;

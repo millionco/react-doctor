@@ -19,6 +19,7 @@ import {
 } from "../src/format-result.js";
 import { resolveAnalyzeExitCode, runAnalyze } from "../src/run-analyze.js";
 import { validateRootDirectory } from "../src/utils/validate-root-directory.js";
+import { parsePathMappings } from "../src/utils/parse-path-mappings.js";
 import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
 
 const testDirectory = resolve(fileURLToPath(import.meta.url), "..");
@@ -117,6 +118,22 @@ describe("validateRootDirectory", () => {
     const validation = validateRootDirectory(simpleAppFixture);
     assert.equal(validation.isValid, true);
     assert.equal(validation.missingPackageJson, false);
+  });
+});
+
+describe("parsePathMappings", () => {
+  it("groups repeated aliases and returns malformed entries separately", () => {
+    const parsed = parsePathMappings([
+      "@app/*=src/*",
+      "@app/*=generated/*",
+      "missing-separator",
+      "=missing-pattern",
+    ]);
+
+    assert.deepEqual(parsed.paths, {
+      "@app/*": ["src/*", "generated/*"],
+    });
+    assert.deepEqual(parsed.invalidEntries, ["missing-separator", "=missing-pattern"]);
   });
 });
 

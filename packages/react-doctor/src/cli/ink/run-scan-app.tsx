@@ -23,7 +23,7 @@ import type {
   WorkspacePackage,
 } from "@react-doctor/core";
 import { createInvocationInspect } from "../../inspect.js";
-import type { ReactDoctorInspectOptions } from "../../inspect.js";
+import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { buildNoScoreMessage } from "../utils/build-no-score-message.js";
 import { hasIncompleteScoreAnalysis } from "../utils/has-incomplete-score-analysis.js";
 import type { InspectFlags } from "../utils/inspect-flags.js";
@@ -60,6 +60,10 @@ import { resolveBlockingLevel } from "../utils/resolve-blocking-level.js";
 import { resolveProjectTuiScanScope } from "../utils/resolve-project-tui-scan-scope.js";
 import { resolveProjectScan, type ResolvedProjectScan } from "../utils/resolve-project-scan.js";
 import { resolveTuiScanScope, type TuiScanScopePlan } from "../utils/resolve-tui-scan-scope.js";
+import {
+  partitionProjectScanOutcomes,
+  type ProjectScanOutcome,
+} from "../utils/project-scan-outcome.js";
 import { selectReportDiagnostics } from "../utils/select-report-diagnostics.js";
 import { shouldFailScanGate } from "../utils/should-fail-scan-gate.js";
 import { ProjectSelect } from "./components/project-select.js";
@@ -98,15 +102,10 @@ interface ScanPresentation {
   readonly verbose: boolean;
 }
 
-interface CompletedProjectScanOutcome {
-  readonly status: "completed";
+interface TuiProjectScan {
   readonly directory: string;
   readonly result: InspectResult;
   readonly config: ReactDoctorConfig | null;
-}
-
-interface SkippedProjectScanOutcome extends JsonReportSkippedProject {
-  readonly status: "skipped";
 }
 
 const qualifyDiagnosticPaths = (
@@ -646,7 +645,10 @@ const runMultiProjectScan = async (
     const scanOutcomes = await mapWithConcurrency(
       projectScans,
       DEFAULT_PROJECT_SCAN_CONCURRENCY,
-      async ({ projectScan, scopeOptions }) => {
+      async ({
+        projectScan,
+        scopeOptions,
+      }): Promise<ProjectScanOutcome<TuiProjectScan, JsonReportSkippedProject>> => {
         if (
           input.options?.deadlineEpochMs !== undefined &&
           remainingDeadlineBudgetMs(input.options.deadlineEpochMs) === 0
@@ -657,9 +659,8 @@ const runMultiProjectScan = async (
           );
           return {
             status: "skipped",
-            directory: projectScan.directory,
-            reason: "max-duration",
-          } satisfies SkippedProjectScanOutcome;
+            value: { directory: projectScan.directory, reason: "max-duration" },
+          };
         }
         const projectLabel =
           path.relative(rootDirectory, projectScan.directory) || path.basename(rootDirectory);
@@ -698,29 +699,24 @@ const runMultiProjectScan = async (
         await yieldToEventLoop();
         return {
           status: "completed",
-          directory: projectScan.directory,
-          result,
-          config: projectScan.config,
-        } satisfies CompletedProjectScanOutcome;
+          value: {
+            directory: projectScan.directory,
+            result,
+            config: projectScan.config,
+          },
+        };
       },
     );
+    const { completedScans, skippedScans } = partitionProjectScanOutcomes(scanOutcomes);
     const results = await retryMissingProjectScores(
-      scanOutcomes
-        .filter(
-          (scanOutcome): scanOutcome is CompletedProjectScanOutcome =>
-            scanOutcome.status === "completed",
-        )
-        .map((completedScan) => ({
-          ...completedScan,
-          isScoreDisabled: input.options?.noScore ?? completedScan.config?.noScore ?? false,
-        })),
+      completedScans.map((completedScan) => ({
+        ...completedScan,
+        isScoreDisabled: input.options?.noScore ?? completedScan.config?.noScore ?? false,
+      })),
     );
-    const skippedProjects = scanOutcomes
-      .filter(
-        (scanOutcome): scanOutcome is SkippedProjectScanOutcome => scanOutcome.status === "skipped",
-      )
-      .map(({ directory, reason }) => ({ directory, reason }))
-      .sort((left, right) => left.directory.localeCompare(right.directory));
+    const skippedProjects = skippedScans.sort((left, right) =>
+      left.directory.localeCompare(right.directory),
+    );
     if (skippedProjects.length > 0) {
       recordCount(METRIC.scanProjectSkipped, skippedProjects.length, {
         reason: "max-duration",

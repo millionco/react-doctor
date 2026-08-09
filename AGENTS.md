@@ -74,7 +74,7 @@ packages/
 
 ## Effect v4 Conventions
 
-Built on `effect@4.0.0-beta.70`. See `tmp/effect/.patterns/effect.md` (cloned reference)
+Built on `effect@4.0.0-beta.102`. See `tmp/effect/.patterns/effect.md` (cloned reference)
 and `~/Developer/react-doctor-evals/src/` (the application that pioneered these patterns
 for this codebase) for canonical examples.
 
@@ -158,9 +158,7 @@ for this codebase) for canonical examples.
   sibling `*Capture` service (e.g. `ReporterCapture`, `ProgressCapture`).
 - `layerNoop` for the production layer that has void-return / discard semantics
   (Reporter, Progress). Analyzers (Linter, DeadCode) use `layerOf([])` instead.
-- `layerComposite(backends)` for the slot a future second backend plugs into.
-- Implementation-specific names: `layerOxlint`, `layerHttp`, `layerNdjson(path)`,
-  `layerOra(factory)`.
+- Implementation-specific names: `layerOxlint`, `layerHttp`, `layerOra(factory)`.
 
 ### Schemas
 
@@ -184,138 +182,159 @@ for this codebase) for canonical examples.
 
 ### Observability
 
+Telemetry is split across two backends, deliberately:
+
+- **Axiom** takes traces and metrics — the per-run wide event, every
+  `Effect.fn("Service.method")` span, and all counters/distributions. Axiom bills
+  by ingested volume with no active-series limits, which is the model
+  high-cardinality wide events want.
+- **Sentry** takes crashes only. It keeps what it is good at: source-map
+  symbolication (`scripts/sentry-sourcemaps.mjs`), issue grouping, and a
+  quotable event id. Axiom has none of those.
+
+Effect exposes a single `Tracer` reference, so the two are mutually exclusive
+for spans: the CLI pins `tracesSampleRate: 0` and Sentry never records a span.
+
 - Wrap the top-level entry of a multi-step operation in `Effect.withSpan("name", { attributes })`.
   See `core/src/run-inspect.ts → runInspect` for the canonical shape. Attribute
   keys use dotted namespacing (`inspect.directory`, `inspect.isCi`).
 - Per-service-method spans come from `Effect.fn("Service.method")` — see Services section
   above. The two compose: `runInspect` is the parent span, every `Service.method` is a child.
-- Production observability layer is `layerOtlp` in `core/src/observability.ts`
-  (wired into both `inspect()` and `diagnose()`). It's a no-op unless the user
-  sets BOTH `REACT_DOCTOR_OTLP_ENDPOINT` (e.g. `https://api.axiom.co`) and
-  `REACT_DOCTOR_OTLP_AUTH_HEADER` (e.g. `Bearer <token>`) in the environment.
-  When both are set, it provides `Otlp.layerJson({...})` from
-  `effect/unstable/observability/Otlp` with `NodeHttpClient.layerUndici` as the
-  transport, so every `Effect.fn("Service.method")` span and every top-level
-  `Effect.withSpan("...")` ships to the configured backend. Eval reference:
-  `react-doctor-evals/src/Observability.ts → layerAxiom`.
-- **Sentry tracing (CLI only).** The published CLI bridges the same Effect spans
-  into Sentry. `cli/utils/apply-observability.ts` is the single chooser of the
-  tracer backend (Effect has one `Tracer` reference, so they're mutually
-  exclusive): user OTLP wins (and the Effect trace is parented under the Sentry
-  trace via `Tracer.externalSpan` for a shared `trace_id`); otherwise, when
-  Sentry performance tracing is live, `cli/utils/sentry-tracer.ts`
-  (`makeSentryTracer`) materializes each Effect span as a child Sentry span
-  under the per-run transaction (`cli/utils/with-sentry-run-span.ts`); otherwise
-  the no-op native tracer. All of this is gated by `isSentryTracingEnabled()` so
-  it's a true no-op for the `@react-doctor/api` library, `--no-score`, tests,
-  and `SENTRY_TRACES_SAMPLE_RATE=0`. Source maps are uploaded for symbolication
-  by `scripts/sentry-sourcemaps.mjs` (Debug IDs); the SDK `release`
-  (`react-doctor@<version>`) must match what that script uploads.
+- **Transport.** `core/src/observability.ts` owns three layers.
+  `layerAxiomTraces` and `layerAxiomMetrics` are composed by hand rather than via
+  `Otlp.layer`, because Axiom routes each signal to a different dataset through a
+  different header (`X-Axiom-Dataset` vs `x-axiom-metrics-dataset`) and
+  `Otlp.layer` passes one `headers` object to every signal. `layerObservability`
+  merges them and picks the backend: a user-configured `REACT_DOCTOR_OTLP_*`
+  endpoint wins over first-party Axiom, else Axiom, else `Layer.empty`.
+  Serialization is **protobuf**, not JSON — Axiom's `/v1/metrics` accepts
+  `application/x-protobuf` only. `OtlpSerialization.layerProtobuf` ships with
+  Effect and adds no dependency.
+- **Build the layer exactly once per process.** `cli/utils/telemetry-runtime.ts`
+  builds it into a long-lived scope and shares the resulting `Context`; the run
+  root span, the scan program, and the renderer all draw their tracer from it.
+  Two reasons this is not optional. Child spans nest under the run span natively,
+  with no `ExternalSpan` stitching. And Effect tracks delta-temporality state on
+  the _metrics exporter instance_, so a second exporter starts with no previous
+  snapshot and re-reports every counter's full value — silently doubling every
+  metric. `shutdownTelemetry()` is memoized for the same reason: several exit
+  paths can fire (a `--debug` user error flushes, then the top-level catch
+  flushes again). A regression test in `core/tests/telemetry-payload.test.ts`
+  pins the double-count behavior so a refactor that merges the layers fails loudly.
+- **Exit flush.** Closing the telemetry scope is what ships buffered spans and
+  metrics, bounded by `TELEMETRY_SHUTDOWN_TIMEOUT_MS` (1s — deliberately tighter
+  than Sentry's 2s error flush). The periodic `TELEMETRY_EXPORT_INTERVAL_MS` is
+  longer than any realistic run so the scope close is the only export. Note the
+  metrics exporter passes `maxBatchSize: "disabled"` internally, which skips
+  Effect's empty-buffer short-circuit — it POSTs on every scope close whether or
+  not anything was recorded, so on a firewalled machine that request cannot fail
+  fast. The language server overrides `exportIntervalMs` (see
+  `LSP_TELEMETRY_EXPORT_INTERVAL_MS`) because an editor session may never shut
+  down cleanly.
+- **Anonymization.** Telemetry must stay anonymized, and OTLP has **no**
+  `beforeSend`-style hook — the safety net Sentry gave us for free had to be
+  rebuilt. Two mechanisms now carry it:
+  - `core/src/utils/make-scrubbing-tracer.ts` wraps the tracer so every span
+    name, attribute value, and event payload passes through `anonymizeText`
+    (home dir / username → `~`, then secrets and emails redacted) on the way to
+    the exporter. It is applied inside `layerAxiomTraces`, so an attribute added
+    later cannot bypass it.
+  - `cli/utils/record-metric.ts` scrubs attribute values at the emit site, since
+    metrics never touch the tracer.
+
+  Call sites should still scrub at the source — `run-inspect.ts` wraps
+  `inspect.directory` in `scrubSensitivePaths` — and the tracer is the backstop
+  for the ones that don't. `scrub-sentry-event.ts` still runs as Sentry's
+  `beforeSend` for crash reports. If you add a field to any payload, confirm it
+  carries no username, hostname, IP, secret, or absolute path.
+
 - **Sentry scope shape.** `cli/utils/build-sentry-scope.ts` is the one place that
-  projects the run snapshot (and the scanned project, once known) into Sentry
-  `tags` + `contexts`; both `instrument.ts` (`initialScope`) and
-  `report-error.ts` consume it, so add new metadata there, not at call sites.
-  Project info is captured in the `beforeLint` hook via
-  `recordSentryProjectContext` (`with-sentry-run-span.ts`), which both remembers
-  it for the lazy error path (a module-level ref read by `buildSentryScope`,
-  mirroring how `buildRunContext` reads ambient state at capture time) and sets
-  it as root-span attributes for the live transaction.
-- **Sentry anonymization.** Telemetry must stay anonymized. `Sentry.init` sets
-  `sendDefaultPii: false`, and `beforeSend` + `beforeSendTransaction` both run
-  `scrubSentryEvent` (`cli/utils/scrub-sentry-event.ts`): it strips
-  hostname/`server_name`/device name and the IP-bearing `user`, drops captured
-  stack-frame local variables, and runs every remaining string (messages,
-  frames, contexts, extra, tags, breadcrumbs, and span attributes like
-  `inspect.directory`) through `scrubSensitivePaths` (home dir / username →
-  `~`, in `cli/utils/scrub-sensitive-text.ts`) + core's `redactSensitiveText`
-  (secrets/emails). `buildRunContext` also scrubs `cwd`/`argv` at the source. If
-  you add a new field to any Sentry event, confirm it carries no username,
-  hostname, IP, secret, or absolute path — and prefer adding it through
-  `buildSentryScope` so the central scrub covers it. `scrubSentryEvent` returns
-  `null` on any failure so an un-anonymized event is never sent.
+  projects the run snapshot (and the scanned project, once known) into `tags` +
+  `contexts`. Both `instrument.ts` (`initialScope`) and `report-error.ts` consume
+  it, and `record-metric.ts` reprojects its `tags` onto every metric at emit
+  time — so add new run-level metadata there, not at call sites. Project info is
+  captured via `recordSentryProjectContext` (`with-run-span.ts`), which both
+  remembers it for the lazy error path and sets it as root-span attributes.
 - **Crash references + trace linkage.** `reportErrorToSentry` returns the Sentry
   event id; the CLI catch blocks thread it into `handleError` so it's printed as
-  a user-quotable reference and added to the prefilled GitHub issue. Errors
-  thrown during a scan are linked to the run transaction by capturing them with
-  the run's trace as the scope's propagation context — `withSentryRunSpan`
-  records the live trace in `active-run-trace.ts` (cleared only on success, so
-  the command catch — which runs after the span ends — can still read it), and
-  `reportErrorToSentry` re-attaches via `scope.setPropagationContext`.
-- **Sentry metrics (CLI only).** Anonymized Application Metrics (counters +
-  distributions) are emitted through `cli/utils/record-metric.ts`
-  (`recordCount` / `recordDistribution`), each guarded so it's a true no-op
-  unless `Sentry.isInitialized()` — inert for `--no-score`, tests,
-  and the `@react-doctor/api` library — and independent of `tracesSampleRate`
-  (metrics flow even when tracing is off). Metric names live in the `METRIC` map
-  in `cli/utils/constants.ts` (dotted, domain-grouped; high-cardinality
-  dimensions go in attributes, never the name). The run snapshot — and, once a
-  scan discovers it, the project shape — is merged onto **every metric at emit
-  time** by `record-metric.ts`'s `withRunAttributes`, which reprojects
-  `buildSentryScope().tags` per emit. This mirrors how events rebuild
-  `buildSentryScope` lazily, so metrics track runtime state (`--json` mode, a
-  workspace scan's project rolling over, the project clearing on
-  `resetSentryRunState`) rather than a stale init-time snapshot, and the
-  attributes pass through `beforeSendMetric` scrubbing like any other. Emit
-  sites pass only metric-specific attributes; the project shape comes from
-  `recordSentryProjectContext` → `getSentryProjectInfo()`. Per-scan metrics
-  (`scan.*`, `rule.fired`, `lint.failed`, …) are
-  emitted by `cli/utils/record-scan-metrics.ts`; `rule.fired` is one
-  high-cardinality counter keyed by `rule`/`plugin`/`category`/`severity`
-  attributes (never a metric-name-per-rule). Anonymization: `Sentry.init` sets
-  `beforeSendMetric: scrubSentryMetric` (`cli/utils/scrub-sentry-metric.ts`),
-  which drops the `server.address` hostname attribute (the SDK adds it to the
-  metric _before_ the hook, so the strip lands) and scrubs paths/secrets from
-  attribute values via the shared `cli/utils/anonymize-text.ts` (also used by
-  `scrubSentryEvent`), returning `null` to drop on failure. Add new counters
-  through `record-metric.ts` + the `METRIC` map, and confirm any new attribute
-  carries no username, path, or secret.
-- **Sentry canonical run wide event (CLI only).** The richest telemetry is one
-  high-dimensionality "wide event" per scan, not a pile of narrow counters: the
-  per-run root span (`withSentryRunSpan`) is enriched with the full outcome by
+  a user-quotable reference and added to the prefilled GitHub issue. Because
+  spans now live in Axiom, Sentry's native trace linkage no longer reaches them —
+  instead the crash is tagged with `axiomTraceId` and `runId`, so a Sentry issue
+  pivots straight into the run's Axiom trace. `--debug` prints that same trace id.
+- **Metrics.** `cli/utils/record-metric.ts` (`recordCount` / `recordDistribution`)
+  writes into Effect's process-global `MetricRegistry`, which the OTLP exporter
+  snapshots at flush. Both are guarded by `isTelemetryEnabled()` so they are true
+  no-ops under `--no-score` / `--no-telemetry`, in tests, and for the
+  `@react-doctor/api` library. Metric names live in the `METRIC` map in
+  `cli/utils/constants.ts` (dotted, domain-grouped; high-cardinality dimensions
+  go in attributes, never the name). Two constraints differ from Sentry:
+  Effect metric attributes are **string-only**, so numbers and booleans are
+  stringified (`null`/`undefined` are dropped, never coerced to `"null"`); and
+  histograms need explicit bucket boundaries, so all distributions share
+  `METRIC_DISTRIBUTION_BOUNDARIES`. Per-scan metrics (`scan.*`, `rule.fired`,
+  `lint.failed`, …) are emitted by `cli/utils/record-scan-metrics.ts`;
+  `rule.fired` is one high-cardinality counter keyed by
+  `rule`/`plugin`/`category`/`severity` attributes (never a metric-name-per-rule).
+- **The canonical run wide event.** The richest telemetry is one
+  high-dimensionality wide event per scan, not a pile of narrow counters: the
+  per-run root span (`with-run-span.ts`) is enriched with the full outcome by
   `cli/utils/build-run-event.ts` (`recordRunEvent`, plus the pure, testable
   `buildRunEventAttributes`). `inspect.ts` calls it on the success path (after
   `recordScanMetrics`) and, via a `try/catch` around the span body, on the
   failure path — so the event lands with an `outcome.status` (`clean`/`ok`/
   `blocked`/`error`), `outcome.exitCode`, and `outcome.errorTag` taxonomy even
-  when the scan throws. The run + project base context is already on the span
-  (run tags from `withSentryRunSpan`, project shape from
-  `recordSentryProjectContext`), so the event adds only what those don't — every
-  attribute namespaced by concept via `withNamespace` (`cli/utils/with-namespace.ts`)
-  so the keys tree up in Sentry's attribute browser: scan config (`scan.mode`,
-  `scan.parallel`, `scan.workerCount`, `scan.rulesConfigured`/`scan.rulesDisabled`,
-  `scan.ignoredTagCount`, `scan.hasCustomConfig`, … plus the `scan.fileCount`
-  extent), the verdict (`outcome.wouldBlock`/`outcome.blocking`/`outcome.clean`/
-  `outcome.skippedChecks`), findings (`diag.total`, `diag.errors`/`diag.warnings`,
-  `diag.affectedFiles`, `diag.distinctRules`, `diag.topRule`, per-category
-  `diag.category.*`), `score.value`/`score.label`/`score.available`, the
-  `lint.*`/`deadCode.*`/`supplyChain.*` pass outcomes, `timing.*` durations, and
-  the CI/PR specifics (`action.actorAssociation`, `action.runnerOs`, and the
-  forwarded action knobs `action.comment`/`action.reviewComments`/
-  `action.versionPin`). Typing matters for querying: numeric outcomes are numbers
-  (so Sentry can do `p75(score.value)`), dimensions are strings/bools (so they
-  filter/group); `null` is dropped via `toSpanAttributes` so absent signals never
-  become `"null"`. Query it in Sentry's **Trace Explorer** and build **Dashboard
-  widgets on the Spans dataset** (filter/group by any attribute) instead of
-  pre-aggregating counters. Put new run-level dimensions on `build-run-context.ts`
-  → `build-sentry-scope.ts` (now also the `eventName` + `viaAction` tags) so they
-  ride every event and metric; put per-scan outcome dimensions on the wide event
-  (wrapped in `withNamespace`), **not** new counters (we deliberately did not add
-  `ci.*` counters — those dims are wide-event attributes; the `scan.completed`/
-  `scan.duration`/`rule.fired` metric counters stay as the cheap,
-  trace-sampling-independent floor alongside `cli.invoked`/`cli.error`). Score
-  reachability is derivable (`!score.available && !lint.failed && !deadCode.failed && !scan.noScore` — failed passes null the score deliberately) and
-  score latency is the `Score.compute` child span's duration, so neither needs a
-  dedicated field. CI detection + the official-action marker and forwarded
-  inputs live in `cli/utils/is-ci-environment.ts`; `action.yml` sets the
+  when the scan throws. The run + project base context is already on the span, so
+  the event adds only what that doesn't — every attribute namespaced by concept
+  via `withNamespace` (`cli/utils/with-namespace.ts`) so the keys tree up in the
+  attribute browser: scan config (`scan.mode`, `scan.parallel`, `scan.workerCount`,
+  `scan.rulesConfigured`/`scan.rulesDisabled`, `scan.ignoredTagCount`,
+  `scan.hasCustomConfig`, … plus the `scan.fileCount` extent), the verdict
+  (`outcome.wouldBlock`/`outcome.blocking`/`outcome.clean`/`outcome.skippedChecks`),
+  findings (`diag.total`, `diag.errors`/`diag.warnings`, `diag.affectedFiles`,
+  `diag.distinctRules`, `diag.topRule`, per-category `diag.category.*`),
+  `score.value`/`score.label`/`score.available`, the `lint.*`/`deadCode.*`/
+  `supplyChain.*` pass outcomes, `timing.*` durations, and the CI/PR specifics
+  (`action.actorAssociation`, `action.runnerOs`, and the forwarded action knobs
+  `action.comment`/`action.reviewComments`/`action.versionPin`). Typing matters
+  for querying: numeric outcomes are numbers (so you can take `p75(score.value)`),
+  dimensions are strings/bools (so they filter/group); `null` is dropped via
+  `toSpanAttributes` so absent signals never become `"null"`. Query it with APL
+  over the traces dataset and build dashboards there instead of pre-aggregating
+  counters. Put new run-level dimensions on `build-run-context.ts` →
+  `build-sentry-scope.ts` so they ride every event and metric; put per-scan
+  outcome dimensions on the wide event (wrapped in `withNamespace`), **not** new
+  counters — the `scan.completed`/`scan.duration`/`rule.fired` counters stay as
+  the cheap floor alongside `cli.invoked`/`cli.error`. Score reachability is
+  derivable (`!score.available && !lint.failed && !deadCode.failed && !scan.noScore`)
+  and score latency is the `Score.compute` child span's duration, so neither
+  needs a dedicated field. CI detection + the official-action marker and
+  forwarded inputs live in `cli/utils/is-ci-environment.ts`; `action.yml` sets the
   `REACT_DOCTOR_GITHUB_ACTION` marker + `REACT_DOCTOR_ACTION_*` env on its scan
-  step. All attributes pass through `scrubSentryEvent`; keep them free of
-  username, path, secret, and repo/owner identity.
+  step. Keep every attribute free of username, path, secret, and repo/owner identity.
+- **Opt-out.** `cli/utils/is-telemetry-enabled.ts` is the single gate for every
+  backend: `--no-score`, `--no-telemetry`, `REACT_DOCTOR_NO_TELEMETRY`, or a test
+  run disables all of it. Blanking `SENTRY_DSN` alone no longer silences
+  anything, so internal tooling that must not report (the evals harness, the
+  benchmark environment, the delta-audit runner) sets `REACT_DOCTOR_NO_TELEMETRY`.
+- **Credentials.** The Axiom ingest token is embedded in `cli/utils/constants.ts`
+  (`AXIOM_INGEST_TOKEN`), mirroring the public Sentry DSN — but unlike a DSN it is
+  a real credential, so it is minted **ingest-only and scoped to the two
+  datasets**. It ships in the tarball and is therefore extractable: rotation means
+  cutting a release, and an Axiom monitor on anomalous ingest volume is the
+  detection. `cli/utils/resolve-axiom-telemetry-options.ts` resolves it (with
+  `REACT_DOCTOR_AXIOM_TOKEN` / `_DOMAIN` / `_DATASET` overrides for local
+  testing — deliberately prefixed, since the bare `AXIOM_*` names are Axiom's
+  own and reading them would hijack the telemetry of anyone already running it)
+  and returns `null` when unset, so an unconfigured build simply doesn't export.
+  Core never reads these itself — keeping them CLI-side is what makes
+  `@react-doctor/api` silent by construction rather than by a runtime guard.
 - **runId.** `cli/utils/run-id.ts` mints one random `runId` per CLI run
-  (process). It rides the Sentry `run` context (and thus the wide event) but is
-  **never** a tag or metric attribute — a per-run unique value there would
-  explode tag/counter cardinality. A workspace invocation scanning several
-  projects shares one `runId`; the per-project span attributes disambiguate. Do
-  not add a plaintext or hashed repo id to Sentry.
+  (process). It rides the Sentry `run` context and the wide event, and is a tag
+  only on crash reports (where it links to the Axiom trace) — never a metric
+  attribute, where a per-run unique value would explode counter cardinality. A
+  workspace invocation scanning several projects shares one `runId`; the
+  per-project span attributes disambiguate. Do not add a plaintext or hashed repo
+  id to either backend.
 
 ### Console / logging
 

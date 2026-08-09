@@ -240,7 +240,7 @@ export const getFunctionSynchronousInvocationPathsBefore = (
   });
 };
 
-export const isFunctionSynchronouslyInvokedBefore = (
+const isFunctionSynchronouslyInvokedBefore = (
   functionNode: EsTreeNode,
   referenceNode: EsTreeNode,
   scopes: ScopeAnalysis,

@@ -28,15 +28,7 @@
 // rooted at `rootDir` (matching core's whole-result dead-code cache), so
 // manifest edits ABOVE the scanned root share that cache's accepted gap.
 import crypto from "node:crypto";
-import {
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { Minimatch } from "minimatch";
@@ -49,6 +41,7 @@ import {
   SUMMARY_CACHE_MAX_BYTES,
   SUMMARY_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
+import { atomicWriteFile } from "./utils/atomic-write-file.js";
 import { toPosixPath } from "./utils/to-posix-path.js";
 
 export type PackageFactKind = "substring" | "importReference";
@@ -363,33 +356,29 @@ const emptyStore = (scopeHash: string): PersistedSummaryCache => ({
   packageFacts: {},
 });
 
-// Top-level shape validation only; every entry is re-validated at lookup time
-// so hand-corrupted (yet JSON-valid) entries degrade to per-item misses. The
-// single boundary cast is the JSON-revival idiom shared with core's
-// `failOpenReadJson`.
+const isPersistedSummaryCache = (value: unknown): value is PersistedSummaryCache =>
+  isRecordValue(value) &&
+  value.version === SUMMARY_CACHE_SCHEMA_VERSION &&
+  typeof value.scopeHash === "string" &&
+  isRecordValue(value.summaries) &&
+  isRecordValue(value.packageFacts);
+
 const readPersistedStore = (cachePath: string, scopeHash: string): PersistedSummaryCache => {
   try {
     const parsed: unknown = JSON.parse(readFileSync(cachePath, "utf-8"));
-    if (
-      isRecordValue(parsed) &&
-      parsed.version === SUMMARY_CACHE_SCHEMA_VERSION &&
-      parsed.scopeHash === scopeHash &&
-      isRecordValue(parsed.summaries) &&
-      isRecordValue(parsed.packageFacts)
-    ) {
-      const persisted = parsed as unknown as PersistedSummaryCache;
+    if (isPersistedSummaryCache(parsed) && parsed.scopeHash === scopeHash) {
       return {
         version: SUMMARY_CACHE_SCHEMA_VERSION,
         scopeHash,
-        fileList: isRecordValue(persisted.fileList) ? persisted.fileList : null,
+        fileList: isRecordValue(parsed.fileList) ? parsed.fileList : null,
         resolutions:
-          isRecordValue(persisted.resolutions) &&
-          typeof persisted.resolutions.hash === "string" &&
-          isRecordValue(persisted.resolutions.entries)
-            ? persisted.resolutions
+          isRecordValue(parsed.resolutions) &&
+          typeof parsed.resolutions.hash === "string" &&
+          isRecordValue(parsed.resolutions.entries)
+            ? parsed.resolutions
             : null,
-        summaries: persisted.summaries,
-        packageFacts: persisted.packageFacts,
+        summaries: parsed.summaries,
+        packageFacts: parsed.packageFacts,
       };
     }
   } catch {
@@ -463,29 +452,29 @@ const PERSISTED_SOURCE_ARRAY_FIELDS = [
   "errors",
 ] as const;
 
+const isPersistedParsedSource = (value: unknown): value is PersistedParsedSource =>
+  isRecordValue(value) &&
+  PERSISTED_SOURCE_ARRAY_FIELDS.every((fieldName) => isOptionalArray(value[fieldName]));
+
 const reviveParsedSource = (persisted: unknown): ParsedSource | null => {
-  if (!isRecordValue(persisted)) return null;
-  for (const fieldName of PERSISTED_SOURCE_ARRAY_FIELDS) {
-    if (!isOptionalArray(persisted[fieldName])) return null;
-  }
-  const source = persisted as unknown as PersistedParsedSource;
-  const persistedErrors = source.errors ?? [];
+  if (!isPersistedParsedSource(persisted)) return null;
+  const persistedErrors = persisted.errors ?? [];
   if (!persistedErrors.every(isPersistedErrorJson)) return null;
   return {
-    imports: source.imports ?? [],
-    exports: source.exports ?? [],
-    memberAccesses: source.memberAccesses ?? [],
-    wholeObjectUses: source.wholeObjectUses ?? [],
-    localIdentifierReferences: source.localIdentifierReferences ?? [],
-    topLevelImportReferences: source.topLevelImportReferences ?? [],
-    referencedFilenames: source.referencedFilenames ?? [],
-    redundantTypePatterns: source.redundantTypePatterns ?? [],
-    identityWrappers: source.identityWrappers ?? [],
-    typeDefinitionHashes: source.typeDefinitionHashes ?? [],
-    inlineTypeLiterals: source.inlineTypeLiterals ?? [],
-    simplifiableFunctions: source.simplifiableFunctions ?? [],
-    simplifiableExpressions: source.simplifiableExpressions ?? [],
-    duplicateConstantCandidates: source.duplicateConstantCandidates ?? [],
+    imports: persisted.imports ?? [],
+    exports: persisted.exports ?? [],
+    memberAccesses: persisted.memberAccesses ?? [],
+    wholeObjectUses: persisted.wholeObjectUses ?? [],
+    localIdentifierReferences: persisted.localIdentifierReferences ?? [],
+    topLevelImportReferences: persisted.topLevelImportReferences ?? [],
+    referencedFilenames: persisted.referencedFilenames ?? [],
+    redundantTypePatterns: persisted.redundantTypePatterns ?? [],
+    identityWrappers: persisted.identityWrappers ?? [],
+    typeDefinitionHashes: persisted.typeDefinitionHashes ?? [],
+    inlineTypeLiterals: persisted.inlineTypeLiterals ?? [],
+    simplifiableFunctions: persisted.simplifiableFunctions ?? [],
+    simplifiableExpressions: persisted.simplifiableExpressions ?? [],
+    duplicateConstantCandidates: persisted.duplicateConstantCandidates ?? [],
     errors: persistedErrors.map(
       (errorJson) =>
         new DeslopError({
@@ -498,17 +487,6 @@ const reviveParsedSource = (persisted: unknown): ParsedSource | null => {
         }),
     ),
   };
-};
-
-const atomicWriteFile = (filePath: string, contents: string): void => {
-  try {
-    mkdirSync(dirname(filePath), { recursive: true });
-    const temporaryPath = `${filePath}.${process.pid}.tmp`;
-    writeFileSync(temporaryPath, contents);
-    renameSync(temporaryPath, filePath);
-  } catch {
-    // A cache that cannot persist must never break the analysis.
-  }
 };
 
 const createSummaryCache = (cachePath: string, config: DeslopConfig): SummaryCache => {

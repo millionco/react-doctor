@@ -1,5 +1,7 @@
 export const RAW_TEXT_PREVIEW_MAX_CHARS = 30;
 
+export const GORHOM_BOTTOM_SHEET_MODULE_NAME = "@gorhom/bottom-sheet";
+
 export const REACT_NATIVE_TEXT_COMPONENTS = new Set([
   "Text",
   "TextInput",

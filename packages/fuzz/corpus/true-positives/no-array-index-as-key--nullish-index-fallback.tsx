@@ -1,11 +1,12 @@
 // rule: no-array-index-as-key
+// verdict: fail
 // weakness: reachable-expression-branch
-// source: React Bench write-react-lobehub-lobe-ui-508__EAtLqrE
+// source: React Bench Accordion trial 2PCvs5j, deduplicated with EAtLqrE
 
-interface RowData {
-  id?: string;
-  label: string;
-}
+import { Children, Fragment, isValidElement } from "react";
+import type { ReactNode } from "react";
 
-export const StatefulRows = ({ rows }: { rows: RowData[] }) =>
-  rows.map((row, index) => <div key={row.id ?? index}>{row.label}</div>);
+export const Accordion = ({ children }: { children: ReactNode }) => {
+  const validChildren = Children.toArray(children).filter(isValidElement);
+  return validChildren.map((child, index) => <Fragment key={child.key ?? index}>{child}</Fragment>);
+};

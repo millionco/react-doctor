@@ -7,8 +7,6 @@ import type { Diagnostic as LiveDiagnostic } from "@react-doctor/core/schemas";
 import { TUI_LIVE_FEED_MAX_ENTRIES, TUI_PROGRESS_UPDATE_INTERVAL_MS } from "../utils/constants.js";
 import type { CliAgentId } from "../utils/launch-agent.js";
 
-export type ScanPhase = "scanning" | "report" | "summary";
-
 export interface TuiHandoffRequest {
   readonly agentId: CliAgentId;
   readonly prompt: string;
@@ -46,13 +44,30 @@ export interface MultiProjectSummary {
   readonly lintFailureReason?: string;
 }
 
-export interface ScanStoreSnapshot {
-  readonly phase: ScanPhase;
+interface ScanStoreSnapshotBase {
   readonly liveDiagnostics: ReadonlyArray<LiveDiagnostic>;
   readonly progress: string | null;
-  readonly report: ScanReport | null;
-  readonly summary: MultiProjectSummary | null;
 }
+
+interface ScanningSnapshot extends ScanStoreSnapshotBase {
+  readonly phase: "scanning";
+  readonly report?: never;
+  readonly summary?: never;
+}
+
+interface ReportSnapshot extends ScanStoreSnapshotBase {
+  readonly phase: "report";
+  readonly report: ScanReport;
+  readonly summary?: never;
+}
+
+interface SummarySnapshot extends ScanStoreSnapshotBase {
+  readonly phase: "summary";
+  readonly report?: never;
+  readonly summary: MultiProjectSummary;
+}
+
+export type ScanStoreSnapshot = ScanningSnapshot | ReportSnapshot | SummarySnapshot;
 
 export interface ScanStore {
   readonly subscribe: (listener: () => void) => () => void;
@@ -68,19 +83,17 @@ const INITIAL_SNAPSHOT: ScanStoreSnapshot = {
   phase: "scanning",
   liveDiagnostics: [],
   progress: null,
-  report: null,
-  summary: null,
 };
 
 export const createScanStore = (): ScanStore => {
-  let snapshot = INITIAL_SNAPSHOT;
+  let snapshot: ScanStoreSnapshot = INITIAL_SNAPSHOT;
   const listeners = new Set<() => void>();
   let pendingProgress: string | null = null;
   let progressTimer: ReturnType<typeof setTimeout> | null = null;
 
   const commit = (next: ScanStoreSnapshot): void => {
     snapshot = next;
-    for (const listener of listeners) listener();
+    for (const listener of [...listeners]) listener();
   };
 
   const cancelPendingProgress = (): void => {
@@ -124,11 +137,21 @@ export const createScanStore = (): ScanStore => {
     setProgress,
     setReport: (report) => {
       cancelPendingProgress();
-      commit({ ...snapshot, report, phase: "report" });
+      commit({
+        phase: "report",
+        liveDiagnostics: snapshot.liveDiagnostics,
+        progress: snapshot.progress,
+        report,
+      });
     },
     setSummary: (summary) => {
       cancelPendingProgress();
-      commit({ ...snapshot, summary, phase: "summary" });
+      commit({
+        phase: "summary",
+        liveDiagnostics: snapshot.liveDiagnostics,
+        progress: snapshot.progress,
+        summary,
+      });
     },
   };
 };

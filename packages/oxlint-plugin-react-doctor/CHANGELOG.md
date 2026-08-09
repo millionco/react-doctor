@@ -1,5 +1,43 @@
 # oxlint-plugin-react-doctor
 
+## 0.9.11
+
+### Patch Changes
+
+- [#1615](https://github.com/millionco/react-doctor/pull/1615) [`27a39de`](https://github.com/millionco/react-doctor/commit/27a39dede7ae41adb8895aefc589800bc56e6bc9) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize cleanup ownership, invalidation guards, and retained callback lifecycles in real-world timer and subscription patterns without hiding mismatched or unowned resources.
+
+## 0.9.10
+
+## 0.9.9
+
+### Patch Changes
+
+- [#1606](https://github.com/millionco/react-doctor/pull/1606) [`7f028ea`](https://github.com/millionco/react-doctor/commit/7f028ea904da08bba8e108b92a0d2bfb84254f2e) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid reporting one-shot effect timers whose callbacks exit on a leading compound unmount guard.
+
+## 0.9.8
+
+### Patch Changes
+
+- [#1605](https://github.com/millionco/react-doctor/pull/1605) [`f27fd5d`](https://github.com/millionco/react-doctor/commit/f27fd5d136371c8164675ddf52da3742e248f7d8) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix React Bench false positives and false negatives across effect cleanup, fetch status, async ownership, loading state, timer refs, state updaters, and trusted KaTeX HTML analysis.
+
+- [#1590](https://github.com/millionco/react-doctor/pull/1590) [`13138a4`](https://github.com/millionco/react-doctor/commit/13138a4af515938a49a2e467d3922d2ef4f35fb4) Thanks [@aidenybai](https://github.com/aidenybai)! - Harden scan orchestration and cache persistence, modernize the Effect runtime, simplify package boundaries and analyzers, share cycle and suppression analysis, keep workflow paths inside the repository, and remove unused internals.
+
+## 0.9.7
+
+### Patch Changes
+
+- [#1601](https://github.com/millionco/react-doctor/pull/1601) [`3299454`](https://github.com/millionco/react-doctor/commit/3299454344b7ad44909a2d758fe1d4352b5e3e73) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix React Bench false positives in async cancellation, fetch status validation, lifecycle cleanup, timer ownership, request ownership, and trusted KaTeX provenance, and detect History mutations and prop callback calls inside state updater functions.
+
+## 0.9.6
+
+### Patch Changes
+
+- [#1599](https://github.com/millionco/react-doctor/pull/1599) [`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize browser media capability and playback lifecycles without masking unrelated prop-driven state adjustments, and resolve cross-file helpers with dotted basenames.
+
+- [#1597](https://github.com/millionco/react-doctor/pull/1597) [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix derived-state detection through render-updated refs and avoid flagging finite timer lifecycle shutdowns as prop-driven state adjustments.
+
+- [#1596](https://github.com/millionco/react-doctor/pull/1596) [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d) Thanks [@aidenybai](https://github.com/aidenybai)! - Accept trailing loading resets after non-rethrowing catch handlers, and preserve effect-local cleanup helpers with deterministic false-positive and false-negative fuzz replay.
+
 ## 0.9.5
 
 ### Patch Changes

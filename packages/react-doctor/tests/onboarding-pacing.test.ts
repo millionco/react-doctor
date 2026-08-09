@@ -1,11 +1,7 @@
-import { performance } from "node:perf_hooks";
-import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 import {
   FORCE_ONBOARDING_ENV_VAR,
   isOnboardingForced,
-  ONBOARDING_SECTION_DELAY_MS,
-  onboardingSectionPause,
   shouldRecordOnboarding,
 } from "../src/cli/utils/onboarding-pacing.js";
 
@@ -52,25 +48,5 @@ describe("shouldRecordOnboarding", () => {
 
   it("does not record a non-interactive run (defensive double-check)", () => {
     expect(shouldRecordOnboarding({ ...baseInput, isNonInteractiveEnvironment: true })).toBe(false);
-  });
-});
-
-describe("onboardingSectionPause", () => {
-  it("is a no-op when pacing is off", async () => {
-    expect(onboardingSectionPause(false)).toBe(Effect.void);
-
-    const start = performance.now();
-    await Effect.runPromise(onboardingSectionPause(false));
-    expect(performance.now() - start).toBeLessThan(50);
-  });
-
-  it("waits the configured delay when pacing is on", async () => {
-    expect(ONBOARDING_SECTION_DELAY_MS).toBe(850);
-
-    const start = performance.now();
-    await Effect.runPromise(onboardingSectionPause(true));
-    // Generous lower bound: a real sleep never returns early, but timer
-    // granularity / CI jitter can shave a few milliseconds off the wall clock.
-    expect(performance.now() - start).toBeGreaterThanOrEqual(700);
   });
 });

@@ -28,7 +28,7 @@ import { nowIso } from "./now-iso.js";
 //
 // Scope is "global" (once per machine/user) or "project" (once per repo).
 
-export type LifecycleScope = "global" | "project";
+type LifecycleScope = "global" | "project";
 
 // A `scope`-bearing thing the scope helpers below can resolve. Both `Gate` and
 // `Migration` satisfy it.
@@ -128,14 +128,6 @@ const updateScope = (
   };
 };
 
-const omitKey = <Value>(
-  record: Record<string, Value> | undefined,
-  key: string,
-): Record<string, Value> => {
-  const { [key]: _removed, ...rest } = record ?? {};
-  return rest;
-};
-
 // === Gates ===
 
 // True when the gate has not fired at its current version — never recorded, or
@@ -158,18 +150,6 @@ export const isGatePending = (
   );
 };
 
-// The outcome recorded for the gate's latest firing, or null if never fired.
-export const readGateOutcome = (
-  gate: Gate,
-  target: GateTarget = {},
-  options: CliStateOptions = {},
-): EventOutcome | null =>
-  readCliState(
-    (state) => selectScope(state, gate, target.projectRoot)?.events?.[gate.id]?.outcome ?? null,
-    null,
-    options,
-  );
-
 // Records that the gate fired (optionally with an outcome). Returns whether it
 // persisted. Callers wanting a stable first-fire timestamp guard with
 // `isGatePending` before calling.
@@ -190,23 +170,6 @@ export const recordGate = (
             ...(target.outcome ? { outcome: target.outcome } : {}),
           },
         },
-      })),
-    options,
-  );
-
-// Invalidation/admin: clear a gate's recorded firing so it becomes pending
-// again. (Day-to-day invalidation is a `version` bump; this is the explicit
-// reset for tests and one-off resets.)
-export const clearGate = (
-  gate: Gate,
-  target: GateTarget = {},
-  options: CliStateOptions = {},
-): boolean =>
-  updateCliState(
-    (state) =>
-      updateScope(state, gate, target.projectRoot, (scope) => ({
-        ...scope,
-        events: omitKey(scope.events, gate.id),
       })),
     options,
   );

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DependencyInfo, PackageJson } from "../types/index.js";
-import { detectFramework } from "./detectors.js";
+import { detectFramework } from "./detect-framework.js";
 import { isFile, isPlainObject } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
 import { readPackageJson } from "./package-json.js";
@@ -10,7 +10,7 @@ import { isConcreteDependencyVersion, isTailwindPostcss7CompatAlias } from "./ve
 export const isCatalogReference = (version: unknown): version is string =>
   typeof version === "string" && version.startsWith("catalog:");
 
-export const extractCatalogName = (version: unknown): string | null => {
+const extractCatalogName = (version: unknown): string | null => {
   if (!isCatalogReference(version)) return null;
   const name = version.slice("catalog:".length).trim();
   return name.length > 0 ? name : null;

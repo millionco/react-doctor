@@ -4,12 +4,9 @@ import type { PackageJson, ProjectInfo } from "../types/index.js";
 import { LATEST_SUPPORTED_MOBX_MAJOR } from "../constants.js";
 import { isFile } from "./fs-utils.js";
 import { countSourceFiles } from "./count-source-files.js";
-import {
-  detectNextjsStaticExport,
-  detectPreES2023Target,
-  detectReactCompiler,
-  detectReactCompilerLintPlugin,
-} from "./detectors.js";
+import { detectNextjsStaticExport } from "./detect-nextjs-static-export.js";
+import { detectReactCompiler, detectReactCompilerLintPlugin } from "./detect-react-compiler.js";
+import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
 import {
   extractDependencyInfo,
   getDependencyDeclaration,
@@ -40,7 +37,7 @@ import {
 import { clearTargetBlankOpenerProtectionCache } from "./detect-target-blank-opener-protection.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
-export { formatFrameworkName } from "./detectors.js";
+export { formatFrameworkName } from "./detect-framework.js";
 export { listWorkspacePackages } from "./workspaces.js";
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();

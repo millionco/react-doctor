@@ -1,11 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { collectOverrideMappingsFromRecord } from "./collect-override-mappings-from-record.js";
-
-interface OverrideMapping {
-  fromPackage: string;
-  toPackage: string;
-}
+import {
+  collectOverrideMappingsFromRecord,
+  type OverrideMapping,
+} from "./collect-override-mappings-from-record.js";
 
 const PNPM_WORKSPACE_FILENAMES = ["pnpm-workspace.yaml", "pnpm-workspace.yml"] as const;
 

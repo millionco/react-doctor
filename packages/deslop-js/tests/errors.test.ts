@@ -11,14 +11,12 @@ import {
   ResolverError,
   TypeScriptError,
   WorkspaceError,
-  createDeslopError,
-  DeslopErrorCollector,
 } from "../src/errors.js";
 import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
 
 describe("errors / DeslopError class hierarchy", () => {
   it("DeslopError is an Error subclass with structured fields", () => {
-    const error = createDeslopError({
+    const error = new DeslopError({
       code: "file-read-failed",
       module: "parse",
       message: "boom",
@@ -83,15 +81,6 @@ describe("errors / DeslopError class hierarchy", () => {
     assert.equal(serialized.severity, "warning");
     assert.equal(serialized.message, "boom");
     assert.equal(serialized.path, "/p");
-  });
-
-  it("DeslopErrorCollector caps entries and exposes a snapshot", () => {
-    const collector = new DeslopErrorCollector(3);
-    for (let index = 0; index < 5; index++) {
-      collector.push(new ParseError({ code: "parse-failed", message: `m${index}` }));
-    }
-    assert.equal(collector.size(), 3);
-    assert.equal(collector.snapshot().length, 3);
   });
 });
 

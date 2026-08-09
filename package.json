@@ -37,6 +37,9 @@
     "smoke:tty-prompt": "python3 scripts/smoke-tty-prompt.py",
     "fn-mining": "tsx scripts/fn-mining/run-fn-mining.ts"
   },
+  "dependencies": {
+    "effect": "4.0.0-beta.102"
+  },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",

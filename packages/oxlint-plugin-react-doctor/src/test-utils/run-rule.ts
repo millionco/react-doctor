@@ -16,6 +16,7 @@ import type { ControlFlowAnalysis } from "../plugin/semantic/control-flow-graph.
 export interface RunRuleOptions {
   filename?: string;
   settings?: Readonly<Record<string, unknown>>;
+  includeLocations?: boolean;
   // Parse the fixture with TSX even when the filename suggests `.js`/`.ts`.
   // Useful for tests that want a non-JSX-friendly extension on the rule
   // context but still need JSX in the source.
@@ -23,6 +24,8 @@ export interface RunRuleOptions {
 }
 
 export interface RuleDiagnostic {
+  column?: number;
+  line?: number;
   message: string;
   nodeType: string;
 }
@@ -76,6 +79,12 @@ export const runRuleOnParsedFixture = (
   const context: RuleContext = {
     report: (descriptor: ReportDescriptor) => {
       diagnostics.push({
+        ...(options.includeLocations
+          ? {
+              column: descriptor.node.loc?.start.column,
+              line: descriptor.node.loc?.start.line,
+            }
+          : {}),
         message: descriptor.message,
         nodeType: descriptor.node.type,
       });

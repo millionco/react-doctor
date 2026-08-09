@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { clearConfigCache, type Diagnostic } from "@react-doctor/core";
+import { clearConfigCache, resolveReactDoctorCacheDir, type Diagnostic } from "@react-doctor/core";
 import { inspect, type ResolvedInspectOptions } from "../src/inspect.js";
 import {
   buildScanResultCacheKey,
@@ -13,8 +13,10 @@ import {
   type CachedScanPayload,
 } from "../src/cli/utils/scan-result-cache.js";
 import {
+  SCAN_RESULT_CACHE_FILENAME,
   SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
+  SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "../src/cli/utils/constants.js";
 import { runGit } from "../src/cli/utils/git-hook-shared.js";
 import { VERSION } from "../src/cli/utils/version.js";
@@ -178,6 +180,43 @@ describe("scan result cache", () => {
     cache.store(key, basePayload(projectDirectory));
 
     expect(cache.lookup(key)?.diagnostics).toEqual([diagnostic(projectDirectory)]);
+  });
+
+  it("merges entries stored by independently loaded cache instances", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "merged-writers", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const firstCache = createScanResultCache(projectDirectory);
+    const secondCache = createScanResultCache(projectDirectory);
+
+    firstCache.store("first", basePayload(projectDirectory));
+    secondCache.store("second", basePayload(projectDirectory));
+
+    const reloadedCache = createScanResultCache(projectDirectory);
+    expect(reloadedCache.lookup("first")).not.toBeNull();
+    expect(reloadedCache.lookup("second")).not.toBeNull();
+  });
+
+  it("drops malformed persisted payloads instead of throwing during lookup", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "malformed-payload", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const cacheFilePath = path.join(
+      resolveReactDoctorCacheDir(projectDirectory),
+      SCAN_RESULT_CACHE_FILENAME,
+    );
+    fs.mkdirSync(path.dirname(cacheFilePath), { recursive: true });
+    fs.writeFileSync(
+      cacheFilePath,
+      JSON.stringify({
+        version: SCAN_RESULT_CACHE_SCHEMA_VERSION,
+        entries: [{ key: "malformed", createdAtMs: Date.now(), payload: { diagnostics: [] } }],
+      }),
+    );
+
+    expect(createScanResultCache(projectDirectory).lookup("malformed")).toBeNull();
   });
 
   it("honors REACT_DOCTOR_CACHE_DIR so the action-persisted dir carries the scan cache", () => {

@@ -94,7 +94,7 @@ const agentHooksShellToNode: Migration = {
   },
 };
 
-export const PROJECT_MIGRATIONS: ReadonlyArray<Migration> = [
+const PROJECT_MIGRATIONS: ReadonlyArray<Migration> = [
   legacyConfigToTypescript,
   actionPinMainToMajor,
   agentHooksShellToNode,

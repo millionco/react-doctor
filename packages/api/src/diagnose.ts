@@ -12,7 +12,7 @@ import {
   Files,
   Git,
   hasReactRuntime,
-  layerOtlp,
+  layerUserOtlp,
   Linter,
   LintPartialFailures,
   mapWithConcurrency,
@@ -182,7 +182,7 @@ const diagnoseDirectory = async (
             oxlintSpawnSlots,
           }),
         ),
-        Effect.provide(layerOtlp),
+        Effect.provide(layerUserOtlp),
       ),
     ),
   );
@@ -264,7 +264,7 @@ const diagnoseProject = async (
     const layer = buildDiagnoseLayer(diagnoseLayerInput);
 
     const output: InspectOutput = await Effect.runPromise(
-      restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerOtlp))),
+      restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerUserOtlp))),
     );
 
     return {

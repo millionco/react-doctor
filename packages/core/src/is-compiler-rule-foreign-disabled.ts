@@ -13,7 +13,7 @@ import { tokenizeRuleList } from "./tokenize-rule-list.js";
 // `// eslint-disable-next-line react-hooks/refs` silently fails to bind and
 // the finding refires. Honor both spellings here (react-doctor's own
 // `react-doctor-disable-*` family is handled in evaluate-suppression).
-export const REACT_COMPILER_PLUGIN_PREFIX = "react-hooks-js/";
+const REACT_COMPILER_PLUGIN_PREFIX = "react-hooks-js/";
 const ESLINT_REACT_HOOKS_PLUGIN_PREFIX = "react-hooks/";
 
 const buildAcceptedTokens = (ruleId: string): ReadonlySet<string> => {

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "oxlint-plugin-react-doctor/core";
 import ts from "typescript";
 import type { Diagnostic } from "./types/index.js";
+import { getImportModuleSource } from "./utils/get-import-module-source.js";
 import { getTypescriptScriptKind } from "./utils/get-typescript-script-kind.js";
 import { unwrapTypescriptExpression } from "./utils/unwrap-typescript-expression.js";
 import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
@@ -89,17 +90,6 @@ const classifyMotionExport = (exportName: string): MotionExpressionEvidence => (
   isMotionNamespace: false,
   isReducedMotionHook: exportName === REDUCED_MOTION_HOOK_EXPORT_NAME,
 });
-
-const getImportModuleSource = (node: ts.Node): string | null => {
-  let currentNode: ts.Node | undefined = node;
-  while (currentNode) {
-    if (ts.isImportDeclaration(currentNode) && ts.isStringLiteral(currentNode.moduleSpecifier)) {
-      return currentNode.moduleSpecifier.text;
-    }
-    currentNode = currentNode.parent;
-  }
-  return null;
-};
 
 const getImportedBindingEvidence = (
   declaration: ts.Declaration,

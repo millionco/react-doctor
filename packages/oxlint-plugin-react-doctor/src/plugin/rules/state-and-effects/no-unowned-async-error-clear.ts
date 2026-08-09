@@ -20,6 +20,8 @@ const MESSAGE =
   "An older async response can clear error state owned by a newer request. Check that this request still owns the error before clearing it, keep ownership in the state update, or key the state owner by request ID.";
 
 const COMPONENT_METADATA_PROPERTY_NAMES = new Set(["displayName", "propTypes"]);
+const ASYNC_OWNER_IDENTITY_NAME_PATTERN =
+  /(?:request(?:Id)?(?:Ref)?|active.*IdRef|(?:flight|generation|sequence|attempt|token|version)(?:Ref)?)$/i;
 
 interface RequestOwnerState {
   componentFunction: EsTreeNode;
@@ -91,7 +93,9 @@ const nodeContainsRequestIdentity = (node: EsTreeNode): boolean => {
   walkAst(node, (child) => {
     if (containsRequestIdentity) return false;
     if (
-      (isNodeOfType(child, "Identifier") && /request(?:Id)?$/i.test(child.name)) ||
+      (isNodeOfType(child, "Identifier") &&
+        (ASYNC_OWNER_IDENTITY_NAME_PATTERN.test(child.name) ||
+          /^(?:sentFor|targetId)$/i.test(child.name))) ||
       (isNodeOfType(child, "MemberExpression") &&
         /requestId$/i.test(getStaticPropertyName(child) ?? ""))
     ) {

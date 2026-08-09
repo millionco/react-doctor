@@ -24,6 +24,7 @@ import {
   summarizeGate,
   type CiGate,
   type CiProvider,
+  type CiWorkflowFile,
 } from "./ci-provider.js";
 import { CI_PROVIDERS, getCiProvider, isCiProviderId } from "./ci-provider-registry.js";
 import { detectCiProvider } from "./detect-ci-provider.js";
@@ -48,6 +49,14 @@ export interface CiCommandOptions {
   prompt?: typeof prompts;
   run?: CommandRunner;
   checkCommandAvailable?: (command: string) => boolean;
+}
+
+interface CiCommandContext {
+  readonly projectRoot: string;
+  readonly prompt: typeof prompts;
+  readonly run: CommandRunner;
+  readonly skipPrompts: boolean;
+  readonly provider: CiProvider;
 }
 
 const resolveProjectRoot = (options: CiCommandOptions): string => {
@@ -104,6 +113,26 @@ const resolveProvider = async (
   });
   if (providerId === undefined || !isCiProviderId(providerId)) return null;
   return getCiProvider(providerId);
+};
+
+const resolveCiCommandContext = async (
+  options: CiCommandOptions,
+): Promise<CiCommandContext | null> => {
+  const projectRoot = resolveProjectRoot(options);
+  const prompt = options.prompt ?? prompts;
+  const run = options.run ?? runCommand;
+  const skipPrompts = shouldSkipPrompts({ yes: options.yes });
+  const provider = await resolveProvider(options, projectRoot, prompt, skipPrompts, run);
+  return provider === null ? null : { projectRoot, prompt, run, skipPrompts, provider };
+};
+
+const readCiWorkflow = (context: CiCommandContext): CiWorkflowFile | null => {
+  const workflow = context.provider.readWorkflow(context.projectRoot);
+  if (workflow !== null) return workflow;
+  logger.error(`No ${context.provider.displayName} workflow found.`);
+  logger.dim(`  Run ${highlighter.info("react-doctor ci install")} to add one first.`);
+  process.exitCode = 1;
+  return null;
 };
 
 // Flags a provider can't honor (e.g. `--comment` on GitLab) so the user isn't
@@ -279,13 +308,9 @@ const pullRequestMode = (status: OpenWorkflowPullRequestResult["status"]): "pr" 
   status === "not-attempted" ? "tree" : "pr";
 
 export const runCiInstall = async (options: CiCommandOptions = {}): Promise<void> => {
-  const projectRoot = resolveProjectRoot(options);
-  const prompt = options.prompt ?? prompts;
-  const run = options.run ?? runCommand;
-  const skipPrompts = shouldSkipPrompts({ yes: options.yes });
-
-  const provider = await resolveProvider(options, projectRoot, prompt, skipPrompts, run);
-  if (provider === null) return;
+  const context = await resolveCiCommandContext(options);
+  if (context === null) return;
+  const { projectRoot, run, provider } = context;
 
   warnUnsupportedGateFlags(provider, options);
   const { gate, error } = applyGateFlags(ADVISORY_GATE, options);
@@ -361,21 +386,12 @@ export const runCiInstall = async (options: CiCommandOptions = {}): Promise<void
 };
 
 export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void> => {
-  const projectRoot = resolveProjectRoot(options);
-  const prompt = options.prompt ?? prompts;
-  const run = options.run ?? runCommand;
-  const skipPrompts = shouldSkipPrompts({ yes: options.yes });
+  const context = await resolveCiCommandContext(options);
+  if (context === null) return;
+  const { projectRoot, run, provider } = context;
 
-  const provider = await resolveProvider(options, projectRoot, prompt, skipPrompts, run);
-  if (provider === null) return;
-
-  const workflow = provider.readWorkflow(projectRoot);
-  if (workflow === null) {
-    logger.error(`No ${provider.displayName} workflow found.`);
-    logger.dim(`  Run ${highlighter.info("react-doctor ci install")} to add one first.`);
-    process.exitCode = 1;
-    return;
-  }
+  const workflow = readCiWorkflow(context);
+  if (workflow === null) return;
 
   if (provider.upgradeMajor === undefined) {
     logger.log(
@@ -455,21 +471,12 @@ export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void
 };
 
 export const runCiConfig = async (options: CiCommandOptions = {}): Promise<void> => {
-  const projectRoot = resolveProjectRoot(options);
-  const prompt = options.prompt ?? prompts;
-  const run = options.run ?? runCommand;
-  const skipPrompts = shouldSkipPrompts({ yes: options.yes });
+  const context = await resolveCiCommandContext(options);
+  if (context === null) return;
+  const { projectRoot, prompt, skipPrompts, provider } = context;
 
-  const provider = await resolveProvider(options, projectRoot, prompt, skipPrompts, run);
-  if (provider === null) return;
-
-  const workflow = provider.readWorkflow(projectRoot);
-  if (workflow === null) {
-    logger.error(`No ${provider.displayName} workflow found.`);
-    logger.dim(`  Run ${highlighter.info("react-doctor ci install")} to add one first.`);
-    process.exitCode = 1;
-    return;
-  }
+  const workflow = readCiWorkflow(context);
+  if (workflow === null) return;
 
   // The file can exist without wiring up React Doctor (a `.gitlab-ci.yml` is
   // often a full pipeline with no scan job); say so plainly instead of treating

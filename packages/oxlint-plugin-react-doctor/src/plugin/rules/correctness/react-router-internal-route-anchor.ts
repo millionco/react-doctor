@@ -1,3 +1,4 @@
+import { REACT_ROUTER_RENDER_PROPERTY_NAMES } from "../../constants/react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -16,8 +17,6 @@ interface InternalAnchorCandidate {
   node: EsTreeNode;
 }
 
-const UI_ROUTE_PROPERTY_NAMES = ["Component", "element", "lazy"];
-
 export const reactRouterInternalRouteAnchor = wrapReactRouterRule(
   defineRule({
     id: "react-router-internal-route-anchor",
@@ -33,7 +32,7 @@ export const reactRouterInternalRouteAnchor = wrapReactRouterRule(
         ObjectExpression(node: EsTreeNodeOfType<"ObjectExpression">) {
           if (!isStaticReactRouterRouteObject(context, node)) return;
           if (
-            !UI_ROUTE_PROPERTY_NAMES.some((propertyName) =>
+            !REACT_ROUTER_RENDER_PROPERTY_NAMES.some((propertyName) =>
               hasActiveRouteProperty(context, node, propertyName),
             )
           ) {

@@ -58,9 +58,6 @@ const isStaticallyValidJsonLiteral = (argument: EsTreeNode): boolean => {
   }
 };
 
-const skipParenthesizedParents = (node: EsTreeNode): EsTreeNode =>
-  findTransparentExpressionRoot(node);
-
 // Destructuring reads properties straight off the parse result:
 // `const { foo } = JSON.parse(raw)` / `const [first] = JSON.parse(raw)`.
 const isDestructuredDeclaratorInit = (node: EsTreeNode): boolean => {
@@ -76,7 +73,7 @@ const isDestructuredDeclaratorInit = (node: EsTreeNode): boolean => {
 // True when a property is read directly off the call result, including through
 // transparent TypeScript and parenthesis wrappers.
 const isResultImmediatelyRead = (call: EsTreeNode): boolean => {
-  const unwrapped = skipParenthesizedParents(call);
+  const unwrapped = findTransparentExpressionRoot(call);
   return isObjectOfMemberAccess(unwrapped) || isDestructuredDeclaratorInit(unwrapped);
 };
 

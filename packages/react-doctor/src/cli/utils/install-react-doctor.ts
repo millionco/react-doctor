@@ -287,7 +287,7 @@ const buildDependencyFollowUp = (
   return `  React Doctor still works via \`npx react-doctor\`. To install locally: ${installCommand}`;
 };
 
-export const installReactDoctorPackageSetup = async (
+const installReactDoctorPackageSetup = async (
   projectRoot: string,
   dependencyRunner?: (input: InstallReactDoctorDependencyRunnerInput) => void | Promise<void>,
 ): Promise<InstallReactDoctorDependencyResult> => {

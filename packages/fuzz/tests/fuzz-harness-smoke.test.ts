@@ -12,6 +12,7 @@ import { MAX_CORPUS_FILES } from "../src/constants.js";
 import { livenessFixtures } from "../../oxlint-plugin-react-doctor/src/plugin/liveness/liveness-fixtures.js";
 import { reactDoctorRules } from "../../oxlint-plugin-react-doctor/src/plugin/rule-registry.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import { runScanRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-scan-rule.js";
 import { isNodeOfType } from "../../oxlint-plugin-react-doctor/src/plugin/utils/is-node-of-type.js";
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
@@ -52,7 +53,13 @@ describe("fuzz harness oracles", () => {
     });
     const seedRelativePaths = fs
       .readdirSync(corpusDirectory, { encoding: "utf8", recursive: true })
-      .filter((relativePath) => /\.(tsx|jsx)$/.test(relativePath))
+      .filter(
+        (relativePath) =>
+          /\.(tsx|ts|jsx|js)(?:\.txt)?$/.test(relativePath) &&
+          !relativePath.endsWith(".d.ts") &&
+          !relativePath.endsWith(".d.ts.txt"),
+      )
+      .map((relativePath) => relativePath.split(path.sep).join("/"))
       .sort();
     expect(corpus.length).toBeGreaterThan(MAX_CORPUS_FILES);
     expect(corpus.map((entry) => entry.relativePath).sort()).toEqual(seedRelativePaths);
@@ -90,15 +97,21 @@ describe("fuzz harness oracles", () => {
           verdictFailures.push(`${entry.relativePath}: unknown rule ${ruleId}`);
           continue;
         }
-        const result = runRule(rule, entry.code, {
-          filename: entry.relativePath,
-          settings: livenessFixturesById.get(ruleId)?.settings,
-          forceJsx: true,
-        });
-        const didFire = result.diagnostics.length > 0;
+        const diagnosticCount =
+          typeof rule.scan === "function"
+            ? runScanRule(rule, {
+                relativePath: entry.sourcePath ?? entry.relativePath,
+                content: entry.code,
+              }).length
+            : runRule(rule, entry.code, {
+                filename: entry.sourcePath ?? entry.relativePath,
+                settings: livenessFixturesById.get(ruleId)?.settings,
+                forceJsx: true,
+              }).diagnostics.length;
+        const didFire = diagnosticCount > 0;
         if ((verdict === "fail") !== didFire) {
           verdictFailures.push(
-            `${entry.relativePath} (${ruleId}): expected ${verdict}, received ${result.diagnostics.length} diagnostics`,
+            `${entry.relativePath} (${ruleId}): expected ${verdict}, received ${diagnosticCount} diagnostics`,
           );
         }
       }

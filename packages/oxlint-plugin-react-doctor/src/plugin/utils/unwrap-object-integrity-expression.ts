@@ -3,7 +3,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
-export const OBJECT_INTEGRITY_METHOD_NAMES = new Set(["freeze", "seal", "preventExtensions"]);
+const OBJECT_INTEGRITY_METHOD_NAMES = new Set(["freeze", "seal", "preventExtensions"]);
 
 export const OBJECT_FREEZE_OR_SEAL_METHOD_NAMES = new Set(["freeze", "seal"]);
 

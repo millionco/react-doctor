@@ -40,6 +40,96 @@ describe("no-unowned-async-error-clear", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("accepts a request-ref snapshot ownership guard", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useRef, useState } from "react";
+      function RequestCard({ requestId, respond }) {
+        const requestIdRef = useRef(requestId);
+        requestIdRef.current = requestId;
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const sentFor = requestIdRef.current;
+          const result = await respond(request);
+          if (requestIdRef.current !== sentFor) return;
+          if (result.ok) setDeliveryError(null);
+          else setDeliveryError({ requestId: request.requestId, reason: result.reason });
+        };
+        return <button onClick={() => deliver({ requestId })}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts an active request ref compared with the request target id", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useRef, useState } from "react";
+      function RequestCard({ request, respond }) {
+        const activeRequestIdRef = useRef(request.requestId);
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const targetId = request.requestId;
+          const result = await respond(request);
+          if (activeRequestIdRef.current !== targetId) return;
+          if (result.ok) setDeliveryError(null);
+          else setDeliveryError({ requestId: targetId, reason: result.reason });
+        };
+        return <button onClick={() => deliver(request)}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ["flight", "inFlightRef.current"],
+    ["generation", "refreshGenerationRef.current"],
+    ["attempt", "activeAttemptRef.current"],
+  ])("accepts a %s ownership snapshot guard", (snapshotName, ownerExpression) => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useRef, useState } from "react";
+      function RequestCard({ requestId, respond }) {
+        const [deliveryPending, setDeliveryPending] = useState(false);
+        const inFlightRef = useRef(0);
+        const refreshGenerationRef = useRef(0);
+        const activeAttemptRef = useRef(0);
+        const deliver = async (request) => {
+          const ${snapshotName} = ++${ownerExpression};
+          setDeliveryPending(true);
+          await respond(request);
+          if (${snapshotName} !== ${ownerExpression}) return;
+          setDeliveryPending(false);
+        };
+        return <button onClick={() => deliver({ requestId })}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts an active id ref compared with a sent-for snapshot", () => {
+    const result = runRule(
+      noUnownedAsyncErrorClear,
+      `import { useRef, useState } from "react";
+      function RequestCard({ requestId, respond }) {
+        const activeIdRef = useRef(requestId);
+        const [deliveryError, setDeliveryError] = useState(null);
+        const deliver = async (request) => {
+          const sentFor = request.requestId;
+          const result = await respond(request);
+          if (activeIdRef.current !== sentFor) return result;
+          setDeliveryError(result.ok ? null : result.error);
+        };
+        return <button onClick={() => deliver({ requestId })}>Send</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a request identity comparison that does not control the clear", () => {
     const result = runRule(
       noUnownedAsyncErrorClear,

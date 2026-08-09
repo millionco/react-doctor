@@ -1,5 +1,72 @@
 # react-doctor
 
+## 0.9.11
+
+### Patch Changes
+
+- Updated dependencies [[`27a39de`](https://github.com/millionco/react-doctor/commit/27a39dede7ae41adb8895aefc589800bc56e6bc9)]:
+  - oxlint-plugin-react-doctor@0.9.11
+  - deslop-js@0.9.11
+
+## 0.9.10
+
+### Patch Changes
+
+- [#1610](https://github.com/millionco/react-doctor/pull/1610) [`e69faca`](https://github.com/millionco/react-doctor/commit/e69facac7e7ec455c7ad63c771c4a76f5cd0862c) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Send traces and metrics to Axiom instead of Sentry. Sentry keeps crash reporting,
+  where its source-map symbolication, issue grouping, and quotable event ids have no
+  Axiom equivalent — so error reports are unchanged, and the JSON report's
+  `sentryEventId` field keeps its meaning.
+
+  Two user-visible changes: `--debug` now prints the run's Axiom trace id (crash
+  reports carry the same id as a tag, so one id resolves in both backends), and
+  `REACT_DOCTOR_NO_TELEMETRY` is now honored by the CLI as well as the language
+  server. `--no-score` and `--no-telemetry` are unchanged and still disable
+  everything.
+
+- Updated dependencies []:
+  - oxlint-plugin-react-doctor@0.9.10
+  - deslop-js@0.9.10
+
+## 0.9.9
+
+### Patch Changes
+
+- Updated dependencies [[`7f028ea`](https://github.com/millionco/react-doctor/commit/7f028ea904da08bba8e108b92a0d2bfb84254f2e)]:
+  - oxlint-plugin-react-doctor@0.9.9
+  - deslop-js@0.9.9
+
+## 0.9.8
+
+### Patch Changes
+
+- [#1590](https://github.com/millionco/react-doctor/pull/1590) [`13138a4`](https://github.com/millionco/react-doctor/commit/13138a4af515938a49a2e467d3922d2ef4f35fb4) Thanks [@aidenybai](https://github.com/aidenybai)! - Harden scan orchestration and cache persistence, modernize the Effect runtime, simplify package boundaries and analyzers, share cycle and suppression analysis, keep workflow paths inside the repository, and remove unused internals.
+
+- Updated dependencies [[`f27fd5d`](https://github.com/millionco/react-doctor/commit/f27fd5d136371c8164675ddf52da3742e248f7d8), [`13138a4`](https://github.com/millionco/react-doctor/commit/13138a4af515938a49a2e467d3922d2ef4f35fb4)]:
+  - oxlint-plugin-react-doctor@0.9.8
+  - deslop-js@0.9.8
+
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies [[`3299454`](https://github.com/millionco/react-doctor/commit/3299454344b7ad44909a2d758fe1d4352b5e3e73)]:
+  - oxlint-plugin-react-doctor@0.9.7
+  - deslop-js@0.9.7
+
+## 0.9.6
+
+### Patch Changes
+
+- [#1592](https://github.com/millionco/react-doctor/pull/1592) [`ac4e51f`](https://github.com/millionco/react-doctor/commit/ac4e51f6856dd0df091eed6ed4cdcb190574c048) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect React Compiler transforms passed through an installed `@rolldown/plugin-babel` wrapper.
+
+- [#1584](https://github.com/millionco/react-doctor/pull/1584) [`4b03b15`](https://github.com/millionco/react-doctor/commit/4b03b15cbea22802990e66a4dbbf067930be6361) Thanks [@aidenybai](https://github.com/aidenybai)! - Load standard JavaScript and TypeScript Knip configuration files when collecting dead-code entry and ignore patterns.
+
+- [#1596](https://github.com/millionco/react-doctor/pull/1596) [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d) Thanks [@aidenybai](https://github.com/aidenybai)! - Accept trailing loading resets after non-rethrowing catch handlers, and preserve effect-local cleanup helpers with deterministic false-positive and false-negative fuzz replay.
+
+- Updated dependencies [[`2b8bc5c`](https://github.com/millionco/react-doctor/commit/2b8bc5cf9d524594e3a3f923e463f128fd4a7ac9), [`a4d2c5c`](https://github.com/millionco/react-doctor/commit/a4d2c5c8bf45c3e38f07e2ffbaae5fe4443f5754), [`4ffeb2c`](https://github.com/millionco/react-doctor/commit/4ffeb2cb71e195d21d3693a7578be7f74ee78d19), [`d62caa5`](https://github.com/millionco/react-doctor/commit/d62caa575f9bcf2abca5933f2899dd907a3d344d)]:
+  - deslop-js@0.9.6
+  - oxlint-plugin-react-doctor@0.9.6
+
 ## 0.9.5
 
 ### Patch Changes

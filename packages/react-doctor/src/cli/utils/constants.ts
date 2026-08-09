@@ -194,21 +194,40 @@ export const INTERNAL_ERROR_JSON_FALLBACK =
 export const SENTRY_DSN =
   "https://f253d570240a59b8dbd77b7a548ef133@o4510226365743104.ingest.us.sentry.io/4511487817809920";
 
+// Axiom ingest token for first-party CLI telemetry (traces + metrics). Unlike a
+// Sentry DSN, an Axiom API token is a real credential, so this one is minted
+// `ingest:create` only, scoped to exactly the two datasets below, with no
+// expiry and no organization permissions — it can write those datasets and
+// nothing else. It ships inside the published tarball and is therefore
+// extractable; rotation means cutting a release, and an Axiom monitor on
+// anomalous ingest volume is the detection. If abuse ever materializes, the
+// standing alternative is to proxy ingest through `www.react.doctor` (which
+// already hosts the score API) so the token stops shipping at all.
+// Overridable at runtime via `REACT_DOCTOR_AXIOM_TOKEN` for local testing
+// against a scratch dataset.
+export const AXIOM_INGEST_TOKEN = "xaat-31b59107-855d-4917-8fab-6dc29fb459ce";
+
+// Events-type dataset receiving spans (the per-run root span carries the wide
+// event), and the Metrics-type dataset receiving counters and distributions.
+// Axiom types datasets at creation and will not accept metrics into an events
+// dataset, which is why these are separate.
+// Effect span clocks are epoch nanoseconds; `Date.now()` is milliseconds.
+export const NANOSECONDS_PER_MILLISECOND = 1_000_000n;
+
+// The language server runs for the length of an editor session, so it exports
+// on a timer rather than relying on the shutdown flush the one-shot CLI uses —
+// an editor that kills the server, or a machine that sleeps, would otherwise
+// lose everything recorded since startup.
+export const LSP_TELEMETRY_EXPORT_INTERVAL_MS = 60_000;
+
+export const AXIOM_TRACES_DATASET = "react-doctor";
+export const AXIOM_METRICS_DATASET = "react-doctor-metrics";
+
 // Sentry release identifier prefix. Releases are reported as
 // `react-doctor@<version>` so they're globally unique within the Sentry org
 // and so the SDK's `release` matches the value the CI source-map upload
 // associates artifacts with (`scripts/sentry-sourcemaps.mjs`).
 export const SENTRY_RELEASE_PREFIX = "react-doctor";
-
-// Sample every trace (100%). `--debug` forces this for the run so the trace id
-// it prints always points to a delivered trace, even when the env opted down.
-export const FULL_TRACES_SAMPLE_RATE = 1;
-
-// Default Sentry performance-tracing sample rate. Each CLI invocation becomes
-// one transaction; runs are low-frequency (vs. web traffic) so full sampling
-// gives the richest crash-correlated traces. Tunable per-run via the
-// `SENTRY_TRACES_SAMPLE_RATE` env var (set to `0` to disable tracing entirely).
-export const SENTRY_DEFAULT_TRACES_SAMPLE_RATE = FULL_TRACES_SAMPLE_RATE;
 
 // Upper bound on how long the CLI blocks waiting for Sentry to deliver queued
 // events (errors + transactions) before the process exits. The CLI tears down
@@ -216,21 +235,24 @@ export const SENTRY_DEFAULT_TRACES_SAMPLE_RATE = FULL_TRACES_SAMPLE_RATE;
 // telemetry off the machine (see the Sentry CLI/serverless flush contract).
 export const SENTRY_FLUSH_TIMEOUT_MS = 2000;
 
-// OpenTelemetry/Sentry span status codes used by the Effect→Sentry tracer
-// bridge (the SDK enum is 0 = unset, 1 = ok, 2 = error).
-export const SENTRY_SPAN_STATUS_OK = 1;
-export const SENTRY_SPAN_STATUS_ERROR = 2;
+// Bucket boundaries shared by every `recordDistribution` histogram. Effect
+// requires explicit boundaries (unlike Sentry's distributions, which kept raw
+// values and computed percentiles server-side), and the distributions this CLI
+// emits span two very different ranges: small counts and scores (`scan.score`
+// 0-100, `scan.files`, `oxlint.workers`) and millisecond durations
+// (`scan.duration`, `scan.phase_duration`, `scan.feedback_delay`). One
+// roughly-exponential ladder covers both — dense at the low end for scores and
+// counts, reaching ten minutes for the slowest scans. Axiom's metrics store
+// drops bucket metadata and assumes equal-width buckets, so finer per-metric
+// tuning would not survive the trip; the wide event carries exact timings when
+// precision matters.
+export const METRIC_DISTRIBUTION_BOUNDARIES = [
+  0, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000, 300_000,
+  600_000,
+];
 
-// OpenTelemetry trace-flags "sampled" bit, used to read/write the sampling
-// decision in a `traceId`/`traceFlags` span context.
-export const TRACE_FLAG_SAMPLED = 1;
-
-// Nanoseconds per second, for converting Effect's epoch-nanosecond span clock
-// into the `[seconds, nanosRemainder]` HrTime tuple Sentry/OTel expect.
-export const NANOSECONDS_PER_SECOND = 1_000_000_000n;
-
-// Sentry Application Metric names. Centralized so emit sites can't drift on a
-// typo'd string and the full counter surface stays greppable in one place.
+// Metric names. Centralized so emit sites can't drift on a typo'd string and
+// the full counter surface stays greppable in one place.
 // Dotted, domain-grouped names (Sentry convention); high-cardinality
 // dimensions (rule id, package manager, ...) go in attributes, never the name.
 export const METRIC = {

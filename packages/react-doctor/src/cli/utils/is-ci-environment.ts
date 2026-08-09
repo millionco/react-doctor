@@ -125,12 +125,6 @@ export const isOfficialGithubAction = (): boolean =>
 // off GitHub Actions. Low-cardinality, so safe as a run tag.
 export const detectCiEventName = (): string | null => process.env.GITHUB_EVENT_NAME?.trim() || null;
 
-// Whether the CI run was triggered by a pull request event.
-export const isPullRequestCiEvent = (): boolean => {
-  const eventName = detectCiEventName();
-  return eventName === "pull_request" || eventName === "pull_request_target";
-};
-
 // The runner OS GitHub Actions exposes as `RUNNER_OS` (`Linux`/`Windows`/
 // `macOS`). Null off GitHub Actions; the local `process.platform` covers the
 // non-action case.

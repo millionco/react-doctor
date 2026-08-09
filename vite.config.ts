@@ -16,6 +16,7 @@ export default defineConfig({
       "packages/react-doctor/tests/fixtures/**",
       "packages/language-server/tests/fixtures/**",
       "packages/deslop-js/tests/fixtures/**",
+      "packages/fuzz/corpus/react-bench-0.9.7-audit/**",
     ],
     plugins: ["typescript", "react", "import"],
     rules: {},
@@ -32,6 +33,7 @@ export default defineConfig({
       "packages/zed-react-doctor/**",
       "packages/language-server/tests/fixtures/**",
       "packages/deslop-js/tests/fixtures/**",
+      "packages/fuzz/corpus/react-bench-0.9.7-audit*",
     ],
   },
 });

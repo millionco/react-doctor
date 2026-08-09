@@ -89,10 +89,6 @@ const hasBundlerIgnoreAnnotation = (node: EsTreeNode, filename: string | undefin
   return BUNDLER_IGNORE_ANNOTATION_PATTERN.test(fileText.slice(range[0], range[1]));
 };
 
-export const clearBundlerIgnoreAnnotationCache = (): void => {
-  annotatedFileTextCache.clear();
-};
-
 const isUrlCreateObjectUrlCall = (expression: EsTreeNode): boolean =>
   isNodeOfType(expression, "CallExpression") &&
   isNodeOfType(expression.callee, "MemberExpression") &&

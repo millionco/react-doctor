@@ -1609,4 +1609,113 @@ const C=()=>{
     expect(nestedReceiver.diagnostics).toHaveLength(1);
     expect(memberCallback.diagnostics).toHaveLength(1);
   });
+
+  it("flags callback props destructured from a props object inside the component body", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const Table = (props) => {
+        const { onSelectedRowsChange } = props;
+        const [, setSelectedRows] = useState([]);
+        setSelectedRows((previous) => {
+          const next = previous.filter(Boolean);
+          if (next.length !== previous.length) onSelectedRowsChange(next);
+          return next;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags defaulted callback props destructured inside the component body", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const noop = () => {};
+      const Table = (props) => {
+        const { onSelectedRowsChange = noop } = props;
+        const [, setSelectedRows] = useState([]);
+        setSelectedRows((previous) => {
+          onSelectedRowsChange(previous);
+          return previous;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "history.pushState(null, '', href)",
+    "window.history.pushState(null, '', href)",
+    "globalThis.history.replaceState(null, '', href)",
+  ])("flags History API mutations inside an updater: %s", (mutation) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const C = ({ href }) => {
+        const [, setParams] = useState(new URLSearchParams());
+        setParams((previous) => {
+          const next = new URLSearchParams(previous);
+          ${mutation};
+          return next;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "const method = replace ? 'replaceState' : 'pushState'; window.history[method](null, '', href)",
+    "window.history[replace ? 'replaceState' : 'pushState'](null, '', href)",
+    "const suffix = 'State'; const method = 'push' + suffix; globalThis.history[method](null, '', href)",
+  ])("flags statically finite computed History API mutations: %s", (mutation) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const C = ({ href, replace }) => {
+        const [, setParams] = useState(new URLSearchParams());
+        setParams((previous) => {
+          const next = new URLSearchParams(previous);
+          ${mutation};
+          return next;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    "const method = replace ? 'go' : 'back'; window.history[method]()",
+    "let method = 'pushState'; method = 'go'; window.history[method]()",
+    "const method = getMethod(); window.history[method]()",
+  ])("does not flag unknown or non-mutating computed History calls: %s", (mutation) => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const C = ({ replace, getMethod }) => {
+        const [, setValue] = useState(0);
+        setValue((previous) => {
+          ${mutation};
+          return previous;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a shadowed History-like object", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `const C = ({ href }) => {
+        const history = { pushState() {} };
+        const [, setParams] = useState(new URLSearchParams());
+        setParams((previous) => {
+          history.pushState(null, '', href);
+          return previous;
+        });
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

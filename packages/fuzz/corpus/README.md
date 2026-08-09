@@ -34,4 +34,4 @@ Header format:
 // react-major: <major, only when the false positive depends on React version>
 ```
 
-Files must parse cleanly as TSX (`pnpm test` enforces it).
+Files may use `.ts`, `.tsx`, `.js`, or `.jsx` and must parse cleanly (`pnpm test` enforces it).

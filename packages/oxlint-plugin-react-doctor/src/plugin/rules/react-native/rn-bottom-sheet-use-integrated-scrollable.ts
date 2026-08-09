@@ -1,10 +1,10 @@
+import { GORHOM_BOTTOM_SHEET_MODULE_NAME } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticJsxDescendantOpeningElements } from "../../utils/get-static-jsx-descendant-opening-elements.js";
 import { resolveImportedJsxComponentName } from "../../utils/resolve-imported-jsx-component-name.js";
 
-const GORHOM_BOTTOM_SHEET_MODULE = "@gorhom/bottom-sheet";
 const REACT_NATIVE_MODULE = "react-native";
 const BOTTOM_SHEET_CONTAINER_NAMES: ReadonlySet<string> = new Set([
   "BottomSheet",
@@ -31,7 +31,7 @@ export const rnBottomSheetUseIntegratedScrollable = defineRule({
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         const containerName = resolveImportedJsxComponentName(
           node.openingElement,
-          GORHOM_BOTTOM_SHEET_MODULE,
+          GORHOM_BOTTOM_SHEET_MODULE_NAME,
           context.scopes,
         );
         if (!containerName || !BOTTOM_SHEET_CONTAINER_NAMES.has(containerName)) return;

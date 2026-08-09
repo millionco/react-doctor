@@ -1,6 +1,9 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Diagnostic } from "../../src/schemas.js";
 import { Reporter, ReporterCapture } from "../../src/services/reporter.js";
@@ -68,5 +71,26 @@ describe("Reporter.layerCapture", () => {
       }).pipe(Effect.provide(Layer.mergeAll(Reporter.layerCapture))),
     );
     expect(captured).toEqual([]);
+  });
+});
+
+describe("Reporter.layerNdjson", () => {
+  it("appends schema-encoded diagnostics", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-reporter-"));
+    const reportPath = path.join(temporaryDirectory, "nested", "diagnostics.ndjson");
+
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const reporter = yield* Reporter;
+          yield* reporter.emit(sampleDiagnostic);
+          yield* reporter.finalize;
+        }).pipe(Effect.provide(Reporter.layerNdjson(reportPath))),
+      );
+
+      expect(fs.readFileSync(reportPath, "utf8")).toBe(`${JSON.stringify(sampleDiagnostic)}\n`);
+    } finally {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 });

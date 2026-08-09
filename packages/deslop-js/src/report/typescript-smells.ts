@@ -41,7 +41,7 @@ const parseSource = (filePath: string): ParsedSource | undefined => {
   } catch {
     return undefined;
   }
-  const rawComments = (parseResult as unknown as { comments?: unknown }).comments;
+  const rawComments = parseResult.comments;
   const comments = Array.isArray(rawComments) ? rawComments.filter(isParsedSourceComment) : [];
   return {
     programNode: parseResult.program,

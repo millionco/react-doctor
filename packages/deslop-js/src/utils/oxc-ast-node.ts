@@ -8,7 +8,7 @@ export interface OxcAstNode {
 export const isOxcAstNode = (value: unknown): value is OxcAstNode =>
   Boolean(value) && typeof value === "object" && typeof (value as OxcAstNode).type === "string";
 
-export const getNodeStringField = (node: OxcAstNode, key: string): string | undefined => {
+const getNodeStringField = (node: OxcAstNode, key: string): string | undefined => {
   const value = node[key];
   return typeof value === "string" ? value : undefined;
 };

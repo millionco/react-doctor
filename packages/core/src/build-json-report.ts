@@ -22,7 +22,7 @@ interface BuildJsonReportInput {
   directory: string;
   mode: JsonReportMode;
   diff: DiffInfo | null;
-  scans: Array<{ directory: string; result: InspectResult }>;
+  scans: ReadonlyArray<{ directory: string; result: InspectResult }>;
   skippedProjects?: ReadonlyArray<JsonReportSkippedProject>;
   totalElapsedMilliseconds: number;
   /**

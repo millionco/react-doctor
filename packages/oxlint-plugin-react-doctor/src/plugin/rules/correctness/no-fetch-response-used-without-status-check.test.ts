@@ -155,7 +155,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags when the status is read only after the body is consumed", () => {
+  it("accepts parsing before an immediate status guard when the body is unused beforehand", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `const load = async () => {
@@ -165,6 +165,21 @@ describe("no-fetch-response-used-without-status-check", () => {
         return body;
       };`,
     );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags parsing before a status guard when the parsed body is used first", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const load = async () => {
+        const response = await fetch("/api/items");
+        const body = await response.json();
+        render(body);
+        if (!response.ok) throw new Error("failed");
+        return body;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
 
@@ -249,6 +264,26 @@ describe("no-fetch-response-used-without-status-check", () => {
       async function load() {
         const response = await fetch("/api/keys");
         if (!responseSucceeded(response)) throw new Error("Unable to refresh");
+        return response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a typed status helper with a boolean fallback before body consumption", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const isSuccessResponse = (response) => {
+        if (typeof response.ok === "boolean") return response.ok;
+        if (typeof response.status === "number") {
+          return response.status >= 200 && response.status < 300;
+        }
+        return true;
+      };
+      async function load() {
+        const response = await fetch("/api/keys");
+        if (!isSuccessResponse(response)) throw new Error("Refresh failed");
         return response.json();
       }`,
     );
@@ -1121,6 +1156,129 @@ describe("audit regressions", () => {
       noFetchResponseUsedWithoutStatusCheck,
       `async function load() { const response = await fetch("/api"); return response["json"](); }`,
     );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a discarded body validation followed by a status decision", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function create() {
+        const response = await fetch("/api", { method: "POST" });
+        await response.json();
+        if (!response.ok) throw new Error("create failed");
+        return true;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a discarded body validation whose later status is stored", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function create() {
+        const response = await fetch("/api", { method: "POST" });
+        await response.json();
+        const successful = response.ok;
+        return successful;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a local status helper with status-guarded boolean returns", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const isSuccessfulResponse = (response) => {
+        if (response.ok === true) return true;
+        if (response.ok === false) return false;
+        return response.status >= 200 && response.status < 300;
+      };
+      async function create() {
+        const response = await fetch("/api", { method: "POST" });
+        if (!isSuccessfulResponse(response)) throw new Error("create failed");
+        await response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a local status helper with an unguarded success return", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const isSuccessfulResponse = (response, bypass) => {
+        if (bypass) return true;
+        return response.ok;
+      };
+      async function create(bypass) {
+        const response = await fetch("/api");
+        if (!isSuccessfulResponse(response, bypass)) throw new Error("create failed");
+        await response.json();
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts an assigned body result used after a status exit", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() {
+        const response = await fetch("/api");
+        let json;
+        try { json = await response.json(); } catch { return null; }
+        if (!response.ok) return null;
+        return parseResponse(json);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a derived body value whose uses are status guarded", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() {
+        const response = await fetch("/api");
+        const json = await response.json();
+        const rows = json?.rows;
+        if (response.ok && Array.isArray(rows)) setRows(rows);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a parsed body whose derived result is status guarded", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() {
+        const response = await fetch("/api");
+        let data;
+        data = await response.json();
+        const parsed = parseResponse(data);
+        if (!response.ok || !parsed) return null;
+        return parsed;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("reports a derived body value acted on before a later status check", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function load() {
+        const response = await fetch("/api");
+        const json = await response.json();
+        const rows = json?.rows;
+        setRows(rows);
+        if (!response.ok) throw new Error("load failed");
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
 });

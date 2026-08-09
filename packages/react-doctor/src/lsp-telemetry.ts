@@ -4,63 +4,75 @@ import type {
   Telemetry,
   WorkspaceScanTelemetry,
 } from "@react-doctor/language-server";
-import { SENTRY_DSN, SENTRY_FLUSH_TIMEOUT_MS, METRIC } from "./cli/utils/constants.js";
+import * as Context from "effect/Context";
+import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
+import * as Tracer from "effect/Tracer";
+import {
+  LSP_TELEMETRY_EXPORT_INTERVAL_MS,
+  METRIC,
+  NANOSECONDS_PER_MILLISECOND,
+  SENTRY_DSN,
+  SENTRY_FLUSH_TIMEOUT_MS,
+} from "./cli/utils/constants.js";
 import { toCategoryKey } from "./cli/utils/to-category-key.js";
 import { isEnvFlagEnabled } from "./cli/utils/is-env-flag-enabled.js";
+import { isTelemetryEnabled } from "./cli/utils/is-telemetry-enabled.js";
+import { recordCount, recordDistribution } from "./cli/utils/record-metric.js";
+import { buildSentryScope } from "./cli/utils/build-sentry-scope.js";
 import { scrubSentryEvent } from "./cli/utils/scrub-sentry-event.js";
-import { scrubSentryMetric } from "./cli/utils/scrub-sentry-metric.js";
-import {
-  resolveSentryEnvironment,
-  resolveSentryRelease,
-  resolveTracesSampleRate,
-} from "./cli/utils/sentry-config.js";
+import { toSpanAttributes } from "./cli/utils/to-span-attributes.js";
+import { getTelemetryContext, shutdownTelemetry } from "./cli/utils/telemetry-runtime.js";
+import { resolveSentryEnvironment, resolveSentryRelease } from "./cli/utils/sentry-config.js";
 
 /**
- * Sentry telemetry for the editor language server (`react-doctor
- * experimental-lsp`). Mirrors the CLI's model — a per-scan wide-event span
- * (op `lsp.scan`) plus Application Metrics counters/distributions — but with
- * an LSP-appropriate scope instead of the CLI run context, since the daemon
- * isn't a one-shot command. Shares the CLI's DSN, release, and the
- * anonymization scrubbers, so editor telemetry honors the same privacy
- * contract (no IP, no paths/secrets).
+ * Telemetry for the editor language server (`react-doctor experimental-lsp`).
+ * Mirrors the CLI's model — a per-scan wide-event span plus counters and
+ * distributions to Axiom, with crashes to Sentry — but with an LSP-appropriate
+ * scope instead of the CLI run context, since the daemon isn't a one-shot
+ * command. Shares the CLI's DSN, release, and the anonymization scrubbers, so
+ * editor telemetry honors the same privacy contract (no IP, no paths/secrets).
  *
- * Every emit is a guarded, swallow-on-throw no-op unless Sentry is live, so a
+ * Every emit is a guarded, swallow-on-throw no-op unless telemetry is live, so a
  * telemetry failure (or an opted-out / test run) can never disrupt the editor
  * session.
+ *
+ * Unlike the one-shot CLI, this process can run for hours, so its exporters use
+ * a short periodic interval — telemetry ships while the editor session is alive
+ * rather than only when the server shuts down (which it may never cleanly do).
  */
-
-let lspTracesSampleRate = 0;
 
 const nodeMajorVersion = (): number =>
   Number.parseInt(process.versions.node.split(".", 1)[0] ?? "", 10) || 0;
 
-// The language server can't take a `--no-score` flag the way the CLI does, so
-// opt-out is env-driven (matching the `REACT_DOCTOR_*` runtime knobs). The
-// argv flags are still honored for editors configured to pass them, and this
-// repo's own test runs never phone home.
-const shouldEnableLspTelemetry = (): boolean => {
-  if (isEnvFlagEnabled(process.env.REACT_DOCTOR_NO_TELEMETRY)) return false;
-  if (process.argv.includes("--no-telemetry") || process.argv.includes("--no-score")) return false;
-  if (process.env.VITEST || process.env.NODE_ENV === "test") return false;
-  return true;
-};
-
-/** Whether wide-event spans will actually be recorded (Sentry live + sampling on). */
-const isLspTracingEnabled = (): boolean => Sentry.isInitialized() && lspTracesSampleRate > 0;
+/**
+ * Opens the shared telemetry runtime with the daemon's periodic export
+ * interval. Called at startup rather than lazily from the first scan: session
+ * metrics are recorded before any scan completes, and if the editor kills the
+ * server before one does, a runtime that was never built means those counters
+ * are never exported.
+ */
+const getLspTelemetryContext = (): Context.Context<never> | null =>
+  getTelemetryContext({ exportIntervalMs: LSP_TELEMETRY_EXPORT_INTERVAL_MS });
 
 /**
  * Initializes Sentry for the language server. Safe to call once at startup; a
  * no-op when already initialized or when telemetry is opted out / disabled.
+ *
+ * Performance tracing is off — the `lsp.scan` wide event is an Effect span
+ * exported to Axiom, and Effect has a single `Tracer` reference.
  */
 export const initializeLspSentry = (serverVersion: string): void => {
-  if (Sentry.isInitialized() || !shouldEnableLspTelemetry()) return;
-  lspTracesSampleRate = resolveTracesSampleRate();
+  if (Sentry.isInitialized() || !isTelemetryEnabled()) return;
+  // Open the exporters up front so the periodic interval starts ticking and
+  // session-start counters are covered even if no scan ever completes.
+  getLspTelemetryContext();
   Sentry.init({
     dsn: process.env.SENTRY_DSN || SENTRY_DSN,
     release: resolveSentryRelease(),
     environment: resolveSentryEnvironment(),
     sendDefaultPii: false,
-    tracesSampleRate: lspTracesSampleRate,
+    tracesSampleRate: 0,
     debug: isEnvFlagEnabled(process.env.SENTRY_DEBUG),
     initialScope: {
       tags: {
@@ -80,8 +92,6 @@ export const initializeLspSentry = (serverVersion: string): void => {
       },
     },
     beforeSend: (event) => scrubSentryEvent(event),
-    beforeSendTransaction: (event) => scrubSentryEvent(event),
-    beforeSendMetric: (metric) => scrubSentryMetric(metric),
   });
 };
 
@@ -113,46 +123,64 @@ export const buildLspScanEventAttributes = (
 };
 
 const emitSessionStart = (session: SessionTelemetry): void => {
-  if (!Sentry.isInitialized()) return;
-  try {
-    Sentry.metrics.count(METRIC.lspSessionStarted, 1, {
-      attributes: {
-        nodeMajor: session.nodeMajor,
-        projectCount: session.projectCount,
-        workspaceFolderCount: session.workspaceFolderCount,
-        scanOnType: session.scanOnType,
-        lintAvailable: session.lintAvailable,
-      },
-    });
-  } catch {}
+  recordCount(METRIC.lspSessionStarted, 1, {
+    nodeMajor: session.nodeMajor,
+    projectCount: session.projectCount,
+    workspaceFolderCount: session.workspaceFolderCount,
+    scanOnType: session.scanOnType,
+    lintAvailable: session.lintAvailable,
+  });
 };
 
 const emitWorkspaceScan = (scan: WorkspaceScanTelemetry): void => {
-  if (!Sentry.isInitialized()) return;
+  recordCount(METRIC.lspScanCompleted, 1, {
+    trigger: scan.trigger,
+    lintDegraded: scan.lintDegraded,
+  });
+  recordDistribution(METRIC.lspScanDuration, scan.durationMs, {
+    unit: "millisecond",
+    attributes: { trigger: scan.trigger },
+  });
+  recordDistribution(METRIC.lspScanDiagnostics, scan.totalDiagnostics, {
+    attributes: { trigger: scan.trigger },
+  });
+
+  // The canonical wide event: one span per scan carrying the full outcome as
+  // attributes.
+  //
+  // The span is built straight off the tracer rather than through
+  // `Effect.makeSpan`, which stamps the start time from the clock. This is
+  // emitted once the burst has already finished, so a clock-stamped span would
+  // start and end at the same instant and report a duration of ~0 — the scan's
+  // real window has to be supplied on both ends.
+  const telemetryContext = getLspTelemetryContext();
+  if (telemetryContext === null) return;
   try {
-    Sentry.metrics.count(METRIC.lspScanCompleted, 1, {
-      attributes: { trigger: scan.trigger, lintDegraded: scan.lintDegraded },
+    const tracer = Context.get(telemetryContext, Tracer.Tracer);
+    const startTime = BigInt(scan.startedAtEpochMs) * NANOSECONDS_PER_MILLISECOND;
+    const span = tracer.span({
+      name: "react-doctor experimental-lsp scan",
+      parent: Option.none(),
+      annotations: Context.empty(),
+      links: [],
+      startTime,
+      kind: "internal",
+      root: true,
+      sampled: true,
     });
-    Sentry.metrics.distribution(METRIC.lspScanDuration, scan.durationMs, {
-      unit: "millisecond",
-      attributes: { trigger: scan.trigger },
-    });
-    Sentry.metrics.distribution(METRIC.lspScanDiagnostics, scan.totalDiagnostics, {
-      attributes: { trigger: scan.trigger },
-    });
-    // The canonical wide event: one transaction per scan, carrying the full
-    // outcome as attributes for ad-hoc Trace Explorer queries. Backdated to the
-    // burst's real start so the transaction duration is the scan duration.
-    if (isLspTracingEnabled()) {
-      const span = Sentry.startInactiveSpan({
-        name: "react-doctor experimental-lsp scan",
-        op: "lsp.scan",
-        forceTransaction: true,
-        startTime: new Date(scan.startedAtEpochMs),
-        attributes: buildLspScanEventAttributes(scan),
-      });
-      span.end();
+    // Run dimensions first, scan outcome second (so the scan wins a collision).
+    // Sentry attached these automatically from `initialScope`; an Effect span
+    // inherits no such scope, so without this the editor's traces would lack the
+    // `origin` / `command` / `platform` dimensions that the CLI's root span
+    // stamps and that LSP metrics already carry via `record-metric.ts`.
+    const attributes = {
+      ...toSpanAttributes(buildSentryScope().tags),
+      ...buildLspScanEventAttributes(scan),
+    };
+    for (const [key, value] of Object.entries(attributes)) {
+      span.attribute(key, value);
     }
+    span.end(startTime + BigInt(scan.durationMs) * NANOSECONDS_PER_MILLISECOND, Exit.void);
   } catch {}
 };
 
@@ -161,6 +189,7 @@ export const createLspTelemetry = (): Telemetry => ({
   recordSessionStart: emitSessionStart,
   recordWorkspaceScan: emitWorkspaceScan,
   flush: async () => {
+    await shutdownTelemetry();
     if (!Sentry.isInitialized()) return;
     try {
       await Sentry.flush(SENTRY_FLUSH_TIMEOUT_MS);

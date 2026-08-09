@@ -109,8 +109,6 @@ const buildCloneInstance = (
   };
 };
 
-const directoryOf = (filePath: string): string => dirname(filePath);
-
 const filterRawBlocksToReportableDuplicates = (
   rawBlocks: RawDuplicateBlock[],
   tokenizedFiles: TokenizedFile[],
@@ -131,7 +129,7 @@ const filterRawBlocksToReportableDuplicates = (
     if (instances.length < config.minOccurrences) continue;
 
     if (config.skipLocal) {
-      const distinctDirectories = new Set(instances.map((instance) => directoryOf(instance.path)));
+      const distinctDirectories = new Set(instances.map((instance) => dirname(instance.path)));
       if (distinctDirectories.size < 2) continue;
     }
 

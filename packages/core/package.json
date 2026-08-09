@@ -32,7 +32,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "^2.7.0",
     "oxc-resolver": "^11.24.2",
-    "oxlint": ">=1.76.0 <1.77.0",
+    "oxlint": ">=1.77.0 <1.78.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "picomatch": "^4.0.4",
     "semver": "^7.7.4",

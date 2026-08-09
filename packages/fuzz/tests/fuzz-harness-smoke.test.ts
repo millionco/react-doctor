@@ -55,7 +55,9 @@ describe("fuzz harness oracles", () => {
       .readdirSync(corpusDirectory, { encoding: "utf8", recursive: true })
       .filter(
         (relativePath) =>
-          /\.(tsx|ts|jsx|js)$/.test(relativePath) && !relativePath.endsWith(".d.ts"),
+          /\.(tsx|ts|jsx|js)(?:\.txt)?$/.test(relativePath) &&
+          !relativePath.endsWith(".d.ts") &&
+          !relativePath.endsWith(".d.ts.txt"),
       )
       .map((relativePath) => relativePath.split(path.sep).join("/"))
       .sort();

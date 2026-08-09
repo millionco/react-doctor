@@ -72,6 +72,15 @@ describe("loadFuzzCorpus", () => {
     ]);
   });
 
+  it.each(["tsx", "ts", "jsx", "js"])("loads .%s.txt source fixtures", (extension) => {
+    const directory = makeCorpusDirectory();
+    fs.writeFileSync(path.join(directory, `declared.${extension}.txt`), "export const value = 1;");
+
+    expect(loadFuzzCorpus(directory).map((entry) => entry.relativePath)).toEqual([
+      `declared.${extension}.txt`,
+    ]);
+  });
+
   it("ignores non-source files", () => {
     const directory = makeCorpusDirectory();
     fs.writeFileSync(path.join(directory, "manifest.json"), "{}");
@@ -85,8 +94,16 @@ describe("loadFuzzCorpus", () => {
     fs.mkdirSync(nestedDirectory);
     fs.writeFileSync(path.join(directory, "root.d.ts"), "declare const rootValue: string;");
     fs.writeFileSync(
+      path.join(directory, "root.d.ts.txt"),
+      "declare const rootFixtureValue: string;",
+    );
+    fs.writeFileSync(
       path.join(nestedDirectory, "nested.d.ts"),
       "declare const nestedValue: string;",
+    );
+    fs.writeFileSync(
+      path.join(nestedDirectory, "nested.d.ts.txt"),
+      "declare const nestedFixtureValue: string;",
     );
 
     expect(loadFuzzCorpus(directory)).toEqual([]);

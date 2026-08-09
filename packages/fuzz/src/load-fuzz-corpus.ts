@@ -14,14 +14,16 @@ export interface FuzzCorpusLoadOptions {
   maximumFiles?: number;
 }
 
-const CORPUS_FILE_PATTERN = /\.(tsx|ts|jsx|js)$/;
+const CORPUS_FILE_PATTERN = /\.(tsx|ts|jsx|js)(?:\.txt)?$/;
 const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: (.+)$/m;
 const SOURCE_PATH_DIRECTIVE_PATTERN = /^\/\/ file-path: (.+)$/m;
 const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
 
 const isCorpusFileName = (fileName: string): boolean =>
-  CORPUS_FILE_PATTERN.test(fileName) && !fileName.endsWith(".d.ts");
+  CORPUS_FILE_PATTERN.test(fileName) &&
+  !fileName.endsWith(".d.ts") &&
+  !fileName.endsWith(".d.ts.txt");
 
 const readCorpusDirectives = (
   code: string,

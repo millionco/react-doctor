@@ -14,6 +14,8 @@ review-*.md
 
 # Track repository-owned agent skills, but keep other local agent state out.
 /.agents/*
+!/.agents/plugins/
+!/.agents/plugins/marketplace.json
 !/.agents/skills/
 /.agents/skills/*
 !/.agents/skills/react-doctor/
@@ -51,3 +53,4 @@ review-*.md
 /scripts/print-batch-input.mjs
 /scripts/rule-prompts/
 /rules.json
+/.react-doctor-loop/

@@ -1,4 +1,5 @@
 // rule: effect-needs-cleanup
+// file-path: src/utils/use-zoom-pan.ts
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 84526bd3eb455ef485e6afd6ec80058905faa7ca80e643f326a68930a633936d

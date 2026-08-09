@@ -1,4 +1,5 @@
 // rule: no-loading-flag-reset-outside-finally
+// file-path: packages/shared/src/components/conversation/blocks/shared/SessionInteractionCard.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 8aed267fc9f74cb07c432311ec98d1fbec9e978fac45af289f10a6c785daf3a8

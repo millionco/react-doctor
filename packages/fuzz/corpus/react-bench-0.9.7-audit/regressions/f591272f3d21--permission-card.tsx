@@ -1,4 +1,5 @@
 // rule: no-loading-flag-reset-outside-finally
+// file-path: packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit f591272f3d21770b0cda7b8325d0c9399daea057d3663b8413c322e5262f5c11

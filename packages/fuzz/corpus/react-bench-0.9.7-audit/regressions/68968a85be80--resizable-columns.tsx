@@ -1,4 +1,5 @@
 // rule: effect-needs-cleanup
+// file-path: apps/framework-editor/app/components/table/resizable-columns.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 68968a85be806aec4d1c02ef0e45de0e9ac73bf5ebaf8cdf6fa18dff42a8b1a0

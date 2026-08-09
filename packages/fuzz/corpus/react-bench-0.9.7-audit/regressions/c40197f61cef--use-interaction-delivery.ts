@@ -1,4 +1,5 @@
 // rule: no-loading-flag-reset-outside-finally, no-unowned-async-error-clear
+// file-path: packages/shared/src/hooks/useInteractionDelivery.ts
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit c40197f61cefe5ff0e795b63469c632a57ea956ad4cff735ad1954f59e638bb2

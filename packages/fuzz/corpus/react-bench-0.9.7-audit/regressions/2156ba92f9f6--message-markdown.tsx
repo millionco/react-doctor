@@ -1,4 +1,5 @@
 // rule: dangerous-html-sink
+// file-path: src/components/chat/message/message-markdown.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 2156ba92f9f63b1e34de4287c2a8be0694172eb9b13e7d084ee1cb070c0c1c8c

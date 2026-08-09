@@ -1,4 +1,5 @@
 // rule: effect-needs-cleanup
+// file-path: src/hooks/use-photo-zoom.ts
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 350c5f6506a6f3271eeb88e73054130858d0311cca7d05310bcd48ce4ea22491

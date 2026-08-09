@@ -1,4 +1,5 @@
 // rule: effect-needs-cleanup
+// file-path: src/components/document/history/DocumentHistoryModal.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit cfba8f59f5589609c62c90a9a4d088fe4989a86dab2e6c17df3dfa88a54c31f3

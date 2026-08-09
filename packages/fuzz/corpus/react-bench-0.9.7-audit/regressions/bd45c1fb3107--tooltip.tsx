@@ -1,4 +1,5 @@
 // rule: effect-needs-cleanup
+// file-path: src/components/Tooltip/Tooltip.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit bd45c1fb310764423e3c91c319bfeb720c93a144ce80c482c28d04d8dee12d0b

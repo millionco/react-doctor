@@ -1,4 +1,5 @@
 // rule: no-fetch-response-used-without-status-check
+// file-path: packages/cli/src/pages/settings.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 19bdb301c2e0eb32bf27f3cea24e25cb0f40fd3ccf562858644dc9617eafc87d

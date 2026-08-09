@@ -1,4 +1,5 @@
 // rule: no-loading-flag-reset-outside-finally
+// file-path: frontend/src/components/organization/org-vcs-github-manual-form.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 0e984d6447b722b93c4635ce37b4afcb9c9c8e2cc5db113203cd1c8d1fa08835

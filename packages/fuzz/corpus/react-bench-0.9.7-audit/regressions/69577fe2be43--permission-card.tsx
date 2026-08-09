@@ -1,4 +1,5 @@
 // rule: no-stale-timer-ref
+// file-path: packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 69577fe2be434e7c4daa30621b992942c8bcf69e9d4485646ec145fcec915971

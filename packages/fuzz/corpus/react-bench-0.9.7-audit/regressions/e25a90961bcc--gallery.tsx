@@ -1,4 +1,5 @@
 // rule: effect-needs-cleanup
+// file-path: src/components/gallery.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit e25a90961bccceac28be38789e68d1c1af1e9fc9408ccb7fcda7aa3bae6df9e3

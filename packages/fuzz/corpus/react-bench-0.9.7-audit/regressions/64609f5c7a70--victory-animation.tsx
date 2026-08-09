@@ -1,4 +1,5 @@
 // rule: effect-needs-cleanup
+// file-path: src/victory-animation/victory-animation.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 64609f5c7a70a23c306ffadc0d360814e1f743006fbb5575445facef30abd358

@@ -1,4 +1,5 @@
 // rule: no-side-effect-in-state-updater-function
+// file-path: client/src/components/pipeline/editorial/EditorialHealthPanel.jsx
 // verdict: fail
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 74931c270c7093eec0c0f1a5b01c8aaf52035141e7723fac04089836143bffa5

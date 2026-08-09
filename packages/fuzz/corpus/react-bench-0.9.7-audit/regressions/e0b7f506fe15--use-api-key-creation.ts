@@ -1,4 +1,5 @@
 // rule: no-fetch-response-used-without-status-check
+// file-path: packages/cli/src/util/useApiKeyCreation.ts
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit e0b7f506fe1588ab00599019a67aaa2d822fe76fea1a02d1f96910faeaaa5cec

@@ -6,7 +6,7 @@ const HASH_PREFIX_LENGTH = 12;
 const COMPLETE_SOURCE_START_LINE = 1;
 const CORPUS_DIRECTORY_NAME = "react-bench-0.9.7-audit";
 const DEFAULT_AUDIT_VERSION = "0.9.7";
-const TRUE_POSITIVE_SUFFIXES = new Set(["SQSmbFe", "eGYGezE"]);
+const TRUE_POSITIVE_SUFFIXES = new Set(["2JPrD6x", "SQSmbFe", "eGYGezE", "p9AQ8ui"]);
 
 const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
 
@@ -93,6 +93,7 @@ const main = () => {
       callsite.rule,
       callsite.reconstructedFilePath,
       callsite.reportedLine,
+      callsite.reportedColumn ?? "",
       callsite.snippetSha256,
     ].join(":"),
   );
@@ -146,6 +147,7 @@ const main = () => {
     const rules = [...group.rules].sort();
     const header = [
       `// rule: ${rules.join(", ")}`,
+      `// file-path: ${group.callsitePaths[0]}`,
       group.verdict === "fail" ? "// verdict: fail" : "// audit-verdict: pass",
       "// weakness: react-bench-exact-callsite",
       `// source: React Bench ${[...group.auditVersions].sort().join("+")} exhaustive audit ${fixtureSourceSha256}`,
@@ -154,6 +156,7 @@ const main = () => {
     fs.writeFileSync(outputPath, `${header}\n${group.source}`);
     fixtures.push({
       fixture: relativePath,
+      filePath: group.callsitePaths[0],
       verdict: group.verdict,
       rules,
       fixtureSourceSha256,
@@ -164,6 +167,7 @@ const main = () => {
         callsite.rule,
         callsite.reconstructedFilePath,
         callsite.reportedLine,
+        callsite.reportedColumn ?? "",
         callsite.snippetSha256,
       ].join(":");
       fixtureByCallsiteKey.set(callsiteKey, relativePath);
@@ -180,12 +184,14 @@ const main = () => {
     ].join(":");
     return {
       suffix: callsite.suffix,
+      ...(callsite.sourceTrialId ? { sourceTrialId: callsite.sourceTrialId } : {}),
       auditVersion: callsite.auditVersion ?? DEFAULT_AUDIT_VERSION,
       task: callsite.task,
       patchSha256: callsite.patchSha256,
       rule: callsite.rule,
       filePath: callsite.reconstructedFilePath || callsite.reportedFilePath,
       reportedLine: callsite.reportedLine,
+      ...(callsite.reportedColumn ? { reportedColumn: callsite.reportedColumn } : {}),
       sourceSha256: callsite.sourceSha256,
       snippetSha256: callsite.snippetSha256,
       fixture: fixtureByCallsiteKey.get(callsiteKey),

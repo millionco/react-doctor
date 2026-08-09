@@ -6,6 +6,7 @@ export interface FuzzCorpusEntry {
   relativePath: string;
   code: string;
   ruleIds?: string[];
+  sourcePath?: string;
   verdict?: "pass" | "fail";
 }
 
@@ -15,20 +16,25 @@ export interface FuzzCorpusLoadOptions {
 
 const CORPUS_FILE_PATTERN = /\.(tsx|ts|jsx|js)$/;
 const RULE_DIRECTIVE_PATTERN = /^\/\/ rule: (.+)$/m;
+const SOURCE_PATH_DIRECTIVE_PATTERN = /^\/\/ file-path: (.+)$/m;
 const VERDICT_DIRECTIVE_PATTERN = /^\/\/ verdict: (pass|fail)$/m;
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", "dist", "build", "coverage"]);
 
 const isCorpusFileName = (fileName: string): boolean =>
   CORPUS_FILE_PATTERN.test(fileName) && !fileName.endsWith(".d.ts");
 
-const readCorpusDirectives = (code: string): Pick<FuzzCorpusEntry, "ruleIds" | "verdict"> => {
+const readCorpusDirectives = (
+  code: string,
+): Pick<FuzzCorpusEntry, "ruleIds" | "sourcePath" | "verdict"> => {
   const ruleIds = RULE_DIRECTIVE_PATTERN.exec(code)?.[1]
     ?.split(",")
     .map((ruleId) => ruleId.trim())
     .filter(Boolean);
   const verdict = VERDICT_DIRECTIVE_PATTERN.exec(code)?.[1];
-  const directives: Pick<FuzzCorpusEntry, "ruleIds" | "verdict"> = {};
+  const sourcePath = SOURCE_PATH_DIRECTIVE_PATTERN.exec(code)?.[1]?.trim();
+  const directives: Pick<FuzzCorpusEntry, "ruleIds" | "sourcePath" | "verdict"> = {};
   if (ruleIds && ruleIds.length > 0) directives.ruleIds = ruleIds;
+  if (sourcePath) directives.sourcePath = sourcePath;
   if (verdict === "pass" || verdict === "fail") directives.verdict = verdict;
   return directives;
 };

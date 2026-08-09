@@ -15,6 +15,7 @@ interface ReactBenchAuditExpectedCounts {
 
 interface ReactBenchAuditFixture {
   fixture: string;
+  filePath: string;
   verdict: "pass" | "fail";
   rules: string[];
   fixtureSourceSha256: string;
@@ -22,10 +23,13 @@ interface ReactBenchAuditFixture {
 
 interface ReactBenchAuditCallsite {
   suffix: string;
+  sourceTrialId?: string;
   auditVersion: string;
   rule: string;
   filePath: string;
   reportedLine: number;
+  reportedColumn?: number;
+  sourceSha256: string;
   snippetSha256: string;
   fixture: string;
   verdict: "pass" | "fail";
@@ -41,7 +45,7 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const corpusDirectory = path.join(packageRoot, "corpus");
 const manifestPath = path.join(corpusDirectory, "react-bench-0.9.7-audit.json");
 const manifest: ReactBenchAuditManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-const fixtureHeaderPattern = /^(?:\/\/[^\n]*\n){4}/;
+const fixtureHeaderPattern = /^(?:\/\/[^\n]*\n){5}/;
 const sha256 = (value: string): string => crypto.createHash("sha256").update(value).digest("hex");
 
 describe("React Bench exact audit corpus", () => {
@@ -65,6 +69,7 @@ describe("React Bench exact audit corpus", () => {
         callsite.rule,
         callsite.filePath,
         callsite.reportedLine,
+        callsite.reportedColumn ?? "",
         callsite.snippetSha256,
       ].join(":"),
     );
@@ -89,6 +94,7 @@ describe("React Bench exact audit corpus", () => {
       const exactSource = entry?.code.replace(fixtureHeaderPattern, "");
       expect(entry, fixture.fixture).toBeDefined();
       expect(entry?.ruleIds, fixture.fixture).toEqual(fixture.rules);
+      expect(entry?.sourcePath, fixture.fixture).toBe(fixture.filePath);
       expect(entry?.verdict, fixture.fixture).toBe(fixture.verdict === "fail" ? "fail" : undefined);
       expect(exactSource, fixture.fixture).toBeDefined();
       expect(sha256(exactSource ?? ""), fixture.fixture).toBe(fixture.fixtureSourceSha256);
@@ -96,9 +102,13 @@ describe("React Bench exact audit corpus", () => {
 
     for (const callsite of manifest.callsites) {
       const fixture = fixturesByPath.get(callsite.fixture);
+      const entry = entriesByPath.get(callsite.fixture);
+      const exactSource = entry?.code.replace(fixtureHeaderPattern, "");
       expect(fixture, callsite.fixture).toBeDefined();
       expect(fixture?.rules, callsite.fixture).toContain(callsite.rule);
       expect(fixture?.verdict, callsite.fixture).toBe(callsite.verdict);
+      expect(fixture?.fixtureSourceSha256, callsite.fixture).toBe(callsite.sourceSha256);
+      expect(exactSource?.split("\n")[callsite.reportedLine - 1], callsite.fixture).toBeDefined();
     }
   });
 });

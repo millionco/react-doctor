@@ -1,4 +1,5 @@
 // rule: effect-needs-cleanup
+// file-path: src/hooks/useMediaQuery.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit d243eed72bf3f17a3167c8a4de2b76b8db3e6715a8508f38240b3f6181a67904

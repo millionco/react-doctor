@@ -1,4 +1,5 @@
 // rule: no-unowned-async-error-clear
+// file-path: packages/shared/src/components/conversation/blocks/shared/use-interaction-delivery.ts
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
 // source: React Bench 0.9.7 exhaustive audit 8490cb41ffc7f8fe9df1cc373eac769d469349d062c5dff15741faf1414f2800

@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
@@ -28,6 +29,7 @@ import {
   SupplyChain,
   type InspectOutput,
   type ResolvedScanTarget,
+  type SourceFileEntry,
   type WorkerSlots,
 } from "@react-doctor/core";
 import type {
@@ -40,6 +42,7 @@ import type {
   ReactDoctorConfig,
   ScoreResult,
 } from "@react-doctor/core";
+import { buildDiagnoseProjectPlan } from "./build-diagnose-project-plan.js";
 
 // The CLI carries the richer warning (logger + telemetry); the library only
 // has stdout, so it warns once per process via console.warn when a scan runs
@@ -105,6 +108,7 @@ const buildInspectProgram = (
   scanTarget: ResolvedScanTarget,
   options: DiagnoseOptions,
   configOverride?: ReactDoctorConfig,
+  precomputedSourceFiles?: ReadonlyArray<SourceFileEntry>,
 ) => {
   const effectiveConfig = configOverride ?? scanTarget.userConfig;
   const includePaths = options.includePaths ?? [];
@@ -112,6 +116,7 @@ const buildInspectProgram = (
 
   return runInspect({
     directory: scanTarget.resolvedDirectory,
+    precomputedSourceFiles,
     includePaths,
     customRulesOnly: effectiveConfig?.customRulesOnly ?? false,
     respectInlineDisables:
@@ -204,6 +209,7 @@ const diagnoseProject = async (
   batchConfig: ReactDoctorConfig | undefined,
   oxlintConcurrency: number,
   oxlintSpawnSlots: WorkerSlots,
+  precomputedSourceFiles: ReadonlyArray<SourceFileEntry> | undefined,
 ): Promise<ProjectResult> => {
   const startTime = globalThis.performance.now();
 
@@ -223,7 +229,14 @@ const diagnoseProject = async (
     const shouldRunLint = resolveShouldRunLint(mergedOptions, effectiveConfig);
     const shouldRunDeadCode = resolveShouldRunDeadCode(mergedOptions, effectiveConfig);
 
-    const program = buildInspectProgram(scanTarget, mergedOptions, effectiveConfig ?? undefined);
+    const canReusePrecomputedSourceFiles =
+      path.resolve(projectDefinition.directory) === path.resolve(scanTarget.resolvedDirectory);
+    const program = buildInspectProgram(
+      scanTarget,
+      mergedOptions,
+      effectiveConfig ?? undefined,
+      canReusePrecomputedSourceFiles ? precomputedSourceFiles : undefined,
+    );
     // `plugins` is override-wins in the merge: when a caller layer supplies
     // it, relative entries resolve against the scan root (caller configs
     // have no file location); otherwise the on-disk config's directory.
@@ -276,21 +289,28 @@ const diagnoseProjectBatch = async (
   const { projects, concurrency, config: batchConfig, ...baseOptions } = input;
   const oxlintConcurrency = Effect.runSync(OxlintConcurrency);
   const oxlintSpawnSlots = createOxlintSpawnSlots(oxlintConcurrency);
+  const projectPlan = await buildDiagnoseProjectPlan(projects);
 
   // `diagnoseProject` never rejects (failures come back as `ok: false`),
   // so the pool always drains every project.
-  const projectResults = await mapWithConcurrency(
-    projects,
+  const completedProjects = await mapWithConcurrency(
+    projectPlan,
     concurrency ?? DEFAULT_PROJECT_SCAN_CONCURRENCY,
-    (projectDefinition) =>
-      diagnoseProject(
-        projectDefinition,
+    async (projectPlanEntry) => ({
+      originalIndex: projectPlanEntry.originalIndex,
+      result: await diagnoseProject(
+        projectPlanEntry.projectDefinition,
         baseOptions,
         batchConfig,
         oxlintConcurrency,
         oxlintSpawnSlots,
+        projectPlanEntry.precomputedSourceFiles,
       ),
+    }),
   );
+  const projectResults = completedProjects
+    .toSorted((leftProject, rightProject) => leftProject.originalIndex - rightProject.originalIndex)
+    .map((completedProject) => completedProject.result);
 
   const succeededProjects = projectResults.filter((projectResult) => projectResult.ok);
 

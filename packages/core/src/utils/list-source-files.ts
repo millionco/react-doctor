@@ -204,17 +204,21 @@ const listSourceFilePathsCooperative = async (
 export const listSourceFilesWithSize = (rootDirectory: string): ReadonlyArray<SourceFileEntry> =>
   collectSizedSourceFiles(rootDirectory, listSourceFilePaths(rootDirectory));
 
+export const listSourceFilesWithSizeCooperative = async (
+  rootDirectory: string,
+  signal?: AbortSignal,
+): Promise<SourceFileEntry[]> =>
+  collectSizedSourceFilesCooperative(
+    rootDirectory,
+    await listSourceFilePathsCooperative(rootDirectory, signal),
+    signal,
+  );
+
 export const listSourceFilesCooperative = async (
   rootDirectory: string,
   signal?: AbortSignal,
 ): Promise<string[]> =>
-  (
-    await collectSizedSourceFilesCooperative(
-      rootDirectory,
-      await listSourceFilePathsCooperative(rootDirectory, signal),
-      signal,
-    )
-  ).map((entry) => entry.path);
+  (await listSourceFilesWithSizeCooperative(rootDirectory, signal)).map((entry) => entry.path);
 
 // Returns every source file under `rootDirectory` (relative paths,
 // forward-slash separators). The size-free view of `listSourceFilesWithSize`

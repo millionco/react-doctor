@@ -7,7 +7,12 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "@react-doctor/core";
+import type {
+  Diagnostic,
+  ProjectInfo,
+  ReactDoctorConfig,
+  SourceFileEntry,
+} from "@react-doctor/core";
 import {
   DeadCodeAnalysisFailed,
   GitInvocationFailed,
@@ -325,6 +330,39 @@ const overlapLayersOf = (config: {
   );
 
 describe("runInspect — happy path", () => {
+  it("forwards a precomputed sized inventory after config file ignores", async () => {
+    let receivedIncludePaths: ReadonlyArray<string> | undefined;
+    let receivedSourceFiles: ReadonlyArray<SourceFileEntry> | undefined;
+    const capturingLinter = Layer.mock(Linter, {
+      run: (input) => {
+        receivedIncludePaths = input.includePaths;
+        receivedSourceFiles = input.precomputedSourceFiles;
+        return Stream.empty;
+      },
+    });
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        precomputedSourceFiles: [
+          { path: "src/App.tsx", sizeBytes: 120 },
+          { path: "src/ignored.tsx", sizeBytes: 240 },
+        ],
+        runDeadCode: false,
+      }).pipe(
+        Effect.provide(
+          layersOf({
+            linter: capturingLinter,
+            reactDoctorConfig: { ignore: { files: ["src/ignored.tsx"] } },
+          }),
+        ),
+      ),
+    );
+
+    expect(receivedIncludePaths).toEqual(["src/App.tsx"]);
+    expect(receivedSourceFiles).toEqual([{ path: "src/App.tsx", sizeBytes: 120 }]);
+  });
+
   it("keeps descendant projects out of ancestor lint and dead-code results", async () => {
     let lintIncludePaths: ReadonlyArray<string> | undefined;
     let didDeadCodeReceiveIgnorePatterns = false;

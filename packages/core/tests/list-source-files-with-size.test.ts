@@ -8,6 +8,7 @@ import {
   listSourceFiles,
   listSourceFilesCooperative,
   listSourceFilesWithSize,
+  listSourceFilesWithSizeCooperative,
 } from "../src/utils/list-source-files.js";
 
 describe("listSourceFilesWithSize", () => {
@@ -77,6 +78,9 @@ describe("listSourceFilesWithSize", () => {
 
     await expect(listSourceFilesCooperative(temporaryDirectory)).resolves.toEqual(
       listSourceFiles(temporaryDirectory),
+    );
+    await expect(listSourceFilesWithSizeCooperative(temporaryDirectory)).resolves.toEqual(
+      listSourceFilesWithSize(temporaryDirectory),
     );
   });
 

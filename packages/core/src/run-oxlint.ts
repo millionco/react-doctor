@@ -7,7 +7,7 @@ import {
   collectCrossFileDependencyProbes,
   resetManifestCaches,
 } from "oxlint-plugin-react-doctor/core";
-import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
+import type { Diagnostic, ProjectInfo, ReactDoctorConfig, SourceFileEntry } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
 import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
@@ -51,6 +51,7 @@ interface RunOxlintOptions {
   rootDirectory: string;
   project: ProjectInfo;
   includePaths?: string[];
+  precomputedSourceFiles?: ReadonlyArray<SourceFileEntry>;
   nodeBinaryPath?: string;
   customRulesOnly?: boolean;
   respectInlineDisables?: boolean;
@@ -447,7 +448,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   // `// oxlint-disable*` directives — we let oxlint apply them.
   const restoreDisableDirectives = respectInlineDisables
     ? () => {}
-    : await neutralizeDisableDirectives(rootDirectory, includePaths);
+    : await neutralizeDisableDirectives(
+        rootDirectory,
+        includePaths ?? options.precomputedSourceFiles?.map((sourceFile) => sourceFile.path),
+      );
 
   // Created last so any throw in the setup above (plugin resolution,
   // user-plugin loading) happens before the temp dir exists — nothing
@@ -523,9 +527,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // Only a full scan pays the walk — diff / staged scans pass
     // explicit paths.
     const sizedScanFiles =
-      includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
+      options.precomputedSourceFiles ??
+      (includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null);
     const candidateFiles =
-      includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
+      sizedScanFiles === null ? (includePaths ?? []) : sizedScanFiles.map((entry) => entry.path);
     const projectIndexModuleSources =
       includePaths === undefined && options.deadlineEpochMs === undefined
         ? await collectProjectIndexModuleSources(rootDirectory, candidateFiles)

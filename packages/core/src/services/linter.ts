@@ -3,7 +3,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "../types/index.js";
+import type {
+  Diagnostic,
+  ProjectInfo,
+  ReactDoctorConfig,
+  SourceFileEntry,
+} from "../types/index.js";
 import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
 import {
   LintBatchOrdering,
@@ -39,6 +44,7 @@ export interface LintInput {
   readonly rootDirectory: string;
   readonly project: ProjectInfo;
   readonly includePaths?: ReadonlyArray<string>;
+  readonly precomputedSourceFiles?: ReadonlyArray<SourceFileEntry>;
   readonly customRulesOnly?: boolean;
   readonly respectInlineDisables?: boolean;
   readonly adoptExistingLintConfig?: boolean;
@@ -144,6 +150,7 @@ export class Linter extends Context.Service<
                   rootDirectory: input.rootDirectory,
                   project: input.project,
                   includePaths: input.includePaths ? [...input.includePaths] : undefined,
+                  precomputedSourceFiles: input.precomputedSourceFiles,
                   nodeBinaryPath: input.nodeBinaryPath,
                   customRulesOnly: input.customRulesOnly,
                   respectInlineDisables: input.respectInlineDisables,

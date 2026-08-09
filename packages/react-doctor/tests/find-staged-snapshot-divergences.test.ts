@@ -74,18 +74,24 @@ describe("findStagedSnapshotDivergences", () => {
     ]);
   });
 
-  it("reports ordinary and ignored untracked configuration", () => {
+  it("reports ordinary untracked configuration", () => {
     const directory = createRepository();
-    fs.writeFileSync(path.join(directory, ".gitignore"), "next.config.mjs\n");
+    fs.writeFileSync(path.join(directory, "eslint.config.mjs"), "export default [];\n");
+
+    expect(findStagedSnapshotDivergences(directory)).toEqual(["eslint.config.mjs"]);
+  });
+
+  it("accepts git-ignored configuration that can never be staged", () => {
+    const directory = createRepository();
+    fs.writeFileSync(path.join(directory, ".gitignore"), "next.config.mjs\n.opencode/\n");
     execFileSync("git", ["add", ".gitignore"], { cwd: directory });
     execFileSync("git", ["commit", "-q", "-m", "ignore config"], { cwd: directory });
-    fs.writeFileSync(path.join(directory, "eslint.config.mjs"), "export default [];\n");
     fs.writeFileSync(path.join(directory, "next.config.mjs"), "export default {};\n");
+    fs.mkdirSync(path.join(directory, ".opencode"), { recursive: true });
+    fs.writeFileSync(path.join(directory, ".opencode/package.json"), '{"name":"local-plugin"}\n');
+    execFileSync("git", ["add", "src/app.tsx"], { cwd: directory });
 
-    expect(findStagedSnapshotDivergences(directory)).toEqual([
-      "eslint.config.mjs",
-      "next.config.mjs",
-    ]);
+    expect(findStagedSnapshotDivergences(directory)).toEqual([]);
   });
 
   it("returns null outside a Git worktree", () => {
@@ -113,6 +119,10 @@ describe("findStagedSnapshotDivergences", () => {
 
   it("accepts an index-only rename with a directory-prefixed configuration source", () => {
     expect(parseStagedSnapshotDivergences("R  archive.txt\0a/b/doctor.config.json\0")).toEqual([]);
+  });
+
+  it("accepts git-ignored configuration with worktree status !", () => {
+    expect(parseStagedSnapshotDivergences("!! package.json\0")).toEqual([]);
   });
 
   it("ignores unstaged lockfile and .gitignore edits that cannot shape a staged scan", () => {

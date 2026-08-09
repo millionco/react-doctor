@@ -2,7 +2,7 @@
 // file-path: client/src/components/pipeline/editorial/EditorialHealthPanel.jsx
 // verdict: fail
 // weakness: react-bench-exact-callsite
-// source: React Bench 0.9.7 exhaustive audit 74931c270c7093eec0c0f1a5b01c8aaf52035141e7723fac04089836143bffa5
+// source: React Bench 0.9.7+0.9.9 exhaustive audit 74931c270c7093eec0c0f1a5b01c8aaf52035141e7723fac04089836143bffa5
 /**
  * Editorial health panel (#1316) for the Editorial Checks page — turns the
  * point-in-time findings into something the author can MANAGE the draft with:

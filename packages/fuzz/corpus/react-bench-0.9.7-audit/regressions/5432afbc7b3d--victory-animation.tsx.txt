@@ -1,0 +1,289 @@
+// rule: effect-needs-cleanup
+// file-path: src/victory-animation/victory-animation.tsx
+// audit-verdict: pass
+// weakness: react-bench-exact-callsite
+// source: React Bench 0.9.11 exhaustive audit 5432afbc7b3d608a25c32978184b9edb4016a74b4b92acf60bd9123286be0da2
+import React from "react";
+import * as d3Ease from "victory-vendor/d3-ease";
+import { victoryInterpolator } from "./util";
+import TimerContext from "../victory-util/timer-context";
+
+/**
+ * Single animation object to interpolate
+ */
+export type AnimationStyle = { [key: string]: string | number };
+/**
+ * Animation styles to interpolate
+ */
+
+export type AnimationData = AnimationStyle | AnimationStyle[];
+
+export type AnimationEasing =
+  | "back"
+  | "backIn"
+  | "backOut"
+  | "backInOut"
+  | "bounce"
+  | "bounceIn"
+  | "bounceOut"
+  | "bounceInOut"
+  | "circle"
+  | "circleIn"
+  | "circleOut"
+  | "circleInOut"
+  | "linear"
+  | "linearIn"
+  | "linearOut"
+  | "linearInOut"
+  | "cubic"
+  | "cubicIn"
+  | "cubicOut"
+  | "cubicInOut"
+  | "elastic"
+  | "elasticIn"
+  | "elasticOut"
+  | "elasticInOut"
+  | "exp"
+  | "expIn"
+  | "expOut"
+  | "expInOut"
+  | "poly"
+  | "polyIn"
+  | "polyOut"
+  | "polyInOut"
+  | "quad"
+  | "quadIn"
+  | "quadOut"
+  | "quadInOut"
+  | "sin"
+  | "sinIn"
+  | "sinOut"
+  | "sinInOut";
+
+export interface VictoryAnimationProps {
+  children: (style: AnimationStyle, info: AnimationInfo) => React.ReactElement;
+  duration?: number;
+  easing?: AnimationEasing;
+  delay?: number;
+  onEnd?: () => void;
+  data: AnimationData;
+}
+
+export interface VictoryAnimationState {
+  data: AnimationStyle;
+  animationInfo: AnimationInfo;
+}
+
+export interface AnimationInfo {
+  progress: number;
+  animating: boolean;
+  terminating?: boolean;
+}
+
+export interface VictoryAnimation {
+  context: React.ContextType<typeof TimerContext>;
+}
+
+/** d3-ease changed the naming scheme for ease from "linear" -> "easeLinear" etc. */
+const formatAnimationName = (name: AnimationEasing) => {
+  const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+  return `ease${capitalizedName}`;
+};
+
+const DEFAULT_DURATION = 1000;
+
+export const VictoryAnimation = ({
+  duration = DEFAULT_DURATION,
+  easing = "quadInOut",
+  delay = 0,
+  data,
+  children,
+  onEnd,
+}: VictoryAnimationProps) => {
+  const [state, setState] = React.useState<VictoryAnimationState>({
+    data: Array.isArray(data) ? data[0] : data,
+    animationInfo: {
+      progress: 0,
+      animating: false,
+    },
+  });
+
+  const timer = React.useContext(TimerContext).animationTimer;
+  const timerRef = React.useRef(timer);
+  timerRef.current = timer;
+
+  // These refs let an already subscribed timer use the newest props. In
+  // particular, the callback must not retain the props from the render that
+  // created the subscription.
+  const durationRef = React.useRef(duration);
+  const easeRef = React.useRef(d3Ease[formatAnimationName(easing)]);
+  const delayRef = React.useRef(delay);
+  const onEndRef = React.useRef(onEnd);
+  durationRef.current = duration;
+  easeRef.current = d3Ease[formatAnimationName(easing)];
+  delayRef.current = delay;
+  onEndRef.current = onEnd;
+
+  const queue = React.useRef<AnimationStyle[]>([]);
+  const visibleData = React.useRef<AnimationStyle>(state.data);
+  const animationID = React.useRef(0);
+  const hasStarted = React.useRef(false);
+  const mounted = React.useRef(true);
+
+  type AnimationRun = {
+    id: number;
+    interpolator: (value: number) => AnimationStyle;
+    loopID?: number;
+    delayID?: ReturnType<typeof setTimeout>;
+  };
+  const currentRun = React.useRef<AnimationRun | null>(null);
+
+  const cancelAnimation = React.useCallback(() => {
+    animationID.current += 1;
+    const run = currentRun.current;
+    if (run) {
+      if (run.loopID !== undefined) {
+        timerRef.current.unsubscribe(run.loopID);
+      }
+      if (run.delayID !== undefined) {
+        clearTimeout(run.delayID);
+      }
+    }
+    currentRun.current = null;
+  }, []);
+
+  const functionToBeRunEachFrame = React.useCallback((elapsed: number) => {
+    const run = currentRun.current;
+    if (!run || run.id !== animationID.current || !mounted.current) return;
+
+    // Step can generate imprecise values, sometimes greater than 1. Duration
+    // is read for every frame so a running animation adopts a new duration.
+    const currentDuration = durationRef.current;
+    const step = currentDuration ? elapsed / currentDuration : 1;
+
+    if (step >= 1) {
+      const finalData = run.interpolator(1);
+      visibleData.current = finalData;
+      setState({
+        data: finalData,
+        animationInfo: {
+          progress: 1,
+          animating: false,
+          terminating: true,
+        },
+      });
+      if (run.loopID !== undefined) {
+        timerRef.current.unsubscribe(run.loopID);
+      }
+      currentRun.current = null;
+      queue.current.shift();
+
+      if (queue.current.length) {
+        traverseQueue(run.id);
+      } else {
+        // Read the callback at completion time so a changed onEnd replaces the
+        // callback belonging to the superseded run.
+        onEndRef.current?.();
+      }
+      return;
+    }
+
+    // If we're not at the end of the timer, set the state by passing the
+    // current step through the latest easing function.
+    const nextData = run.interpolator(easeRef.current(step));
+    visibleData.current = nextData;
+    setState({
+      data: nextData,
+      animationInfo: {
+        progress: step,
+        animating: step < 1,
+      },
+    });
+  }, []);
+
+  const traverseQueue = React.useCallback(
+    (id: number) => {
+      if (id !== animationID.current || !mounted.current) return;
+
+      const nextData = queue.current[0];
+      if (!nextData) {
+        onEndRef.current?.();
+        return;
+      }
+
+      const run: AnimationRun = {
+        id,
+        interpolator: victoryInterpolator(visibleData.current, nextData),
+      };
+      currentRun.current = run;
+
+      const subscribe = () => {
+        if (
+          currentRun.current !== run ||
+          id !== animationID.current ||
+          !mounted.current
+        ) {
+          return;
+        }
+        run.delayID = undefined;
+        run.loopID = timerRef.current.subscribe(
+          functionToBeRunEachFrame,
+          durationRef.current,
+        );
+      };
+
+      if (delayRef.current) {
+        run.delayID = setTimeout(subscribe, delayRef.current);
+      } else {
+        subscribe();
+      }
+    },
+    [functionToBeRunEachFrame],
+  );
+
+  React.useEffect(() => {
+    const isInitialData = !hasStarted.current;
+    hasStarted.current = true;
+
+    // The first item in an array is the initial style. Once props replace an
+    // existing run, every item is a target in the replacement queue.
+    queue.current = Array.isArray(data)
+      ? isInitialData
+        ? data.slice(1)
+        : data.slice()
+      : [data];
+
+    cancelAnimation();
+    const id = animationID.current;
+
+    if (queue.current.length) {
+      if (isInitialData) {
+        traverseQueue(id);
+      } else {
+        // Keep the style that was actually visible at handoff. The old target
+        // is never committed as a transitional state.
+        setState({
+          data: visibleData.current,
+          animationInfo: {
+            progress: 0,
+            animating: true,
+          },
+        });
+        traverseQueue(id);
+      }
+    } else {
+      onEndRef.current?.();
+    }
+
+    return cancelAnimation;
+  }, [cancelAnimation, data, traverseQueue]);
+
+  React.useEffect(() => {
+    return () => {
+      mounted.current = false;
+      cancelAnimation();
+    };
+  }, [cancelAnimation]);
+
+  return children(state.data, state.animationInfo);
+};

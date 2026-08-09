@@ -1,13 +1,12 @@
 // rule: effect-needs-cleanup
-// file-path: tooltip_backup.tsx
+// file-path: src/components/Tooltip/Tooltip.tsx
 // audit-verdict: pass
 // weakness: react-bench-exact-callsite
-// source: React Bench 0.9.7 exhaustive audit fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13
+// source: React Bench 0.9.11 exhaustive audit 7f0af04f254ce28a63d0f8ae884e9d8ee4773ab5de0117f06184fac928da2311
 import React, { useEffect, useState, useRef, useCallback, useImperativeHandle } from 'react'
 import { autoUpdate } from '@floating-ui/dom'
 import classNames from 'classnames'
 import {
-  debounce,
   deepEqual,
   useIsomorphicLayoutEffect,
   getScrollParent,
@@ -77,6 +76,24 @@ const Tooltip = ({
   const tooltipArrowRef = useRef<HTMLElement>(null)
   const tooltipShowDelayTimerRef = useRef<NodeJS.Timeout | null>(null)
   const tooltipHideDelayTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const visibilityTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingOpenRef = useRef<{
+    id: number
+    type: 'interaction' | 'imperative'
+    startedAt: number
+    delay: number
+    anchor: HTMLElement | null
+    options?: TooltipImperativeOpenOptions
+  } | null>(null)
+  const pendingOpenIdRef = useRef(0)
+  const pendingImperativeOptionsRef = useRef<TooltipImperativeOpenOptions | null>(null)
+  const interactionRef = useRef<{
+    anchor: HTMLElement | null
+    hover: boolean
+    focus: boolean
+  }>({ anchor: null, hover: false, focus: false })
+  const isControlledRef = useRef(isOpen !== undefined)
+  const wasControlledRef = useRef(isOpen !== undefined)
   const missedTransitionTimerRef = useRef<NodeJS.Timeout | null>(null)
   const [computedPosition, setComputedPosition] = useState<IComputedPosition>({
     tooltipStyles: {},
@@ -183,6 +200,32 @@ const Tooltip = ({
     }
   }, [])
 
+  const clearShowDelay = () => {
+    if (tooltipShowDelayTimerRef.current) {
+      clearTimeout(tooltipShowDelayTimerRef.current)
+      tooltipShowDelayTimerRef.current = null
+    }
+  }
+
+  const clearHideDelay = () => {
+    if (tooltipHideDelayTimerRef.current) {
+      clearTimeout(tooltipHideDelayTimerRef.current)
+      tooltipHideDelayTimerRef.current = null
+    }
+  }
+
+  const cancelPendingOpen = (type?: 'interaction' | 'imperative') => {
+    if (type && pendingOpenRef.current?.type !== type) {
+      return
+    }
+    pendingOpenIdRef.current += 1
+    pendingOpenRef.current = null
+    clearShowDelay()
+    if (!type || type === 'imperative') {
+      pendingImperativeOptionsRef.current = null
+    }
+  }
+
   const handleShow = (value: boolean) => {
     if (!mounted.current) {
       return
@@ -190,16 +233,16 @@ const Tooltip = ({
     if (value) {
       setRendered(true)
     }
-    /**
-     * wait for the component to render and calculate position
-     * before actually showing
-     */
-    setTimeout(() => {
-      if (!mounted.current) {
-        return
-      }
-      setIsOpen?.(value)
-      if (isOpen === undefined) {
+    setIsOpen?.(value)
+    if (isControlledRef.current) {
+      return
+    }
+    if (visibilityTimerRef.current) {
+      clearTimeout(visibilityTimerRef.current)
+    }
+    /** Wait for the component to render and calculate its position first. */
+    visibilityTimerRef.current = setTimeout(() => {
+      if (mounted.current) {
         setShow(value)
       }
     }, 10)
@@ -210,7 +253,16 @@ const Tooltip = ({
    * when `isOpen` is changed from outside
    */
   useEffect(() => {
-    if (isOpen === undefined) {
+    const controlled = isOpen !== undefined
+    isControlledRef.current = controlled
+    if (wasControlledRef.current && !controlled) {
+      // A controlled tooltip must not inherit an interaction that happened while
+      // the parent owned its visibility.
+      cancelPendingOpen()
+      setShow(false)
+    }
+    wasControlledRef.current = controlled
+    if (!controlled) {
       return () => null
     }
     if (isOpen) {
@@ -261,26 +313,56 @@ const Tooltip = ({
     )
   }
 
-  const handleShowTooltipDelayed = (delay = delayShow) => {
-    if (tooltipShowDelayTimerRef.current) {
-      clearTimeout(tooltipShowDelayTimerRef.current)
+  const startPendingOpen = (
+    type: 'interaction' | 'imperative',
+    delay: number,
+    anchor: HTMLElement | null,
+    options?: TooltipImperativeOpenOptions,
+  ) => {
+    cancelPendingOpen()
+    if (type === 'imperative') {
+      pendingImperativeOptionsRef.current = options ?? null
     }
-
-    if (rendered) {
-      // if the tooltip is already rendered, ignore delay
-      handleShow(true)
-      return
+    const pending = {
+      id: pendingOpenIdRef.current + 1,
+      type,
+      startedAt: Date.now(),
+      delay,
+      anchor,
+      options,
     }
-
-    tooltipShowDelayTimerRef.current = setTimeout(() => {
+    pendingOpenIdRef.current = pending.id
+    pendingOpenRef.current = pending
+    const open = () => {
+      if (pendingOpenRef.current?.id !== pending.id) {
+        return
+      }
+      pendingOpenRef.current = null
+      tooltipShowDelayTimerRef.current = null
+      if (pending.type === 'interaction') {
+        const interaction = interactionRef.current
+        if (interaction.anchor !== pending.anchor || (!interaction.hover && !interaction.focus)) {
+          return
+        }
+      } else {
+        pendingImperativeOptionsRef.current = null
+        setImperativeOptions(pending.options ?? null)
+        if (pending.anchor) {
+          setActiveAnchor(pending.anchor)
+          setProviderActiveAnchor({ current: pending.anchor })
+        }
+      }
       handleShow(true)
-    }, delay)
+    }
+    if (delay <= 0) {
+      open()
+    } else {
+      tooltipShowDelayTimerRef.current = setTimeout(open, delay)
+    }
   }
 
   const handleHideTooltipDelayed = (delay = delayHide) => {
-    if (tooltipHideDelayTimerRef.current) {
-      clearTimeout(tooltipHideDelayTimerRef.current)
-    }
+    clearHideDelay()
 
     tooltipHideDelayTimerRef.current = setTimeout(() => {
       if (hoveringTooltip.current) {
@@ -294,8 +376,8 @@ const Tooltip = ({
     if (!event) {
       return
     }
-    const target = (event.currentTarget ?? event.target) as HTMLElement | null
-    if (!target?.isConnected) {
+    const anchor = event.currentTarget as HTMLElement | null
+    if (!anchor?.isConnected) {
       /**
        * this happens when the target is removed from the DOM
        * at the same time the tooltip gets triggered
@@ -304,20 +386,79 @@ const Tooltip = ({
       setProviderActiveAnchor({ current: null })
       return
     }
-    if (delayShow) {
-      handleShowTooltipDelayed()
-    } else {
-      handleShow(true)
+    // An imperative open owns its pending request. Anchor events, including
+    // late leaves, must not replace or cancel it.
+    if (pendingOpenRef.current?.type === 'imperative') {
+      return
     }
-    setActiveAnchor(target)
-    setProviderActiveAnchor({ current: target })
-
-    if (tooltipHideDelayTimerRef.current) {
-      clearTimeout(tooltipHideDelayTimerRef.current)
+    clearHideDelay()
+    const interaction = interactionRef.current
+    const eventType = event.type
+    const relatedTarget = (event as MouseEvent).relatedTarget as Node | null
+    if (
+      (eventType === 'mouseover' || eventType === 'mouseenter') &&
+      relatedTarget &&
+      anchor.contains(relatedTarget)
+    ) {
+      return
+    }
+    if (interaction.anchor !== anchor) {
+      interaction.anchor = anchor
+      interaction.hover = false
+      interaction.focus = false
+    }
+    if (eventType === 'mouseover' || eventType === 'mouseenter') interaction.hover = true
+    if (eventType === 'focus' || eventType === 'focusin') interaction.focus = true
+    if (show) {
+      // Moving between anchors must never wait for the old delay.
+      cancelPendingOpen('interaction')
+      handleShow(true)
+      setActiveAnchor(anchor)
+      setProviderActiveAnchor({ current: anchor })
+      return
+    }
+    if (pendingOpenRef.current?.type === 'interaction') {
+      return
+    }
+    // Preserve the established zero-delay update order: rendering begins before
+    // the controller observes the new anchor's data attributes.
+    if (delayShow <= 0) {
+      handleShow(true)
+      setActiveAnchor(anchor)
+      setProviderActiveAnchor({ current: anchor })
+    } else {
+      setActiveAnchor(anchor)
+      setProviderActiveAnchor({ current: anchor })
+      startPendingOpen('interaction', delayShow, anchor)
     }
   }
 
-  const handleHideTooltip = () => {
+  const handleHideTooltip = (event?: Event) => {
+    const anchor = event?.currentTarget as HTMLElement | null
+    if (pendingOpenRef.current?.type === 'imperative') {
+      return
+    }
+    if (anchor) {
+      const interaction = interactionRef.current
+      if (interaction.anchor !== anchor) {
+        return
+      }
+      const eventType = event?.type
+      const relatedTarget = (event as MouseEvent).relatedTarget as Node | null
+      if (
+        (eventType === 'mouseout' || eventType === 'mouseleave' || eventType === 'focusout') &&
+        relatedTarget &&
+        anchor.contains(relatedTarget)
+      ) {
+        return
+      }
+      if (eventType === 'mouseout' || eventType === 'mouseleave') interaction.hover = false
+      if (eventType === 'blur' || eventType === 'focusout') interaction.focus = false
+      if (interaction.hover || interaction.focus) {
+        return
+      }
+    }
+    cancelPendingOpen('interaction')
     if (clickable) {
       // allow time for the mouse to reach the tooltip, in case there's a gap
       handleHideTooltipDelayed(delayHide || 100)
@@ -325,9 +466,6 @@ const Tooltip = ({
       handleHideTooltipDelayed()
     } else {
       handleShow(false)
-      if (tooltipShowDelayTimerRef.current) {
-        clearTimeout(tooltipShowDelayTimerRef.current)
-      }
     }
   }
 
@@ -374,7 +512,7 @@ const Tooltip = ({
   }
 
   const handleClickOutsideAnchors = (event: MouseEvent) => {
-    if (!show) {
+    if (!show && !pendingOpenRef.current) {
       return
     }
     const target = event.target as HTMLElement
@@ -389,28 +527,9 @@ const Tooltip = ({
     if (anchors.some((anchor) => anchor?.contains(target))) {
       return
     }
+    cancelPendingOpen()
+    setImperativeOptions(null)
     handleShow(false)
-    if (tooltipShowDelayTimerRef.current) {
-      clearTimeout(tooltipShowDelayTimerRef.current)
-    }
-  }
-
-  // debounce handler to prevent call twice when
-  // mouse enter and focus events being triggered toggether
-  const internalDebouncedHandleShowTooltip = debounce(handleShowTooltip, 50, true)
-  const internalDebouncedHandleHideTooltip = debounce(handleHideTooltip, 50, true)
-  // If either of the functions is called while the other is still debounced,
-  // reset the timeout. Otherwise if there is a sub-50ms (leave A, enter B, leave B)
-  // sequence of events, the tooltip will stay open because the hide debounce
-  // from leave A prevented the leave B event from calling it, leaving the
-  // tooltip visible.
-  const debouncedHandleShowTooltip = (e?: Event) => {
-    internalDebouncedHandleHideTooltip.cancel()
-    internalDebouncedHandleShowTooltip(e)
-  }
-  const debouncedHandleHideTooltip = () => {
-    internalDebouncedHandleShowTooltip.cancel()
-    internalDebouncedHandleHideTooltip()
   }
 
   const updateTooltipPosition = useCallback(() => {
@@ -471,10 +590,6 @@ const Tooltip = ({
   ])
 
   useEffect(() => {
-    if (activeAnchor && tooltipShowDelayTimerRef.current) {
-      handleShowTooltipDelayed()
-    }
-
     const elementRefs = new Set(anchorRefs)
 
     anchorsBySelect.forEach((anchor) => {
@@ -487,6 +602,8 @@ const Tooltip = ({
     }
 
     const handleScrollResize = () => {
+      cancelPendingOpen()
+      setImperativeOptions(null)
       handleShow(false)
     }
 
@@ -518,6 +635,8 @@ const Tooltip = ({
       if (event.key !== 'Escape') {
         return
       }
+      cancelPendingOpen()
+      setImperativeOptions(null)
       handleShow(false)
     }
     if (actualGlobalCloseEvents.escape) {
@@ -531,7 +650,8 @@ const Tooltip = ({
     const enabledEvents: { event: string; listener: (event?: Event) => void }[] = []
 
     const handleClickOpenTooltipAnchor = (event?: Event) => {
-      if (show && event?.target === activeAnchor) {
+      const anchor = event?.currentTarget as HTMLElement | null
+      if (show && anchor === activeAnchor) {
         /**
          * ignore clicking the anchor that was used to open the tooltip.
          * this avoids conflict with the click close event.
@@ -541,7 +661,8 @@ const Tooltip = ({
       handleShowTooltip(event)
     }
     const handleClickCloseTooltipAnchor = (event?: Event) => {
-      if (!show || event?.target !== activeAnchor) {
+      const anchor = event?.currentTarget as HTMLElement | null
+      if (!show || anchor !== activeAnchor) {
         /**
          * ignore clicking the anchor that was NOT used to open the tooltip.
          * this avoids closing the tooltip when clicking on a
@@ -549,7 +670,7 @@ const Tooltip = ({
          */
         return
       }
-      handleHideTooltip()
+      handleHideTooltip(event)
     }
 
     const regularEvents = ['mouseover', 'mouseout', 'mouseenter', 'mouseleave', 'focus', 'blur']
@@ -560,7 +681,10 @@ const Tooltip = ({
         return
       }
       if (regularEvents.includes(event)) {
-        enabledEvents.push({ event, listener: debouncedHandleShowTooltip })
+        enabledEvents.push({
+          event: event === 'focus' ? 'focusin' : event,
+          listener: handleShowTooltip,
+        })
       } else if (clickEvents.includes(event)) {
         enabledEvents.push({ event, listener: handleClickOpenTooltipAnchor })
       } else {
@@ -573,7 +697,10 @@ const Tooltip = ({
         return
       }
       if (regularEvents.includes(event)) {
-        enabledEvents.push({ event, listener: debouncedHandleHideTooltip })
+        enabledEvents.push({
+          event: event === 'blur' ? 'focusout' : event,
+          listener: handleHideTooltip,
+        })
       } else if (clickEvents.includes(event)) {
         enabledEvents.push({ event, listener: handleClickCloseTooltipAnchor })
       } else {
@@ -703,14 +830,10 @@ const Tooltip = ({
           elements.some((node) => {
             if (node?.contains?.(activeAnchor)) {
               setRendered(false)
+              cancelPendingOpen()
               handleShow(false)
               setActiveAnchor(null)
-              if (tooltipShowDelayTimerRef.current) {
-                clearTimeout(tooltipShowDelayTimerRef.current)
-              }
-              if (tooltipHideDelayTimerRef.current) {
-                clearTimeout(tooltipHideDelayTimerRef.current)
-              }
+              clearHideDelay()
               return true
             }
             return false
@@ -798,12 +921,9 @@ const Tooltip = ({
       handleShow(true)
     }
     return () => {
-      if (tooltipShowDelayTimerRef.current) {
-        clearTimeout(tooltipShowDelayTimerRef.current)
-      }
-      if (tooltipHideDelayTimerRef.current) {
-        clearTimeout(tooltipHideDelayTimerRef.current)
-      }
+      cancelPendingOpen()
+      clearHideDelay()
+      if (visibilityTimerRef.current) clearTimeout(visibilityTimerRef.current)
     }
   }, [])
 
@@ -825,12 +945,31 @@ const Tooltip = ({
   }, [id, anchorSelect, imperativeOptions?.anchorSelect])
 
   useEffect(() => {
-    if (activeAnchor) {
-      if (tooltipShowDelayTimerRef.current) {
-        clearTimeout(tooltipShowDelayTimerRef.current)
-      }
-      handleShowTooltipDelayed(delayShow)
+    const pending = pendingOpenRef.current
+    if (pending?.type !== 'interaction') {
+      return
     }
+    // Keep the original interaction start time: changing the delay changes the
+    // deadline, rather than beginning a new wait after every prop update.
+    const remaining = Math.max(0, delayShow - (Date.now() - pending.startedAt))
+    pending.delay = delayShow
+    clearShowDelay()
+    if (remaining === 0) {
+      const interaction = interactionRef.current
+      if (interaction.anchor === pending.anchor && (interaction.hover || interaction.focus)) {
+        pendingOpenRef.current = null
+        handleShow(true)
+      }
+      return
+    }
+    tooltipShowDelayTimerRef.current = setTimeout(() => {
+      if (pendingOpenRef.current?.id !== pending.id) return
+      pendingOpenRef.current = null
+      const interaction = interactionRef.current
+      if (interaction.anchor === pending.anchor && (interaction.hover || interaction.focus)) {
+        handleShow(true)
+      }
+    }, remaining)
   }, [delayShow])
 
   const actualContent = imperativeOptions?.content ?? content
@@ -849,17 +988,20 @@ const Tooltip = ({
           return
         }
       }
-      setImperativeOptions(options ?? null)
-      if (options?.delay) {
-        handleShowTooltipDelayed(options.delay)
-      } else {
-        handleShow(true)
-      }
+      clearHideDelay()
+      const anchor = options?.anchorSelect
+        ? document.querySelector<HTMLElement>(options.anchorSelect)
+        : activeAnchor
+      startPendingOpen('imperative', options?.delay ?? 0, anchor, options)
     },
     close: (options) => {
+      // Closing invalidates an opening immediately, even when the visual close
+      // itself is delayed.
+      cancelPendingOpen()
       if (options?.delay) {
         handleHideTooltipDelayed(options.delay)
       } else {
+        setImperativeOptions(null)
         handleShow(false)
       }
     },

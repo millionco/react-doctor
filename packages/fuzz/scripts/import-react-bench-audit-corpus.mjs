@@ -9,6 +9,8 @@ const DEFAULT_AUDIT_VERSION = "0.9.7";
 const TRUE_POSITIVE_SUFFIXES = new Set(["2JPrD6x", "SQSmbFe", "eGYGezE", "p9AQ8ui"]);
 
 const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
+const compareAuditVersions = (left, right) =>
+  left.localeCompare(right, undefined, { numeric: true });
 
 const collectFiles = (directory) => {
   const filePaths = [];
@@ -141,7 +143,7 @@ const main = () => {
       path.basename(group.callsitePaths[0], path.extname(group.callsitePaths[0])),
     );
     const directoryName = group.verdict === "pass" ? "regressions" : "true-positives";
-    const fileName = `${fixtureSourceSha256.slice(0, HASH_PREFIX_LENGTH)}--${sourceBaseName}${extension}`;
+    const fileName = `${fixtureSourceSha256.slice(0, HASH_PREFIX_LENGTH)}--${sourceBaseName}${extension}.txt`;
     const relativePath = path.posix.join(CORPUS_DIRECTORY_NAME, directoryName, fileName);
     const outputPath = path.join(resolvedCorpusDirectory, directoryName, fileName);
     const rules = [...group.rules].sort();
@@ -150,16 +152,16 @@ const main = () => {
       `// file-path: ${group.callsitePaths[0]}`,
       group.verdict === "fail" ? "// verdict: fail" : "// audit-verdict: pass",
       "// weakness: react-bench-exact-callsite",
-      `// source: React Bench ${[...group.auditVersions].sort().join("+")} exhaustive audit ${fixtureSourceSha256}`,
+      `// source: React Bench ${[...group.auditVersions].sort(compareAuditVersions).join("+")} exhaustive audit ${fixtureSourceSha256}`,
     ].join("\n");
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, `${header}\n${group.source}`);
     fixtures.push({
       fixture: relativePath,
-      filePath: group.callsitePaths[0],
       verdict: group.verdict,
       rules,
       fixtureSourceSha256,
+      filePath: group.callsitePaths[0],
     });
     for (const callsite of group.callsites) {
       const callsiteKey = [
@@ -180,8 +182,13 @@ const main = () => {
       callsite.rule,
       callsite.reconstructedFilePath,
       callsite.reportedLine,
+      callsite.reportedColumn ?? "",
       callsite.snippetSha256,
     ].join(":");
+    const fixture = fixtureByCallsiteKey.get(callsiteKey);
+    if (!fixture) {
+      throw new Error(`Missing fixture mapping for ${callsiteKey}`);
+    }
     return {
       suffix: callsite.suffix,
       ...(callsite.sourceTrialId ? { sourceTrialId: callsite.sourceTrialId } : {}),
@@ -194,13 +201,13 @@ const main = () => {
       ...(callsite.reportedColumn ? { reportedColumn: callsite.reportedColumn } : {}),
       sourceSha256: callsite.sourceSha256,
       snippetSha256: callsite.snippetSha256,
-      fixture: fixtureByCallsiteKey.get(callsiteKey),
+      fixture,
       verdict: TRUE_POSITIVE_SUFFIXES.has(callsite.suffix) ? "fail" : "pass",
     };
   });
   const manifest = {
     source: `React Bench ${[...new Set(manifestCallsites.map((callsite) => callsite.auditVersion))]
-      .sort()
+      .sort(compareAuditVersions)
       .join("+")} exhaustive all-diffs audit`,
     expected: {
       totalCallsites: manifestCallsites.length,

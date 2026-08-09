@@ -1,11 +1,11 @@
 {
-  "source": "React Bench 0.9.7+0.9.8+0.9.9 exhaustive all-diffs audit",
+  "source": "React Bench 0.9.7+0.9.8+0.9.9+0.9.11 exhaustive all-diffs audit",
   "expected": {
-    "totalCallsites": 337,
-    "passCallsites": 332,
+    "totalCallsites": 345,
+    "passCallsites": 340,
     "failCallsites": 5,
-    "uniqueTrials": 326,
-    "uniqueFixtures": 321
+    "uniqueTrials": 334,
+    "uniqueFixtures": 329
   },
   "fixtures": [
     {
@@ -133,6 +133,15 @@
       ],
       "fixtureSourceSha256": "0b01d2a7af6022d01971e58df27dcf8883d1d0dcba494853f58841078198e42e",
       "filePath": "src/components/Tooltip/Tooltip.tsx"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/0b687e3ab1b3--victory-animation.tsx.txt",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "0b687e3ab1b3bf0368fe33c3f31c9c952e228203a7898b066e09033d6adcb719",
+      "filePath": "src/victory-animation/victory-animation.tsx"
     },
     {
       "fixture": "react-bench-0.9.7-audit/regressions/0c68a8171284--victory-animation.tsx.txt",
@@ -522,6 +531,15 @@
       "filePath": "src/victory-animation/victory-animation.tsx"
     },
     {
+      "fixture": "react-bench-0.9.7-audit/true-positives/2bc6fc6d20a5--message-markdown.tsx.txt",
+      "verdict": "fail",
+      "rules": [
+        "dangerous-html-sink"
+      ],
+      "fixtureSourceSha256": "2bc6fc6d20a5cd769a0806ef42bab0baf0595e5dc24e70972dfa0081234f7190",
+      "filePath": "src/components/chat/message/message-markdown.tsx"
+    },
+    {
       "fixture": "react-bench-0.9.7-audit/regressions/2c59f8fba961--victory-animation.tsx.txt",
       "verdict": "pass",
       "rules": [
@@ -592,6 +610,15 @@
       ],
       "fixtureSourceSha256": "320d3caddb53aa62715cf8235cb7009fcabf45082238a48c86e76c3ef0b70c31",
       "filePath": "src/components/document/history/DocumentHistoryModal.tsx"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/3269b60ea7d5--victory-animation.tsx.txt",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "3269b60ea7d5d28fa1517e25c42834d5fb7d6f5d743d8706d1d885a2d1206f33",
+      "filePath": "src/victory-animation/victory-animation.tsx"
     },
     {
       "fixture": "react-bench-0.9.7-audit/regressions/32e13847aeea--tooltip.tsx.txt",
@@ -954,6 +981,15 @@
       "filePath": "src/victory-animation/victory-animation.tsx"
     },
     {
+      "fixture": "react-bench-0.9.7-audit/regressions/5432afbc7b3d--victory-animation.tsx.txt",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "5432afbc7b3d608a25c32978184b9edb4016a74b4b92acf60bd9123286be0da2",
+      "filePath": "src/victory-animation/victory-animation.tsx"
+    },
+    {
       "fixture": "react-bench-0.9.7-audit/regressions/5489e66536e2--victory-animation.tsx.txt",
       "verdict": "pass",
       "rules": [
@@ -1062,6 +1098,24 @@
       "filePath": "src/victory-animation/victory-animation.tsx"
     },
     {
+      "fixture": "react-bench-0.9.7-audit/regressions/5fe3e8c35aa8--victory-animation.tsx.txt",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "5fe3e8c35aa8d2469086612e14d90e27cfb14dfffc9ad8d95c56d4a89fb79ccb",
+      "filePath": "src/victory-animation/victory-animation.tsx"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/60151913eb09--victory-animation.tsx.txt",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "60151913eb092a935273f16053b6235d52a27f7d0c557475dfc1641be5e641fb",
+      "filePath": "src/victory-animation/victory-animation.tsx"
+    },
+    {
       "fixture": "react-bench-0.9.7-audit/regressions/611ff01af283--tooltip.tsx.txt",
       "verdict": "pass",
       "rules": [
@@ -1131,7 +1185,7 @@
         "effect-needs-cleanup"
       ],
       "fixtureSourceSha256": "64609f5c7a70a23c306ffadc0d360814e1f743006fbb5575445facef30abd358",
-      "filePath": "src/victory-animation/victory-animation.tsx"
+      "filePath": "packages/victory-core/src/victory-animation/victory-animation.tsx"
     },
     {
       "fixture": "react-bench-0.9.7-audit/regressions/65b78f44bac5--victory-animation.tsx.txt",
@@ -1413,6 +1467,15 @@
       "filePath": "packages/cli/src/pages/settings.tsx"
     },
     {
+      "fixture": "react-bench-0.9.7-audit/true-positives/74931c270c70--editorial-health-panel.jsx.txt",
+      "verdict": "fail",
+      "rules": [
+        "no-side-effect-in-state-updater-function"
+      ],
+      "fixtureSourceSha256": "74931c270c7093eec0c0f1a5b01c8aaf52035141e7723fac04089836143bffa5",
+      "filePath": "client/src/components/pipeline/editorial/EditorialHealthPanel.jsx"
+    },
+    {
       "fixture": "react-bench-0.9.7-audit/regressions/7499ba110010--settings.tsx.txt",
       "verdict": "pass",
       "rules": [
@@ -1501,6 +1564,15 @@
       ],
       "fixtureSourceSha256": "7ec8d7342a3e8fc4dd349f2a4493d2bff7bc679deb73269b9b4e7b4a757b6cf4",
       "filePath": "src/victory-animation/victory-animation.tsx"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/7f0af04f254c--tooltip.tsx.txt",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "7f0af04f254ce28a63d0f8ae884e9d8ee4773ab5de0117f06184fac928da2311",
+      "filePath": "src/components/Tooltip/Tooltip.tsx"
     },
     {
       "fixture": "react-bench-0.9.7-audit/regressions/81e6d1272b73--victory-animation.tsx.txt",
@@ -1698,6 +1770,15 @@
         "effect-needs-cleanup"
       ],
       "fixtureSourceSha256": "927c1a89aecd48393051b576b4e9c2c503583bdbc6fa0e45eab0ffcc0ede234c",
+      "filePath": "src/victory-animation/victory-animation.tsx"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/9421df7d6d70--victory-animation.tsx.txt",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "9421df7d6d706e34f416e6576229e00ccb7442d99166744f5f7facd5117b0a81",
       "filePath": "src/victory-animation/victory-animation.tsx"
     },
     {
@@ -1978,6 +2059,15 @@
       ],
       "fixtureSourceSha256": "b1c60af0015d7b1cbd7432b7e7ea100183b9b4066d62b8222600a4e271b6a244",
       "filePath": "src/components/document/history/DocumentHistoryModal.tsx"
+    },
+    {
+      "fixture": "react-bench-0.9.7-audit/regressions/b2b78b886500--victory-animation.tsx.txt",
+      "verdict": "pass",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "b2b78b886500ff5ccc6c8eafebdf8796fc2b2f4206b6948842b312a2a119279d",
+      "filePath": "src/victory-animation/victory-animation.tsx"
     },
     {
       "fixture": "react-bench-0.9.7-audit/regressions/b3046c95a339--photo.tsx.txt",
@@ -2566,6 +2656,15 @@
       "filePath": "packages/shared/src/components/conversation/blocks/shared/PermissionCard.tsx"
     },
     {
+      "fixture": "react-bench-0.9.7-audit/true-positives/e31ae15e51f0--use-zoom-pan.ts.txt",
+      "verdict": "fail",
+      "rules": [
+        "effect-needs-cleanup"
+      ],
+      "fixtureSourceSha256": "e31ae15e51f07a2e0748f68765d8e14c96dbcb6c5149d39582ebede4bc1737d2",
+      "filePath": "src/hooks/use-zoom-pan.ts"
+    },
+    {
       "fixture": "react-bench-0.9.7-audit/regressions/e5619c73acf0--session-interaction-card.tsx.txt",
       "verdict": "pass",
       "rules": [
@@ -2851,7 +2950,7 @@
         "effect-needs-cleanup"
       ],
       "fixtureSourceSha256": "fc9cd4b5ce6776cb8b900e3b2213fb323d4d8f0448867e66c6f988490bff2a13",
-      "filePath": "tooltip_copy.tsx"
+      "filePath": "tooltip_backup.tsx"
     },
     {
       "fixture": "react-bench-0.9.7-audit/regressions/fd8217ccc23e--victory-animation.tsx.txt",
@@ -2870,33 +2969,6 @@
       ],
       "fixtureSourceSha256": "fe17519a02eec3af5861da5b711a49694c185aaa7f1b5dd4756194d018594648",
       "filePath": "src/victory-animation/victory-animation.tsx"
-    },
-    {
-      "fixture": "react-bench-0.9.7-audit/true-positives/2bc6fc6d20a5--message-markdown.tsx.txt",
-      "verdict": "fail",
-      "rules": [
-        "dangerous-html-sink"
-      ],
-      "fixtureSourceSha256": "2bc6fc6d20a5cd769a0806ef42bab0baf0595e5dc24e70972dfa0081234f7190",
-      "filePath": "src/components/chat/message/message-markdown.tsx"
-    },
-    {
-      "fixture": "react-bench-0.9.7-audit/true-positives/74931c270c70--editorial-health-panel.jsx.txt",
-      "verdict": "fail",
-      "rules": [
-        "no-side-effect-in-state-updater-function"
-      ],
-      "fixtureSourceSha256": "74931c270c7093eec0c0f1a5b01c8aaf52035141e7723fac04089836143bffa5",
-      "filePath": "client/src/components/pipeline/editorial/EditorialHealthPanel.jsx"
-    },
-    {
-      "fixture": "react-bench-0.9.7-audit/true-positives/e31ae15e51f0--use-zoom-pan.ts.txt",
-      "verdict": "fail",
-      "rules": [
-        "effect-needs-cleanup"
-      ],
-      "fixtureSourceSha256": "e31ae15e51f07a2e0748f68765d8e14c96dbcb6c5149d39582ebede4bc1737d2",
-      "filePath": "src/hooks/use-zoom-pan.ts"
     }
   ],
   "callsites": [
@@ -3771,6 +3843,21 @@
       "verdict": "pass"
     },
     {
+      "suffix": "aZiUW5R",
+      "sourceTrialId": "ec3a31ee-2dc8-4a54-8a5b-8a841bb602fb",
+      "auditVersion": "0.9.11",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "7e4b73e5f592dcb6f7bbd05ec43703d631632afc5262bc499a1fb97d5b6be095",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/victory-animation/victory-animation.tsx",
+      "reportedLine": 224,
+      "reportedColumn": 31,
+      "sourceSha256": "9421df7d6d706e34f416e6576229e00ccb7442d99166744f5f7facd5117b0a81",
+      "snippetSha256": "2a14d5a9886266d3a7e35f4d4cf2e8d20aa4e5e5f1f650055f3d46e72ca29983",
+      "fixture": "react-bench-0.9.7-audit/regressions/9421df7d6d70--victory-animation.tsx.txt",
+      "verdict": "pass"
+    },
+    {
       "suffix": "bBnR7XV",
       "sourceTrialId": "4df723c6-8828-4410-9962-f84d449c6129",
       "auditVersion": "0.9.9",
@@ -3796,6 +3883,21 @@
       "sourceSha256": "404dd58ecef08ade8f25d2a22770fd204a34ea889a6375f67e9c990502329d12",
       "snippetSha256": "404dd58ecef08ade8f25d2a22770fd204a34ea889a6375f67e9c990502329d12",
       "fixture": "react-bench-0.9.7-audit/regressions/404dd58ecef0--gallery.tsx.txt",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "beiMt8M",
+      "sourceTrialId": "e9cc2c10-2e25-4796-b78d-b87495e00198",
+      "auditVersion": "0.9.11",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "dafe7c5aea9a93eccef834dfaf976f332feff9bfdfb04b531f40d5fa7e7c16bd",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/victory-animation/victory-animation.tsx",
+      "reportedLine": 196,
+      "reportedColumn": 9,
+      "sourceSha256": "60151913eb092a935273f16053b6235d52a27f7d0c557475dfc1641be5e641fb",
+      "snippetSha256": "cabdbfa7bce975efe0da0ec3987579e237f8a62f0c6fc045115128a5a06dbeeb",
+      "fixture": "react-bench-0.9.7-audit/regressions/60151913eb09--victory-animation.tsx.txt",
       "verdict": "pass"
     },
     {
@@ -4166,6 +4268,21 @@
       "sourceSha256": "fe17519a02eec3af5861da5b711a49694c185aaa7f1b5dd4756194d018594648",
       "snippetSha256": "b02aa160783949a1599b601f0873e1f42f41752c9f0e0576dd071109e3e3b50a",
       "fixture": "react-bench-0.9.7-audit/regressions/fe17519a02ee--victory-animation.tsx.txt",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "dQGUfbS",
+      "sourceTrialId": "b332f2c8-095e-4201-8847-5ff237c20832",
+      "auditVersion": "0.9.11",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "b0119bb16b60f3a275330c2a6dd2be94a2c3c23904d5c3b68e2766436f871e28",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/victory-animation/victory-animation.tsx",
+      "reportedLine": 243,
+      "reportedColumn": 25,
+      "sourceSha256": "b2b78b886500ff5ccc6c8eafebdf8796fc2b2f4206b6948842b312a2a119279d",
+      "snippetSha256": "da1668d4843831d1da85073aef20f19fae79720796b1c1299b6be09f77482447",
+      "fixture": "react-bench-0.9.7-audit/regressions/b2b78b886500--victory-animation.tsx.txt",
       "verdict": "pass"
     },
     {
@@ -4693,6 +4810,21 @@
       "verdict": "pass"
     },
     {
+      "suffix": "gxyWiEv",
+      "sourceTrialId": "1947471b-348d-491d-8950-94c930edac1e",
+      "auditVersion": "0.9.11",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "ffd2ef48cd1836e45b6e624ea4b807a141f177f10dac10f70a725b4eae7d17ef",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/victory-animation/victory-animation.tsx",
+      "reportedLine": 231,
+      "reportedColumn": 23,
+      "sourceSha256": "5432afbc7b3d608a25c32978184b9edb4016a74b4b92acf60bd9123286be0da2",
+      "snippetSha256": "20f7b332a1d67378182f84de911e90f93a654f65c01a301a11f159833000d3e8",
+      "fixture": "react-bench-0.9.7-audit/regressions/5432afbc7b3d--victory-animation.tsx.txt",
+      "verdict": "pass"
+    },
+    {
       "suffix": "GYKqNsZ",
       "sourceTrialId": "b0b5ec4a-f8a2-4608-a313-b9363751b4ad",
       "auditVersion": "0.9.9",
@@ -4761,6 +4893,21 @@
       "sourceSha256": "15acf80df50292173c2c267e54e6e2a1d30dac1d8cec66b6a8786d81cb4e22f9",
       "snippetSha256": "7fa01849c71dbbc65fa10022db7abaa2b8bbcfec74f5ff6a142730ebae2744e6",
       "fixture": "react-bench-0.9.7-audit/regressions/15acf80df502--victory-animation.tsx.txt",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "HBUMdWN",
+      "sourceTrialId": "bf3672b0-f95a-4764-815f-b759b3e8f8c1",
+      "auditVersion": "0.9.11",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "5c6cd30858b261d4ead2b9aed33a1ab852161a9cc3f4e49f20f9b5864ab68dc6",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/victory-animation/victory-animation.tsx",
+      "reportedLine": 209,
+      "reportedColumn": 9,
+      "sourceSha256": "3269b60ea7d5d28fa1517e25c42834d5fb7d6f5d743d8706d1d885a2d1206f33",
+      "snippetSha256": "cabdbfa7bce975efe0da0ec3987579e237f8a62f0c6fc045115128a5a06dbeeb",
+      "fixture": "react-bench-0.9.7-audit/regressions/3269b60ea7d5--victory-animation.tsx.txt",
       "verdict": "pass"
     },
     {
@@ -4995,6 +5142,21 @@
       "sourceSha256": "56bc7335a8d1e328210dbacd4bead368d9913ded612766770f5fd329f9c718c6",
       "snippetSha256": "0961c3130a2b55d206decc888701f163e86b810db0bdb7ef92941d44d9936ede",
       "fixture": "react-bench-0.9.7-audit/regressions/56bc7335a8d1--victory-animation.tsx.txt",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "jrL6BAP",
+      "sourceTrialId": "37d8d328-9b30-41e7-bb9d-146977ca3236",
+      "auditVersion": "0.9.11",
+      "task": "fix-react-reacttooltip-react-tooltip-1205",
+      "patchSha256": "04178d3d964ba5cb39a7d26b37bdfab7bbe5180dcecdd6c25ad540d10b98aa22",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/components/Tooltip/Tooltip.tsx",
+      "reportedLine": 942,
+      "reportedColumn": 3,
+      "sourceSha256": "7f0af04f254ce28a63d0f8ae884e9d8ee4773ab5de0117f06184fac928da2311",
+      "snippetSha256": "5966fbfa88998da74656c50194956c25f0849457660c009fe63d1e9fa9dc931c",
+      "fixture": "react-bench-0.9.7-audit/regressions/7f0af04f254c--tooltip.tsx.txt",
       "verdict": "pass"
     },
     {
@@ -6700,6 +6862,21 @@
       "verdict": "pass"
     },
     {
+      "suffix": "v6NYckM",
+      "sourceTrialId": "600001bb-768a-40b6-8d45-2a7c58b452cb",
+      "auditVersion": "0.9.11",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "c7a5f800c710fc0be6de79b23283e5f5d1aae8df744746ebf409bc289810febd",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/victory-animation/victory-animation.tsx",
+      "reportedLine": 229,
+      "reportedColumn": 30,
+      "sourceSha256": "5fe3e8c35aa8d2469086612e14d90e27cfb14dfffc9ad8d95c56d4a89fb79ccb",
+      "snippetSha256": "0065edb7bc1c7499dae6ebc0b6b34d0675e844b5be098e832a42074f469e599b",
+      "fixture": "react-bench-0.9.7-audit/regressions/5fe3e8c35aa8--victory-animation.tsx.txt",
+      "verdict": "pass"
+    },
+    {
       "suffix": "vaDcpDf",
       "sourceTrialId": "e3e00853-e05e-405d-ba4e-ccc32b627dbe",
       "auditVersion": "0.9.9",
@@ -7520,6 +7697,21 @@
       "sourceSha256": "7499ba110010198fb7bb24f8d0265481830797602c0dca7dc05664a345873370",
       "snippetSha256": "7499ba110010198fb7bb24f8d0265481830797602c0dca7dc05664a345873370",
       "fixture": "react-bench-0.9.7-audit/regressions/7499ba110010--settings.tsx.txt",
+      "verdict": "pass"
+    },
+    {
+      "suffix": "yt7HnzD",
+      "sourceTrialId": "4e6d991f-8c65-48bf-87b2-189ed43c559d",
+      "auditVersion": "0.9.11",
+      "task": "fix-react-formidablelabs-victory-victory-animation",
+      "patchSha256": "bb01e90629977c04f12fc9bd1e8642fb71a842f723dc7d6b22620661e2fdc9b6",
+      "rule": "effect-needs-cleanup",
+      "filePath": "src/victory-animation/victory-animation.tsx",
+      "reportedLine": 175,
+      "reportedColumn": 9,
+      "sourceSha256": "0b687e3ab1b3bf0368fe33c3f31c9c952e228203a7898b066e09033d6adcb719",
+      "snippetSha256": "e249fd0fbe6e4954974eb3fcae6832e68d507f0d9409db81cccefefd23136522",
+      "fixture": "react-bench-0.9.7-audit/regressions/0b687e3ab1b3--victory-animation.tsx.txt",
       "verdict": "pass"
     },
     {

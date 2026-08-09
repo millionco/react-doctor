@@ -3568,7 +3568,7 @@ const findCorrelatedCompanionGuardForReleaseUncached = (
       ? [...flattenConjunction(test.left), ...flattenConjunction(test.right)]
       : [test];
   };
-  let guard: EsTreeNode | null = releaseNode.parent;
+  let guard: EsTreeNode | null = releaseNode.parent ?? null;
   let companionKey: string | null = null;
   while (guard && guard !== owner) {
     if (isNodeOfType(guard, "IfStatement") && isAstDescendant(releaseNode, guard.consequent)) {
@@ -3578,7 +3578,7 @@ const findCorrelatedCompanionGuardForReleaseUncached = (
           .find((key) => key !== null && key !== usage.handleKey) ?? null;
       if (companionKey) break;
     }
-    guard = guard.parent;
+    guard = guard.parent ?? null;
   }
   if (!guard || !isNodeOfType(guard, "IfStatement") || !companionKey) return null;
   let componentFunction = findRenderPhaseComponentOrHook(usage.node, context.scopes);
@@ -3663,7 +3663,7 @@ const findCorrelatedCompanionGuardForReleaseUncached = (
       if (doMatchingNodesCoverEveryPathBeforeUsage(call, matchingAssignments, callOwner, context)) {
         return true;
       }
-      let callAncestor: EsTreeNode | null = call.parent;
+      let callAncestor: EsTreeNode | null = call.parent ?? null;
       while (callAncestor && callAncestor !== callOwner) {
         if (
           isNodeOfType(callAncestor, "IfStatement") &&
@@ -3672,7 +3672,7 @@ const findCorrelatedCompanionGuardForReleaseUncached = (
         ) {
           return true;
         }
-        callAncestor = callAncestor.parent;
+        callAncestor = callAncestor.parent ?? null;
       }
       return false;
     });
@@ -8447,7 +8447,7 @@ const isOneTimeEffectInvocation = (
   ) {
     return false;
   }
-  let initialSentinelGuard: EsTreeNode | null = invocation.parent;
+  let initialSentinelGuard: EsTreeNode | null = invocation.parent ?? null;
   while (initialSentinelGuard && initialSentinelGuard !== invocationOwner) {
     if (
       isNodeOfType(initialSentinelGuard, "IfStatement") &&
@@ -8507,7 +8507,7 @@ const isOneTimeEffectInvocation = (
             );
           });
           let hasMatchingArrayGuard = false;
-          let invocationAncestor: EsTreeNode | null = invocation.parent;
+          let invocationAncestor: EsTreeNode | null = invocation.parent ?? null;
           const assignedIdentifiers = new Set(
             nonSentinelAssignments.flatMap((assignment) => {
               const assignedValue = stripParenExpression(assignment.right);
@@ -8523,11 +8523,11 @@ const isOneTimeEffectInvocation = (
               return false;
             }
             const guardedValue = test.arguments[0];
-            return Boolean(
-              guardedValue &&
-              isAstNode(guardedValue) &&
-              isNodeOfType(stripParenExpression(guardedValue), "Identifier") &&
-              assignedIdentifiers.has(stripParenExpression(guardedValue).name),
+            if (!guardedValue || !isAstNode(guardedValue)) return false;
+            const unwrappedGuardedValue = stripParenExpression(guardedValue);
+            return (
+              isNodeOfType(unwrappedGuardedValue, "Identifier") &&
+              assignedIdentifiers.has(unwrappedGuardedValue.name)
             );
           };
           while (invocationAncestor && invocationAncestor !== initialSentinelGuard) {
@@ -8539,7 +8539,7 @@ const isOneTimeEffectInvocation = (
               hasMatchingArrayGuard = true;
               break;
             }
-            invocationAncestor = invocationAncestor.parent;
+            invocationAncestor = invocationAncestor.parent ?? null;
           }
           if (
             hasMatchingArrayGuard &&
@@ -8556,9 +8556,9 @@ const isOneTimeEffectInvocation = (
         }
       }
     }
-    initialSentinelGuard = initialSentinelGuard.parent;
+    initialSentinelGuard = initialSentinelGuard.parent ?? null;
   }
-  let guardCandidate: EsTreeNode | null = invocation.parent;
+  let guardCandidate: EsTreeNode | null = invocation.parent ?? null;
   let guardStatement: EsTreeNodeOfType<"IfStatement"> | null = null;
   let guardRefSymbol: SymbolDescriptor | null = null;
   let activeGuardValue: boolean | null = null;
@@ -8589,7 +8589,7 @@ const isOneTimeEffectInvocation = (
         break;
       }
     }
-    guardCandidate = guardCandidate.parent;
+    guardCandidate = guardCandidate.parent ?? null;
   }
   if (!guardStatement || !guardRefSymbol || activeGuardValue === null) {
     return false;

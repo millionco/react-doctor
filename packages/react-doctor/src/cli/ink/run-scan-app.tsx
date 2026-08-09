@@ -41,7 +41,7 @@ import { printDiagnosticsDump } from "../utils/print-diagnostics-dump.js";
 import { printFooter } from "../utils/print-footer.js";
 import { toForwardSlashes } from "../utils/path-format.js";
 import { detectLaunchableAgents } from "../utils/detect-launchable-agents.js";
-import { CLI_AGENT_BINARIES, launchCliAgent } from "../utils/launch-agent.js";
+import { CLI_AGENT_BINARIES, copyToClipboard, launchCliAgent } from "../utils/launch-agent.js";
 import { isReactDoctorWorkflowInstalled } from "../utils/install-github-workflow.js";
 import { findNearestPackageDirectory } from "../utils/install-doctor-script.js";
 import { hasLintHardFailure } from "../utils/has-lint-hard-failure.js";
@@ -325,16 +325,32 @@ const performTuiHandoff = async (
   request: TuiHandoffRequest,
   rootDirectory: string,
 ): Promise<void> => {
-  try {
-    await launchCliAgent(request.agentId, request.prompt, rootDirectory);
-  } catch {
-    process.stdout.write(
-      `${highlighter.warn("⚠")} Couldn't launch ${CLI_AGENT_BINARIES[request.agentId]}. Here's the prompt instead:\n`,
-    );
-    process.stdout.write(`${highlighter.dim("──── Agent prompt ────")}\n`);
-    process.stdout.write(`${request.prompt}\n`);
-    process.stdout.write(`${highlighter.dim("──────────────────────")}\n`);
+  let failureMessage: string | null = null;
+  if (request.destination === "clipboard") {
+    const didCopy = await copyToClipboard(request.prompt);
+    recordCount(METRIC.agentHandoff, 1, {
+      outcome: "clipboard",
+      source: "tui",
+      copied: didCopy,
+    });
+    if (didCopy) {
+      process.stdout.write(`${highlighter.success("✔")} Copied the prompt to your clipboard.\n`);
+      return;
+    }
+    failureMessage = "Couldn't access the clipboard. Here's the prompt instead:";
+  } else {
+    try {
+      await launchCliAgent(request.destination, request.prompt, rootDirectory);
+      return;
+    } catch {
+      failureMessage = `Couldn't launch ${CLI_AGENT_BINARIES[request.destination]}. Here's the prompt instead:`;
+    }
   }
+
+  process.stdout.write(`${highlighter.warn("⚠")} ${failureMessage}\n`);
+  process.stdout.write(`${highlighter.dim("──── Agent prompt ────")}\n`);
+  process.stdout.write(`${request.prompt}\n`);
+  process.stdout.write(`${highlighter.dim("──────────────────────")}\n`);
 };
 
 const isCiUnconfigured = (directory: string): boolean =>

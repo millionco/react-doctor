@@ -37,6 +37,7 @@ const mockState = vi.hoisted(() => ({
   scanTargets: new Map<string, ResolvedScanTarget>(),
   inspectResults: new Map<string, InspectResult>(),
   shouldRequestHandoff: false,
+  shouldRequestPromptCopy: false,
   shouldSetUpCi: false,
   shouldQuit: false,
   shouldAutoSubmitProjectSelection: true,
@@ -69,7 +70,10 @@ vi.mock("ink", async (importOriginal) => {
           mockState.ciRecommendationStates.push(Boolean(node.props.canAddToCi));
         }
         if (mockState.shouldRequestHandoff && node.props.displayMode === "report") {
-          node.props.onHandoff?.({ agentId: "codex", prompt: "fix" });
+          node.props.onHandoff?.({ destination: "codex", prompt: "fix" });
+        }
+        if (mockState.shouldRequestPromptCopy && node.props.displayMode === "report") {
+          node.props.onHandoff?.({ destination: "clipboard", prompt: "fix" });
         }
         if (mockState.shouldSetUpCi && node.props.displayMode === "report") {
           node.props.onAddToCi?.();
@@ -158,6 +162,10 @@ vi.mock("../../src/cli/utils/launch-agent.js", async (importOriginal) => {
     launchCliAgent: vi.fn(async () => {
       mockState.lifecycleEvents.push("handoff");
     }),
+    copyToClipboard: vi.fn(async () => {
+      mockState.lifecycleEvents.push("copy");
+      return true;
+    }),
   };
 });
 
@@ -200,6 +208,7 @@ describe("runScanApp", () => {
     mockState.scanTargets.clear();
     mockState.inspectResults.clear();
     mockState.shouldRequestHandoff = false;
+    mockState.shouldRequestPromptCopy = false;
     mockState.shouldSetUpCi = false;
     mockState.shouldQuit = false;
     mockState.shouldAutoSubmitProjectSelection = true;
@@ -586,6 +595,23 @@ describe("runScanApp", () => {
     expect(firstOptions?.deadlineEpochMs).toBeTypeOf("number");
     expect(mockState.lifecycleEvents).toEqual(["footer", "handoff"]);
     expect(result.shouldFail).toBe(true);
+  });
+
+  it("copies the full handoff prompt after exiting the report", async () => {
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockState.shouldRequestPromptCopy = true;
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.lifecycleEvents).toEqual(["footer", "copy"]);
+    expect(write.mock.calls.flat().join("")).toContain("Copied the prompt to your clipboard.");
   });
 
   it("does not start queued project scans after the shared deadline", async () => {

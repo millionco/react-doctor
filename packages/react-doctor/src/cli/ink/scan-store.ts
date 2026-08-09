@@ -8,7 +8,7 @@ import { TUI_LIVE_FEED_MAX_ENTRIES, TUI_PROGRESS_UPDATE_INTERVAL_MS } from "../u
 import type { CliAgentId } from "../utils/launch-agent.js";
 
 export interface TuiHandoffRequest {
-  readonly agentId: CliAgentId;
+  readonly destination: CliAgentId | "clipboard";
   readonly prompt: string;
 }
 

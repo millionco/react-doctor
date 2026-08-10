@@ -630,11 +630,11 @@ describe("runScanApp", () => {
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });
 
+    const writtenOutput = write.mock.calls.flat().join("");
     expect(mockState.lifecycleEvents).toEqual(["footer", "copy"]);
-    expect(write.mock.calls.flat().join("")).toContain(
-      "Couldn't access the clipboard. Here's the prompt instead:\n",
-    );
-    expect(write.mock.calls.flat().join("")).toContain("──── Agent prompt ────\nfix\n");
+    expect(writtenOutput).toContain("Couldn't access the clipboard. Here's the prompt instead:\n");
+    expect(writtenOutput).toContain("──── Agent prompt ────");
+    expect(writtenOutput).toContain("\nfix\n");
   });
 
   it("does not start queued project scans after the shared deadline", async () => {

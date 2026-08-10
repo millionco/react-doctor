@@ -64,6 +64,9 @@ for (const [ruleId, ruleResults] of resultsByRule) {
     const isCarveOut = !result.miningCase.shouldFire;
     const marker = result.didFire ? "  [fired]  " : isCarveOut ? "  [carved] " : "  [SILENT] ";
     console.log(`${marker}${result.miningCase.description}`);
+    if (isCarveOut && result.miningCase.carveOutReason) {
+      console.log(`             carve-out: ${result.miningCase.carveOutReason}`);
+    }
     for (const parseError of result.parseErrors) {
       console.log(`             parse error: ${parseError}`);
     }

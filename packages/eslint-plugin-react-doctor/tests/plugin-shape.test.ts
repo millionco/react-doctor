@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import oxlintPlugin, {
+  ALL_REACT_DOCTOR_RULES,
   NEXTJS_RULES,
   PREACT_RULES,
   REACT_NATIVE_RULES,
@@ -12,7 +13,7 @@ import eslintPlugin from "../src/index.js";
 describe("eslint-plugin-react-doctor", () => {
   it("exports the expected plugin shape", () => {
     expect(eslintPlugin.meta.name).toBe("react-doctor");
-    expect(Object.keys(eslintPlugin.rules).length).toBeGreaterThan(0);
+    expect(Object.keys(eslintPlugin.rules).sort()).toEqual(Object.keys(oxlintPlugin.rules).sort());
     expect(Object.keys(eslintPlugin.configs).sort()).toEqual([
       "all",
       "next",
@@ -37,6 +38,7 @@ describe("eslint-plugin-react-doctor", () => {
     expect(eslintPlugin.configs["tanstack-start"].rules).toEqual(TANSTACK_START_RULES);
     expect(eslintPlugin.configs["tanstack-query"].rules).toEqual(TANSTACK_QUERY_RULES);
     expect(eslintPlugin.configs.preact.rules).toEqual(PREACT_RULES);
+    expect(eslintPlugin.configs.all.rules).toEqual(ALL_REACT_DOCTOR_RULES);
   });
 
   it("only references wrapped rule ids from presets", () => {
@@ -54,9 +56,7 @@ describe("eslint-plugin-react-doctor", () => {
     const eslintRule = eslintPlugin.rules[ruleName];
     expect(oxlintRule).toBeDefined();
     expect(eslintRule).toBeDefined();
-    if (!oxlintRule || !eslintRule) return;
 
-    expect(eslintRule.meta.docs.description).toBe("Array index used as a key");
     expect(eslintRule.meta.docs.description).toBe(oxlintRule.title);
     expect(eslintRule.meta.docs.url).toBe(
       "https://react.doctor/docs/rules/react-doctor/no-array-index-as-key",

@@ -5,9 +5,8 @@ import { isDirectory, isFile, readDirectoryEntries } from "./fs-utils.js";
 import { hasReactDependency } from "./dependencies.js";
 import { readPackageJson } from "./package-json.js";
 import {
-  getNxWorkspaceDirectories,
+  getWorkspacePatterns,
   listWorkspacePackages,
-  parsePnpmWorkspacePatterns,
   resolveWorkspaceDirectories,
 } from "./workspaces.js";
 
@@ -32,9 +31,8 @@ const listManifestWorkspacePackages = (rootDirectory: string): WorkspacePackage[
   const packageJsonPath = path.join(rootDirectory, "package.json");
   if (isFile(packageJsonPath)) return listWorkspacePackages(rootDirectory);
 
-  const patterns = parsePnpmWorkspacePatterns(rootDirectory);
-  const nxPatterns = patterns.length > 0 ? [] : getNxWorkspaceDirectories(rootDirectory);
-  const directories = (patterns.length > 0 ? patterns : nxPatterns).flatMap((pattern) =>
+  const patterns = getWorkspacePatterns(rootDirectory, {});
+  const directories = patterns.flatMap((pattern) =>
     resolveWorkspaceDirectories(rootDirectory, pattern),
   );
 

@@ -100,7 +100,7 @@ export const Report = ({
     () => new Set(),
   );
   const [isCiSetupQueued, setIsCiSetupQueued] = useState(false);
-  const [shouldShowIssueStream, setShouldShowIssueStream] = useState(true);
+  const didDismissIssueStream = useRef(false);
   const didRecordCompactReport = useRef(false);
   const didRecordIssueStream = useRef(false);
   const didRecordStackedReportCap = useRef(false);
@@ -161,7 +161,7 @@ export const Report = ({
     markViewerRuleRead(index);
   };
   const openReportScreen = (nextScreen: ReportScreen): void => {
-    setShouldShowIssueStream(false);
+    didDismissIssueStream.current = true;
     setCiSetupFeedback(undefined);
     setActiveReportScreen(nextScreen);
   };
@@ -172,10 +172,6 @@ export const Report = ({
       label: `Review ${pluralize(diagnosticRows.length, "issue")}`,
       onSelect: () => {
         recordReportAction("view-issues");
-        if (resolvedViewerSelectedRowIndex !== null) {
-          setViewerSelectedRowIndex(resolvedViewerSelectedRowIndex);
-          markViewerRuleRead(resolvedViewerSelectedRowIndex);
-        }
         openReportScreen("issues");
       },
     });
@@ -317,7 +313,7 @@ export const Report = ({
 
   return (
     <>
-      {activeReportScreen === "landing" && shouldShowIssueStream ? issueStream : null}
+      {activeReportScreen === "landing" && !didDismissIssueStream.current ? issueStream : null}
       {activeScreenContent}
     </>
   );

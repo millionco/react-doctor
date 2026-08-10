@@ -53,6 +53,15 @@ export class Files extends Context.Service<
   static readonly layerInMemory = (tree: ReadonlyMap<string, string>): Layer.Layer<Files> => {
     const resolveAbsolute = (filePath: string, rootDirectory: string): string =>
       path.isAbsolute(filePath) ? filePath : `${rootDirectory}/${filePath}`;
+    const listRelativePaths = (rootDirectory: string): string[] => {
+      const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
+      const files: string[] = [];
+      for (const absolute of tree.keys()) {
+        if (!absolute.startsWith(prefix)) continue;
+        files.push(absolute.slice(prefix.length));
+      }
+      return files;
+    };
 
     return Layer.succeed(
       Files,
@@ -63,31 +72,14 @@ export class Files extends Context.Service<
             const content = tree.get(absolute);
             return content === undefined ? null : content.split("\n");
           }),
-        listSourceFiles: (rootDirectory) =>
-          Effect.sync(() => {
-            const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
-            const files: string[] = [];
-            for (const absolute of tree.keys()) {
-              if (!absolute.startsWith(prefix)) continue;
-              files.push(absolute.slice(prefix.length));
-            }
-            return files;
-          }),
+        listSourceFiles: (rootDirectory) => Effect.sync(() => listRelativePaths(rootDirectory)),
         listSourceFilesCooperative: (input) =>
-          Effect.sync(() => {
-            const rootDirectory = input.rootDirectory;
-            const prefix = rootDirectory.endsWith("/") ? rootDirectory : `${rootDirectory}/`;
-            const files: string[] = [];
-            for (const absolute of tree.keys()) {
-              if (!absolute.startsWith(prefix)) continue;
-              files.push(absolute.slice(prefix.length));
-            }
-            return files;
-          }),
-        isFile: (filePath) => Effect.sync(() => tree.has(filePath)),
+          Effect.sync(() => listRelativePaths(input.rootDirectory)),
+        isFile: (filePath) => Effect.sync(() => tree.has(path.resolve(filePath))),
         isDirectory: (filePath) =>
           Effect.sync(() => {
-            const prefix = filePath.endsWith("/") ? filePath : `${filePath}/`;
+            const absolutePath = path.resolve(filePath);
+            const prefix = absolutePath.endsWith("/") ? absolutePath : `${absolutePath}/`;
             for (const absolute of tree.keys()) {
               if (absolute.startsWith(prefix)) return true;
             }

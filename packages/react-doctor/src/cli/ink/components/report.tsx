@@ -172,6 +172,10 @@ export const Report = ({
       label: `Review ${pluralize(diagnosticRows.length, "issue")}`,
       onSelect: () => {
         recordReportAction("view-issues");
+        if (resolvedViewerSelectedRowIndex !== null) {
+          setViewerSelectedRowIndex(resolvedViewerSelectedRowIndex);
+          markViewerRuleRead(resolvedViewerSelectedRowIndex);
+        }
         openReportScreen("issues");
       },
     });

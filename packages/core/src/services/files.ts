@@ -75,11 +75,10 @@ export class Files extends Context.Service<
         listSourceFiles: (rootDirectory) => Effect.sync(() => listRelativePaths(rootDirectory)),
         listSourceFilesCooperative: (input) =>
           Effect.sync(() => listRelativePaths(input.rootDirectory)),
-        isFile: (filePath) => Effect.sync(() => tree.has(path.resolve(filePath))),
+        isFile: (filePath) => Effect.sync(() => tree.has(filePath)),
         isDirectory: (filePath) =>
           Effect.sync(() => {
-            const absolutePath = path.resolve(filePath);
-            const prefix = absolutePath.endsWith("/") ? absolutePath : `${absolutePath}/`;
+            const prefix = filePath.endsWith("/") ? filePath : `${filePath}/`;
             for (const absolute of tree.keys()) {
               if (absolute.startsWith(prefix)) return true;
             }

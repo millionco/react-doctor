@@ -67,6 +67,7 @@ export const createScanResultCacheLifecycle = (
       const baselineDegraded =
         Boolean(input.options.baseline) && isDiffMode && cachedPayload.baselineDelta === undefined;
       return renderAndRecordScan({
+        directory: input.directory,
         payload: cachedPayload,
         options: input.options,
         startTime: input.startTime,
@@ -86,6 +87,7 @@ export const createScanResultCacheLifecycle = (
         scanResultCache.store(cacheKey, completion.payload);
       }
       return renderAndRecordScan({
+        directory: input.directory,
         payload: completion.payload,
         options: input.options,
         startTime: input.startTime,

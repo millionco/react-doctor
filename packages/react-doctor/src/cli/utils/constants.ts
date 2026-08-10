@@ -220,6 +220,11 @@ export const NANOSECONDS_PER_MILLISECOND = 1_000_000n;
 // lose everything recorded since startup.
 export const LSP_TELEMETRY_EXPORT_INTERVAL_MS = 60_000;
 
+export const RULE_EVIDENCE_SCHEMA_VERSION = 1;
+export const RULE_EVIDENCE_MAX_DIAGNOSTIC_COUNT = 24;
+export const RULE_EVIDENCE_MAX_PER_RULE_COUNT = 3;
+export const RULE_EVIDENCE_MAX_TOKEN_COUNT = 160;
+
 export const AXIOM_TRACES_DATASET = "react-doctor";
 export const AXIOM_METRICS_DATASET = "react-doctor-metrics";
 
@@ -290,6 +295,7 @@ export const METRIC = {
   scanNoReactDetected: "scan.no_react_detected",
   baselineDegraded: "baseline.degraded",
   ruleFired: "rule.fired",
+  ruleEvidenceCollected: "rule.evidence_collected",
   // Rule-rejection telemetry, both keyed by `rule` + `source` attributes:
   // `rule.disabled` counts one per scan per config-off rule (`rules: "off"` /
   // `ignore.rules` — the former never fires, so this is its only signal);

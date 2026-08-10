@@ -57,17 +57,18 @@ You can configure which rules to run and how to run them in `doctor.config.ts`.
 
 ## Telemetry
 
-The CLI reports crashes, basic run traces, and anonymous usage counters to [Sentry](https://sentry.io/) to help us fix bugs and prioritize work.
+Telemetry is on by default. The CLI sends crash reports to [Sentry](https://sentry.io/) and usage telemetry to [Axiom](https://axiom.co/). We use this data to operate React Doctor and improve its diagnostic rules.
 
 We collect:
 
 - Environment: CLI version, platform, Node version
 - Invocation: which command, package manager, and run context (whether it's local vs. CI vs. coding agent)
-- Project shape: framework, React version, TypeScript, project size (NO file contents)
-- Rules fired: rule names and counts only (e.g. `react-doctor/no-array-index-as-key`) (NO code or specific findings)
+- Project shape: framework, React version, TypeScript, and project size
+- Rules fired: rule names and counts (e.g. `react-doctor/no-array-index-as-key`)
+- Rule evidence: minimized token patterns from source spans that trigger diagnostics. React Doctor replaces identifier names and literal contents, removes comments and file paths, and limits the number and size of patterns. It does not collect complete source files. We use these patterns to fix false positives, which are incorrect diagnostics, and false negatives, which are issues that rules miss
 - De-minified React Doctor CLI stack traces
 
-To opt out, run: `npx react-doctor@latest --no-telemetry`
+To disable telemetry for a run: `npx react-doctor@latest --no-telemetry`
 
 ## Contributing
 

@@ -11,12 +11,14 @@ import {
   type InspectExecutionCacheStats,
 } from "./finalize-inspect-result.js";
 import { makeNoopConsole } from "./noop-console.js";
+import { recordRuleEvidence } from "./record-rule-evidence.js";
 import { recordScanMetrics } from "./record-scan-metrics.js";
 import { resolveWorkerTelemetry } from "./resolve-worker-telemetry.js";
 import type { CachedScanPayload } from "./scan-result-cache-payload.js";
 import type { RunRootSpan } from "./with-run-span.js";
 
 export interface RenderAndRecordScanInput {
+  readonly directory: string;
   readonly payload: CachedScanPayload;
   readonly options: ResolvedInspectOptions;
   readonly startTime: number;
@@ -105,6 +107,11 @@ export const renderAndRecordScan = async (
     didDeadCodeFail: input.payload.didDeadCodeFail,
     userConfig: input.payload.userConfig,
     suppressedRuleCounts: input.payload.suppressedRuleCounts ?? [],
+  });
+  recordRuleEvidence({
+    diagnostics: result.diagnostics,
+    directory: input.directory,
+    rootSpan: input.rootSpan,
   });
   recordRunEvent(input.rootSpan, {
     ...buildRunEventConfig(input.options, input.payload.userConfig, resolvedWorkerCount),

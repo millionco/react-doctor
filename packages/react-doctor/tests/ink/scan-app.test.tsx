@@ -13,6 +13,7 @@ import {
 import * as exitGracefullyModule from "../../src/cli/utils/exit-gracefully.js";
 import * as launchAgent from "../../src/cli/utils/launch-agent.js";
 import * as openUrlModule from "../../src/cli/utils/open-url.js";
+import * as writeDiagnosticsDirectoryModule from "../../src/cli/utils/write-diagnostics-directory.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
 import { createScanStore } from "../../src/cli/ink/scan-store.js";
 import { severityVariant } from "../../src/cli/ink/lib/severity-variants.js";
@@ -1237,6 +1238,9 @@ describe("ScanApp", () => {
 
   it("offers the full prompt for copying without a launchable agent", async () => {
     const onHandoff = vi.fn();
+    const writeDiagnosticsDirectory = vi
+      .spyOn(writeDiagnosticsDirectoryModule, "writeDiagnosticsDirectory")
+      .mockReturnValue("/tmp/react-doctor-diagnostics");
     const store = createScanStore();
     store.setReport({
       diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
@@ -1254,6 +1258,7 @@ describe("ScanApp", () => {
       <ScanApp store={store} launchableAgents={[]} onHandoff={onHandoff} />,
     );
     await flush();
+    expect(writeDiagnosticsDirectory).not.toHaveBeenCalled();
 
     stdin.write("j");
     await flush();
@@ -1261,6 +1266,7 @@ describe("ScanApp", () => {
     stdin.write("\r");
     await flush();
 
+    expect(writeDiagnosticsDirectory).not.toHaveBeenCalled();
     expect(lastFrame()).toContain("Choose how to continue");
     expect(lastFrame()).toContain(`${figures.pointer} Copy prompt`);
     expect(lastFrame()).toContain("Paste into any agent or edit it first");
@@ -1268,6 +1274,7 @@ describe("ScanApp", () => {
     await flush();
 
     expect(onHandoff).toHaveBeenCalledOnce();
+    expect(writeDiagnosticsDirectory).toHaveBeenCalledOnce();
     expect(onHandoff.mock.calls[0]?.[0].destination).toBe("clipboard");
     expect(onHandoff.mock.calls[0]?.[0].prompt).toContain("react-doctor/rules-of-hooks");
     unmount();

@@ -134,17 +134,15 @@ export const Report = ({
 
   const isCiSetupAvailable = Boolean(canAddToCi && onAddToCi && !isCiSetupQueued);
   const isHandoffAvailable = diagnosticRows.length > 0 && Boolean(onHandoff);
-  const handoffPrompt = useMemo(
-    () =>
-      buildHandoffPayload({
+  const completeHandoff = (destination: TuiHandoffRequest["destination"]): void => {
+    if (!onHandoff) return;
+    onHandoff({
+      destination,
+      prompt: buildHandoffPayload({
         diagnostics: report.diagnostics,
         projectName: report.projectName,
       }),
-    [report.diagnostics, report.projectName],
-  );
-  const completeHandoff = (destination: TuiHandoffRequest["destination"]): void => {
-    if (!onHandoff) return;
-    onHandoff({ destination, prompt: handoffPrompt });
+    });
     onExit();
   };
   const firstDiagnosticEntry = diagnosticListEntries.find((entry) => entry.kind === "item");

@@ -244,11 +244,7 @@ export const runInspect = <HooksR = never>(
         : Effect.succeed(null as string | null),
     );
 
-    const explicitLintIncludePaths = input.skipExplicitIncludePathFilter
-      ? input.includePaths.length > 0
-        ? [...input.includePaths]
-        : undefined
-      : computeExplicitLintIncludePaths([...input.includePaths]);
+    const explicitLintIncludePaths = computeExplicitLintIncludePaths([...input.includePaths]);
     let lintIncludePaths =
       explicitLintIncludePaths ??
       resolveLintIncludePaths(

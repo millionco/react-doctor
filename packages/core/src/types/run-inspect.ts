@@ -59,12 +59,6 @@ export interface InspectInput {
    */
   readonly suppressScanSummary?: boolean;
   /**
-   * When `true`, `includePaths` is linted verbatim instead of being filtered
-   * to React Doctor's supported source-file set. Editor scans use this for the
-   * exact buffer supplied by the language server.
-   */
-  readonly skipExplicitIncludePathFilter?: boolean;
-  /**
    * Whether the scanned project's `package.json` is among the changed files
    * in a diff / staged scan. Dependency health is a whole-project property
    * (read from `package.json`, not the changed source files), so the

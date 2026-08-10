@@ -795,7 +795,7 @@ export const MAX_GLOB_PATTERN_WILDCARD_COUNT = 24;
 // repeated `inspect()` calls (one per project in a monorepo loop) don't
 // reload the same `react-doctor.config.json` each time. Capacity bounds
 // memory on monorepos with hundreds of workspace packages; TTL handles
-// long-running consumers (watch-mode tools, language servers).
+// long-running consumers such as watch-mode tools.
 export const CONFIG_CACHE_CAPACITY = 16;
 
 export const CONFIG_CACHE_TTL_MS = 5 * 60 * 1_000;

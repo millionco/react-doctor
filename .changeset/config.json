@@ -8,8 +8,7 @@
       "eslint-plugin-react-doctor",
       "oxlint-plugin-react-doctor",
       "@react-doctor/core",
-      "@react-doctor/api",
-      "@react-doctor/language-server"
+      "@react-doctor/api"
     ]
   ],
   "linked": [],

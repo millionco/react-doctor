@@ -31,6 +31,12 @@ const FORBIDDEN_INSTALLED_PACKAGES: readonly string[] = [
   "ink",
   "ink-link",
   "ink-spinner",
+  "vscode-jsonrpc",
+  "vscode-languageserver",
+  "vscode-languageserver-protocol",
+  "vscode-languageserver-textdocument",
+  "vscode-languageserver-types",
+  "vscode-uri",
   "react-devtools-core",
   "react-reconciler",
 ];

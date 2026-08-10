@@ -483,10 +483,9 @@ export const parseOxlintOutput = (
         "\\",
         "/",
       );
-      // Carry oxlint's UTF-8 byte span through to the Diagnostic so
-      // editor integrations (LSP) can resolve a precise range from the
-      // in-memory document. `line` / `column` stay the source of truth
-      // for everything else; offset / length are additive.
+      // Carry oxlint's UTF-8 byte span through to the Diagnostic so consumers
+      // can resolve a precise range. `line` / `column` stay the source of truth;
+      // offset / length are additive.
       const primarySpan = primaryLabel?.span;
       const sourceBuffer = primarySpan ? readSourceBuffer(diagnostic.filename) : null;
       const relatedLocations = buildRelatedLocations(

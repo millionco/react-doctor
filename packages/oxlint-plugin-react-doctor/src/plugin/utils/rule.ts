@@ -97,8 +97,8 @@ export interface Rule {
   // Capability-conditioned override of `recommendation`, evaluated by
   // @react-doctor/core's diagnostic pipeline where the scanned project's
   // capability set is known. Return `undefined` to fall back to the static
-  // `recommendation` (which stays the project-agnostic prose that docs,
-  // the rule catalog, and LSP hover render).
+  // `recommendation` (which stays the project-agnostic prose used by docs and
+  // the rule catalog).
   recommendationFor?: (hasCapability: CapabilityQuery) => string | undefined;
   create: (context: RuleContext) => RuleVisitors;
 }

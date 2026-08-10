@@ -459,19 +459,6 @@ rules
     return rulesUnignoreTagAction(tag, command.optsWithGlobals());
   });
 
-// NOTE: `react-doctor experimental-lsp` is intentionally NOT wired through
-// commander. The bin shim (bin/react-doctor.js) fast-paths it to a dedicated
-// server entry so the CLI layer (commander / prompts / ora) never touches
-// process.stdin before the LSP stdio transport attaches. This command is
-// registered only so `--help` lists it; its body never runs in practice.
-// It's gated behind the `experimental-` prefix because the editor language
-// server is still unstable (protocol, caching, and diagnostics may change).
-program
-  .command("experimental-lsp", { hidden: false })
-  .description("[experimental] run the React Doctor language server over stdio (for editors)")
-  .allowUnknownOption()
-  .action(() => {});
-
 program
   .command("experimental-tui [directory]", { hidden: true })
   .description("[experimental] interactive, scrollable scan report")

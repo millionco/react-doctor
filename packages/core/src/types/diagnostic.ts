@@ -67,9 +67,8 @@ export interface Diagnostic {
   /**
    * UTF-8 byte offset of the diagnostic's primary span start, straight
    * from oxlint's label span. Optional because environment / maintainability
-   * diagnostics carry no source span. Editors (LSP) convert this into a
-   * precise range via the in-memory document; non-editor consumers can
-   * ignore it.
+   * diagnostics carry no source span. Consumers can use it to recover a
+   * precise range or ignore it.
    */
   offset?: number;
   /** UTF-8 byte length of the primary span (pairs with `offset`). */

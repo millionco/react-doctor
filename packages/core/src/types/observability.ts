@@ -17,12 +17,4 @@ export interface AxiomTelemetryOptions {
   /** Metrics-type dataset receiving counters and distributions. */
   metricsDataset: string;
   serviceVersion: string;
-  /**
-   * Periodic export interval. Defaults to `TELEMETRY_EXPORT_INTERVAL_MS`, which
-   * is deliberately longer than any realistic CLI run so the single export is
-   * the one triggered when the scope closes at exit. A long-running process —
-   * the language server — overrides it so telemetry ships while the daemon is
-   * still alive rather than only at shutdown.
-   */
-  exportIntervalMs?: number;
 }

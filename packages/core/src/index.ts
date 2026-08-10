@@ -53,7 +53,6 @@ export * from "./compute-diagnostic-delta.js";
 export * from "./constants.js";
 export * from "./detect-user-lint-config.js";
 export * from "./diagnostic-surface.js";
-export * from "./editor-scan.js";
 export * from "./evaluate-suppression.js";
 export * from "./filter-for-surface.js";
 export * from "./find-enclosing-jsx-opener.js";

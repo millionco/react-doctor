@@ -120,7 +120,7 @@ export const layerAxiomTraces = (options: AxiomTelemetryOptions): Layer.Layer<ne
       Authorization: buildAuthorization(options),
       [AXIOM_DATASET_HEADER]: options.tracesDataset,
     },
-    exportInterval: options.exportIntervalMs ?? TELEMETRY_EXPORT_INTERVAL_MS,
+    exportInterval: TELEMETRY_EXPORT_INTERVAL_MS,
     shutdownTimeout: TELEMETRY_SHUTDOWN_TIMEOUT_MS,
   }).pipe(
     Layer.provide(OtlpSerialization.layerProtobuf),
@@ -143,7 +143,7 @@ export const layerAxiomMetrics = (options: AxiomTelemetryOptions): Layer.Layer<n
       Authorization: buildAuthorization(options),
       [AXIOM_METRICS_DATASET_HEADER]: options.metricsDataset,
     },
-    exportInterval: options.exportIntervalMs ?? TELEMETRY_EXPORT_INTERVAL_MS,
+    exportInterval: TELEMETRY_EXPORT_INTERVAL_MS,
     shutdownTimeout: TELEMETRY_SHUTDOWN_TIMEOUT_MS,
     temporality: "delta",
   }).pipe(Layer.provide(OtlpSerialization.layerProtobuf), Layer.provide(FetchHttpClient.layer));

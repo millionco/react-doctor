@@ -228,9 +228,7 @@ for spans: the CLI pins `tracesSampleRate: 0` and Sentry never records a span.
   metrics exporter passes `maxBatchSize: "disabled"` internally, which skips
   Effect's empty-buffer short-circuit — it POSTs on every scope close whether or
   not anything was recorded, so on a firewalled machine that request cannot fail
-  fast. The language server overrides `exportIntervalMs` (see
-  `LSP_TELEMETRY_EXPORT_INTERVAL_MS`) because an editor session may never shut
-  down cleanly.
+  fast.
 - **Anonymization.** Telemetry must stay anonymized, and OTLP has **no**
   `beforeSend`-style hook — the safety net Sentry gave us for free had to be
   rebuilt. Two mechanisms now carry it:

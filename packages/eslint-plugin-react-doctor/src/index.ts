@@ -18,7 +18,7 @@ interface EslintRuleContext {
 }
 
 interface EslintAdapterRule {
-  title: string;
+  title?: string;
   severity: "error" | "warn";
   create: (context: EslintRuleContext) => RuleVisitors;
 }
@@ -67,7 +67,7 @@ const wrapAsEslintRule = (ruleName: string, ruleImpl: EslintAdapterRule): Eslint
   meta: {
     type: ruleImpl.severity === "warn" ? "suggestion" : "problem",
     docs: {
-      description: ruleImpl.title,
+      description: ruleImpl.title ?? ruleName,
       url: `${RULE_DOCS_BASE_URL}/${PLUGIN_NAMESPACE}/${ruleName}`,
       recommended: recommendedRuleKeys.has(`${PLUGIN_NAMESPACE}/${ruleName}`),
     },

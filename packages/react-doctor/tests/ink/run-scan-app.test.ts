@@ -38,6 +38,7 @@ const mockState = vi.hoisted(() => ({
   inspectResults: new Map<string, InspectResult>(),
   shouldRequestHandoff: false,
   shouldRequestPromptCopy: false,
+  shouldCopyPromptSucceed: true,
   shouldSetUpCi: false,
   shouldQuit: false,
   shouldAutoSubmitProjectSelection: true,
@@ -164,7 +165,7 @@ vi.mock("../../src/cli/utils/launch-agent.js", async (importOriginal) => {
     }),
     copyToClipboard: vi.fn(async () => {
       mockState.lifecycleEvents.push("copy");
-      return true;
+      return mockState.shouldCopyPromptSucceed;
     }),
   };
 });
@@ -209,6 +210,7 @@ describe("runScanApp", () => {
     mockState.inspectResults.clear();
     mockState.shouldRequestHandoff = false;
     mockState.shouldRequestPromptCopy = false;
+    mockState.shouldCopyPromptSucceed = true;
     mockState.shouldSetUpCi = false;
     mockState.shouldQuit = false;
     mockState.shouldAutoSubmitProjectSelection = true;
@@ -612,6 +614,27 @@ describe("runScanApp", () => {
 
     expect(mockState.lifecycleEvents).toEqual(["footer", "copy"]);
     expect(write.mock.calls.flat().join("")).toContain("Copied the prompt to your clipboard.");
+  });
+
+  it("prints the full handoff prompt when clipboard access fails", async () => {
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockState.shouldRequestPromptCopy = true;
+    mockState.shouldCopyPromptSucceed = false;
+    const rootDirectory = "/repo";
+    mockState.projectDirectories.push(rootDirectory);
+    mockState.scanTargets.set(
+      rootDirectory,
+      buildScanTarget(rootDirectory, rootDirectory, null, rootDirectory),
+    );
+    mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
+
+    await runScanApp({ directory: rootDirectory, skipPrompts: true });
+
+    expect(mockState.lifecycleEvents).toEqual(["footer", "copy"]);
+    expect(write.mock.calls.flat().join("")).toContain(
+      "Couldn't access the clipboard. Here's the prompt instead:\n",
+    );
+    expect(write.mock.calls.flat().join("")).toContain("──── Agent prompt ────\nfix\n");
   });
 
   it("does not start queued project scans after the shared deadline", async () => {

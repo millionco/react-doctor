@@ -11,10 +11,10 @@ import { OxlintConcurrency } from "./refs.js";
 import { runInspect, type InspectOutput } from "./run-inspect.js";
 import { messageFromUnknown } from "./utils/message-from-unknown.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
-import { DeadCode } from "./services/dead-code.js";
 import { Files } from "./services/files.js";
 import { Git } from "./services/git.js";
 import { Linter, LintPartialFailures } from "./services/linter.js";
+import { Maintainability } from "./services/maintainability.js";
 import { Progress } from "./services/progress.js";
 import { Project } from "./services/project.js";
 import { Reporter } from "./services/reporter.js";
@@ -40,7 +40,7 @@ export interface EditorScanInput {
    * exact buffer the user edits is analyzed regardless of extension.
    */
   readonly includePaths?: ReadonlyArray<string>;
-  /** Run dead-code analysis alongside lint. Defaults to `false` (file scans). */
+  /** Run React maintainability analysis alongside lint. Defaults to `false` for file scans. */
   readonly runDeadCode?: boolean;
   /** Run the linter. Defaults to `true`. Set `false` to skip oxlint entirely. */
   readonly lint?: boolean;
@@ -207,7 +207,7 @@ const runEditorScanEffect = (input: EditorScanInput): Effect.Effect<EditorScanRe
       Git.layerOf({}),
       settings.lint ? Linter.layerOxlint : Linter.layerOf([]),
       LintPartialFailures.layerLive,
-      settings.runDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]),
+      settings.runDeadCode ? Maintainability.layerNode : Maintainability.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
       Score.layerOf(null),

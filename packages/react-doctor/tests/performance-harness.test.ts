@@ -462,14 +462,8 @@ describe("performance harness", () => {
         );
         expect(cpuProcessRoles).toContain("react-doctor");
         expect(cpuProcessRoles).toContain("oxlint");
-        if (process.allowedNodeEnvironmentFlags.has("--cpu-prof")) {
-          expect(cpuProcessRoles).toContain("dead-code");
-        } else {
-          expect(cpuProcessRoles.size).toBeGreaterThanOrEqual(2);
-        }
-        expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(
-          process.allowedNodeEnvironmentFlags.has("--heap-prof") ? 3 : 2,
-        );
+        expect(cpuProcessRoles.size).toBeGreaterThanOrEqual(2);
+        expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(2);
       },
     );
   });

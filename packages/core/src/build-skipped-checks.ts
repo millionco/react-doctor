@@ -24,7 +24,7 @@ export interface SkippedCheckSummary {
 export const buildSkippedChecks = (input: SkippedCheckInput): SkippedCheckSummary => {
   const skippedChecks: string[] = [];
   if (input.didLintFail) skippedChecks.push("lint");
-  if (input.didDeadCodeFail) skippedChecks.push("dead-code");
+  if (input.didDeadCodeFail) skippedChecks.push("maintainability");
   if (input.supplyChainOverlapTimedOut) skippedChecks.push("supply-chain");
   if (input.securityScanFailed) skippedChecks.push("security-scan");
 
@@ -35,7 +35,7 @@ export const buildSkippedChecks = (input: SkippedCheckInput): SkippedCheckSummar
     skippedCheckReasons["lint:partial"] = input.lintPartialFailures.join("; ");
   }
   if (input.didDeadCodeFail && input.deadCodeFailureReason !== null) {
-    skippedCheckReasons["dead-code"] = input.deadCodeFailureReason;
+    skippedCheckReasons.maintainability = input.deadCodeFailureReason;
   }
   if (input.supplyChainOverlapTimedOut) {
     skippedCheckReasons["supply-chain"] = "Supply-chain analysis timed out and was skipped.";

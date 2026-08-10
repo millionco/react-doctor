@@ -68,7 +68,6 @@ const CACHE_DISABLED_VALUES = new Set(["1", "true"]);
 const TOOLCHAIN_PACKAGE_SPECIFIERS = [
   "oxlint/package.json",
   "oxlint-plugin-react-doctor/package.json",
-  "deslop-js/package.json",
   "eslint-plugin-react-hooks/package.json",
 ] as const;
 const bundledRequire = createRequire(import.meta.url);
@@ -286,7 +285,7 @@ const isGitIdentityTrustworthy = (projectDirectory: string): boolean => {
   return entryLines.length > 0 && entryLines.every((line) => line[0] === "H");
 };
 
-// Sits beside the per-file lint / sidecar / dead-code caches under the shared
+// Sits beside the per-file lint and sidecar caches under the shared
 // cache root, so the `REACT_DOCTOR_CACHE_DIR` override the GitHub Action sets
 // (a `${runner.temp}` path persisted by `actions/cache`) carries the whole-repo
 // scan cache across CI runs too — the project-local `node_modules/.cache`
@@ -325,7 +324,7 @@ const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => 
 /**
  * The global cache off-switch (`REACT_DOCTOR_NO_CACHE`), which disables every
  * cache subsystem: this whole-repo scan cache plus core's per-file lint,
- * sidecar, and dead-code caches (their `Context.Reference` defaults read the
+ * sidecar caches (their `Context.Reference` defaults read the
  * same variable). Exported for the wide event's `cache.temperature`
  * derivation, which reports `"disabled"` instead of `"cold"` when the switch
  * is on. Granular knobs (`REACT_DOCTOR_NO_FILE_CACHE`, …) are deliberately
@@ -438,7 +437,7 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       supplyChainManifestChanged: input.options.supplyChainManifestChanged,
       // `maxDurationMs` is deliberately NOT keyed. It only changes the RESULT
       // when the budget is hit, and every such truncated run (lint partial or
-      // dead-code skipped) is barred from the cache by `shouldStoreScanPayload`
+      // maintainability skipped) is barred from the cache by `shouldStoreScanPayload`
       // below. So a stored payload is always COMPLETE, and serving it to a
       // `--max-duration` lookup honors the budget (a cache hit finishes well
       // under any ceiling) with the best possible result. Keying on it would

@@ -52,7 +52,7 @@ export const rangeFromByteSpan = (text: string, offset: number, length: number):
 
 /**
  * Fallback range from oxlint's 1-indexed `line` / `column` when no byte
- * span is available (environment / dead-code diagnostics). When the
+ * span is available (environment / maintainability diagnostics). When the
  * document text is known, the range extends to the end of the token's
  * line so the squiggle is visible; otherwise it spans a single column.
  */

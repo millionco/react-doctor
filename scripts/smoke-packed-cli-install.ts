@@ -21,10 +21,13 @@ interface StringRecord {
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
 const FIXTURE_DIRECTORY = path.resolve(REPOSITORY_ROOT, "packages/core/tests/fixtures/basic-react");
+const PACKED_PACKAGE_NAMES: readonly string[] = ["react-doctor", "oxlint-plugin-react-doctor"];
 const FORBIDDEN_INSTALLED_PACKAGES: readonly string[] = [
   "ini",
   "effect",
   "@effect/platform-node-shared",
+  "deslop-cli",
+  "deslop-js",
   "ink",
   "ink-link",
   "ink-spinner",
@@ -125,23 +128,12 @@ const main = (): void => {
       )}\n`,
     );
 
-    // Pack the CLI together with its unbundled workspace dependencies:
-    // changesets version-bumps and publishes them as a pinned set, so
-    // installing the tarballs mirrors what a release ships. The CLI keeps
-    // `oxlint-plugin-react-doctor` and `deslop-js` external (neverBundle —
-    // both wrap native binaries), so installing only the CLI tarball would
-    // resolve them from the registry and reject any PR before their matching
-    // versions are published (e.g. a workspace-locked `deslop-js@0.5.x` that
-    // npm has never seen).
+    // Pack the CLI with its unbundled rule plugin so the install mirrors the
+    // version-pinned packages that Changesets publishes together.
     runCommand({
       command: "pnpm",
       args: [
-        "--filter",
-        "react-doctor",
-        "--filter",
-        "oxlint-plugin-react-doctor",
-        "--filter",
-        "deslop-js",
+        ...PACKED_PACKAGE_NAMES.flatMap((packageName) => ["--filter", packageName]),
         "pack",
         "--pack-destination",
         packDirectory,
@@ -151,9 +143,9 @@ const main = (): void => {
     });
 
     const tarballs = fs.readdirSync(packDirectory).filter((fileName) => fileName.endsWith(".tgz"));
-    if (tarballs.length !== 3) {
+    if (tarballs.length !== PACKED_PACKAGE_NAMES.length) {
       console.error(
-        `Expected exactly three packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
+        `Expected exactly ${PACKED_PACKAGE_NAMES.length} packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
       );
       process.exit(1);
     }
@@ -169,6 +161,15 @@ const main = (): void => {
     const installedPackages = collectInstalledPackageNames(
       path.join(installDirectory, "node_modules"),
     );
+    const missingPackedPackages = PACKED_PACKAGE_NAMES.filter(
+      (packageName) => !installedPackages.has(packageName),
+    );
+    if (missingPackedPackages.length > 0) {
+      console.error(
+        `Packed install is missing expected package(s): ${missingPackedPackages.join(", ")}`,
+      );
+      process.exit(1);
+    }
     const forbiddenPackages = FORBIDDEN_INSTALLED_PACKAGES.filter((packageName) =>
       installedPackages.has(packageName),
     );

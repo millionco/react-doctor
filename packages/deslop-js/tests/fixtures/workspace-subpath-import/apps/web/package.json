@@ -1,6 +1,0 @@
-{
-  "name": "@subpath-fixture/web",
-  "dependencies": {
-    "@subpath-fixture/ui": "workspace:*"
-  }
-}

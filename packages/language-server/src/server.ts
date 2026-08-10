@@ -242,9 +242,8 @@ export const createServer = (
   };
 
   /**
-   * Full audit (lint + dead-code) per project, on-demand via the
-   * `scanWorkspace` command. Dead-code is a whole-graph reachability
-   * analysis, so it runs as a single per-project scan with progress.
+   * Full lint and maintainability audit per project, on-demand via the
+   * `scanWorkspace` command.
    */
   const scanWorkspaceFull = (): void => {
     if (!projectGraph || !scheduler) return;
@@ -575,7 +574,7 @@ export const createServer = (
   documents.onDidSave((event) => {
     // Save re-lints only the saved file from disk. A whole-project
     // re-lint on every save would be pathological on large repos
-    // (~100s on an 8k-file repo); dead-code refresh is on-demand via the
+    // (~100s on an 8k-file repo); maintainability refresh is on-demand via the
     // `scanWorkspace` command.
     scheduleFileScan(uriToFsPath(event.document.uri), "save", false, "save");
   });

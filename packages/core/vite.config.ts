@@ -17,7 +17,6 @@ export default defineConfig({
         neverBundle: [
           "@astrojs/compiler",
           "@effect/platform-node-shared",
-          "deslop-js",
           "effect",
           "oxc-parser",
           "oxc-resolver",

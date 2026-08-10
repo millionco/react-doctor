@@ -111,8 +111,8 @@ const outcomeWithoutScan = (
  * config fingerprint) short-circuits unchanged files so a re-opened editor
  * or repeated workspace scan skips the oxlint subprocess for everything it
  * hasn't edited. The cache applies only to disk-based, lint-only, per-file
- * scans — overlay scans carry unsaved content, and whole-project /
- * dead-code scans aren't per-file cacheable.
+ * scans — overlay scans carry unsaved content, and whole-project
+ * maintainability scans aren't per-file cacheable.
  */
 export const createScanRunner = (options: ScanRunnerOptions): ScanRunner => {
   const logger = options.logger ?? SILENT_LOGGER;

@@ -17,7 +17,7 @@ export type BlockingLevel = "error" | "warning" | "none";
  * all share. Ordered widest to narrowest:
  *
  * - `"full"` — whole project, every issue (the default). Whole-project checks
- *   (dead-code, environment, supply-chain) run only at this scope.
+ *   (maintainability, environment, supply-chain) run only at this scope.
  * - `"files"` — only the files changed vs the base, with ALL issues in them
  *   (no compare-to-main). What `--staged` and an uncommitted `--diff` do today.
  * - `"changed"` — only issues the change INTRODUCED vs the base (the baseline
@@ -211,11 +211,8 @@ export interface ReactDoctorConfig {
    */
   supplyChain?: SupplyChainConfig;
   /**
-   * Whether to run dead-code analysis (via `deslop-js`) alongside lint.
-   * Reports unused files, unused exports, unused dependencies, and
-   * circular imports under the "Maintainability" category. Default: `true`.
-   * Always skipped in `--diff` / `--staged` modes because reachability
-   * is a whole-project property.
+   * Compatibility switch for React maintainability analysis. Default: `true`.
+   * @deprecated React maintainability checks are part of React Doctor.
    */
   deadCode?: boolean;
   verbose?: boolean;

@@ -20,15 +20,15 @@ describe("deadCodeMaySurfaceWhenWarningsHidden", () => {
     ).toBe(true);
   });
 
-  it("is true when a deslop rule is restamped to warn or error", () => {
+  it("is true when duplicate JSX is restamped to warn or error", () => {
     expect(
       deadCodeMaySurfaceWhenWarningsHidden(
-        configOf({ rules: { "deslop/unused-export": "error" } }),
+        configOf({ rules: { "react-doctor/duplicate-jsx-subtree": "error" } }),
       ),
     ).toBe(true);
     expect(
       deadCodeMaySurfaceWhenWarningsHidden(
-        configOf({ rules: { "deslop/circular-dependency": "warn" } }),
+        configOf({ rules: { "react-doctor/duplicate-jsx-subtree": "warn" } }),
       ),
     ).toBe(true);
   });
@@ -38,7 +38,9 @@ describe("deadCodeMaySurfaceWhenWarningsHidden", () => {
       deadCodeMaySurfaceWhenWarningsHidden(configOf({ categories: { Maintainability: "off" } })),
     ).toBe(false);
     expect(
-      deadCodeMaySurfaceWhenWarningsHidden(configOf({ rules: { "deslop/unused-export": "off" } })),
+      deadCodeMaySurfaceWhenWarningsHidden(
+        configOf({ rules: { "react-doctor/duplicate-jsx-subtree": "off" } }),
+      ),
     ).toBe(false);
     expect(
       deadCodeMaySurfaceWhenWarningsHidden(configOf({ categories: { Performance: "error" } })),

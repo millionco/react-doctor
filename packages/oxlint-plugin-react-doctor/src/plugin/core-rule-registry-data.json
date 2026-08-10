@@ -5042,6 +5042,22 @@
     }
   },
   {
+    "key": "react-doctor/no-high-complexity-react-function",
+    "id": "no-high-complexity-react-function",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-high-complexity-react-function",
+      "title": "React function has high control-flow complexity",
+      "severity": "warn",
+      "recommendation": "Extract independent render branches and state logic into focused components or hooks until the control flow is easy to follow.",
+      "category": "Maintainability",
+      "framework": "global",
+      "tags": ["test-noise", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-hover-only-reveal",
     "id": "no-hover-only-reveal",
     "source": "react-doctor",

@@ -79,9 +79,9 @@ describe("ScanApp", () => {
   it("renders repeated live diagnostics without duplicate React keys", () => {
     const store = createScanStore();
     const repeatedDiagnostic = makeDiagnostic({
-      filePath: "package.json",
-      plugin: "deslop",
-      rule: "unused-dev-dependency",
+      filePath: "src/Card.tsx",
+      plugin: "react-doctor",
+      rule: "duplicate-jsx-subtree",
       line: 0,
       column: 0,
     });
@@ -306,12 +306,12 @@ describe("ScanApp", () => {
       elapsedMilliseconds: 10,
       isOffline: true,
       noScoreMessage: "Score unavailable.",
-      skippedChecks: ["dead-code"],
+      skippedChecks: ["maintainability"],
     });
 
     const { lastFrame, unmount } = render(<ScanApp store={store} />);
     expect(lastFrame()).toContain(
-      "No issues detected, but dead-code checks failed — results are incomplete.",
+      "No issues detected, but maintainability checks failed — results are incomplete.",
     );
     expect(lastFrame()).not.toContain("No issues found");
     unmount();
@@ -396,14 +396,14 @@ describe("ScanApp", () => {
       elapsedMilliseconds: 10,
       isOffline: true,
       noScoreMessage: "Score unavailable.",
-      skippedChecks: ["dead-code"],
+      skippedChecks: ["maintainability"],
       incompleteMessage: "2 projects were skipped because scanning failed.",
     });
 
     const { lastFrame, unmount } = render(<ScanApp store={store} />);
     expect(lastFrame()).toContain("2 projects were skipped because scanning failed.");
     expect(lastFrame()).toContain(
-      "No issues detected, but dead-code checks failed — results are incomplete.",
+      "No issues detected, but maintainability checks failed — results are incomplete.",
     );
     expect(lastFrame()).not.toContain("No issues found");
     unmount();

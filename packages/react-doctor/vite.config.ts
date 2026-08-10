@@ -109,17 +109,14 @@ export default defineConfig({
           "vscode-languageserver-textdocument",
           "vscode-jsonrpc",
           "vscode-uri",
-          // HACK: deslop-js wraps oxc-parser / oxc-resolver, both of
-          // which load platform-specific NAPI bindings via require().
+          // HACK: oxc-parser / oxc-resolver load platform-specific NAPI bindings via require().
           // Rollup happily inlines the JS loader chain but rewrites
           // the native lookups to fingerprinted `./assets/*.node`
           // paths that never make it into the published tarball (and
           // also strips the standard `@oxc-{parser,resolver}/binding-
-          // <platform>` fallback). Keep deslop-js (and its native
-          // siblings) external so the loaders run untouched and Node
-          // resolves the bindings from the deslop-js node_modules
-          // tree on install — see issue #404.
-          "deslop-js",
+          // <platform>` fallback). Keep the native packages external so
+          // the loaders run untouched and Node resolves their bindings
+          // from node_modules on install — see issue #404.
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
@@ -166,7 +163,6 @@ export default defineConfig({
           "confbox",
           "jiti",
           "magicast",
-          "deslop-js",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
@@ -193,7 +189,6 @@ export default defineConfig({
           // same reason as the CLI pack (it resolves its own OTel/native deps
           // via require() at runtime).
           "@sentry/node",
-          "deslop-js",
           "oxc-parser",
           "oxc-resolver",
           "oxlint",
@@ -214,17 +209,5 @@ export default defineConfig({
   ],
   test: {
     testTimeout: TEST_TIMEOUT_MS,
-    // NOTE: do NOT pin Windows onto a single serial fork
-    // (`singleFork` / `maxWorkers: 1` / `fileParallelism: false`).
-    // This suite drives the real `oxlint` binary and per-test deslop
-    // `worker_threads` thousands of times; funneling all ~105 test
-    // files through one long-lived worker lets that process accumulate
-    // memory/handles across the whole run and crash near the end, which
-    // vitest reports as "Worker exited unexpectedly" (Worker forks
-    // emitted error) and fails the job with 0 failed assertions. The
-    // default parallel + isolated forks keep each worker short-lived so
-    // memory is reclaimed between files — Windows CI was green 16/16
-    // with this default and started crashing the moment the override
-    // landed. Keep Windows on the default pool.
   },
 });

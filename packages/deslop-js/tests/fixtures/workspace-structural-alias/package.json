@@ -1,8 +1,0 @@
-{
-  "name": "workspace-structural-alias-root",
-  "private": true,
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ]
-}

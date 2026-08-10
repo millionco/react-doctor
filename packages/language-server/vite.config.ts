@@ -22,7 +22,6 @@ export default defineConfig({
         // dist and decides which of these to inline at publish time.
         neverBundle: [
           "@react-doctor/core",
-          "deslop-js",
           "effect",
           "oxc-parser",
           "oxc-resolver",

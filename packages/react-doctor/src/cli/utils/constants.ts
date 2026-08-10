@@ -67,7 +67,8 @@ export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 // `lookup` verifies — pre-bump entries without it would never hit again.
 // Bumped to 6: declaration-file parser diagnostic compatibility filtering
 // changed the cached diagnostic set.
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 6;
+// Bumped to 7: maintainability diagnostics replace the removed dead-code pass.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 7;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const SCAN_RESULT_CACHE_FILENAME = "scan-cache.json";
 // The dirty-worktree cache-key fingerprint content-hashes every path `git
@@ -280,9 +281,9 @@ export const METRIC = {
   // Kill metric for queued-project deadline reporting. If this never fires,
   // the additive JSON/TUI skipped-project surface is not carrying user value.
   scanProjectSkipped: "scan.project_skipped",
-  // Kill metric for workspace-owned dead-code analysis. If this never fires,
+  // Kill metric for workspace-owned maintainability analysis. If this never fires,
   // multi-project scans do not include their root and cannot share the pass.
-  scanWorkspaceDeadCodeShared: "scan.workspace_deadcode_shared",
+  scanWorkspaceMaintainabilityShared: "scan.workspace_maintainability_shared",
   // One count per completed scan where no project resolved a supported
   // framework or library capability. The kill metric for the
   // vacuous-clean-scan signal: if it never fires, the warning surface can go.
@@ -297,7 +298,7 @@ export const METRIC = {
   ruleDisabled: "rule.disabled",
   ruleSuppressed: "rule.suppressed",
   lintFailed: "lint.failed",
-  deadCodeFailed: "deadcode.failed",
+  maintainabilityFailed: "maintainability.failed",
   scoreUnavailable: "score.unavailable",
   oxlintWorkers: "oxlint.workers",
   agentHandoff: "agent.handoff",

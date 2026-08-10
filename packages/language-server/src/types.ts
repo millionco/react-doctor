@@ -122,7 +122,7 @@ export interface ScanRequestInput {
    * project, enabling stale-diagnostic cleanup for that project).
    */
   readonly files: ReadonlyArray<string>;
-  /** Whether to run dead-code analysis (whole-project background scans). */
+  /** Whether to run React maintainability analysis for whole-project background scans. */
   readonly runDeadCode: boolean;
   /** Use in-memory buffer overlays for the target files (unsaved edits). */
   readonly useOverlay: boolean;

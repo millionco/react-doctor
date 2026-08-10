@@ -241,7 +241,7 @@ describe("diagnose({ projects })", () => {
     for (const projectResult of result.projects) {
       expect(projectResult.ok).toBe(true);
       if (!projectResult.ok) continue;
-      expect(projectResult.skippedChecks).not.toContain("dead-code");
+      expect(projectResult.skippedChecks).not.toContain("maintainability");
     }
   });
 

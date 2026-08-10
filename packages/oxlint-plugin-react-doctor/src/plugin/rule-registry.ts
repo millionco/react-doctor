@@ -314,6 +314,7 @@ import { noGradientText } from "./rules/design/no-gradient-text.js";
 import { noGrayOnColoredBackground } from "./rules/design/no-gray-on-colored-background.js";
 import { noHairlineBorderWideShadow } from "./rules/design/no-hairline-border-wide-shadow.js";
 import { noHeroEyebrowChip } from "./rules/design/no-hero-eyebrow-chip.js";
+import { noHighComplexityReactFunction } from "./rules/architecture/no-high-complexity-react-function.js";
 import { noHoverOnlyReveal } from "./rules/design/no-hover-only-reveal.js";
 import { noHydrationBranchOnBrowserGlobal } from "./rules/performance/no-hydration-branch-on-browser-global.js";
 import { noIconTileHeadingStack } from "./rules/design/no-icon-tile-heading-stack.js";
@@ -4559,6 +4560,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       tags: [...new Set(["design", ...(noHeroEyebrowChip.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-high-complexity-react-function",
+    id: "no-high-complexity-react-function",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noHighComplexityReactFunction,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {

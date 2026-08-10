@@ -108,12 +108,12 @@ ${formatExampleLines([
 
 ${highlighter.dim("Scope:")}
   Runs every rule tagged ${highlighter.info("design")}; all design rules stay opt-in during a general health scan.
-  Dead-code, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
+  Whole-project maintainability, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
   Standard scan flags such as ${highlighter.info("--scope")}, ${highlighter.info("--project")}, ${highlighter.info("--verbose")}, and ${highlighter.info("--json")} still work.
 `;
 
 const MAX_DURATION_OPTION_DESCRIPTION =
-  "scan time budget for the whole run, shared across workspace projects: past it, queued projects, remaining lint batches, and dead-code are skipped and partial results are reported (skipped files and projects are listed in the JSON report)";
+  "scan time budget for the whole run, shared across workspace projects: past it, queued projects, remaining lint batches, and maintainability analysis are skipped and partial results are reported (skipped files and projects are listed in the JSON report)";
 
 const renderCiHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}
@@ -146,11 +146,8 @@ const program = new Command()
   .argument("[directory]", "project directory to scan", ".")
   .option("--lint", "enable linting")
   .option("--no-lint", "skip linting")
-  .option("--dead-code", "enable dead-code analysis (default)")
-  .option(
-    "--no-dead-code",
-    "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
-  )
+  .addOption(new Option("--dead-code").hideHelp())
+  .addOption(new Option("--no-dead-code").hideHelp())
   .option("--supply-chain", "enable the dependency supply-chain scan (default)")
   .option(
     "--no-supply-chain",
@@ -484,7 +481,7 @@ program
   )
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .option("--no-dead-code", "skip dead-code analysis")
+  .addOption(new Option("--no-dead-code").hideHelp())
   .option("--no-supply-chain", "skip the dependency supply-chain scan")
   .option("--score", "only print the numeric score (for scripts and CI)")
   .option("--no-score", "skip the score API, the share URL, and crash reporting")

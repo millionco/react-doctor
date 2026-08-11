@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reproer"
+  short_description: "Create synthetic repros from token evidence"
+  default_prompt: "Use $reproer to turn this de-identified rule-evidence pattern into synthetic React Doctor fuzz cases."

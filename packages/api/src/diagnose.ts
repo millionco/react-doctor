@@ -26,6 +26,7 @@ import {
   restoreLegacyThrow,
   runInspect,
   Score,
+  shouldUseMaintainabilityLayer,
   SupplyChain,
   type InspectOutput,
   type ResolvedScanTarget,
@@ -90,7 +91,12 @@ const buildDiagnoseLayer = (input: DiagnoseLayerInput) => {
   return Layer.mergeAll(
     Project.layerNode,
     configLayer,
-    input.shouldRunDeadCode ? Maintainability.layerNode : Maintainability.layerOf([]),
+    shouldUseMaintainabilityLayer({
+      shouldRunDuplicateJsx: input.shouldRunDeadCode,
+      userConfig: input.config,
+    })
+      ? Maintainability.layerNode
+      : Maintainability.layerOf([]),
     Files.layerNode,
     Git.layerNode,
     input.shouldRunLint ? Linter.layerOxlint : Linter.layerOf([]),

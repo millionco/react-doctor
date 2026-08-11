@@ -12,7 +12,11 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.j
 export default defineConfig({
   pack: [
     {
-      entry: { index: "./src/index.ts", schemas: "./src/schemas.ts" },
+      entry: {
+        index: "./src/index.ts",
+        "project-analysis-worker": "./src/project-analysis-worker.ts",
+        schemas: "./src/schemas.ts",
+      },
       deps: {
         neverBundle: [
           "@astrojs/compiler",

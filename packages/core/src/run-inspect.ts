@@ -12,16 +12,24 @@ import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 import { scrubSensitivePaths } from "./utils/scrub-sensitive-paths.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
+import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReactServerComponentsAdvisory } from "./check-react-server-components-advisory.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { checkSecurityScanCooperative } from "./check-security-scan.js";
-import { DEFAULT_SHOW_WARNINGS, MILLISECONDS_PER_SECOND } from "./constants.js";
+import {
+  DEFAULT_SHOW_WARNINGS,
+  MAINTAINABILITY_DUPLICATE_JSX_RULE,
+  MILLISECONDS_PER_SECOND,
+} from "./constants.js";
 import { highlighter } from "./highlighter.js";
 import { computeExplicitLintIncludePaths } from "./explicit-lint-include-paths.js";
-import { maintainabilityMaySurfaceWhenWarningsHidden } from "./utils/maintainability-may-surface.js";
+import {
+  projectRuleSelectionsMaySurfaceWhenWarningsAreHidden,
+  resolveProjectRuleSelections,
+} from "./resolve-project-rule-selections.js";
 import {
   NoReactDependency,
   type OxlintUnavailable,
@@ -478,9 +486,19 @@ export const runInspect = <HooksR = never>(
     const maintainabilityPhaseTimeoutMs = yield* DeadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
-    const shouldRunMaintainability =
-      input.runDeadCode &&
-      (showWarnings || maintainabilityMaySurfaceWhenWarningsHidden(resolvedConfig.config));
+    const projectRuleSelections = resolveProjectRuleSelections(
+      buildRuleSeverityControls(resolvedConfig.config),
+    ).filter(
+      (selection) =>
+        (selection.ruleId === MAINTAINABILITY_DUPLICATE_JSX_RULE
+          ? input.runDeadCode
+          : !isDiffMode) &&
+        (showWarnings || projectRuleSelectionsMaySurfaceWhenWarningsAreHidden([selection])),
+    );
+    const enabledProjectRuleIds = new Set(
+      projectRuleSelections.map((selection) => selection.ruleId),
+    );
+    const shouldRunMaintainability = enabledProjectRuleIds.size > 0;
     const buildCollectMaintainability = () => {
       let incompleteReason: string | null = null;
       const collectMaintainability = Stream.runCollect(
@@ -488,9 +506,11 @@ export const runInspect = <HooksR = never>(
           maintainabilityService
             .run({
               rootDirectory: scanDirectory,
+              enabledProjectRuleIds,
               focusPaths:
                 input.maintainabilityFocusPaths ?? (isDiffMode ? input.includePaths : undefined),
               changedLineRanges: input.changedLineRanges,
+              excludedProjectDirectories: input.excludedProjectDirectories,
               signal: input.signal,
               onIncomplete: (reasons) => {
                 incompleteReason = describeMaintainabilityIncompleteness(reasons);
@@ -499,7 +519,8 @@ export const runInspect = <HooksR = never>(
             .pipe(
               Stream.filter(
                 (diagnostic) =>
-                  input.retainExcludedProjectDeadCodeDiagnostics === true ||
+                  (input.retainExcludedProjectDeadCodeDiagnostics === true &&
+                    diagnostic.rule === MAINTAINABILITY_DUPLICATE_JSX_RULE) ||
                   !isExcludedProjectDiagnostic(diagnostic),
               ),
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>

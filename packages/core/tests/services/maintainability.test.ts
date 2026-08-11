@@ -88,7 +88,7 @@ describe("Maintainability.layerNode", () => {
         },
       ],
     });
-    expect(diagnostics[0].message).toContain("Render ancestry: Account > AccountScreen > Page");
+    expect(diagnostics[0].message).toContain("Composition path: Account > AccountScreen > Page");
     expect(diagnostics[0].message).toContain("2 copies");
   });
 
@@ -105,7 +105,7 @@ describe("Maintainability.layerNode", () => {
 
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].filePath).toBe("src/cards.tsx");
-    expect(diagnostics[0].message).toContain("Render ancestry: Account > AccountScreen > Page");
+    expect(diagnostics[0].message).toContain("Composition path: Account > AccountScreen > Page");
     expect(diagnostics[0].relatedLocations?.[0]).toMatchObject({
       filePath: "src/cards.tsx",
       message: expect.stringContaining("User > UserScreen > Page"),
@@ -130,7 +130,7 @@ describe("Maintainability.layerNode", () => {
     );
 
     expect(changedUser).toHaveLength(1);
-    expect(changedUser[0].message).toContain("Render ancestry: User > UserScreen > Page");
+    expect(changedUser[0].message).toContain("Composition path: User > UserScreen > Page");
     expect(unchangedOnly).toEqual([]);
   });
 });

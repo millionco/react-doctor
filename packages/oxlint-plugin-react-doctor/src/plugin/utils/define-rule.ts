@@ -9,12 +9,14 @@ import type { Rule } from "./rule.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 
 // A rule definition has exactly one execution mode. An AST rule provides
-// `create` (per-file visitors, hosted by oxlint/ESLint); a scan rule
-// provides `scan` (a project-level file scan, executed by
-// @react-doctor/core's check-security-scan environment check) and gets an
-// inert visitor factory injected for host compatibility. Metadata,
-// registration, tags, and severity flow identically either way.
-export type RuleDefinition = Rule | (Omit<Rule, "create"> & { scan: FileScan });
+// `create` (per-file visitors, hosted by oxlint/ESLint); a scan rule provides
+// `scan`; and a project rule carries `execution: "project"` for a core-owned
+// whole-project analyzer. Non-AST modes get an inert visitor factory for host
+// compatibility while sharing the same metadata and configuration surface.
+export type RuleDefinition =
+  | Rule
+  | (Omit<Rule, "create" | "execution"> & { scan: FileScan })
+  | (Omit<Rule, "create" | "scan"> & { execution: "project" });
 
 // Rules tagged `"react-jsx-only"` apply React-flavoured semantics
 // (a11y semantics tuned for React's synthetic-event listener naming,

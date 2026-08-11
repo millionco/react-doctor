@@ -9,9 +9,9 @@ describe("hasPublishedFixRecipe", () => {
     expect(hasPublishedFixRecipe({ plugin: "react-doctor", rule: "no-derived-state" })).toBe(true);
   });
 
-  it("is false for synthetic maintainability diagnostics", () => {
+  it("is true for registered project rules with a published recipe", () => {
     expect(hasPublishedFixRecipe({ plugin: "react-doctor", rule: "duplicate-jsx-subtree" })).toBe(
-      false,
+      true,
     );
   });
 

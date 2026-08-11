@@ -25,18 +25,18 @@ const toKeyedSeverity = (entries: ReadonlyArray<RegistryEntry>): ReadonlyArray<K
 const isRecommendedByDefault = (entry: RegistryEntry): boolean =>
   entry.rule.defaultEnabled !== false;
 
-// Scan rules (`scan` field) stay in the full registry exports for
+// Scan and project rules stay in the full registry exports for
 // metadata consumers (`REACT_DOCTOR_RULES`, `ALL_REACT_DOCTOR_RULE_KEYS`)
 // but are excluded from the preset rule maps: their lint visitor is a
-// no-op (they run via @react-doctor/core's check-security-scan
-// environment check), so enabling them in an ESLint/oxlint config would
-// only register dead rules.
-const isScanRule = (entry: RegistryEntry): boolean => entry.rule.scan !== undefined;
+// no-op because they execute in @react-doctor/core, so enabling them in an
+// ESLint/oxlint config would only register dead rules.
+const isLintRule = (entry: RegistryEntry): boolean =>
+  entry.rule.scan === undefined && entry.rule.execution !== "project";
 
 const collectReactDoctorRulesByFramework = (frameworkName: RuleFramework) =>
   reactDoctorRules.filter(
     (entry) =>
-      entry.rule.framework === frameworkName && isRecommendedByDefault(entry) && !isScanRule(entry),
+      entry.rule.framework === frameworkName && isRecommendedByDefault(entry) && isLintRule(entry),
   );
 
 const collectFrameworkSpecificRuleKeys = (): ReadonlySet<string> => {
@@ -48,6 +48,14 @@ const collectFrameworkSpecificRuleKeys = (): ReadonlySet<string> => {
 };
 
 export const REACT_DOCTOR_RULES = reactDoctorRules;
+export const REACT_DOCTOR_PROJECT_RULES = reactDoctorRules.filter(
+  (entry) => entry.rule.execution === "project",
+);
+export const REACT_DOCTOR_OPT_IN_PROJECT_RULE_IDS: ReadonlySet<string> = new Set(
+  REACT_DOCTOR_PROJECT_RULES.filter((entry) => entry.rule.defaultEnabled === false).map(
+    (entry) => entry.id,
+  ),
+);
 
 export { EXTERNAL_RULES, REACT_COMPILER_RULES };
 
@@ -72,7 +80,7 @@ export const PREACT_RULES = toRuleMap(
   toKeyedSeverity(collectReactDoctorRulesByFramework("preact")),
 );
 export const ALL_REACT_DOCTOR_RULES = toRuleMap(
-  toKeyedSeverity(REACT_DOCTOR_RULES.filter((entry) => !isScanRule(entry))),
+  toKeyedSeverity(REACT_DOCTOR_RULES.filter(isLintRule)),
 );
 export const ALL_REACT_DOCTOR_RULE_KEYS: ReadonlySet<string> = new Set(
   REACT_DOCTOR_RULES.map((rule) => rule.key),

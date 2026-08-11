@@ -661,11 +661,28 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["scan.mode"]).toBe("full");
     expect(attributes["scan.rulesConfigured"]).toBe(2);
     expect(attributes["scan.rulesDisabled"]).toBe(1);
+    expect(attributes["scan.projectAnalysisRuleCount"]).toBe(0);
     expect(attributes["scan.ignoredTagCount"]).toBe(2);
     expect(attributes["scan.hasCustomConfig"]).toBe(true);
     expect(attributes["scan.workerCount"]).toBeUndefined();
     expect(attributes["scan.fileCount"]).toBeUndefined();
     expect(attributes["timing.scanMs"]).toBeUndefined();
+  });
+
+  it("counts explicitly enabled project graph rules", () => {
+    const attributes = buildRunEventAttributes(
+      baseInput({
+        userConfig: {
+          categories: { Maintainability: "error" },
+          rules: {
+            "deslop/unused-export": "warn",
+            "react-doctor/unused-dependency": "error",
+            "react-doctor/unused-type": "off",
+          },
+        },
+      }),
+    );
+    expect(attributes["scan.projectAnalysisRuleCount"]).toBe(2);
   });
 
   it("counts analyzed non-JSX source files for partial-scan coverage telemetry", () => {

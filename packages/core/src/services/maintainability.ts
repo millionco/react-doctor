@@ -4,6 +4,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import { checkProjectAnalysis } from "../check-project-analysis.js";
 import { DIAGNOSTIC_DELTA_IDENTITY } from "../compute-diagnostic-delta.js";
 import {
   JSX_DUPLICATION_SOURCE_FILE_PATTERN,
@@ -31,8 +32,10 @@ import { classifyFileContext } from "../classify-file-context.js";
 
 export interface MaintainabilityInput {
   readonly rootDirectory: string;
+  readonly enabledProjectRuleIds?: ReadonlySet<string>;
   readonly focusPaths?: ReadonlyArray<string>;
   readonly changedLineRanges?: ReadonlyArray<ChangedFileLineRanges>;
+  readonly excludedProjectDirectories?: ReadonlyArray<string>;
   readonly signal?: AbortSignal;
   readonly onIncomplete?: (reasons: ReadonlyArray<JsxDuplicationIncompleteReason>) => void;
 }
@@ -123,7 +126,7 @@ const buildDuplicateJsxDiagnostic = (
     rule: MAINTAINABILITY_DUPLICATE_JSX_RULE,
     severity: "warning",
     title: "Duplicated JSX structure",
-    message: `${family.occurrenceCount} copies of this ${family.nodeCount}-node JSX tree appear across ${family.distinctFileCount} ${fileLabel}, repeating about ${family.estimatedRemovableLineCount} ${lineLabel}. Render ancestry: ${primaryOccurrence.compositionPath.join(" > ")}.`,
+    message: `${family.occurrenceCount} copies of this ${family.nodeCount}-node JSX tree appear across ${family.distinctFileCount} ${fileLabel}, repeating about ${family.estimatedRemovableLineCount} ${lineLabel}. Composition path: ${primaryOccurrence.compositionPath.join(" > ")}.`,
     help: "Consider extracting a shared component if these trees represent the same UI concept. Keep them separate when the resemblance is incidental or the variants are likely to evolve independently.",
     line: primaryOccurrence.startLine,
     column: primaryOccurrence.startColumn,
@@ -147,7 +150,7 @@ const formatIncompleteReason = (reason: JsxDuplicationIncompleteReason): string 
   return `${reason.kind} (${reason.observed} observed, limit ${reason.limit})${pathSuffix}`;
 };
 
-const runMaintainability = async (input: MaintainabilityInput): Promise<Diagnostic[]> => {
+const runDuplicateJsxAnalysis = async (input: MaintainabilityInput): Promise<Diagnostic[]> => {
   const sourceReader = await buildJsxSourceReader(input);
   const focusPaths =
     input.focusPaths === undefined
@@ -178,6 +181,26 @@ const runMaintainability = async (input: MaintainabilityInput): Promise<Diagnost
     diagnostics.push(buildDuplicateJsxDiagnostic(family, focusedOccurrences));
   }
   return diagnostics;
+};
+
+const runMaintainability = async (input: MaintainabilityInput): Promise<Diagnostic[]> => {
+  const enabledProjectRuleIds =
+    input.enabledProjectRuleIds ?? new Set([MAINTAINABILITY_DUPLICATE_JSX_RULE]);
+  const enabledGraphRuleIds = new Set(
+    [...enabledProjectRuleIds].filter((ruleId) => ruleId !== MAINTAINABILITY_DUPLICATE_JSX_RULE),
+  );
+  const [duplicateJsxDiagnostics, projectGraphDiagnostics] = await Promise.all([
+    enabledProjectRuleIds.has(MAINTAINABILITY_DUPLICATE_JSX_RULE)
+      ? runDuplicateJsxAnalysis(input)
+      : Promise.resolve([]),
+    checkProjectAnalysis({
+      rootDirectory: input.rootDirectory,
+      enabledRuleIds: enabledGraphRuleIds,
+      abortSignal: input.signal,
+      excludedProjectDirectories: input.excludedProjectDirectories,
+    }),
+  ]);
+  return [...duplicateJsxDiagnostics, ...projectGraphDiagnostics];
 };
 
 export const describeMaintainabilityIncompleteness = (

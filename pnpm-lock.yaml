@@ -92,9 +92,15 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^7.1.1
         version: 7.1.1(eslint@9.39.2(jiti@2.7.0))
+      fast-glob:
+        specifier: ^3.3.3
+        version: 3.3.3
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
+      oxc-parser:
+        specifier: ^0.143.0
+        version: 0.143.0
       oxc-resolver:
         specifier: ^11.24.2
         version: 11.24.2
@@ -217,6 +223,9 @@ importers:
       magicast:
         specifier: ^0.5.3
         version: 0.5.3
+      oxc-parser:
+        specifier: ^0.143.0
+        version: 0.143.0
       oxc-resolver:
         specifier: ^11.24.2
         version: 11.24.2

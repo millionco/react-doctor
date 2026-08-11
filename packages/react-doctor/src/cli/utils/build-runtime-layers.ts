@@ -13,6 +13,7 @@ import {
   Project,
   Reporter,
   Score,
+  shouldUseMaintainabilityLayer,
   SupplyChain,
 } from "@react-doctor/core";
 import type {
@@ -119,7 +120,10 @@ const buildSpinnerProgressHandle = (text: string): ProgressHandle => {
  */
 export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
-  const maintainabilityLayer = input.shouldRunDeadCode
+  const maintainabilityLayer = shouldUseMaintainabilityLayer({
+    shouldRunDuplicateJsx: input.shouldRunDeadCode,
+    userConfig: input.userConfig,
+  })
     ? Maintainability.layerNode
     : Maintainability.layerOf([]);
   const scoreLayer = input.shouldComputeScore ? Score.layerHttp : Score.layerOf(null);

@@ -1,4 +1,6 @@
 import {
+  buildRuleSeverityControls,
+  countOptInProjectRuleSelections,
   filterDiagnosticsForSurface,
   HTML_FILE_PATTERN,
   isReactDoctorError,
@@ -486,6 +488,9 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     hasCustomConfig: input.hasCustomConfig,
     rulesConfigured: ruleKeys.length,
     rulesDisabled: ruleKeys.filter((key) => ruleOverrides[key] === "off").length,
+    projectAnalysisRuleCount: countOptInProjectRuleSelections(
+      buildRuleSeverityControls(input.userConfig),
+    ),
     // Scan extent — how many files this run covered (the denominator for
     // `diag.affectedFiles`). Known only on the success path.
     fileCount: input.result?.scannedFileCount,

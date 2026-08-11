@@ -6,7 +6,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import { afterAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it, vi } from "vite-plus/test";
 import type {
   ChangedFileLineRanges,
   Diagnostic,
@@ -389,7 +389,11 @@ describe("runInspect — happy path", () => {
           });
         },
       }),
-      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+      Config.layerOf({
+        config: { rules: { "react-doctor/unused-export": "warn" } },
+        resolvedDirectory: "/repo",
+        configSourceDirectory: null,
+      }),
       Files.layerInMemory(sourceFiles),
       Layer.mock(Linter, {
         run: (input) => {
@@ -405,6 +409,11 @@ describe("runInspect — happy path", () => {
             {
               ...deadCodeDiagnostic,
               filePath: "packages/web/src/Card.tsx",
+            },
+            {
+              ...deadCodeDiagnostic,
+              filePath: "packages/web/src/unused.ts",
+              rule: "unused-export",
             },
           ]),
       }),
@@ -1090,6 +1099,85 @@ describe("runInspect — diff mode focuses maintainability", () => {
     );
 
     expect(receivedChangedLineRanges).toEqual(changedLineRanges);
+  });
+
+  it("runs explicitly enabled warning rules when global warnings are hidden", async () => {
+    let receivedRuleIds: ReadonlySet<string> | undefined;
+    const captureMaintainabilityInput = Layer.mock(DeadCode, {
+      run: (input) => {
+        receivedRuleIds = input.enabledProjectRuleIds;
+        return Stream.empty;
+      },
+    });
+
+    await Effect.runPromise(
+      runInspect({ ...baseInput, warnings: false }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            captureMaintainabilityInput,
+          ),
+        ),
+      ),
+    );
+
+    expect([...(receivedRuleIds ?? new Set<string>())]).toEqual(["unused-export"]);
+  });
+
+  it("keeps opt-in graph rules active when duplicate JSX is disabled", async () => {
+    let receivedRuleIds: ReadonlySet<string> | undefined;
+    const runMaintainability = vi.fn((input) => {
+      receivedRuleIds = input.enabledProjectRuleIds;
+      return Stream.empty;
+    });
+
+    await Effect.runPromise(
+      runInspect({ ...baseInput, runDeadCode: false }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            Layer.mock(DeadCode, { run: runMaintainability }),
+          ),
+        ),
+      ),
+    );
+
+    expect(runMaintainability).toHaveBeenCalledTimes(1);
+    expect([...(receivedRuleIds ?? new Set<string>())]).toEqual(["unused-export"]);
+  });
+
+  it("skips graph rules in partial scans", async () => {
+    const runMaintainability = vi.fn(() => Stream.empty);
+    const captureMaintainabilityInput = Layer.mock(DeadCode, { run: runMaintainability });
+
+    await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        runDeadCode: false,
+        includePaths: ["src/App.tsx"],
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            layersOf({
+              reactDoctorConfig: {
+                rules: { "react-doctor/unused-export": "warn" },
+              },
+            }),
+            captureMaintainabilityInput,
+          ),
+        ),
+      ),
+    );
+
+    expect(runMaintainability).not.toHaveBeenCalled();
   });
 
   it("passes every supported explicit source file through to the linter", async () => {

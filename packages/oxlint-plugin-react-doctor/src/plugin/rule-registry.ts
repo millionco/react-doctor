@@ -35,6 +35,7 @@ import { autocompleteValid } from "./rules/a11y/autocomplete-valid.js";
 import { buildPipelineSecretBoundary } from "./rules/security-scan/build-pipeline-secret-boundary.js";
 import { buttonHasType } from "./rules/react-builtins/button-has-type.js";
 import { checkedRequiresOnchangeOrReadonly } from "./rules/react-builtins/checked-requires-onchange-or-readonly.js";
+import { circularDependency } from "./rules/project/circular-dependency.js";
 import { classComponentMissingComponentWillUnmountTeardown } from "./rules/state-and-effects/class-component-missing-component-will-unmount-teardown.js";
 import { clickEventsHaveKeyEvents } from "./rules/a11y/click-events-have-key-events.js";
 import { clickjackingRedirectRisk } from "./rules/security-scan/clickjacking-redirect-risk.js";
@@ -56,6 +57,7 @@ import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
 import { detailsRequiresSummary } from "./rules/a11y/details-requires-summary.js";
 import { dialogHasAccessibleName } from "./rules/a11y/dialog-has-accessible-name.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
+import { duplicateJsxSubtree } from "./rules/project/duplicate-jsx-subtree.js";
 import { effectListenerCleanupMismatch } from "./rules/state-and-effects/effect-listener-cleanup-mismatch.js";
 import { effectListenerCleanupReferenceMismatch } from "./rules/state-and-effects/effect-listener-cleanup-reference-mismatch.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
@@ -876,6 +878,11 @@ import { threeWebgpuNoLegacyMaterialApi } from "./rules/r3f/three-webgpu-no-lega
 import { threeWebgpuRequireInitBeforeSyncOperation } from "./rules/r3f/three-webgpu-require-init-before-sync-operation.js";
 import { unsafeJsonInHtml } from "./rules/security-scan/unsafe-json-in-html.js";
 import { untrustedRedirectFollowing } from "./rules/security-scan/untrusted-redirect-following.js";
+import { unusedDependency } from "./rules/project/unused-dependency.js";
+import { unusedDevDependency } from "./rules/project/unused-dev-dependency.js";
+import { unusedExport } from "./rules/project/unused-export.js";
+import { unusedFile } from "./rules/project/unused-file.js";
+import { unusedType } from "./rules/project/unused-type.js";
 import { urlPrefilledPrivilegedAction } from "./rules/security-scan/url-prefilled-privileged-action.js";
 import { useLazyMotion } from "./rules/bundle-size/use-lazy-motion.js";
 import { valtioNoProxyReadInRender } from "./rules/valtio/valtio-no-proxy-read-in-render.js";
@@ -1212,6 +1219,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/circular-dependency",
+    id: "circular-dependency",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...circularDependency,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["project-analysis", ...(circularDependency.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/class-component-missing-component-will-unmount-teardown",
     id: "class-component-missing-component-will-unmount-teardown",
     source: "react-doctor",
@@ -1477,6 +1496,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(displayName.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/duplicate-jsx-subtree",
+    id: "duplicate-jsx-subtree",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...duplicateJsxSubtree,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["project-analysis", ...(duplicateJsxSubtree.tags ?? [])])],
     },
   },
   {
@@ -12006,6 +12037,66 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(untrustedRedirectFollowing.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/unused-dependency",
+    id: "unused-dependency",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...unusedDependency,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["project-analysis", ...(unusedDependency.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/unused-dev-dependency",
+    id: "unused-dev-dependency",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...unusedDevDependency,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["project-analysis", ...(unusedDevDependency.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/unused-export",
+    id: "unused-export",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...unusedExport,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["project-analysis", ...(unusedExport.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/unused-file",
+    id: "unused-file",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...unusedFile,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["project-analysis", ...(unusedFile.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/unused-type",
+    id: "unused-type",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...unusedType,
+      framework: "global",
+      category: "Maintainability",
+      tags: [...new Set(["project-analysis", ...(unusedType.tags ?? [])])],
     },
   },
   {

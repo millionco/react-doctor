@@ -378,7 +378,12 @@ describe("runScanApp", () => {
     );
     mockState.scanTargets.set(
       webDirectory,
-      buildScanTarget(webDirectory, webDirectory, null, webDirectory),
+      buildScanTarget(
+        webDirectory,
+        webDirectory,
+        { rules: { "react-doctor/unused-export": "warn" } },
+        webDirectory,
+      ),
     );
     mockState.inspectResults.set(rootDirectory, buildInspectResult(rootDirectory));
     mockState.inspectResults.set(webDirectory, buildInspectResult(webDirectory));
@@ -400,6 +405,7 @@ describe("runScanApp", () => {
       webDirectory,
       expect.objectContaining({
         deadCode: false,
+        configOverride: { rules: { "react-doctor/unused-export": "warn" } },
         excludedProjectDirectories: [],
         retainExcludedProjectDeadCodeDiagnostics: false,
       }),

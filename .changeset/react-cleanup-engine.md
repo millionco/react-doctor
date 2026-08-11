@@ -3,4 +3,4 @@
 "oxlint-plugin-react-doctor": patch
 ---
 
-Make React cleanup a first-class part of React Doctor with diagnostics for complex React functions and repeated JSX composition. Remove the old unused-code analysis, experimental language server, and IDE extensions so the CLI and API are the only supported workflows.
+Make React cleanup a first-class part of React Doctor with diagnostics for complex React functions and repeated JSX composition. Keep whole-project unused file, export, type, dependency, and import-cycle analysis as explicit opt-in rules while removing the separate Deslop packages, experimental language server, and IDE extensions.

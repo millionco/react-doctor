@@ -193,6 +193,17 @@ const main = (): void => {
       "bin",
       "react-doctor.js",
     );
+    const projectAnalysisWorkerPath = path.join(
+      installDirectory,
+      "node_modules",
+      "react-doctor",
+      "dist",
+      "project-analysis-worker.js",
+    );
+    if (!fs.existsSync(projectAnalysisWorkerPath)) {
+      console.error(`Packed install is missing ${projectAnalysisWorkerPath}.`);
+      process.exit(1);
+    }
     const versionResult = runCommand({
       command: process.execPath,
       args: [binaryPath, "--version"],
@@ -201,6 +212,52 @@ const main = (): void => {
     const version = versionResult.stdout.trim();
     if (version === "" || version === "0.0.0") {
       console.error(`Installed CLI version is missing or invalid: "${version}"`);
+      process.exit(1);
+    }
+
+    const projectAnalysisFixtureDirectory = path.join(installDirectory, "project-analysis");
+    const projectAnalysisSourceDirectory = path.join(projectAnalysisFixtureDirectory, "src");
+    fs.mkdirSync(projectAnalysisSourceDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectAnalysisFixtureDirectory, "package.json"),
+      `${JSON.stringify({ name: "project-analysis-smoke", private: true, main: "src/index.ts", dependencies: { react: "19.2.5" } })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(projectAnalysisFixtureDirectory, "doctor.config.json"),
+      `${JSON.stringify({ rules: { "react-doctor/unused-export": "warn" } })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(projectAnalysisSourceDirectory, "index.ts"),
+      'export { usedValue } from "./library.js";\n',
+    );
+    fs.writeFileSync(
+      path.join(projectAnalysisSourceDirectory, "library.ts"),
+      "export const usedValue = 1;\nexport const unusedValue = 2;\n",
+    );
+    const projectAnalysisResult = runCommand({
+      command: process.execPath,
+      args: [
+        binaryPath,
+        projectAnalysisFixtureDirectory,
+        "--no-score",
+        "--no-dead-code",
+        "--blocking",
+        "none",
+        "--json",
+      ],
+      cwd: installDirectory,
+      allowedStatuses: [0, 1],
+    });
+    const projectAnalysisReport = Schema.decodeUnknownSync(JsonReport)(
+      JSON.parse(projectAnalysisResult.stdout),
+    );
+    if (
+      !projectAnalysisReport.diagnostics.some((diagnostic) => diagnostic.rule === "unused-export")
+    ) {
+      console.error("Packed CLI did not run the opt-in project analysis worker.");
+      console.error(
+        `Received rules: ${projectAnalysisReport.diagnostics.map((diagnostic) => diagnostic.rule).join(", ")}`,
+      );
       process.exit(1);
     }
 

@@ -16,7 +16,7 @@ const createProjectRoot = (): string => {
   const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-project-host-"));
   temporaryDirectories.push(rootDirectory);
   fs.writeFileSync(path.join(rootDirectory, "package.json"), "{}");
-  return rootDirectory;
+  return fs.realpathSync(rootDirectory);
 };
 
 const workerResult = (rootDirectory: string) => ({

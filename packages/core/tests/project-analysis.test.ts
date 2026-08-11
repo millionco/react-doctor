@@ -25,13 +25,16 @@ const createProject = (
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, source);
   }
-  return rootDirectory;
+  return fs.realpathSync(rootDirectory);
 };
+
+const relativePath = (rootDirectory: string, filePath: string): string =>
+  path.relative(rootDirectory, filePath).replaceAll("\\", "/");
 
 const relativePaths = (
   rootDirectory: string,
   findings: ReadonlyArray<{ readonly path: string }>,
-): string[] => findings.map((finding) => path.relative(rootDirectory, finding.path));
+): string[] => findings.map((finding) => relativePath(rootDirectory, finding.path));
 
 describe("analyzeProject", () => {
   it("reports all six graph diagnostics, including unused type exports", async () => {
@@ -81,12 +84,14 @@ describe("analyzeProject", () => {
     );
     expect(result.circularDependencies).toEqual([
       expect.objectContaining({
-        files: expect.arrayContaining([
-          path.join(rootDirectory, "src/cycle-a.ts"),
-          path.join(rootDirectory, "src/cycle-b.ts"),
-        ]),
+        files: expect.any(Array),
       }),
     ]);
+    expect(
+      result.circularDependencies[0]?.files.map((filePath) =>
+        relativePath(rootDirectory, filePath),
+      ),
+    ).toEqual(expect.arrayContaining(["src/cycle-a.ts", "src/cycle-b.ts"]));
   });
 
   it("tracks namespace members without treating type-only edges as runtime cycles", async () => {
@@ -136,12 +141,14 @@ describe("analyzeProject", () => {
 
     expect(result.circularDependencies).toEqual([
       expect.objectContaining({
-        files: expect.arrayContaining([
-          path.join(rootDirectory, "src/cycle-a.ts"),
-          path.join(rootDirectory, "src/cycle-b.ts"),
-        ]),
+        files: expect.any(Array),
       }),
     ]);
+    expect(
+      result.circularDependencies[0]?.files.map((filePath) =>
+        relativePath(rootDirectory, filePath),
+      ),
+    ).toEqual(expect.arrayContaining(["src/cycle-a.ts", "src/cycle-b.ts"]));
   });
 
   it("links named, default, namespace, dynamic, and chained re-exports", async () => {

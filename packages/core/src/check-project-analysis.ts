@@ -416,7 +416,7 @@ export const checkProjectAnalysis = async (
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
   const tsConfigPath = resolveTsConfigPath(rootDirectory);
   const ignorePatterns = (options.excludedProjectDirectories ?? []).map(
-    (directory) => `${toRelativeFilePath(rootDirectory, directory)}/**`,
+    (directory) => `${toRelativeFilePath(rootDirectory, toCanonicalPath(directory))}/**`,
   );
   const workerInput: ProjectAnalysisWorkerInput = {
     rootDirectory,

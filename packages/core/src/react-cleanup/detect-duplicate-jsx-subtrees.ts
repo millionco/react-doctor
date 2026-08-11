@@ -353,9 +353,19 @@ const getFunctionIdentity = (
       break;
     }
     traversedNodes.push(currentNode);
-    if (ts.isFunctionDeclaration(currentNode) && currentNode.name !== undefined) {
-      functionIdentity = { name: currentNode.name.text, startOffset: currentNode.getStart() };
-      break;
+    if (ts.isFunctionDeclaration(currentNode)) {
+      if (currentNode.name !== undefined) {
+        functionIdentity = { name: currentNode.name.text, startOffset: currentNode.getStart() };
+        break;
+      }
+      if (
+        ts
+          .getModifiers(currentNode)
+          ?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)
+      ) {
+        functionIdentity = { name: "default export", startOffset: currentNode.getStart() };
+        break;
+      }
     }
     if (ts.isMethodDeclaration(currentNode)) {
       const classDeclaration = currentNode.parent;
@@ -393,6 +403,14 @@ const getFunctionIdentity = (
           name: assignmentNode.name.getText(),
           startOffset: assignmentNode.getStart(),
         };
+        break;
+      }
+      if (
+        assignmentNode !== undefined &&
+        ts.isExportAssignment(assignmentNode) &&
+        !assignmentNode.isExportEquals
+      ) {
+        functionIdentity = { name: "default export", startOffset: assignmentNode.getStart() };
         break;
       }
     }

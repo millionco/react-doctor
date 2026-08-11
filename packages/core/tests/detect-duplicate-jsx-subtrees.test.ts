@@ -68,6 +68,46 @@ describe("detectDuplicateJsxSubtrees", () => {
     expect(result.families[0].nodeCount).toBe(7);
   });
 
+  it.each([
+    [
+      "an anonymous default function",
+      `export default function () {
+  return <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>;
+}`,
+    ],
+    [
+      "an anonymous default arrow",
+      `export default () => (
+  <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>
+);`,
+    ],
+    [
+      "a memo-wrapped anonymous default arrow",
+      `export default memo(() => (
+  <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>
+));`,
+    ],
+  ])("counts %s as a same-file composition root", (_label, defaultComponentSource) => {
+    const sourceText = `
+const NamedCard = () => (
+  <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>
+);
+${defaultComponentSource}
+`;
+    const result = detectDuplicateJsxSubtrees([{ path: "src/cards.tsx", sourceText }]);
+
+    expect(result.families).toHaveLength(1);
+    const family = result.families[0];
+    expect(family.relatedOccurrences[0].compositionPath).toEqual(["default export", "section"]);
+    expect(
+      new Set(
+        [family.primaryOccurrence, ...family.relatedOccurrences].map(
+          (occurrence) => occurrence.compositionRootStartOffset,
+        ),
+      ).size,
+    ).toBe(2);
+  });
+
   it("suppresses repeated sibling structures inside one component", () => {
     const sourceText = `
 const Page = () => (

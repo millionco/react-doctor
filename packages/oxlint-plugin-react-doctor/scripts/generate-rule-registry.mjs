@@ -362,10 +362,18 @@ const formatAutoTagsLine = (entry) => {
   const autoTagLiteral = entry.autoTags.map((tag) => `"${tag}"`).join(", ");
   const tagsLine = `      tags: [...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])])],`;
   if (tagsLine.length <= GENERATED_LINE_WIDTH) return `${tagsLine}\n`;
-  return `      tags: [
-        ...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])]),
-      ],
-`;
+  const wrappedSetLine = `        ...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])]),`;
+  if (wrappedSetLine.length <= GENERATED_LINE_WIDTH) {
+    return `      tags: [\n${wrappedSetLine}\n      ],\n`;
+  }
+  return (
+    `      tags: [\n` +
+    `        ...new Set([\n` +
+    entry.autoTags.map((tag) => `          "${tag}",\n`).join("") +
+    `          ...(${entry.identifier}.tags ?? []),\n` +
+    `        ]),\n` +
+    `      ],\n`
+  );
 };
 
 // Merge bucket-synthesized capabilities with any rule-authored `requires`
@@ -384,9 +392,9 @@ const formatRequiresLine = (entry) => {
   // identifiers — e.g. `noNoninteractiveElementToInteractiveRole` — to spill
   // past the limit).
   const singleLine = `      requires: [...new Set<Capability>([${requiredCapabilities}, ...(${entry.identifier}.requires ?? [])])],`;
-  if (singleLine.length <= 100) return `${singleLine}\n`;
+  if (singleLine.length <= GENERATED_LINE_WIDTH) return `${singleLine}\n`;
   const wrappedSetLine = `        ...new Set<Capability>([${requiredCapabilities}, ...(${entry.identifier}.requires ?? [])]),`;
-  if (wrappedSetLine.length <= 100) {
+  if (wrappedSetLine.length <= GENERATED_LINE_WIDTH) {
     return `      requires: [\n${wrappedSetLine}\n      ],\n`;
   }
   return (

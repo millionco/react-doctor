@@ -10,12 +10,15 @@ const TELEMETRY_DISCLOSURE_GATE: Gate = {
 
 export const TELEMETRY_DISCLOSURE_LINES = [
   "React Doctor telemetry is on by default.",
-  "Telemetry includes usage data and minimized, de-identified code patterns.",
-  "Patterns are sent with score data, which may include repository and commit details.",
+  "Telemetry includes usage data, crash reports, and minimized, identifier-redacted token patterns.",
+  "Patterns contain no identifier names, literal contents, comments, or file paths.",
+  "Score submissions also include scrubbed diagnostic paths, locations, messages, and help text.",
+  "Score data may include repository and commit details.",
+  "The score service logs the request IP address and user agent.",
   "We use these patterns to fix false positives, which are incorrect diagnostics.",
   "We also use them to fix false negatives, which are issues that rules miss.",
   "React Doctor does not collect complete source files.",
-  "Run with --no-telemetry to disable telemetry.",
+  "Run with --no-telemetry to disable telemetry and skip the score API and share URL.",
 ];
 
 export interface ShowTelemetryDisclosureInput {

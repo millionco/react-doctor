@@ -1,6 +1,6 @@
 ---
 name: reproer
-description: Turn React Doctor `rule.evidence` telemetry events or de-identified token patterns into synthetic, parseable React/TypeScript repro hypotheses and fuzz cases. Use when investigating possible false positives or false negatives from an `evidence.pattern`, reconstructing a minimal rule-triggering shape, producing adversarial variants, or promoting a verified hypothesis into the React Doctor fuzz corpus.
+description: Turn React Doctor `rule.evidence` telemetry events or identifier-redacted token patterns into synthetic, parseable React/TypeScript repro hypotheses and fuzz cases. Use when investigating possible false positives or false negatives from an `evidence.pattern`, reconstructing a minimal rule-triggering shape, producing adversarial variants, or promoting a verified hypothesis into the React Doctor fuzz corpus.
 ---
 
 # Reproer

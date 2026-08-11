@@ -65,10 +65,10 @@ We collect:
 - Invocation: which command, package manager, and run context (whether it's local vs. CI vs. coding agent)
 - Project shape: framework, React version, TypeScript, and project size
 - Rules fired: rule names and counts (e.g. `react-doctor/no-array-index-as-key`)
-- Rule evidence: minimized token patterns from source spans that trigger diagnostics. React Doctor replaces identifier names and literal contents, removes comments and file paths, and limits the number and size of patterns. It does not collect complete source files. Patterns are sent with score data and may be stored with repository and commit details when available. We use them to fix false positives, which are incorrect diagnostics, and false negatives, which are issues that rules miss
+- Rule evidence: up to 24 minimized, identifier-redacted token patterns from source spans that trigger diagnostics, with no more than 3 patterns per rule and 160 tokens per pattern. Patterns contain no identifier names, literal contents, comments, or file paths. Score submissions also contain diagnostic file paths after path and secret scrubbing, line and column numbers, diagnostic messages, and help text. Submissions may include repository and commit details. The score service logs the request IP address and user agent. We use the patterns to fix false positives, which are incorrect diagnostics, and false negatives, which are issues that rules miss. React Doctor does not collect complete source files
 - De-minified React Doctor CLI stack traces
 
-To disable telemetry for a run: `npx react-doctor@latest --no-telemetry`
+To disable telemetry and skip the score API and share URL for a run: `npx react-doctor@latest --no-telemetry`
 
 ## Contributing
 

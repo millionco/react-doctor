@@ -212,7 +212,7 @@ const program = new Command()
   )
   .option(
     "--no-telemetry",
-    "disable all telemetry, including de-identified code patterns (also skips the score API and share URL)",
+    "disable all telemetry, including identifier-redacted code patterns (also skips the score API and share URL)",
   )
   .option(
     "--staged",

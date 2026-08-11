@@ -26,4 +26,18 @@ describe("r3f-require-transparent-for-opacity", () => {
     `;
     expect(runRule(r3fRequireTransparentForOpacity, code).diagnostics).toHaveLength(0);
   });
+
+  it("allows materials that Three.js makes transparent by default", () => {
+    const code = `
+      import "@react-three/fiber";
+      const Scene = () => <>
+        <shadowMaterial opacity={0.2} />
+        <spriteMaterial opacity={0.5} />
+        <shadowNodeMaterial opacity={0.2} />
+        <spriteNodeMaterial opacity={0.5} />
+        <volumeNodeMaterial opacity={0.4} />
+      </>;
+    `;
+    expect(runRule(r3fRequireTransparentForOpacity, code).diagnostics).toHaveLength(0);
+  });
 });

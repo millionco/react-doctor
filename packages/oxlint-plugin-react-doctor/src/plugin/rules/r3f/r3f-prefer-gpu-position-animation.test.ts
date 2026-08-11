@@ -64,7 +64,25 @@ describe("r3f-prefer-gpu-position-animation", () => {
         return <points geometry={geometry} />;
       };
     `;
-    expect(runRule(r3fPreferGpuPositionAnimation, code).diagnostics).toHaveLength(2);
+    expect(runRule(r3fPreferGpuPositionAnimation, code).diagnostics).toHaveLength(1);
+  });
+
+  it("reports a frame callback once when it rewrites several position components", () => {
+    const code = `
+      import { useFrame } from "@react-three/fiber";
+      const Particles = ({ geometry }) => {
+        const positions = geometry.attributes.position.array;
+        useFrame(() => {
+          for (let index = 0; index < positions.length; index += 3) {
+            positions[index] += 1;
+            positions[index + 1] += 1;
+            positions[index + 2] += 1;
+          }
+        });
+        return <points geometry={geometry} />;
+      };
+    `;
+    expect(runRule(r3fPreferGpuPositionAnimation, code).diagnostics).toHaveLength(1);
   });
 
   it("allows one-off position writes, other attributes, and shader animation", () => {

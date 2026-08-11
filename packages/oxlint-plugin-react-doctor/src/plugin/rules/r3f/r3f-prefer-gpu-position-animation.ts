@@ -27,17 +27,17 @@ export const r3fPreferGpuPositionAnimation = defineRule({
         const callback = resolveR3fCallback(node, "useFrame", context.scopes);
         if (!callback || analyzedCallbacks.has(callback)) return;
         analyzedCallbacks.add(callback);
-        for (const mutation of findRepeatedPositionBufferMutations(
+        const firstMutation = findRepeatedPositionBufferMutations(
           callback,
           context,
           managedPositionBufferRefSymbolIds,
-        )) {
-          context.report({
-            node: mutation,
-            message:
-              "This frame loop rewrites position-buffer entries on the CPU. Move repeated vertex or particle motion into a vertex shader, instanced attributes, or a GPU simulation",
-          });
-        }
+        )[0];
+        if (!firstMutation) return;
+        context.report({
+          node: firstMutation,
+          message:
+            "This frame loop rewrites position-buffer entries on the CPU. Move repeated vertex or particle motion into a vertex shader, instanced attributes, or a GPU simulation",
+        });
       },
     };
   },

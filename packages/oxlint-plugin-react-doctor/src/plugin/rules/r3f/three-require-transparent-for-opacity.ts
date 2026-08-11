@@ -8,6 +8,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { getStaticNumber } from "./utils/get-static-number.js";
 import { isMaterialOpacityIgnored } from "./utils/is-material-opacity-ignored.js";
+import { isThreeMaterialTransparentByDefault } from "./utils/is-three-material-transparent-by-default.js";
 import { isThreeModuleSource } from "./utils/is-three-module-source.js";
 
 const readOptionalStaticBoolean = (
@@ -39,6 +40,7 @@ export const threeRequireTransparentForOpacity = defineRule({
       if (
         !provenance?.apiName.endsWith("Material") ||
         !isThreeModuleSource(provenance.moduleSource) ||
+        isThreeMaterialTransparentByDefault(provenance.apiName) ||
         !parameters ||
         !isNodeOfType(parameters, "ObjectExpression") ||
         parameters.properties.some((property) => isNodeOfType(property, "SpreadElement"))

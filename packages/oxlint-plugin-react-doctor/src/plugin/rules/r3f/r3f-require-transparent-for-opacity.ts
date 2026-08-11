@@ -8,6 +8,7 @@ import { getStaticNumber } from "./utils/get-static-number.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isMaterialOpacityIgnored } from "./utils/is-material-opacity-ignored.js";
 import { isR3fHostIntrinsic } from "./utils/is-r3f-host-intrinsic.js";
+import { isThreeMaterialTransparentByDefault } from "./utils/is-three-material-transparent-by-default.js";
 import { readStaticJsxBooleanAttribute } from "./utils/read-static-jsx-boolean-attribute.js";
 
 const readStaticJsxNumberAttribute = (
@@ -49,6 +50,7 @@ export const r3fRequireTransparentForOpacity = defineRule({
           !importsReactThreeFiber ||
           !isR3fHostIntrinsic(node) ||
           !elementType?.endsWith("Material") ||
+          isThreeMaterialTransparentByDefault(elementType) ||
           node.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"))
         ) {
           return;

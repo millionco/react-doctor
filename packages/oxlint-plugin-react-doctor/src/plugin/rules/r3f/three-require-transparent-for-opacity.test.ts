@@ -25,4 +25,22 @@ describe("three-require-transparent-for-opacity", () => {
     `;
     expect(runRule(threeRequireTransparentForOpacity, code).diagnostics).toHaveLength(0);
   });
+
+  it("allows materials that Three.js makes transparent by default", () => {
+    const code = `
+      import {
+        ShadowMaterial,
+        ShadowNodeMaterial,
+        SpriteMaterial,
+        SpriteNodeMaterial,
+        VolumeNodeMaterial,
+      } from "three/webgpu";
+      new ShadowMaterial({ opacity: 0.2 });
+      new SpriteMaterial({ opacity: 0.5 });
+      new ShadowNodeMaterial({ opacity: 0.2 });
+      new SpriteNodeMaterial({ opacity: 0.5 });
+      new VolumeNodeMaterial({ opacity: 0.4 });
+    `;
+    expect(runRule(threeRequireTransparentForOpacity, code).diagnostics).toHaveLength(0);
+  });
 });

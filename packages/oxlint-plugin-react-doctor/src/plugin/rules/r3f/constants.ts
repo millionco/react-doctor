@@ -80,6 +80,13 @@ export const PBR_MATERIAL_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
   "MeshPhysicalMaterial",
   "MeshStandardMaterial",
 ]);
+export const DEFAULT_TRANSPARENT_MATERIAL_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
+  "ShadowMaterial",
+  "ShadowNodeMaterial",
+  "SpriteMaterial",
+  "SpriteNodeMaterial",
+  "VolumeNodeMaterial",
+]);
 export const UNSUPPORTED_SHADOW_LIGHT_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
   "AmbientLight",
   "HemisphereLight",

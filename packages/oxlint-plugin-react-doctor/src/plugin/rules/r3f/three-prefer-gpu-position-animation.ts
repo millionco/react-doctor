@@ -19,13 +19,13 @@ export const threePreferGpuPositionAnimation = defineRule({
         const callback = resolveThreeAnimationLoopCallback(node, context.scopes);
         if (!callback || analyzedCallbacks.has(callback)) return;
         analyzedCallbacks.add(callback);
-        for (const mutation of findRepeatedPositionBufferMutations(callback, context)) {
-          context.report({
-            node: mutation,
-            message:
-              "This animation loop rewrites position-buffer entries on the CPU. Move repeated vertex or particle motion into a vertex shader, instanced attributes, or a GPU simulation",
-          });
-        }
+        const firstMutation = findRepeatedPositionBufferMutations(callback, context)[0];
+        if (!firstMutation) return;
+        context.report({
+          node: firstMutation,
+          message:
+            "This animation loop rewrites position-buffer entries on the CPU. Move repeated vertex or particle motion into a vertex shader, instanced attributes, or a GPU simulation",
+        });
       },
     };
   },

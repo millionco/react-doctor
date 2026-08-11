@@ -56,6 +56,22 @@ describe("three-prefer-gpu-position-animation", () => {
     expect(runRule(threePreferGpuPositionAnimation, bulkFill).diagnostics).toHaveLength(1);
   });
 
+  it("reports an animation callback once when it rewrites several position components", () => {
+    const code = `
+      import { WebGLRenderer } from "three";
+      const renderer = new WebGLRenderer();
+      const positions = particles.geometry.attributes.position.array;
+      renderer.setAnimationLoop(() => {
+        for (let index = 0; index < positions.length; index += 3) {
+          positions[index] += 1;
+          positions[index + 1] += 1;
+          positions[index + 2] += 1;
+        }
+      });
+    `;
+    expect(runRule(threePreferGpuPositionAnimation, code).diagnostics).toHaveLength(1);
+  });
+
   it("allows shader animation, one-off writes, and non-position buffers", () => {
     const code = `
       import { WebGLRenderer } from "three";

@@ -156,6 +156,7 @@ const buildSourceModuleLinkInputs = (
   const productionEntryPaths = new Set(options.resolvedEntries.productionEntries);
   const testEntryPaths = new Set(options.resolvedEntries.testEntries);
   const alwaysUsedFilePaths = new Set(options.resolvedEntries.alwaysUsedFiles);
+  const externallyConsumedFilePaths = new Set(options.resolvedEntries.externallyConsumedFiles);
   const graphInputs: ModuleLinkInput[] = [];
   const resolutionContext: ModuleResolutionContext = {
     errors,
@@ -176,6 +177,7 @@ const buildSourceModuleLinkInputs = (
         alwaysUsedFilePaths.has(file.path) ||
         productionEntryPaths.has(file.path) ||
         testEntryPaths.has(file.path),
+      isExternallyConsumed: externallyConsumedFilePaths.has(file.path),
       isTestEntry: testEntryPaths.has(file.path),
       isGitIgnored: options.gitIgnoredFilePaths.has(file.path),
     });
@@ -279,6 +281,7 @@ const buildStyleModuleLinkInputs = (
       parsed: parsedStyleModule,
       resolvedImports: resolvedStyleImports,
       isEntryPoint: false,
+      isExternallyConsumed: false,
       isTestEntry: false,
       isGitIgnored: options.gitIgnoredFilePaths.has(styleFilePath),
     });

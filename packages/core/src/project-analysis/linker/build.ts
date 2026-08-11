@@ -18,6 +18,7 @@ export interface ModuleLinkInput {
   parsed: ParsedSource;
   resolvedImports: Map<string, ResolvedImport>;
   isEntryPoint: boolean;
+  isExternallyConsumed: boolean;
   isTestEntry: boolean;
   isGitIgnored: boolean;
 }
@@ -47,6 +48,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
     referencedFilenames: input.parsed.referencedFilenames,
     parseErrors: input.parsed.errors,
     isEntryPoint: input.isEntryPoint,
+    isExternallyConsumed: input.isExternallyConsumed,
     isTestEntry: input.isTestEntry,
     isReachable: false,
     isDeclarationFile:
@@ -69,6 +71,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
     reExportMappings: ReExportMapping[] = [],
     isDynamic: boolean = false,
     isSideEffect: boolean = false,
+    isTypeOnly: boolean = false,
   ): void => {
     edges.push({
       source: sourceIndex,
@@ -77,6 +80,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
       isReExportEdge,
       isDynamic,
       isSideEffect,
+      isTypeOnly,
       reExportedNames,
       reExportMappings,
     });
@@ -140,7 +144,10 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
       );
     }
 
-    const reExportsByTarget = new Map<number, { names: string[]; mappings: ReExportMapping[] }>();
+    const reExportsByTarget = new Map<
+      number,
+      { names: string[]; mappings: ReExportMapping[]; isTypeOnly: boolean }
+    >();
     for (const exportInfo of input.parsed.exports) {
       if (!exportInfo.isReExport || !exportInfo.reExportSource) continue;
 
@@ -159,19 +166,31 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
       if (existing) {
         existing.names.push(exportedName);
         existing.mappings.push({ exportedName, originalName });
+        existing.isTypeOnly = existing.isTypeOnly && exportInfo.isTypeOnly;
       } else {
         reExportsByTarget.set(targetIndex, {
           names: [exportedName],
           mappings: [{ exportedName, originalName }],
+          isTypeOnly: exportInfo.isTypeOnly,
         });
       }
     }
 
     for (const [
       targetIndex,
-      { names: reExportedNames, mappings: reExportMappings },
+      { names: reExportedNames, mappings: reExportMappings, isTypeOnly },
     ] of reExportsByTarget) {
-      addEdge(sourceIndex, targetIndex, [], true, reExportedNames, reExportMappings);
+      addEdge(
+        sourceIndex,
+        targetIndex,
+        [],
+        true,
+        reExportedNames,
+        reExportMappings,
+        false,
+        false,
+        isTypeOnly,
+      );
     }
   }
 

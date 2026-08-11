@@ -40,6 +40,10 @@ const buildAdjacencyList = (graph: DependencyGraph): number[][] => {
       continue;
     }
 
+    if (edge.isTypeOnly) {
+      continue;
+    }
+
     const isTypeOnlyEdge =
       edge.importedSymbols.length > 0 && edge.importedSymbols.every((symbol) => symbol.isTypeOnly);
     if (isTypeOnlyEdge) {
@@ -66,7 +70,7 @@ const buildAdjacencyList = (graph: DependencyGraph): number[][] => {
 const buildModuleInitAccessEdgeSet = (graph: DependencyGraph): Set<string> => {
   const initAccessEdges = new Set<string>();
   for (const edge of graph.edges) {
-    if (edge.isDynamic || edge.isReExportEdge) continue;
+    if (edge.isDynamic || edge.isReExportEdge || edge.isTypeOnly) continue;
     if (edge.isSideEffect || edge.importedSymbols.length === 0) {
       initAccessEdges.add(`${edge.source}:${edge.target}`);
       continue;

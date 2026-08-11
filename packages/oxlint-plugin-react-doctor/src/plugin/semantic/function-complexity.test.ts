@@ -162,7 +162,7 @@ describe("function-complexity", () => {
     ).toMatchObject({ cognitive: 0, cyclomatic: 4 });
   });
 
-  it("counts each optional-chain branch without adding cognitive complexity", () => {
+  it("does not count optional chaining as control-flow complexity", () => {
     expect(
       measureNamedFunction(
         `function read(value) {
@@ -170,7 +170,7 @@ describe("function-complexity", () => {
         }`,
         "read",
       ),
-    ).toMatchObject({ cognitive: 0, cyclomatic: 4 });
+    ).toMatchObject({ cognitive: 0, cyclomatic: 1 });
   });
 
   it("adds a flat cognitive point for else without changing cyclomatic paths", () => {

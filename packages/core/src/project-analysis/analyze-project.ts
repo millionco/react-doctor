@@ -223,7 +223,12 @@ const analyzeProjectConfig = async (
           detail: describeUnknownError(entriesError),
         }),
       );
-      return { productionEntries: [], testEntries: [], alwaysUsedFiles: [] };
+      return {
+        productionEntries: [],
+        testEntries: [],
+        alwaysUsedFiles: [],
+        externallyConsumedFiles: [],
+      };
     },
   );
 

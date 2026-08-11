@@ -127,6 +127,50 @@ describe("analyzeProject", () => {
     expect(result.circularDependencies).toEqual([]);
   });
 
+  it("does not treat type-only re-exports as runtime cycle edges", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `
+          export const registry = 1;
+          export type { Handler } from "./handler";
+          export { type HandlerOptions } from "./handler";
+        `,
+        "src/handler.ts": `
+          import { registry } from "./index";
+          export interface Handler { registry: typeof registry }
+          export interface HandlerOptions { enabled: boolean }
+          export const registeredValue = registry;
+        `,
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.circularDependencies).toEqual([]);
+  });
+
+  it("keeps a mixed value and type re-export edge in runtime cycles", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `
+          export const registry = 1;
+          export { registeredValue, type Handler } from "./handler";
+        `,
+        "src/handler.ts": `
+          import { registry } from "./index";
+          export interface Handler { registry: typeof registry }
+          export const registeredValue = registry;
+        `,
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.circularDependencies).toHaveLength(1);
+  });
+
   it("reports cycles formed by side-effect imports", async () => {
     const rootDirectory = createProject(
       {
@@ -273,6 +317,72 @@ describe("analyzeProject", () => {
     expect(unusedFilePaths).not.toContain("src/page-value.ts");
   });
 
+  it("discovers Remix routes from a custom app directory", async () => {
+    const rootDirectory = createProject(
+      {
+        "remix.config.js": `module.exports = { appDirectory: "src" };`,
+        "src/root.tsx": `import { routeValue } from "./routes/index"; export default () => <main>{routeValue}</main>;`,
+        "src/routes/index.tsx": "export const routeValue = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { dependencies: { "@remix-run/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+
+    expect(unusedFilePaths).toContain("src/orphan.ts");
+    expect(unusedFilePaths).not.toEqual(
+      expect.arrayContaining(["src/root.tsx", "src/routes/index.tsx"]),
+    );
+  });
+
+  it("discovers GraphQL codegen inputs", async () => {
+    const rootDirectory = createProject(
+      {
+        "codegen-main.ts": `
+          export default {
+            schema: "./schema.graphql",
+            // documents: ["./src/commented.ts"],
+            documents: ["./src/**/queries.ts", "!./src/legacy/**"],
+          };
+        `,
+        "schema.graphql": "type Query { value: String }",
+        "src/commented.ts": "export const commented = true;",
+        "src/feature/queries.ts": `import { helper } from "../helper"; export const query = \`query { value }\`; console.log(helper);`,
+        "src/helper.ts": "export const helper = 1;",
+        "src/legacy/queries.ts": "export const legacyQuery = `query { value }`;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+
+    expect(unusedFilePaths).toContain("src/legacy/queries.ts");
+    expect(unusedFilePaths).toContain("src/commented.ts");
+    expect(unusedFilePaths).toContain("src/helper.ts");
+    expect(unusedFilePaths).not.toContain("src/feature/queries.ts");
+    expect(result.unusedExports).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "query" })]),
+    );
+  });
+
+  it("discovers externally consumed component composition registries", async () => {
+    const rootDirectory = createProject(
+      { "src/composition.tsx": "export const Composition = () => <main />;" },
+      {
+        private: "true",
+        description: "Registry for component compositions",
+        dependencies: { react: "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/composition.tsx");
+  });
+
   it("credits packages referenced by scripts, config, and CI workflows", async () => {
     const rootDirectory = createProject(
       {
@@ -297,6 +407,104 @@ describe("analyzeProject", () => {
     expect(unusedPackageNames).toContain("unused-package");
     expect(unusedPackageNames).not.toEqual(
       expect.arrayContaining(["script-package", "config-package", "ci-package"]),
+    );
+  });
+
+  it("credits framework-owned image and MDX dependencies", async () => {
+    const rootDirectory = createProject(
+      { "src/index.tsx": "export default () => <main />;" },
+      {
+        dependencies: {
+          react: "1.0.0",
+          next: "1.0.0",
+          sharp: "1.0.0",
+          "@next/mdx": "1.0.0",
+          "@mdx-js/loader": "1.0.0",
+          "@mdx-js/react": "1.0.0",
+          remix: "1.0.0",
+          "@remix-run/react": "1.0.0",
+          "web-vitals": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.tsx"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toContain("web-vitals");
+    expect(unusedPackageNames).not.toEqual(
+      expect.arrayContaining(["sharp", "@mdx-js/loader", "@mdx-js/react", "@remix-run/react"]),
+    );
+  });
+
+  it("credits sharp conservatively when Next image optimization is configured", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.tsx": "export default () => <main />;",
+        "next.config.js": "module.exports = { images: { unoptimized: true } };",
+      },
+      { dependencies: { react: "1.0.0", next: "1.0.0", sharp: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.tsx"] });
+
+    expect(result.unusedDependencies).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "sharp" })]),
+    );
+  });
+
+  it("credits the Docusaurus MDX runtime", async () => {
+    const rootDirectory = createProject(
+      { "src/index.tsx": "export default () => <main />;" },
+      {
+        dependencies: {
+          react: "1.0.0",
+          "@docusaurus/core": "1.0.0",
+          "@mdx-js/react": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.tsx"] });
+
+    expect(result.unusedDependencies).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "@mdx-js/react" })]),
+    );
+  });
+
+  it("credits known binary aliases, release config plugins, and wrapper peers", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `import Chart from "react-apexcharts"; console.log(Chart);`,
+        ".releaserc.json": JSON.stringify({ plugins: ["release-plugin"] }),
+      },
+      {
+        scripts: { build: "babel src --out-dir dist", start: "remix-serve build" },
+        release: { plugins: ["release-package-json-plugin"] },
+        dependencies: {
+          "react-apexcharts": "1.0.0",
+          apexcharts: "1.0.0",
+        },
+        devDependencies: {
+          "@babel/cli": "1.0.0",
+          "@remix-run/serve": "1.0.0",
+          "release-plugin": "1.0.0",
+          "release-package-json-plugin": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).not.toEqual(
+      expect.arrayContaining([
+        "apexcharts",
+        "@babel/cli",
+        "@remix-run/serve",
+        "release-plugin",
+        "release-package-json-plugin",
+      ]),
     );
   });
 

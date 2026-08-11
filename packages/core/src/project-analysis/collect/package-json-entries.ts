@@ -10,6 +10,8 @@ import {
 
 interface PackageJsonEntryFields {
   [key: string]: unknown;
+  private?: boolean | string;
+  description?: string;
   exports?: unknown;
   bin?: unknown;
   sideEffects?: unknown;
@@ -61,6 +63,8 @@ const IMPORTABLE_EXTENSION_SET = new Set([
   ".sass",
 ]);
 const PACKAGE_ENTRY_FIELDS = ["main", "module", "browser", "types", "typings", "style", "source"];
+
+const COMPONENT_COMPOSITION_REGISTRY_DESCRIPTION = "Registry for component compositions";
 
 export const findDefaultIndexEntry = (directory: string): string | undefined => {
   for (const pattern of DEFAULT_INDEX_PATTERNS) {
@@ -359,6 +363,16 @@ const collectJestEntries = (jestValue: unknown, rootDirectory: string, entries: 
   }
 };
 
+const collectComponentCompositionRegistryEntries = (
+  packageJson: PackageJsonEntryFields,
+  rootDirectory: string,
+  entries: string[],
+): void => {
+  const isPrivate = packageJson.private === true || packageJson.private === "true";
+  if (!isPrivate || packageJson.description !== COMPONENT_COMPOSITION_REGISTRY_DESCRIPTION) return;
+  entries.push(...findImportableFiles("src/**/*", rootDirectory, ["**/node_modules/**"]));
+};
+
 export const extractPackageJsonEntries = async (packageJsonPath: string): Promise<string[]> => {
   const entries: string[] = [];
 
@@ -373,6 +387,7 @@ export const extractPackageJsonEntries = async (packageJsonPath: string): Promis
     collectSideEffectEntries(packageJson.sideEffects, rootDirectory, entries);
     collectBuildEntries(packageJson.build, rootDirectory, entries);
     collectJestEntries(packageJson.jest, rootDirectory, entries);
+    collectComponentCompositionRegistryEntries(packageJson, rootDirectory, entries);
   } catch {}
 
   return entries;

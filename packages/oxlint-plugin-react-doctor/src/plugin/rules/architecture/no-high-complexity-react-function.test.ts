@@ -16,6 +16,12 @@ const buildConditionalExpressions = (branchCount: number): string =>
       `const choice${branchIndex} = value === ${branchIndex} ? ${branchIndex} : null;`,
   ).join("\n");
 
+const buildOptionalMemberReads = (readCount: number): string =>
+  Array.from(
+    { length: readCount },
+    (_, readIndex) => `<output>{defaults?.section?.field${readIndex}?.label}</output>`,
+  ).join("\n");
+
 const runComplexityRule = (code: string, filename = "fixture.tsx") => {
   const result = runRule(noHighComplexityReactFunction, code, { filename });
   expect(result.parseErrors).toEqual([]);
@@ -141,6 +147,20 @@ describe("architecture/no-high-complexity-react-function", () => {
             return <p>fallback</p>;
           };
           return <main>{selectResult()}</main>;
+        }
+      `),
+    ).toHaveLength(0);
+  });
+
+  it("does not treat repeated optional member reads as control-flow complexity", () => {
+    expect(
+      runComplexityRule(`
+        function SettingsForm({ defaults }) {
+          return (
+            <form>
+              ${buildOptionalMemberReads(REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD + 1)}
+            </form>
+          );
         }
       `),
     ).toHaveLength(0);

@@ -215,6 +215,26 @@ export const detectStalePackages = (
     markPackageUsed("sharp");
   }
 
+  if (declaredNames.has("next") && declaredNames.has("sharp")) {
+    markPackageUsed("sharp");
+  }
+
+  if (declaredNames.has("@next/mdx")) {
+    if (declaredNames.has("@mdx-js/loader")) markPackageUsed("@mdx-js/loader");
+    if (declaredNames.has("@mdx-js/react")) markPackageUsed("@mdx-js/react");
+  }
+
+  if (
+    (declaredNames.has("@docusaurus/core") || declaredNames.has("@docusaurus/preset-classic")) &&
+    declaredNames.has("@mdx-js/react")
+  ) {
+    markPackageUsed("@mdx-js/react");
+  }
+
+  if (declaredNames.has("remix") && declaredNames.has("@remix-run/react")) {
+    markPackageUsed("@remix-run/react");
+  }
+
   if (declaredNames.has("react") && declaredNames.has("react-dom")) {
     const packageJsonPath = resolve(config.rootDir, "package.json");
     try {
@@ -337,6 +357,11 @@ const hasJsxFiles = (graph: DependencyGraph): boolean =>
 const KNOWN_PEER_DEPENDENCY_NAMES = new Map<string, ReadonlyArray<string>>([
   ["vitest-axe", ["axe-core"]],
   ["jest-axe", ["axe-core"]],
+  ["@apollo/client", ["graphql"]],
+  ["@fortawesome/react-fontawesome", ["@fortawesome/fontawesome-svg-core"]],
+  ["@react-three/fiber", ["three"]],
+  ["react-apexcharts", ["apexcharts"]],
+  ["react-chartjs-2", ["chart.js"]],
 ]);
 
 const collectPeerSatisfiedPackages = (
@@ -412,6 +437,9 @@ interface BinaryPackageIndex {
 // do NOT mark the package as used by mere presence the way installed bin
 // metadata does, so a genuinely unreferenced CLI dep stays flagged.
 const KNOWN_PACKAGE_BIN_NAMES = new Map<string, ReadonlyArray<string>>([
+  ["@babel/cli", ["babel"]],
+  ["@babel/node", ["babel-node"]],
+  ["@remix-run/serve", ["remix-serve"]],
   ["@tauri-apps/cli", ["tauri"]],
   ["@typescript/native-preview", ["tsgo"]],
   // The browser-flavor packages exist to be driven by the `playwright` CLI
@@ -585,6 +613,12 @@ const CONFIG_FILE_GLOBS = [
   "codegen.{ts,js,yml,yaml}",
   ".graphqlrc.{ts,js,json,yml,yaml}",
   "graphql.config.{ts,js,json,yml,yaml}",
+  ".releaserc",
+  ".releaserc.{js,cjs,mjs,json,yaml,yml}",
+  "**/.releaserc",
+  "**/.releaserc.{js,cjs,mjs,json,yaml,yml}",
+  "release.config.{js,cjs,mjs,ts,mts,cts}",
+  "**/release.config.{js,cjs,mjs,ts,mts,cts}",
   ".lintstagedrc.{js,cjs,mjs,json}",
   "commitlint.config.{js,cjs,mjs,ts}",
   ".commitlintrc.{js,cjs,mjs,json,yaml,yml}",
@@ -671,6 +705,7 @@ const PACKAGE_JSON_CONFIG_SECTIONS = [
   "pnpm",
   "resolutions",
   "overrides",
+  "release",
 ] as const;
 
 const collectOverrideMappingsFromPackageJson = (packageJsonPath: string): OverrideMapping[] => {

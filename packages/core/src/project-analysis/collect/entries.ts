@@ -17,6 +17,7 @@ import { extractExpoConfigPluginEntries } from "./expo-config-plugin-entries.js"
 import { resolveSourcePath } from "../resolver/source-path.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractConfigStringReferencedEntries } from "./config-string-entries.js";
+import { extractGraphqlCodegenEntries } from "./graphql-codegen-entries.js";
 import { extractSectionsModuleEntries } from "./sections-module-entries.js";
 import { extractSiblingWorkspaceImportEntries } from "./sibling-workspace-import-entries.js";
 import { extractPackageJsonEntries, findDefaultIndexEntry } from "./package-json-entries.js";
@@ -241,6 +242,13 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     configStringEntries.push(...extractConfigStringReferencedEntries(workspacePackage.directory));
   }
 
+  const graphqlCodegenEntries = extractGraphqlCodegenEntries(absoluteRoot);
+  for (const workspacePackage of entryEligiblePackages) {
+    const workspaceGraphqlCodegenEntries = extractGraphqlCodegenEntries(workspacePackage.directory);
+    graphqlCodegenEntries.schemaEntries.push(...workspaceGraphqlCodegenEntries.schemaEntries);
+    graphqlCodegenEntries.documentEntries.push(...workspaceGraphqlCodegenEntries.documentEntries);
+  }
+
   const rootPackageDependencies = readPackageJsonDependencies(join(absoluteRoot, "package.json"));
   const expoConfigPluginCollection = extractExpoConfigPluginEntries(
     absoluteRoot,
@@ -305,6 +313,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
         ...webWorkerEntries,
         ...tsConfigIncludeEntries,
         ...configStringEntries,
+        ...graphqlCodegenEntries.schemaEntries,
         ...expoConfigPluginEntries,
         ...sectionsModuleEntries,
         ...siblingWorkspaceImportEntries,
@@ -323,7 +332,11 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     ),
   ];
 
-  return { productionEntries, testEntries, alwaysUsedFiles };
+  const externallyConsumedFiles = [
+    ...new Set(graphqlCodegenEntries.documentEntries.map(toPosixPath)),
+  ];
+
+  return { productionEntries, testEntries, alwaysUsedFiles, externallyConsumedFiles };
 };
 
 const SHELL_OPERATORS_PATTERN = /\s*(?:&&|\|\||[;&|])\s*/;

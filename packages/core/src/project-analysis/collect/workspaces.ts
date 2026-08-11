@@ -422,12 +422,16 @@ const readDependencies = (directory: string): Record<string, string> => {
 const hasAnyEnabler = (dependencies: Record<string, string>, enablers: string[]): boolean =>
   enablers.some((enabler) => enabler in dependencies);
 
-const extractReactRouterAppDirectory = (directory: string): string => {
+const extractRouterAppDirectory = (directory: string): string => {
   const configCandidates = [
     "react-router.config.ts",
     "react-router.config.js",
     "react-router.config.mjs",
     "react-router.config.cjs",
+    "remix.config.ts",
+    "remix.config.js",
+    "remix.config.mjs",
+    "remix.config.cjs",
   ];
 
   for (const configFile of configCandidates) {
@@ -568,7 +572,7 @@ export const detectFrameworkEntries = (rootDir: string): string[] => {
   }
 
   if (isReactRouter || isRemix) {
-    const reactRouterAppDirectory = extractReactRouterAppDirectory(rootDir);
+    const reactRouterAppDirectory = extractRouterAppDirectory(rootDir);
     entryPoints.push(
       ...fg.sync(
         [

@@ -16,7 +16,7 @@ export const detectDeadExports = (
   const unusedExports: UnusedExport[] = [];
 
   for (const module of graph.modules) {
-    if (!module.isReachable) continue;
+    if (!module.isReachable && !module.isExternallyConsumed) continue;
     if (module.isDeclarationFile) continue;
     if (module.isGitIgnored) continue;
     if (module.isEntryPoint && !config.includeEntryExports) continue;

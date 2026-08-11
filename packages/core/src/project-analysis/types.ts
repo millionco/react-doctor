@@ -66,6 +66,7 @@ export interface SourceModule extends SourceModuleAnalysis {
   fileId: SourceFile;
   parseErrors: ProjectAnalysisError[];
   isEntryPoint: boolean;
+  isExternallyConsumed: boolean;
   isTestEntry: boolean;
   isReachable: boolean;
   isDeclarationFile: boolean;
@@ -93,6 +94,7 @@ export interface Edge {
   isReExportEdge: boolean;
   isDynamic: boolean;
   isSideEffect: boolean;
+  isTypeOnly: boolean;
   reExportedNames: string[];
   reExportMappings: ReExportMapping[];
 }
@@ -138,6 +140,7 @@ export interface ResolvedEntries {
   productionEntries: string[];
   testEntries: string[];
   alwaysUsedFiles: string[];
+  externallyConsumedFiles: string[];
 }
 
 export interface ProjectAnalysisConfig {

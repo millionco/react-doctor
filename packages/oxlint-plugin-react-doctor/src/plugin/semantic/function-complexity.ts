@@ -83,9 +83,7 @@ const countExpressionDecisionPoints = (rootNode: EsTreeNode): number => {
     if (
       isNodeOfType(node, "ConditionalExpression") ||
       isNodeOfType(node, "LogicalExpression") ||
-      (isNodeOfType(node, "AssignmentExpression") && isLogicalAssignmentOperator(node.operator)) ||
-      ((isNodeOfType(node, "CallExpression") || isNodeOfType(node, "MemberExpression")) &&
-        node.optional === true)
+      (isNodeOfType(node, "AssignmentExpression") && isLogicalAssignmentOperator(node.operator))
     ) {
       decisionPointCount += 1;
     }

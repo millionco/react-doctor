@@ -3,19 +3,13 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
+  atomicWriteJson,
   computeConfigFingerprint,
   hashFileContents,
   resolveLintBatchOrdering,
   resolveReactDoctorCacheDir,
 } from "@react-doctor/core";
-import type {
-  Diagnostic,
-  InspectOutput,
-  InspectResult,
-  ReactDoctorConfig,
-  ScoreResult,
-  SuppressedRuleCount,
-} from "@react-doctor/core";
+import type { ReactDoctorConfig } from "@react-doctor/core";
 import {
   SCAN_RESULT_CACHE_FILENAME,
   SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
@@ -24,56 +18,11 @@ import {
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
 import { getPackageJsonPath, isRecord, runGit } from "./git-hook-shared.js";
-import type { ResolvedInspectOptions } from "../../inspect.js";
+import { decodeCachedScanPayload, type CachedScanPayload } from "./scan-result-cache-payload.js";
+import type { ResolvedInspectOptions } from "../../inspect-options.js";
 
-export interface CachedScanPayload {
-  readonly diagnostics: ReadonlyArray<Diagnostic>;
-  readonly score: ScoreResult | null;
-  readonly project: InspectResult["project"];
-  readonly userConfig: ReactDoctorConfig | null;
-  readonly didLintFail: boolean;
-  readonly lintFailureReason: string | null;
-  readonly lintPartialFailures: ReadonlyArray<string>;
-  readonly didDeadCodeFail: boolean;
-  readonly deadCodeFailureReason: string | null;
-  readonly deadCodeOverlapped: boolean;
-  readonly directory: string;
-  readonly scannedFileCount: number;
-  readonly scannedFilePaths: ReadonlyArray<string>;
-  readonly analyzedFiles?: ReadonlyArray<string>;
-  readonly scanElapsedMilliseconds: number;
-  readonly baselineDelta: InspectResult["baselineDelta"];
-  readonly lintFailureReasonKind: InspectOutput["lintFailureReasonKind"];
-  /**
-   * Resolved lint worker count (`InspectOutput["scanConcurrency"]`), surfaced
-   * for telemetry. Optional so cache entries persisted before this field
-   * existed still load — a stale hit falls back to the caller's `concurrency`.
-   */
-  readonly scanConcurrency?: number;
-  readonly supplyChainOverlapTimedOut: boolean;
-  /**
-   * `InspectOutput["securityScanFailed"]`, surfaced for telemetry. Optional so
-   * cache entries persisted before this field existed still load; a failed
-   * pass is never cached (`shouldStoreScanPayload`), so a stale hit's
-   * `undefined` reads as the healthy `false`.
-   */
-  readonly securityScanFailed?: boolean;
-  readonly securityScanFailureReason?: string | null;
-  /**
-   * `InspectOutput["suppressedRuleCounts"]` — deterministic for a given
-   * commit + config (part of the cache key), so a cache hit replays the same
-   * suppression telemetry the fresh scan emitted.
-   */
-  readonly suppressedRuleCounts: ReadonlyArray<SuppressedRuleCount>;
-  /**
-   * Content hash of the project's `package.json` when the payload was stored
-   * (`null` when the project has none). Stamped by `store` and re-checked by
-   * `lookup` independently of the cache key, so any keying bug of the
-   * same-path-different-project class surfaces as a miss instead of silently
-   * replaying another project's diagnostics.
-   */
-  readonly manifestContentHash?: string | null;
-}
+export { shouldStoreScanPayload } from "./scan-result-cache-payload.js";
+export type { CachedScanPayload } from "./scan-result-cache-payload.js";
 
 interface PersistedScanResultCacheEntry {
   readonly key: string;
@@ -363,23 +312,13 @@ const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => 
       ) {
         continue;
       }
-      if (!isRecord(entry.payload) || !Array.isArray(entry.payload.diagnostics)) continue;
-      entries.push(entry as unknown as PersistedScanResultCacheEntry);
+      const payload = decodeCachedScanPayload(entry.payload);
+      if (payload === null) continue;
+      entries.push({ key: entry.key, createdAtMs: entry.createdAtMs, payload });
     }
     return { version: SCAN_RESULT_CACHE_SCHEMA_VERSION, entries };
   } catch {
     return { version: SCAN_RESULT_CACHE_SCHEMA_VERSION, entries: [] };
-  }
-};
-
-const writePersistedCache = (cacheFilePath: string, cache: PersistedScanResultCache): void => {
-  try {
-    fs.mkdirSync(path.dirname(cacheFilePath), { recursive: true });
-    const tempPath = `${cacheFilePath}.${process.pid}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(cache));
-    fs.renameSync(tempPath, cacheFilePath);
-  } catch {
-    return;
   }
 };
 
@@ -517,10 +456,15 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
   for (const entry of persistedCache.entries) entries.set(entry.key, entry);
 
   const persist = (): void => {
-    const prunedEntries = [...entries.values()]
+    const mergedEntries = new Map<string, PersistedScanResultCacheEntry>();
+    for (const entry of readPersistedCache(cacheFilePath).entries) {
+      mergedEntries.set(entry.key, entry);
+    }
+    for (const entry of entries.values()) mergedEntries.set(entry.key, entry);
+    const prunedEntries = [...mergedEntries.values()]
       .sort((firstEntry, secondEntry) => secondEntry.createdAtMs - firstEntry.createdAtMs)
       .slice(0, SCAN_RESULT_CACHE_MAX_ENTRY_COUNT);
-    writePersistedCache(cacheFilePath, {
+    atomicWriteJson(cacheFilePath, {
       version: SCAN_RESULT_CACHE_SCHEMA_VERSION,
       entries: prunedEntries,
     });
@@ -549,18 +493,3 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
     },
   };
 };
-
-export const shouldStoreScanPayload = (payload: CachedScanPayload): boolean =>
-  !payload.didLintFail &&
-  !payload.didDeadCodeFail &&
-  payload.lintPartialFailures.length === 0 &&
-  // A supply-chain overlap timeout means the cached diagnostics are missing
-  // their supply-chain findings; don't persist a degraded result — re-attempt
-  // the check on the next run instead. This also keeps the timeout kill metric
-  // clean: a stored payload therefore always carries
-  // `supplyChainOverlapTimedOut: false`, so a cache hit never replays a stale
-  // `true`.
-  !payload.supplyChainOverlapTimedOut &&
-  // Same reasoning for a failed (fail-open) security scan: its diagnostics
-  // are missing the whole pass, so the result must not be replayed.
-  payload.securityScanFailed !== true;

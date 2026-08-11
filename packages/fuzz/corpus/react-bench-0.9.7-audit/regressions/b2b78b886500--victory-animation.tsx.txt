@@ -1,0 +1,299 @@
+// rule: effect-needs-cleanup
+// file-path: src/victory-animation/victory-animation.tsx
+// audit-verdict: pass
+// weakness: react-bench-exact-callsite
+// source: React Bench 0.9.11 exhaustive audit b2b78b886500ff5ccc6c8eafebdf8796fc2b2f4206b6948842b312a2a119279d
+import React from "react";
+import * as d3Ease from "victory-vendor/d3-ease";
+import { victoryInterpolator } from "./util";
+import TimerContext from "../victory-util/timer-context";
+
+/**
+ * Single animation object to interpolate
+ */
+export type AnimationStyle = { [key: string]: string | number };
+/**
+ * Animation styles to interpolate
+ */
+
+export type AnimationData = AnimationStyle | AnimationStyle[];
+
+export type AnimationEasing =
+  | "back"
+  | "backIn"
+  | "backOut"
+  | "backInOut"
+  | "bounce"
+  | "bounceIn"
+  | "bounceOut"
+  | "bounceInOut"
+  | "circle"
+  | "circleIn"
+  | "circleOut"
+  | "circleInOut"
+  | "linear"
+  | "linearIn"
+  | "linearOut"
+  | "linearInOut"
+  | "cubic"
+  | "cubicIn"
+  | "cubicOut"
+  | "cubicInOut"
+  | "elastic"
+  | "elasticIn"
+  | "elasticOut"
+  | "elasticInOut"
+  | "exp"
+  | "expIn"
+  | "expOut"
+  | "expInOut"
+  | "poly"
+  | "polyIn"
+  | "polyOut"
+  | "polyInOut"
+  | "quad"
+  | "quadIn"
+  | "quadOut"
+  | "quadInOut"
+  | "sin"
+  | "sinIn"
+  | "sinOut"
+  | "sinInOut";
+
+export interface VictoryAnimationProps {
+  children: (style: AnimationStyle, info: AnimationInfo) => React.ReactElement;
+  duration?: number;
+  easing?: AnimationEasing;
+  delay?: number;
+  onEnd?: () => void;
+  data: AnimationData;
+}
+
+export interface VictoryAnimationState {
+  data: AnimationStyle;
+  animationInfo: AnimationInfo;
+}
+
+export interface AnimationInfo {
+  progress: number;
+  animating: boolean;
+  terminating?: boolean;
+}
+
+export interface VictoryAnimation {
+  context: React.ContextType<typeof TimerContext>;
+}
+
+/** d3-ease changed the naming scheme for ease from "linear" -> "easeLinear" etc. */
+const formatAnimationName = (name: AnimationEasing) => {
+  const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+  return `ease${capitalizedName}`;
+};
+
+const DEFAULT_DURATION = 1000;
+
+/**
+ * A run is one pass through a queue of animation steps. A new run is started
+ * whenever the `data` prop changes, and any previously active run is
+ * superseded: it stops rendering, never completes, and never calls `onEnd`.
+ */
+interface AnimationRun {
+  steps: AnimationStyle[];
+  stepIndex: number;
+  interpolator: null | ((value: number) => AnimationStyle);
+  loopID: number | undefined;
+  timeoutID: ReturnType<typeof setTimeout> | undefined;
+}
+
+export const VictoryAnimation = ({
+  duration = DEFAULT_DURATION,
+  easing = "quadInOut",
+  delay = 0,
+  data,
+  children,
+  onEnd,
+}: VictoryAnimationProps) => {
+  const [state, setState] = React.useState<VictoryAnimationState>({
+    data: Array.isArray(data) ? data[0] : data,
+    animationInfo: {
+      progress: 0,
+      animating: false,
+    },
+  });
+
+  const timer = React.useContext(TimerContext).animationTimer;
+
+  // The latest prop values are kept in refs so that an in-progress animation
+  // always uses the current `duration`, `easing`, and `onEnd`, even if they
+  // changed after the animation started.
+  const latestProps = React.useRef({ duration, easing, delay, onEnd });
+  latestProps.current = { duration, easing, delay, onEnd };
+
+  // The currently active run, or null when no animation is in progress.
+  const activeRun = React.useRef<AnimationRun | null>(null);
+  // Whether the initial run (triggered by mount) has started. The initial
+  // run's rendered style already equals the first step, so it is skipped.
+  const hasStarted = React.useRef(false);
+  // Monotonically increasing id used to detect superseded runs. Any tick or
+  // timeout that holds a token other than the current epoch is stale.
+  const epoch = React.useRef(0);
+  // The latest rendered state, kept in sync so a replacement run can
+  // seamlessly continue from the currently visible style.
+  const renderedState = React.useRef(state);
+
+  const updateState = (newState: VictoryAnimationState) => {
+    renderedState.current = newState;
+    setState(newState);
+  };
+
+  const stopRun = (run: AnimationRun) => {
+    if (run.timeoutID !== undefined) {
+      clearTimeout(run.timeoutID);
+      run.timeoutID = undefined;
+    }
+    if (run.loopID !== undefined) {
+      timer.unsubscribe(run.loopID);
+      run.loopID = undefined;
+    }
+  };
+
+  // Supersede the active run: it must not render or complete afterwards.
+  const cancelActiveRun = () => {
+    epoch.current += 1;
+    if (activeRun.current) {
+      stopRun(activeRun.current);
+      activeRun.current = null;
+    }
+  };
+
+  const getDuration = () => {
+    const currentDuration = latestProps.current.duration;
+    return typeof currentDuration === "number" ? currentDuration : 0;
+  };
+
+  const getEase = () => {
+    return d3Ease[formatAnimationName(latestProps.current.easing)];
+  };
+
+  const functionToBeRunEachFrame = (
+    run: AnimationRun,
+    token: number,
+    elapsed: number,
+  ) => {
+    // A superseded run must not render or complete.
+    if (token !== epoch.current || activeRun.current !== run) return;
+    if (!run.interpolator) return;
+
+    const currentDuration = getDuration();
+    // Step can generate imprecise values, sometimes greater than 1
+    // if this happens set the state to 1 and return, cancelling the timer
+    const step = currentDuration ? elapsed / currentDuration : 1;
+
+    if (step >= 1) {
+      updateState({
+        data: run.interpolator(1),
+        animationInfo: {
+          progress: 1,
+          animating: false,
+          terminating: true,
+        },
+      });
+      if (run.loopID !== undefined) {
+        timer.unsubscribe(run.loopID);
+        run.loopID = undefined;
+      }
+      run.stepIndex += 1;
+      run.interpolator = null;
+      traverseQueue(run, token);
+      return;
+    }
+
+    // If we're not at the end of the timer, set the state by passing
+    // current step value that's transformed by the ease function to the
+    // interpolator, which is cached for performance whenever props are received
+    updateState({
+      data: run.interpolator(getEase()(step)),
+      animationInfo: {
+        progress: step,
+        animating: step < 1,
+      },
+    });
+  };
+
+  const traverseQueue = (run: AnimationRun, token: number) => {
+    if (token !== epoch.current || activeRun.current !== run) return;
+
+    if (run.stepIndex < run.steps.length) {
+      const nextData = run.steps[run.stepIndex];
+
+      // Compare the currently visible style to the next step so the
+      // animation continues smoothly from wherever the previous step (or
+      // a superseded run) left off.
+      run.interpolator = victoryInterpolator(
+        renderedState.current.data,
+        nextData,
+      );
+
+      // Reset step to zero
+      const startLoop = () => {
+        if (token !== epoch.current || activeRun.current !== run) return;
+        run.timeoutID = undefined;
+        run.loopID = timer.subscribe(
+          (elapsed) => functionToBeRunEachFrame(run, token, elapsed),
+          getDuration(),
+        );
+      };
+      const currentDelay = latestProps.current.delay;
+      if (currentDelay) {
+        run.timeoutID = setTimeout(startLoop, currentDelay);
+      } else {
+        startLoop();
+      }
+    } else {
+      // The queue is complete. Only the latest run reaches this point, so
+      // only the latest `onEnd` callback is invoked.
+      activeRun.current = null;
+      const currentOnEnd = latestProps.current.onEnd;
+      if (currentOnEnd) {
+        currentOnEnd();
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    const steps = Array.isArray(data) ? data : [data];
+    if (!steps.length) return;
+
+    // Start a replacement run toward the new data. It continues from the
+    // currently visible style, so the superseded target is never flashed,
+    // and only this replacement run can render or complete.
+    cancelActiveRun();
+    const token = epoch.current;
+    // On the initial run the rendered style already equals the first step,
+    // so begin from the next one (the original mount behavior).
+    const stepIndex = !hasStarted.current && steps.length > 1 ? 1 : 0;
+    hasStarted.current = true;
+    const run: AnimationRun = {
+      steps,
+      stepIndex,
+      interpolator: null,
+      loopID: undefined,
+      timeoutID: undefined,
+    };
+    activeRun.current = run;
+    traverseQueue(run, token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  React.useEffect(() => {
+    // Clean up the animation loop when unmounting so completion (and
+    // `onEnd`) cannot fire afterwards.
+    return () => {
+      cancelActiveRun();
+      timer.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return children(state.data, state.animationInfo);
+};

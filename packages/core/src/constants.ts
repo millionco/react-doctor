@@ -37,6 +37,9 @@ export const DEFAULT_SHOW_WARNINGS = true;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
+export const HTTP_SUCCESS_STATUS_CODE_MIN = 200;
+export const HTTP_SUCCESS_STATUS_CODE_MAX_EXCLUSIVE = 300;
+
 // Upper bound for the `react:<major>` capability loop in
 // `buildCapabilities`, clamping an unvalidated package.json spec like
 // `"react": "20240101"` that would otherwise drive the loop to tens of
@@ -153,6 +156,40 @@ export const SCORE_OK_THRESHOLD = 50;
 export const SCORE_BAR_WIDTH_CHARS = 50;
 
 export const SCORE_API_URL = "https://www.react.doctor/api/score";
+
+export const AXIOM_DEFAULT_DOMAIN = "https://api.axiom.co";
+
+export const SLASH_CHAR_CODE = 47;
+
+export const AXIOM_TRACES_PATH = "/v1/traces";
+
+export const AXIOM_METRICS_PATH = "/v1/metrics";
+
+// Axiom routes traces and metrics to different datasets, and the two signals
+// read *different* header names to pick one. This is why the Axiom layer
+// composes OtlpTracer/OtlpMetrics by hand instead of using `Otlp.layer`,
+// which passes a single `headers` object to every signal.
+export const AXIOM_DATASET_HEADER = "X-Axiom-Dataset";
+
+export const AXIOM_METRICS_DATASET_HEADER = "x-axiom-metrics-dataset";
+
+// The CLI is a short-lived process: a scan usually finishes before any
+// periodic export would fire, so telemetry is delivered by the flush that
+// runs when the layer's scope closes. The interval is set well past a
+// realistic run so the periodic path stays out of the way rather than
+// racing that flush.
+export const TELEMETRY_EXPORT_INTERVAL_MS = 600_000;
+
+// Caps how long CLI exit may block on the final telemetry flush.
+//
+// Deliberately tighter than Sentry's 2s error flush. The metrics exporter
+// passes `maxBatchSize: "disabled"`, which skips Effect's empty-buffer
+// short-circuit — so it POSTs on every scope close whether or not anything
+// was recorded. On a firewalled or offline machine that request cannot fail
+// fast, and unlike the Sentry flush (which only runs when an error occurred)
+// this one runs on every single scan. A full second is ample for a reachable
+// endpoint and keeps telemetry from dominating exit latency for everyone else.
+export const TELEMETRY_SHUTDOWN_TIMEOUT_MS = 1_000;
 
 export const ENTERPRISE_CONTACT_URL = "https://react.doctor/enterprise";
 
@@ -624,9 +661,6 @@ export const JSX_OPENER_SCAN_MAX_LINES = 32;
 // Larger gaps stop being intentional suppressions and become noise.
 export const SUPPRESSION_NEAR_MISS_MAX_LINES = 10;
 
-// In the default human output, show several category sections like an
-// audit report, but cap each section so one noisy category does not
-// bury the rest of the scan.
 export const MAX_CATEGORY_GROUPS_SHOWN_NON_VERBOSE = 5;
 
 export const MAX_RULE_GROUPS_PER_CATEGORY_NON_VERBOSE = 3;
@@ -776,13 +810,6 @@ export const CODE_FRAME_LINES_BELOW = 1;
 // so we fall back to the bare `file:line` reference instead.
 export const CODE_FRAME_MAX_LINE_LENGTH_CHARS = 200;
 
-// When one rule hits several sites in the same file, sites whose frames
-// would overlap are merged into a single spanning frame instead of
-// rendering near-duplicate boxes. Two sites merge when the gap between
-// their lines is within this window (the frame's own context reach), and
-// a merged frame never spans more offending lines than the max below — a
-// long contiguous run is split into a few bounded frames rather than one
-// giant wall.
 export const CODE_FRAME_BATCH_MAX_SPAN_LINES = 20;
 
 export const OUTPUT_DETAIL_WRAP_WIDTH_CHARS = 88;

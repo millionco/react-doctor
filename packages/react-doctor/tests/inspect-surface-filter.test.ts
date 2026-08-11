@@ -54,10 +54,15 @@ interface CapturedFetchCall {
   body: string;
 }
 
-const decodeRequestBody = (init: RequestInit | undefined): string => {
-  const rawBody = init?.body;
+const decodeRequestBody = async (
+  input: string | URL | Request,
+  init: RequestInit | undefined,
+): Promise<string> => {
+  const request = input instanceof Request ? input : undefined;
+  const rawBody = request?.body ? new Uint8Array(await request.clone().arrayBuffer()) : init?.body;
   if (!rawBody) return "";
-  const encoding = new Headers(init?.headers ?? {}).get("content-encoding")?.toLowerCase() ?? "";
+  const headers = request?.headers ?? new Headers(init?.headers ?? {});
+  const encoding = headers.get("content-encoding")?.toLowerCase() ?? "";
   if (rawBody instanceof Uint8Array) {
     return encoding === "gzip"
       ? gunzipSync(rawBody).toString("utf8")
@@ -70,8 +75,9 @@ const stubScoreFetchAndCapture = (): { captured: CapturedFetchCall[] } => {
   const captured: CapturedFetchCall[] = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: string, init?: RequestInit) => {
-      captured.push({ url, body: decodeRequestBody(init) });
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      captured.push({ url, body: await decodeRequestBody(input, init) });
       return new Response(JSON.stringify({ score: 90, label: "Great" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },

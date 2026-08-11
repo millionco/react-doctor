@@ -21,6 +21,7 @@ import {
   subtreeContainsThrow,
 } from "../../utils/is-never-rejecting-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isProvenNonThrowingBuiltInCall } from "../../utils/is-proven-non-throwing-built-in-call.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
@@ -1120,7 +1121,10 @@ const isNeverRejectingAwaitedExpression = (
   return isNeverRejectingExpression(awaited, NEVER_REJECTING_ANALYSIS_MAX_DEPTH, scopes);
 };
 
-const CANCELLATION_GUARD_TEST_PATTERN = /cancel|abort|unmount|mounted|stale|ignore|dispos/i;
+const CANCELLATION_GUARD_TEST_PATTERN =
+  /cancel|abort|unmount|mounted|stale|ignore|dispos|request|token|generation|flight|attempt|version|action|load/i;
+const ASYNC_OWNERSHIP_NAME_PATTERN =
+  /id|key|request|token|generation|flight|attempt|version|action|load/i;
 const isCancellationGuardTest = (test: EsTreeNode): boolean => {
   let matches = false;
   walkAst(test, (child: EsTreeNode) => {
@@ -1235,9 +1239,121 @@ const getAsyncOwnershipComparison = (
   return null;
 };
 
+const isStableAsyncOwnershipValue = (
+  expression: EsTreeNode,
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const parameterOwnsFunction = (symbol: ReturnType<ScopeAnalysis["symbolFor"]>): boolean =>
+    Boolean(
+      symbol?.kind === "parameter" &&
+      symbol.references.every((reference) => reference.flag === "read") &&
+      (isAstDescendant(symbol.bindingIdentifier, functionNode) ||
+        isAstDescendant(functionNode, symbol.scope.node)),
+    );
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "MemberExpression")) {
+    let receiver = stripParenExpression(value.object);
+    while (isNodeOfType(receiver, "MemberExpression")) {
+      receiver = stripParenExpression(receiver.object);
+    }
+    return Boolean(
+      isNodeOfType(receiver, "Identifier") &&
+      parameterOwnsFunction(context.scopes.symbolFor(receiver)) &&
+      ASYNC_OWNERSHIP_NAME_PATTERN.test(getStaticPropertyName(value) ?? receiver.name),
+    );
+  }
+  if (!isNodeOfType(value, "Identifier")) return false;
+  const symbol = context.scopes.symbolFor(value);
+  if (!symbol || !ASYNC_OWNERSHIP_NAME_PATTERN.test(value.name)) return false;
+  if (symbol.kind === "parameter") {
+    return parameterOwnsFunction(symbol);
+  }
+  if (
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    symbol.references.some((reference) => reference.flag !== "read")
+  ) {
+    return false;
+  }
+  const initializer = stripParenExpression(symbol.initializer);
+  return (
+    Boolean(getReactRefCurrent(initializer, context)) ||
+    (isNodeOfType(initializer, "UpdateExpression") &&
+      initializer.operator === "++" &&
+      Boolean(getReactRefCurrent(initializer.argument, context))) ||
+    isStableAsyncOwnershipValue(initializer, functionNode, context)
+  );
+};
+
+const isStableAsyncOwnershipGuard = (
+  expression: EsTreeNode,
+  expectedMode: AsyncOwnershipComparison["mode"],
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
+  const comparison = stripParenExpression(expression);
+  if (!isNodeOfType(comparison, "BinaryExpression")) return false;
+  const leftRef = getReactRefCurrent(comparison.left, context);
+  const rightRef = getReactRefCurrent(comparison.right, context);
+  const refCurrent = leftRef ?? rightRef;
+  const ownerValue = leftRef ? comparison.right : rightRef ? comparison.left : null;
+  if (!refCurrent || !ownerValue) return false;
+  const owns =
+    comparison.operator === "==" ||
+    comparison.operator === "===" ||
+    (comparison.operator === "<=" && Boolean(leftRef)) ||
+    (comparison.operator === ">=" && Boolean(rightRef));
+  const lost =
+    comparison.operator === "!=" ||
+    comparison.operator === "!==" ||
+    (comparison.operator === ">" && Boolean(leftRef)) ||
+    (comparison.operator === "<" && Boolean(rightRef));
+  if ((expectedMode === "owns" && !owns) || (expectedMode === "lost" && !lost)) return false;
+  const refReceiver = stripParenExpression(refCurrent.object);
+  const refKey = serializeReferenceKey({ node: refCurrent, scopes: context.scopes });
+  const ownerKey = serializeReferenceKey({ node: ownerValue, scopes: context.scopes });
+  let didFindOwnershipClaim = false;
+  walkAst(getOwningFunction(functionNode), (candidate) => {
+    if (
+      didFindOwnershipClaim ||
+      !isNodeOfType(candidate, "AssignmentExpression") ||
+      candidate.range[0] >= expression.range[0] ||
+      serializeReferenceKey({ node: candidate.left, scopes: context.scopes }) !== refKey
+    ) {
+      return didFindOwnershipClaim ? false : undefined;
+    }
+    const candidateOwnerKey = serializeReferenceKey({
+      node: candidate.right,
+      scopes: context.scopes,
+    });
+    if (ownerKey && candidateOwnerKey === ownerKey) {
+      didFindOwnershipClaim = true;
+      return false;
+    }
+    walkAst(candidate.right, (ownerChild) => {
+      if (
+        isNodeOfType(ownerChild, "Identifier") &&
+        ASYNC_OWNERSHIP_NAME_PATTERN.test(ownerChild.name)
+      ) {
+        didFindOwnershipClaim = true;
+        return false;
+      }
+    });
+    return didFindOwnershipClaim ? false : undefined;
+  });
+  return Boolean(
+    isNodeOfType(refReceiver, "Identifier") &&
+    ASYNC_OWNERSHIP_NAME_PATTERN.test(refReceiver.name) &&
+    isStableAsyncOwnershipValue(ownerValue, functionNode, context) &&
+    didFindOwnershipClaim,
+  );
+};
+
 interface CatchPathState {
   isCleared: boolean;
   isCancellationPath: boolean;
+  isOwnershipLossPath: boolean;
 }
 
 interface CatchPathAnalysis {
@@ -1248,7 +1364,10 @@ interface CatchPathAnalysis {
 const dedupeCatchPathStates = (states: CatchPathState[]): CatchPathState[] => {
   const statesByKey = new Map<string, CatchPathState>();
   for (const state of states) {
-    statesByKey.set(`${Number(state.isCleared)}:${Number(state.isCancellationPath)}`, state);
+    statesByKey.set(
+      `${Number(state.isCleared)}:${Number(state.isCancellationPath)}:${Number(state.isOwnershipLossPath)}`,
+      state,
+    );
   }
   return [...statesByKey.values()];
 };
@@ -1332,7 +1451,10 @@ const catchHandlerCanBypassReset = (
     if (
       hasAbruptCompletion &&
       states.some(
-        (state) => !state.isCleared && !(doesContinuingPathReachReset && state.isCancellationPath),
+        (state) =>
+          !state.isCleared &&
+          !state.isOwnershipLossPath &&
+          !(doesContinuingPathReachReset && state.isCancellationPath),
       )
     ) {
       return { states: [], hasUnsafeExit: true };
@@ -1361,7 +1483,9 @@ const catchHandlerCanBypassReset = (
         }
         const hasUnsafeExit = states.some(
           (state) =>
-            !state.isCleared && !(doesContinuingPathReachReset && state.isCancellationPath),
+            !state.isCleared &&
+            !state.isOwnershipLossPath &&
+            !(doesContinuingPathReachReset && state.isCancellationPath),
         );
         if (hasUnsafeExit) return { states: [], hasUnsafeExit: true };
         states = [];
@@ -1378,6 +1502,13 @@ const catchHandlerCanBypassReset = (
         if (testAnalysis.hasUnsafeExit) return testAnalysis;
         states = testAnalysis.states;
         const isCancellationPath = isCancellationGuardTest(statement.test as EsTreeNode);
+        const ownershipComparison = getAsyncOwnershipComparison(
+          statement.test as EsTreeNode,
+          context,
+        );
+        const isOwnershipLossPath =
+          ownershipComparison?.mode === "lost" ||
+          isStableAsyncOwnershipGuard(statement.test as EsTreeNode, "lost", functionNode, context);
         const consequent = analyzeStatements(
           isNodeOfType(statement.consequent, "BlockStatement")
             ? (statement.consequent.body as EsTreeNode[])
@@ -1385,6 +1516,7 @@ const catchHandlerCanBypassReset = (
           states.map((state) => ({
             ...state,
             isCancellationPath: state.isCancellationPath || isCancellationPath,
+            isOwnershipLossPath: state.isOwnershipLossPath || isOwnershipLossPath,
           })),
         );
         if (consequent.hasUnsafeExit) return consequent;
@@ -1422,7 +1554,9 @@ const catchHandlerCanBypassReset = (
   const statements = isNodeOfType(body, "BlockStatement")
     ? (body.body as EsTreeNode[])
     : [body as EsTreeNode];
-  const analysis = analyzeStatements(statements, [{ isCleared: false, isCancellationPath: false }]);
+  const analysis = analyzeStatements(statements, [
+    { isCleared: false, isCancellationPath: false, isOwnershipLossPath: false },
+  ]);
   return (
     analysis.hasUnsafeExit ||
     (!doesContinuingPathReachReset && analysis.states.some((state) => !state.isCleared))
@@ -1440,10 +1574,16 @@ const isRejectionSwallowedBeforeReset = (
   while (cursor && cursor !== functionNode) {
     if (isNodeOfType(cursor, "TryStatement") && cursor.block === child && cursor.handler) {
       const tryEnd = getNodeEnd(cursor);
+      const resetContinuesAfterCatch = tryEnd !== null && tryEnd < resetStart;
       if (
         tryEnd !== null &&
-        tryEnd < resetStart &&
-        !catchHandlerCanBypassReset(cursor.handler, functionNode, setterKey, context, true)
+        !catchHandlerCanBypassReset(
+          cursor.handler,
+          functionNode,
+          setterKey,
+          context,
+          resetContinuesAfterCatch,
+        )
       ) {
         return true;
       }
@@ -1567,6 +1707,27 @@ const isProvenNonThrowingSynchronousCall = (
 ): boolean => {
   if (isProvenNonThrowingBuiltInCall(callNode, context.scopes)) return true;
   const callee = stripParenExpression(callNode.callee);
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    getStaticPropertyName(callee) === "setValue" &&
+    isNodeOfType(stripParenExpression(callee.object), "Identifier")
+  ) {
+    const receiver = stripParenExpression(callee.object);
+    const receiverSymbol = context.scopes.symbolFor(receiver);
+    const initializer = receiverSymbol?.initializer
+      ? stripParenExpression(receiverSymbol.initializer)
+      : null;
+    const hookCallee =
+      initializer && isNodeOfType(initializer, "CallExpression")
+        ? stripParenExpression(initializer.callee)
+        : null;
+    if (hookCallee && isNodeOfType(hookCallee, "Identifier")) {
+      const importBinding = getImportBindingForName(hookCallee, hookCallee.name);
+      if (importBinding?.source === "react-hook-form" && importBinding.exportedName === "useForm") {
+        return true;
+      }
+    }
+  }
   if (isNodeOfType(callee, "Identifier")) {
     if (
       isReactHookResultReference(callee, STATE_HOOK_NAMES, 1, context.scopes) ||
@@ -2106,6 +2267,43 @@ const findOwnershipClaim = (
   const tokenInitializer = tokenSymbol?.initializer
     ? stripParenExpression(tokenSymbol.initializer)
     : null;
+  const firstTruthyNode = truthySets[0]?.node;
+  const loadingSetterKey =
+    firstTruthyNode && isNodeOfType(firstTruthyNode, "CallExpression")
+      ? getSetterBooleanValue(firstTruthyNode, context)?.setterKey
+      : null;
+  const isPairedOwnershipTransfer = (writeNode: EsTreeNode): boolean => {
+    if (!loadingSetterKey) return false;
+    let writeFunction: EsTreeNode | null | undefined = writeNode.parent;
+    while (writeFunction && !isFunctionLike(writeFunction)) {
+      writeFunction = writeFunction.parent ?? null;
+    }
+    if (!writeFunction) return false;
+    const writeEntry = getDirectBlockEntry(writeNode, writeFunction);
+    if (!writeEntry) return false;
+    let isPaired = false;
+    walkOwnFunctionScope(writeFunction, (child) => {
+      if (isPaired || !isNodeOfType(child, "CallExpression")) return;
+      const setter = getSetterBooleanValue(child, context);
+      if (setter?.setterKey !== loadingSetterKey || !setter.value) return;
+      const setterEntry = getDirectBlockEntry(child, writeFunction);
+      if (!setterEntry || setterEntry.block !== writeEntry.block) return;
+      const writeIndex = writeEntry.block.body.findIndex(
+        (statement) => statement === writeEntry.entry,
+      );
+      const setterIndex = setterEntry.block.body.findIndex(
+        (statement) => statement === setterEntry.entry,
+      );
+      if (writeIndex === -1 || setterIndex <= writeIndex) return;
+      isPaired = writeEntry.block.body
+        .slice(writeIndex + 1, setterIndex)
+        .every(
+          (statement) => !subtreeHasAbruptSynchronousOperation(statement, writeFunction, context),
+        );
+      return isPaired ? false : undefined;
+    });
+    return isPaired;
+  };
   if (comparison.isOrdered && !isNodeOfType(tokenInitializer, "UpdateExpression")) return null;
   if (
     tokenInitializer &&
@@ -2149,6 +2347,7 @@ const findOwnershipClaim = (
         if (
           writeTarget &&
           serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === generationKey &&
+          !isPairedOwnershipTransfer(candidate) &&
           !isEffectInvalidationPairedWithReset(candidate, truthySets, context)
         ) {
           didFindOtherGenerationWrite = true;
@@ -2184,6 +2383,7 @@ const findOwnershipClaim = (
     if (
       writeTarget &&
       serializeReferenceKey({ node: writeTarget, scopes: context.scopes }) === refKey &&
+      !isPairedOwnershipTransfer(candidate) &&
       !isEffectInvalidationPairedWithReset(candidate, truthySets, context)
     ) {
       didFindOtherWrite = true;
@@ -2413,6 +2613,7 @@ const isPositiveFinalizerGuard = (
   context: RuleContext,
 ): boolean =>
   isCleanupBackedLifecycleGuard(expression, functionNode, context) ||
+  isStableAsyncOwnershipGuard(expression, "owns", functionNode, context) ||
   isClaimedOwnershipComparison(
     expression,
     "owns",
@@ -2442,14 +2643,16 @@ const isNegativeFinalizerGuard = (
       context,
     );
   }
-  return isClaimedOwnershipComparison(
-    stripped,
-    "lost",
-    functionNode,
-    truthySets,
-    firstRiskyAwait,
-    resetNode,
-    context,
+  return (
+    isClaimedOwnershipComparison(
+      stripped,
+      "lost",
+      functionNode,
+      truthySets,
+      firstRiskyAwait,
+      resetNode,
+      context,
+    ) || isStableAsyncOwnershipGuard(stripped, "lost", functionNode, context)
   );
 };
 

@@ -1,3 +1,7 @@
+import {
+  REACT_ROUTER_RENDER_PROPERTY_NAMES,
+  REACT_ROUTER_RESOURCE_HANDLER_PROPERTY_NAMES,
+} from "../../constants/react-router.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getImportedNameFromReactRouter } from "../../utils/get-imported-name-from-react-router.js";
@@ -10,9 +14,6 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isStaticReactRouterRouteObject } from "../../utils/is-static-react-router-route-object.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { wrapReactRouterRule } from "../../utils/wrap-react-router-rule.js";
-
-const RESOURCE_HANDLER_PROPERTY_NAMES = ["action", "clientAction", "clientLoader", "loader"];
-const RENDER_PROPERTY_NAMES = ["Component", "element", "lazy"];
 
 interface ResourceLinkCandidate {
   destination: string;
@@ -36,14 +37,14 @@ export const reactRouterResourceLinkRequiresReload = wrapReactRouterRule(
         ObjectExpression(node: EsTreeNodeOfType<"ObjectExpression">) {
           if (!isStaticReactRouterRouteObject(context, node)) return;
           if (
-            !RESOURCE_HANDLER_PROPERTY_NAMES.some((propertyName) =>
+            !REACT_ROUTER_RESOURCE_HANDLER_PROPERTY_NAMES.some((propertyName) =>
               hasActiveRouteProperty(context, node, propertyName),
             )
           ) {
             return;
           }
           if (
-            RENDER_PROPERTY_NAMES.some((propertyName) =>
+            REACT_ROUTER_RENDER_PROPERTY_NAMES.some((propertyName) =>
               hasActiveRouteProperty(context, node, propertyName),
             ) ||
             hasActiveRouteProperty(context, node, "children")

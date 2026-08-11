@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import * as Sentry from "@sentry/node";
 import {
   flushSentry,
   initializeSentry,
-  isSentryTracingEnabled,
   resolveSentryEnvironment,
   resolveSentryRelease,
-  resolveTracesSampleRate,
 } from "../src/instrument.js";
-import { SENTRY_DEFAULT_TRACES_SAMPLE_RATE } from "../src/cli/utils/constants.js";
 
 const SENTRY_ENVIRONMENT_VARIABLES = [
   "SENTRY_RELEASE",
@@ -56,32 +54,10 @@ describe("instrument config resolvers", () => {
     });
   });
 
-  describe("resolveTracesSampleRate", () => {
-    it("defaults when unset", () => {
-      expect(resolveTracesSampleRate()).toBe(SENTRY_DEFAULT_TRACES_SAMPLE_RATE);
-    });
-
-    it("reads a valid in-range rate", () => {
-      process.env.SENTRY_TRACES_SAMPLE_RATE = "0";
-      expect(resolveTracesSampleRate()).toBe(0);
-      process.env.SENTRY_TRACES_SAMPLE_RATE = "0.25";
-      expect(resolveTracesSampleRate()).toBe(0.25);
-      process.env.SENTRY_TRACES_SAMPLE_RATE = "1";
-      expect(resolveTracesSampleRate()).toBe(1);
-    });
-
-    it("falls back to the default for out-of-range or non-numeric values", () => {
-      for (const invalid of ["2", "-1", "abc", ""]) {
-        process.env.SENTRY_TRACES_SAMPLE_RATE = invalid;
-        expect(resolveTracesSampleRate()).toBe(SENTRY_DEFAULT_TRACES_SAMPLE_RATE);
-      }
-    });
-  });
-
-  describe("tracing/flush gating without an active client", () => {
+  describe("init/flush gating without an active client", () => {
     it("initializeSentry is a no-op under tests (VITEST), leaving the SDK uninitialized", () => {
       expect(() => initializeSentry()).not.toThrow();
-      expect(isSentryTracingEnabled()).toBe(false);
+      expect(Sentry.isInitialized()).toBe(false);
     });
 
     it("flushSentry resolves without throwing when Sentry is not initialized", async () => {

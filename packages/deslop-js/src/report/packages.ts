@@ -10,18 +10,16 @@ import type {
 } from "../types.js";
 import { IMPLICIT_DEPENDENCIES } from "../constants.js";
 import { extractPackageName } from "../utils/package-name.js";
-import { collectOverrideMappingsFromRecord } from "../utils/collect-override-mappings-from-record.js";
+import {
+  collectOverrideMappingsFromRecord,
+  type OverrideMapping,
+} from "../utils/collect-override-mappings-from-record.js";
 import { collectPnpmWorkspaceOverrideMappings } from "../utils/parse-pnpm-workspace-overrides.js";
 import { matchesPackageImportReference } from "../utils/matches-package-import-reference.js";
 import { matchesPackageTokenReference } from "../utils/matches-package-token-reference.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractExpoConfigPluginEntries } from "../collect/expo-config-plugin-entries.js";
 import type { PackageFactKind, SummaryCache } from "../summary-cache.js";
-
-interface OverrideMapping {
-  fromPackage: string;
-  toPackage: string;
-}
 
 interface PackageFileGlobOptions {
   readonly ignore: ReadonlyArray<string>;

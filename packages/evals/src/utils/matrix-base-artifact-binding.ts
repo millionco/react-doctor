@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
 import { copyFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { MATRIX_BASE_ARTIFACT_CONTRACT } from "../constants.js";
 import type { EvaluationProvenance } from "../corpus.js";
+import { hashFileSha256 } from "./hash-file-sha256.js";
 
 export interface MatrixBaseArtifactBinding {
   contract: string;
@@ -35,12 +35,6 @@ export interface MaterializedMatrixBaseArtifactBinding {
   verified: boolean;
 }
 
-const hashFile = async (filePath: string): Promise<string> => {
-  const hasher = createHash("sha256");
-  for await (const chunk of createReadStream(filePath)) hasher.update(chunk);
-  return hasher.digest("hex");
-};
-
 const hashProducer = (producer: EvaluationProvenance): string =>
   createHash("sha256").update(JSON.stringify(producer)).digest("hex");
 
@@ -57,8 +51,8 @@ export const createMatrixBaseArtifactBinding = async ({
 }): Promise<MatrixBaseArtifactBinding> => {
   const [sourceStats, sha256, provenanceSha256] = await Promise.all([
     stat(sourcePath),
-    hashFile(sourcePath),
-    provenanceSourcePath ? hashFile(provenanceSourcePath) : undefined,
+    hashFileSha256(sourcePath),
+    provenanceSourcePath ? hashFileSha256(provenanceSourcePath) : undefined,
   ]);
   if (
     expected &&
@@ -98,8 +92,8 @@ export const materializeMatrixBaseArtifactBinding = async ({
     }
     const [copiedStats, copiedSha256, copiedProvenanceSha256] = await Promise.all([
       stat(path),
-      hashFile(path),
-      provenancePath ? hashFile(provenancePath) : undefined,
+      hashFileSha256(path),
+      provenancePath ? hashFileSha256(provenancePath) : undefined,
     ]);
     const verified =
       copiedStats.size === binding.byteLength &&

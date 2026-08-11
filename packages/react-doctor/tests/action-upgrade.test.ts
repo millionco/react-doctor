@@ -10,10 +10,10 @@ import {
   workflowUsesV1Action,
 } from "../src/cli/utils/install-github-workflow.js";
 import {
-  getActionUpgradePromptConfigPath,
   hasHandledActionUpgrade,
   recordActionUpgradeDecision,
 } from "../src/cli/utils/action-upgrade-prompt.js";
+import { getCliStatePath } from "../src/cli/utils/cli-state-store.js";
 
 const buildWorkflow = (actionRef: string): string =>
   [
@@ -124,7 +124,7 @@ describe("action upgrade prompt state", () => {
 
   it("stores the decision as an action-upgrade event in the shared react-doctor config file", () => {
     recordActionUpgradeDecision("/repo/a", "declined", { cwd: configRoot });
-    const configPath = getActionUpgradePromptConfigPath({ cwd: configRoot });
+    const configPath = getCliStatePath({ cwd: configRoot });
     const stored = JSON.parse(fs.readFileSync(configPath, "utf8"));
     const records = Object.values(stored.projects)
       .map(

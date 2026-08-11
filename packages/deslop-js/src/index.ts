@@ -1,6 +1,5 @@
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
-import fg from "fast-glob";
 import type { DeslopConfig, DeslopError, ScanResult } from "./types.js";
 import {
   ConfigError,
@@ -9,25 +8,14 @@ import {
   WorkspaceError,
   describeUnknownError,
 } from "./errors.js";
-import {
-  DEFAULT_DUPLICATE_BLOCK_MIN_LINES,
-  DEFAULT_DUPLICATE_BLOCK_MIN_OCCURRENCES,
-  DEFAULT_DUPLICATE_BLOCK_MIN_TOKENS,
-  DEFAULT_COGNITIVE_THRESHOLD,
-  DEFAULT_CYCLOMATIC_THRESHOLD,
-  DEFAULT_FUNCTION_LINE_THRESHOLD,
-  DEFAULT_PARAM_COUNT_THRESHOLD,
-  DEFAULT_ENTRY_GLOBS,
-  DEFAULT_EXTENSIONS,
-  DEFAULT_SEMANTIC_DECORATOR_ALLOWLIST,
-  OUTPUT_DIRECTORIES,
-} from "./constants.js";
+import { OUTPUT_DIRECTORIES } from "./constants.js";
 import { collectSourceFiles, resolveEntries, getFrameworkExclusions } from "./collect/entries.js";
 import { resolveWorkspaces } from "./collect/workspaces.js";
-import { parseSourceFile } from "./collect/parse.js";
 import { parseFilesInParallel } from "./collect/parallel-parse.js";
 import { createResolver } from "./resolver/resolve.js";
-import { buildDependencyGraph, type ModuleLinkInput } from "./linker/build.js";
+import { buildDependencyGraph } from "./linker/build.js";
+import { buildModuleLinkInputs } from "./linker/build-module-link-inputs.js";
+import { markFilenameRegistryEntries } from "./linker/mark-filename-registry-entries.js";
 import { traceReachability } from "./linker/reachability.js";
 import { resolveReExportChains } from "./linker/re-exports.js";
 import { generateReport } from "./report/generate.js";
@@ -35,81 +23,10 @@ import { resolveEntriesInWorker } from "./collect/entries-in-worker.js";
 import { loadSummaryCache } from "./summary-cache.js";
 import { findMonorepoRoot } from "./utils/find-monorepo-root.js";
 import { collectGitIgnoredPaths } from "./utils/collect-git-ignored-paths.js";
-import { normalizeRegistryModulePath } from "./utils/normalize-registry-module-path.js";
 
-const STYLE_EXTENSIONS = [".css", ".scss"];
+export { defineConfig } from "./config.js";
 
 const REACT_NATIVE_ENABLERS = ["react-native", "expo"];
-
-const basenameFromPath = (filePath: string): string => {
-  const lastSlashIndex = filePath.lastIndexOf("/");
-  return lastSlashIndex === -1 ? filePath : filePath.slice(lastSlashIndex + 1);
-};
-
-/**
- * Dynamic registry pattern: many codebases use a central "schema/registry"
- * module that lists tool/command/page filenames as string literals, then a
- * runner spawns them via `path.resolve(dir, file)` or `import()`. Static
- * analysis can't follow the indirection, so those targets get falsely
- * flagged as unused.
- *
- * Heuristic: if a parsed string literal exactly matches the basename or
- * extensionless path suffix of exactly one file in the project, treat that
- * file as an entry point. Uniqueness guards against false-positives from
- * common names like `index.ts` matching dozens of unrelated files.
- */
-const markFilenameRegistryEntries = (
-  moduleGraph: ReturnType<typeof buildDependencyGraph>,
-): void => {
-  const basenameToModuleIndex = new Map<string, number | "ambiguous">();
-  const pathSuffixToModuleIndex = new Map<string, number | "ambiguous">();
-  const referencedPathSet = new Set<string>();
-  for (const module of moduleGraph.modules) {
-    for (const referencedFilename of module.referencedFilenames) {
-      if (referencedFilename.includes("/")) {
-        referencedPathSet.add(normalizeRegistryModulePath(referencedFilename));
-      }
-    }
-  }
-
-  for (const module of moduleGraph.modules) {
-    const basename = basenameFromPath(module.fileId.path);
-    const existing = basenameToModuleIndex.get(basename);
-    if (existing === undefined) {
-      basenameToModuleIndex.set(basename, module.fileId.index);
-    } else if (existing !== "ambiguous") {
-      basenameToModuleIndex.set(basename, "ambiguous");
-    }
-
-    const extensionlessPath = normalizeRegistryModulePath(module.fileId.path);
-    let slashIndex = extensionlessPath.indexOf("/");
-    while (slashIndex !== -1) {
-      const pathSuffix = extensionlessPath.slice(slashIndex + 1);
-      slashIndex = extensionlessPath.indexOf("/", slashIndex + 1);
-      if (!referencedPathSet.has(pathSuffix)) continue;
-      const existingPathIndex = pathSuffixToModuleIndex.get(pathSuffix);
-      if (existingPathIndex === undefined) {
-        pathSuffixToModuleIndex.set(pathSuffix, module.fileId.index);
-      } else if (existingPathIndex !== "ambiguous") {
-        pathSuffixToModuleIndex.set(pathSuffix, "ambiguous");
-      }
-    }
-  }
-
-  for (const module of moduleGraph.modules) {
-    for (const referencedFilename of module.referencedFilenames) {
-      const normalizedReference = normalizeRegistryModulePath(referencedFilename);
-      const targetIndex = referencedFilename.includes("/")
-        ? pathSuffixToModuleIndex.get(normalizedReference)
-        : basenameToModuleIndex.get(referencedFilename);
-      if (typeof targetIndex !== "number") continue;
-      const targetModule = moduleGraph.modules[targetIndex];
-      if (!targetModule || targetModule.isEntryPoint) continue;
-      if (targetModule.fileId.index === module.fileId.index) continue;
-      targetModule.isEntryPoint = true;
-    }
-  }
-};
 
 const detectReactNative = (
   rootDir: string,
@@ -207,109 +124,6 @@ export type {
   DeslopErrorModule,
   DeslopErrorSeverity,
 } from "./types.js";
-
-/**
- * Default flags below mark rules off-by-default. Rationale for each:
- *
- * - `reportUnusedClassMembers: false` — class-member dead-code detection
- *   requires whole-program semantic analysis to be sound (subclass overrides,
- *   structural typing, framework method-by-name invocation like `@HttpGet`).
- *   When enabled on real React/Effect/NestJS codebases it produces a high
- *   rate of stylistic-FP findings (lifecycle methods, framework hooks). Off
- *   by default until the heuristics are tightened. Opt in via
- *   `semantic.reportUnusedClassMembers = true` when you accept the noise.
- *
- * - `reportTypes: false` — type-only exports are over-represented in
- *   barrel re-exports (the canonical `export type * from "./types"` pattern)
- *   and are rarely actionable signal. Off by default; opt in when auditing
- *   a type-heavy package.
- *
- * - `includeEntryExports: false` — exports from entry-point files are
- *   "API surface" and intentionally exported for external consumers; flagging
- *   them as "unused" is noise within a single repo scan. Opt in when auditing
- *   a package boundary (e.g. before deleting public APIs).
- *
- * - `reportRedundancy: true` — on because redundancy findings are mostly
- *   high-signal and the detectors carry their own confidence tiers.
- *
- * - `duplicateBlocks: undefined` — token-based copy-paste detection (suffix
- *   array + LCP) is opt-in. It re-parses every source
- *   file to emit a token stream and adds significant runtime to the scan.
- *   Pass `duplicateBlocks: { enabled: true }` to turn it on.
- */
-const fillSemanticConfig = (
-  semanticOverrides: Partial<DeslopConfig["semantic"]> | undefined,
-): DeslopConfig["semantic"] => {
-  const overrides = semanticOverrides ?? {};
-  return {
-    enabled: overrides.enabled ?? true,
-    reportUnusedTypes: overrides.reportUnusedTypes ?? true,
-    reportUnusedEnumMembers: overrides.reportUnusedEnumMembers ?? true,
-    reportUnusedClassMembers: overrides.reportUnusedClassMembers ?? false,
-    reportRedundantVariableAliases: overrides.reportRedundantVariableAliases ?? true,
-    reportMisclassifiedDependencies: overrides.reportMisclassifiedDependencies ?? true,
-    reportRoundTripAliases: overrides.reportRoundTripAliases ?? true,
-    decoratorAllowlist: overrides.decoratorAllowlist ?? DEFAULT_SEMANTIC_DECORATOR_ALLOWLIST,
-  };
-};
-
-const fillDuplicateBlocksConfig = (
-  duplicateBlocksOverrides: Partial<DeslopConfig["duplicateBlocks"]> | undefined,
-): DeslopConfig["duplicateBlocks"] => {
-  const overrides = duplicateBlocksOverrides ?? {};
-  return {
-    enabled: overrides.enabled ?? true,
-    mode: overrides.mode ?? "semantic",
-    minTokens: overrides.minTokens ?? DEFAULT_DUPLICATE_BLOCK_MIN_TOKENS,
-    minLines: overrides.minLines ?? DEFAULT_DUPLICATE_BLOCK_MIN_LINES,
-    minOccurrences: overrides.minOccurrences ?? DEFAULT_DUPLICATE_BLOCK_MIN_OCCURRENCES,
-    skipLocal: overrides.skipLocal ?? false,
-  };
-};
-
-const fillFeatureFlagsConfig = (
-  flagsOverrides: Partial<DeslopConfig["featureFlags"]> | undefined,
-): DeslopConfig["featureFlags"] => {
-  const overrides = flagsOverrides ?? {};
-  return {
-    enabled: overrides.enabled ?? true,
-    extraEnvPrefixes: overrides.extraEnvPrefixes ?? [],
-    extraSdkFunctionNames: overrides.extraSdkFunctionNames ?? [],
-    detectConfigObjects: overrides.detectConfigObjects ?? false,
-  };
-};
-
-const fillComplexityConfig = (
-  complexityOverrides: Partial<DeslopConfig["complexity"]> | undefined,
-): DeslopConfig["complexity"] => {
-  const overrides = complexityOverrides ?? {};
-  return {
-    enabled: overrides.enabled ?? true,
-    cyclomaticThreshold: overrides.cyclomaticThreshold ?? DEFAULT_CYCLOMATIC_THRESHOLD,
-    cognitiveThreshold: overrides.cognitiveThreshold ?? DEFAULT_COGNITIVE_THRESHOLD,
-    paramCountThreshold: overrides.paramCountThreshold ?? DEFAULT_PARAM_COUNT_THRESHOLD,
-    functionLineThreshold: overrides.functionLineThreshold ?? DEFAULT_FUNCTION_LINE_THRESHOLD,
-  };
-};
-export const defineConfig = (
-  options: Partial<DeslopConfig> & { rootDir: string },
-): DeslopConfig => ({
-  rootDir: resolve(options.rootDir),
-  entryPatterns: options.entryPatterns ?? DEFAULT_ENTRY_GLOBS,
-  ignorePatterns: options.ignorePatterns ?? [],
-  includeExtensions: options.includeExtensions ?? DEFAULT_EXTENSIONS,
-  tsConfigPath: options.tsConfigPath,
-  paths: options.paths,
-  incrementalCachePath: options.incrementalCachePath,
-  reportTypes: options.reportTypes ?? false,
-  includeEntryExports: options.includeEntryExports ?? false,
-  reportRedundancy: options.reportRedundancy ?? true,
-  reportCodeQuality: options.reportCodeQuality ?? true,
-  semantic: fillSemanticConfig(options.semantic),
-  duplicateBlocks: fillDuplicateBlocksConfig(options.duplicateBlocks),
-  featureFlags: fillFeatureFlagsConfig(options.featureFlags),
-  complexity: fillComplexityConfig(options.complexity),
-});
 
 const buildEmptyScanResult = (errors: DeslopError[], elapsedMs: number): ScanResult => ({
   unusedFiles: [],
@@ -588,173 +402,18 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
   }
 
   const discoveredEntries = await entriesPromise;
-  const productionEntrySet = new Set(discoveredEntries.productionEntries);
-  const testEntrySet = new Set(discoveredEntries.testEntries);
-  const alwaysUsedFileSet = new Set(discoveredEntries.alwaysUsedFiles);
-
-  const graphInputs: ModuleLinkInput[] = [];
-
-  for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
-    const file = files[fileIndex];
-    const parsedModule = parsedModules[fileIndex];
-    const resolvedImportMap = new Map<string, ReturnType<typeof moduleResolver.resolveModule>>();
-
-    const safeResolveImport = (
-      specifier: string,
-    ): ReturnType<typeof moduleResolver.resolveModule> => {
-      try {
-        return resolveModuleThroughCache(specifier, file.path);
-      } catch (resolveError) {
-        setupErrors.push(
-          new ResolverError({
-            severity: "warning",
-            message: `moduleResolver.resolveModule threw on specifier "${specifier}"`,
-            path: file.path,
-            detail: describeUnknownError(resolveError),
-          }),
-        );
-        return { resolvedPath: undefined, isExternal: false, packageName: undefined };
-      }
-    };
-
-    for (const importInfo of parsedModule.imports) {
-      if (importInfo.isGlob) {
-        const fileDir = dirname(file.path);
-        let expandedFiles: string[] = [];
-        try {
-          expandedFiles = fg.sync(importInfo.specifier, {
-            cwd: fileDir,
-            absolute: true,
-            onlyFiles: true,
-            ignore: ["**/node_modules/**"],
-          });
-        } catch (globError) {
-          setupErrors.push(
-            new WorkspaceError({
-              code: "workspace-discovery-failed",
-              message: `fast-glob threw on import glob "${importInfo.specifier}"`,
-              path: file.path,
-              detail: describeUnknownError(globError),
-            }),
-          );
-        }
-        for (const expandedFile of expandedFiles) {
-          resolvedImportMap.set(expandedFile, {
-            resolvedPath: expandedFile,
-            isExternal: false,
-            packageName: undefined,
-          });
-        }
-        resolvedImportMap.set(importInfo.specifier, {
-          resolvedPath: undefined,
-          isExternal: false,
-          packageName: undefined,
-        });
-        continue;
-      }
-      resolvedImportMap.set(importInfo.specifier, safeResolveImport(importInfo.specifier));
-    }
-
-    for (const exportInfo of parsedModule.exports) {
-      if (exportInfo.isReExport && exportInfo.reExportSource) {
-        if (!resolvedImportMap.has(exportInfo.reExportSource)) {
-          resolvedImportMap.set(
-            exportInfo.reExportSource,
-            safeResolveImport(exportInfo.reExportSource),
-          );
-        }
-      }
-    }
-
-    const isAlwaysUsed = alwaysUsedFileSet.has(file.path);
-    graphInputs.push({
-      fileId: file,
-      parsed: parsedModule,
-      resolvedImports: resolvedImportMap,
-      isEntryPoint:
-        isAlwaysUsed || productionEntrySet.has(file.path) || testEntrySet.has(file.path),
-      isTestEntry: testEntrySet.has(file.path),
-      isGitIgnored: gitIgnoredFileSet.has(file.path),
-    });
-  }
-
-  const discoveredFilePaths = new Set(files.map((file) => file.path));
-  const styleFilesToAdd = new Set<string>();
-
-  for (const input of graphInputs) {
-    for (const [, resolvedImport] of input.resolvedImports) {
-      if (!resolvedImport.resolvedPath || resolvedImport.isExternal) continue;
-      if (discoveredFilePaths.has(resolvedImport.resolvedPath)) continue;
-      const isStyleFile = STYLE_EXTENSIONS.some((ext) =>
-        resolvedImport.resolvedPath!.endsWith(ext),
-      );
-      if (isStyleFile && existsSync(resolvedImport.resolvedPath)) {
-        styleFilesToAdd.add(resolvedImport.resolvedPath);
-      }
-    }
-  }
-
-  const styleFileQueue = [...styleFilesToAdd].sort();
-  let nextFileIndex = files.length;
-  let styleFileQueueIndex = 0;
-  while (styleFileQueueIndex < styleFileQueue.length) {
-    const styleFilePath = styleFileQueue[styleFileQueueIndex];
-    styleFileQueueIndex++;
-    if (discoveredFilePaths.has(styleFilePath)) continue;
-
-    const styleSourceFile = { index: nextFileIndex, path: styleFilePath };
-    const parsedStyleModule = parseSourceFile(styleFilePath);
-    const resolvedStyleImportMap = new Map<
-      string,
-      ReturnType<typeof moduleResolver.resolveModule>
-    >();
-
-    for (const importInfo of parsedStyleModule.imports) {
-      let resolvedImport: ReturnType<typeof moduleResolver.resolveModule>;
-      try {
-        resolvedImport = resolveModuleThroughCache(importInfo.specifier, styleFilePath);
-      } catch (styleResolveError) {
-        setupErrors.push(
-          new ResolverError({
-            severity: "warning",
-            message: `moduleResolver.resolveModule threw on style import "${importInfo.specifier}"`,
-            path: styleFilePath,
-            detail: describeUnknownError(styleResolveError),
-          }),
-        );
-        resolvedImport = { resolvedPath: undefined, isExternal: false, packageName: undefined };
-      }
-      resolvedStyleImportMap.set(importInfo.specifier, resolvedImport);
-      if (resolvedImport.resolvedPath && !discoveredFilePaths.has(resolvedImport.resolvedPath)) {
-        const isNestedStyle = STYLE_EXTENSIONS.some((ext) =>
-          resolvedImport.resolvedPath!.endsWith(ext),
-        );
-        if (
-          isNestedStyle &&
-          !styleFilesToAdd.has(resolvedImport.resolvedPath) &&
-          existsSync(resolvedImport.resolvedPath)
-        ) {
-          styleFilesToAdd.add(resolvedImport.resolvedPath);
-          styleFileQueue.push(resolvedImport.resolvedPath);
-        }
-      }
-    }
-
-    graphInputs.push({
-      fileId: styleSourceFile,
-      parsed: parsedStyleModule,
-      resolvedImports: resolvedStyleImportMap,
-      isEntryPoint: false,
-      isTestEntry: false,
-      isGitIgnored: gitIgnoredFileSet.has(styleFilePath),
-    });
-    discoveredFilePaths.add(styleFilePath);
-    nextFileIndex++;
-  }
+  const moduleLinkInputsResult = buildModuleLinkInputs({
+    files,
+    parsedModules,
+    resolvedEntries: discoveredEntries,
+    gitIgnoredFilePaths: gitIgnoredFileSet,
+    resolveModule: resolveModuleThroughCache,
+  });
+  setupErrors.push(...moduleLinkInputsResult.errors);
 
   let moduleGraph: ReturnType<typeof buildDependencyGraph>;
   try {
-    moduleGraph = buildDependencyGraph(graphInputs);
+    moduleGraph = buildDependencyGraph(moduleLinkInputsResult.graphInputs);
   } catch (graphError) {
     setupErrors.push(
       new DetectorError({

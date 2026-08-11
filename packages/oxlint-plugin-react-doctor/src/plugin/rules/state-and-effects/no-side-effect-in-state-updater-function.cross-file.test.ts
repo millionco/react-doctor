@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { CROSS_FILE_BARREL_FOLLOW_DEPTH } from "../../constants/thresholds.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
-import { __clearTsconfigAliasCacheForTests } from "../../utils/resolve-tsconfig-alias.js";
+import { resetTsconfigAliasCaches } from "../../utils/resolve-tsconfig-alias.js";
 import { noSideEffectInStateUpdaterFunction } from "./no-side-effect-in-state-updater-function.js";
 
 let temporaryDirectory: string;
@@ -13,7 +13,7 @@ let temporaryDirectory: string;
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "state-updater-dayjs-"));
   __clearParseSourceFileCacheForTests();
-  __clearTsconfigAliasCacheForTests();
+  resetTsconfigAliasCaches();
 });
 
 afterEach(() => {

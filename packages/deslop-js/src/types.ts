@@ -111,13 +111,19 @@ export interface SourceModuleDuplicateConstantCandidate {
   column: number;
 }
 
-export interface SourceModule {
-  fileId: SourceFile;
+export interface SourceModuleAnalysis {
   imports: ImportReference[];
   exports: ExportReference[];
   memberAccesses: MemberAccess[];
   wholeObjectUses: string[];
   localIdentifierReferences: string[];
+  /**
+   * Local names of static import bindings referenced in module-init-executed
+   * positions (top-level statements outside function bodies and erased TS
+   * type positions). Cycle detection uses this to tell an initialization-
+   * order hazard from a cycle whose back edges are only dereferenced later,
+   * inside function bodies invoked after every module has initialized.
+   */
   topLevelImportReferences: string[];
   referencedFilenames: string[];
   redundantTypePatterns: SourceModuleRedundantTypePattern[];
@@ -127,6 +133,10 @@ export interface SourceModule {
   simplifiableFunctions: SourceModuleSimplifiableFunction[];
   simplifiableExpressions: SourceModuleSimplifiableExpression[];
   duplicateConstantCandidates: SourceModuleDuplicateConstantCandidate[];
+}
+
+export interface SourceModule extends SourceModuleAnalysis {
+  fileId: SourceFile;
   parseErrors: DeslopError[];
   isEntryPoint: boolean;
   isTestEntry: boolean;

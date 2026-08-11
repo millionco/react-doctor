@@ -131,7 +131,7 @@ const resolveStaticStringExpressionValues = (
   return staticStringValues.length > 0 ? staticStringValues : null;
 };
 
-export const getStaticStringExpressionValues = (
+const getStaticStringExpressionValues = (
   rawExpression: EsTreeNode,
   scopes: ScopeAnalysis,
   options: StaticStringResolutionOptions = {},

@@ -133,8 +133,18 @@ export const Report = ({
   };
 
   const isCiSetupAvailable = Boolean(canAddToCi && onAddToCi && !isCiSetupQueued);
-  const isHandoffAvailable =
-    diagnosticRows.length > 0 && launchableAgents.length > 0 && Boolean(onHandoff);
+  const isHandoffAvailable = diagnosticRows.length > 0 && Boolean(onHandoff);
+  const completeHandoff = (destination: TuiHandoffRequest["destination"]): void => {
+    if (!onHandoff) return;
+    onHandoff({
+      destination,
+      prompt: buildHandoffPayload({
+        diagnostics: report.diagnostics,
+        projectName: report.projectName,
+      }),
+    });
+    onExit();
+  };
   const firstDiagnosticEntry = diagnosticListEntries.find((entry) => entry.kind === "item");
   const resolvedViewerSelectedRowIndex =
     viewerSelectedRowIndex ??
@@ -239,17 +249,8 @@ export const Report = ({
     activeScreenContent = (
       <AgentHandoff
         agents={launchableAgents}
-        onSelect={(agentId) => {
-          if (!onHandoff) return;
-          onHandoff({
-            agentId,
-            prompt: buildHandoffPayload({
-              diagnostics: report.diagnostics,
-              projectName: report.projectName,
-            }),
-          });
-          onExit();
-        }}
+        onSelect={completeHandoff}
+        onCopyPrompt={() => completeHandoff("clipboard")}
         onBack={() => setActiveReportScreen("landing")}
         onQuit={onQuit}
       />

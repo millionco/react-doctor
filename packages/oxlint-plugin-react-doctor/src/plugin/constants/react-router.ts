@@ -4,6 +4,15 @@ export const REACT_ROUTER_PACKAGE_NAMES: readonly string[] = [
   "react-router",
 ];
 
+export const REACT_ROUTER_RENDER_PROPERTY_NAMES = ["Component", "element", "lazy"];
+
+export const REACT_ROUTER_RESOURCE_HANDLER_PROPERTY_NAMES = [
+  "action",
+  "clientAction",
+  "clientLoader",
+  "loader",
+];
+
 export const REACT_ROUTER_RULE_IDS: readonly string[] = [
   "react-router-csp-nonce-consistency",
   "react-router-descendant-routes-require-splat",

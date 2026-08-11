@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { Diagnostic } from "../types/index.js";
+import type { DeadCodeSummaryCacheStats } from "../types/dead-code.js";
 import { checkDeadCode } from "../check-dead-code.js";
 import { DeadCodeAnalysisFailed, ReactDoctorError } from "../errors.js";
 import { DeadCodeResultCacheEnabled } from "../refs.js";
@@ -33,12 +34,7 @@ interface DeadCodeInput {
    * parsed file counts) when the analysis ran with the incremental store.
    * Not invoked on a whole-result cache hit or when caching is off.
    */
-  readonly onSummaryCacheStats?: (stats: DeadCodeSummaryCacheStatsInput) => void;
-}
-
-interface DeadCodeSummaryCacheStatsInput {
-  readonly hits: number;
-  readonly misses: number;
+  readonly onSummaryCacheStats?: (stats: DeadCodeSummaryCacheStats) => void;
 }
 
 /**

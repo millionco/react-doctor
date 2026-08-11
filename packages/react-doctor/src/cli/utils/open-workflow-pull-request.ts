@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { isPathInsideDirectory, toCanonicalPath } from "@react-doctor/core";
 import { GH_PR_LIST_MAX } from "./constants.js";
 import { detectDefaultBranch } from "./detect-default-branch.js";
 import { isCommandAvailable } from "./is-command-available.js";
@@ -41,6 +42,7 @@ export type NotAttemptedReason =
   | "gh-not-installed"
   | "gh-not-authenticated"
   | "not-a-git-repo"
+  | "workflow-outside-repository"
   | "no-default-branch"
   | "detached-head"
   // The working tree has tracked (staged or unstaged) modifications, which
@@ -51,6 +53,26 @@ export type NotAttemptedReason =
   | "git-add-failed"
   | "git-commit-failed"
   | "git-push-failed";
+
+interface WorkflowRepositoryLocation {
+  readonly repositoryRoot: string;
+  readonly workflowRelativePath: string;
+}
+
+const resolveWorkflowRepositoryLocation = (
+  workflowPath: string,
+  repositoryRoot: string,
+): WorkflowRepositoryLocation | null => {
+  const canonicalWorkflowPath = toCanonicalPath(workflowPath);
+  const canonicalRepositoryRoot = toCanonicalPath(repositoryRoot);
+  if (!isPathInsideDirectory(canonicalWorkflowPath, canonicalRepositoryRoot)) return null;
+  return {
+    repositoryRoot: canonicalRepositoryRoot,
+    workflowRelativePath: toForwardSlashes(
+      path.relative(canonicalRepositoryRoot, canonicalWorkflowPath),
+    ),
+  };
+};
 
 // Tries `react-doctor/add-github-actions` first and appends a compact
 // timestamp suffix if a local branch already exists with that name (avoids
@@ -141,7 +163,7 @@ const hasUnrelatedTrackedChanges = async (
 // Async so the chain no longer blocks the event loop and the caller's `ora`
 // spinner keeps animating through the slow network steps. Each step still
 // runs sequentially via `await` because it depends on the previous one.
-export const openWorkflowPullRequest = async (params: {
+export const openWorkflowPullRequest = async (input: {
   workflowPath: string;
   // Override the commit message / PR title + body. Defaults describe a fresh
   // install; the v1→v2 upgrade flow passes its own copy. The git/`gh` steps,
@@ -160,12 +182,12 @@ export const openWorkflowPullRequest = async (params: {
   run?: CommandRunner;
   checkCommandAvailable?: (command: string) => boolean;
 }): Promise<OpenWorkflowPullRequestResult> => {
-  const workflowPath = path.resolve(params.workflowPath);
-  const commitMessage = params.commitMessage ?? DEFAULT_COMMIT_MESSAGE;
-  const prTitle = params.prTitle ?? DEFAULT_PR_TITLE;
-  const prBody = params.prBody ?? DEFAULT_PR_BODY;
-  const run = params.run ?? runCommand;
-  const checkCommandAvailable = params.checkCommandAvailable ?? isCommandAvailable;
+  const workflowPath = path.resolve(input.workflowPath);
+  const commitMessage = input.commitMessage ?? DEFAULT_COMMIT_MESSAGE;
+  const prTitle = input.prTitle ?? DEFAULT_PR_TITLE;
+  const prBody = input.prBody ?? DEFAULT_PR_BODY;
+  const run = input.run ?? runCommand;
+  const checkCommandAvailable = input.checkCommandAvailable ?? isCommandAvailable;
 
   // Probe from the workflow file's directory so we resolve the repo root
   // even when the CLI was invoked from a sub-package in a monorepo.
@@ -175,11 +197,15 @@ export const openWorkflowPullRequest = async (params: {
     path.dirname(workflowPath),
   );
   if (!repoRootProbe.success) return { status: "not-attempted", reason: "not-a-git-repo" };
-  const cwd = repoRootProbe.stdout;
+  const repositoryLocation = resolveWorkflowRepositoryLocation(workflowPath, repoRootProbe.stdout);
+  if (repositoryLocation === null) {
+    return { status: "not-attempted", reason: "workflow-outside-repository" };
+  }
+  const cwd = repositoryLocation.repositoryRoot;
   // Forward slashes so the `:!` exclude pathspec and `git add` match git's
   // forward-slash-normalized repo paths on Windows (where `path.relative`
   // yields backslashes, which git's magic pathspec won't treat as separators).
-  const workflowRelative = toForwardSlashes(path.relative(cwd, workflowPath));
+  const workflowRelative = repositoryLocation.workflowRelativePath;
 
   if (!checkCommandAvailable("gh")) return { status: "not-attempted", reason: "gh-not-installed" };
   if (!(await run("gh", ["auth", "status"], cwd)).success) {
@@ -205,7 +231,7 @@ export const openWorkflowPullRequest = async (params: {
     return { status: "not-attempted", reason: "working-tree-dirty" };
   }
 
-  const defaultBranch = params.baseBranch ?? (await detectDefaultBranch(cwd, run));
+  const defaultBranch = input.baseBranch ?? (await detectDefaultBranch(cwd, run));
   if (!defaultBranch) return { status: "not-attempted", reason: "no-default-branch" };
 
   const previousBranchProbe = await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], cwd);
@@ -283,18 +309,25 @@ export const openWorkflowPullRequest = async (params: {
 // `"not-attempted"` and the file should still land in their next commit
 // instead of sitting as an orphan untracked path. Returns whether the stage
 // actually happened.
-export const stageWorkflowFile = async (params: {
+export const stageWorkflowFile = async (input: {
   workflowPath: string;
   run?: CommandRunner;
 }): Promise<boolean> => {
-  const workflowPath = path.resolve(params.workflowPath);
-  const run = params.run ?? runCommand;
+  const workflowPath = path.resolve(input.workflowPath);
+  const run = input.run ?? runCommand;
   const repoRootProbe = await run(
     "git",
     ["rev-parse", "--show-toplevel"],
     path.dirname(workflowPath),
   );
   if (!repoRootProbe.success) return false;
-  const workflowRelative = toForwardSlashes(path.relative(repoRootProbe.stdout, workflowPath));
-  return (await run("git", ["add", "--", workflowRelative], repoRootProbe.stdout)).success;
+  const repositoryLocation = resolveWorkflowRepositoryLocation(workflowPath, repoRootProbe.stdout);
+  if (repositoryLocation === null) return false;
+  return (
+    await run(
+      "git",
+      ["add", "--", repositoryLocation.workflowRelativePath],
+      repositoryLocation.repositoryRoot,
+    )
+  ).success;
 };

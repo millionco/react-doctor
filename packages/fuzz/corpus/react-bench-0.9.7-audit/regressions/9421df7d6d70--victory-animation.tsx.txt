@@ -1,0 +1,280 @@
+// rule: effect-needs-cleanup
+// file-path: src/victory-animation/victory-animation.tsx
+// audit-verdict: pass
+// weakness: react-bench-exact-callsite
+// source: React Bench 0.9.11 exhaustive audit 9421df7d6d706e34f416e6576229e00ccb7442d99166744f5f7facd5117b0a81
+import React from "react";
+import * as d3Ease from "victory-vendor/d3-ease";
+import { victoryInterpolator } from "./util";
+import TimerContext from "../victory-util/timer-context";
+
+/**
+ * Single animation object to interpolate
+ */
+export type AnimationStyle = { [key: string]: string | number };
+/**
+ * Animation styles to interpolate
+ */
+
+export type AnimationData = AnimationStyle | AnimationStyle[];
+
+export type AnimationEasing =
+  | "back"
+  | "backIn"
+  | "backOut"
+  | "backInOut"
+  | "bounce"
+  | "bounceIn"
+  | "bounceOut"
+  | "bounceInOut"
+  | "circle"
+  | "circleIn"
+  | "circleOut"
+  | "circleInOut"
+  | "linear"
+  | "linearIn"
+  | "linearOut"
+  | "linearInOut"
+  | "cubic"
+  | "cubicIn"
+  | "cubicOut"
+  | "cubicInOut"
+  | "elastic"
+  | "elasticIn"
+  | "elasticOut"
+  | "elasticInOut"
+  | "exp"
+  | "expIn"
+  | "expOut"
+  | "expInOut"
+  | "poly"
+  | "polyIn"
+  | "polyOut"
+  | "polyInOut"
+  | "quad"
+  | "quadIn"
+  | "quadOut"
+  | "quadInOut"
+  | "sin"
+  | "sinIn"
+  | "sinOut"
+  | "sinInOut";
+
+export interface VictoryAnimationProps {
+  children: (style: AnimationStyle, info: AnimationInfo) => React.ReactElement;
+  duration?: number;
+  easing?: AnimationEasing;
+  delay?: number;
+  onEnd?: () => void;
+  data: AnimationData;
+}
+
+export interface VictoryAnimationState {
+  data: AnimationStyle;
+  animationInfo: AnimationInfo;
+}
+
+export interface AnimationInfo {
+  progress: number;
+  animating: boolean;
+  terminating?: boolean;
+}
+
+export interface VictoryAnimation {
+  context: React.ContextType<typeof TimerContext>;
+}
+
+/** d3-ease changed the naming scheme for ease from "linear" -> "easeLinear" etc. */
+const formatAnimationName = (name: AnimationEasing) => {
+  const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+  return `ease${capitalizedName}`;
+};
+
+const DEFAULT_DURATION = 1000;
+
+/**
+ * The internal state of a single animation run. A new run object is created
+ * every time the animation target changes, so stale closures can detect that
+ * they have been superseded and bail out without rendering or completing.
+ */
+interface AnimationRun {
+  interpolator: (value: number) => AnimationStyle;
+  loopID?: number;
+  timeoutID?: ReturnType<typeof setTimeout>;
+  /** The eased progress of this run, as of the latest frame */
+  progress: number;
+  /** Whether this run has been replaced by a newer one */
+  superseded: boolean;
+}
+
+export const VictoryAnimation = ({
+  duration = DEFAULT_DURATION,
+  easing = "quadInOut",
+  delay = 0,
+  data,
+  children,
+  onEnd,
+}: VictoryAnimationProps) => {
+  const [state, setState] = React.useState<VictoryAnimationState>({
+    data: Array.isArray(data) ? data[0] : data,
+    animationInfo: {
+      progress: 0,
+      animating: false,
+    },
+  });
+
+  const timer = React.useContext(TimerContext).animationTimer;
+
+  // Always read the latest props from within timer callbacks, so that an
+  // in-progress animation adopts new `duration`, `easing`, and `onEnd` values.
+  const latestProps = React.useRef({ duration, easing, delay, onEnd });
+  latestProps.current = { duration, easing, delay, onEnd };
+
+  // The latest rendered (visible) data, used as the starting point when an
+  // animation is interrupted by new data.
+  const currentData = React.useRef<AnimationStyle>(state.data);
+  currentData.current = state.data;
+
+  const queue = React.useRef<AnimationStyle[]>(
+    Array.isArray(data) ? data.slice(1) : [],
+  );
+  const run = React.useRef<AnimationRun | null>(null);
+
+  const stopRun = (runToStop: AnimationRun) => {
+    runToStop.superseded = true;
+    if (runToStop.timeoutID !== undefined) {
+      clearTimeout(runToStop.timeoutID);
+      runToStop.timeoutID = undefined;
+    }
+    if (runToStop.loopID !== undefined) {
+      timer.unsubscribe(runToStop.loopID);
+      runToStop.loopID = undefined;
+    }
+  };
+
+  const functionToBeRunEachFrame = (
+    activeRun: AnimationRun,
+    elapsed: number,
+  ) => {
+    // A superseded run must not render or complete.
+    if (activeRun.superseded || run.current !== activeRun) return;
+
+    const { duration: latestDuration, easing: latestEasing } =
+      latestProps.current;
+    const ease = d3Ease[formatAnimationName(latestEasing)];
+
+    // Step can generate imprecise values, sometimes greater than 1
+    // if this happens set the state to 1 and return, cancelling the timer
+    const step = latestDuration ? elapsed / latestDuration : 1;
+
+    if (step >= 1) {
+      const finalData = activeRun.interpolator(1);
+      activeRun.progress = 1;
+      setState({
+        data: finalData,
+        animationInfo: {
+          progress: 1,
+          animating: false,
+          terminating: true,
+        },
+      });
+      if (activeRun.loopID !== undefined) {
+        timer.unsubscribe(activeRun.loopID);
+        activeRun.loopID = undefined;
+      }
+      queue.current.shift();
+      traverseQueue();
+      return;
+    }
+
+    // If we're not at the end of the timer, set the state by passing
+    // current step value that's transformed by the ease function to the
+    // interpolator, which is cached for performance whenever props are received
+    activeRun.progress = step;
+    setState({
+      data: activeRun.interpolator(ease(step)),
+      animationInfo: {
+        progress: step,
+        animating: step < 1,
+      },
+    });
+  };
+
+  const traverseQueue = () => {
+    if (queue.current.length) {
+      const nextData = queue.current[0];
+
+      const activeRun: AnimationRun = {
+        // Start from the currently visible data so that interrupting an
+        // in-progress animation does not flash the superseded target.
+        interpolator: victoryInterpolator(currentData.current, nextData),
+        progress: 0,
+        superseded: false,
+      };
+      run.current = activeRun;
+
+      const { duration: latestDuration, delay: latestDelay } =
+        latestProps.current;
+      const subscribe = () => {
+        // A superseded run must not start after its delay has elapsed.
+        if (activeRun.superseded || run.current !== activeRun) return;
+        activeRun.loopID = timer.subscribe(
+          (elapsed) => functionToBeRunEachFrame(activeRun, elapsed),
+          latestDuration,
+        );
+      };
+
+      // Reset step to zero
+      if (latestDelay) {
+        activeRun.timeoutID = setTimeout(subscribe, latestDelay);
+      } else {
+        subscribe();
+      }
+    } else if (latestProps.current.onEnd) {
+      // Only the latest `onEnd` callback is invoked when the queue completes.
+      latestProps.current.onEnd();
+    }
+  };
+
+  React.useEffect(() => {
+    // Length check prevents us from triggering `onEnd` in `traverseQueue`.
+    if (queue.current.length) {
+      traverseQueue();
+    }
+
+    // Clean up the animation loop on unmount so that completion cannot fire
+    // afterward.
+    return () => {
+      if (run.current) {
+        stopRun(run.current);
+        run.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const isFirstRender = React.useRef(true);
+
+  React.useEffect(() => {
+    // Skip the initial render; the mount effect above already started the
+    // initial queue.
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    // Cancel the existing run, if any. The superseded run must not render or
+    // complete later.
+    if (run.current) {
+      stopRun(run.current);
+      run.current = null;
+    }
+    // Set the tween queue to the new data. The replacement run continues from
+    // the currently visible style toward the new data.
+    queue.current = Array.isArray(data) ? data.slice() : [data];
+    // Start traversing the tween queue
+    traverseQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  return children(state.data, state.animationInfo);
+};

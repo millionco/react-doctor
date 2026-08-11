@@ -24,7 +24,7 @@ import { shouldBlockCi } from "./should-block-ci.js";
 import { toCategoryKey } from "./to-category-key.js";
 import { toSpanAttributes } from "./to-span-attributes.js";
 import { withNamespace } from "./with-namespace.js";
-import type { SentryRootSpan } from "./with-sentry-run-span.js";
+import type { RunRootSpan } from "./with-run-span.js";
 
 // A tag-like map: `null`/`undefined` denote absent signals and are dropped by
 // `toSpanAttributes`.
@@ -120,6 +120,25 @@ export interface RunEventInput {
   /** Present only when the scan threw. */
   readonly error?: unknown;
 }
+
+export interface RunEventConfig extends Pick<
+  RunEventInput,
+  | "scope"
+  | "parallel"
+  | "workerCount"
+  | "maxDurationMs"
+  | "lint"
+  | "deadCode"
+  | "supplyChain"
+  | "scoreOnly"
+  | "noScore"
+  | "respectInlineDisables"
+  | "showWarnings"
+  | "usedOutputDir"
+  | "ignoredTagCount"
+  | "hasCustomConfig"
+  | "userConfig"
+> {}
 
 const readEnvBoolean = (name: string): boolean | null => {
   const value = process.env[name];
@@ -544,9 +563,11 @@ export const buildRunEventAttributes = (
  * when tracing is off (no `rootSpan`) and swallow-on-throw, so telemetry can
  * never break the run.
  */
-export const recordRunEvent = (rootSpan: SentryRootSpan, input: RunEventInput): void => {
+export const recordRunEvent = (rootSpan: RunRootSpan, input: RunEventInput): void => {
   if (!rootSpan) return;
   try {
-    rootSpan.setAttributes(buildRunEventAttributes(input));
+    for (const [key, value] of Object.entries(buildRunEventAttributes(input))) {
+      rootSpan.attribute(key, value);
+    }
   } catch {}
 };

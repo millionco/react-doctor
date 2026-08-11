@@ -7,7 +7,7 @@ import { type Preference, readPreference, writePreference } from "./cli-lifecycl
 // per-repo setting — so the next install pre-selects the same picks anywhere.
 // Mirrors the Vercel `skills` CLI's `lastSelectedAgents` lock. The Preference
 // primitive stores one string, so the list is comma-encoded.
-export const INSTALL_AGENTS_PREFERENCE: Preference = {
+const INSTALL_AGENTS_PREFERENCE: Preference = {
   id: INSTALL_AGENTS_PREFERENCE_ID,
   scope: "global",
 };

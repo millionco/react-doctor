@@ -13,6 +13,7 @@ import {
 import * as exitGracefullyModule from "../../src/cli/utils/exit-gracefully.js";
 import * as launchAgent from "../../src/cli/utils/launch-agent.js";
 import * as openUrlModule from "../../src/cli/utils/open-url.js";
+import * as writeDiagnosticsDirectoryModule from "../../src/cli/utils/write-diagnostics-directory.js";
 import { ScanApp } from "../../src/cli/ink/scan-app.js";
 import { createScanStore } from "../../src/cli/ink/scan-store.js";
 import { severityVariant } from "../../src/cli/ink/lib/severity-variants.js";
@@ -1163,15 +1164,16 @@ describe("ScanApp", () => {
     stdin.write("\u001B");
     await flush();
     expect(onAddToCi).not.toHaveBeenCalled();
-    expect(lastFrame()).toContain("  Choose an agent");
+    expect(lastFrame()).toContain("  Choose how to continue");
     expect(lastFrame()).toContain(`${figures.pointer} Codex`);
     expect(lastFrame()).toContain("Cursor");
+    expect(lastFrame()).toContain("Copy prompt");
 
     stdin.write("\r");
     await flush();
     expect(onHandoff).toHaveBeenCalledOnce();
     const request = onHandoff.mock.calls[0]?.[0];
-    expect(request?.agentId).toBe("codex");
+    expect(request?.destination).toBe("codex");
     expect(request?.prompt).not.toContain("First, configure React Doctor in GitHub Actions");
     unmount();
   });
@@ -1231,6 +1233,50 @@ describe("ScanApp", () => {
       "First, configure React Doctor in GitHub Actions",
     );
     expect(onAddToCi).toHaveBeenCalledOnce();
+    unmount();
+  });
+
+  it("offers the full prompt for copying without a launchable agent", async () => {
+    const onHandoff = vi.fn();
+    const writeDiagnosticsDirectory = vi
+      .spyOn(writeDiagnosticsDirectoryModule, "writeDiagnosticsDirectory")
+      .mockReturnValue("/tmp/react-doctor-diagnostics");
+    const store = createScanStore();
+    store.setReport({
+      diagnostics: [makeDiagnostic({ rule: "rules-of-hooks", severity: "error" })],
+      score: SCORE,
+      projectedScore: null,
+      projectName: "demo-app",
+      rootDirectory: "/tmp/demo-app",
+      scannedFileCount: 1,
+      elapsedMilliseconds: 10,
+      isOffline: true,
+      noScoreMessage: "Score unavailable.",
+    });
+
+    const { lastFrame, stdin, unmount } = render(
+      <ScanApp store={store} launchableAgents={[]} onHandoff={onHandoff} />,
+    );
+    await flush();
+    expect(writeDiagnosticsDirectory).not.toHaveBeenCalled();
+
+    stdin.write("j");
+    await flush();
+    expect(lastFrame()).toContain(`${figures.pointer} Hand off to an agent`);
+    stdin.write("\r");
+    await flush();
+
+    expect(writeDiagnosticsDirectory).not.toHaveBeenCalled();
+    expect(lastFrame()).toContain("Choose how to continue");
+    expect(lastFrame()).toContain(`${figures.pointer} Copy prompt`);
+    expect(lastFrame()).toContain("Paste into any agent or edit it first");
+    stdin.write("\r");
+    await flush();
+
+    expect(onHandoff).toHaveBeenCalledOnce();
+    expect(writeDiagnosticsDirectory).toHaveBeenCalledOnce();
+    expect(onHandoff.mock.calls[0]?.[0].destination).toBe("clipboard");
+    expect(onHandoff.mock.calls[0]?.[0].prompt).toContain("react-doctor/rules-of-hooks");
     unmount();
   });
 });

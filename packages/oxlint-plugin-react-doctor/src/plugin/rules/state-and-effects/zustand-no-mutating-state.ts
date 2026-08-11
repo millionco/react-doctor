@@ -91,6 +91,11 @@ interface ConditionalNotifierGroupWithStatementIndex {
   statementIndex: number;
 }
 
+interface ObjectTargetPropertyDispositionHandlers {
+  propertyValueDisposition: (propertyValue: EsTreeNode, propertyName: string) => boolean | null;
+  spreadElementDisposition: (spreadElement: EsTreeNodeOfType<"SpreadElement">) => boolean | null;
+}
+
 const findIdentifierParameter = (
   parameter: EsTreeNode | undefined,
 ): EsTreeNodeOfType<"Identifier"> | null => {
@@ -536,6 +541,34 @@ const isProvenFreshReplacementExpression = (
   );
 };
 
+const objectTargetPropertyDisposition = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+  targetPath: readonly string[],
+  isPartialUpdateRoot: boolean,
+  handlers: ObjectTargetPropertyDispositionHandlers,
+): boolean | null => {
+  const propertyName = targetPath[0];
+  if (!propertyName) return true;
+  let disposition: boolean | null = !isPartialUpdateRoot;
+  for (const property of objectExpression.properties) {
+    if (isNodeOfType(property, "SpreadElement")) {
+      disposition = handlers.spreadElementDisposition(property);
+      continue;
+    }
+    if (
+      !isNodeOfType(property, "Property") ||
+      getStaticPropertyKeyName(property) !== propertyName
+    ) {
+      continue;
+    }
+    disposition = handlers.propertyValueDisposition(
+      stripParenExpression(property.value),
+      propertyName,
+    );
+  }
+  return disposition;
+};
+
 const objectTargetReplacementDisposition = (
   objectExpression: EsTreeNodeOfType<"ObjectExpression">,
   targetPath: readonly string[],
@@ -546,52 +579,37 @@ const objectTargetReplacementDisposition = (
   context: RuleContext,
   ancestorPath: readonly string[] = [],
 ): boolean | null => {
-  const propertyName = targetPath[0];
-  if (!propertyName) return true;
-  let disposition: boolean | null = isPartialUpdateRoot ? false : true;
-  for (const property of objectExpression.properties) {
-    if (isNodeOfType(property, "SpreadElement")) {
-      const spreadKey = resolveExpressionKey(property.argument, context);
-      const spreadPath = staticPropertyPathForExpression(property.argument, context);
-      disposition =
-        spreadKey === ancestorKey || staticPathPreservesTarget(spreadPath, ancestorPath)
-          ? false
-          : null;
-      continue;
-    }
-    if (!isNodeOfType(property, "Property")) continue;
-    if (getStaticPropertyKeyName(property) !== propertyName) continue;
-    if (targetPath.length === 1) {
-      if (expressionPreservesTarget(property.value, targetKey, mutationNode, context)) {
-        disposition = false;
-      } else {
-        disposition = isProvenFreshReplacementExpression(property.value, targetKey, context)
-          ? true
-          : null;
+  return objectTargetPropertyDisposition(objectExpression, targetPath, isPartialUpdateRoot, {
+    propertyValueDisposition: (propertyValue, propertyName) => {
+      if (targetPath.length === 1) {
+        if (expressionPreservesTarget(propertyValue, targetKey, mutationNode, context)) {
+          return false;
+        }
+        return isProvenFreshReplacementExpression(propertyValue, targetKey, context) ? true : null;
       }
-      continue;
-    }
-    const propertyValue = stripParenExpression(property.value);
-    if (isNodeOfType(propertyValue, "ObjectExpression")) {
-      disposition = objectTargetReplacementDisposition(
-        propertyValue,
-        targetPath.slice(1),
-        targetKey,
-        `${ancestorKey}.${propertyName}`,
-        mutationNode,
-        false,
-        context,
-        [...ancestorPath, propertyName],
-      );
-    } else if (expressionKeyPreservesTarget(propertyValue, targetKey, context)) {
-      disposition = false;
-    } else {
-      disposition = isProvenFreshReplacementExpression(propertyValue, targetKey, context)
-        ? true
+      if (isNodeOfType(propertyValue, "ObjectExpression")) {
+        return objectTargetReplacementDisposition(
+          propertyValue,
+          targetPath.slice(1),
+          targetKey,
+          `${ancestorKey}.${propertyName}`,
+          mutationNode,
+          false,
+          context,
+          [...ancestorPath, propertyName],
+        );
+      }
+      if (expressionKeyPreservesTarget(propertyValue, targetKey, context)) return false;
+      return isProvenFreshReplacementExpression(propertyValue, targetKey, context) ? true : null;
+    },
+    spreadElementDisposition: (spreadElement) => {
+      const spreadKey = resolveExpressionKey(spreadElement.argument, context);
+      const spreadPath = staticPropertyPathForExpression(spreadElement.argument, context);
+      return spreadKey === ancestorKey || staticPathPreservesTarget(spreadPath, ancestorPath)
+        ? false
         : null;
-    }
-  }
-  return disposition;
+    },
+  });
 };
 
 const staticPathPreservesTarget = (
@@ -611,39 +629,29 @@ const objectTargetPathReplacementDisposition = (
   context: RuleContext,
   ancestorPath: readonly string[] = [],
 ): boolean | null => {
-  const propertyName = targetPath[0];
-  if (!propertyName) return true;
-  let disposition: boolean | null = isPartialUpdateRoot ? false : true;
-  for (const property of objectExpression.properties) {
-    if (isNodeOfType(property, "SpreadElement")) {
-      disposition = null;
-      continue;
-    }
-    if (!isNodeOfType(property, "Property")) continue;
-    if (getStaticPropertyKeyName(property) !== propertyName) continue;
-    const propertyValue = stripParenExpression(property.value);
-    if (targetPath.length > 1 && isNodeOfType(propertyValue, "ObjectExpression")) {
-      disposition = objectTargetPathReplacementDisposition(
-        propertyValue,
-        targetPath.slice(1),
-        false,
-        context,
-        [...ancestorPath, propertyName],
-      );
-      continue;
-    }
-    if (
-      staticPathPreservesTarget(staticPropertyPathForExpression(propertyValue, context), [
-        ...ancestorPath,
-        ...targetPath,
-      ])
-    ) {
-      disposition = false;
-      continue;
-    }
-    disposition = isProvenFreshReplacementExpression(propertyValue, "", context) ? true : null;
-  }
-  return disposition;
+  return objectTargetPropertyDisposition(objectExpression, targetPath, isPartialUpdateRoot, {
+    propertyValueDisposition: (propertyValue, propertyName) => {
+      if (targetPath.length > 1 && isNodeOfType(propertyValue, "ObjectExpression")) {
+        return objectTargetPathReplacementDisposition(
+          propertyValue,
+          targetPath.slice(1),
+          false,
+          context,
+          [...ancestorPath, propertyName],
+        );
+      }
+      if (
+        staticPathPreservesTarget(staticPropertyPathForExpression(propertyValue, context), [
+          ...ancestorPath,
+          ...targetPath,
+        ])
+      ) {
+        return false;
+      }
+      return isProvenFreshReplacementExpression(propertyValue, "", context) ? true : null;
+    },
+    spreadElementDisposition: () => null,
+  });
 };
 
 const objectExpressionPublishesSymbolAtPath = (

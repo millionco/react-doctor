@@ -206,7 +206,7 @@ export const fuzzRuleWithStats = (
     const priorityRandom = createSeededRandom(baseSeed);
     const priorityOutcome = checkProgram(
       priorityCorpusEntry.code,
-      priorityCorpusEntry.relativePath,
+      priorityCorpusEntry.sourcePath ?? priorityCorpusEntry.relativePath,
       baseSeed,
       0,
       "priority corpus seed",
@@ -220,7 +220,7 @@ export const fuzzRuleWithStats = (
         const descendantCode = mutateFuzzProgram(priorityCorpusEntry.code, priorityRandom, 1);
         checkProgram(
           descendantCode,
-          priorityCorpusEntry.relativePath,
+          priorityCorpusEntry.sourcePath ?? priorityCorpusEntry.relativePath,
           baseSeed,
           0,
           `priority corpus descendant ${descendant}`,
@@ -233,7 +233,7 @@ export const fuzzRuleWithStats = (
     if (!corpusEntry.verdict || !corpusEntry.ruleIds?.includes(ruleId)) continue;
     const corpusOutcome = checkProgram(
       corpusEntry.code,
-      corpusEntry.relativePath,
+      corpusEntry.sourcePath ?? corpusEntry.relativePath,
       baseSeed,
       0,
       "declared corpus verdict",
@@ -275,7 +275,7 @@ export const fuzzRuleWithStats = (
         // the file as it really lives; synthetic/crossover programs keep
         // the rotated pool filename for path-gating coverage.
         code = corpusEntry.code;
-        filename = corpusEntry.relativePath;
+        filename = corpusEntry.sourcePath ?? corpusEntry.relativePath;
       }
       sections = undefined;
     }

@@ -1,5 +1,3 @@
-import { indentMultilineText } from "./indent-multiline-text.js";
-
 interface WrapTextOptions {
   /**
    * When `true` (the default), a single word longer than `width` is
@@ -54,13 +52,4 @@ export const wrapTextToWidth = (
   if (width <= 0) return text.split("\n");
   const breakLongWords = options.breakLongWords ?? true;
   return text.split("\n").flatMap((lineText) => wrapLine(lineText, width, breakLongWords));
-};
-
-export const wrapIndentedText = (text: string, linePrefix: string, width: number): string => {
-  const contentWidth = width - linePrefix.length;
-  if (contentWidth <= 0) return indentMultilineText(text, linePrefix);
-
-  return wrapTextToWidth(text, contentWidth)
-    .map((lineText) => `${linePrefix}${lineText}`)
-    .join("\n");
 };

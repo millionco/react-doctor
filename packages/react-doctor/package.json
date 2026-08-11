@@ -1,6 +1,6 @@
 {
   "name": "react-doctor",
-  "version": "0.9.5",
+  "version": "0.9.11",
   "description": "Your agent writes bad React. This catches it",
   "keywords": [
     "accessibility",
@@ -70,7 +70,7 @@
     "magicast": "^0.5.3",
     "oxc-parser": "^0.132.0",
     "oxc-resolver": "^11.24.2",
-    "oxlint": ">=1.76.0 <1.77.0",
+    "oxlint": ">=1.77.0 <1.78.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "prompts": "^2.4.2",
     "typescript": ">=5.0.4 <6",
@@ -87,7 +87,6 @@
     "@types/babel__code-frame": "^7.27.0",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.14",
-    "@xterm/headless": "^6.0.0",
     "commander": "^14.0.3",
     "ink": "^7.1.0",
     "ink-spinner": "^5.0.0",

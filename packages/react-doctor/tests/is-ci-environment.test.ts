@@ -11,7 +11,6 @@ import {
   isCiOrCodingAgentEnvironment,
   isCodingAgentEnvironment,
   isOfficialGithubAction,
-  isPullRequestCiEvent,
 } from "../src/cli/utils/is-ci-environment.js";
 
 const ENVIRONMENT_VARIABLES = [
@@ -216,21 +215,14 @@ describe("GitHub Actions CI detectors", () => {
     expect(isOfficialGithubAction()).toBe(true);
   });
 
-  it("reads the GitHub event name and pull-request signal", () => {
+  it("reads the GitHub event name", () => {
     expect(detectCiEventName()).toBeNull();
-    expect(isPullRequestCiEvent()).toBe(false);
 
     process.env.GITHUB_EVENT_NAME = "pull_request";
     expect(detectCiEventName()).toBe("pull_request");
-    expect(isPullRequestCiEvent()).toBe(true);
 
     process.env.GITHUB_EVENT_NAME = "push";
-    expect(isPullRequestCiEvent()).toBe(false);
-  });
-
-  it("treats pull_request_target as a pull request event", () => {
-    process.env.GITHUB_EVENT_NAME = "pull_request_target";
-    expect(isPullRequestCiEvent()).toBe(true);
+    expect(detectCiEventName()).toBe("push");
   });
 
   it("reads the runner OS when present", () => {

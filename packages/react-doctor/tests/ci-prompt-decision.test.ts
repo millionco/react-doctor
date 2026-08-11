@@ -2,11 +2,8 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import {
-  getCiPromptConfigPath,
-  hasHandledCiPrompt,
-  recordCiPromptDecision,
-} from "../src/cli/utils/ci-prompt-decision.js";
+import { getCliStatePath } from "../src/cli/utils/cli-state-store.js";
+import { hasHandledCiPrompt, recordCiPromptDecision } from "../src/cli/utils/ci-prompt-decision.js";
 
 describe("ci prompt decision state", () => {
   let configRoot: string;
@@ -44,7 +41,7 @@ describe("ci prompt decision state", () => {
 
   it("stores the decision as a ci-pitch event in the shared react-doctor config file", () => {
     recordCiPromptDecision("/repo/a", "declined", { cwd: configRoot });
-    const configPath = getCiPromptConfigPath({ cwd: configRoot });
+    const configPath = getCliStatePath({ cwd: configRoot });
     const stored = JSON.parse(fs.readFileSync(configPath, "utf8"));
     const records = Object.values(stored.projects)
       .map(

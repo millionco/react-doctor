@@ -1,21 +1,8 @@
-import os from "node:os";
 import { DEAD_CODE_WORKER_MEM_BUDGET_BYTES } from "../constants.js";
-import { readCgroupMemoryLimitBytes } from "./read-cgroup-memory-limit-bytes.js";
-
-export interface DeadCodeConcurrencyFacts {
-  /** `os.availableParallelism()` — cgroup-CPU-aware on the supported Node range. */
-  readonly availableCores: number;
-  /** `os.totalmem()` — host total, floored by `cgroupMemoryLimitBytes`. */
-  readonly totalMemoryBytes: number;
-  /** The cgroup memory limit, or `undefined` on bare metal. */
-  readonly cgroupMemoryLimitBytes: number | undefined;
-}
-
-const readSystemFacts = (): DeadCodeConcurrencyFacts => ({
-  availableCores: os.availableParallelism(),
-  totalMemoryBytes: os.totalmem(),
-  cgroupMemoryLimitBytes: readCgroupMemoryLimitBytes(),
-});
+import {
+  type SystemConcurrencyFacts,
+  readSystemConcurrencyFacts,
+} from "./read-system-concurrency-facts.js";
 
 /**
  * How many real deslop dead-code child processes may run at once, across the
@@ -34,7 +21,7 @@ const readSystemFacts = (): DeadCodeConcurrencyFacts => ({
  * heavier dead-code worker. `facts` is injectable for tests.
  */
 export const resolveDeadCodeConcurrency = (
-  facts: DeadCodeConcurrencyFacts = readSystemFacts(),
+  facts: SystemConcurrencyFacts = readSystemConcurrencyFacts(),
 ): number => {
   const availableMemoryBytes = Math.min(
     facts.totalMemoryBytes,

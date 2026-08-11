@@ -38,7 +38,9 @@ describe("calculateScore", () => {
     const result = await calculateScore(sampleDiagnostics);
 
     expect(result).toBeNull();
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "[react-doctor] Score API unreachable (network unavailable)",
+    );
   });
 
   it("returns null and logs a warning when the API responds non-2xx", async () => {
@@ -50,7 +52,9 @@ describe("calculateScore", () => {
     const result = await calculateScore(sampleDiagnostics);
 
     expect(result).toBeNull();
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "[react-doctor] Score API returned 500 Internal Server Error",
+    );
   });
 
   it("parses a well-formed API response and sends score metadata", async () => {
@@ -81,8 +85,7 @@ describe("calculateScore", () => {
     });
 
     expect(result).toEqual(apiScoreResponse);
-    const headerRecord = capturedHeaders as Record<string, string> | undefined;
-    expect(headerRecord?.["Content-Encoding"]).toBe("gzip");
+    expect(new Headers(capturedHeaders).get("Content-Encoding")).toBe("gzip");
     const compressedBytes = capturedBody as Uint8Array;
     expect(compressedBytes).toBeInstanceOf(Uint8Array);
     const decompressedJson = gunzipSync(compressedBytes).toString("utf8");

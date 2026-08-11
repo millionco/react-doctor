@@ -1,5 +1,5 @@
 import type { ChangedFileLineRanges } from "@react-doctor/core";
-import type { ReactDoctorInspectOptions } from "../../inspect.js";
+import type { ReactDoctorInspectOptions } from "../../inspect-options.js";
 import { projectManifestChanged } from "./project-manifest-changed.js";
 import {
   resolveProjectChangedLineRanges,

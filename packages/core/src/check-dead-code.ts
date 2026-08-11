@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Diagnostic } from "./types/index.js";
+import type { DeadCodeSummaryCacheStats } from "./types/dead-code.js";
 import { collectDeadCodePatterns } from "./dead-code/collect-dead-code-patterns.js";
 import {
   collectAnalyzedFileStats,
@@ -89,11 +90,6 @@ interface CheckDeadCodeOptions {
    * orchestrator's telemetry distinguishes "no cache" from a 0% hit rate.
    */
   readonly onSummaryCacheStats?: (stats: DeadCodeSummaryCacheStats) => void;
-}
-
-interface DeadCodeSummaryCacheStats {
-  readonly hits: number;
-  readonly misses: number;
 }
 
 interface DeadCodeWorkerInput {

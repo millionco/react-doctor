@@ -11,7 +11,8 @@ export const activeScanAbortRegistry: ActiveScanAbortRegistry = {
     return () => activeScanAbortControllers.delete(controller);
   },
   abortAll: () => {
-    for (const controller of activeScanAbortControllers) controller.abort();
+    const controllers = [...activeScanAbortControllers];
     activeScanAbortControllers.clear();
+    for (const controller of controllers) controller.abort();
   },
 };

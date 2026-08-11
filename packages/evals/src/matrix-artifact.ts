@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createWriteStream } from "node:fs";
 import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { finished } from "node:stream/promises";
@@ -13,6 +13,7 @@ import type {
   MatrixBaseArtifactBinding,
 } from "./utils/matrix-base-artifact-binding.js";
 import { materializeMatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
+import { hashFileSha256 } from "./utils/hash-file-sha256.js";
 import { serializeNdjsonRecord } from "./utils/serialize-ndjson-record.js";
 import { writeWritableContents } from "./utils/write-writable-contents.js";
 
@@ -24,16 +25,8 @@ export interface MatrixArtifactProvenance {
   expectedProjectCount: number;
   recordCount: number;
   failedRecordCount: number;
-  artifact: {
-    path: string;
-    sha256: string;
-    byteLength: number;
-  };
-  corpusManifest: {
-    path: string;
-    sha256: string;
-    byteLength: number;
-  };
+  artifact: MatrixArtifactFile;
+  corpusManifest: MatrixArtifactFile;
   descriptorSha256: string;
   impactManifestSha256: string;
   rulesSha256: string;
@@ -42,17 +35,17 @@ export interface MatrixArtifactProvenance {
   evaluation?: EvaluationProvenance;
 }
 
+interface MatrixArtifactFile {
+  path: string;
+  sha256: string;
+  byteLength: number;
+}
+
 export interface MatrixArtifactWriter {
   write: (record: CorpusEvaluationRecord) => Promise<void>;
   finalize: (baseArtifact?: MatrixBaseArtifactBinding) => Promise<MatrixArtifactProvenance>;
   abort: () => Promise<void>;
 }
-
-const hashFile = async (filePath: string): Promise<string> => {
-  const hasher = createHash("sha256");
-  for await (const chunk of createReadStream(filePath)) hasher.update(chunk);
-  return hasher.digest("hex");
-};
 
 interface RecordSpool {
   write: (record: CorpusEvaluationRecord) => Promise<void>;
@@ -195,7 +188,7 @@ export const createMatrixArtifactWriter = async ({
       const [candidateStats, corpusManifestStats, copiedCorpusManifestSha256] = await Promise.all([
         stat(candidatePath),
         stat(corpusManifestPath),
-        hashFile(corpusManifestPath),
+        hashFileSha256(corpusManifestPath),
       ]);
       if (copiedCorpusManifestSha256 !== corpusManifestSha256) {
         throw new Error("Matrix corpus manifest changed before artifact finalization");
@@ -221,7 +214,7 @@ export const createMatrixArtifactWriter = async ({
         failedRecordCount,
         artifact: {
           path: "candidate.ndjson",
-          sha256: await hashFile(candidatePath),
+          sha256: await hashFileSha256(candidatePath),
           byteLength: candidateStats.size,
         },
         corpusManifest: {
@@ -231,7 +224,7 @@ export const createMatrixArtifactWriter = async ({
         },
         descriptorSha256: treatment.descriptorSha256,
         impactManifestSha256: treatment.descriptor.impactManifestSha256,
-        rulesSha256: await hashFile(rulesPath),
+        rulesSha256: await hashFileSha256(rulesPath),
         baseArtifact: materializedBaseArtifact,
         ruleKeys: treatment.ruleKeys,
         evaluation,

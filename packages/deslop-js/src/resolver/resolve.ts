@@ -1051,7 +1051,7 @@ export const createResolver = (
     const cached = resolveResultCache.get(cacheKey);
     if (cached) return cached;
 
-    if (isBuiltinModule(cleanedSpecifier)) {
+    if (isPlatformBuiltinOrVirtualSpecifier(cleanedSpecifier)) {
       const resolvedResult: ResolvedImport = {
         resolvedPath: undefined,
         isExternal: true,
@@ -1321,9 +1321,6 @@ const stripJsonComments = (content: string): string => {
 
   return result.replace(/,(\s*[}\]])/g, "$1");
 };
-
-const isBuiltinModule = (specifier: string): boolean =>
-  isPlatformBuiltinOrVirtualSpecifier(specifier);
 
 const isBareSpecifier = (specifier: string): boolean =>
   !specifier.startsWith(".") && !specifier.startsWith("/");

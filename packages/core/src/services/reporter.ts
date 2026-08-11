@@ -54,26 +54,21 @@ export class Reporter extends Context.Service<
     ),
   ).pipe(Layer.provideMerge(ReporterCapture.layer));
 
-  /**
-   * Append-only NDJSON reporter. Schema-encodes each diagnostic at
-   * the wire boundary so the eval harness reads back via the same
-   * `Diagnostic` schema.
-   */
   static readonly layerNdjson = (filePath: string): Layer.Layer<Reporter> =>
     Layer.effect(
       Reporter,
       Effect.sync(() => {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        const handle = fs.openSync(filePath, "a");
-        const encode = Schema.encodeUnknownSync(Diagnostic);
+        const fileHandle = fs.openSync(filePath, "a");
+        const encodeDiagnostic = Schema.encodeUnknownSync(Diagnostic);
 
         const emit = (diagnostic: Diagnostic): Effect.Effect<void> =>
           Effect.sync(() => {
-            fs.writeSync(handle, `${JSON.stringify(encode(diagnostic))}\n`);
+            fs.writeSync(fileHandle, `${JSON.stringify(encodeDiagnostic(diagnostic))}\n`);
           });
 
         const finalize = Effect.sync(() => {
-          fs.closeSync(handle);
+          fs.closeSync(fileHandle);
         });
 
         return Reporter.of({ emit, finalize });

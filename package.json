@@ -37,6 +37,9 @@
     "smoke:tty-prompt": "python3 scripts/smoke-tty-prompt.py",
     "fn-mining": "tsx scripts/fn-mining/run-fn-mining.ts"
   },
+  "dependencies": {
+    "effect": "4.0.0-beta.102"
+  },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
@@ -64,7 +67,7 @@
       "unrs-resolver"
     ],
     "overrides": {
-      "oxlint": ">=1.76.0 <1.77.0",
+      "oxlint": ">=1.77.0 <1.78.0",
       "oxlint-tsgolint": "^7.0.2001"
     }
   }

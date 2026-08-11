@@ -377,5 +377,3 @@ export const resetTsconfigAliasCaches = (): void => {
   configByFilePath.clear();
   nearestTsconfigByDirectory.clear();
 };
-
-export const __clearTsconfigAliasCacheForTests = resetTsconfigAliasCaches;

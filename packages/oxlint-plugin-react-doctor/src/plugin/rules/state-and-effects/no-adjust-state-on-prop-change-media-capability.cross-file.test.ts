@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { __clearParseSourceFileCacheForTests } from "../../utils/parse-source-file.js";
-import { __clearTsconfigAliasCacheForTests } from "../../utils/resolve-tsconfig-alias.js";
+import { resetTsconfigAliasCaches } from "../../utils/resolve-tsconfig-alias.js";
 import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 
 let temporaryDirectory: string;
@@ -12,7 +12,7 @@ let temporaryDirectory: string;
 beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "media-capability-helper-"));
   __clearParseSourceFileCacheForTests();
-  __clearTsconfigAliasCacheForTests();
+  resetTsconfigAliasCaches();
 });
 
 afterEach(() => {

@@ -261,9 +261,6 @@ const getTailwindPaddingResolution = (tokens: string[]): TailwindPaddingResoluti
   return { minimumImportantPaddingPx, minimumPaddingPx };
 };
 
-const getTailwindUtilityResolution = (tokens: string[], predicate: (utility: string) => boolean) =>
-  resolveEffectiveTailwindClassNameToken(tokens, predicate);
-
 export const noCrampedContainerPadding = defineRule({
   id: "no-cramped-container-padding",
   title: "Bounded text container has cramped padding",
@@ -300,13 +297,13 @@ export const noCrampedContainerPadding = defineRule({
       if (classNameValue && hasCapabilityOrUnspecified(context.settings, "tailwind")) {
         const tokens = getUnvariantClassNameTokensWithImportantModifiers(classNameValue);
         const paddingResolution = getTailwindPaddingResolution(tokens);
-        const backgroundResolution = getTailwindUtilityResolution(tokens, (utility) =>
+        const backgroundResolution = resolveEffectiveTailwindClassNameToken(tokens, (utility) =>
           TAILWIND_BACKGROUND_COLOR_PATTERN.test(utility),
         );
-        const borderResolution = getTailwindUtilityResolution(tokens, (utility) =>
+        const borderResolution = resolveEffectiveTailwindClassNameToken(tokens, (utility) =>
           TAILWIND_BORDER_GEOMETRY_PATTERN.test(utility),
         );
-        const shadowResolution = getTailwindUtilityResolution(tokens, (utility) =>
+        const shadowResolution = resolveEffectiveTailwindClassNameToken(tokens, (utility) =>
           TAILWIND_SHADOW_GEOMETRY_PATTERN.test(utility),
         );
         const isBackgroundProtected =

@@ -42,11 +42,12 @@ const renderStatus = (item: vscode.StatusBarItem, status: ServerStatusParams): v
 /** Opts into the server's `experimental/serverStatus` notification. */
 const createServerStatusFeature = (): StaticFeature => ({
   fillClientCapabilities(capabilities: ClientCapabilities) {
-    const experimental = (capabilities.experimental ?? (capabilities.experimental = {})) as Record<
-      string,
-      unknown
-    >;
-    experimental.serverStatusNotification = true;
+    const experimental =
+      typeof capabilities.experimental === "object" && capabilities.experimental !== null
+        ? capabilities.experimental
+        : {};
+    Reflect.set(experimental, "serverStatusNotification", true);
+    capabilities.experimental = experimental;
   },
   initialize() {},
   getState(): FeatureState {

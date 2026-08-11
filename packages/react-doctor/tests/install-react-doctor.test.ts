@@ -407,7 +407,7 @@ describe("runInstallReactDoctor", () => {
       installDependencyRunner: (input) => {
         dependencyInstallCalls.push(input);
         throw Object.assign(new Error("pnpm add failed"), {
-          stderr: "ERR_PNPM_TRUST_DOWNGRADE  High-risk trust downgrade for effect@4.0.0-beta.70",
+          stderr: "ERR_PNPM_TRUST_DOWNGRADE  High-risk trust downgrade for effect@4.0.0-beta.102",
         });
       },
     });

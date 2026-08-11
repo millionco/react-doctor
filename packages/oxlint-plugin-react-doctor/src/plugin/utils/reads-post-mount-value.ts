@@ -2,6 +2,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { findProgramRoot } from "./find-program-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isPropertyNamePosition } from "./is-property-name-position.js";
 import { walkAst } from "./walk-ast.js";
 
 // DOM/layout reads + globals that are NOT knowable at render time. A value
@@ -14,7 +15,7 @@ import { walkAst } from "./walk-ast.js";
 //
 // Unambiguous DOM API method names: these never appear on plain data objects,
 // so a bare name match is safe.
-export const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
+const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "getBoundingClientRect",
   "getComputedStyle",
   "getElementById",
@@ -176,33 +177,6 @@ export const isPostMountMemberRead = (node: EsTreeNode): boolean => {
   if (DOM_QUERY_MEMBER_NAMES.has(memberName)) return true;
   if (!LAYOUT_MEASUREMENT_MEMBER_NAMES.has(memberName)) return false;
   return isRefLikeReceiver(node.object as EsTreeNode);
-};
-
-// A member read that yields a live measurement VALUE. Layout members measure
-// as plain property reads (`ref.current.scrollHeight`), but DOM query members
-// are METHODS — they only measure when invoked (`window.matchMedia("...")`).
-// A bare method reference (`!!window.matchMedia`) is render-time-knowable, so
-// it does not justify deferring state init to a mount effect.
-export const isMeasurementMemberRead = (node: EsTreeNode): boolean => {
-  if (!isPostMountMemberRead(node)) return false;
-  if (!isNodeOfType(node, "MemberExpression") || !isNodeOfType(node.property, "Identifier")) {
-    return false;
-  }
-  if (!DOM_QUERY_MEMBER_NAMES.has(node.property.name)) return true;
-  const parent = node.parent;
-  return Boolean(parent && isNodeOfType(parent, "CallExpression") && parent.callee === node);
-};
-
-const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (!parent) return false;
-  if (isNodeOfType(parent, "MemberExpression")) {
-    return parent.property === identifier && !parent.computed;
-  }
-  if (isNodeOfType(parent, "Property")) {
-    return parent.key === identifier && !parent.computed;
-  }
-  return false;
 };
 
 // A read of a browser global itself — NOT a same-named property on a data

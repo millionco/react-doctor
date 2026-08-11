@@ -134,6 +134,10 @@ export const scanRepository = async ({
       TARGET_CHECKOUT_DIRECTORY: targetWorkDirectory,
       TARGET_ROOT_DIRECTORY: repository.rootDir,
       SANDBOX_REPORT_PATH: reportPath,
+      // Keep eval scans out of production telemetry. `REACT_DOCTOR_NO_TELEMETRY`
+      // is the one switch that covers every backend — blanking the Sentry DSN
+      // alone no longer silences the Axiom exporter.
+      REACT_DOCTOR_NO_TELEMETRY: "1",
       SENTRY_DSN: "",
       SENTRY_TRACES_SAMPLE_RATE: "0",
     },

@@ -1,4 +1,5 @@
 import { flushSentry } from "../../instrument.js";
+import { shutdownTelemetry } from "./telemetry-runtime.js";
 import { activeScanAbortRegistry } from "./active-scan-abort-registry.js";
 import { preserveActiveTuiRendererOutput } from "./active-tui-renderer.js";
 import { buildFooterLinkLines } from "./build-footer-link-lines.js";
@@ -13,8 +14,12 @@ export const exitGracefully = (): void => {
   // of printing the cancellation footer twice.
   if (didStartExiting) return process.exit(SIGINT_EXIT_CODE);
   didStartExiting = true;
-  activeScanAbortRegistry.abortAll();
-  preserveActiveTuiRendererOutput();
+  try {
+    activeScanAbortRegistry.abortAll();
+  } catch {}
+  try {
+    preserveActiveTuiRendererOutput();
+  } catch {}
   try {
     if (isJsonModeActive()) {
       writeJsonErrorReport(new Error("Scan cancelled by user (SIGINT/SIGTERM)"));
@@ -34,7 +39,9 @@ export const exitGracefully = (): void => {
       );
     }
   } catch {}
-  // HACK: process.exit drops Sentry's buffered metrics (e.g. tui.cancelled),
-  // so run one bounded flush after printing and before terminating.
-  void flushSentry().finally(() => process.exit(SIGINT_EXIT_CODE));
+  // HACK: process.exit drops buffered telemetry (e.g. tui.cancelled), so run
+  // one bounded flush of both backends after printing and before terminating.
+  void Promise.all([flushSentry(), shutdownTelemetry()]).finally(() =>
+    process.exit(SIGINT_EXIT_CODE),
+  );
 };

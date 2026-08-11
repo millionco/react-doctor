@@ -121,16 +121,20 @@ describe("diagnose", () => {
 
 describe("diagnose({ projects })", () => {
   it("returns per-project results for multiple directories", async () => {
+    const projectDirectories = [
+      path.join(FIXTURES_DIRECTORY, "basic-react"),
+      path.join(FIXTURES_DIRECTORY, "nextjs-app"),
+    ];
     const result = await diagnose({
-      projects: [
-        { directory: path.join(FIXTURES_DIRECTORY, "basic-react") },
-        { directory: path.join(FIXTURES_DIRECTORY, "nextjs-app") },
-      ],
+      projects: projectDirectories.map((directory) => ({ directory })),
       deadCode: false,
       lint: false,
     });
 
     expect(result.projects).toHaveLength(2);
+    expect(result.projects.map((projectResult) => projectResult.directory)).toEqual(
+      projectDirectories,
+    );
     expect(result).toHaveProperty("diagnostics");
     expect(result).toHaveProperty("score");
     expect(result).toHaveProperty("elapsedMilliseconds");
@@ -145,6 +149,39 @@ describe("diagnose({ projects })", () => {
       expect(projectResult).toHaveProperty("project");
       expect(projectResult).toHaveProperty("skippedChecks");
       expect(projectResult).toHaveProperty("elapsedMilliseconds");
+    }
+  });
+
+  it("preserves lint diagnostics when sibling projects reuse one source inventory", async () => {
+    const projectDirectories = [
+      path.join(FIXTURES_DIRECTORY, "basic-react"),
+      path.join(FIXTURES_DIRECTORY, "nextjs-app"),
+    ];
+    const sharedOptions = { deadCode: false };
+    const previousNoCache = process.env.REACT_DOCTOR_NO_CACHE;
+    process.env.REACT_DOCTOR_NO_CACHE = "1";
+    try {
+      const batchResult = await diagnose({
+        projects: projectDirectories.map((directory) => ({ directory })),
+        ...sharedOptions,
+      });
+      const directResults = await Promise.all(
+        projectDirectories.map((directory) => diagnose(directory, sharedOptions)),
+      );
+
+      for (let projectIndex = 0; projectIndex < projectDirectories.length; projectIndex += 1) {
+        const batchProject = batchResult.projects[projectIndex];
+        expect(batchProject.ok).toBe(true);
+        if (!batchProject.ok) continue;
+        expect(batchProject.diagnostics).toEqual(directResults[projectIndex].diagnostics);
+        expect(batchProject.scannedFileCount).toBe(directResults[projectIndex].scannedFileCount);
+      }
+    } finally {
+      if (previousNoCache === undefined) {
+        delete process.env.REACT_DOCTOR_NO_CACHE;
+      } else {
+        process.env.REACT_DOCTOR_NO_CACHE = previousNoCache;
+      }
     }
   });
 

@@ -1,0 +1,1 @@
+packages/fuzz/corpus/react-bench-0.9.7-audit/** -text whitespace=-trailing-space

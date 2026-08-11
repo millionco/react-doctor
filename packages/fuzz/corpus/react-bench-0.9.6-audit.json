@@ -1,0 +1,299 @@
+{
+  "sourcePayloadSha256": "401b1bb234c1ed791557e2580b762fb10a8395a39fd950f5c8a51bb00104d5c0",
+  "expected": {
+    "falsePositiveCohorts": 25,
+    "falseNegativeCohorts": 3,
+    "falsePositiveMemberships": 130,
+    "falseNegativeMemberships": 13,
+    "uniqueTrials": 139
+  },
+  "callsites": [
+    {
+      "cohortId": "async-defer-await-cancellation-guard",
+      "verdict": "pass",
+      "rule": "async-defer-await",
+      "fixture": "regressions/async-defer-await--react-bench-ignore-guard.ts",
+      "trialSuffixes": ["w5MHgUd"]
+    },
+    {
+      "cohortId": "fetch-status-checked-after-body-parse",
+      "verdict": "pass",
+      "rule": "no-fetch-response-used-without-status-check",
+      "fixture": "regressions/no-fetch-response-used-without-status-check--react-bench-status-ordering.ts",
+      "trialSuffixes": [
+        "bQCehQS",
+        "6e8jKRD",
+        "emYgfjP",
+        "G4riGPB",
+        "2LpaCGW",
+        "XnFGKmn",
+        "AaUNfFt",
+        "TNKdaXb"
+      ]
+    },
+    {
+      "cohortId": "detached-docs-deferred-destruction",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": [
+        "QStaygg",
+        "uMqtGN8",
+        "7SbKFr8",
+        "C6HhHNL",
+        "ws6ZVf9",
+        "wu54WQz",
+        "kL9Vzxk",
+        "qh6ZkSY"
+      ]
+    },
+    {
+      "cohortId": "media-query-subscription-has-cleanup",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": ["MCdNwJQ", "3isMm2U", "z4xqWR5"]
+    },
+    {
+      "cohortId": "indirect-listener-cleanup-registry",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": ["ejqqBec", "avxG9N9"]
+    },
+    {
+      "cohortId": "loading-reset-is-finally-or-owned",
+      "verdict": "pass",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "fixture": "regressions/no-loading-flag-reset-outside-finally--react-bench-completion-ownership.tsx",
+      "trialSuffixes": [
+        "CTVq8o9",
+        "gu2qyRm",
+        "uspGZY4",
+        "GLjaWsR",
+        "kNmWwRd",
+        "M3HhN3f",
+        "ZaSGMv8",
+        "8QP7FAL",
+        "6N8fft4",
+        "qqtwGcZ"
+      ]
+    },
+    {
+      "cohortId": "async-error-clear-has-ownership-token",
+      "verdict": "pass",
+      "rule": "no-unowned-async-error-clear",
+      "fixture": "regressions/no-unowned-async-error-clear--react-bench-request-owner.tsx",
+      "trialSuffixes": ["bhiF9eP", "qqtwGcZ"]
+    },
+    {
+      "cohortId": "stale-timer-ref-is-not-pending-signal",
+      "verdict": "pass",
+      "rule": "no-stale-timer-ref",
+      "fixture": "regressions/no-stale-timer-ref--react-bench-cleanup-only-guards.tsx",
+      "trialSuffixes": ["Ws7nM9R", "nS8EuPj", "M3HhN3f", "o8pcxMD"]
+    },
+    {
+      "cohortId": "trusted-katex-html-producer",
+      "verdict": "pass",
+      "rule": "dangerous-html-sink",
+      "fixture": "regressions/dangerous-html-sink--react-bench-katex-producers.tsx",
+      "trialSuffixes": ["7cZ5Gvj", "2zXeke3", "F3MuFLG", "JvtCxYU"]
+    },
+    {
+      "cohortId": "effect-cleanup-victory-indirect-cancel-run",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": ["88jQzRD", "aeMK9eD"]
+    },
+    {
+      "cohortId": "effect-cleanup-trycomp-indirect-listener-removal-expansion",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": ["nAh2Mxq", "zrbr6AH"]
+    },
+    {
+      "cohortId": "effect-cleanup-reacttooltip-iterated-pairs",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": [
+        "2xcugfq",
+        "4NEr2t2",
+        "5AxVzn6",
+        "DQFTEGA",
+        "QneQp7M",
+        "TR7edkq",
+        "YHaQ88r",
+        "aecBVdS",
+        "dYVmBZS",
+        "ebMMb98",
+        "g9B3XUC",
+        "gEhshoM",
+        "htuANUE",
+        "oHHysJL",
+        "pExmysK",
+        "tBaGBd3",
+        "wUW8Wgi"
+      ]
+    },
+    {
+      "cohortId": "effect-cleanup-bnb-direct-pairs",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": ["5odW8Ek", "A7XPDBt", "US9nhiT", "WUdXCny", "YZ5KC7c"]
+    },
+    {
+      "cohortId": "effect-cleanup-bnb-callback-ref-detach",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": [
+        "EKusD36",
+        "FpzyALL",
+        "GtCTXMf",
+        "JdFwJxH",
+        "kEoi8Bt",
+        "ryJktE5",
+        "vYaWp9W",
+        "xXDKawb"
+      ]
+    },
+    {
+      "cohortId": "effect-cleanup-bnb-indirect-drag-stop",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": ["HrxF9LS", "rDyahxk"]
+    },
+    {
+      "cohortId": "effect-cleanup-bnb-inert-ref-timers",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": [
+        "NqzXCLi",
+        "gJ5Yf7c",
+        "mXv9WSm",
+        "H8nceDx",
+        "KPggtNZ",
+        "Q7zWgtA",
+        "SVQMhde",
+        "bh6DdEW",
+        "7x7vgBS",
+        "aGrvFG9"
+      ]
+    },
+    {
+      "cohortId": "effect-cleanup-reacttooltip-indirect-timer-cancel",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": [
+        "Mab63Up",
+        "PF8wGPB",
+        "itC5ei4",
+        "jTMVxrq",
+        "reYV8TW",
+        "z9DJCF5",
+        "Vj5tx86",
+        "e27wYm5"
+      ]
+    },
+    {
+      "cohortId": "effect-cleanup-reacttooltip-mounted-guard",
+      "verdict": "pass",
+      "rule": "effect-needs-cleanup",
+      "fixture": "regressions/effect-needs-cleanup--react-bench-audit-callsites.tsx",
+      "trialSuffixes": ["CeZVVAm", "JWQ63fX", "Vj5tx86", "e27wYm5", "qxsHyf3", "yMnaf68"]
+    },
+    {
+      "cohortId": "fetch-status-post-read-guard-expansion",
+      "verdict": "pass",
+      "rule": "no-fetch-response-used-without-status-check",
+      "fixture": "regressions/no-fetch-response-used-without-status-check--react-bench-status-ordering.ts",
+      "trialSuffixes": [
+        "8nfzx2J",
+        "Dk4Z3iL",
+        "FRK8YDs",
+        "FrjMPfq",
+        "KZNREKa",
+        "Rzdydrc",
+        "VSJwo2N",
+        "aqVWUuD",
+        "c9yrZid",
+        "dXQNN3T",
+        "iwaZFRj",
+        "jwWH9dK",
+        "mpSp8So",
+        "wwwZ3aR"
+      ]
+    },
+    {
+      "cohortId": "fetch-status-helper-before-read-expansion",
+      "verdict": "pass",
+      "rule": "no-fetch-response-used-without-status-check",
+      "fixture": "regressions/no-fetch-response-used-without-status-check--react-bench-status-ordering.ts",
+      "trialSuffixes": ["UMVQe3h"]
+    },
+    {
+      "cohortId": "loading-reset-settings-finally-expansion",
+      "verdict": "pass",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "fixture": "regressions/no-loading-flag-reset-outside-finally--react-bench-completion-ownership.tsx",
+      "trialSuffixes": ["4AKNJyx", "AYhZqV4"]
+    },
+    {
+      "cohortId": "loading-reset-tracecat-mirrored-branches",
+      "verdict": "pass",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "fixture": "regressions/no-loading-flag-reset-outside-finally--react-bench-completion-ownership.tsx",
+      "trialSuffixes": ["CsU5j5F", "cyft985", "hzELC8Y", "mggmJ9p", "xTAvqSC"]
+    },
+    {
+      "cohortId": "loading-reset-claude-owned-finally",
+      "verdict": "pass",
+      "rule": "no-loading-flag-reset-outside-finally",
+      "fixture": "regressions/no-loading-flag-reset-outside-finally--react-bench-completion-ownership.tsx",
+      "trialSuffixes": ["SzANNdf", "U46675r", "WAV94zz"]
+    },
+    {
+      "cohortId": "async-error-clear-request-owner-expansion",
+      "verdict": "pass",
+      "rule": "no-unowned-async-error-clear",
+      "fixture": "regressions/no-unowned-async-error-clear--react-bench-request-owner.tsx",
+      "trialSuffixes": ["NbCpsk4", "QoPHAna"]
+    },
+    {
+      "cohortId": "dangerous-html-katex-escaped-fallback-expansion",
+      "verdict": "pass",
+      "rule": "dangerous-html-sink",
+      "fixture": "regressions/dangerous-html-sink--react-bench-katex-producers.tsx",
+      "trialSuffixes": ["B9d5ZSS"]
+    },
+    {
+      "cohortId": "history-mutation-inside-state-updater",
+      "verdict": "fail",
+      "rule": "no-side-effect-in-state-updater-function",
+      "fixture": "true-positives/no-side-effect-in-state-updater-function--react-bench-history-and-prop-callbacks.tsx",
+      "trialSuffixes": ["4cArjqi", "WL7WieW", "eXGcE2R", "g8rYdBJ", "kc2SYFf"]
+    },
+    {
+      "cohortId": "arbitrary-prop-callback-inside-state-updater",
+      "verdict": "fail",
+      "rule": "no-side-effect-in-state-updater-function",
+      "fixture": "true-positives/no-side-effect-in-state-updater-function--react-bench-history-and-prop-callbacks.tsx",
+      "trialSuffixes": ["zTe5J63", "qfnSJ92", "bAyzc4U", "5PUQo8r", "LfNQ9g7", "HFg6Dum"]
+    },
+    {
+      "cohortId": "history-mutation-inside-state-updater-masked",
+      "verdict": "fail",
+      "rule": "no-side-effect-in-state-updater-function",
+      "fixture": "true-positives/no-side-effect-in-state-updater-function--react-bench-history-and-prop-callbacks.tsx",
+      "trialSuffixes": ["VxZhgvA", "R4CRYqC"]
+    }
+  ]
+}

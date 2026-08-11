@@ -62,4 +62,61 @@ describe("loadFuzzCorpus", () => {
       },
     ]);
   });
+
+  it.each(["tsx", "ts", "jsx", "js"])("loads .%s source files", (extension) => {
+    const directory = makeCorpusDirectory();
+    fs.writeFileSync(path.join(directory, `declared.${extension}`), "export const value = 1;");
+
+    expect(loadFuzzCorpus(directory).map((entry) => entry.relativePath)).toEqual([
+      `declared.${extension}`,
+    ]);
+  });
+
+  it.each(["tsx", "ts", "jsx", "js"])("loads .%s.txt source fixtures", (extension) => {
+    const directory = makeCorpusDirectory();
+    fs.writeFileSync(path.join(directory, `declared.${extension}.txt`), "export const value = 1;");
+
+    expect(loadFuzzCorpus(directory).map((entry) => entry.relativePath)).toEqual([
+      `declared.${extension}.txt`,
+    ]);
+  });
+
+  it("ignores non-source files", () => {
+    const directory = makeCorpusDirectory();
+    fs.writeFileSync(path.join(directory, "manifest.json"), "{}");
+
+    expect(loadFuzzCorpus(directory)).toEqual([]);
+  });
+
+  it("ignores TypeScript declaration files", () => {
+    const directory = makeCorpusDirectory();
+    const nestedDirectory = path.join(directory, "nested");
+    fs.mkdirSync(nestedDirectory);
+    fs.writeFileSync(path.join(directory, "root.d.ts"), "declare const rootValue: string;");
+    fs.writeFileSync(
+      path.join(directory, "root.d.ts.txt"),
+      "declare const rootFixtureValue: string;",
+    );
+    fs.writeFileSync(
+      path.join(nestedDirectory, "nested.d.ts"),
+      "declare const nestedValue: string;",
+    );
+    fs.writeFileSync(
+      path.join(nestedDirectory, "nested.d.ts.txt"),
+      "declare const nestedFixtureValue: string;",
+    );
+
+    expect(loadFuzzCorpus(directory)).toEqual([]);
+  });
+
+  it("returns portable relative paths for nested seeds", () => {
+    const directory = makeCorpusDirectory();
+    const nestedDirectory = path.join(directory, "nested", "deeper");
+    fs.mkdirSync(nestedDirectory, { recursive: true });
+    fs.writeFileSync(path.join(nestedDirectory, "declared.tsx"), "export const value = 1;");
+
+    expect(loadFuzzCorpus(directory).map((entry) => entry.relativePath)).toEqual([
+      "nested/deeper/declared.tsx",
+    ]);
+  });
 });

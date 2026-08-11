@@ -32,6 +32,30 @@ export const useMediaQuery = (breakpoint?: string): boolean => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("accepts a conditional useSyncExternalStore subscribe function", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import React from "react";
+const subscribeToNothing = () => () => undefined;
+export const useMediaQuery = (breakpoint?: string): boolean => {
+  const subscribe = React.useCallback((notify: () => void) => {
+    if (!breakpoint) return subscribeToNothing();
+    const media = window.matchMedia(breakpoint);
+    const handleMatch = () => notify();
+    media.addEventListener("change", handleMatch);
+    return () => media.removeEventListener("change", handleMatch);
+  }, [breakpoint]);
+  return React.useSyncExternalStore(
+    breakpoint ? subscribe : subscribeToNothing,
+    () => false,
+    () => false,
+  );
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("accepts cleanup for a MediaQueryList created by useMemo", () => {
     const result = runRule(
       effectNeedsCleanup,

@@ -3,12 +3,16 @@ import {
   REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD,
 } from "../../constants/thresholds.js";
 import { calculateFunctionComplexity } from "../../semantic/function-complexity.js";
-import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
+import {
+  componentOrHookDisplayNameForFunction,
+  findComponentHocExpressionRoot,
+} from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { functionHasReactComponentEvidence } from "../../utils/function-has-react-component-evidence.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 export const noHighComplexityReactFunction = defineRule({
@@ -20,7 +24,13 @@ export const noHighComplexityReactFunction = defineRule({
     "Extract independent render branches and state logic into focused components or hooks until the control flow is easy to follow.",
   create: (context: RuleContext) => {
     const checkReactFunction = (functionNode: EsTreeNode): void => {
-      const displayName = componentOrHookDisplayNameForFunction(functionNode);
+      const expressionRoot = findComponentHocExpressionRoot(functionNode);
+      const isAnonymousDefaultExport =
+        isNodeOfType(expressionRoot.parent, "ExportDefaultDeclaration") &&
+        expressionRoot.parent.declaration === expressionRoot;
+      const displayName =
+        componentOrHookDisplayNameForFunction(functionNode) ??
+        (isAnonymousDefaultExport ? "default export" : null);
       if (!displayName) return;
       if (
         !isReactHookName(displayName) &&

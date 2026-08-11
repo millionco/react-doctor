@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { detectDuplicateJsxSubtrees } from "../src/react-cleanup/detect-duplicate-jsx-subtrees.js";
+import {
+  detectDuplicateJsxSubtrees,
+  detectDuplicateJsxSubtreesCooperative,
+} from "../src/react-cleanup/detect-duplicate-jsx-subtrees.js";
 
 const componentSource = (componentName: string, title: string, variableName: string): string => `
 export const ${componentName} = () => (
@@ -161,6 +164,79 @@ const Toolbar = () => <div><Button /><Button /><Button /></div>;
     expect(result.families).toHaveLength(1);
   });
 
+  it("ignores JSX formatting whitespace and comment-only expressions", () => {
+    const compactSource =
+      "export const Compact = () => <section><header><h2>Title</h2></header><main><Value value={value} /></main><footer><Button /></footer></section>;";
+    const formattedSource = `
+export const Formatted = () => (
+  <section>
+    {/* layout */}
+    <header>
+      <h2>Other title</h2>
+    </header>
+    <main><Value value={otherValue} /></main>
+    <footer><Button /></footer>
+  </section>
+);
+`;
+    const result = detectDuplicateJsxSubtrees([
+      { path: "src/compact.tsx", sourceText: compactSource },
+      { path: "src/formatted.tsx", sourceText: formattedSource },
+    ]);
+
+    expect(result.families).toHaveLength(1);
+    expect(result.families[0].primaryOccurrence.rootName).toBe("section");
+  });
+
+  it("reads source files cooperatively within the source budget", async () => {
+    const readPaths: string[] = [];
+    const sourceText = componentSource("Card", "Card", "value");
+    const result = await detectDuplicateJsxSubtreesCooperative(
+      {
+        paths: ["src/b.tsx", "src/a.tsx"],
+        read: async (sourcePath) => {
+          readPaths.push(sourcePath);
+          return sourceText;
+        },
+      },
+      { budget: { maxSourceFiles: 1 } },
+    );
+
+    expect(readPaths).toEqual(["src/a.tsx"]);
+    expect(result).toMatchObject({
+      incomplete: true,
+      scannedSourceFileCount: 1,
+      incompleteReasons: [{ kind: "source-file-limit", limit: 1, observed: 2 }],
+    });
+  });
+
+  it("does not silently complete when a cooperative source read fails", async () => {
+    const readFailure = new Error("synthetic read failure");
+
+    await expect(
+      detectDuplicateJsxSubtreesCooperative({
+        paths: ["src/card.tsx"],
+        read: async () => Promise.reject(readFailure),
+      }),
+    ).rejects.toBe(readFailure);
+  });
+
+  it("passes the source length budget to cooperative readers", async () => {
+    const maximumLengths: number[] = [];
+    await detectDuplicateJsxSubtreesCooperative(
+      {
+        paths: ["src/card.tsx"],
+        read: async (_sourcePath, maximumLengthChars) => {
+          maximumLengths.push(maximumLengthChars);
+          return null;
+        },
+      },
+      { budget: { maxSourceLengthChars: 123 } },
+    );
+
+    expect(maximumLengths).toEqual([123]);
+  });
+
   it("reports deterministic file, node, and family budget incompleteness", () => {
     const duplicateSource = componentSource("Card", "Card", "value");
     const fileLimited = detectDuplicateJsxSubtrees(
@@ -197,6 +273,22 @@ const Toolbar = () => <div><Button /><Button /><Button /></div>;
       incomplete: true,
       families: [],
       incompleteReasons: [{ kind: "family-limit", limit: 0, observed: 1 }],
+    });
+  });
+
+  it("applies the JSX node budget before hashing a deeply nested subtree", () => {
+    const nestingDepth = 500;
+    const sourceText = `export const Deep = () => (${"<div>".repeat(nestingDepth)}value${"</div>".repeat(nestingDepth)});`;
+    const result = detectDuplicateJsxSubtrees([{ path: "src/deep.tsx", sourceText }], {
+      budget: { maxJsxNodes: 1 },
+    });
+
+    expect(result).toMatchObject({
+      families: [],
+      scannedSourceFileCount: 0,
+      scannedJsxNodeCount: 0,
+      incomplete: true,
+      incompleteReasons: [{ kind: "jsx-node-limit", limit: 1, observed: 2 }],
     });
   });
 

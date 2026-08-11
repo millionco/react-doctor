@@ -9,12 +9,20 @@ import {
   JSX_DUPLICATION_DEFAULT_MINIMUM_DISTINCT_FILES,
   JSX_DUPLICATION_DEFAULT_MINIMUM_NODE_COUNT,
   JSX_DUPLICATION_DEFAULT_MINIMUM_OCCURRENCES,
+  JSX_DUPLICATION_FAMILY_PROCESSING_MULTIPLIER,
+  JSX_DUPLICATION_MAX_COMPOSITION_PATH_DEPTH,
 } from "../constants.js";
 import { getTypescriptScriptKind } from "../utils/get-typescript-script-kind.js";
+import { yieldToEventLoop } from "../utils/yield-to-event-loop.js";
 
 export interface JsxDuplicationSource {
   path: string;
   sourceText: string;
+}
+
+export interface JsxDuplicationSourceReader {
+  readonly paths: ReadonlyArray<string>;
+  readonly read: (path: string, maximumLengthChars: number) => Promise<string | null>;
 }
 
 export interface JsxDuplicationBudget {
@@ -104,6 +112,36 @@ interface JsxSubtreeBucket {
 interface CollectedJsxSubtreeCandidates {
   candidates: JsxSubtreeCandidate[];
   aborted: boolean;
+  limitExceeded: boolean;
+}
+
+interface ScannedJsxDuplicationSource {
+  candidates: JsxSubtreeCandidate[];
+  incompleteReason: JsxDuplicationIncompleteReason | null;
+  didAbort: boolean;
+  didScan: boolean;
+}
+
+interface ScanJsxDuplicationSourceInput {
+  source: JsxDuplicationSource;
+  options: ResolvedJsxDuplicationOptions;
+  signal: AbortSignal | undefined;
+  scannedSourceFileCount: number;
+  scannedJsxNodeCount: number;
+}
+
+interface BuildDuplicateJsxResultInput {
+  candidates: JsxSubtreeCandidate[];
+  options: ResolvedJsxDuplicationOptions;
+  incompleteReasons: JsxDuplicationIncompleteReason[];
+  scannedSourceFileCount: number;
+  scannedJsxNodeCount: number;
+}
+
+interface BuiltDuplicateJsxFamilies {
+  families: DuplicateJsxSubtreeFamily[];
+  didReachProcessingLimit: boolean;
+  observedFamilyCount: number;
 }
 
 interface FunctionIdentity {
@@ -143,14 +181,21 @@ const hashParts = (parts: string[]): string => {
 
 const collectDirectJsxDescendants = (node: ts.Node): JsxSubtreeNode[] => {
   const descendants: JsxSubtreeNode[] = [];
-  const visit = (child: ts.Node): void => {
-    if (isJsxSubtreeNode(child)) {
-      descendants.push(child);
-      return;
+  const pendingNodes: ts.Node[] = [];
+  ts.forEachChild(node, (child) => {
+    pendingNodes.push(child);
+  });
+  while (pendingNodes.length > 0) {
+    const currentNode = pendingNodes.pop();
+    if (currentNode === undefined) continue;
+    if (isJsxSubtreeNode(currentNode)) {
+      descendants.push(currentNode);
+      continue;
     }
-    ts.forEachChild(child, visit);
-  };
-  ts.forEachChild(node, visit);
+    ts.forEachChild(currentNode, (child) => {
+      pendingNodes.push(child);
+    });
+  }
   return descendants;
 };
 
@@ -271,6 +316,8 @@ const buildJsxSubtreeMetadata = (
   }
   ts.forEachChild(node, (child) => {
     if (ts.isJsxClosingElement(child) || ts.isJsxClosingFragment(child)) return;
+    if (ts.isJsxText(child) && child.getText().trim().length === 0) return;
+    if (ts.isJsxExpression(child) && child.expression === undefined) return;
     nodeParts.push(buildStructuralHash(child, metadataByNode));
   });
 
@@ -292,21 +339,39 @@ const getRootName = (node: JsxSubtreeNode): string => {
   return "Fragment";
 };
 
-const getFunctionIdentity = (node: ts.Node): FunctionIdentity | null => {
+const getFunctionIdentity = (
+  node: ts.Node,
+  identityByNode: Map<ts.Node, FunctionIdentity | null>,
+): FunctionIdentity | null => {
+  if (identityByNode.has(node)) return identityByNode.get(node) ?? null;
+  const traversedNodes: ts.Node[] = [node];
   let currentNode: ts.Node | undefined = node.parent;
+  let functionIdentity: FunctionIdentity | null = null;
   while (currentNode !== undefined) {
+    if (identityByNode.has(currentNode)) {
+      functionIdentity = identityByNode.get(currentNode) ?? null;
+      break;
+    }
+    traversedNodes.push(currentNode);
     if (ts.isFunctionDeclaration(currentNode) && currentNode.name !== undefined) {
-      return { name: currentNode.name.text, startOffset: currentNode.getStart() };
+      functionIdentity = { name: currentNode.name.text, startOffset: currentNode.getStart() };
+      break;
     }
     if (ts.isMethodDeclaration(currentNode)) {
       const classDeclaration = currentNode.parent;
       if (ts.isClassDeclaration(classDeclaration) && classDeclaration.name !== undefined) {
-        return { name: classDeclaration.name.text, startOffset: classDeclaration.getStart() };
+        functionIdentity = {
+          name: classDeclaration.name.text,
+          startOffset: classDeclaration.getStart(),
+        };
+        break;
       }
-      return { name: currentNode.name.getText(), startOffset: currentNode.getStart() };
+      functionIdentity = { name: currentNode.name.getText(), startOffset: currentNode.getStart() };
+      break;
     }
     if (ts.isFunctionExpression(currentNode) && currentNode.name !== undefined) {
-      return { name: currentNode.name.text, startOffset: currentNode.getStart() };
+      functionIdentity = { name: currentNode.name.text, startOffset: currentNode.getStart() };
+      break;
     }
     if (ts.isArrowFunction(currentNode) || ts.isFunctionExpression(currentNode)) {
       let assignmentNode: ts.Node | undefined = currentNode.parent;
@@ -317,15 +382,24 @@ const getFunctionIdentity = (node: ts.Node): FunctionIdentity | null => {
         assignmentNode = assignmentNode.parent;
       }
       if (assignmentNode !== undefined && ts.isVariableDeclaration(assignmentNode)) {
-        return { name: assignmentNode.name.getText(), startOffset: assignmentNode.getStart() };
+        functionIdentity = {
+          name: assignmentNode.name.getText(),
+          startOffset: assignmentNode.getStart(),
+        };
+        break;
       }
       if (assignmentNode !== undefined && ts.isPropertyAssignment(assignmentNode)) {
-        return { name: assignmentNode.name.getText(), startOffset: assignmentNode.getStart() };
+        functionIdentity = {
+          name: assignmentNode.name.getText(),
+          startOffset: assignmentNode.getStart(),
+        };
+        break;
       }
     }
     currentNode = currentNode.parent;
   }
-  return null;
+  for (const traversedNode of traversedNodes) identityByNode.set(traversedNode, functionIdentity);
+  return functionIdentity;
 };
 
 const buildOccurrence = (
@@ -333,12 +407,13 @@ const buildOccurrence = (
   sourceFile: ts.SourceFile,
   node: JsxSubtreeNode,
   ancestorRootNames: ReadonlyArray<string>,
+  functionIdentityByNode: Map<ts.Node, FunctionIdentity | null>,
 ): DuplicateJsxSubtreeOccurrence => {
   const startOffset = node.getStart(sourceFile);
   const endOffset = node.getEnd();
   const start = sourceFile.getLineAndCharacterOfPosition(startOffset);
   const end = sourceFile.getLineAndCharacterOfPosition(endOffset);
-  const functionIdentity = getFunctionIdentity(node);
+  const functionIdentity = getFunctionIdentity(node, functionIdentityByNode);
   const compositionPath = [...ancestorRootNames, getRootName(node)];
   if (functionIdentity !== null) compositionPath.unshift(functionIdentity.name);
   return {
@@ -360,24 +435,119 @@ const collectCandidates = (
   source: JsxDuplicationSource,
   sourceFile: ts.SourceFile,
   signal: AbortSignal | undefined,
+  maximumCandidateCount: number,
 ): CollectedJsxSubtreeCandidates => {
-  const metadataByNode = new Map<JsxSubtreeNode, JsxSubtreeMetadata>();
-  const candidates: JsxSubtreeCandidate[] = [];
-  const visit = (node: ts.Node, ancestorRootNames: ReadonlyArray<string>): void => {
-    if (signal?.aborted) return;
-    const childAncestorRootNames = isJsxSubtreeNode(node)
-      ? [...ancestorRootNames, getRootName(node)]
-      : ancestorRootNames;
-    if (isJsxSubtreeNode(node)) {
-      candidates.push({
-        metadata: buildJsxSubtreeMetadata(node, metadataByNode),
-        occurrence: buildOccurrence(source.path, sourceFile, node, ancestorRootNames),
-      });
+  const jsxNodes: JsxSubtreeNode[] = [];
+  const pendingNodes: ts.Node[] = [sourceFile];
+  let limitExceeded = false;
+  while (pendingNodes.length > 0 && !limitExceeded && !signal?.aborted) {
+    const currentNode = pendingNodes.pop();
+    if (currentNode === undefined) continue;
+    if (isJsxSubtreeNode(currentNode)) {
+      if (jsxNodes.length >= maximumCandidateCount) {
+        limitExceeded = true;
+        continue;
+      }
+      jsxNodes.push(currentNode);
     }
-    ts.forEachChild(node, (child) => visit(child, childAncestorRootNames));
+    const childNodes: ts.Node[] = [];
+    ts.forEachChild(currentNode, (child) => {
+      childNodes.push(child);
+    });
+    for (let childIndex = childNodes.length - 1; childIndex >= 0; childIndex -= 1) {
+      pendingNodes.push(childNodes[childIndex]);
+    }
+  }
+  if (limitExceeded || signal?.aborted) {
+    return { candidates: [], aborted: signal?.aborted ?? false, limitExceeded };
+  }
+
+  const metadataByNode = new Map<JsxSubtreeNode, JsxSubtreeMetadata>();
+  const functionIdentityByNode = new Map<ts.Node, FunctionIdentity | null>();
+  for (let nodeIndex = jsxNodes.length - 1; nodeIndex >= 0; nodeIndex -= 1) {
+    if (signal?.aborted) {
+      return { candidates: [], aborted: true, limitExceeded: false };
+    }
+    buildJsxSubtreeMetadata(jsxNodes[nodeIndex], metadataByNode);
+  }
+  const candidates = jsxNodes.map((node) => {
+    const ancestorRootNames: string[] = [];
+    let ancestorNode: ts.Node | undefined = node.parent;
+    while (
+      ancestorNode !== undefined &&
+      ancestorRootNames.length < JSX_DUPLICATION_MAX_COMPOSITION_PATH_DEPTH - 1
+    ) {
+      if (isJsxSubtreeNode(ancestorNode)) ancestorRootNames.unshift(getRootName(ancestorNode));
+      ancestorNode = ancestorNode.parent;
+    }
+    return {
+      metadata: buildJsxSubtreeMetadata(node, metadataByNode),
+      occurrence: buildOccurrence(
+        source.path,
+        sourceFile,
+        node,
+        ancestorRootNames,
+        functionIdentityByNode,
+      ),
+    };
+  });
+  return { candidates, aborted: false, limitExceeded: false };
+};
+
+const scanSource = (input: ScanJsxDuplicationSourceInput): ScannedJsxDuplicationSource => {
+  if (input.source.sourceText.length > input.options.maxSourceLengthChars) {
+    return {
+      candidates: [],
+      incompleteReason: {
+        kind: "source-length-limit",
+        limit: input.options.maxSourceLengthChars,
+        observed: input.source.sourceText.length,
+        path: input.source.path,
+      },
+      didAbort: false,
+      didScan: false,
+    };
+  }
+  const sourceFile = ts.createSourceFile(
+    input.source.path,
+    input.source.sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    getTypescriptScriptKind(input.source.path),
+  );
+  const collectedCandidates = collectCandidates(
+    input.source,
+    sourceFile,
+    input.signal,
+    input.options.maxJsxNodes - input.scannedJsxNodeCount,
+  );
+  if (collectedCandidates.aborted) {
+    return {
+      candidates: [],
+      incompleteReason: { kind: "aborted", observed: input.scannedSourceFileCount },
+      didAbort: true,
+      didScan: false,
+    };
+  }
+  if (collectedCandidates.limitExceeded) {
+    return {
+      candidates: [],
+      incompleteReason: {
+        kind: "jsx-node-limit",
+        limit: input.options.maxJsxNodes,
+        observed: input.options.maxJsxNodes + 1,
+        path: input.source.path,
+      },
+      didAbort: false,
+      didScan: false,
+    };
+  }
+  return {
+    candidates: collectedCandidates.candidates,
+    incompleteReason: null,
+    didAbort: false,
+    didScan: true,
   };
-  visit(sourceFile, []);
-  return { candidates, aborted: signal?.aborted ?? false };
 };
 
 const occurrenceIsContained = (
@@ -435,7 +605,7 @@ const compareFamilies = (
 const buildFamilies = (
   candidates: JsxSubtreeCandidate[],
   options: ResolvedJsxDuplicationOptions,
-): DuplicateJsxSubtreeFamily[] => {
+): BuiltDuplicateJsxFamilies => {
   const bucketsByFingerprint = new Map<string, JsxSubtreeBucket>();
   for (const candidate of candidates) {
     if (candidate.metadata.nodeCount < options.minimumNodeCount) continue;
@@ -452,6 +622,11 @@ const buildFamilies = (
   }
 
   const families: DuplicateJsxSubtreeFamily[] = [];
+  const familyProcessingLimit = Math.max(
+    options.maxFamilies * JSX_DUPLICATION_FAMILY_PROCESSING_MULTIPLIER,
+    options.maxFamilies + 1,
+  );
+  let didReachProcessingLimit = false;
   for (const bucket of bucketsByFingerprint.values()) {
     if (bucket.occurrences.length < options.minimumOccurrences) continue;
     bucket.occurrences.sort(compareOccurrences);
@@ -484,8 +659,39 @@ const buildFamilies = (
       primaryOccurrence: bucket.occurrences[0],
       relatedOccurrences: bucket.occurrences.slice(1),
     });
+    if (families.length > familyProcessingLimit) {
+      didReachProcessingLimit = true;
+      break;
+    }
   }
-  return suppressNestedFamilies(families).sort(compareFamilies);
+  return {
+    families: suppressNestedFamilies(families).sort(compareFamilies),
+    didReachProcessingLimit,
+    observedFamilyCount: families.length,
+  };
+};
+
+const buildResult = (input: BuildDuplicateJsxResultInput): DuplicateJsxSubtreesResult => {
+  const builtFamilies = buildFamilies(input.candidates, input.options);
+  if (
+    builtFamilies.didReachProcessingLimit ||
+    builtFamilies.families.length > input.options.maxFamilies
+  ) {
+    input.incompleteReasons.push({
+      kind: "family-limit",
+      limit: input.options.maxFamilies,
+      observed: builtFamilies.didReachProcessingLimit
+        ? builtFamilies.observedFamilyCount
+        : builtFamilies.families.length,
+    });
+  }
+  return {
+    families: builtFamilies.families.slice(0, input.options.maxFamilies),
+    scannedSourceFileCount: input.scannedSourceFileCount,
+    scannedJsxNodeCount: input.scannedJsxNodeCount,
+    incomplete: input.incompleteReasons.length > 0,
+    incompleteReasons: input.incompleteReasons,
+  };
 };
 
 export const detectDuplicateJsxSubtrees = (
@@ -511,54 +717,81 @@ export const detectDuplicateJsxSubtrees = (
       incompleteReasons.push({ kind: "aborted", observed: scannedSourceFileCount });
       break;
     }
-    if (source.sourceText.length > resolvedOptions.maxSourceLengthChars) {
-      incompleteReasons.push({
-        kind: "source-length-limit",
-        limit: resolvedOptions.maxSourceLengthChars,
-        observed: source.sourceText.length,
-        path: source.path,
-      });
-      continue;
+    const scannedSource = scanSource({
+      source,
+      options: resolvedOptions,
+      signal: options.signal,
+      scannedSourceFileCount,
+      scannedJsxNodeCount,
+    });
+    if (scannedSource.incompleteReason !== null) {
+      incompleteReasons.push(scannedSource.incompleteReason);
     }
-    const sourceFile = ts.createSourceFile(
-      source.path,
-      source.sourceText,
-      ts.ScriptTarget.Latest,
-      true,
-      getTypescriptScriptKind(source.path),
-    );
-    const collectedCandidates = collectCandidates(source, sourceFile, options.signal);
-    if (collectedCandidates.aborted) {
+    if (scannedSource.didAbort) break;
+    if (!scannedSource.didScan) continue;
+    candidates.push(...scannedSource.candidates);
+    scannedJsxNodeCount += scannedSource.candidates.length;
+    scannedSourceFileCount += 1;
+  }
+  return buildResult({
+    candidates,
+    options: resolvedOptions,
+    incompleteReasons,
+    scannedSourceFileCount,
+    scannedJsxNodeCount,
+  });
+};
+
+export const detectDuplicateJsxSubtreesCooperative = async (
+  sourceReader: JsxDuplicationSourceReader,
+  options: DetectDuplicateJsxSubtreesOptions = {},
+): Promise<DuplicateJsxSubtreesResult> => {
+  const resolvedOptions = resolveOptions(options);
+  const incompleteReasons: JsxDuplicationIncompleteReason[] = [];
+  const sortedPaths = [...sourceReader.paths].sort((left, right) => left.localeCompare(right));
+  if (sortedPaths.length > resolvedOptions.maxSourceFiles) {
+    incompleteReasons.push({
+      kind: "source-file-limit",
+      limit: resolvedOptions.maxSourceFiles,
+      observed: sortedPaths.length,
+    });
+  }
+
+  const candidates: JsxSubtreeCandidate[] = [];
+  let scannedSourceFileCount = 0;
+  let scannedJsxNodeCount = 0;
+  for (const sourcePath of sortedPaths.slice(0, resolvedOptions.maxSourceFiles)) {
+    if (options.signal?.aborted) {
       incompleteReasons.push({ kind: "aborted", observed: scannedSourceFileCount });
       break;
     }
-    if (scannedJsxNodeCount + collectedCandidates.candidates.length > resolvedOptions.maxJsxNodes) {
-      incompleteReasons.push({
-        kind: "jsx-node-limit",
-        limit: resolvedOptions.maxJsxNodes,
-        observed: scannedJsxNodeCount + collectedCandidates.candidates.length,
-        path: source.path,
-      });
-      continue;
+    const sourceText = await sourceReader.read(sourcePath, resolvedOptions.maxSourceLengthChars);
+    if (sourceText === null) continue;
+    const source: JsxDuplicationSource = { path: sourcePath, sourceText };
+    const scannedSource = scanSource({
+      source,
+      options: resolvedOptions,
+      signal: options.signal,
+      scannedSourceFileCount,
+      scannedJsxNodeCount,
+    });
+    if (scannedSource.incompleteReason !== null) {
+      incompleteReasons.push(scannedSource.incompleteReason);
     }
-    candidates.push(...collectedCandidates.candidates);
-    scannedJsxNodeCount += collectedCandidates.candidates.length;
-    scannedSourceFileCount++;
+    if (scannedSource.didScan) {
+      candidates.push(...scannedSource.candidates);
+      scannedJsxNodeCount += scannedSource.candidates.length;
+      scannedSourceFileCount += 1;
+    }
+    if (scannedSource.didAbort) break;
+    await yieldToEventLoop();
   }
 
-  const allFamilies = buildFamilies(candidates, resolvedOptions);
-  if (allFamilies.length > resolvedOptions.maxFamilies) {
-    incompleteReasons.push({
-      kind: "family-limit",
-      limit: resolvedOptions.maxFamilies,
-      observed: allFamilies.length,
-    });
-  }
-  return {
-    families: allFamilies.slice(0, resolvedOptions.maxFamilies),
+  return buildResult({
+    candidates,
+    options: resolvedOptions,
+    incompleteReasons,
     scannedSourceFileCount,
     scannedJsxNodeCount,
-    incomplete: incompleteReasons.length > 0,
-    incompleteReasons,
-  };
+  });
 };

@@ -11,6 +11,7 @@ export interface InspectInput {
   readonly precomputedSourceFileCount?: number;
   readonly precomputedSourceFiles?: ReadonlyArray<SourceFileEntry>;
   readonly includePaths: ReadonlyArray<string>;
+  readonly maintainabilityFocusPaths?: ReadonlyArray<string>;
   readonly changedLineRanges?: ReadonlyArray<ChangedFileLineRanges>;
   readonly customRulesOnly: boolean;
   readonly respectInlineDisables: boolean;

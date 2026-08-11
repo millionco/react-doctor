@@ -58,6 +58,7 @@ export const STAGED_SNAPSHOT_ADDITIONAL_CONFIG_FILENAMES = [
   "vitest.config.ts",
 ] as const;
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
+export const BASELINE_SOURCE_COPY_CONCURRENCY = 32;
 // Bump on any breaking change to `CachedScanPayload`'s shape or diagnostic
 // semantics so stale on-disk results are discarded wholesale.
 // Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`

@@ -102,6 +102,39 @@ describe("function-complexity", () => {
     ).toBe(2);
   });
 
+  it("counts source-order transitions back to an earlier logical operator", () => {
+    expect(
+      measureNamedFunction(
+        `function logic(first, second, third, fourth) {
+          return first || second && third || fourth;
+        }`,
+        "logic",
+      ).cognitive,
+    ).toBe(3);
+  });
+
+  it("counts logical runs nested behind non-logical expressions", () => {
+    expect(
+      measureNamedFunction(
+        `function logic(first, second, third) {
+          return first && select(second || third);
+        }`,
+        "logic",
+      ).cognitive,
+    ).toBe(2);
+  });
+
+  it("counts logical runs inside conditional branches independently", () => {
+    expect(
+      measureNamedFunction(
+        `function logic(first, second, third, fourth) {
+          return first && (second ? third || fourth : fourth);
+        }`,
+        "logic",
+      ).cognitive,
+    ).toBe(3);
+  });
+
   it("adds expression decisions that the statement CFG does not represent", () => {
     expect(
       measureNamedFunction(

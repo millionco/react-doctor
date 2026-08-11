@@ -488,7 +488,8 @@ export const runInspect = <HooksR = never>(
           maintainabilityService
             .run({
               rootDirectory: scanDirectory,
-              focusPaths: isDiffMode ? input.includePaths : undefined,
+              focusPaths:
+                input.maintainabilityFocusPaths ?? (isDiffMode ? input.includePaths : undefined),
               changedLineRanges: input.changedLineRanges,
               signal: input.signal,
               onIncomplete: (reasons) => {

@@ -306,7 +306,7 @@ describe("ScanApp", () => {
       elapsedMilliseconds: 10,
       isOffline: true,
       noScoreMessage: "Score unavailable.",
-      skippedChecks: ["maintainability"],
+      skippedChecks: ["dead-code"],
     });
 
     const { lastFrame, unmount } = render(<ScanApp store={store} />);
@@ -396,7 +396,7 @@ describe("ScanApp", () => {
       elapsedMilliseconds: 10,
       isOffline: true,
       noScoreMessage: "Score unavailable.",
-      skippedChecks: ["maintainability"],
+      skippedChecks: ["dead-code"],
       incompleteMessage: "2 projects were skipped because scanning failed.",
     });
 

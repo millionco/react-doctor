@@ -37,7 +37,7 @@ describe("retryMissingProjectScores", () => {
     await retryMissingProjectScores([
       { result: buildResult(), config: null, isScoreDisabled: true },
       {
-        result: buildResult({ skippedChecks: ["maintainability"] }),
+        result: buildResult({ skippedChecks: ["dead-code"] }),
         config: null,
         isScoreDisabled: false,
       },

@@ -86,6 +86,29 @@ describe("architecture/no-high-complexity-react-function", () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it("reports an anonymous default-exported function component", () => {
+    const diagnostics = runComplexityRule(`
+      export default function ({ value }) {
+        ${buildSequentialBranches(REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD)}
+        return <p>fallback</p>;
+      }
+    `);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.message).toContain("`default export`");
+  });
+
+  it("reports an anonymous default-exported arrow component", () => {
+    const diagnostics = runComplexityRule(`
+      export default ({ value }) => {
+        ${buildSequentialBranches(REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD)}
+        return <p>fallback</p>;
+      };
+    `);
+
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it("allows React functions at the complexity boundary", () => {
     expect(
       runComplexityRule(`
@@ -144,5 +167,39 @@ describe("architecture/no-high-complexity-react-function", () => {
         }
       `),
     ).toHaveLength(0);
+  });
+
+  it("ignores marker-only code in a non-React JSX dialect", () => {
+    expect(
+      runComplexityRule(`
+        function Results({ value }) {
+          ${buildSequentialBranches(REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD)}
+          return <main classList={{ active: true }}>fallback</main>;
+        }
+      `),
+    ).toHaveLength(0);
+  });
+
+  it("does not treat an unresolved classList prop as non-React ownership", () => {
+    expect(
+      runComplexityRule(`
+        function Results({ value, classes }) {
+          ${buildSequentialBranches(REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD)}
+          return <main classList={classes}>fallback</main>;
+        }
+      `),
+    ).toHaveLength(1);
+  });
+
+  it("lets an explicit React runtime override a dialect marker", () => {
+    expect(
+      runComplexityRule(`
+        import React from "react";
+        function Results({ value }) {
+          ${buildSequentialBranches(REACT_FUNCTION_CYCLOMATIC_COMPLEXITY_THRESHOLD)}
+          return <main classList={{ active: true }}>fallback</main>;
+        }
+      `),
+    ).toHaveLength(1);
   });
 });

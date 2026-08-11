@@ -4,6 +4,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import { DIAGNOSTIC_DELTA_IDENTITY } from "../compute-diagnostic-delta.js";
 import {
   JSX_DUPLICATION_SOURCE_FILE_PATTERN,
   MAINTAINABILITY_CATEGORY,
@@ -11,18 +12,20 @@ import {
   MAINTAINABILITY_PLUGIN,
 } from "../constants.js";
 import {
-  detectDuplicateJsxSubtrees,
+  detectDuplicateJsxSubtreesCooperative,
   type DuplicateJsxSubtreeFamily,
   type DuplicateJsxSubtreeOccurrence,
   type JsxDuplicationIncompleteReason,
-  type JsxDuplicationSource,
+  type JsxDuplicationSourceReader,
 } from "../react-cleanup/detect-duplicate-jsx-subtrees.js";
 import type {
   ChangedFileLineRanges,
   Diagnostic,
   DiagnosticRelatedLocation,
 } from "../types/index.js";
-import { listSourceFilesCooperative } from "../utils/list-source-files.js";
+import { listSourceFilesWithSizeCooperative } from "../utils/list-source-files.js";
+import { readTextFileUpToCharacterLimit } from "../utils/read-text-file-up-to-character-limit.js";
+import { toNormalizedRelativePath } from "../utils/to-normalized-relative-path.js";
 import { MaintainabilityAnalysisFailed, ReactDoctorError } from "../errors.js";
 import { classifyFileContext } from "../classify-file-context.js";
 
@@ -34,37 +37,37 @@ export interface MaintainabilityInput {
   readonly onIncomplete?: (reasons: ReadonlyArray<JsxDuplicationIncompleteReason>) => void;
 }
 
-const normalizeRelativePath = (rootDirectory: string, filePath: string): string =>
-  path
-    .relative(rootDirectory, path.resolve(rootDirectory, filePath))
-    .replaceAll("\\", "/")
-    .replace(/^\.\//, "");
-
-const readJsxSources = async (input: MaintainabilityInput): Promise<JsxDuplicationSource[]> => {
-  const filePaths = (await listSourceFilesCooperative(input.rootDirectory, input.signal)).filter(
-    (filePath) =>
-      JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(filePath) &&
-      classifyFileContext(filePath) === "production",
+const buildJsxSourceReader = async (
+  input: MaintainabilityInput,
+): Promise<JsxDuplicationSourceReader> => {
+  const sourceFiles = (
+    await listSourceFilesWithSizeCooperative(input.rootDirectory, input.signal)
+  ).filter(
+    (sourceFile) =>
+      JSX_DUPLICATION_SOURCE_FILE_PATTERN.test(sourceFile.path) &&
+      classifyFileContext(sourceFile.path) === "production",
   );
-  const sources: JsxDuplicationSource[] = [];
-  for (const filePath of filePaths) {
-    input.signal?.throwIfAborted();
-    const sourceText = await fs
-      .readFile(path.resolve(input.rootDirectory, filePath), {
-        encoding: "utf-8",
-        signal: input.signal,
-      })
-      .catch(() => {
-        input.signal?.throwIfAborted();
-        return null;
-      });
-    if (sourceText === null) continue;
-    sources.push({
-      path: normalizeRelativePath(input.rootDirectory, filePath),
-      sourceText,
-    });
-  }
-  return sources;
+  const sourceSizeByPath = new Map(
+    sourceFiles.map((sourceFile) => [
+      toNormalizedRelativePath(sourceFile.path, input.rootDirectory),
+      sourceFile.sizeBytes,
+    ]),
+  );
+  return {
+    paths: [...sourceSizeByPath.keys()],
+    read: (filePath, maximumLengthChars) => {
+      const absolutePath = path.resolve(input.rootDirectory, filePath);
+      const sourceSizeBytes = sourceSizeByPath.get(filePath) ?? 0;
+      return sourceSizeBytes <= maximumLengthChars
+        ? fs.readFile(absolutePath, { encoding: "utf-8", signal: input.signal })
+        : readTextFileUpToCharacterLimit({
+            filePath: absolutePath,
+            maximumLengthChars,
+            sizeBytes: sourceSizeBytes,
+            signal: input.signal,
+          });
+    },
+  };
 };
 
 const allOccurrences = (family: DuplicateJsxSubtreeFamily): DuplicateJsxSubtreeOccurrence[] => [
@@ -114,7 +117,7 @@ const buildDuplicateJsxDiagnostic = (
   const [primaryOccurrence, ...relatedOccurrences] = occurrences;
   const fileLabel = family.distinctFileCount === 1 ? "file" : "files";
   const lineLabel = family.estimatedRemovableLineCount === 1 ? "line" : "lines";
-  return {
+  const diagnostic: Diagnostic = {
     filePath: primaryOccurrence.path,
     plugin: MAINTAINABILITY_PLUGIN,
     rule: MAINTAINABILITY_DUPLICATE_JSX_RULE,
@@ -131,6 +134,11 @@ const buildDuplicateJsxDiagnostic = (
       buildRelatedLocation(occurrence, relatedIndex + 2, family.occurrenceCount),
     ),
   };
+  Object.defineProperty(diagnostic, DIAGNOSTIC_DELTA_IDENTITY, {
+    enumerable: true,
+    value: `${family.fingerprint}\0occurrences:${family.occurrenceCount}`,
+  });
+  return diagnostic;
 };
 
 const formatIncompleteReason = (reason: JsxDuplicationIncompleteReason): string => {
@@ -140,23 +148,27 @@ const formatIncompleteReason = (reason: JsxDuplicationIncompleteReason): string 
 };
 
 const runMaintainability = async (input: MaintainabilityInput): Promise<Diagnostic[]> => {
-  const sources = await readJsxSources(input);
+  const sourceReader = await buildJsxSourceReader(input);
   const focusPaths =
     input.focusPaths === undefined
       ? null
       : new Set(
-          input.focusPaths.map((filePath) => normalizeRelativePath(input.rootDirectory, filePath)),
+          input.focusPaths.map((filePath) =>
+            toNormalizedRelativePath(filePath, input.rootDirectory),
+          ),
         );
   const changedLineRangesByPath =
     input.changedLineRanges === undefined
       ? null
       : new Map(
           input.changedLineRanges.map((entry) => [
-            normalizeRelativePath(input.rootDirectory, entry.file),
+            toNormalizedRelativePath(entry.file, input.rootDirectory),
             entry.ranges,
           ]),
         );
-  const result = detectDuplicateJsxSubtrees(sources, { signal: input.signal });
+  const result = await detectDuplicateJsxSubtreesCooperative(sourceReader, {
+    signal: input.signal,
+  });
   if (result.incomplete) input.onIncomplete?.(result.incompleteReasons);
 
   const diagnostics: Diagnostic[] = [];

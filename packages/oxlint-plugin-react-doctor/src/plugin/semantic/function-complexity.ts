@@ -17,6 +17,10 @@ interface CognitiveComplexityAccumulator {
   maxNestingDepth: number;
 }
 
+interface LogicalOperatorRunState {
+  previousOperator: "&&" | "||" | "??" | null;
+}
+
 const collectReachableBlocks = (entryBlock: BasicBlock): Set<BasicBlock> => {
   const reachableBlocks = new Set<BasicBlock>();
   const pendingBlocks = [entryBlock];
@@ -91,25 +95,20 @@ const countExpressionDecisionPoints = (rootNode: EsTreeNode): number => {
 
 const countLogicalOperatorRuns = (rootNode: EsTreeNode): number => {
   let logicalRunCount = 0;
-  walkAst(rootNode, (node) => {
-    if (node !== rootNode && isFunctionLike(node)) return false;
-    if (!isNodeOfType(node, "LogicalExpression")) return;
-    let previousOperator: "&&" | "||" | "??" | null = null;
-    const visitLogicalExpression = (expression: EsTreeNode): void => {
-      if (!isNodeOfType(expression, "LogicalExpression")) return;
-      visitLogicalExpression(expression.left);
-      if (
-        isCognitiveLogicalOperator(expression.operator) &&
-        expression.operator !== previousOperator
-      ) {
-        logicalRunCount += 1;
-        previousOperator = expression.operator;
-      }
-      visitLogicalExpression(expression.right);
-    };
-    visitLogicalExpression(node);
-    return false;
-  });
+  const visitNode = (node: EsTreeNode, runState: LogicalOperatorRunState | null): void => {
+    if (node !== rootNode && isFunctionLike(node)) return;
+    if (isNodeOfType(node, "LogicalExpression")) {
+      const currentRunState = runState ?? { previousOperator: null };
+      const operator = isCognitiveLogicalOperator(node.operator) ? node.operator : null;
+      visitNode(node.left, currentRunState);
+      if (operator !== null && operator !== currentRunState.previousOperator) logicalRunCount += 1;
+      currentRunState.previousOperator = operator;
+      visitNode(node.right, currentRunState);
+      return;
+    }
+    forEachChildNode(node, (childNode) => visitNode(childNode, null));
+  };
+  visitNode(rootNode, null);
   return logicalRunCount;
 };
 

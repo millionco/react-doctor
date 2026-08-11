@@ -331,8 +331,8 @@ describe("runScanApp", () => {
     );
     mockState.inspectResults.set(rootDirectory, {
       ...buildInspectResult(rootDirectory),
-      skippedChecks: ["maintainability"],
-      skippedCheckReasons: { maintainability: "Maintainability analysis failed." },
+      skippedChecks: ["dead-code"],
+      skippedCheckReasons: { "dead-code": "Maintainability analysis failed." },
     });
 
     await runScanApp({ directory: rootDirectory, skipPrompts: true });

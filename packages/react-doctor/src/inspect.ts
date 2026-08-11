@@ -365,6 +365,7 @@ const runInspectWithRuntime = async (
     options.baseline &&
     isDiffMode &&
     !didLintFail &&
+    !output.didDeadCodeFail &&
     countIncompleteLintFiles(output.lintPartialFailures) === 0
   ) {
     const comparison = await runBaselineComparison({

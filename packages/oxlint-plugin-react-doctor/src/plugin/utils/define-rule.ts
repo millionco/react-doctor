@@ -20,12 +20,10 @@ export type RuleDefinition = Rule | (Omit<Rule, "create"> & { scan: FileScan });
 // (a11y semantics tuned for React's synthetic-event listener naming,
 // React-cased prop names, etc.) and should pass through for files
 // authored in non-React JSX dialects: Solid.js, Qwik, Voby, Vidode.
-// Detection happens lazily — we snapshot the dialect status from the
-// program's import declarations on the Program visit, then short-
-// circuit every other visitor when the file is Solid/Qwik. A late
-// `classList=` / `class:` / `bind:` marker upgrades the dialect mid-
-// file (some files import Solid via re-export and don't have an
-// obvious `solid-js` import).
+// Detection snapshots imports and dialect-specific JSX markers on the
+// Program visit, then short-circuits every other visitor when the file is
+// Solid/Qwik. The JSXOpeningElement guard preserves the same behavior for
+// hosts that invoke visitors without a Program pass.
 type GenericVisitors = Record<string, unknown>;
 
 const wrapCreateForReactJsxOnly = <
@@ -58,7 +56,9 @@ const wrapCreateForReactJsxOnly = <
         wrappedVisitors.Program = (node: EsTreeNodeOfType<"Program">) => {
           const runtimeImports = collectJsxRuntimeImports(node);
           fileImportsReactRuntime = runtimeImports.hasReactRuntime;
-          fileIsNonReactJsx = runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
+          fileIsNonReactJsx =
+            !runtimeImports.hasReactRuntime &&
+            (runtimeImports.hasNonReactRuntime || runtimeImports.hasNonReactMarker);
           (visitor as (n: EsTreeNodeOfType<"Program">) => void)(node);
         };
         continue;
@@ -86,7 +86,9 @@ const wrapCreateForReactJsxOnly = <
       wrappedVisitors.Program = (node: EsTreeNodeOfType<"Program">) => {
         const runtimeImports = collectJsxRuntimeImports(node);
         fileImportsReactRuntime = runtimeImports.hasReactRuntime;
-        fileIsNonReactJsx = runtimeImports.hasNonReactRuntime && !runtimeImports.hasReactRuntime;
+        fileIsNonReactJsx =
+          !runtimeImports.hasReactRuntime &&
+          (runtimeImports.hasNonReactRuntime || runtimeImports.hasNonReactMarker);
       };
     }
     return wrappedVisitors;

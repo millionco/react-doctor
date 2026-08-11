@@ -14,7 +14,7 @@ State the diagnostic condition, required syntax and bindings, unsupported cases,
 Before adding a helper, search for one to reuse:
 
 ```sh
-bunx @rayhanadev/truffler "<symbol-or-behavior>" \
+react-doctor find "<symbol-or-behavior>" \
   packages/oxlint-plugin-react-doctor/src/plugin \
   --kind function,interface,type,constant --limit 20
 ```

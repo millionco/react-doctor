@@ -27,7 +27,7 @@ Read `AGENTS.md` first (its rules change), then run `/review` on this branch's d
 
 ## 2. Deslop
 
-Run `/deslop` ([`../deslop/SKILL.md`](../deslop/SKILL.md)) to simplify the recently modified code while preserving functionality, including its `truffler` duplicate-consolidation pass. Apply the refinements before committing.
+Run `/deslop` ([`../deslop/SKILL.md`](../deslop/SKILL.md)) to simplify the recently modified code while preserving functionality, including its `react-doctor find` duplicate-consolidation pass. Apply the refinements before committing.
 
 ## 3. Commit and push
 

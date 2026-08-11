@@ -1,13 +1,13 @@
 ---
 name: find-similar-functions
-description: Use truffler to find similar or pre-existing JavaScript/TypeScript symbols before implementing new code, especially helpers, utilities, parsers, formatters, scanners, fuzzy matchers, and other reusable functions. Agents should use this skill whenever they are about to add or refactor functionality in a JS/TS repository and need to avoid duplicating existing code, even if the user does not explicitly mention deduplication.
+description: Use react-doctor find to locate similar or pre-existing JavaScript/TypeScript symbols before implementing new code, especially helpers, utilities, parsers, formatters, scanners, fuzzy matchers, and other reusable functions. Agents should use this skill whenever they are about to add or refactor functionality in a JS/TS repository and need to avoid duplicating existing code, even if the user does not explicitly mention deduplication.
 ---
 
 # Similar Function Finder
 
 Use this skill before writing new JavaScript or TypeScript code that might overlap with existing helpers. The goal is to discover nearby functions, methods, constants, types, and interfaces early enough to reuse or extend them instead of creating duplicate behavior.
 
-`truffler` is a fuzzy symbol search tool. Treat it as a discovery layer: it points you to likely symbols, but you still need to inspect the code before deciding whether something is reusable.
+`react-doctor find` is a fuzzy symbol search command. Treat it as a discovery layer: it points you to likely symbols, but you still need to inspect the code before deciding whether something is reusable.
 
 ## Workflow
 
@@ -17,47 +17,48 @@ Use this skill before writing new JavaScript or TypeScript code that might overl
    - domain nouns, such as `symbol`, `path`, `file`, `route`, `token`, or `config`
    - verbs, such as `parse`, `normalize`, `discover`, `scan`, `format`, `rank`, `score`, `resolve`, or `validate`
    - common abbreviations and synonyms, such as `btn` for `button` or `cfg` for `config`
-3. Run `truffler` against the narrowest useful root first, then broaden if needed.
+3. Run `react-doctor find` against the narrowest useful root first, then broaden if needed.
 4. Inspect the top matches with normal code-reading tools before editing.
 5. Prefer reusing, extending, or moving existing code when the behavior substantially matches. Create new code only after the search shows there is not a suitable existing symbol.
 6. In your final response, briefly mention what you found and whether you reused something or intentionally added a new implementation.
 
 ## Command Recipes
 
-When `truffler` is installed in the target project:
+When React Doctor is installed in the target project:
 
 ```bash
-truffler "normalize path" src --kind function,method,constant,type --limit 20
-truffler "score" src --kind function,method --format json --limit 15
+react-doctor find "normalize path" src --kind function,method,constant,type --limit 20
+react-doctor find "score" src --kind function,method --json --limit 15
 ```
 
-When working inside this `truffler` repository:
+When React Doctor is not installed locally and package execution is acceptable:
 
 ```bash
-bun src/cli.ts "discover file" src --kind function,method,constant,type --limit 20
-bun src/cli.ts "format result" src --kind function,method --format json --limit 15
+npx react-doctor@latest find "discover file" src --kind function,method,constant,type --limit 20
+npx react-doctor@latest find "format result" src --kind function,method --json --limit 15
 ```
 
-When the project has no installed binary and you should not add dependencies, use `bunx` if network/package execution is acceptable for the environment:
+When working inside the React Doctor repository, use the workspace binary after building it:
 
 ```bash
-bunx @rayhanadev/truffler "parse config" src --kind function,method,type --limit 20
+nr --filter react-doctor build
+pnpm exec react-doctor find "parse config" src --kind function,method,type --limit 20
 ```
 
-If `truffler` cannot be run, say so and fall back to the repository's available search tools. Still follow the same deduplication intent: search before implementing.
+If `react-doctor find` cannot be run, say so and fall back to the repository's available search tools. Still follow the same deduplication intent: search before implementing.
 
 ## Search Strategy
 
 Start with symbols most likely to represent reusable behavior:
 
 ```bash
-truffler "<query>" <root> --kind function,method,constant,type,interface --limit 20
+react-doctor find "<query>" <root> --kind function,method,constant,type,interface --limit 20
 ```
 
 Use JSON output when you need structured fields for ranking, locations, signatures, or automation:
 
 ```bash
-truffler "<query>" <root> --format json --limit 20
+react-doctor find "<query>" <root> --json --limit 20
 ```
 
 Broaden deliberately:
@@ -80,11 +81,11 @@ When no suitable symbol exists, keep the new implementation near the closest rel
 Use a short note like this when the search affects your implementation:
 
 ```markdown
-I checked for existing symbols with `truffler` using queries like `normalize`, `path`, and `resolve`. The closest match was `normalizePath` in `src/files.ts`, so I reused that behavior instead of adding a separate helper.
+I checked for existing symbols with `react-doctor find` using queries like `normalize`, `path`, and `resolve`. The closest match was `normalizePath` in `src/files.ts`, so I reused that behavior instead of adding a separate helper.
 ```
 
 If nothing relevant exists:
 
 ```markdown
-I searched with `truffler` for `parse`, `config`, and `loadConfig` across `src/`; the matches were unrelated, so I added a new helper in the nearest module.
+I searched with `react-doctor find` for `parse`, `config`, and `loadConfig` across `src/`; the matches were unrelated, so I added a new helper in the nearest module.
 ```

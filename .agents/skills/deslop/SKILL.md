@@ -54,14 +54,14 @@ Avoid over-simplification that could:
 
 Only refine code that has been recently modified or touched in the current session, unless explicitly instructed to review a broader scope.
 
-## Consolidate Duplicates with truffler
+## Consolidate Duplicates with React Doctor
 
-Slop often hides as near-duplicate functions - the same behavior copied across modules under slightly different names. Use `truffler` (the `find-similar-functions` skill) to find symbols that do the same or similar thing, then collapse them into one shared utility instead of leaving parallel copies behind.
+Slop often hides as near-duplicate functions - the same behavior copied across modules under slightly different names. Use `react-doctor find` (the `find-similar-functions` skill) to find symbols that do the same or similar thing, then collapse them into one shared utility instead of leaving parallel copies behind.
 
 For each helper, type, or constant you touched or added, search by its name and by the behavior it implements (domain noun + verb):
 
 ```bash
-bunx @rayhanadev/truffler "format duration" packages --kind function,method,constant,type --limit 20
+react-doctor find "format duration" packages --kind function,method,constant,type --limit 20
 ```
 
 Then consolidate deliberately:

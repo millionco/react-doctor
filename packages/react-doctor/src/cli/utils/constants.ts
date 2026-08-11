@@ -225,6 +225,9 @@ export const SENTRY_SPAN_STATUS_ERROR = 2;
 // decision in a `traceId`/`traceFlags` span context.
 export const TRACE_FLAG_SAMPLED = 1;
 
+export const DEFAULT_FIND_LIMIT = 50;
+export const DEFAULT_SOURCE_POSITION = 1;
+
 // Nanoseconds per second, for converting Effect's epoch-nanosecond span clock
 // into the `[seconds, nanosRemainder]` HrTime tuple Sentry/OTel expect.
 export const NANOSECONDS_PER_SECOND = 1_000_000_000n;

@@ -58,6 +58,7 @@
   "dependencies": {
     "@astrojs/compiler": "^4.0.0",
     "@babel/code-frame": "^7.29.0",
+    "@rayhanadev/truffler": "^0.4.2",
     "@sentry/node": "^10.54.0",
     "agent-install": "0.0.5",
     "conf": "^15.1.0",
@@ -67,6 +68,7 @@
     "figures": "^6.1.0",
     "jiti": "^2.7.0",
     "magicast": "^0.5.3",
+    "oxc-parser": "^0.132.0",
     "oxc-resolver": "^11.24.2",
     "oxlint": ">=1.76.0 <1.77.0",
     "oxlint-plugin-react-doctor": "workspace:*",

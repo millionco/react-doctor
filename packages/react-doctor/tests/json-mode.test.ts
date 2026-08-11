@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -14,6 +14,8 @@ import {
   writeJsonErrorReport,
   writeJsonReport,
 } from "../src/cli/utils/json-mode.js";
+import { captureStdout } from "./helpers/capture-stdout.js";
+import type { CapturedStdout } from "./helpers/capture-stdout.js";
 
 const buildOkReport = (overrides: Partial<JsonReport> = {}): JsonReport => ({
   schemaVersion: 1,
@@ -41,22 +43,6 @@ const buildOkReport = (overrides: Partial<JsonReport> = {}): JsonReport => ({
 // reset it between cases — each `enableJsonMode` overwrites the context,
 // and we can read `isJsonModeActive()` to confirm the prior state was
 // replaced.
-
-interface CapturedStdout {
-  lines: string[];
-  restore: () => void;
-}
-
-const captureStdout = (): CapturedStdout => {
-  const lines: string[] = [];
-  const spy = vi.spyOn(process.stdout, "write").mockImplementation(((
-    chunk: string | Uint8Array,
-  ) => {
-    lines.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
-    return true;
-  }) as never);
-  return { lines, restore: () => spy.mockRestore() };
-};
 
 describe("json-mode lifecycle", () => {
   let captured: CapturedStdout;

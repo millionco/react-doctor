@@ -76,6 +76,14 @@ const VERSION_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(),
 };
 
+const FIND_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set(["--help", "--json"]),
+  longOptionsWithRequiredValues: new Set(["--cwd", "--kind", "--limit"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h"]),
+  shortOptionsWithRequiredValues: new Set(["-c", "-k", "-l"]),
+};
+
 // Union of every flag across the `rules` subcommands (list / explain /
 // set / enable / disable / category / ignore-tag / unignore-tag). The
 // subcommand name and positionals (rule key, severity, tag, category)
@@ -155,6 +163,9 @@ const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["install", INSTALL_FLAG_SPEC],
   ["setup", INSTALL_FLAG_SPEC],
   ["version", VERSION_FLAG_SPEC],
+  ["find", FIND_FLAG_SPEC],
+  ["search", FIND_FLAG_SPEC],
+  ["grep", FIND_FLAG_SPEC],
   ["rules", RULES_FLAG_SPEC],
   ["ci", CI_FLAG_SPEC],
   ["why", WHY_FLAG_SPEC],

@@ -37,6 +37,18 @@ npx react-doctor@latest install
 
 Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
+### Find code symbols
+
+Fuzzy-search JavaScript and TypeScript declarations without falling back to text grep. Results include file locations, symbol kinds, and signatures.
+
+```bash
+npx react-doctor@latest find Button src
+npx react-doctor@latest find use --kind hook
+npx react-doctor@latest find card --kind component,interface --json
+```
+
+`find` is also available as `search` and `grep`. The generic symbol kinds include functions, classes, interfaces, types, methods, properties, variables, imports, and exports. React-aware `component` and `hook` kinds follow React naming conventions.
+
 ### 3. Run in CI
 
 React Doctor reviews every pull request and reports only the issues your change introduced, not your existing backlog. Set it up with one command:

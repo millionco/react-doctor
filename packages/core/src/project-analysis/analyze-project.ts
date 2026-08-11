@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import type {
   CircularDependency,
@@ -33,6 +33,9 @@ import { findMonorepoRoot } from "./utils/find-monorepo-root.js";
 import { collectGitIgnoredPaths } from "./utils/collect-git-ignored-paths.js";
 import { defineProjectAnalysisConfig } from "./config.js";
 import { runSafeDetector } from "./utils/run-safe-detector.js";
+import { collectGitLinguistIgnoredPaths } from "../utils/collect-git-linguist-ignored-paths.js";
+import { toPosixPath } from "./utils/to-posix-path.js";
+import { extractBuildScriptConsumedFiles } from "./collect/build-script-consumed-files.js";
 
 export interface AnalyzeProjectInput {
   readonly rootDirectory: string;
@@ -228,6 +231,7 @@ const analyzeProjectConfig = async (
         testEntries: [],
         alwaysUsedFiles: [],
         externallyConsumedFiles: [],
+        analysisExcludedFiles: [],
       };
     },
   );
@@ -293,10 +297,24 @@ const analyzeProjectConfig = async (
   const parsedModules = files.map((file) => parseSourceFile(file.path));
 
   const discoveredEntries = await entriesPromise;
+  const buildScriptConsumedFiles = extractBuildScriptConsumedFiles(absoluteRoot);
+  const relativeFilePaths = files.map((file) => toPosixPath(relative(absoluteRoot, file.path)));
+  const linguistIgnoredPaths = collectGitLinguistIgnoredPaths(absoluteRoot, relativeFilePaths);
+  const analysisExcludedFiles = new Set(discoveredEntries.analysisExcludedFiles);
+  for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+    if (linguistIgnoredPaths.has(relativeFilePaths[fileIndex])) {
+      analysisExcludedFiles.add(files[fileIndex].path);
+    }
+  }
   const moduleLinkInputsResult = buildModuleLinkInputs({
+    rootDirectory: absoluteRoot,
     files,
     parsedModules,
-    resolvedEntries: discoveredEntries,
+    resolvedEntries: {
+      ...discoveredEntries,
+      alwaysUsedFiles: [...discoveredEntries.alwaysUsedFiles, ...buildScriptConsumedFiles],
+      analysisExcludedFiles: [...analysisExcludedFiles],
+    },
     gitIgnoredFilePaths: gitIgnoredFileSet,
     resolveModule: moduleResolver.resolveModule,
   });

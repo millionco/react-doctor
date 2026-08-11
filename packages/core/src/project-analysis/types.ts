@@ -72,6 +72,7 @@ export interface SourceModule extends SourceModuleAnalysis {
   isDeclarationFile: boolean;
   isConfigFile: boolean;
   isGitIgnored: boolean;
+  isAnalysisExcluded: boolean;
 }
 
 export interface ReExportMapping {
@@ -124,7 +125,7 @@ export interface UnusedDependency {
   reason: string;
 }
 
-export type SkippedDependencyReason = "allowlisted-name" | "provides-binary";
+export type SkippedDependencyReason = "allowlisted-name" | "ambiguous-binary" | "provides-binary";
 
 export interface SkippedDependency {
   name: string;
@@ -141,6 +142,7 @@ export interface ResolvedEntries {
   testEntries: string[];
   alwaysUsedFiles: string[];
   externallyConsumedFiles: string[];
+  analysisExcludedFiles: string[];
 }
 
 export interface ProjectAnalysisConfig {

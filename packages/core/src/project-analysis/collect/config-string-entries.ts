@@ -18,6 +18,7 @@ const CONFIG_STRING_ENTRY_GLOBS = [
   "**/tailwind.config.{js,ts,cjs,mjs}",
   "electron.vite.config.{js,ts,mjs}",
   "electron-builder.config.{js,ts,cjs}",
+  "forge.config.{js,ts,cjs,mjs,mts}",
   "esbuild*.ts",
   "**/esbuild.entrypoints.ts",
   "metro.config.{js,ts}",

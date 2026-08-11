@@ -1,4 +1,4 @@
-import { resolve, join } from "node:path";
+import { basename, resolve, join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import fg from "fast-glob";
 import type {
@@ -17,6 +17,9 @@ import {
 import { collectPnpmWorkspaceOverrideMappings } from "../utils/parse-pnpm-workspace-overrides.js";
 import { matchesPackageImportReference } from "../utils/matches-package-import-reference.js";
 import { matchesPackageTokenReference } from "../utils/matches-package-token-reference.js";
+import { extractScriptBinaryNames } from "../utils/extract-script-binary-names.js";
+import { matchesNodeModulesPackageReference } from "../utils/matches-node-modules-package-reference.js";
+import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractExpoConfigPluginEntries } from "../collect/expo-config-plugin-entries.js";
 
@@ -80,6 +83,11 @@ interface StalePackageReport {
   skippedDependencies: SkippedDependency[];
 }
 
+interface PackageReferenceCollection {
+  referencedPackageNames: Set<string>;
+  ambiguousPackageNames: Set<string>;
+}
+
 export const detectStalePackages = (
   graph: DependencyGraph,
   config: ProjectAnalysisConfig,
@@ -106,8 +114,10 @@ export const detectStalePackages = (
   }
 
   const declaredNames = new Set(declaredDependencies.keys());
-  const observedPackageNames = collectUsedPackages(graph);
+  const directlyImportedPackageNames = collectUsedPackages(graph);
+  const observedPackageNames = new Set(directlyImportedPackageNames);
   const usedPackageNames = new Set(observedPackageNames);
+  const ambiguousBinaryPackageNames = new Set<string>();
   const markPackageUsed = (packageName: string): void => {
     observedPackageNames.add(packageName);
     usedPackageNames.add(packageName);
@@ -127,36 +137,36 @@ export const detectStalePackages = (
     }
   }
 
-  const { binToPackage, packagesProvidingBinary } = buildBinaryPackageIndex(
-    nodeModulesSearchRoots,
-    declaredNames,
-  );
-
-  // Shipping a CLI binary is itself evidence of use — binaries run from
-  // Makefiles, CI, git hooks, and `npx`, none of which the static scan sees.
-  for (const packageName of packagesProvidingBinary) usedPackageNames.add(packageName);
+  const { binToPackage } = buildBinaryPackageIndex(nodeModulesSearchRoots, declaredNames);
 
   for (const workspacePackageJsonPath of allPackageJsonPaths) {
-    const scriptReferenced = collectScriptReferencedPackages(
+    const scriptReferences = collectScriptReferencedPackages(
       workspacePackageJsonPath,
       declaredNames,
       binToPackage,
     );
-    for (const packageName of scriptReferenced) markPackageUsed(packageName);
+    for (const packageName of scriptReferences.referencedPackageNames) markPackageUsed(packageName);
+    for (const packageName of scriptReferences.ambiguousPackageNames) {
+      ambiguousBinaryPackageNames.add(packageName);
+    }
 
-    const packageJsonConfigReferenced = collectPackageJsonConfigReferences(
+    const packageJsonReferenced = collectPackageJsonReferences(
       workspacePackageJsonPath,
       declaredNames,
     );
-    for (const packageName of packageJsonConfigReferenced) markPackageUsed(packageName);
+    for (const packageName of packageJsonReferenced) markPackageUsed(packageName);
   }
 
-  const nxProjectReferenced = collectNxProjectJsonReferences(
+  const nxProjectReferences = collectNxProjectJsonReferences(
     config.rootDir,
     declaredNames,
     binToPackage,
   );
-  for (const packageName of nxProjectReferenced) markPackageUsed(packageName);
+  for (const packageName of nxProjectReferences.referencedPackageNames)
+    markPackageUsed(packageName);
+  for (const packageName of nxProjectReferences.ambiguousPackageNames) {
+    ambiguousBinaryPackageNames.add(packageName);
+  }
 
   const configSearchRoots =
     monorepoRoot && monorepoRoot !== config.rootDir
@@ -235,6 +245,14 @@ export const detectStalePackages = (
     markPackageUsed("@remix-run/react");
   }
 
+  const projectConventionReferenced = collectProjectConventionReferencedPackages(
+    config.rootDir,
+    declaredNames,
+    usedPackageNames,
+    directlyImportedPackageNames,
+  );
+  for (const packageName of projectConventionReferenced) markPackageUsed(packageName);
+
   if (declaredNames.has("react") && declaredNames.has("react-dom")) {
     const packageJsonPath = resolve(config.rootDir, "package.json");
     try {
@@ -287,14 +305,15 @@ export const detectStalePackages = (
     if (isAlwaysConsideredUsed(dependencyName)) {
       recordSkippedDependency(dependencyName, "allowlisted-name");
     }
-    if (packagesProvidingBinary.has(dependencyName)) {
-      recordSkippedDependency(dependencyName, "provides-binary");
+    if (ambiguousBinaryPackageNames.has(dependencyName)) {
+      recordSkippedDependency(dependencyName, "ambiguous-binary");
     }
   }
 
   for (const [dependencyName] of declaredDependencies) {
     if (isAlwaysConsideredUsed(dependencyName)) continue;
     if (usedPackageNames.has(dependencyName)) continue;
+    if (ambiguousBinaryPackageNames.has(dependencyName)) continue;
     candidateUnused.add(dependencyName);
   }
 
@@ -362,6 +381,9 @@ const KNOWN_PEER_DEPENDENCY_NAMES = new Map<string, ReadonlyArray<string>>([
   ["@react-three/fiber", ["three"]],
   ["react-apexcharts", ["apexcharts"]],
   ["react-chartjs-2", ["chart.js"]],
+  ["rehype-pretty-code", ["shiki"]],
+  ["@pmmmwh/react-refresh-webpack-plugin", ["react-refresh"]],
+  ["@stripe/react-stripe-js", ["@stripe/stripe-js"]],
 ]);
 
 const collectPeerSatisfiedPackages = (
@@ -390,8 +412,10 @@ const collectPeerSatisfiedPackages = (
       const content = readFileSync(installedPackageJsonPath, "utf-8");
       const packageJson = JSON.parse(content);
       const peerDeps = packageJson.peerDependencies;
+      const peerDependenciesMeta = packageJson.peerDependenciesMeta;
       if (peerDeps && typeof peerDeps === "object") {
         for (const peerName of Object.keys(peerDeps)) {
+          if (peerDependenciesMeta?.[peerName]?.optional === true) continue;
           if (declaredNames.has(peerName)) {
             peerSatisfied.add(peerName);
           }
@@ -418,27 +442,26 @@ const findInstalledPackageJsonPath = (
   return undefined;
 };
 
-const SHELL_SPLIT_PATTERN = /\s*(?:&&|\|\||[;&|])\s*/;
-
-const INLINE_ENV_VAR_PATTERN = /^[A-Z_][A-Z0-9_]*=/;
-
 interface BinaryPackageIndex {
   binToPackage: Map<string, Set<string>>;
-  packagesProvidingBinary: Set<string>;
 }
 
-// Bin names knowable WITHOUT an installed node_modules tree. Scanned
-// checkouts are frequently uninstalled, so the installed-metadata pass below
-// finds nothing and a script-invoked CLI whose bin differs from its package
-// name gets flagged as unused. These packages' bins can't be derived from
-// their names; the `<name>-cli` → `<name>` convention is derived generically
-// in `staticBinNamesForPackage`. Statically-inferred bins only feed the
-// bin→package lookup (credited when a script actually invokes the bin) — they
-// do NOT mark the package as used by mere presence the way installed bin
-// metadata does, so a genuinely unreferenced CLI dep stays flagged.
+// Static aliases support uninstalled checkouts and only feed bin lookup; they
+// never prove that a package is used.
 const KNOWN_PACKAGE_BIN_NAMES = new Map<string, ReadonlyArray<string>>([
   ["@babel/cli", ["babel"]],
   ["@babel/node", ["babel-node"]],
+  ["babel-cli", ["babel", "babel-node"]],
+  ["flow-bin", ["flow"]],
+  ["parcel-bundler", ["parcel"]],
+  ["react-email", ["email"]],
+  ["firebase-tools", ["firebase"]],
+  ["@rc-component/np", ["rc-np"]],
+  ["@electron/rebuild", ["electron-rebuild"]],
+  ["@microsoft/api-extractor", ["api-extractor"]],
+  ["@tarojs/cli", ["taro"]],
+  ["@chakra-ui/cli", ["chakra", "chakra-cli"]],
+  ["@react-router/serve", ["react-router-serve"]],
   ["@remix-run/serve", ["remix-serve"]],
   ["@tauri-apps/cli", ["tauri"]],
   ["@typescript/native-preview", ["tsgo"]],
@@ -464,7 +487,6 @@ const buildBinaryPackageIndex = (
   declaredNames: Set<string>,
 ): BinaryPackageIndex => {
   const binToPackage = new Map<string, Set<string>>();
-  const packagesProvidingBinary = new Set<string>();
   const addBinMapping = (binaryName: string, packageName: string): void => {
     const mappedPackages = binToPackage.get(binaryName) ?? new Set<string>();
     mappedPackages.add(packageName);
@@ -482,100 +504,99 @@ const buildBinaryPackageIndex = (
       const binField = binPackageJson.bin;
       if (typeof binField === "string" && binField.length > 0) {
         addBinMapping(packageName.split("/").pop()!, packageName);
-        packagesProvidingBinary.add(packageName);
       } else if (typeof binField === "object" && binField !== null) {
         const binaryNames = Object.keys(binField);
         if (binaryNames.length === 0) continue;
         for (const binaryName of binaryNames) {
           addBinMapping(binaryName, packageName);
         }
-        packagesProvidingBinary.add(packageName);
       }
     } catch {
       continue;
     }
   }
-  return { binToPackage, packagesProvidingBinary };
+  return { binToPackage };
 };
 
 const collectScriptReferencedPackages = (
   packageJsonPath: string,
   declaredNames: Set<string>,
   binToPackage: Map<string, Set<string>>,
-): Set<string> => {
-  const referenced = new Set<string>();
+): PackageReferenceCollection => {
+  const referencedPackageNames = new Set<string>();
+  const ambiguousPackageNames = new Set<string>();
 
   try {
     const content = readFileSync(packageJsonPath, "utf-8");
     const packageJson = JSON.parse(content);
     const scripts = packageJson.scripts;
-    if (!scripts || typeof scripts !== "object") return referenced;
+    if (!scripts || typeof scripts !== "object") {
+      return { referencedPackageNames, ambiguousPackageNames };
+    }
 
     for (const scriptCommand of Object.values(scripts)) {
       if (typeof scriptCommand !== "string") continue;
-      const commandReferenced = collectCommandReferencedPackages(
+      const commandReferences = collectCommandReferencedPackages(
         scriptCommand,
         declaredNames,
         binToPackage,
       );
-      for (const packageName of commandReferenced) referenced.add(packageName);
+      for (const packageName of commandReferences.referencedPackageNames) {
+        referencedPackageNames.add(packageName);
+      }
+      for (const packageName of commandReferences.ambiguousPackageNames) {
+        ambiguousPackageNames.add(packageName);
+      }
 
       // A dep can appear in a script as a flag argument rather than the
       // leading binary (`jest --testResultsProcessor jest-sonar-reporter`),
       // which the binary matcher above skips. Treat any declared package named
       // as a standalone token anywhere in the command as referenced.
       for (const declaredName of declaredNames) {
-        if (referenced.has(declaredName)) continue;
-        if (matchesPackageTokenReference(scriptCommand, declaredName)) {
-          referenced.add(declaredName);
+        if (referencedPackageNames.has(declaredName)) continue;
+        if (matchesNodeModulesPackageReference(scriptCommand, declaredName)) {
+          referencedPackageNames.add(declaredName);
+          continue;
+        }
+        if (
+          !commandReferences.ambiguousPackageNames.has(declaredName) &&
+          matchesPackageTokenReference(scriptCommand, declaredName)
+        ) {
+          referencedPackageNames.add(declaredName);
         }
       }
     }
   } catch {
-    return referenced;
+    return { referencedPackageNames, ambiguousPackageNames };
   }
 
-  return referenced;
+  return { referencedPackageNames, ambiguousPackageNames };
 };
 
 const collectCommandReferencedPackages = (
   command: string,
   declaredNames: Set<string>,
   binToPackage: Map<string, Set<string>>,
-): Set<string> => {
-  const referenced = new Set<string>();
+): PackageReferenceCollection => {
+  const referencedPackageNames = new Set<string>();
+  const ambiguousPackageNames = new Set<string>();
 
-  const segments = command.split(SHELL_SPLIT_PATTERN);
-  for (const segment of segments) {
-    const tokens = segment.trim().split(/\s+/);
-    if (tokens.length === 0) continue;
-
-    let binaryIndex = 0;
-    while (binaryIndex < tokens.length && INLINE_ENV_VAR_PATTERN.test(tokens[binaryIndex])) {
-      binaryIndex++;
-    }
-    if (binaryIndex >= tokens.length) continue;
-
-    const binaryToken = tokens[binaryIndex].replace(/^.*\//, "");
-    const effectiveBinary =
-      binaryToken === "npx" || binaryToken === "pnpx" || binaryToken === "bunx"
-        ? (tokens[binaryIndex + 1]?.replace(/^.*\//, "") ?? "")
-        : binaryToken;
-
-    for (const candidateBinary of [binaryToken, effectiveBinary]) {
-      if (!candidateBinary) continue;
-      for (const mappedPackage of binToPackage.get(candidateBinary) ?? []) {
-        if (declaredNames.has(mappedPackage)) {
-          referenced.add(mappedPackage);
-        }
-      }
-      if (declaredNames.has(candidateBinary)) {
-        referenced.add(candidateBinary);
-      }
+  for (const candidateBinary of extractScriptBinaryNames(command)) {
+    if (!candidateBinary) continue;
+    const candidatePackages = new Set(
+      [...(binToPackage.get(candidateBinary) ?? [])].filter((packageName) =>
+        declaredNames.has(packageName),
+      ),
+    );
+    if (declaredNames.has(candidateBinary)) candidatePackages.add(candidateBinary);
+    if (candidatePackages.size === 1) {
+      for (const packageName of candidatePackages) referencedPackageNames.add(packageName);
+    } else if (candidatePackages.size > 1) {
+      for (const packageName of candidatePackages) ambiguousPackageNames.add(packageName);
     }
   }
 
-  return referenced;
+  return { referencedPackageNames, ambiguousPackageNames };
 };
 
 const CONFIG_FILE_GLOBS = [
@@ -587,6 +608,12 @@ const CONFIG_FILE_GLOBS = [
   ".eslintrc.{js,cjs,mjs,json,yaml,yml}",
   ".prettierrc",
   ".prettierrc.{js,cjs,mjs,json,json5,yaml,yml,toml}",
+  ".stylelintrc",
+  ".stylelintrc.{js,cjs,mjs,json,yaml,yml}",
+  "**/.stylelintrc",
+  "**/.stylelintrc.{js,cjs,mjs,json,yaml,yml}",
+  "stylelint.config.{js,cjs,mjs,ts,mts,cts}",
+  "**/stylelint.config.{js,cjs,mjs,ts,mts,cts}",
   "prettier.config.{js,cjs,mjs,ts,mts,cts}",
   "eslint.config.{js,cjs,mjs,ts,mts,cts}",
   "webpack.config.{js,ts,mjs,cjs}",
@@ -619,6 +646,16 @@ const CONFIG_FILE_GLOBS = [
   "**/.releaserc.{js,cjs,mjs,json,yaml,yml}",
   "release.config.{js,cjs,mjs,ts,mts,cts}",
   "**/release.config.{js,cjs,mjs,ts,mts,cts}",
+  ".release-it.{js,cjs,mjs,json,ts}",
+  "release-it.{js,cjs,mjs,json,ts}",
+  "release-it.config.{js,cjs,mjs,json,ts}",
+  "**/.release-it.{js,cjs,mjs,json,ts}",
+  "**/release-it.{js,cjs,mjs,json,ts}",
+  "**/release-it.config.{js,cjs,mjs,json,ts}",
+  "typedoc.json",
+  "**/typedoc.json",
+  "netlify.toml",
+  "**/netlify.toml",
   ".lintstagedrc.{js,cjs,mjs,json}",
   "commitlint.config.{js,cjs,mjs,ts}",
   ".commitlintrc.{js,cjs,mjs,json,yaml,yml}",
@@ -663,6 +700,12 @@ const collectConfigReferencedPackages = (
 
   for (const configPath of configFiles) {
     addMatchesFromFile(configPath, containsPackageName);
+    if (
+      declaredNames.has("release-it") &&
+      RELEASE_IT_CONFIG_FILE_PATTERN.test(basename(configPath))
+    ) {
+      referenced.add("release-it");
+    }
   }
 
   const documentationFiles = globPackageFiles(rootDir, ["**/*.{mdx,md}"], {
@@ -706,7 +749,22 @@ const PACKAGE_JSON_CONFIG_SECTIONS = [
   "resolutions",
   "overrides",
   "release",
+  "release-it",
+  "pre-commit",
 ] as const;
+
+const PACKAGE_JSON_CONFIG_OWNERS = new Map<string, string>([
+  ["pre-commit", "pre-commit"],
+  ["release-it", "release-it"],
+]);
+
+const RELEASE_IT_CONFIG_FILE_PATTERN =
+  /^(?:\.release-it|release-it(?:\.config)?)\.(?:js|cjs|mjs|json|ts)$/;
+
+const SCRIPT_IMPLIED_DEPENDENCIES = new Map<string, RegExp>([
+  ["@astrojs/check", /\bastro\s+check\b/],
+  ["oxlint-tsgolint", /\b(?:oxlint|ultracite)\b[^\n]*--type-(?:aware|check)\b/],
+]);
 
 const collectOverrideMappingsFromPackageJson = (packageJsonPath: string): OverrideMapping[] => {
   const mappings: OverrideMapping[] = [];
@@ -763,7 +821,7 @@ const collectOverrideMappings = (
   return mappings;
 };
 
-const collectPackageJsonConfigReferences = (
+const collectPackageJsonReferences = (
   packageJsonPath: string,
   declaredNames: Set<string>,
 ): Set<string> => {
@@ -775,12 +833,39 @@ const collectPackageJsonConfigReferences = (
 
     for (const sectionName of PACKAGE_JSON_CONFIG_SECTIONS) {
       const sectionValue = packageJson[sectionName];
-      if (!sectionValue || typeof sectionValue !== "object") continue;
+      if (sectionValue === undefined || sectionValue === null) continue;
+
+      const ownerPackageName = PACKAGE_JSON_CONFIG_OWNERS.get(sectionName);
+      if (ownerPackageName && declaredNames.has(ownerPackageName)) {
+        referenced.add(ownerPackageName);
+      }
 
       const sectionText = JSON.stringify(sectionValue);
       for (const packageName of declaredNames) {
         if (sectionText.includes(packageName)) {
           referenced.add(packageName);
+        }
+      }
+    }
+
+    const scripts = packageJson.scripts;
+    if (scripts && typeof scripts === "object") {
+      const scriptCommands = Object.values(scripts).filter(
+        (scriptCommand): scriptCommand is string => typeof scriptCommand === "string",
+      );
+      const packageDeclaresPostinstallPostinstall = Boolean(
+        packageJson.dependencies?.["postinstall-postinstall"] ??
+        packageJson.devDependencies?.["postinstall-postinstall"],
+      );
+      if (packageDeclaresPostinstallPostinstall && typeof scripts.postinstall === "string") {
+        referenced.add("postinstall-postinstall");
+      }
+      for (const [dependencyName, commandPattern] of SCRIPT_IMPLIED_DEPENDENCIES) {
+        if (
+          declaredNames.has(dependencyName) &&
+          scriptCommands.some((scriptCommand) => commandPattern.test(scriptCommand))
+        ) {
+          referenced.add(dependencyName);
         }
       }
     }
@@ -795,8 +880,9 @@ const collectNxProjectJsonReferences = (
   rootDir: string,
   declaredNames: Set<string>,
   binToPackage: Map<string, Set<string>>,
-): Set<string> => {
-  const referenced = new Set<string>();
+): PackageReferenceCollection => {
+  const referencedPackageNames = new Set<string>();
+  const ambiguousPackageNames = new Set<string>();
 
   const projectJsonPaths = globPackageFiles(rootDir, ["project.json", "**/project.json"], {
     ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
@@ -810,24 +896,29 @@ const collectNxProjectJsonReferences = (
       const projectText = JSON.stringify(projectJson);
       for (const packageName of declaredNames) {
         if (projectText.includes(packageName)) {
-          referenced.add(packageName);
+          referencedPackageNames.add(packageName);
         }
       }
 
       for (const stringValue of collectStringValues(projectJson)) {
-        const commandReferenced = collectCommandReferencedPackages(
+        const commandReferences = collectCommandReferencedPackages(
           stringValue,
           declaredNames,
           binToPackage,
         );
-        for (const packageName of commandReferenced) referenced.add(packageName);
+        for (const packageName of commandReferences.referencedPackageNames) {
+          referencedPackageNames.add(packageName);
+        }
+        for (const packageName of commandReferences.ambiguousPackageNames) {
+          ambiguousPackageNames.add(packageName);
+        }
       }
     } catch {
       continue;
     }
   }
 
-  return referenced;
+  return { referencedPackageNames, ambiguousPackageNames };
 };
 
 const collectStringValues = (value: unknown): string[] => {
@@ -885,6 +976,17 @@ const collectTsconfigReferencedPackages = (rootDir: string): Set<string> => {
           }
         }
       }
+      if (Array.isArray(compilerOptions?.plugins)) {
+        for (const pluginEntry of compilerOptions.plugins) {
+          let pluginName: string | undefined;
+          if (typeof pluginEntry === "string") {
+            pluginName = pluginEntry;
+          } else if (pluginEntry && typeof pluginEntry.name === "string") {
+            pluginName = pluginEntry.name;
+          }
+          if (pluginName) referenced.add(pluginName);
+        }
+      }
     } catch {
       continue;
     }
@@ -902,7 +1004,7 @@ const extractExtendsPackageName = (extendsValue: string): string | undefined => 
   return extendsValue.split("/")[0];
 };
 
-const SOURCE_FILE_GLOBS = ["**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs}"];
+const SOURCE_FILE_GLOBS = ["**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs,css,scss,sass}"];
 
 const SOURCE_FILE_IGNORES = [
   "**/node_modules/**",
@@ -931,8 +1033,19 @@ const scanSourceFilesForPackageImports = (
     if (candidatePackages.size === 0) break;
     try {
       const content = readFileSync(filePath, "utf-8");
+      const isStylesheet = /\.(?:css|scss|sass)$/.test(filePath);
+      const stylesheetPackages = isStylesheet
+        ? new Set(
+            collectStylesheetImportSpecifiers(content)
+              .map(({ specifier }) => extractPackageName(specifier))
+              .filter((packageName) => packageName !== undefined),
+          )
+        : new Set<string>();
       for (const packageName of candidatePackages) {
-        if (matchesPackageImportReference(content, packageName)) {
+        const isReferenced = isStylesheet
+          ? stylesheetPackages.has(packageName)
+          : matchesPackageImportReference(content, packageName);
+        if (isReferenced) {
           found.add(packageName);
           candidatePackages.delete(packageName);
         }
@@ -943,6 +1056,69 @@ const scanSourceFilesForPackageImports = (
   }
 
   return found;
+};
+
+const collectProjectConventionReferencedPackages = (
+  rootDir: string,
+  declaredNames: Set<string>,
+  usedPackageNames: Set<string>,
+  directlyImportedPackageNames: Set<string>,
+): Set<string> => {
+  const referenced = new Set<string>();
+  const hasCapacitorConfig =
+    fg.sync(["capacitor.config.{ts,js,json,mts,mjs,cts,cjs}"], {
+      cwd: rootDir,
+      onlyFiles: true,
+    }).length > 0;
+  const hasUsedCapacitorRuntime =
+    usedPackageNames.has("@capacitor/core") || usedPackageNames.has("@capacitor/cli");
+  const capacitorNativeDirectories = new Set(
+    fg.sync(["android", "ios"], { cwd: rootDir, onlyDirectories: true }),
+  );
+
+  if (
+    (hasCapacitorConfig || hasUsedCapacitorRuntime) &&
+    capacitorNativeDirectories.has("android")
+  ) {
+    if (declaredNames.has("@capacitor/android")) referenced.add("@capacitor/android");
+  }
+  if ((hasCapacitorConfig || hasUsedCapacitorRuntime) && capacitorNativeDirectories.has("ios")) {
+    if (declaredNames.has("@capacitor/ios")) referenced.add("@capacitor/ios");
+  }
+
+  const hasUsedSassHost = usedPackageNames.has("vite") || usedPackageNames.has("sass-loader");
+  if (hasUsedSassHost) {
+    const sassFiles = fg.sync(["**/*.{scss,sass}"], {
+      cwd: rootDir,
+      onlyFiles: true,
+      ignore: SOURCE_FILE_IGNORES,
+    });
+    if (sassFiles.length > 0) {
+      if (directlyImportedPackageNames.has("sass-embedded")) {
+        referenced.add("sass-embedded");
+      } else if (directlyImportedPackageNames.has("sass")) {
+        referenced.add("sass");
+      } else if (declaredNames.has("sass-embedded")) {
+        referenced.add("sass-embedded");
+      } else if (declaredNames.has("sass")) {
+        referenced.add("sass");
+      }
+    }
+  }
+
+  if (
+    declaredNames.has("prisma") &&
+    usedPackageNames.has("@prisma/client") &&
+    fg.sync(["**/prisma/schema.prisma", "**/prisma.config.{js,cjs,mjs,ts,cts,mts}"], {
+      cwd: rootDir,
+      onlyFiles: true,
+      ignore: [...SOURCE_FILE_IGNORES, "**/{__fixtures__,__tests__,fixtures,test,tests}/**"],
+    }).length > 0
+  ) {
+    referenced.add("prisma");
+  }
+
+  return referenced;
 };
 
 const ALWAYS_USED_PREFIXES = [

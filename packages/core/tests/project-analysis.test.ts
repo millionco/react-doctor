@@ -317,6 +317,94 @@ describe("analyzeProject", () => {
     expect(unusedFilePaths).not.toContain("src/page-value.ts");
   });
 
+  it.each([
+    { frameworkDependency: "umi", routeConfigPath: "config/routes.ts" },
+    { frameworkDependency: "@umijs/max", routeConfigPath: "config/routes.simple.ts" },
+  ])(
+    "discovers $frameworkDependency application and route convention entries",
+    async ({ frameworkDependency, routeConfigPath }) => {
+      const rootDirectory = createProject(
+        {
+          "config/config.ts": `export default { title: "application" };`,
+          "config/config.dev.ts": `import { configValue } from "../src/config-value"; export default { configValue };`,
+          [routeConfigPath]: `import { routeValue } from "../src/route-value"; export default [{ path: "/", component: routeValue }];`,
+          "src/app.tsx": `import { appValue } from "./app-value"; export const render = () => appValue;`,
+          "src/app-value.ts": "export const appValue = 1;",
+          "src/config-value.ts": "export const configValue = 1;",
+          "src/locales/en-US.ts": `import { localeValue } from "../locale-value"; export default localeValue;`,
+          "src/locale-value.ts": "export const localeValue = { title: 'application' };",
+          "src/pages/index.tsx": `import { pageValue } from "../page-value"; export default () => <main>{pageValue}</main>;`,
+          "src/page-value.ts": "export const pageValue = 1;",
+          "src/route-value.ts": "export const routeValue = '@/pages/index';",
+          "src/orphan.ts": "export const orphan = 1;",
+        },
+        { dependencies: { [frameworkDependency]: "1.0.0", react: "1.0.0" } },
+      );
+
+      const result = await analyzeProject({ rootDirectory });
+
+      expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+    },
+  );
+
+  it("discovers Taro application, config, and page convention entries", async () => {
+    const rootDirectory = createProject(
+      {
+        "config/index.ts": `import developmentConfig from "./dev"; export default developmentConfig;`,
+        "config/dev.ts": "export default { env: 'development' };",
+        "src/app.tsx": `import { appValue } from "./app-value"; export default () => appValue;`,
+        "src/app.config.ts": `
+          export default defineAppConfig({
+            pages: ["pages/home/index"],
+            subPackages: [{ root: "package-a", pages: ["profile/index"] }],
+          });
+        `,
+        "src/app-value.ts": "export const appValue = 1;",
+        "src/pages/home/index.tsx": `import { pageValue } from "../../lib/page-value"; export default () => <main>{pageValue}</main>;`,
+        "src/pages/home/old-unused.ts": "export const oldUnused = 1;",
+        "src/package-a/profile/index.tsx": "export default () => <main>Profile</main>;",
+        "src/package-a/profile/old-unused.ts": "export const oldUnused = 1;",
+        "src/lib/page-value.ts": "export const pageValue = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      {
+        dependencies: {
+          "@tarojs/cli": "1.0.0",
+          "@tarojs/react": "1.0.0",
+          "@tarojs/runtime": "1.0.0",
+          react: "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/orphan.ts",
+      "src/package-a/profile/old-unused.ts",
+      "src/pages/home/old-unused.ts",
+    ]);
+  });
+
+  it("discovers Taro pages from identifier-bound application config", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app.tsx": "export default () => null;",
+        "src/app.config.ts": `
+          const appConfig = defineAppConfig({ pages: ["pages/home/index"] });
+          export default appConfig;
+        `,
+        "src/pages/home/index.tsx": "export default () => null;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it("discovers Remix routes from a custom app directory", async () => {
     const rootDirectory = createProject(
       {
@@ -410,6 +498,293 @@ describe("analyzeProject", () => {
     expect(result.unusedExports).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "query" })]),
     );
+  });
+
+  it("keeps GraphQL codegen outputs in the graph without reporting them", async () => {
+    const rootDirectory = createProject(
+      {
+        "codegen.ts": `
+          export default {
+            schema: "./schema.graphql",
+            generates: {
+              "./src/api-types.ts": { plugins: ["typescript"] },
+            },
+          };
+        `,
+        "schema.graphql": "type Query { value: String }",
+        "src/index.ts": `import { usedType } from "./api-types"; console.log(usedType);`,
+        "src/api-types.ts": `export const usedType = 1; export interface GeneratedShape { value: string }`,
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+    expect(result.unusedExports).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "GeneratedShape" })]),
+    );
+  });
+
+  it("discovers GraphQL codegen outputs from one-line JavaScript objects", async () => {
+    const rootDirectory = createProject(
+      {
+        "codegen.ts": `export default { generates: { /* output map { */ "./src/api-runtime.ts": { config: { "./src/not-an-output.ts": true }, plugins: ["typescript"] } } };`,
+        "src/index.ts": "console.log('app');",
+        "src/api-runtime.ts": "export const apiRuntime = 1;",
+        "src/not-an-output.ts": "export const notAnOutput = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/not-an-output.ts",
+      "src/orphan.ts",
+    ]);
+  });
+
+  it("does not discover GraphQL codegen outputs from strings or comments", async () => {
+    const rootDirectory = createProject(
+      {
+        "codegen.ts": `
+          const example = 'generates: { "./src/string-decoy.ts": {} }';
+          const enabled = true; // generates: { "./src/comment-decoy.ts": {} }
+          export default { generates: { "./src/api-runtime.ts": {} } };
+        `,
+        "src/index.ts": "console.log('app');",
+        "src/api-runtime.ts": "export const apiRuntime = 1;",
+        "src/string-decoy.ts": "export const stringDecoy = 1;",
+        "src/comment-decoy.ts": "export const commentDecoy = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/comment-decoy.ts",
+      "src/orphan.ts",
+      "src/string-decoy.ts",
+    ]);
+  });
+
+  it("suppresses provenance-backed outputs without inferring generation from type shapes", async () => {
+    const rootDirectory = createProject(
+      {
+        "codegen.yml": `
+          schema: schema.graphql
+          generates:
+            src/api-client.ts:
+              plugins:
+                - typescript
+        `,
+        "schema.graphql": "type Query { value: String }",
+        "src/index.ts": "console.log('app');",
+        "src/generated/schema.ts": "export interface GeneratedDirectoryShape { value: string }",
+        "src/schema.generated.ts": "export interface GeneratedFilenameShape { value: string }",
+        "src/protocol.ts":
+          "// @generated by protocol compiler\nexport interface GeneratedHeaderShape { value: string }",
+        "src/graphql-types.ts":
+          "export type Maybe<T> = T | null; export type Exact<T> = T; export interface GeneratedGraphqlShape { value: string }",
+        "src/apollo-types.ts":
+          "export type QueryKeySpecifier = ['query']; export type QueryFieldPolicy = { read(): unknown };",
+        "src/protocol.h.ts": "export interface HandWrittenProtocol { value: string }",
+        "src/late-generated-marker.ts":
+          "export const handWritten = true;\n// This example was generated by a test helper.",
+        "src/do-not-edit.ts":
+          "// Do not edit this file directly; use the admin UI.\nexport const handWritten = true;",
+        "src/api-client.ts": "export interface GeneratedConfigShape { value: string }",
+        "src/__testfixtures__/parser-output.ts": "export const fixture = 1;",
+        "src/vendor/library.ts": "export const vendored = 1;",
+        "src/assets/libs/runtime.ts": "export const staticRuntime = 1;",
+        "src/button.figma.tsx": "export const codeConnectExample = 1;",
+        "public/runtime.ts": "export const publicRuntime = 1;",
+        "src/public/manual.ts": "export const manuallyOwned = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/apollo-types.ts",
+      "src/do-not-edit.ts",
+      "src/graphql-types.ts",
+      "src/late-generated-marker.ts",
+      "src/orphan.ts",
+      "src/protocol.h.ts",
+      "src/public/manual.ts",
+    ]);
+    expect(result.unusedExports).toEqual([]);
+  });
+
+  it("resolves Vite HTML entries from the configured root", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.mts": `
+          import { join } from "node:path";
+          const rendererRoot = join(__dirname, "src", "renderer");
+          export default {
+            root: rendererRoot,
+            build: { rollupOptions: { input: { search: join(rendererRoot, "search.html") } } },
+          };
+        `,
+        "src/renderer/search.html": `<script type="module" src="/search.tsx"></script>`,
+        "src/renderer/search.tsx": `import { Search } from "./search"; console.log(Search);`,
+        "src/renderer/search.ts": "export const Search = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("uses only the top-level Vite root and resolves direct path calls", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `
+          import { resolve } from "node:path";
+          // root: "./wrong-root",
+          export default {
+            plugins: [{ options: { root: "./wrong-root" } }],
+            root: resolve(__dirname, "src", "renderer"),
+          };
+        `,
+        "src/renderer/index.html": `<script type="module" src="/main.ts"></script>`,
+        "src/renderer/main.ts": `import { application } from "./application"; console.log(application);`,
+        "src/renderer/application.ts": "export const application = 1;",
+        "wrong-root/index.html": `<script type="module" src="/unused.ts"></script>`,
+        "wrong-root/unused.ts": "export const unused = 1;",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("wrong-root/unused.ts");
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toEqual(
+      expect.arrayContaining(["src/renderer/main.ts", "src/renderer/application.ts"]),
+    );
+  });
+
+  it("discovers Electron Forge renderer entry points", async () => {
+    const rootDirectory = createProject(
+      {
+        "forge.config.ts": `
+          export default {
+            plugins: [{ renderer: { entryPoints: [{
+              html: "./src/renderer/index.html",
+              js: "./src/renderer/index.tsx",
+              preload: { js: "./src/preload.ts" },
+            }] } }],
+          };
+        `,
+        "src/renderer/index.html": "<main></main>",
+        "src/renderer/index.tsx": `import { application } from "./application"; console.log(application);`,
+        "src/renderer/application.ts": "export const application = 1;",
+        "src/preload.ts": "console.log('preload');",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { devDependencies: { "@electron-forge/cli": "1.0.0", electron: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("discovers Vitest includes declared in Vite config", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `
+          export default {
+            test: {
+              include: ["**/*_{test,spec}.?(c|m)[jt]s?(x)"],
+              coverage: { include: ["src/**"] },
+            },
+          };
+        `,
+        "test/component_test.tsx": `import { component } from "../src/component"; console.log(component);`,
+        "src/component.ts": "export const component = 1;",
+        "src/coverage-only.ts": "export const coverageOnly = 1;",
+      },
+      { devDependencies: { vitest: "1.0.0", vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/coverage-only.ts"]);
+  });
+
+  it("discovers Vitest includes after astral Unicode", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `
+          const label = "😀";
+          export default { test: { include: ["cases/**/*.case.ts"] } };
+        `,
+        "src/index.ts": "console.log('app');",
+        "cases/actual.case.ts": "export const actualCase = true;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { devDependencies: { vite: "1.0.0", vitest: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("does not treat the array after a Vitest include variable as the include value", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `
+          const testFiles = ["test/**/*.case.ts"];
+          export default {
+            test: {
+              include: testFiles,
+              exclude: ["src/ignored.ts"],
+            },
+          };
+        `,
+        "src/index.ts": "console.log('app');",
+        "src/ignored.ts": "export const ignored = 1;",
+      },
+      { devDependencies: { vite: "1.0.0", vitest: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/ignored.ts"]);
+  });
+
+  it("does not treat Vite plugin include filters as Vitest entries", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `
+          /* test: { */
+          export default {
+            plugins: [{ include: ["src/plugin-filtered.ts"] }],
+          };
+        `,
+        "src/index.ts": "console.log('app');",
+        "src/plugin-filtered.ts": "export const pluginFiltered = 1;",
+      },
+      { devDependencies: { vite: "1.0.0", vitest: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/plugin-filtered.ts"]);
   });
 
   it("discovers externally consumed component composition registries", async () => {
@@ -562,18 +937,421 @@ describe("analyzeProject", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
     const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
 
-    expect(unusedPackageNames).not.toEqual(
+    for (const usedPackageName of [
+      "apexcharts",
+      "@babel/cli",
+      "@remix-run/serve",
+      "release-plugin",
+      "release-package-json-plugin",
+    ]) {
+      expect(unusedPackageNames).not.toContain(usedPackageName);
+    }
+  });
+
+  it("credits packages named by tool config surfaces", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        ".stylelintrc.json": JSON.stringify({
+          plugins: ["stylelint-order", "stylelint-prettier"],
+        }),
+        "typedoc.json": JSON.stringify({ plugin: ["typedoc-plugin-markdown"] }),
+        "netlify.toml": '[[plugins]]\npackage = "@netlify/plugin-nextjs"',
+        ".release-it.json": JSON.stringify({
+          plugins: { "@release-it/conventional-changelog": {} },
+        }),
+        "tsconfig.json": JSON.stringify({
+          compilerOptions: { plugins: [{ name: "typescript-plugin-css-modules" }] },
+        }),
+        "styles/globals.css": '@plugin "tailwindcss-animate";',
+      },
+      {
+        "pre-commit": ["lint"],
+        devDependencies: {
+          "stylelint-order": "1.0.0",
+          "stylelint-prettier": "1.0.0",
+          "typedoc-plugin-markdown": "1.0.0",
+          "@netlify/plugin-nextjs": "1.0.0",
+          "typescript-plugin-css-modules": "1.0.0",
+          "tailwindcss-animate": "1.0.0",
+          "@release-it/conventional-changelog": "1.0.0",
+          "pre-commit": "1.0.0",
+          "release-it": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toEqual([]);
+  });
+
+  it("credits package.json tool owner sections", async () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": "console.log('app');" },
+      {
+        "pre-commit": ["lint"],
+        "release-it": {},
+        devDependencies: {
+          "pre-commit": "1.0.0",
+          "release-it": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.unusedDependencies).toEqual([]);
+  });
+
+  it("credits stylesheet package directives without matching ordinary stylesheet text", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        "styles/globals.scss": `
+          /* @plugin "commented-package"; */
+          @plugin "tailwindcss-animate";
+          @import url(modern-normalize/modern-normalize.css);
+          @use "pkg:sass-mq";
+          $color: red;
+          .swiper-slide { color: $color; }
+          .example::before { content: '@plugin "string-package"'; }
+        `,
+      },
+      {
+        devDependencies: {
+          color: "1.0.0",
+          "commented-package": "1.0.0",
+          "modern-normalize": "1.0.0",
+          "sass-mq": "1.0.0",
+          "string-package": "1.0.0",
+          swiper: "1.0.0",
+          "tailwindcss-animate": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies
+      .map((dependency) => dependency.name)
+      .sort();
+
+    expect(unusedPackageNames).toEqual(["color", "commented-package", "string-package", "swiper"]);
+  });
+
+  it("credits script-implied tools and binary aliases", async () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": "console.log('app');" },
+      {
+        scripts: {
+          check: "astro check && oxlint --type-aware",
+          postinstall: "patch-package",
+          email: "email dev",
+          serve: "react-router-serve build/server/index.js",
+          deploy: 'sh -c "npx cross-env NODE_ENV=production env -u DEBUG firebase deploy"',
+          publish: "rc-np",
+          rebuild: "electron-rebuild",
+          extract: "api-extractor run",
+          taro: "taro build",
+          chakra: 'bash -lc "chakra tokens src/theme.ts"',
+          flow: "flow status",
+          parcel: "parcel src/index.html",
+          babel: "cross-env BABEL_ENV=production babel src --out-dir dist",
+          "babel-node": 'nodemon --exec "babel-node --inspect" server.js',
+          coverage: "node node_modules/coveralls/bin/coveralls.js",
+        },
+        devDependencies: {
+          "@astrojs/check": "1.0.0",
+          "oxlint-tsgolint": "1.0.0",
+          "postinstall-postinstall": "1.0.0",
+          "react-email": "1.0.0",
+          "@react-router/serve": "1.0.0",
+          "firebase-tools": "1.0.0",
+          "@rc-component/np": "1.0.0",
+          "@electron/rebuild": "1.0.0",
+          "@microsoft/api-extractor": "1.0.0",
+          "@tarojs/cli": "1.0.0",
+          "@chakra-ui/cli": "1.0.0",
+          "flow-bin": "1.0.0",
+          "parcel-bundler": "1.0.0",
+          "babel-cli": "1.0.0",
+          coveralls: "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toEqual([]);
+  });
+
+  it.each([
+    "npm exec -- firebase deploy",
+    "pnpm exec firebase deploy",
+    "yarn exec firebase deploy",
+    "pnpm dlx firebase-tools deploy",
+    "yarn dlx firebase-tools deploy",
+  ])("credits binaries invoked through package-manager runners: $command", async (command) => {
+    const rootDirectory = createProject(
+      { "src/index.ts": "console.log('app');" },
+      {
+        scripts: { deploy: command },
+        devDependencies: { "firebase-tools": "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.unusedDependencies).toEqual([]);
+  });
+
+  it("skips ambiguous static binary providers", async () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": "console.log('app');" },
+      {
+        scripts: { build: "babel src --out-dir dist" },
+        devDependencies: {
+          "@babel/cli": "1.0.0",
+          "babel-cli": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    expect(result.unusedDependencies).toEqual([]);
+  });
+
+  it("requires a complete node_modules binary name match", async () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": "console.log('app');" },
+      {
+        scripts: {
+          coverage: "node node_modules/coveralls/bin/coveralls.js",
+          tool: "node node_modules/.bin/foobar",
+        },
+        devDependencies: {
+          coveralls: "1.0.0",
+          foo: "1.0.0",
+          foobar: "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toEqual(["foo"]);
+  });
+
+  it("credits used wrappers' required peer packages", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `
+          import prettyCode from "rehype-pretty-code";
+          import { PrismaClient } from "@prisma/client";
+          import ReactRefreshWebpackPlugin from "@pmmmwh/react-refresh-webpack-plugin";
+          import { Elements } from "@stripe/react-stripe-js";
+          console.log(prettyCode, PrismaClient, ReactRefreshWebpackPlugin, Elements);
+        `,
+        "prisma/schema.prisma": `generator client { provider = "prisma-client-js" }`,
+      },
+      {
+        dependencies: {
+          "rehype-pretty-code": "1.0.0",
+          shiki: "1.0.0",
+          "@prisma/client": "1.0.0",
+          prisma: "1.0.0",
+          "@pmmmwh/react-refresh-webpack-plugin": "1.0.0",
+          "react-refresh": "1.0.0",
+          "@stripe/react-stripe-js": "1.0.0",
+          "@stripe/stripe-js": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    for (const usedPackageName of ["shiki", "prisma", "react-refresh", "@stripe/stripe-js"]) {
+      expect(unusedPackageNames).not.toContain(usedPackageName);
+    }
+  });
+
+  it("does not infer Prisma CLI use from the optional client peer alone", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `import { PrismaClient } from "@prisma/client"; console.log(PrismaClient);`,
+        "node_modules/@prisma/client/package.json": JSON.stringify({
+          name: "@prisma/client",
+          peerDependencies: { prisma: "*" },
+          peerDependenciesMeta: { prisma: { optional: true } },
+        }),
+      },
+      {
+        dependencies: {
+          "@prisma/client": "1.0.0",
+          prisma: "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toEqual(["prisma"]);
+  });
+
+  it("does not infer Prisma CLI use from fixture schemas", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `import { PrismaClient } from "@prisma/client"; console.log(PrismaClient);`,
+        "test/fixtures/prisma/schema.prisma": `generator client { provider = "prisma-client-js" }`,
+      },
+      {
+        dependencies: {
+          "@prisma/client": "1.0.0",
+          prisma: "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toEqual(["prisma"]);
+  });
+
+  it("credits native Capacitor platforms and the selected Sass compiler", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        "src/theme.scss": "$color: red;",
+        "capacitor.config.ts": "export default {};",
+        "android/.gitkeep": "",
+        "ios/.gitkeep": "",
+      },
+      {
+        scripts: { build: "vite build" },
+        dependencies: {
+          "@capacitor/core": "1.0.0",
+          "@capacitor/android": "1.0.0",
+          "@capacitor/ios": "1.0.0",
+          vite: "1.0.0",
+          "sass-embedded": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    for (const usedPackageName of ["@capacitor/android", "@capacitor/ios", "sass-embedded"]) {
+      expect(unusedPackageNames).not.toContain(usedPackageName);
+    }
+  });
+
+  it("uses Sass Embedded before Sass when an observed host can compile Sass", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `import "./theme.scss";`,
+        "src/theme.scss": "$color: red;",
+      },
+      {
+        scripts: { build: "vite build" },
+        devDependencies: {
+          sass: "1.0.0",
+          "sass-embedded": "1.0.0",
+          vite: "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toContain("sass");
+    expect(unusedPackageNames).not.toContain("sass-embedded");
+  });
+
+  it("credits Sass when it is the installed compiler for an observed host", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `import "./theme.scss";`,
+        "src/theme.scss": "$color: red;",
+      },
+      {
+        scripts: { build: "vite build" },
+        devDependencies: { sass: "1.0.0", vite: "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).not.toContain("sass");
+  });
+
+  it("does not infer Capacitor or Sass compiler use from declarations and stale paths", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        "src/theme.scss": "$color: red;",
+        "android/.gitkeep": "",
+        "ios/.gitkeep": "",
+      },
+      {
+        dependencies: {
+          "@capacitor/core": "1.0.0",
+          "@capacitor/android": "1.0.0",
+          "@capacitor/ios": "1.0.0",
+          vite: "1.0.0",
+          "sass-embedded": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toEqual(
+      expect.arrayContaining(["@capacitor/android", "@capacitor/ios", "sass-embedded"]),
+    );
+  });
+
+  it("does not credit convention packages without their activation signal", async () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": "console.log('app');" },
+      {
+        scripts: { lint: "oxlint" },
+        dependencies: {
+          "postinstall-postinstall": "1.0.0",
+          "@astrojs/check": "1.0.0",
+          "oxlint-tsgolint": "1.0.0",
+          "@capacitor/core": "1.0.0",
+          "@capacitor/android": "1.0.0",
+          vite: "1.0.0",
+          "sass-embedded": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toEqual(
       expect.arrayContaining([
-        "apexcharts",
-        "@babel/cli",
-        "@remix-run/serve",
-        "release-plugin",
-        "release-package-json-plugin",
+        "postinstall-postinstall",
+        "@astrojs/check",
+        "oxlint-tsgolint",
+        "@capacitor/android",
+        "sass-embedded",
       ]),
     );
   });
 
-  it("credits installed peer dependencies and packages that provide binaries", async () => {
+  it("credits required installed peers but treats installed binaries as an index", async () => {
     const rootDirectory = createProject(
       {
         "src/index.ts": `import usedPackage from "used-package"; console.log(usedPackage);`,
@@ -600,9 +1378,9 @@ describe("analyzeProject", () => {
     const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
 
     expect(unusedPackageNames).toContain("unused-package");
-    expect(unusedPackageNames).not.toEqual(
-      expect.arrayContaining(["used-package", "peer-package", "bin-package"]),
-    );
+    expect(unusedPackageNames).toContain("bin-package");
+    expect(unusedPackageNames).not.toContain("used-package");
+    expect(unusedPackageNames).not.toContain("peer-package");
   });
 
   it("suppresses diagnostics for gitignored and generated files", async () => {

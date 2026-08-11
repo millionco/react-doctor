@@ -1,5 +1,5 @@
 import fg from "fast-glob";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import type { SourceFile, ProjectAnalysisConfig, ResolvedEntries } from "../types.js";
 import {
@@ -18,11 +18,13 @@ import { resolveSourcePath } from "../resolver/source-path.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractConfigStringReferencedEntries } from "./config-string-entries.js";
 import { extractGraphqlCodegenEntries } from "./graphql-codegen-entries.js";
+import { extractTaroPageEntries } from "./taro-page-entries.js";
 import { extractSectionsModuleEntries } from "./sections-module-entries.js";
 import { extractSiblingWorkspaceImportEntries } from "./sibling-workspace-import-entries.js";
 import { extractPackageJsonEntries, findDefaultIndexEntry } from "./package-json-entries.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
+import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
 
 export const collectSourceFiles = async (config: ProjectAnalysisConfig): Promise<SourceFile[]> => {
   const extensions =
@@ -247,9 +249,11 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     const workspaceGraphqlCodegenEntries = extractGraphqlCodegenEntries(workspacePackage.directory);
     graphqlCodegenEntries.schemaEntries.push(...workspaceGraphqlCodegenEntries.schemaEntries);
     graphqlCodegenEntries.documentEntries.push(...workspaceGraphqlCodegenEntries.documentEntries);
+    graphqlCodegenEntries.generatedEntries.push(...workspaceGraphqlCodegenEntries.generatedEntries);
   }
 
   const rootPackageDependencies = readPackageJsonDependencies(join(absoluteRoot, "package.json"));
+  const taroPageEntries = extractTaroPageEntries(absoluteRoot, rootPackageDependencies);
   const expoConfigPluginCollection = extractExpoConfigPluginEntries(
     absoluteRoot,
     rootPackageDependencies,
@@ -260,6 +264,9 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
   for (const workspacePackage of entryEligiblePackages) {
     const workspacePackageDependencies = readPackageJsonDependencies(
       join(workspacePackage.directory, "package.json"),
+    );
+    taroPageEntries.push(
+      ...extractTaroPageEntries(workspacePackage.directory, workspacePackageDependencies),
     );
     const workspaceExpoCollection = extractExpoConfigPluginEntries(
       workspacePackage.directory,
@@ -314,6 +321,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
         ...tsConfigIncludeEntries,
         ...configStringEntries,
         ...graphqlCodegenEntries.schemaEntries,
+        ...taroPageEntries,
         ...expoConfigPluginEntries,
         ...sectionsModuleEntries,
         ...siblingWorkspaceImportEntries,
@@ -336,7 +344,17 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     ...new Set(graphqlCodegenEntries.documentEntries.map(toPosixPath)),
   ];
 
-  return { productionEntries, testEntries, alwaysUsedFiles, externallyConsumedFiles };
+  const analysisExcludedFiles = [
+    ...new Set(graphqlCodegenEntries.generatedEntries.map(toPosixPath)),
+  ];
+
+  return {
+    productionEntries,
+    testEntries,
+    alwaysUsedFiles,
+    externallyConsumedFiles,
+    analysisExcludedFiles,
+  };
 };
 
 const SHELL_OPERATORS_PATTERN = /\s*(?:&&|\|\||[;&|])\s*/;
@@ -758,6 +776,115 @@ const extractCiWorkflowEntries = (rootDir: string): string[] => {
 const VITE_INPUT_BLOCK_PATTERN = /input\s*:\s*(?:\{[^}]*\}|\[[^\]]*\]|['"][^'"]+['"])/gs;
 const BUNDLER_ENTRY_FILE_PATTERN =
   /['"]([^'"]+\.(?:js|ts|tsx|jsx|mjs|mts|less|scss|css|sass|html))['"]/g;
+const VITE_PATH_VARIABLE_PATTERN =
+  /const\s+(\w+)\s*=\s*(?:path\.)?(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"][\s,]*)+)\)/g;
+const VITE_CONFIG_OBJECT_PATTERN =
+  /(?:export\s+default\s+(?:defineConfig\s*\(\s*)?|\bdefineConfig\s*\(\s*)\{/g;
+const VITE_ROOT_PATTERN =
+  /\broot\s*:\s*(?:(?:path\.)?(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"][\s,]*)+)\)|([A-Za-z_$][\w$]*)|['"]([^'"]+)['"])/g;
+
+const getCurlyBraceDepthAtPosition = (
+  content: string,
+  openBraceIndex: number,
+  targetPosition: number,
+): number => {
+  let braceDepth = 1;
+  let quote: string | undefined;
+  let isEscaped = false;
+  let isLineComment = false;
+  let isBlockComment = false;
+
+  for (let position = openBraceIndex + 1; position < targetPosition; position++) {
+    const character = content[position];
+    const nextCharacter = content[position + 1];
+    if (isLineComment) {
+      if (character === "\n") isLineComment = false;
+      continue;
+    }
+    if (isBlockComment) {
+      if (character === "*" && nextCharacter === "/") {
+        isBlockComment = false;
+        position++;
+      }
+      continue;
+    }
+    if (quote) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (character === "\\") {
+        isEscaped = true;
+      } else if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (character === "/" && nextCharacter === "/") {
+      isLineComment = true;
+      position++;
+      continue;
+    }
+    if (character === "/" && nextCharacter === "*") {
+      isBlockComment = true;
+      position++;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "{") braceDepth++;
+    if (character === "}") braceDepth--;
+  }
+
+  return braceDepth;
+};
+
+const resolveVitePathSegments = (rawSegments: string, configDirectory: string): string => {
+  const pathSegments = [...rawSegments.matchAll(/['"]([^'"]*)['"]/g)].map(
+    (segmentMatch) => segmentMatch[1],
+  );
+  return resolve(configDirectory, ...pathSegments);
+};
+
+const extractViteRoot = (content: string, configDirectory: string): string => {
+  const syntaxContent = maskJavaScriptStringsAndComments(content);
+  const resolvedVariables = new Map<string, string>();
+  VITE_PATH_VARIABLE_PATTERN.lastIndex = 0;
+  let variableMatch: RegExpExecArray | null;
+  while ((variableMatch = VITE_PATH_VARIABLE_PATTERN.exec(content)) !== null) {
+    if (syntaxContent.slice(variableMatch.index, variableMatch.index + 5) !== "const") continue;
+    resolvedVariables.set(
+      variableMatch[1],
+      resolveVitePathSegments(variableMatch[2], configDirectory),
+    );
+  }
+
+  VITE_CONFIG_OBJECT_PATTERN.lastIndex = 0;
+  let configObjectMatch: RegExpExecArray | null;
+  do {
+    configObjectMatch = VITE_CONFIG_OBJECT_PATTERN.exec(content);
+  } while (configObjectMatch && syntaxContent[configObjectMatch.index] === " ");
+  if (!configObjectMatch) return configDirectory;
+  const configObjectOpenBraceIndex = content.indexOf("{", configObjectMatch.index);
+
+  VITE_ROOT_PATTERN.lastIndex = 0;
+  let rootMatch: RegExpExecArray | null;
+  while ((rootMatch = VITE_ROOT_PATTERN.exec(content)) !== null) {
+    if (rootMatch.index <= configObjectOpenBraceIndex) continue;
+    if (syntaxContent.slice(rootMatch.index, rootMatch.index + 4) !== "root") continue;
+    const braceDepth = getCurlyBraceDepthAtPosition(
+      content,
+      configObjectOpenBraceIndex,
+      rootMatch.index,
+    );
+    if (braceDepth < 1) break;
+    if (braceDepth !== 1) continue;
+    if (rootMatch[1]) return resolveVitePathSegments(rootMatch[1], configDirectory);
+    if (rootMatch[2]) return resolvedVariables.get(rootMatch[2]) ?? configDirectory;
+    return resolve(configDirectory, rootMatch[3]);
+  }
+  return configDirectory;
+};
 
 const extractViteEntryPoints = (directory: string): string[] => {
   const entries: string[] = [];
@@ -770,6 +897,10 @@ const extractViteEntryPoints = (directory: string): string[] => {
   for (const configPath of viteConfigPaths) {
     try {
       const content = readFileSync(configPath, "utf-8");
+      const configDirectory = dirname(configPath);
+      const viteRoot = extractViteRoot(content, configDirectory);
+      const defaultHtmlEntry = resolve(viteRoot, "index.html");
+      if (existsSync(defaultHtmlEntry)) entries.push(defaultHtmlEntry);
       let inputMatch: RegExpExecArray | null;
       VITE_INPUT_BLOCK_PATTERN.lastIndex = 0;
       while ((inputMatch = VITE_INPUT_BLOCK_PATTERN.exec(content)) !== null) {
@@ -778,16 +909,11 @@ const extractViteEntryPoints = (directory: string): string[] => {
         BUNDLER_ENTRY_FILE_PATTERN.lastIndex = 0;
         while ((valueMatch = BUNDLER_ENTRY_FILE_PATTERN.exec(inputBlock)) !== null) {
           const entryPath = valueMatch[1];
-          if (
-            entryPath.startsWith("./") ||
-            entryPath.startsWith("../") ||
-            !entryPath.startsWith("/")
-          ) {
-            const absoluteEntryPath = resolve(directory, entryPath);
-            if (existsSync(absoluteEntryPath)) {
-              entries.push(absoluteEntryPath);
-            }
-          }
+          const absoluteEntryPath =
+            isAbsolute(entryPath) && existsSync(entryPath)
+              ? entryPath
+              : resolve(viteRoot, entryPath.replace(/^\//, ""));
+          if (existsSync(absoluteEntryPath)) entries.push(absoluteEntryPath);
         }
       }
     } catch {}
@@ -1410,6 +1536,28 @@ const extractNextConfigPluginFiles = (directory: string): string[] => {
 
 const VITEST_INCLUDE_ITEM_PATTERN = /['"]([^'"]+)['"]/g;
 const COVERAGE_BLOCK_PATTERN = /coverage\s*:\s*\{/g;
+const TEST_BLOCK_PATTERN = /\btest\s*:\s*\{/g;
+const INCLUDE_PROPERTY_PATTERN = /\binclude\s*:/g;
+
+const findPropertyArrayRanges = (content: string, propertyPattern: RegExp): [number, number][] => {
+  const ranges: [number, number][] = [];
+  const syntaxContent = maskJavaScriptStringsAndComments(content);
+  propertyPattern.lastIndex = 0;
+  let propertyMatch: RegExpExecArray | null;
+  while ((propertyMatch = propertyPattern.exec(syntaxContent)) !== null) {
+    let openBracketIndex = propertyMatch.index + propertyMatch[0].length;
+    while (/\s/.test(syntaxContent[openBracketIndex] ?? "")) openBracketIndex++;
+    if (syntaxContent[openBracketIndex] !== "[") continue;
+    for (let position = openBracketIndex + 1; position < content.length; position++) {
+      if (syntaxContent[position] === "]") {
+        ranges.push([openBracketIndex, position]);
+        propertyPattern.lastIndex = position + 1;
+        break;
+      }
+    }
+  }
+  return ranges;
+};
 const TEST_MATCH_ARRAY_PATTERN = /testMatch\s*:\s*\[([^\]]*)\]/;
 const STRING_LITERAL_PATTERN = /['"]([^'"]+)['"]/g;
 
@@ -1474,7 +1622,12 @@ const convertJestTestMatchToGlobs = (patterns: string[]): string[] => {
 
 const extractVitestIncludePatterns = (directory: string): string[] => {
   const configPaths = fg.sync(
-    ["vitest.config.{ts,js,mts,mjs}", "vitest.web.config.{ts,js,mts,mjs}"],
+    [
+      "vitest.config.{ts,js,mts,mjs}",
+      "vitest.web.config.{ts,js,mts,mjs}",
+      "vite.config.{ts,js,mts,mjs}",
+      "vite.*.config.{ts,js,mts,mjs}",
+    ],
     {
       cwd: directory,
       absolute: true,
@@ -1488,17 +1641,23 @@ const extractVitestIncludePatterns = (directory: string): string[] => {
     try {
       const content = readFileSync(configPath, "utf-8");
       const coverageBlockRanges = findNestedBlockRanges(content, COVERAGE_BLOCK_PATTERN);
-      const includePattern = /include\s*:\s*\[([^\]]*)\]/g;
-      includePattern.lastIndex = 0;
-      let includeMatch: RegExpExecArray | null;
-      while ((includeMatch = includePattern.exec(content)) !== null) {
-        const matchStart = includeMatch.index;
+      const testBlockRanges = findNestedBlockRanges(content, TEST_BLOCK_PATTERN);
+      const requiresTestBlock = basename(configPath).startsWith("vite.");
+      for (const [arrayStart, arrayEnd] of findPropertyArrayRanges(
+        content,
+        INCLUDE_PROPERTY_PATTERN,
+      )) {
+        const matchStart = arrayStart;
         const isInsideCoverageBlock = coverageBlockRanges.some(
           ([blockStart, blockEnd]) => matchStart > blockStart && matchStart < blockEnd,
         );
         if (isInsideCoverageBlock) continue;
+        const isInsideTestBlock = testBlockRanges.some(
+          ([blockStart, blockEnd]) => matchStart > blockStart && matchStart < blockEnd,
+        );
+        if ((requiresTestBlock || testBlockRanges.length > 0) && !isInsideTestBlock) continue;
 
-        const arrayContent = includeMatch[1];
+        const arrayContent = content.slice(arrayStart + 1, arrayEnd);
         VITEST_INCLUDE_ITEM_PATTERN.lastIndex = 0;
         let itemMatch: RegExpExecArray | null;
         while ((itemMatch = VITEST_INCLUDE_ITEM_PATTERN.exec(arrayContent)) !== null) {
@@ -1512,16 +1671,17 @@ const extractVitestIncludePatterns = (directory: string): string[] => {
 
 const findNestedBlockRanges = (content: string, blockStartPattern: RegExp): [number, number][] => {
   const ranges: [number, number][] = [];
+  const syntaxContent = maskJavaScriptStringsAndComments(content);
   blockStartPattern.lastIndex = 0;
   let blockMatch: RegExpExecArray | null;
-  while ((blockMatch = blockStartPattern.exec(content)) !== null) {
-    const openBraceIndex = content.indexOf("{", blockMatch.index);
+  while ((blockMatch = blockStartPattern.exec(syntaxContent)) !== null) {
+    const openBraceIndex = syntaxContent.indexOf("{", blockMatch.index);
     if (openBraceIndex === -1) continue;
     let braceDepth = 1;
     let position = openBraceIndex + 1;
-    while (position < content.length && braceDepth > 0) {
-      if (content[position] === "{") braceDepth++;
-      if (content[position] === "}") braceDepth--;
+    while (position < syntaxContent.length && braceDepth > 0) {
+      if (syntaxContent[position] === "{") braceDepth++;
+      if (syntaxContent[position] === "}") braceDepth--;
       position++;
     }
     ranges.push([blockMatch.index, position]);
@@ -1869,6 +2029,31 @@ const FRAMEWORK_PATTERNS: ToolingPluginDefinition[] = [
       "src/reportWebVitals.{ts,tsx,js,jsx}",
       "src/react-app-env.d.ts",
     ],
+  },
+  {
+    enablers: ["umi", "@umijs/max"],
+    enablerPrefixes: [],
+    entryPatterns: [
+      ".umirc.{ts,tsx,js,jsx,mts,mjs,cts,cjs}",
+      "config/config.{ts,tsx,js,jsx,mts,mjs,cts,cjs}",
+      "config/config.*.{ts,tsx,js,jsx,mts,mjs,cts,cjs}",
+      "config/routes*.{ts,tsx,js,jsx,mts,mjs,cts,cjs}",
+      "config/router.config.{ts,tsx,js,jsx,mts,mjs,cts,cjs}",
+      "src/app.{ts,tsx,js,jsx}",
+      "src/locales/**/*.{ts,tsx,js,jsx}",
+      "src/pages/**/*.{ts,tsx,js,jsx}",
+    ],
+    alwaysUsed: [],
+  },
+  {
+    enablers: ["@tarojs/cli", "@tarojs/react", "@tarojs/runtime"],
+    enablerPrefixes: [],
+    entryPatterns: [
+      "config/index.{ts,tsx,js,jsx,mts,mjs,cts,cjs}",
+      "src/app.{ts,tsx,js,jsx}",
+      "src/app.config.{ts,tsx,js,jsx}",
+    ],
+    alwaysUsed: [],
   },
   {
     enablers: [

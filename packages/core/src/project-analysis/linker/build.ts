@@ -21,6 +21,7 @@ export interface ModuleLinkInput {
   isExternallyConsumed: boolean;
   isTestEntry: boolean;
   isGitIgnored: boolean;
+  isAnalysisExcluded: boolean;
 }
 
 export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph => {
@@ -57,6 +58,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
       input.fileId.path.endsWith(".d.cts"),
     isConfigFile: isConfigFile(input.fileId.path),
     isGitIgnored: input.isGitIgnored,
+    isAnalysisExcluded: input.isAnalysisExcluded || input.parsed.isGenerated,
   }));
 
   const edges: Edge[] = [];

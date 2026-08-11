@@ -11,9 +11,6 @@ export const SOURCE_FILE_PATTERN = /\.(?:astro|tsx?|jsx?|mts|mjs|[hH][tT][mM][lL
 // bundles, and `.cjs` isn't part of the scanner's source-file set.
 export const GENERATED_BUNDLE_FILE_PATTERN = /\.(iife|umd|global|min)\.m?js$/i;
 
-// Codegen output directories (`src/__generated__/form.stories.tsx`): the
-// generator, not the file, owns any fix, so diagnostics there are never
-// actionable and linters conventionally exclude them.
 export const GENERATED_SOURCE_DIRECTORY_PATTERN = /(?:^|\/)__generated__\//;
 
 export const TAILWIND_POSTCSS7_COMPAT_ALIAS = "npm:@tailwindcss/postcss7-compat";

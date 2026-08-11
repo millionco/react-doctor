@@ -19,6 +19,7 @@ export const detectDeadExports = (
     if (!module.isReachable && !module.isExternallyConsumed) continue;
     if (module.isDeclarationFile) continue;
     if (module.isGitIgnored) continue;
+    if (module.isAnalysisExcluded) continue;
     if (module.isEntryPoint && !config.includeEntryExports) continue;
 
     const defaultExportLinkedNames = new Set<string>();

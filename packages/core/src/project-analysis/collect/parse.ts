@@ -35,9 +35,12 @@ import type {
 import { getLineFromOffset, getColumnFromOffset } from "../utils/line-column.js";
 import { extractDefaultExportLocalName } from "../utils/extract-default-export-local-name.js";
 import { getIdentifierName } from "../utils/oxc-ast-node.js";
+import { isGeneratedSource } from "../utils/is-generated-source.js";
+import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
 
 export interface ParsedSource extends SourceModuleAnalysis {
   errors: ProjectAnalysisError[];
+  isGenerated: boolean;
 }
 
 const extractMdxImportsExports = (sourceText: string): string => {
@@ -147,35 +150,21 @@ const getModuleExportNameValue = (exportName: ModuleExportName): string => {
 
 const CSS_EXTENSIONS = [".css", ".scss", ".less", ".sass"];
 
-const CSS_IMPORT_PATTERN = /@import\s+(?:url\()?['"]([^'"]+)['"]\)?/g;
-const SCSS_USE_FORWARD_PATTERN = /@(?:use|forward)\s+['"]([^'"]+)['"]/g;
-const TAILWIND_PLUGIN_REFERENCE_PATTERN = /@(?:plugin|reference|config)\s+['"]([^'"]+)['"]/g;
-
 const parseCssImports = (filePath: string): ParsedSource => {
   const sourceText = readFileSync(filePath, "utf-8");
   const imports: ImportReference[] = [];
 
-  const patterns = [
-    CSS_IMPORT_PATTERN,
-    SCSS_USE_FORWARD_PATTERN,
-    TAILWIND_PLUGIN_REFERENCE_PATTERN,
-  ];
-  for (const pattern of patterns) {
-    let match: RegExpExecArray | null;
-    pattern.lastIndex = 0;
-    while ((match = pattern.exec(sourceText)) !== null) {
-      const specifier = match[1];
-      if (specifier && !specifier.startsWith("http")) {
-        imports.push({
-          specifier,
-          importedNames: [],
-          isTypeOnly: false,
-          isDynamic: false,
-          isSideEffect: true,
-          line: sourceText.substring(0, match.index).split("\n").length,
-          column: 0,
-        });
-      }
+  for (const { specifier, index } of collectStylesheetImportSpecifiers(sourceText)) {
+    if (!specifier.startsWith("http")) {
+      imports.push({
+        specifier,
+        importedNames: [],
+        isTypeOnly: false,
+        isDynamic: false,
+        isSideEffect: true,
+        line: sourceText.substring(0, index).split("\n").length,
+        column: 0,
+      });
     }
   }
 
@@ -188,6 +177,7 @@ const parseCssImports = (filePath: string): ParsedSource => {
     topLevelImportReferences: [],
     referencedFilenames: [],
     errors: [],
+    isGenerated: false,
   };
 };
 
@@ -418,6 +408,7 @@ const createEmptyParsedSource = (): ParsedSource => ({
   topLevelImportReferences: [],
   referencedFilenames: [],
   errors: [],
+  isGenerated: false,
 });
 
 const stripByteOrderMark = (sourceText: string): string => {
@@ -550,8 +541,13 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
   const earlyErrors: ProjectAnalysisError[] = [];
   const sourceText = safeReadSourceFile(filePath, earlyErrors);
   if (sourceText === undefined) {
-    return { ...createEmptyParsedSource(), errors: earlyErrors };
+    return {
+      ...createEmptyParsedSource(),
+      errors: earlyErrors,
+      isGenerated: isGeneratedSource(filePath, ""),
+    };
   }
+  const isGenerated = isGeneratedSource(filePath, sourceText);
   const imports: ImportReference[] = [];
   const exports: ExportReference[] = [];
 
@@ -580,6 +576,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
   } catch (parseError) {
     return {
       ...createEmptyParsedSource(),
+      isGenerated,
       errors: [
         ...earlyErrors,
         new ParseError({
@@ -621,6 +618,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
       imports,
       exports,
       referencedFilenames: extractReferencedFilenames(sourceText),
+      isGenerated,
       errors: [
         ...earlyErrors,
         new ParseError({
@@ -651,6 +649,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
       imports,
       exports,
       referencedFilenames: extractReferencedFilenames(sourceText),
+      isGenerated,
       errors: [
         ...earlyErrors,
         new ParseError({
@@ -754,6 +753,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     topLevelImportReferences,
     referencedFilenames,
     errors: [...earlyErrors, ...detectorErrors],
+    isGenerated,
   };
 };
 

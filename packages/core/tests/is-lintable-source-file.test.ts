@@ -42,6 +42,22 @@ describe("isLintableSourceFile", () => {
     }
   });
 
+  it("keeps ambiguous generated-looking source paths lintable", () => {
+    for (const filePath of [
+      "src/generated/graphql.ts",
+      "src/graphql/types.generated.ts",
+      "src/protocol.gen.ts",
+      "src/protocol.h.ts",
+      "src/graphql/types.generated.tsx",
+    ]) {
+      expect(isLintableSourceFile(filePath), filePath).toBe(true);
+    }
+  });
+
+  it("rejects conventional __generated__ output", () => {
+    expect(isLintableSourceFile("src/__generated__/schema.ts")).toBe(false);
+  });
+
   it("does not over-match files that merely contain a bundle keyword in the name", () => {
     for (const filePath of [
       "src/iife-helpers.ts",

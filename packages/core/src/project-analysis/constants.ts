@@ -84,6 +84,12 @@ export const EXPO_CONFIG_SCAN_MAX_DEPTH = 6;
 
 export const GRAPHQL_CODEGEN_CONFIG_SCAN_MAX_DEPTH = 6;
 
+export const BUILD_SCRIPT_PACKAGE_SCAN_MAX_DEPTH = 6;
+
+export const BUILD_SCRIPT_DIRECTORY_SCAN_MAX_DEPTH = 8;
+
+export const GENERATED_SOURCE_HEADER_CHARACTERS = 4096;
+
 export const KNOWN_CONFIG_PREFIXES = [
   "babel.config.",
   "rollup.config.",
@@ -128,6 +134,8 @@ export const KNOWN_CONFIG_PREFIXES = [
   "typedoc.",
   "i18next-parser.config.",
   "codegen.config.",
+  "codegen.",
+  "codegen-",
   "graphql.config.",
   "npmpackagejsonlint.config.",
   "release-it.",
@@ -159,7 +167,6 @@ export const IMPLICIT_DEPENDENCIES = new Set([
   "babel-loader",
   "postcss",
   "cross-env",
-  "sass",
   "node-sass",
   "less",
   "oxlint",

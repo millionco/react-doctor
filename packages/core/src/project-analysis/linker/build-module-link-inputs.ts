@@ -6,8 +6,10 @@ import { ResolverError, WorkspaceError, describeUnknownError } from "../errors.j
 import { parseSourceFile, type ParsedSource } from "../collect/parse.js";
 import type { ResolvedImport } from "../resolver/resolve.js";
 import type { ModuleLinkInput } from "./build.js";
+import { isProjectAnalysisExcludedPath } from "../utils/is-project-analysis-excluded-path.js";
 
 interface BuildModuleLinkInputsOptions {
+  rootDirectory: string;
   files: SourceFile[];
   parsedModules: ParsedSource[];
   resolvedEntries: ResolvedEntries;
@@ -157,6 +159,7 @@ const buildSourceModuleLinkInputs = (
   const testEntryPaths = new Set(options.resolvedEntries.testEntries);
   const alwaysUsedFilePaths = new Set(options.resolvedEntries.alwaysUsedFiles);
   const externallyConsumedFilePaths = new Set(options.resolvedEntries.externallyConsumedFiles);
+  const analysisExcludedFilePaths = new Set(options.resolvedEntries.analysisExcludedFiles);
   const graphInputs: ModuleLinkInput[] = [];
   const resolutionContext: ModuleResolutionContext = {
     errors,
@@ -180,6 +183,9 @@ const buildSourceModuleLinkInputs = (
       isExternallyConsumed: externallyConsumedFilePaths.has(file.path),
       isTestEntry: testEntryPaths.has(file.path),
       isGitIgnored: options.gitIgnoredFilePaths.has(file.path),
+      isAnalysisExcluded:
+        analysisExcludedFilePaths.has(file.path) ||
+        isProjectAnalysisExcludedPath(file.path, options.rootDirectory),
     });
   }
 
@@ -284,6 +290,7 @@ const buildStyleModuleLinkInputs = (
       isExternallyConsumed: false,
       isTestEntry: false,
       isGitIgnored: options.gitIgnoredFilePaths.has(styleFilePath),
+      isAnalysisExcluded: isProjectAnalysisExcludedPath(styleFilePath, options.rootDirectory),
     });
     discoveredFilePaths.add(styleFilePath);
     nextFileIndex++;

@@ -11,6 +11,7 @@ const TELEMETRY_DISCLOSURE_GATE: Gate = {
 export const TELEMETRY_DISCLOSURE_LINES = [
   "React Doctor telemetry is on by default.",
   "Telemetry includes usage data and minimized, de-identified code patterns.",
+  "Patterns are sent with score data, which may include repository and commit details.",
   "We use these patterns to fix false positives, which are incorrect diagnostics.",
   "We also use them to fix false negatives, which are issues that rules miss.",
   "React Doctor does not collect complete source files.",

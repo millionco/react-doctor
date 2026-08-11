@@ -32,6 +32,7 @@ import { makeNoopConsole } from "./cli/utils/noop-console.js";
 import { resolveOxlintNode } from "./cli/utils/resolve-oxlint-node.js";
 import { resolveInspectOptions } from "./cli/utils/resolve-inspect-options.js";
 import { buildRunEventConfig } from "./cli/utils/render-and-record-scan.js";
+import { collectScoreEvidence } from "./cli/utils/collect-score-evidence.js";
 import {
   countIncompleteLintFiles,
   runBaselineComparison,
@@ -276,6 +277,10 @@ const runInspectWithRuntime = async (
       isCi: options.isCi,
       doctorVersion: VERSION,
       runId: getRunId(),
+      collectScoreEvidence:
+        rootSpan === undefined
+          ? undefined
+          : (diagnostics) => collectScoreEvidence({ directory, diagnostics }),
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
       supplyChainManifestChanged: options.supplyChainManifestChanged,

@@ -42,6 +42,7 @@ describe("collectRuleEvidence", () => {
   it("collects bounded source patterns without file paths, identifiers, or literals", () => {
     const [record] = collectRuleEvidence(directory, [buildDiagnostic()]);
 
+    expect(record?.schemaVersion).toBe(1);
     expect(record?.rule).toBe("react-doctor/no-direct-set-state-in-use-effect");
     expect(record?.pattern).toContain("identifier_1");
     expect(record?.pattern).not.toContain("example.tsx");

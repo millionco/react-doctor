@@ -3,7 +3,7 @@ import type { OxlintUnavailable, ReactDoctorErrorReason } from "../errors.js";
 import type { DiagnosticSurface, ReactDoctorConfig } from "./config.js";
 import type { Diagnostic, SourceFileEntry, SuppressedRuleCount } from "./diagnostic.js";
 import type { ProjectInfo } from "./project-info.js";
-import type { ScoreRequestMetadata, ScoreResult } from "./score.js";
+import type { ScoreRequestMetadata, ScoreResult, ScoreRuleEvidence } from "./score.js";
 
 export interface InspectInput {
   readonly directory: string;
@@ -32,6 +32,9 @@ export interface InspectInput {
   readonly doctorVersion?: string;
   /** Random per-run id. */
   readonly runId?: string;
+  readonly collectScoreEvidence?: (
+    diagnostics: ReadonlyArray<Diagnostic>,
+  ) => ReadonlyArray<ScoreRuleEvidence>;
   /** Enables best-effort authenticated local GitHub permission lookup for score metadata. */
   readonly resolveLocalGithubViewerPermission?: boolean;
   /**

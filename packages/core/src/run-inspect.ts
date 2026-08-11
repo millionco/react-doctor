@@ -890,6 +890,7 @@ export const runInspect = <HooksR = never>(
             diagnostics: scoreDiagnostics,
             isCi: input.isCi,
             metadata: scoreMetadata,
+            ruleEvidence: input.collectScoreEvidence?.(scoreDiagnostics),
           });
     const lintPartialFailures = yield* Ref.get(partialFailuresRef);
     const didSecurityScanFail = yield* Ref.get(securityScanFailedRef);

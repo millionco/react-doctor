@@ -82,6 +82,19 @@ describe("calculateScore", () => {
         githubActorAssociation: "CONTRIBUTOR",
         githubViewerPermission: "write",
       },
+      ruleEvidence: [
+        {
+          schemaVersion: 1,
+          category: "State & Effects",
+          fileContext: "production",
+          pattern: "identifier_1 ( )",
+          plugin: "react-doctor",
+          rule: "react-doctor/example-rule",
+          severity: "error",
+          tokenCount: 4,
+          truncated: false,
+        },
+      ],
     });
 
     expect(result).toEqual(apiScoreResponse);
@@ -109,6 +122,13 @@ describe("calculateScore", () => {
       githubEventName: "pull_request",
       githubActorAssociation: "CONTRIBUTOR",
       githubViewerPermission: "write",
+      ruleEvidence: [
+        {
+          schemaVersion: 1,
+          pattern: "identifier_1 ( )",
+          rule: "react-doctor/example-rule",
+        },
+      ],
     });
   });
 

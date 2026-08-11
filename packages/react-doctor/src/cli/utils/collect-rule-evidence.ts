@@ -1,29 +1,19 @@
 import { getDiagnosticRuleIdentity } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/core";
+import type { Diagnostic, ScoreRuleEvidence } from "@react-doctor/core";
 import { anonymizeDiagnosticEvidence } from "./anonymize-diagnostic-evidence.js";
 import {
   RULE_EVIDENCE_MAX_DIAGNOSTIC_COUNT,
   RULE_EVIDENCE_MAX_PER_RULE_COUNT,
+  RULE_EVIDENCE_SCHEMA_VERSION,
 } from "./constants.js";
 import { createDiagnosticEvidenceReader } from "./read-diagnostic-evidence.js";
-
-export interface RuleEvidenceRecord {
-  readonly category: string;
-  readonly fileContext: string;
-  readonly pattern: string;
-  readonly plugin: string;
-  readonly rule: string;
-  readonly severity: string;
-  readonly tokenCount: number;
-  readonly truncated: boolean;
-}
 
 export const collectRuleEvidence = (
   directory: string,
   diagnostics: ReadonlyArray<Diagnostic>,
-): RuleEvidenceRecord[] => {
+): ScoreRuleEvidence[] => {
   const readEvidence = createDiagnosticEvidenceReader(directory);
-  const evidenceRecords: RuleEvidenceRecord[] = [];
+  const evidenceRecords: ScoreRuleEvidence[] = [];
   const patternKeys = new Set<string>();
   const ruleCounts = new Map<string, number>();
 
@@ -41,6 +31,7 @@ export const collectRuleEvidence = (
     patternKeys.add(patternKey);
     ruleCounts.set(ruleKey, (ruleCounts.get(ruleKey) ?? 0) + 1);
     evidenceRecords.push({
+      schemaVersion: RULE_EVIDENCE_SCHEMA_VERSION,
       category,
       fileContext: diagnostic.fileContext ?? "production",
       pattern: anonymizedEvidence.pattern,

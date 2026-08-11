@@ -87,6 +87,30 @@ describe("detectDuplicateJsxSubtrees", () => {
   <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>
 ));`,
     ],
+    [
+      "an as-cast anonymous default arrow",
+      `export default (() => (
+  <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>
+)) as React.FC;`,
+    ],
+    [
+      "a satisfies-wrapped anonymous default arrow",
+      `export default (memo(() => (
+  <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>
+)) satisfies React.FC);`,
+    ],
+    [
+      "a non-null memo-wrapped anonymous default arrow",
+      `export default memo((() => (
+  <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>
+)) as React.FC)!;`,
+    ],
+    [
+      "an instantiated generic default arrow",
+      `export default ((<Props,>(_props: Props) => (
+  <section><header><Title /><Subtitle /></header><article><Body /><Actions /></article></section>
+))<Props>);`,
+    ],
   ])("counts %s as a same-file composition root", (_label, defaultComponentSource) => {
     const sourceText = `
 const NamedCard = () => (

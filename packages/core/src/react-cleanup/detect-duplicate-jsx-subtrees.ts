@@ -13,6 +13,7 @@ import {
   JSX_DUPLICATION_MAX_COMPOSITION_PATH_DEPTH,
 } from "../constants.js";
 import { getTypescriptScriptKind } from "../utils/get-typescript-script-kind.js";
+import { unwrapTypescriptExpression } from "../utils/unwrap-typescript-expression.js";
 import { yieldToEventLoop } from "../utils/yield-to-event-loop.js";
 
 export interface JsxDuplicationSource {
@@ -387,7 +388,10 @@ const getFunctionIdentity = (
       let assignmentNode: ts.Node | undefined = currentNode.parent;
       while (
         assignmentNode !== undefined &&
-        (ts.isParenthesizedExpression(assignmentNode) || ts.isCallExpression(assignmentNode))
+        (ts.isCallExpression(assignmentNode) ||
+          ts.isExpressionWithTypeArguments(assignmentNode) ||
+          (ts.isExpression(assignmentNode) &&
+            unwrapTypescriptExpression(assignmentNode) !== assignmentNode))
       ) {
         assignmentNode = assignmentNode.parent;
       }

@@ -368,6 +368,50 @@ describe("analyzeProject", () => {
     );
   });
 
+  it("discovers YAML block-list codegen inputs without activating comments", async () => {
+    const rootDirectory = createProject(
+      {
+        "codegen.yml": `
+          schema:
+            - "./src/schema-loader.ts"
+          documents:
+            - "./src/documents/**/*.ts" # active documents
+            - "!./src/documents/excluded/**"
+            # - "./src/commented-list-item/**/*.ts"
+          # documents:
+          #   - "./src/commented-property/**/*.ts"
+        `,
+        "src/schema-loader.ts": `import { schemaHelper } from "./schema-helper"; export default schemaHelper;`,
+        "src/schema-helper.ts": "export const schemaHelper = {};",
+        "src/documents/query.ts": `import { documentHelper } from "../document-helper"; export const query = \`query { value }\`; console.log(documentHelper);`,
+        "src/document-helper.ts": "export const documentHelper = 1;",
+        "src/documents/excluded/legacy.ts": "export const legacyQuery = `query { legacy }`;",
+        "src/commented-list-item/query.ts": "export const commentedListItemQuery = 1;",
+        "src/commented-property/query.ts": "export const commentedPropertyQuery = 1;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+
+    expect(unusedFilePaths).not.toEqual(
+      expect.arrayContaining(["src/schema-loader.ts", "src/schema-helper.ts"]),
+    );
+    expect(unusedFilePaths).not.toContain("src/documents/query.ts");
+    expect(unusedFilePaths).toEqual(
+      expect.arrayContaining([
+        "src/document-helper.ts",
+        "src/documents/excluded/legacy.ts",
+        "src/commented-list-item/query.ts",
+        "src/commented-property/query.ts",
+      ]),
+    );
+    expect(result.unusedExports).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "query" })]),
+    );
+  });
+
   it("discovers externally consumed component composition registries", async () => {
     const rootDirectory = createProject(
       { "src/composition.tsx": "export const Composition = () => <main />;" },
@@ -381,6 +425,27 @@ describe("analyzeProject", () => {
     const result = await analyzeProject({ rootDirectory });
 
     expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/composition.tsx");
+  });
+
+  it("resolves composition registry entries relative to a workspace package", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const root = 1;",
+        "packages/compositions/package.json": JSON.stringify({
+          name: "@example/compositions",
+          private: true,
+          description: "Registry for component compositions",
+        }),
+        "packages/compositions/src/composition.tsx": "export const Composition = () => <main />;",
+      },
+      { private: true, workspaces: ["packages/*"] },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
+      "packages/compositions/src/composition.tsx",
+    );
   });
 
   it("credits packages referenced by scripts, config, and CI workflows", async () => {

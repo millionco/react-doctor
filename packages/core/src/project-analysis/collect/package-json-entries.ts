@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import fg from "fast-glob";
 import { resolveSourcePath } from "../resolver/source-path.js";
 import {
@@ -379,7 +379,7 @@ export const extractPackageJsonEntries = async (packageJsonPath: string): Promis
   try {
     const content = await readFile(packageJsonPath, "utf-8");
     const packageJson: PackageJsonEntryFields = JSON.parse(content);
-    const rootDirectory = packageJsonPath.replace(/\/package\.json$/, "");
+    const rootDirectory = dirname(packageJsonPath);
 
     collectFieldEntries(packageJson, rootDirectory, entries);
     collectPackageExportEntries(packageJson.exports, rootDirectory, entries);

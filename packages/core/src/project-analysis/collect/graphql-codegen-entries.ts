@@ -15,6 +15,9 @@ const DOCUMENTS_STRING_PATTERN = /^[ \t]*documents\s*:\s*['"`]([^'"`\n]+)['"`]/g
 const SCHEMA_ARRAY_PATTERN = /^[ \t]*schema\s*:\s*\[([\s\S]*?)\]/gm;
 const SCHEMA_STRING_PATTERN = /^[ \t]*schema\s*:\s*['"`]([^'"`\n]+)['"`]/gm;
 const QUOTED_STRING_PATTERN = /['"`]([^'"`\n]+)['"`]/g;
+const DOCUMENTS_YAML_BLOCK_PATTERN = /^[ \t]*documents\s*:\s*(?:#.*)?$/;
+const SCHEMA_YAML_BLOCK_PATTERN = /^[ \t]*schema\s*:\s*(?:#.*)?$/;
+const YAML_LIST_ITEM_PATTERN = /^[ \t]*-[ \t]*(.+)$/;
 
 export interface GraphqlCodegenEntries {
   documentEntries: string[];
@@ -36,6 +39,43 @@ const collectCodegenPatterns = (
 
   for (const propertyMatch of content.matchAll(stringPropertyPattern)) {
     patterns.push(propertyMatch[1]);
+  }
+
+  return patterns.filter(
+    (pattern) =>
+      !pattern.includes("://") && !pattern.startsWith("@") && !pattern.startsWith("node:"),
+  );
+};
+
+const extractYamlListValue = (rawValue: string): string | undefined => {
+  const trimmedValue = rawValue.trim();
+  const quotedValueMatch = trimmedValue.match(/^(['"])(.*?)\1(?:\s+#.*)?$/);
+  if (quotedValueMatch) return quotedValueMatch[2];
+
+  const inlineCommentIndex = trimmedValue.search(/\s+#/);
+  const value = (
+    inlineCommentIndex === -1 ? trimmedValue : trimmedValue.slice(0, inlineCommentIndex)
+  ).trim();
+  return value.length > 0 ? value : undefined;
+};
+
+const collectYamlBlockPatterns = (content: string, propertyPattern: RegExp): string[] => {
+  const patterns: string[] = [];
+  let propertyIndent: number | undefined;
+
+  for (const line of content.split(/\r?\n/)) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.length === 0 || trimmedLine.startsWith("#")) continue;
+
+    const lineIndent = line.length - line.trimStart().length;
+    if (propertyIndent !== undefined && lineIndent > propertyIndent) {
+      const listItemMatch = line.match(YAML_LIST_ITEM_PATTERN);
+      const listValue = listItemMatch ? extractYamlListValue(listItemMatch[1]) : undefined;
+      if (listValue) patterns.push(listValue);
+      continue;
+    }
+
+    propertyIndent = propertyPattern.test(line) ? lineIndent : undefined;
   }
 
   return patterns.filter(
@@ -79,6 +119,10 @@ export const extractGraphqlCodegenEntries = (directory: string): GraphqlCodegenE
         SCHEMA_ARRAY_PATTERN,
         SCHEMA_STRING_PATTERN,
       );
+      if (configPath.endsWith(".yml") || configPath.endsWith(".yaml")) {
+        documentPatterns.push(...collectYamlBlockPatterns(content, DOCUMENTS_YAML_BLOCK_PATTERN));
+        schemaPatterns.push(...collectYamlBlockPatterns(content, SCHEMA_YAML_BLOCK_PATTERN));
+      }
       for (const entryPath of resolveCodegenPatterns(documentPatterns, configDirectory)) {
         documentEntries.add(entryPath);
       }

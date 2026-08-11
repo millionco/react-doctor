@@ -394,4 +394,30 @@ describe("r3f-require-instanced-buffer-update", () => {
   it("supports Fiber versions backed by Three.js InstancedMesh", () => {
     expect(r3fRequireInstancedBufferUpdate.requires).toBeUndefined();
   });
+
+  it("requires morph texture uploads after setMorphAt", () => {
+    const missing = `
+      import "@react-three/fiber";
+      import { useRef } from "react";
+      const Scene = () => {
+        const meshRef = useRef(null);
+        const update = () => meshRef.current.setMorphAt(0, sourceMesh);
+        return <instancedMesh ref={meshRef} />;
+      };
+    `;
+    const covered = `
+      import "@react-three/fiber";
+      import { useRef } from "react";
+      const Scene = () => {
+        const meshRef = useRef(null);
+        const update = () => {
+          meshRef.current.setMorphAt(0, sourceMesh);
+          meshRef.current.morphTexture.needsUpdate = true;
+        };
+        return <instancedMesh ref={meshRef} />;
+      };
+    `;
+    expect(runRule(r3fRequireInstancedBufferUpdate, missing).diagnostics).toHaveLength(1);
+    expect(runRule(r3fRequireInstancedBufferUpdate, covered).diagnostics).toHaveLength(0);
+  });
 });

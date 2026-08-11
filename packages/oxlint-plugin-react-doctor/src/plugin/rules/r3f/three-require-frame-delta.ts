@@ -13,7 +13,7 @@ import {
 import { getApiReferenceModuleSource } from "./utils/get-api-reference-module-source.js";
 import { getThreeConstructorName } from "./utils/get-three-constructor-name.js";
 import { hasThreeObjectProvenance } from "./utils/has-three-object-provenance.js";
-import { resolveStaticNumber } from "./utils/resolve-static-number.js";
+import { getStaticNumber } from "./utils/get-static-number.js";
 import { resolveThreeAnimationLoopCallback } from "./utils/resolve-three-animation-loop-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
@@ -89,7 +89,7 @@ const getFixedInterpolationFactor = (
   if (factorArgumentIndex === undefined) return null;
   const factor = node.arguments[factorArgumentIndex];
   if (!factor || isNodeOfType(factor, "SpreadElement")) return null;
-  const staticFactor = resolveStaticNumber(factor, context.scopes);
+  const staticFactor = getStaticNumber(factor, context.scopes);
   return staticFactor !== null && staticFactor > 0 && staticFactor < 1 ? factor : null;
 };
 

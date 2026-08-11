@@ -10,6 +10,7 @@ import { getGlslTypeSpecifierName } from "./get-glsl-type-specifier-name.js";
 export interface GlslGlobalDeclaration {
   readonly arraySize: number | null | undefined;
   readonly hasLayoutQualifier: boolean;
+  readonly hasInitializer: boolean;
   readonly interpolation: string;
   readonly isStaticallyUsed: boolean;
   readonly name: string;
@@ -87,6 +88,7 @@ export const collectGlslGlobalDeclarations = (program: Program): GlslGlobalDecla
       declarations.push({
         arraySize: getArraySize(declaration, declaratorList.specified_type.specifier.quantifier),
         hasLayoutQualifier,
+        hasInitializer: declaration.initializer !== undefined,
         interpolation: getInterpolation(qualifiers),
         isStaticallyUsed: Boolean(
           binding?.references.some((reference) => reference !== binding.declaration),

@@ -1841,6 +1841,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-no-inline-primitive-object": {
     code: 'import "@react-three/fiber"; const Scene = () => <primitive object={scene.clone()} />;',
   },
+  "r3f-no-ignored-basic-material-properties": {
+    code: 'import "@react-three/fiber"; const Scene = () => <meshBasicMaterial roughness={0.4} />;',
+  },
+  "r3f-no-shadows-on-unsupported-light": {
+    code: 'import "@react-three/fiber"; const Scene = () => <ambientLight castShadow />;',
+  },
   "r3f-no-internal-imports": {
     code: 'import internal from "@react-three/fiber/dist/internal";',
   },
@@ -1870,6 +1876,12 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "r3f-prefer-use-loader": {
     code: 'import "@react-three/fiber"; import { useEffect } from "react"; import { TextureLoader } from "three"; const Scene = ({ url }) => { useEffect(() => { new TextureLoader().load(url, setTexture); }, [url]); return <mesh />; };',
+  },
+  "r3f-prefer-gpu-position-animation": {
+    code: 'import { useFrame } from "@react-three/fiber"; const Scene = ({ geometry }) => { const positions = geometry.attributes.position; useFrame(() => { for (let index = 0; index < positions.count; index += 1) positions.setX(index, index); }); return <points geometry={geometry} />; };',
+  },
+  "r3f-prefer-gpu-instanced-animation": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; const Scene = () => { const instances = useRef(null); useFrame(() => { for (const index of indices) instances.current.setMatrixAt(index, matrix); }); return <instancedMesh ref={instances} />; };',
   },
   "r3f-no-state-in-use-frame": {
     code: 'import { useState } from "react"; import { useFrame } from "@react-three/fiber"; const Scene = () => { const [count, setCount] = useState(0); useFrame(() => setCount(count + 1)); };',
@@ -1901,11 +1913,29 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-require-projection-matrix-update": {
     code: 'import { useFrame } from "@react-three/fiber"; useFrame(({ camera }) => { camera.aspect = 2; });',
   },
+  "r3f-require-position-buffer-update": {
+    code: 'import { useFrame } from "@react-three/fiber"; const Scene = ({ geometry }) => { useFrame(() => { for (let index = 0; index < 10; index += 1) geometry.attributes.position.setX(index, index); }); return null; };',
+  },
   "r3f-require-render-with-positive-priority": {
     code: 'import { useFrame } from "@react-three/fiber"; const Scene = () => { useFrame(() => update(), 1); return null; };',
   },
   "r3f-require-root-unmount": {
     code: 'import { createRoot } from "@react-three/fiber"; const Scene = ({ canvas }) => { const root = createRoot(canvas); root.render(<mesh />); return null; };',
+  },
+  "r3f-require-shadows-enabled": {
+    code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <Canvas><mesh castShadow /></Canvas>;',
+  },
+  "r3f-valid-pbr-material-properties": {
+    code: 'import "@react-three/fiber"; const Scene = () => <meshStandardMaterial roughness={2} />;',
+  },
+  "r3f-valid-material-opacity": {
+    code: 'import "@react-three/fiber"; const Scene = () => <meshBasicMaterial opacity={2} />;',
+  },
+  "r3f-require-transparent-for-opacity": {
+    code: 'import "@react-three/fiber"; const Scene = () => <meshBasicMaterial opacity={0.5} />;',
+  },
+  "r3f-valid-perspective-camera": {
+    code: 'import "@react-three/fiber"; const Scene = () => <perspectiveCamera near={0} />;',
   },
   "r3f-webgpu-canvas-prop-compatibility": {
     code: 'import { Canvas } from "@react-three/fiber/webgpu"; const Scene = () => <Canvas gl={{ antialias: true }} />;',
@@ -1937,6 +1967,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "three-no-new-in-animation-loop": {
     code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => new Vector3());',
   },
+  "three-no-ignored-basic-material-properties": {
+    code: 'import { MeshBasicMaterial } from "three"; new MeshBasicMaterial({ metalness: 1 });',
+  },
   "three-no-object-construction-in-render": {
     code: 'import { BoxGeometry } from "three"; const Scene = () => <primitive object={new BoxGeometry()} />;',
   },
@@ -1946,14 +1979,38 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "three-no-state-in-pointer-move": {
     code: 'import { useState } from "react"; import { WebGLRenderer } from "three"; const Scene = () => { const [, setPoint] = useState(null); const renderer = new WebGLRenderer(); renderer.domElement.addEventListener("pointermove", (event) => setPoint(event.clientX)); return null; };',
   },
+  "three-no-shadows-on-unsupported-light": {
+    code: 'import { AmbientLight } from "three"; const light = new AmbientLight(); light.castShadow = true;',
+  },
+  "three-no-unconditional-renderer-resize-in-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => { renderer.setSize(width, height); renderer.render(scene, camera); });',
+  },
   "three-require-animation-mixer-cleanup": {
     code: 'import { useMemo } from "react"; import { AnimationMixer } from "three"; const Scene = ({ root, clip }) => { const mixer = useMemo(() => new AnimationMixer(root), [root]); mixer.clipAction(clip); return null; };',
+  },
+  "three-require-camera-aspect-on-resize": {
+    code: 'import { PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer({ canvas }); const camera = new PerspectiveCamera(); window.addEventListener("resize", () => renderer.setSize(innerWidth, innerHeight)); renderer.render(new Scene(), camera);',
+  },
+  "three-require-controls-update": {
+    code: 'import { WebGLRenderer } from "three"; import { OrbitControls } from "three/addons/controls/OrbitControls.js"; const renderer = new WebGLRenderer(); const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; renderer.setAnimationLoop(() => renderer.render(scene, camera));',
   },
   "three-require-frame-delta": {
     code: 'import { Mesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const mesh = new Mesh(); renderer.setAnimationLoop(() => { mesh.rotation.y += 0.01; });',
   },
   "three-require-instanced-buffer-update": {
     code: 'import { InstancedMesh } from "three"; const mesh = new InstancedMesh(geometry, material, count); const update = () => { mesh.setMatrixAt(0, matrix); };',
+  },
+  "three-require-loader-error-handling": {
+    code: 'import { TextureLoader } from "three"; const loader = new TextureLoader(); loader.load("/texture.png", onLoad);',
+  },
+  "three-require-position-buffer-update": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => { for (let index = 0; index < 10; index += 1) geometry.attributes.position.setX(index, index); renderer.render(scene, camera); });',
+  },
+  "three-prefer-gpu-position-animation": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const positions = geometry.attributes.position; renderer.setAnimationLoop(() => { for (let index = 0; index < positions.count; index += 1) positions.setX(index, index); });',
+  },
+  "three-prefer-gpu-instanced-animation": {
+    code: 'import { InstancedMesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const instances = new InstancedMesh(geometry, material, count); renderer.setAnimationLoop(() => { for (const index of indices) instances.setMatrixAt(index, matrix); renderer.render(scene, camera); });',
   },
   "three-prefer-instanced-mesh": {
     code: 'import { Mesh, Scene } from "three"; const scene = new Scene(); scene.add(...[0, 1].map(() => new Mesh(geometry, material)));',
@@ -1969,6 +2026,33 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "three-require-projection-matrix-update": {
     code: 'import { PerspectiveCamera } from "three"; const camera = new PerspectiveCamera(); const resize = () => { camera.aspect = width / height; };',
+  },
+  "three-require-render-in-animation-loop": {
+    code: 'import { Mesh, WebGLRenderer } from "three"; const renderer = new WebGLRenderer({ canvas }); const mesh = new Mesh(); renderer.setAnimationLoop(() => { mesh.rotation.x += 1; });',
+  },
+  "three-require-renderer-dom-attachment": {
+    code: 'import { PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.render(new Scene(), new PerspectiveCamera());',
+  },
+  "three-require-renderer-size": {
+    code: 'import { PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.render(new Scene(), new PerspectiveCamera());',
+  },
+  "three-require-render-target-reset": {
+    code: 'import { WebGLRenderer, WebGLRenderTarget } from "three"; const renderer = new WebGLRenderer(); const target = new WebGLRenderTarget(256, 256); renderer.setRenderTarget(target); renderer.render(scene, camera);',
+  },
+  "three-require-shadows-enabled": {
+    code: 'import { Mesh, PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer({ canvas }); const mesh = new Mesh(); mesh.castShadow = true; renderer.render(new Scene(), new PerspectiveCamera());',
+  },
+  "three-valid-pbr-material-properties": {
+    code: 'import { MeshPhysicalMaterial } from "three"; new MeshPhysicalMaterial({ metalness: -1 });',
+  },
+  "three-valid-material-opacity": {
+    code: 'import { MeshBasicMaterial } from "three"; new MeshBasicMaterial({ opacity: 2 });',
+  },
+  "three-require-transparent-for-opacity": {
+    code: 'import { MeshBasicMaterial } from "three"; new MeshBasicMaterial({ opacity: 0.5 });',
+  },
+  "three-valid-perspective-camera": {
+    code: 'import { PerspectiveCamera } from "three"; new PerspectiveCamera(75, 1, 0, 1000);',
   },
   "r3f-webgpu-no-gl-state": {
     code: 'import { useThree } from "@react-three/fiber/webgpu"; const renderer = useThree((state) => state.gl);',
@@ -2585,5 +2669,188 @@ export const useListNavigation = ({ selectedIndex, focusItem }) => {
   "no-transitioned-composite-widget-state": {
     code: 'export const Option = ({ selected }) => <div role="option" aria-selected={selected ? "true" : "false"} className="bg-[#fff] transition-colors aria-selected:bg-[#000]">Value</div>;',
     settings: { "react-doctor": { capabilities: ["tailwind"] } },
+  },
+  "r3f-no-ignored-linewidth": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><lineBasicMaterial linewidth={4} /></Canvas>;',
+  },
+  "r3f-no-compile-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; export const Scene = () => { useFrame(({ gl, scene, camera }) => gl.compile(scene, camera)); return null; };',
+  },
+  "r3f-no-normalized-float-buffer-attribute": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><bufferAttribute args={[new Float32Array(9), 3, true]} /></Canvas>;',
+  },
+  "r3f-valid-buffer-attribute-item-size": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><bufferAttribute args={[new Float32Array(9), 0]} /></Canvas>;',
+  },
+  "r3f-valid-fog-parameters": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><fog args={["white", 10, 5]} /></Canvas>;',
+  },
+  "r3f-valid-orthographic-camera": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><orthographicCamera args={[-1, 1, 1, -1, 10, 5]} /></Canvas>;',
+  },
+  "r3f-valid-physical-material-properties": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><meshPhysicalMaterial clearcoat={2} /></Canvas>;',
+  },
+  "r3f-valid-raycaster-range": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas raycaster={{ near: -1, far: 100 }} />;',
+  },
+  "r3f-valid-shadow-map-size": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas shadows><directionalLight castShadow shadow-mapSize={[1000, 1024]} /></Canvas>;',
+  },
+  "r3f-valid-spot-light-properties": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><spotLight angle={2} /></Canvas>;',
+  },
+  "r3f-valid-texture-color-space": {
+    code: 'import { Canvas } from "@react-three/fiber"; import { NoColorSpace, Texture } from "three"; const texture = new Texture(); texture.colorSpace = NoColorSpace; export const Scene = () => <Canvas><meshStandardMaterial map={texture} /></Canvas>;',
+  },
+  "r3f-require-animation-mixer-update": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { AnimationMixer } from "three"; export const Scene = ({ model, clip }) => { const mixer = new AnimationMixer(model); mixer.clipAction(clip).play(); useFrame(() => {}); return null; };',
+  },
+  "r3f-require-render-target-reset": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { WebGLRenderTarget } from "three"; const target = new WebGLRenderTarget(256, 256); export const Scene = () => { useFrame(({ gl }) => { gl.setRenderTarget(target); gl.render(scene, camera); }); return null; };',
+  },
+  "r3f-texture-repeat-requires-wrapping": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><texture repeat={[2, 2]} /></Canvas>;',
+  },
+  "three-no-compile-in-animation-loop": {
+    code: 'import { WebGLRenderer, Scene, PerspectiveCamera } from "three"; const renderer = new WebGLRenderer(); const scene = new Scene(); const camera = new PerspectiveCamera(); renderer.setAnimationLoop(() => { renderer.compile(scene, camera); renderer.render(scene, camera); });',
+  },
+  "three-no-ignored-linewidth": {
+    code: 'import { LineBasicMaterial } from "three"; new LineBasicMaterial({ linewidth: 4 });',
+  },
+  "three-no-normalized-float-buffer-attribute": {
+    code: 'import { BufferAttribute } from "three"; new BufferAttribute(new Float32Array(9), 3, true);',
+  },
+  "three-no-sync-readback-in-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => renderer.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));',
+  },
+  "three-prefer-set-animation-loop": {
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const frame = () => { renderer.render(scene, camera); requestAnimationFrame(frame); }; requestAnimationFrame(frame);',
+  },
+  "three-require-animation-mixer-update": {
+    code: 'import { AnimationMixer, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const mixer = new AnimationMixer(model); mixer.clipAction(clip).play(); renderer.setAnimationLoop(() => renderer.render(scene, camera));',
+  },
+  "three-require-ktx2-detect-support": {
+    code: 'import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js"; const loader = new KTX2Loader(); loader.loadAsync("texture.ktx2");',
+  },
+  "three-require-texture-update-after-wrapping-change": {
+    code: 'import { RepeatWrapping, Texture, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const texture = new Texture(); renderer.setAnimationLoop(() => { renderer.render(scene, camera); texture.wrapS = RepeatWrapping; });',
+  },
+  "three-require-worker-loader-cleanup": {
+    code: 'import { useMemo } from "react"; import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js"; export const Scene = () => { const loader = useMemo(() => new DRACOLoader(), []); loader.load("model.drc", useModel); return null; };',
+  },
+  "three-texture-repeat-requires-wrapping": {
+    code: 'import { Texture } from "three"; const texture = new Texture(); texture.repeat.set(2, 2);',
+  },
+  "three-valid-buffer-attribute-item-size": {
+    code: 'import { BufferAttribute } from "three"; new BufferAttribute(new Float32Array(9), 0);',
+  },
+  "three-valid-fog-parameters": {
+    code: 'import { Fog } from "three"; new Fog("white", 10, 5);',
+  },
+  "three-valid-orthographic-camera": {
+    code: 'import { OrthographicCamera } from "three"; new OrthographicCamera(-1, 1, 1, -1, 10, 5);',
+  },
+  "three-valid-physical-material-properties": {
+    code: 'import { MeshPhysicalMaterial } from "three"; new MeshPhysicalMaterial({ clearcoat: 2 });',
+  },
+  "three-valid-raycaster-range": {
+    code: 'import { Raycaster } from "three"; new Raycaster(origin, direction, -1, 100);',
+  },
+  "three-valid-shadow-map-size": {
+    code: 'import { DirectionalLight } from "three"; const light = new DirectionalLight(); light.shadow.mapSize.set(1000, 1024);',
+  },
+  "three-valid-spot-light-properties": {
+    code: 'import { SpotLight } from "three"; new SpotLight(0xffffff, 1, 0, 2, 0);',
+  },
+  "three-valid-texture-color-space": {
+    code: 'import { MeshStandardMaterial, NoColorSpace, Texture } from "three"; const texture = new Texture(); texture.colorSpace = NoColorSpace; new MeshStandardMaterial({ map: texture });',
+  },
+  "r3f-no-mutate-uniform-prop-source-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; const uniforms = { time: { value: 0 } }; export const Scene = () => { useFrame(() => { uniforms.time.value += 1; }); return <shaderMaterial uniforms={uniforms} />; };',
+  },
+  "r3f-no-shader-configuration-mutation-in-use-frame": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; export const Scene = () => { const materialRef = useRef(); useFrame(() => { materialRef.current.fragmentShader = source; }); return <shaderMaterial ref={materialRef} />; };',
+  },
+  "r3f-require-dynamic-buffer-usage": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; export const Points = () => { const attributeRef = useRef(); useFrame(() => { attributeRef.current.needsUpdate = true; }); return <bufferAttribute ref={attributeRef} args={[new Float32Array(9), 3]} />; };',
+  },
+  "r3f-require-data-texture-update": {
+    code: 'import { useFrame } from "@react-three/fiber"; import { useRef } from "react"; export const Texture = () => { const textureRef = useRef(); useFrame(() => { textureRef.current.image.data[0] = 255; }); return <dataTexture ref={textureRef} args={[new Uint8Array(16), 2, 2]} />; };',
+  },
+  "r3f-valid-buffer-attribute-array-length": {
+    code: 'import { Canvas } from "@react-three/fiber"; export const Scene = () => <Canvas><bufferAttribute args={[new Float32Array(8), 3]} /></Canvas>;',
+  },
+  "r3f-webgpu-require-async-init": {
+    code: 'import { Canvas } from "@react-three/fiber"; import { WebGPURenderer } from "three/webgpu"; const scene = <Canvas gl={async () => new WebGPURenderer()} />;',
+  },
+  "r3f-webgpu-no-high-precision-instancing": {
+    code: 'import { Canvas } from "@react-three/fiber"; import { WebGPURenderer } from "three/webgpu"; const scene = <Canvas gl={async () => { const renderer = new WebGPURenderer(); renderer.highPrecision = true; await renderer.init(); return renderer; }}><instancedMesh /></Canvas>;',
+    settings: { capabilities: ["three:181"] },
+  },
+  "three-effect-composer-output-pass-last": {
+    code: 'import { EffectComposer, OutputPass, ShaderPass } from "three/addons"; const composer = new EffectComposer(renderer); composer.addPass(new OutputPass()); composer.addPass(new ShaderPass(shader));',
+  },
+  "three-effect-composer-require-size-on-resize": {
+    code: 'import { WebGLRenderer } from "three"; import { EffectComposer } from "three/addons"; const renderer = new WebGLRenderer(); const composer = new EffectComposer(renderer); window.addEventListener("resize", () => renderer.setSize(innerWidth, innerHeight));',
+  },
+  "three-gpu-computation-handle-init-error": {
+    code: 'import { GPUComputationRenderer } from "three/addons"; const computation = new GPUComputationRenderer(4, 4, renderer); computation.init();',
+  },
+  "three-gpu-computation-require-init-before-compute": {
+    code: 'import { GPUComputationRenderer } from "three/addons"; const computation = new GPUComputationRenderer(4, 4, renderer); computation.compute();',
+  },
+  "three-gpu-computation-valid-variable-name": {
+    code: 'import { GPUComputationRenderer } from "three/addons"; const computation = new GPUComputationRenderer(4, 4, renderer); computation.addVariable("gl_Position", shader, texture);',
+  },
+  "three-require-gpu-computation-cleanup": {
+    code: 'import { useEffect } from "react"; import { GPUComputationRenderer } from "three/addons/misc/GPUComputationRenderer.js"; export const Scene = ({ renderer }) => { useEffect(() => { const computation = new GPUComputationRenderer(4, 4, renderer); computation.init(); }, [renderer]); return null; };',
+  },
+  "three-require-dynamic-buffer-usage": {
+    code: 'import { BufferAttribute, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const attribute = new BufferAttribute(new Float32Array(9), 3); renderer.setAnimationLoop(() => { attribute.needsUpdate = true; renderer.render(scene, camera); });',
+  },
+  "three-require-data-texture-update": {
+    code: 'import { DataTexture, WebGLRenderer } from "three"; const texture = new DataTexture(new Uint8Array(16), 2, 2); const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => { texture.image.data[0] = 255; renderer.render(scene, camera); });',
+  },
+  "three-no-shader-configuration-mutation-in-animation-loop": {
+    code: 'import { ShaderMaterial, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const material = new ShaderMaterial(); renderer.setAnimationLoop(() => { material.fragmentShader = source; renderer.render(scene, camera); });',
+  },
+  "three-shader-no-glsl1-syntax-with-glsl3": {
+    code: 'import { GLSL3, RawShaderMaterial } from "three"; new RawShaderMaterial({ glslVersion: GLSL3, vertexShader: "attribute vec3 position; void main() { gl_Position = vec4(position, 1.0); }" });',
+  },
+  "three-shader-no-reserved-identifiers": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "float user__color; void main() { gl_FragColor = vec4(user__color); }" });',
+  },
+  "three-shader-require-fragment-output-on-all-paths": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "void main() { if (enabled) gl_FragColor = vec4(1.0); }" });',
+  },
+  "three-shader-require-compatible-uniform-values": {
+    code: 'import { ShaderMaterial, Vector3 } from "three"; new ShaderMaterial({ uniforms: { time: { value: new Vector3() } }, fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });',
+  },
+  "three-shader-valid-global-initializers": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ fragmentShader: "uniform float time = 1.0; void main() { gl_FragColor = vec4(time); }" });',
+  },
+  "three-shader-valid-uniform-definitions": {
+    code: 'import { ShaderMaterial } from "three"; new ShaderMaterial({ uniforms: { time: 0 }, fragmentShader: "uniform float time; void main() { gl_FragColor = vec4(time); }" });',
+  },
+  "three-valid-buffer-attribute-array-length": {
+    code: 'import { BufferAttribute } from "three"; new BufferAttribute(new Float32Array(8), 3);',
+  },
+  "three-valid-data-texture-data-length": {
+    code: 'import { DataTexture } from "three"; new DataTexture(new Uint8Array(15), 2, 2);',
+  },
+  "three-valid-data-texture-dimensions": {
+    code: 'import { DataTexture } from "three"; new DataTexture(data, 0, 2);',
+  },
+  "three-valid-gpu-computation-dimensions": {
+    code: 'import { GPUComputationRenderer } from "three/addons"; new GPUComputationRenderer(0, 4, renderer);',
+  },
+  "three-webgpu-require-init-before-sync-operation": {
+    code: 'import { WebGPURenderer } from "three/webgpu"; const start = async () => { const renderer = new WebGPURenderer(); renderer.render(scene, camera); };',
+    settings: { capabilities: ["three:181"] },
+  },
+  "three-webgpu-no-high-precision-instancing": {
+    code: 'import { WebGPURenderer, Scene, InstancedMesh } from "three/webgpu"; const renderer = new WebGPURenderer(); renderer.highPrecision = true; const scene = new Scene(); scene.add(new InstancedMesh(geometry, material, 10)); renderer.render(scene, camera);',
+    settings: { capabilities: ["three:181"] },
   },
 };

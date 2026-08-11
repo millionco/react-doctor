@@ -534,6 +534,7 @@ import { r3fNoAdvancingClockInUseFrame } from "./rules/r3f/r3f-no-advancing-cloc
 import { r3fNoAllocationInPointerMove } from "./rules/r3f/r3f-no-allocation-in-pointer-move.js";
 import { r3fNoAsyncUseFrame } from "./rules/r3f/r3f-no-async-use-frame.js";
 import { r3fNoCloneInUseFrame } from "./rules/r3f/r3f-no-clone-in-use-frame.js";
+import { r3fNoCompileInUseFrame } from "./rules/r3f/r3f-no-compile-in-use-frame.js";
 import { r3fNoDeepUseThreeSelector } from "./rules/r3f/r3f-no-deep-use-three-selector.js";
 import { r3fNoDisposeLoaderCache } from "./rules/r3f/r3f-no-dispose-loader-cache.js";
 import { r3fNoDuplicatePrimitiveObject } from "./rules/r3f/r3f-no-duplicate-primitive-object.js";
@@ -541,37 +542,67 @@ import { r3fNoExtendInRender } from "./rules/r3f/r3f-no-extend-in-render.js";
 import { r3fNoExtendThreeNamespace } from "./rules/r3f/r3f-no-extend-three-namespace.js";
 import { r3fNoFreshPortalContainer } from "./rules/r3f/r3f-no-fresh-portal-container.js";
 import { r3fNoFreshUseThreeSelector } from "./rules/r3f/r3f-no-fresh-use-three-selector.js";
+import { r3fNoIgnoredBasicMaterialProperties } from "./rules/r3f/r3f-no-ignored-basic-material-properties.js";
+import { r3fNoIgnoredLinewidth } from "./rules/r3f/r3f-no-ignored-linewidth.js";
 import { r3fNoImperativeAttachOfManagedRef } from "./rules/r3f/r3f-no-imperative-attach-of-managed-ref.js";
 import { r3fNoInlinePrimitiveObject } from "./rules/r3f/r3f-no-inline-primitive-object.js";
 import { r3fNoInlineResourceProp } from "./rules/r3f/r3f-no-inline-resource-prop.js";
 import { r3fNoInternalImports } from "./rules/r3f/r3f-no-internal-imports.js";
 import { r3fNoManualCanvasResize } from "./rules/r3f/r3f-no-manual-canvas-resize.js";
 import { r3fNoMutateLoaderCache } from "./rules/r3f/r3f-no-mutate-loader-cache.js";
+import { r3fNoMutateUniformPropSourceInUseFrame } from "./rules/r3f/r3f-no-mutate-uniform-prop-source-in-use-frame.js";
 import { r3fNoMutatingPointerEventData } from "./rules/r3f/r3f-no-mutating-pointer-event-data.js";
 import { r3fNoNewInUseFrame } from "./rules/r3f/r3f-no-new-in-use-frame.js";
+import { r3fNoNormalizedFloatBufferAttribute } from "./rules/r3f/r3f-no-normalized-float-buffer-attribute.js";
 import { r3fNoNullLoaderInput } from "./rules/r3f/r3f-no-null-loader-input.js";
 import { r3fNoObjectPointerCapture } from "./rules/r3f/r3f-no-object-pointer-capture.js";
 import { r3fNoRecursiveRafWithUseFrame } from "./rules/r3f/r3f-no-recursive-raf-with-use-frame.js";
+import { r3fNoShaderConfigurationMutationInUseFrame } from "./rules/r3f/r3f-no-shader-configuration-mutation-in-use-frame.js";
+import { r3fNoShadowsOnUnsupportedLight } from "./rules/r3f/r3f-no-shadows-on-unsupported-light.js";
 import { r3fNoStateInPointerMove } from "./rules/r3f/r3f-no-state-in-pointer-move.js";
 import { r3fNoStateInUseFrame } from "./rules/r3f/r3f-no-state-in-use-frame.js";
 import { r3fNoSyncReadbackInUseFrame } from "./rules/r3f/r3f-no-sync-readback-in-use-frame.js";
 import { r3fNoUnstableArgs } from "./rules/r3f/r3f-no-unstable-args.js";
 import { r3fNoUseFrameDependencyArray } from "./rules/r3f/r3f-no-use-frame-dependency-array.js";
+import { r3fPreferGpuInstancedAnimation } from "./rules/r3f/r3f-prefer-gpu-instanced-animation.js";
+import { r3fPreferGpuPositionAnimation } from "./rules/r3f/r3f-prefer-gpu-position-animation.js";
 import { r3fPreferInstancedMesh } from "./rules/r3f/r3f-prefer-instanced-mesh.js";
 import { r3fPreferUseLoader } from "./rules/r3f/r3f-prefer-use-loader.js";
+import { r3fRequireAnimationMixerUpdate } from "./rules/r3f/r3f-require-animation-mixer-update.js";
+import { r3fRequireDataTextureUpdate } from "./rules/r3f/r3f-require-data-texture-update.js";
+import { r3fRequireDynamicBufferUsage } from "./rules/r3f/r3f-require-dynamic-buffer-usage.js";
 import { r3fRequireFrameDelta } from "./rules/r3f/r3f-require-frame-delta.js";
 import { r3fRequireGlobalEffectCleanup } from "./rules/r3f/r3f-require-global-effect-cleanup.js";
 import { r3fRequireInstancedBufferUpdate } from "./rules/r3f/r3f-require-instanced-buffer-update.js";
 import { r3fRequireOwnedTextureCleanup } from "./rules/r3f/r3f-require-owned-texture-cleanup.js";
+import { r3fRequirePositionBufferUpdate } from "./rules/r3f/r3f-require-position-buffer-update.js";
 import { r3fRequireProjectionMatrixUpdate } from "./rules/r3f/r3f-require-projection-matrix-update.js";
+import { r3fRequireRenderTargetReset } from "./rules/r3f/r3f-require-render-target-reset.js";
 import { r3fRequireRenderWithPositivePriority } from "./rules/r3f/r3f-require-render-with-positive-priority.js";
 import { r3fRequireRootUnmount } from "./rules/r3f/r3f-require-root-unmount.js";
+import { r3fRequireShadowsEnabled } from "./rules/r3f/r3f-require-shadows-enabled.js";
+import { r3fRequireTransparentForOpacity } from "./rules/r3f/r3f-require-transparent-for-opacity.js";
+import { r3fTextureRepeatRequiresWrapping } from "./rules/r3f/r3f-texture-repeat-requires-wrapping.js";
+import { r3fValidBufferAttributeArrayLength } from "./rules/r3f/r3f-valid-buffer-attribute-array-length.js";
+import { r3fValidBufferAttributeItemSize } from "./rules/r3f/r3f-valid-buffer-attribute-item-size.js";
+import { r3fValidFogParameters } from "./rules/r3f/r3f-valid-fog-parameters.js";
+import { r3fValidMaterialOpacity } from "./rules/r3f/r3f-valid-material-opacity.js";
+import { r3fValidOrthographicCamera } from "./rules/r3f/r3f-valid-orthographic-camera.js";
+import { r3fValidPbrMaterialProperties } from "./rules/r3f/r3f-valid-pbr-material-properties.js";
+import { r3fValidPerspectiveCamera } from "./rules/r3f/r3f-valid-perspective-camera.js";
+import { r3fValidPhysicalMaterialProperties } from "./rules/r3f/r3f-valid-physical-material-properties.js";
+import { r3fValidRaycasterRange } from "./rules/r3f/r3f-valid-raycaster-range.js";
+import { r3fValidShadowMapSize } from "./rules/r3f/r3f-valid-shadow-map-size.js";
+import { r3fValidSpotLightProperties } from "./rules/r3f/r3f-valid-spot-light-properties.js";
+import { r3fValidTextureColorSpace } from "./rules/r3f/r3f-valid-texture-color-space.js";
 import { r3fWebgpuCanvasPropCompatibility } from "./rules/r3f/r3f-webgpu-canvas-prop-compatibility.js";
 import { r3fWebgpuNoGlState } from "./rules/r3f/r3f-webgpu-no-gl-state.js";
+import { r3fWebgpuNoHighPrecisionInstancing } from "./rules/r3f/r3f-webgpu-no-high-precision-instancing.js";
 import { r3fWebgpuNoJsUniformBranch } from "./rules/r3f/r3f-webgpu-no-js-uniform-branch.js";
 import { r3fWebgpuNoLegacyEffectComposer } from "./rules/r3f/r3f-webgpu-no-legacy-effect-composer.js";
 import { r3fWebgpuNoLegacyMaterialApi } from "./rules/r3f/r3f-webgpu-no-legacy-material-api.js";
 import { r3fWebgpuNoUnregisteredPipelinePass } from "./rules/r3f/r3f-webgpu-no-unregistered-pipeline-pass.js";
+import { r3fWebgpuRequireAsyncInit } from "./rules/r3f/r3f-webgpu-require-async-init.js";
 import { radioInputMissingName } from "./rules/correctness/radio-input-missing-name.js";
 import { rawSqlInjectionRisk } from "./rules/security-scan/raw-sql-injection-risk.js";
 import { reactCompilerNoManualMemoization } from "./rules/architecture/react-compiler-no-manual-memoization.js";
@@ -732,33 +763,67 @@ import { tanstackStartServerFnMethodOrder } from "./rules/tanstack-start/tanstac
 import { tanstackStartServerFnValidateInput } from "./rules/tanstack-start/tanstack-start-server-fn-validate-input.js";
 import { tenantStaticProxyRisk } from "./rules/security-scan/tenant-static-proxy-risk.js";
 import { threeCapDevicePixelRatio } from "./rules/r3f/three-cap-device-pixel-ratio.js";
+import { threeEffectComposerOutputPassLast } from "./rules/r3f/three-effect-composer-output-pass-last.js";
+import { threeEffectComposerRequireSizeOnResize } from "./rules/r3f/three-effect-composer-require-size-on-resize.js";
+import { threeGpuComputationHandleInitError } from "./rules/r3f/three-gpu-computation-handle-init-error.js";
+import { threeGpuComputationRequireInitBeforeCompute } from "./rules/r3f/three-gpu-computation-require-init-before-compute.js";
+import { threeGpuComputationValidVariableName } from "./rules/r3f/three-gpu-computation-valid-variable-name.js";
 import { threeLimitShadowedPointLights } from "./rules/r3f/three-limit-shadowed-point-lights.js";
 import { threeNoAllocationInPointerMove } from "./rules/r3f/three-no-allocation-in-pointer-move.js";
 import { threeNoAsyncAnimationLoop } from "./rules/r3f/three-no-async-animation-loop.js";
 import { threeNoCloneInAnimationLoop } from "./rules/r3f/three-no-clone-in-animation-loop.js";
+import { threeNoCompileInAnimationLoop } from "./rules/r3f/three-no-compile-in-animation-loop.js";
+import { threeNoIgnoredBasicMaterialProperties } from "./rules/r3f/three-no-ignored-basic-material-properties.js";
+import { threeNoIgnoredLinewidth } from "./rules/r3f/three-no-ignored-linewidth.js";
 import { threeNoMaterialRecompileInAnimationLoop } from "./rules/r3f/three-no-material-recompile-in-animation-loop.js";
 import { threeNoNewInAnimationLoop } from "./rules/r3f/three-no-new-in-animation-loop.js";
+import { threeNoNormalizedFloatBufferAttribute } from "./rules/r3f/three-no-normalized-float-buffer-attribute.js";
 import { threeNoObjectConstructionInRender } from "./rules/r3f/three-no-object-construction-in-render.js";
 import { threeNoRedundantUniformsNeedUpdate } from "./rules/r3f/three-no-redundant-uniforms-need-update.js";
+import { threeNoShaderConfigurationMutationInAnimationLoop } from "./rules/r3f/three-no-shader-configuration-mutation-in-animation-loop.js";
+import { threeNoShadowsOnUnsupportedLight } from "./rules/r3f/three-no-shadows-on-unsupported-light.js";
 import { threeNoStateInAnimationLoop } from "./rules/r3f/three-no-state-in-animation-loop.js";
 import { threeNoStateInPointerMove } from "./rules/r3f/three-no-state-in-pointer-move.js";
+import { threeNoSyncReadbackInAnimationLoop } from "./rules/r3f/three-no-sync-readback-in-animation-loop.js";
+import { threeNoUnconditionalRendererResizeInAnimationLoop } from "./rules/r3f/three-no-unconditional-renderer-resize-in-animation-loop.js";
 import { threeOnBeforeCompileRequireProgramCacheKey } from "./rules/r3f/three-on-before-compile-require-program-cache-key.js";
+import { threePreferGpuInstancedAnimation } from "./rules/r3f/three-prefer-gpu-instanced-animation.js";
+import { threePreferGpuPositionAnimation } from "./rules/r3f/three-prefer-gpu-position-animation.js";
 import { threePreferInstancedMesh } from "./rules/r3f/three-prefer-instanced-mesh.js";
+import { threePreferSetAnimationLoop } from "./rules/r3f/three-prefer-set-animation-loop.js";
 import { threeRawShaderRequireFragmentFloatPrecision } from "./rules/r3f/three-raw-shader-require-fragment-float-precision.js";
 import { threeRawShaderRequireGlsl3Version } from "./rules/r3f/three-raw-shader-require-glsl3-version.js";
 import { threeRequireAnimationMixerCleanup } from "./rules/r3f/three-require-animation-mixer-cleanup.js";
+import { threeRequireAnimationMixerUpdate } from "./rules/r3f/three-require-animation-mixer-update.js";
+import { threeRequireCameraAspectOnResize } from "./rules/r3f/three-require-camera-aspect-on-resize.js";
 import { threeRequireControlsCleanup } from "./rules/r3f/three-require-controls-cleanup.js";
+import { threeRequireControlsUpdate } from "./rules/r3f/three-require-controls-update.js";
+import { threeRequireDataTextureUpdate } from "./rules/r3f/three-require-data-texture-update.js";
+import { threeRequireDynamicBufferUsage } from "./rules/r3f/three-require-dynamic-buffer-usage.js";
 import { threeRequireFrameDelta } from "./rules/r3f/three-require-frame-delta.js";
+import { threeRequireGpuComputationCleanup } from "./rules/r3f/three-require-gpu-computation-cleanup.js";
 import { threeRequireInstancedBufferUpdate } from "./rules/r3f/three-require-instanced-buffer-update.js";
+import { threeRequireKtx2DetectSupport } from "./rules/r3f/three-require-ktx2-detect-support.js";
+import { threeRequireLoaderErrorHandling } from "./rules/r3f/three-require-loader-error-handling.js";
 import { threeRequireOwnedGeometryCleanup } from "./rules/r3f/three-require-owned-geometry-cleanup.js";
 import { threeRequireOwnedMaterialCleanup } from "./rules/r3f/three-require-owned-material-cleanup.js";
 import { threeRequireOwnedTextureCleanup } from "./rules/r3f/three-require-owned-texture-cleanup.js";
+import { threeRequirePositionBufferUpdate } from "./rules/r3f/three-require-position-buffer-update.js";
 import { threeRequirePostprocessingCleanup } from "./rules/r3f/three-require-postprocessing-cleanup.js";
 import { threeRequireProjectionMatrixUpdate } from "./rules/r3f/three-require-projection-matrix-update.js";
+import { threeRequireRenderInAnimationLoop } from "./rules/r3f/three-require-render-in-animation-loop.js";
 import { threeRequireRenderTargetCleanup } from "./rules/r3f/three-require-render-target-cleanup.js";
+import { threeRequireRenderTargetReset } from "./rules/r3f/three-require-render-target-reset.js";
 import { threeRequireRendererCleanup } from "./rules/r3f/three-require-renderer-cleanup.js";
+import { threeRequireRendererDomAttachment } from "./rules/r3f/three-require-renderer-dom-attachment.js";
+import { threeRequireRendererSize } from "./rules/r3f/three-require-renderer-size.js";
+import { threeRequireShadowsEnabled } from "./rules/r3f/three-require-shadows-enabled.js";
+import { threeRequireTextureUpdateAfterWrappingChange } from "./rules/r3f/three-require-texture-update-after-wrapping-change.js";
+import { threeRequireTransparentForOpacity } from "./rules/r3f/three-require-transparent-for-opacity.js";
+import { threeRequireWorkerLoaderCleanup } from "./rules/r3f/three-require-worker-loader-cleanup.js";
 import { threeShaderNoConstantOutOfBoundsIndex } from "./rules/r3f/three-shader-no-constant-out-of-bounds-index.js";
 import { threeShaderNoDerivativesInNonuniformFlow } from "./rules/r3f/three-shader-no-derivatives-in-nonuniform-flow.js";
+import { threeShaderNoGlsl1SyntaxWithGlsl3 } from "./rules/r3f/three-shader-no-glsl1-syntax-with-glsl3.js";
 import { threeShaderNoInvalidClampBounds } from "./rules/r3f/three-shader-no-invalid-clamp-bounds.js";
 import { threeShaderNoInvalidConstantBitOperations } from "./rules/r3f/three-shader-no-invalid-constant-bit-operations.js";
 import { threeShaderNoInvalidConstantMath } from "./rules/r3f/three-shader-no-invalid-constant-math.js";
@@ -766,16 +831,39 @@ import { threeShaderNoInvalidSmoothstepEdges } from "./rules/r3f/three-shader-no
 import { threeShaderNoInverseOfUniform } from "./rules/r3f/three-shader-no-inverse-of-uniform.js";
 import { threeShaderNoRedeclaredBuiltins } from "./rules/r3f/three-shader-no-redeclared-builtins.js";
 import { threeShaderNoRedundantFragDepth } from "./rules/r3f/three-shader-no-redundant-frag-depth.js";
+import { threeShaderNoReservedIdentifiers } from "./rules/r3f/three-shader-no-reserved-identifiers.js";
 import { threeShaderNoVersionDirective } from "./rules/r3f/three-shader-no-version-directive.js";
 import { threeShaderPreferSmallIntegerPow } from "./rules/r3f/three-shader-prefer-small-integer-pow.js";
 import { threeShaderPreferSquaredDistanceComparison } from "./rules/r3f/three-shader-prefer-squared-distance-comparison.js";
+import { threeShaderRequireCompatibleUniformValues } from "./rules/r3f/three-shader-require-compatible-uniform-values.js";
+import { threeShaderRequireFragmentOutputOnAllPaths } from "./rules/r3f/three-shader-require-fragment-output-on-all-paths.js";
 import { threeShaderRequireMatchingUniforms } from "./rules/r3f/three-shader-require-matching-uniforms.js";
 import { threeShaderRequireMatchingVaryings } from "./rules/r3f/three-shader-require-matching-varyings.js";
 import { threeShaderRequirePositionOnAllPaths } from "./rules/r3f/three-shader-require-position-on-all-paths.js";
 import { threeShaderRequireUniformBindings } from "./rules/r3f/three-shader-require-uniform-bindings.js";
+import { threeShaderValidGlobalInitializers } from "./rules/r3f/three-shader-valid-global-initializers.js";
+import { threeShaderValidUniformDefinitions } from "./rules/r3f/three-shader-valid-uniform-definitions.js";
+import { threeTextureRepeatRequiresWrapping } from "./rules/r3f/three-texture-repeat-requires-wrapping.js";
 import { threeTslNoJsUniformBranch } from "./rules/r3f/three-tsl-no-js-uniform-branch.js";
+import { threeValidBufferAttributeArrayLength } from "./rules/r3f/three-valid-buffer-attribute-array-length.js";
+import { threeValidBufferAttributeItemSize } from "./rules/r3f/three-valid-buffer-attribute-item-size.js";
+import { threeValidDataTextureDataLength } from "./rules/r3f/three-valid-data-texture-data-length.js";
+import { threeValidDataTextureDimensions } from "./rules/r3f/three-valid-data-texture-dimensions.js";
+import { threeValidFogParameters } from "./rules/r3f/three-valid-fog-parameters.js";
+import { threeValidGpuComputationDimensions } from "./rules/r3f/three-valid-gpu-computation-dimensions.js";
+import { threeValidMaterialOpacity } from "./rules/r3f/three-valid-material-opacity.js";
+import { threeValidOrthographicCamera } from "./rules/r3f/three-valid-orthographic-camera.js";
+import { threeValidPbrMaterialProperties } from "./rules/r3f/three-valid-pbr-material-properties.js";
+import { threeValidPerspectiveCamera } from "./rules/r3f/three-valid-perspective-camera.js";
+import { threeValidPhysicalMaterialProperties } from "./rules/r3f/three-valid-physical-material-properties.js";
+import { threeValidRaycasterRange } from "./rules/r3f/three-valid-raycaster-range.js";
+import { threeValidShadowMapSize } from "./rules/r3f/three-valid-shadow-map-size.js";
+import { threeValidSpotLightProperties } from "./rules/r3f/three-valid-spot-light-properties.js";
+import { threeValidTextureColorSpace } from "./rules/r3f/three-valid-texture-color-space.js";
+import { threeWebgpuNoHighPrecisionInstancing } from "./rules/r3f/three-webgpu-no-high-precision-instancing.js";
 import { threeWebgpuNoLegacyEffectComposer } from "./rules/r3f/three-webgpu-no-legacy-effect-composer.js";
 import { threeWebgpuNoLegacyMaterialApi } from "./rules/r3f/three-webgpu-no-legacy-material-api.js";
+import { threeWebgpuRequireInitBeforeSyncOperation } from "./rules/r3f/three-webgpu-require-init-before-sync-operation.js";
 import { unsafeJsonInHtml } from "./rules/security-scan/unsafe-json-in-html.js";
 import { untrustedRedirectFollowing } from "./rules/security-scan/untrusted-redirect-following.js";
 import { urlPrefilledPrivilegedAction } from "./rules/security-scan/url-prefilled-privileged-action.js";
@@ -7144,6 +7232,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-no-compile-in-use-frame",
+    id: "r3f-no-compile-in-use-frame",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoCompileInUseFrame,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoCompileInUseFrame.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoCompileInUseFrame.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-no-deep-use-three-selector",
     id: "r3f-no-deep-use-three-selector",
     source: "react-doctor",
@@ -7247,6 +7350,40 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-no-ignored-basic-material-properties",
+    id: "r3f-no-ignored-basic-material-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoIgnoredBasicMaterialProperties,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoIgnoredBasicMaterialProperties.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fNoIgnoredBasicMaterialProperties.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-ignored-linewidth",
+    id: "r3f-no-ignored-linewidth",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoIgnoredLinewidth,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoIgnoredLinewidth.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fNoIgnoredLinewidth.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-no-imperative-attach-of-managed-ref",
     id: "r3f-no-imperative-attach-of-managed-ref",
     source: "react-doctor",
@@ -7341,6 +7478,25 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-no-mutate-uniform-prop-source-in-use-frame",
+    id: "r3f-no-mutate-uniform-prop-source-in-use-frame",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoMutateUniformPropSourceInUseFrame,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoMutateUniformPropSourceInUseFrame.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fNoMutateUniformPropSourceInUseFrame.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-no-mutating-pointer-event-data",
     id: "r3f-no-mutating-pointer-event-data",
     source: "react-doctor",
@@ -7366,6 +7522,25 @@ export const reactDoctorRules = [
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fNoNewInUseFrame.tags ?? [])])],
       requires: [...new Set<Capability>(["react", "r3f", ...(r3fNoNewInUseFrame.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-normalized-float-buffer-attribute",
+    id: "r3f-no-normalized-float-buffer-attribute",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoNormalizedFloatBufferAttribute,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoNormalizedFloatBufferAttribute.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fNoNormalizedFloatBufferAttribute.requires ?? []),
+        ]),
+      ],
     },
   },
   {
@@ -7410,6 +7585,46 @@ export const reactDoctorRules = [
       tags: [...new Set(["r3f", "webgl", ...(r3fNoRecursiveRafWithUseFrame.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "r3f", ...(r3fNoRecursiveRafWithUseFrame.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-shader-configuration-mutation-in-use-frame",
+    id: "r3f-no-shader-configuration-mutation-in-use-frame",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoShaderConfigurationMutationInUseFrame,
+      framework: "global",
+      category: "Performance",
+      tags: [
+        ...new Set(["r3f", "webgl", ...(r3fNoShaderConfigurationMutationInUseFrame.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fNoShaderConfigurationMutationInUseFrame.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-no-shadows-on-unsupported-light",
+    id: "r3f-no-shadows-on-unsupported-light",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fNoShadowsOnUnsupportedLight,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fNoShadowsOnUnsupportedLight.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fNoShadowsOnUnsupportedLight.requires ?? []),
+        ]),
       ],
     },
   },
@@ -7487,6 +7702,40 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-prefer-gpu-instanced-animation",
+    id: "r3f-prefer-gpu-instanced-animation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fPreferGpuInstancedAnimation,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fPreferGpuInstancedAnimation.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fPreferGpuInstancedAnimation.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-prefer-gpu-position-animation",
+    id: "r3f-prefer-gpu-position-animation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fPreferGpuPositionAnimation,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fPreferGpuPositionAnimation.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fPreferGpuPositionAnimation.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-prefer-instanced-mesh",
     id: "r3f-prefer-instanced-mesh",
     source: "react-doctor",
@@ -7512,6 +7761,55 @@ export const reactDoctorRules = [
       category: "Performance",
       tags: [...new Set(["r3f", "webgl", ...(r3fPreferUseLoader.tags ?? [])])],
       requires: [...new Set<Capability>(["react", "r3f", ...(r3fPreferUseLoader.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-animation-mixer-update",
+    id: "r3f-require-animation-mixer-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireAnimationMixerUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireAnimationMixerUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fRequireAnimationMixerUpdate.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-data-texture-update",
+    id: "r3f-require-data-texture-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireDataTextureUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireDataTextureUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireDataTextureUpdate.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-dynamic-buffer-usage",
+    id: "r3f-require-dynamic-buffer-usage",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireDynamicBufferUsage,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireDynamicBufferUsage.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireDynamicBufferUsage.requires ?? [])]),
+      ],
     },
   },
   {
@@ -7579,6 +7877,25 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-require-position-buffer-update",
+    id: "r3f-require-position-buffer-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequirePositionBufferUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequirePositionBufferUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fRequirePositionBufferUpdate.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-require-projection-matrix-update",
     id: "r3f-require-projection-matrix-update",
     source: "react-doctor",
@@ -7594,6 +7911,21 @@ export const reactDoctorRules = [
           "r3f",
           ...(r3fRequireProjectionMatrixUpdate.requires ?? []),
         ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-render-target-reset",
+    id: "r3f-require-render-target-reset",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireRenderTargetReset,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireRenderTargetReset.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireRenderTargetReset.requires ?? [])]),
       ],
     },
   },
@@ -7632,6 +7964,251 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-require-shadows-enabled",
+    id: "r3f-require-shadows-enabled",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireShadowsEnabled,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireShadowsEnabled.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireShadowsEnabled.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-transparent-for-opacity",
+    id: "r3f-require-transparent-for-opacity",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireTransparentForOpacity,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireTransparentForOpacity.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fRequireTransparentForOpacity.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-texture-repeat-requires-wrapping",
+    id: "r3f-texture-repeat-requires-wrapping",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fTextureRepeatRequiresWrapping,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fTextureRepeatRequiresWrapping.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fTextureRepeatRequiresWrapping.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-buffer-attribute-array-length",
+    id: "r3f-valid-buffer-attribute-array-length",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidBufferAttributeArrayLength,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidBufferAttributeArrayLength.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fValidBufferAttributeArrayLength.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-buffer-attribute-item-size",
+    id: "r3f-valid-buffer-attribute-item-size",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidBufferAttributeItemSize,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidBufferAttributeItemSize.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fValidBufferAttributeItemSize.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-fog-parameters",
+    id: "r3f-valid-fog-parameters",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidFogParameters,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidFogParameters.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidFogParameters.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-material-opacity",
+    id: "r3f-valid-material-opacity",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidMaterialOpacity,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidMaterialOpacity.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidMaterialOpacity.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-orthographic-camera",
+    id: "r3f-valid-orthographic-camera",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidOrthographicCamera,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidOrthographicCamera.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidOrthographicCamera.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-pbr-material-properties",
+    id: "r3f-valid-pbr-material-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidPbrMaterialProperties,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidPbrMaterialProperties.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidPbrMaterialProperties.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-perspective-camera",
+    id: "r3f-valid-perspective-camera",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidPerspectiveCamera,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidPerspectiveCamera.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidPerspectiveCamera.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-physical-material-properties",
+    id: "r3f-valid-physical-material-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidPhysicalMaterialProperties,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidPhysicalMaterialProperties.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fValidPhysicalMaterialProperties.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-raycaster-range",
+    id: "r3f-valid-raycaster-range",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidRaycasterRange,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidRaycasterRange.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidRaycasterRange.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-shadow-map-size",
+    id: "r3f-valid-shadow-map-size",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidShadowMapSize,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidShadowMapSize.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidShadowMapSize.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-spot-light-properties",
+    id: "r3f-valid-spot-light-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidSpotLightProperties,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidSpotLightProperties.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidSpotLightProperties.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-valid-texture-color-space",
+    id: "r3f-valid-texture-color-space",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fValidTextureColorSpace,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fValidTextureColorSpace.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fValidTextureColorSpace.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-webgpu-canvas-prop-compatibility",
     id: "r3f-webgpu-canvas-prop-compatibility",
     source: "react-doctor",
@@ -7661,6 +8238,25 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuNoGlState.tags ?? [])])],
       requires: [...new Set<Capability>(["react", "r3f", ...(r3fWebgpuNoGlState.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/r3f-webgpu-no-high-precision-instancing",
+    id: "r3f-webgpu-no-high-precision-instancing",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fWebgpuNoHighPrecisionInstancing,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuNoHighPrecisionInstancing.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          "r3f",
+          ...(r3fWebgpuNoHighPrecisionInstancing.requires ?? []),
+        ]),
+      ],
     },
   },
   {
@@ -7728,6 +8324,21 @@ export const reactDoctorRules = [
           "r3f",
           ...(r3fWebgpuNoUnregisteredPipelinePass.requires ?? []),
         ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-webgpu-require-async-init",
+    id: "r3f-webgpu-require-async-init",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fWebgpuRequireAsyncInit,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fWebgpuRequireAsyncInit.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fWebgpuRequireAsyncInit.requires ?? [])]),
       ],
     },
   },
@@ -9615,6 +10226,91 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-effect-composer-output-pass-last",
+    id: "three-effect-composer-output-pass-last",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeEffectComposerOutputPassLast,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeEffectComposerOutputPassLast.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeEffectComposerOutputPassLast.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-effect-composer-require-size-on-resize",
+    id: "three-effect-composer-require-size-on-resize",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeEffectComposerRequireSizeOnResize,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeEffectComposerRequireSizeOnResize.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeEffectComposerRequireSizeOnResize.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-gpu-computation-handle-init-error",
+    id: "three-gpu-computation-handle-init-error",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeGpuComputationHandleInitError,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeGpuComputationHandleInitError.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeGpuComputationHandleInitError.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-gpu-computation-require-init-before-compute",
+    id: "three-gpu-computation-require-init-before-compute",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeGpuComputationRequireInitBeforeCompute,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeGpuComputationRequireInitBeforeCompute.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeGpuComputationRequireInitBeforeCompute.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-gpu-computation-valid-variable-name",
+    id: "three-gpu-computation-valid-variable-name",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeGpuComputationValidVariableName,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeGpuComputationValidVariableName.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeGpuComputationValidVariableName.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-limit-shadowed-point-lights",
     id: "three-limit-shadowed-point-lights",
     source: "react-doctor",
@@ -9673,6 +10369,52 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-no-compile-in-animation-loop",
+    id: "three-no-compile-in-animation-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoCompileInAnimationLoop,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeNoCompileInAnimationLoop.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeNoCompileInAnimationLoop.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-no-ignored-basic-material-properties",
+    id: "three-no-ignored-basic-material-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoIgnoredBasicMaterialProperties,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeNoIgnoredBasicMaterialProperties.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeNoIgnoredBasicMaterialProperties.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-no-ignored-linewidth",
+    id: "three-no-ignored-linewidth",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoIgnoredLinewidth,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeNoIgnoredLinewidth.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeNoIgnoredLinewidth.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/three-no-material-recompile-in-animation-loop",
     id: "three-no-material-recompile-in-animation-loop",
     source: "react-doctor",
@@ -9703,6 +10445,24 @@ export const reactDoctorRules = [
       category: "Performance",
       tags: [...new Set(["three", "webgl", ...(threeNoNewInAnimationLoop.tags ?? [])])],
       requires: [...new Set<Capability>(["three", ...(threeNoNewInAnimationLoop.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-no-normalized-float-buffer-attribute",
+    id: "three-no-normalized-float-buffer-attribute",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoNormalizedFloatBufferAttribute,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeNoNormalizedFloatBufferAttribute.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeNoNormalizedFloatBufferAttribute.requires ?? []),
+        ]),
+      ],
     },
   },
   {
@@ -9740,6 +10500,45 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-no-shader-configuration-mutation-in-animation-loop",
+    id: "three-no-shader-configuration-mutation-in-animation-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoShaderConfigurationMutationInAnimationLoop,
+      framework: "global",
+      category: "Performance",
+      tags: [
+        ...new Set([
+          "three",
+          "webgl",
+          ...(threeNoShaderConfigurationMutationInAnimationLoop.tags ?? []),
+        ]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeNoShaderConfigurationMutationInAnimationLoop.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-no-shadows-on-unsupported-light",
+    id: "three-no-shadows-on-unsupported-light",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoShadowsOnUnsupportedLight,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeNoShadowsOnUnsupportedLight.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeNoShadowsOnUnsupportedLight.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-no-state-in-animation-loop",
     id: "three-no-state-in-animation-loop",
     source: "react-doctor",
@@ -9770,6 +10569,45 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-no-sync-readback-in-animation-loop",
+    id: "three-no-sync-readback-in-animation-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoSyncReadbackInAnimationLoop,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeNoSyncReadbackInAnimationLoop.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeNoSyncReadbackInAnimationLoop.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-no-unconditional-renderer-resize-in-animation-loop",
+    id: "three-no-unconditional-renderer-resize-in-animation-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeNoUnconditionalRendererResizeInAnimationLoop,
+      framework: "global",
+      category: "Performance",
+      tags: [
+        ...new Set([
+          "three",
+          "webgl",
+          ...(threeNoUnconditionalRendererResizeInAnimationLoop.tags ?? []),
+        ]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeNoUnconditionalRendererResizeInAnimationLoop.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-on-before-compile-require-program-cache-key",
     id: "three-on-before-compile-require-program-cache-key",
     source: "react-doctor",
@@ -9790,6 +10628,36 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-prefer-gpu-instanced-animation",
+    id: "three-prefer-gpu-instanced-animation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threePreferGpuInstancedAnimation,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threePreferGpuInstancedAnimation.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threePreferGpuInstancedAnimation.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-prefer-gpu-position-animation",
+    id: "three-prefer-gpu-position-animation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threePreferGpuPositionAnimation,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threePreferGpuPositionAnimation.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threePreferGpuPositionAnimation.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-prefer-instanced-mesh",
     id: "three-prefer-instanced-mesh",
     source: "react-doctor",
@@ -9800,6 +10668,21 @@ export const reactDoctorRules = [
       category: "Performance",
       tags: [...new Set(["three", "webgl", ...(threePreferInstancedMesh.tags ?? [])])],
       requires: [...new Set<Capability>(["three", ...(threePreferInstancedMesh.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-prefer-set-animation-loop",
+    id: "three-prefer-set-animation-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threePreferSetAnimationLoop,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threePreferSetAnimationLoop.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threePreferSetAnimationLoop.requires ?? [])]),
+      ],
     },
   },
   {
@@ -9857,6 +10740,36 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-require-animation-mixer-update",
+    id: "three-require-animation-mixer-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireAnimationMixerUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireAnimationMixerUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireAnimationMixerUpdate.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-camera-aspect-on-resize",
+    id: "three-require-camera-aspect-on-resize",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireCameraAspectOnResize,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireCameraAspectOnResize.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireCameraAspectOnResize.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-require-controls-cleanup",
     id: "three-require-controls-cleanup",
     source: "react-doctor",
@@ -9868,6 +10781,49 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeRequireControlsCleanup.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "three", ...(threeRequireControlsCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-controls-update",
+    id: "three-require-controls-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireControlsUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireControlsUpdate.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeRequireControlsUpdate.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-require-data-texture-update",
+    id: "three-require-data-texture-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireDataTextureUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireDataTextureUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireDataTextureUpdate.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-dynamic-buffer-usage",
+    id: "three-require-dynamic-buffer-usage",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireDynamicBufferUsage,
+      framework: "global",
+      category: "Performance",
+      tags: [...new Set(["three", "webgl", ...(threeRequireDynamicBufferUsage.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireDynamicBufferUsage.requires ?? [])]),
       ],
     },
   },
@@ -9885,6 +10841,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-require-gpu-computation-cleanup",
+    id: "three-require-gpu-computation-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireGpuComputationCleanup,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireGpuComputationCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireGpuComputationCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-require-instanced-buffer-update",
     id: "three-require-instanced-buffer-update",
     source: "react-doctor",
@@ -9896,6 +10867,36 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeRequireInstancedBufferUpdate.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["three", ...(threeRequireInstancedBufferUpdate.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-ktx2-detect-support",
+    id: "three-require-ktx2-detect-support",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireKtx2DetectSupport,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireKtx2DetectSupport.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireKtx2DetectSupport.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-loader-error-handling",
+    id: "three-require-loader-error-handling",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireLoaderErrorHandling,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireLoaderErrorHandling.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireLoaderErrorHandling.requires ?? [])]),
       ],
     },
   },
@@ -9957,6 +10958,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-require-position-buffer-update",
+    id: "three-require-position-buffer-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequirePositionBufferUpdate,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequirePositionBufferUpdate.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequirePositionBufferUpdate.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-require-postprocessing-cleanup",
     id: "three-require-postprocessing-cleanup",
     source: "react-doctor",
@@ -9991,6 +11007,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-require-render-in-animation-loop",
+    id: "three-require-render-in-animation-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireRenderInAnimationLoop,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireRenderInAnimationLoop.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireRenderInAnimationLoop.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-require-render-target-cleanup",
     id: "three-require-render-target-cleanup",
     source: "react-doctor",
@@ -10010,6 +11041,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-require-render-target-reset",
+    id: "three-require-render-target-reset",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireRenderTargetReset,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireRenderTargetReset.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireRenderTargetReset.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-require-renderer-cleanup",
     id: "three-require-renderer-cleanup",
     source: "react-doctor",
@@ -10021,6 +11067,101 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeRequireRendererCleanup.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["react", "three", ...(threeRequireRendererCleanup.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-renderer-dom-attachment",
+    id: "three-require-renderer-dom-attachment",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireRendererDomAttachment,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireRendererDomAttachment.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireRendererDomAttachment.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-renderer-size",
+    id: "three-require-renderer-size",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireRendererSize,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireRendererSize.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeRequireRendererSize.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-require-shadows-enabled",
+    id: "three-require-shadows-enabled",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireShadowsEnabled,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireShadowsEnabled.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeRequireShadowsEnabled.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-require-texture-update-after-wrapping-change",
+    id: "three-require-texture-update-after-wrapping-change",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireTextureUpdateAfterWrappingChange,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set([
+          "three",
+          "webgl",
+          ...(threeRequireTextureUpdateAfterWrappingChange.tags ?? []),
+        ]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeRequireTextureUpdateAfterWrappingChange.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-transparent-for-opacity",
+    id: "three-require-transparent-for-opacity",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireTransparentForOpacity,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireTransparentForOpacity.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireTransparentForOpacity.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-worker-loader-cleanup",
+    id: "three-require-worker-loader-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireWorkerLoaderCleanup,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireWorkerLoaderCleanup.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireWorkerLoaderCleanup.requires ?? [])]),
       ],
     },
   },
@@ -10059,6 +11200,21 @@ export const reactDoctorRules = [
           "three",
           ...(threeShaderNoDerivativesInNonuniformFlow.requires ?? []),
         ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-no-glsl1-syntax-with-glsl3",
+    id: "three-shader-no-glsl1-syntax-with-glsl3",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoGlsl1SyntaxWithGlsl3,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoGlsl1SyntaxWithGlsl3.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoGlsl1SyntaxWithGlsl3.requires ?? [])]),
       ],
     },
   },
@@ -10173,6 +11329,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-shader-no-reserved-identifiers",
+    id: "three-shader-no-reserved-identifiers",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderNoReservedIdentifiers,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderNoReservedIdentifiers.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderNoReservedIdentifiers.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-shader-no-version-directive",
     id: "three-shader-no-version-directive",
     source: "react-doctor",
@@ -10218,6 +11389,46 @@ export const reactDoctorRules = [
         ...new Set<Capability>([
           "three",
           ...(threeShaderPreferSquaredDistanceComparison.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-require-compatible-uniform-values",
+    id: "three-shader-require-compatible-uniform-values",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderRequireCompatibleUniformValues,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeShaderRequireCompatibleUniformValues.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeShaderRequireCompatibleUniformValues.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-require-fragment-output-on-all-paths",
+    id: "three-shader-require-fragment-output-on-all-paths",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderRequireFragmentOutputOnAllPaths,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeShaderRequireFragmentOutputOnAllPaths.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeShaderRequireFragmentOutputOnAllPaths.requires ?? []),
         ]),
       ],
     },
@@ -10283,6 +11494,51 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-shader-valid-global-initializers",
+    id: "three-shader-valid-global-initializers",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderValidGlobalInitializers,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderValidGlobalInitializers.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderValidGlobalInitializers.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-shader-valid-uniform-definitions",
+    id: "three-shader-valid-uniform-definitions",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeShaderValidUniformDefinitions,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeShaderValidUniformDefinitions.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeShaderValidUniformDefinitions.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-texture-repeat-requires-wrapping",
+    id: "three-texture-repeat-requires-wrapping",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeTextureRepeatRequiresWrapping,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeTextureRepeatRequiresWrapping.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeTextureRepeatRequiresWrapping.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-tsl-no-js-uniform-branch",
     id: "three-tsl-no-js-uniform-branch",
     source: "react-doctor",
@@ -10293,6 +11549,238 @@ export const reactDoctorRules = [
       category: "Bugs",
       tags: [...new Set(["three", "webgl", ...(threeTslNoJsUniformBranch.tags ?? [])])],
       requires: [...new Set<Capability>(["three", ...(threeTslNoJsUniformBranch.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-buffer-attribute-array-length",
+    id: "three-valid-buffer-attribute-array-length",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidBufferAttributeArrayLength,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidBufferAttributeArrayLength.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidBufferAttributeArrayLength.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-buffer-attribute-item-size",
+    id: "three-valid-buffer-attribute-item-size",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidBufferAttributeItemSize,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidBufferAttributeItemSize.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidBufferAttributeItemSize.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-data-texture-data-length",
+    id: "three-valid-data-texture-data-length",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidDataTextureDataLength,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidDataTextureDataLength.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidDataTextureDataLength.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-data-texture-dimensions",
+    id: "three-valid-data-texture-dimensions",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidDataTextureDimensions,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidDataTextureDimensions.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidDataTextureDimensions.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-fog-parameters",
+    id: "three-valid-fog-parameters",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidFogParameters,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidFogParameters.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeValidFogParameters.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-gpu-computation-dimensions",
+    id: "three-valid-gpu-computation-dimensions",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidGpuComputationDimensions,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidGpuComputationDimensions.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidGpuComputationDimensions.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-material-opacity",
+    id: "three-valid-material-opacity",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidMaterialOpacity,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidMaterialOpacity.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeValidMaterialOpacity.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-orthographic-camera",
+    id: "three-valid-orthographic-camera",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidOrthographicCamera,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidOrthographicCamera.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidOrthographicCamera.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-pbr-material-properties",
+    id: "three-valid-pbr-material-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidPbrMaterialProperties,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidPbrMaterialProperties.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidPbrMaterialProperties.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-perspective-camera",
+    id: "three-valid-perspective-camera",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidPerspectiveCamera,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidPerspectiveCamera.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidPerspectiveCamera.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-physical-material-properties",
+    id: "three-valid-physical-material-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidPhysicalMaterialProperties,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidPhysicalMaterialProperties.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidPhysicalMaterialProperties.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-raycaster-range",
+    id: "three-valid-raycaster-range",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidRaycasterRange,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidRaycasterRange.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeValidRaycasterRange.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-shadow-map-size",
+    id: "three-valid-shadow-map-size",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidShadowMapSize,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidShadowMapSize.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeValidShadowMapSize.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-spot-light-properties",
+    id: "three-valid-spot-light-properties",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidSpotLightProperties,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidSpotLightProperties.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidSpotLightProperties.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-valid-texture-color-space",
+    id: "three-valid-texture-color-space",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeValidTextureColorSpace,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeValidTextureColorSpace.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeValidTextureColorSpace.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-webgpu-no-high-precision-instancing",
+    id: "three-webgpu-no-high-precision-instancing",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeWebgpuNoHighPrecisionInstancing,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeWebgpuNoHighPrecisionInstancing.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeWebgpuNoHighPrecisionInstancing.requires ?? [])]),
+      ],
     },
   },
   {
@@ -10322,6 +11810,26 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeWebgpuNoLegacyMaterialApi.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["three", ...(threeWebgpuNoLegacyMaterialApi.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-webgpu-require-init-before-sync-operation",
+    id: "three-webgpu-require-init-before-sync-operation",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeWebgpuRequireInitBeforeSyncOperation,
+      framework: "global",
+      category: "Bugs",
+      tags: [
+        ...new Set(["three", "webgl", ...(threeWebgpuRequireInitBeforeSyncOperation.tags ?? [])]),
+      ],
+      requires: [
+        ...new Set<Capability>([
+          "three",
+          ...(threeWebgpuRequireInitBeforeSyncOperation.requires ?? []),
+        ]),
       ],
     },
   },

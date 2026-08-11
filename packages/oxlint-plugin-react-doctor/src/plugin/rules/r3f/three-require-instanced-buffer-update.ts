@@ -13,14 +13,14 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { getThreeConstructorName } from "./utils/get-three-constructor-name.js";
 
 interface DirectInstancedBufferMutation {
-  readonly bufferPropertyName: "instanceColor" | "instanceMatrix";
-  readonly methodName: "setColorAt" | "setMatrixAt";
+  readonly bufferPropertyName: "instanceColor" | "instanceMatrix" | "morphTexture";
+  readonly methodName: "setColorAt" | "setMatrixAt" | "setMorphAt";
   readonly node: EsTreeNodeOfType<"CallExpression">;
   readonly receiverKey: string;
 }
 
 interface DirectInstancedBufferCompletion {
-  readonly bufferPropertyName: "instanceColor" | "instanceMatrix";
+  readonly bufferPropertyName: "instanceColor" | "instanceMatrix" | "morphTexture";
   readonly node: EsTreeNode;
   readonly receiverKey: string;
 }
@@ -32,12 +32,19 @@ const getInstancedBufferMutation = (
   const callee = stripParenExpression(node.callee);
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   const methodName = getStaticPropertyName(callee);
-  if (methodName !== "setMatrixAt" && methodName !== "setColorAt") return null;
+  if (methodName !== "setMatrixAt" && methodName !== "setColorAt" && methodName !== "setMorphAt") {
+    return null;
+  }
   if (getThreeConstructorName(callee.object, context.scopes) !== "InstancedMesh") return null;
   const receiverKey = resolveExpressionKey(callee.object, context);
   if (!receiverKey) return null;
   return {
-    bufferPropertyName: methodName === "setMatrixAt" ? "instanceMatrix" : "instanceColor",
+    bufferPropertyName:
+      methodName === "setMatrixAt"
+        ? "instanceMatrix"
+        : methodName === "setColorAt"
+          ? "instanceColor"
+          : "morphTexture",
     methodName,
     node,
     receiverKey,
@@ -62,7 +69,11 @@ const getInstancedBufferCompletion = (
   const bufferMember = stripParenExpression(needsUpdateMember.object);
   if (!isNodeOfType(bufferMember, "MemberExpression")) return null;
   const bufferPropertyName = getStaticPropertyName(bufferMember);
-  if (bufferPropertyName !== "instanceMatrix" && bufferPropertyName !== "instanceColor") {
+  if (
+    bufferPropertyName !== "instanceMatrix" &&
+    bufferPropertyName !== "instanceColor" &&
+    bufferPropertyName !== "morphTexture"
+  ) {
     return null;
   }
   if (getThreeConstructorName(bufferMember.object, context.scopes) !== "InstancedMesh") return null;
@@ -82,7 +93,9 @@ const getOpaqueInstancedBufferCompletions = (
     if (isNodeOfType(candidate, "MemberExpression")) {
       const bufferPropertyName = getStaticPropertyName(candidate);
       if (
-        (bufferPropertyName === "instanceMatrix" || bufferPropertyName === "instanceColor") &&
+        (bufferPropertyName === "instanceMatrix" ||
+          bufferPropertyName === "instanceColor" ||
+          bufferPropertyName === "morphTexture") &&
         getThreeConstructorName(candidate.object, context.scopes) === "InstancedMesh"
       ) {
         const receiverKey = resolveExpressionKey(candidate.object, context);
@@ -95,6 +108,7 @@ const getOpaqueInstancedBufferCompletions = (
     if (!receiverKey) continue;
     completions.push({ bufferPropertyName: "instanceMatrix", node, receiverKey });
     completions.push({ bufferPropertyName: "instanceColor", node, receiverKey });
+    completions.push({ bufferPropertyName: "morphTexture", node, receiverKey });
   }
   return completions;
 };
@@ -137,7 +151,7 @@ export const threeRequireInstancedBufferUpdate = defineRule({
   category: "Correctness",
   severity: "error",
   recommendation:
-    "After setMatrixAt or setColorAt, set the matching instance buffer's needsUpdate flag to true",
+    "After setMatrixAt, setColorAt, or setMorphAt, set the matching instance buffer's needsUpdate flag to true",
   create: (context: RuleContext) => {
     const mutations: DirectInstancedBufferMutation[] = [];
     const completions: DirectInstancedBufferCompletion[] = [];

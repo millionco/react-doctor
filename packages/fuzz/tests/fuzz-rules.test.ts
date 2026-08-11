@@ -20,6 +20,7 @@ import {
 const isFuzzEnabled = process.env.REACT_DOCTOR_FUZZ === "1";
 const isStrict = process.env.FUZZ_STRICT === "1";
 const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
+const shouldRequireFire = process.env.FUZZ_REQUIRE_FIRE === "1";
 const shouldPrintStats = process.env.FUZZ_PRINT_STATS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
 const tagFilter = process.env.FUZZ_TAG;
@@ -154,9 +155,7 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
       () => {
         const livenessFixture = livenessFixtures[entry.id];
         const priorityCorpusEntry =
-          livenessFixture &&
-          livenessFixture.settings === undefined &&
-          livenessFixture.isGeneratedBundle === undefined
+          livenessFixture && livenessFixture.isGeneratedBundle === undefined
             ? {
                 code: livenessFixture.code,
                 relativePath: livenessFixture.filePath ?? "fixture.tsx",
@@ -168,6 +167,7 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
           checkInvariants: shouldCheckInvariants,
           corpus,
           priorityCorpusEntry,
+          settings: livenessFixture?.settings,
         });
         if (shouldPrintStats) {
           console.info(
@@ -193,6 +193,11 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
             .map((finding) => formatFinding(finding, writeReproducer(finding)))
             .join("\n\n");
           expect.fail(`${blockingFindings.length} fuzz finding(s):\n\n${summary}`);
+        }
+        if (shouldRequireFire && stats.firedProgramCount === 0) {
+          expect.fail(
+            `${entry.id} produced no diagnostics during fuzzing; its analysis path was not exercised`,
+          );
         }
       },
       fuzzTestTimeoutMs,

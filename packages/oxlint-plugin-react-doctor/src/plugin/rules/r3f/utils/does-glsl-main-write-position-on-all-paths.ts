@@ -19,13 +19,18 @@ export interface GlslPositionPathAnalysis {
   readonly writesPositionOnAllPaths: boolean | null;
 }
 
-interface PositionExecutionResult {
+export interface GlslVectorPathAnalysis {
+  readonly mainFunction: FunctionNode | null;
+  readonly writesVectorOnAllPaths: boolean | null;
+}
+
+interface VectorExecutionResult {
   readonly activeStates: ReadonlySet<number>;
   readonly hasUnwrittenReturn: boolean;
   readonly isSupported: boolean;
 }
 
-const getPositionSwizzleWriteMask = (selection: string): number => {
+const getVectorSwizzleWriteMask = (selection: string): number => {
   let writeMask = GLSL_NO_POSITION_COMPONENTS_BIT_MASK;
   for (const componentAlias of selection) {
     const componentBit = GLSL_POSITION_COMPONENT_BIT_BY_ALIAS.get(componentAlias);
@@ -35,53 +40,56 @@ const getPositionSwizzleWriteMask = (selection: string): number => {
   return writeMask;
 };
 
-const getExpressionPositionWriteMask = (expression: AstNode): number => {
+const getExpressionVectorWriteMask = (expression: AstNode, targetIdentifier: string): number => {
   if (expression.type === "assignment" && expression.operator.literal === "=") {
-    if (expression.left.type === "identifier" && expression.left.identifier === "gl_Position") {
+    if (expression.left.type === "identifier" && expression.left.identifier === targetIdentifier) {
       return GLSL_ALL_POSITION_COMPONENTS_BIT_MASK;
     }
     if (
       expression.left.type === "postfix" &&
       expression.left.expression.type === "identifier" &&
-      expression.left.expression.identifier === "gl_Position" &&
+      expression.left.expression.identifier === targetIdentifier &&
       expression.left.postfix.type === "field_selection"
     ) {
       const selection = Reflect.get(expression.left.postfix.selection, "identifier");
       return typeof selection === "string"
-        ? getPositionSwizzleWriteMask(selection)
+        ? getVectorSwizzleWriteMask(selection)
         : GLSL_NO_POSITION_COMPONENTS_BIT_MASK;
     }
   }
   if (expression.type === "binary" && expression.operator.literal === ",") {
     return (
-      getExpressionPositionWriteMask(expression.left) |
-      getExpressionPositionWriteMask(expression.right)
+      getExpressionVectorWriteMask(expression.left, targetIdentifier) |
+      getExpressionVectorWriteMask(expression.right, targetIdentifier)
     );
   }
   if (expression.type === "group") {
-    return getExpressionPositionWriteMask(expression.expression);
+    return getExpressionVectorWriteMask(expression.expression, targetIdentifier);
   }
   if (expression.type === "ternary") {
     return (
-      getExpressionPositionWriteMask(expression.left) &
-      getExpressionPositionWriteMask(expression.right)
+      getExpressionVectorWriteMask(expression.left, targetIdentifier) &
+      getExpressionVectorWriteMask(expression.right, targetIdentifier)
     );
   }
   return GLSL_NO_POSITION_COMPONENTS_BIT_MASK;
 };
 
-const expressionContainsPositionWrite = (expression: AstNode): boolean => {
-  let containsPositionWrite = false;
+const expressionContainsVectorWrite = (expression: AstNode, targetIdentifier: string): boolean => {
+  let containsVectorWrite = false;
   visit(expression, {
     assignment: {
       enter: ({ node }) => {
-        if (getExpressionPositionWriteMask(node) !== GLSL_NO_POSITION_COMPONENTS_BIT_MASK) {
-          containsPositionWrite = true;
+        if (
+          getExpressionVectorWriteMask(node, targetIdentifier) !==
+          GLSL_NO_POSITION_COMPONENTS_BIT_MASK
+        ) {
+          containsVectorWrite = true;
         }
       },
     },
   });
-  return containsPositionWrite;
+  return containsVectorWrite;
 };
 
 const getBooleanConstant = (expression: AstNode): boolean | null => {
@@ -92,12 +100,13 @@ const getBooleanConstant = (expression: AstNode): boolean | null => {
 const analyzeCompoundStatement = (
   statement: CompoundStatementNode,
   inputStates: ReadonlySet<number>,
-): PositionExecutionResult => {
+  targetIdentifier: string,
+): VectorExecutionResult => {
   let activeStates = inputStates;
   let hasUnwrittenReturn = false;
   for (const child of statement.statements) {
     if (activeStates.size === 0) break;
-    const childResult = analyzeStatement(child, activeStates);
+    const childResult = analyzeStatement(child, activeStates, targetIdentifier);
     if (!childResult.isSupported) return childResult;
     activeStates = childResult.activeStates;
     hasUnwrittenReturn ||= childResult.hasUnwrittenReturn;
@@ -108,15 +117,19 @@ const analyzeCompoundStatement = (
 const analyzeStatement = (
   statement: AstNode,
   inputStates: ReadonlySet<number>,
-): PositionExecutionResult => {
+  targetIdentifier: string,
+): VectorExecutionResult => {
   if (statement.type === "compound_statement") {
-    return analyzeCompoundStatement(statement, inputStates);
+    return analyzeCompoundStatement(statement, inputStates, targetIdentifier);
   }
   if (statement.type === "expression_statement") {
-    const expressionWriteMask = getExpressionPositionWriteMask(statement.expression);
+    const expressionWriteMask = getExpressionVectorWriteMask(
+      statement.expression,
+      targetIdentifier,
+    );
     if (
       expressionWriteMask === GLSL_NO_POSITION_COMPONENTS_BIT_MASK &&
-      expressionContainsPositionWrite(statement.expression)
+      expressionContainsVectorWrite(statement.expression, targetIdentifier)
     ) {
       return {
         activeStates: inputStates,
@@ -142,8 +155,15 @@ const analyzeStatement = (
       isSupported: true,
     };
   }
+  if (statement.type === "discard_statement") {
+    return {
+      activeStates: new Set(),
+      hasUnwrittenReturn: false,
+      isSupported: true,
+    };
+  }
   if (statement.type === "if_statement") {
-    if (expressionContainsPositionWrite(statement.condition)) {
+    if (expressionContainsVectorWrite(statement.condition, targetIdentifier)) {
       return {
         activeStates: inputStates,
         hasUnwrittenReturn: false,
@@ -151,14 +171,14 @@ const analyzeStatement = (
       };
     }
     const constantCondition = getBooleanConstant(statement.condition);
-    const consequent = analyzeStatement(statement.body, inputStates);
+    const consequent = analyzeStatement(statement.body, inputStates, targetIdentifier);
     if (!consequent.isSupported) return consequent;
     const alternateNodes = Reflect.get(statement, "else");
     const alternateStatement = Array.isArray(alternateNodes)
       ? alternateNodes[alternateNodes.length - 1]
       : undefined;
     const alternate = alternateStatement
-      ? analyzeStatement(alternateStatement, inputStates)
+      ? analyzeStatement(alternateStatement, inputStates, targetIdentifier)
       : {
           activeStates: inputStates,
           hasUnwrittenReturn: false,
@@ -183,7 +203,9 @@ const analyzeStatement = (
         : [statement.condition];
     if (
       controlExpressions.some((expression) => !expression) ||
-      controlExpressions.some(expressionContainsPositionWrite)
+      controlExpressions.some((expression) =>
+        expressionContainsVectorWrite(expression, targetIdentifier),
+      )
     ) {
       return {
         activeStates: inputStates,
@@ -191,7 +213,7 @@ const analyzeStatement = (
         isSupported: false,
       };
     }
-    const bodyResult = analyzeStatement(statement.body, inputStates);
+    const bodyResult = analyzeStatement(statement.body, inputStates, targetIdentifier);
     return {
       activeStates: inputStates,
       hasUnwrittenReturn: bodyResult.hasUnwrittenReturn,
@@ -200,7 +222,7 @@ const analyzeStatement = (
   }
   if (
     statement.type === "declaration_statement" &&
-    expressionContainsPositionWrite(statement.declaration)
+    expressionContainsVectorWrite(statement.declaration, targetIdentifier)
   ) {
     return {
       activeStates: inputStates,
@@ -242,10 +264,11 @@ const callsUserDefinedFunction = (mainFunction: FunctionNode, program: Program):
   return callsFunction;
 };
 
-export const doesGlslMainWritePositionOnAllPaths = (
+export const doesGlslMainWriteVectorOnAllPaths = (
   program: Program,
   source: string,
-): GlslPositionPathAnalysis => {
+  targetIdentifier: string,
+): GlslVectorPathAnalysis => {
   const mainFunction =
     program.program.find(
       (node): node is FunctionNode =>
@@ -256,19 +279,31 @@ export const doesGlslMainWritePositionOnAllPaths = (
     /^[ \t]*#[ \t]*define\b/m.test(maskGlslComments(source)) ||
     callsUserDefinedFunction(mainFunction, program)
   ) {
-    return { mainFunction, writesPositionOnAllPaths: null };
+    return { mainFunction, writesVectorOnAllPaths: null };
   }
   const result = analyzeCompoundStatement(
     mainFunction.body,
     new Set([GLSL_NO_POSITION_COMPONENTS_BIT_MASK]),
+    targetIdentifier,
   );
   if (!result.isSupported) {
-    return { mainFunction, writesPositionOnAllPaths: null };
+    return { mainFunction, writesVectorOnAllPaths: null };
   }
   return {
     mainFunction,
-    writesPositionOnAllPaths:
+    writesVectorOnAllPaths:
       !result.hasUnwrittenReturn &&
       [...result.activeStates].every((state) => state === GLSL_ALL_POSITION_COMPONENTS_BIT_MASK),
+  };
+};
+
+export const doesGlslMainWritePositionOnAllPaths = (
+  program: Program,
+  source: string,
+): GlslPositionPathAnalysis => {
+  const analysis = doesGlslMainWriteVectorOnAllPaths(program, source, "gl_Position");
+  return {
+    mainFunction: analysis.mainFunction,
+    writesPositionOnAllPaths: analysis.writesVectorOnAllPaths,
   };
 };

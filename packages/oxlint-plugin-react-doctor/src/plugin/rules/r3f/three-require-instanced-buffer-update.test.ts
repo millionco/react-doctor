@@ -41,4 +41,22 @@ describe("three-require-instanced-buffer-update", () => {
   ])("allows matching uploads on every path or unproven meshes", (code) => {
     expect(runRule(threeRequireInstancedBufferUpdate, code).diagnostics).toHaveLength(0);
   });
+
+  it("requires morph texture uploads after setMorphAt", () => {
+    const missing = `
+      import { InstancedMesh } from "three";
+      const mesh = new InstancedMesh(geometry, material, count);
+      const update = () => mesh.setMorphAt(0, sourceMesh);
+    `;
+    const covered = `
+      import { InstancedMesh } from "three";
+      const mesh = new InstancedMesh(geometry, material, count);
+      const update = () => {
+        mesh.setMorphAt(0, sourceMesh);
+        mesh.morphTexture.needsUpdate = true;
+      };
+    `;
+    expect(runRule(threeRequireInstancedBufferUpdate, missing).diagnostics).toHaveLength(1);
+    expect(runRule(threeRequireInstancedBufferUpdate, covered).diagnostics).toHaveLength(0);
+  });
 });

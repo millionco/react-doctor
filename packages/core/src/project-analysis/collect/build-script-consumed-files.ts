@@ -933,6 +933,135 @@ const collectObjectPathReferences = (
   }
 };
 
+interface StyleRegistryFanoutSources {
+  registryAnalysis: ScriptAnalysis;
+  stylesAnalysis: ScriptAnalysis;
+}
+
+const findStyleRegistryFanoutSources = (
+  analysis: ScriptAnalysis,
+  analyses: ReadonlyMap<string, ScriptAnalysis>,
+): StyleRegistryFanoutSources | undefined => {
+  for (const node of analysis.liveNodes) {
+    if (
+      !ts.isForOfStatement(node) ||
+      !ts.isVariableDeclarationList(node.initializer) ||
+      node.initializer.declarations.length !== 1 ||
+      !ts.isIdentifier(node.initializer.declarations[0].name) ||
+      !ts.isIdentifier(unwrapExpression(node.expression))
+    ) {
+      continue;
+    }
+    const styleVariableName = node.initializer.declarations[0].name.text;
+    const styleCollectionExpression = unwrapExpression(node.expression);
+    if (!ts.isIdentifier(styleCollectionExpression)) continue;
+    const stylesImport = analysis.importedFunctions.get(styleCollectionExpression.text);
+    const stylesAnalysis = stylesImport ? analyses.get(stylesImport.analysisKey) : undefined;
+    if (!stylesAnalysis) continue;
+
+    let registryAnalysis: ScriptAnalysis | undefined;
+    const visitStyleLoop = (loopNode: ts.Node): void => {
+      if (registryAnalysis || !ts.isForOfStatement(loopNode)) {
+        if (!registryAnalysis) ts.forEachChild(loopNode, visitStyleLoop);
+        return;
+      }
+      if (
+        !ts.isVariableDeclarationList(loopNode.initializer) ||
+        loopNode.initializer.declarations.length !== 1 ||
+        !ts.isIdentifier(loopNode.initializer.declarations[0].name) ||
+        !ts.isIdentifier(unwrapExpression(loopNode.expression))
+      ) {
+        ts.forEachChild(loopNode, visitStyleLoop);
+        return;
+      }
+      const registryItemName = loopNode.initializer.declarations[0].name.text;
+      const registryCollectionExpression = unwrapExpression(loopNode.expression);
+      if (!ts.isIdentifier(registryCollectionExpression)) return;
+      const loopBodyText = loopNode.statement.getText(analysis.sourceFile);
+      const normalizedLoopBodyText = loopBodyText.replace(/\s/g, "");
+      if (
+        !normalizedLoopBodyText.includes(`src/registry/\${${styleVariableName}.name}/`) ||
+        !normalizedLoopBodyText.includes(`${registryItemName}.files`) ||
+        !/\$\{[A-Za-z_$][\w$]*\.path\}/.test(normalizedLoopBodyText)
+      ) {
+        ts.forEachChild(loopNode, visitStyleLoop);
+        return;
+      }
+      const registryImport = analysis.importedFunctions.get(registryCollectionExpression.text);
+      registryAnalysis = registryImport ? analyses.get(registryImport.analysisKey) : undefined;
+    };
+    visitStyleLoop(node.statement);
+    if (registryAnalysis) return { registryAnalysis, stylesAnalysis };
+  }
+  return undefined;
+};
+
+const collectRegistryFileReferences = (
+  registryAnalysis: ScriptAnalysis,
+  analyses: ReadonlyMap<string, ScriptAnalysis>,
+): Set<string> => {
+  const registryFileReferences = new Set<string>();
+  const collectRegistryModule = (moduleAnalysis: ScriptAnalysis): void => {
+    const visitNode = (node: ts.Node): void => {
+      if (ts.isPropertyAssignment(node)) {
+        const propertyName =
+          ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name)
+            ? node.name.text
+            : undefined;
+        if (propertyName === "files") {
+          collectObjectPathReferences(node.initializer, registryFileReferences);
+        }
+      }
+      ts.forEachChild(node, visitNode);
+    };
+    visitNode(moduleAnalysis.sourceFile);
+  };
+  collectRegistryModule(registryAnalysis);
+  for (const importedFunction of registryAnalysis.importedFunctions.values()) {
+    const importedAnalysis = analyses.get(importedFunction.analysisKey);
+    if (importedAnalysis) collectRegistryModule(importedAnalysis);
+  }
+  return registryFileReferences;
+};
+
+const collectRegistryStyleNames = (stylesAnalysis: ScriptAnalysis): Set<string> => {
+  const styleNames = new Set<string>();
+  const visitNode = (node: ts.Node): void => {
+    if (
+      ts.isPropertyAssignment(node) &&
+      (ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name)) &&
+      node.name.text === "name"
+    ) {
+      const styleNameExpression = unwrapExpression(node.initializer);
+      if (ts.isStringLiteralLike(styleNameExpression)) styleNames.add(styleNameExpression.text);
+    }
+    ts.forEachChild(node, visitNode);
+  };
+  visitNode(stylesAnalysis.sourceFile);
+  return styleNames;
+};
+
+const collectResolvedRegistryFiles = (
+  registryFileReferences: ReadonlySet<string>,
+  styleNames: ReadonlySet<string>,
+  registryRoot: string,
+  projectRoot: string,
+  consumedFiles: Set<string>,
+): void => {
+  for (const styleName of styleNames) {
+    for (const registryFileReference of registryFileReferences) {
+      const registryFilePath = resolve(registryRoot, styleName, registryFileReference);
+      if (
+        isPathInsideDirectory(projectRoot, registryFilePath) &&
+        existsSync(registryFilePath) &&
+        statSync(registryFilePath).isFile()
+      ) {
+        consumedFiles.add(registryFilePath);
+      }
+    }
+  }
+};
+
 const collectRegistryMetadataConsumedFiles = (
   analyses: ReadonlyMap<string, ScriptAnalysis>,
   projectRoot: string,
@@ -954,83 +1083,25 @@ const collectRegistryMetadataConsumedFiles = (
     const stylesAnalysis = stylesImport ? analyses.get(stylesImport.analysisKey) : undefined;
     if (!registryAnalysis || !stylesAnalysis) continue;
 
-    const registryFileReferences = new Set<string>();
-    const collectRegistryModule = (moduleAnalysis: ScriptAnalysis): void => {
-      const visitNode = (node: ts.Node): void => {
-        if (ts.isPropertyAssignment(node)) {
-          const propertyName =
-            ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name)
-              ? node.name.text
-              : undefined;
-          if (propertyName === "files") {
-            collectObjectPathReferences(node.initializer, registryFileReferences);
-          }
-        }
-        ts.forEachChild(node, visitNode);
-      };
-      visitNode(moduleAnalysis.sourceFile);
-    };
-    collectRegistryModule(registryAnalysis);
-    for (const importedFunction of registryAnalysis.importedFunctions.values()) {
-      const importedAnalysis = analyses.get(importedFunction.analysisKey);
-      if (importedAnalysis) collectRegistryModule(importedAnalysis);
-    }
-
-    const styleNames = new Set<string>();
-    const visitStyles = (node: ts.Node): void => {
-      if (
-        ts.isPropertyAssignment(node) &&
-        (ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name)) &&
-        node.name.text === "name" &&
-        ts.isStringLiteralLike(unwrapExpression(node.initializer))
-      ) {
-        styleNames.add(unwrapExpression(node.initializer).getText().slice(1, -1));
-      }
-      ts.forEachChild(node, visitStyles);
-    };
-    visitStyles(stylesAnalysis.sourceFile);
-
-    for (const styleName of styleNames) {
-      for (const registryFileReference of registryFileReferences) {
-        const registryFilePath = resolve(
-          analysis.scriptFile.workingDirectory,
-          "src/registry",
-          styleName,
-          registryFileReference,
-        );
-        if (
-          isPathInsideDirectory(projectRoot, registryFilePath) &&
-          existsSync(registryFilePath) &&
-          statSync(registryFilePath).isFile()
-        ) {
-          consumedFiles.add(registryFilePath);
-        }
-      }
-    }
+    collectResolvedRegistryFiles(
+      collectRegistryFileReferences(registryAnalysis, analyses),
+      collectRegistryStyleNames(stylesAnalysis),
+      resolve(analysis.scriptFile.workingDirectory, "src/registry"),
+      projectRoot,
+      consumedFiles,
+    );
   }
 
-  const hasStyleRegistryFanout = [...analyses.values()].some((analysis) =>
-    analysis.sourceFile.text.includes("src/registry/${style.name}/"),
-  );
-  if (!hasStyleRegistryFanout) return;
-
-  const registryPaths = new Set<string>();
-  const styleNames = new Set<string>();
   for (const analysis of analyses.values()) {
-    for (const pathMatch of analysis.sourceFile.text.matchAll(/\bpath\s*:\s*["']([^"']+)["']/g)) {
-      registryPaths.add(pathMatch[1]);
-    }
-    for (const styleMatch of analysis.sourceFile.text.matchAll(/\bname\s*:\s*["']([^"']+)["']/g)) {
-      styleNames.add(styleMatch[1]);
-    }
-  }
-  for (const styleName of styleNames) {
-    for (const registryPath of registryPaths) {
-      const resolvedPath = resolveEntryWithExtensions(
-        resolve(projectRoot, "src", "registry", styleName, registryPath),
-      );
-      if (resolvedPath) consumedFiles.add(resolvedPath);
-    }
+    const fanoutSources = findStyleRegistryFanoutSources(analysis, analyses);
+    if (!fanoutSources) continue;
+    collectResolvedRegistryFiles(
+      collectRegistryFileReferences(fanoutSources.registryAnalysis, analyses),
+      collectRegistryStyleNames(fanoutSources.stylesAnalysis),
+      resolve(analysis.scriptFile.workingDirectory, "src/registry"),
+      projectRoot,
+      consumedFiles,
+    );
   }
 };
 

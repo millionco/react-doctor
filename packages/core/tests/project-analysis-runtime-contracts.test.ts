@@ -86,17 +86,25 @@ describe("runtime-owned project analysis contracts", () => {
         "src/scripts/build-registry.mts": `
           import { blocks } from "../registry/registry-blocks";
           import { styles } from "../registry/registry-styles";
+          import { unrelatedMetadata } from "../registry/unrelated-metadata";
           for (const style of styles) {
             for (const item of blocks) {
               item.files.map((file) => \`src/registry/\${style.name}/\${file.path}\`);
             }
           }
+          console.log(unrelatedMetadata);
         `,
         "src/registry/registry-blocks.ts": `
           export const blocks = [{ files: [{ path: "block/sidebar/hooks/use-sidebar.tsx" }] }];
         `,
         "src/registry/registry-styles.ts": `
           export const styles = [{ name: "default" }, { name: "new-york" }];
+        `,
+        "src/registry/unrelated-metadata.ts": `
+          export const unrelatedMetadata = {
+            name: "default",
+            path: "block/sidebar/hooks/orphan.tsx",
+          };
         `,
         "src/registry/default/block/sidebar/hooks/use-sidebar.tsx": `export const useSidebar = () => true;`,
         "src/registry/new-york/block/sidebar/hooks/use-sidebar.tsx": `export const useSidebar = () => true;`,

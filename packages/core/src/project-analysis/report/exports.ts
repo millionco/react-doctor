@@ -9,6 +9,11 @@ import type {
 } from "../types.js";
 import { collectConventionConsumedExportKeys } from "../utils/collect-convention-consumed-export-keys.js";
 
+interface ReExportTarget {
+  readonly targetIndex: number;
+  readonly mappings: Edge["reExportMappings"];
+}
+
 export const detectDeadExports = (
   graph: DependencyGraph,
   config: ProjectAnalysisConfig,
@@ -213,7 +218,7 @@ const handleNamespaceImport = (
   targetModule: SourceModule,
   namespaceLocalName: string,
   graph: DependencyGraph,
-  sourceToTargets: Map<number, number[]>,
+  sourceToTargets: Map<number, ReExportTarget[]>,
   usedKeys: Set<string>,
 ): void => {
   if (!sourceModule) {
@@ -278,19 +283,17 @@ const extractAccessedMemberNames = (
 const buildSourceToTargetsMap = (
   graph: DependencyGraph,
   platformSiblingIndex: ReadonlyMap<number, ReadonlyArray<number>>,
-): Map<number, number[]> => {
-  const sourceToTargets = new Map<number, number[]>();
+): Map<number, ReExportTarget[]> => {
+  const sourceToTargets = new Map<number, ReExportTarget[]>();
 
   for (const edge of graph.edges) {
     if (!edge.isReExportEdge) continue;
     for (const targetIndex of platformSiblingIndex.get(edge.target) ?? [edge.target]) {
       const existing = sourceToTargets.get(edge.source);
       if (existing) {
-        if (!existing.includes(targetIndex)) {
-          existing.push(targetIndex);
-        }
+        existing.push({ targetIndex, mappings: edge.reExportMappings });
       } else {
-        sourceToTargets.set(edge.source, [targetIndex]);
+        sourceToTargets.set(edge.source, [{ targetIndex, mappings: edge.reExportMappings }]);
       }
     }
   }
@@ -301,7 +304,7 @@ const buildSourceToTargetsMap = (
 const markAllExportsUsedRecursive = (
   module: SourceModule,
   graph: DependencyGraph,
-  sourceToTargets: Map<number, number[]>,
+  sourceToTargets: Map<number, ReExportTarget[]>,
   usedKeys: Set<string>,
   visited: Set<string>,
 ): void => {
@@ -332,7 +335,7 @@ const markExportUsedRecursive = (
   filePath: string,
   exportName: string,
   graph: DependencyGraph,
-  sourceToTargets: Map<number, number[]>,
+  sourceToTargets: Map<number, ReExportTarget[]>,
   usedKeys: Set<string>,
   visited: Set<string>,
 ): void => {
@@ -361,7 +364,7 @@ const followReExportChain = (
   reExporterModuleIndex: number,
   exportInfo: ExportReference,
   graph: DependencyGraph,
-  sourceToTargets: Map<number, number[]>,
+  sourceToTargets: Map<number, ReExportTarget[]>,
   usedKeys: Set<string>,
   visited: Set<string>,
 ): void => {
@@ -370,8 +373,15 @@ const followReExportChain = (
 
   const originalName = exportInfo.reExportOriginalName ?? exportInfo.name;
 
-  for (const targetIndex of targetIndices) {
-    const targetModule = graph.modules[targetIndex];
+  for (const target of targetIndices) {
+    const hasMatchingMapping = target.mappings.some(
+      (mapping) =>
+        (mapping.exportedName === exportInfo.name && mapping.originalName === originalName) ||
+        (exportInfo.isSynthetic && mapping.exportedName === "*" && mapping.originalName === "*"),
+    );
+    if (!hasMatchingMapping) continue;
+
+    const targetModule = graph.modules[target.targetIndex];
     if (!targetModule) continue;
 
     if (originalName === "*" || exportInfo.isNamespaceReExport) {

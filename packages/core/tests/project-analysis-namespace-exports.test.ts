@@ -62,4 +62,33 @@ describe("namespace export usage", () => {
 
     expect(unusedExports).toEqual([{ path: "src/internal.ts", name: "stale" }]);
   });
+
+  it("does not credit named re-exports from unrelated namespace targets", async () => {
+    const rootDirectory = createProject({
+      "src/index.ts": `
+        import { Library } from "./public-api";
+        console.log(Library.firstPublicMember);
+      `,
+      "src/public-api.ts": `
+        export * as Library from "./library";
+        export { unrelatedPublicMember } from "./unrelated";
+      `,
+      "src/library.ts": `
+        export const firstPublicMember = true;
+        export const secondPublicMember = true;
+      `,
+      "src/unrelated.ts": `export const unrelatedPublicMember = true;`,
+    });
+
+    const result = await analyzeProject({
+      rootDirectory,
+      entryPatterns: ["src/index.ts"],
+    });
+    const unusedExports = result.unusedExports.map((unusedExport) => ({
+      path: path.relative(rootDirectory, unusedExport.path).replaceAll("\\", "/"),
+      name: unusedExport.name,
+    }));
+
+    expect(unusedExports).toEqual([{ path: "src/unrelated.ts", name: "unrelatedPublicMember" }]);
+  });
 });

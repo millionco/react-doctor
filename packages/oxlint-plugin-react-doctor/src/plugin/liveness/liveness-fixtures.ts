@@ -1922,6 +1922,18 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "r3f-require-root-unmount": {
     code: 'import { createRoot } from "@react-three/fiber"; const Scene = ({ canvas }) => { const root = createRoot(canvas); root.render(<mesh />); return null; };',
   },
+  "r3f-require-lit-material-normals": {
+    code: 'import "@react-three/fiber"; const Scene = ({ texture }) => <mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial normalMap={texture} /></mesh>;',
+  },
+  "r3f-require-environment-for-metal": {
+    code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial metalness={1} /></mesh></Canvas>;',
+  },
+  "r3f-require-lighting-for-pbr": {
+    code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial /></mesh></Canvas>;',
+  },
+  "r3f-require-uv-for-texture-map": {
+    code: 'import "@react-three/fiber"; const Scene = ({ texture }) => <mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial map={texture} /></mesh>;',
+  },
   "r3f-require-shadows-enabled": {
     code: 'import { Canvas } from "@react-three/fiber"; const Scene = () => <Canvas><mesh castShadow /></Canvas>;',
   },
@@ -2038,6 +2050,18 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "three-require-render-target-reset": {
     code: 'import { WebGLRenderer, WebGLRenderTarget } from "three"; const renderer = new WebGLRenderer(); const target = new WebGLRenderTarget(256, 256); renderer.setRenderTarget(target); renderer.render(scene, camera);',
+  },
+  "three-require-lit-material-normals": {
+    code: 'import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three"; const geometry = new BufferGeometry(); geometry.setAttribute("position", new BufferAttribute(positions, 3)); new Mesh(geometry, new MeshStandardMaterial({ normalMap: new Texture() }));',
+  },
+  "three-require-environment-for-metal": {
+    code: 'import { Mesh, MeshStandardMaterial, Scene, WebGLRenderer } from "three"; const scene = new Scene(); scene.add(new Mesh(geometry, new MeshStandardMaterial({ metalness: 1 }))); new WebGLRenderer().render(scene, camera);',
+  },
+  "three-require-lighting-for-pbr": {
+    code: 'import { Mesh, MeshStandardMaterial, Scene, WebGLRenderer } from "three"; const scene = new Scene(); scene.add(new Mesh(geometry, new MeshStandardMaterial())); new WebGLRenderer().render(scene, camera);',
+  },
+  "three-require-uv-for-texture-map": {
+    code: 'import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three"; const geometry = new BufferGeometry(); geometry.setAttribute("position", new BufferAttribute(positions, 3)); new Mesh(geometry, new MeshStandardMaterial({ map: new Texture() }));',
   },
   "three-require-shadows-enabled": {
     code: 'import { Mesh, PerspectiveCamera, Scene, WebGLRenderer } from "three"; const renderer = new WebGLRenderer({ canvas }); const mesh = new Mesh(); mesh.castShadow = true; renderer.render(new Scene(), new PerspectiveCamera());',

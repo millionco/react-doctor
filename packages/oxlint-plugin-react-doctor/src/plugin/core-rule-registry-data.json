@@ -9328,6 +9328,23 @@
     }
   },
   {
+    "key": "react-doctor/r3f-require-environment-for-metal",
+    "id": "r3f-require-environment-for-metal",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-environment-for-metal",
+      "title": "Metal R3F material has no environment",
+      "severity": "warn",
+      "recommendation": "Provide scene environment lighting or an envMap for strongly metallic standard and physical materials",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/r3f-require-frame-delta",
     "id": "r3f-require-frame-delta",
     "source": "react-doctor",
@@ -9375,6 +9392,40 @@
       "framework": "global",
       "requires": ["react", "r3f"],
       "tags": ["r3f", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-lighting-for-pbr",
+    "id": "r3f-require-lighting-for-pbr",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-lighting-for-pbr",
+      "title": "R3F PBR material has no lighting source",
+      "severity": "warn",
+      "recommendation": "Add a light, scene environment, material envMap, lightMap, or intentional emissive source for PBR materials",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-lit-material-normals",
+    "id": "r3f-require-lit-material-normals",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-lit-material-normals",
+      "title": "Normal-mapped R3F geometry has no normals",
+      "severity": "error",
+      "recommendation": "Attach a normal BufferAttribute or compute vertex normals before applying a normal map to custom geometry",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
       "isScanRule": false
     }
   },
@@ -9507,6 +9558,23 @@
       "title": "R3F material opacity is ignored",
       "severity": "warn",
       "recommendation": "Enable transparent, alphaHash, or alphaTest when a material opacity below 1 should affect rendering",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["react", "r3f"],
+      "tags": ["r3f", "webgl", "react-jsx-only"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/r3f-require-uv-for-texture-map",
+    "id": "r3f-require-uv-for-texture-map",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "r3f-require-uv-for-texture-map",
+      "title": "Mapped R3F mesh geometry has no UVs",
+      "severity": "error",
+      "recommendation": "Attach a uv, uv1, uv2, or uv3 BufferAttribute when a built-in mesh material samples a texture map",
       "category": "Bugs",
       "framework": "global",
       "requires": ["react", "r3f"],
@@ -13199,6 +13267,23 @@
     }
   },
   {
+    "key": "react-doctor/three-require-environment-for-metal",
+    "id": "three-require-environment-for-metal",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-environment-for-metal",
+      "title": "Metal Three.js material has no environment",
+      "severity": "warn",
+      "recommendation": "Provide scene environment lighting or an envMap for strongly metallic standard and physical materials",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/three-require-frame-delta",
     "id": "three-require-frame-delta",
     "source": "react-doctor",
@@ -13259,6 +13344,40 @@
       "title": "KTX2Loader used before renderer support detection",
       "severity": "error",
       "recommendation": "Call detectSupport(renderer), or await detectSupportAsync(renderer), before loading KTX2 textures",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-lighting-for-pbr",
+    "id": "three-require-lighting-for-pbr",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-lighting-for-pbr",
+      "title": "Three.js PBR material has no lighting source",
+      "severity": "warn",
+      "recommendation": "Add a light, scene environment, material envMap, lightMap, or intentional emissive source for PBR materials",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-lit-material-normals",
+    "id": "three-require-lit-material-normals",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-lit-material-normals",
+      "title": "Normal-mapped Three.js geometry has no normals",
+      "severity": "error",
+      "recommendation": "Provide a normal BufferAttribute or call computeVertexNormals() before applying a normal map to custom geometry",
       "category": "Bugs",
       "framework": "global",
       "requires": ["three"],
@@ -13532,6 +13651,23 @@
       "title": "Three.js material opacity is ignored",
       "severity": "warn",
       "recommendation": "Enable transparent, alphaHash, or alphaTest when a material opacity below 1 should affect rendering",
+      "category": "Bugs",
+      "framework": "global",
+      "requires": ["three"],
+      "tags": ["three", "webgl"],
+      "isScanRule": false
+    }
+  },
+  {
+    "key": "react-doctor/three-require-uv-for-texture-map",
+    "id": "three-require-uv-for-texture-map",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "three-require-uv-for-texture-map",
+      "title": "Mapped Three.js mesh geometry has no UVs",
+      "severity": "error",
+      "recommendation": "Provide a uv, uv1, uv2, or uv3 BufferAttribute when a built-in mesh material samples a texture map",
       "category": "Bugs",
       "framework": "global",
       "requires": ["three"],

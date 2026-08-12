@@ -571,9 +571,12 @@ import { r3fPreferUseLoader } from "./rules/r3f/r3f-prefer-use-loader.js";
 import { r3fRequireAnimationMixerUpdate } from "./rules/r3f/r3f-require-animation-mixer-update.js";
 import { r3fRequireDataTextureUpdate } from "./rules/r3f/r3f-require-data-texture-update.js";
 import { r3fRequireDynamicBufferUsage } from "./rules/r3f/r3f-require-dynamic-buffer-usage.js";
+import { r3fRequireEnvironmentForMetal } from "./rules/r3f/r3f-require-environment-for-metal.js";
 import { r3fRequireFrameDelta } from "./rules/r3f/r3f-require-frame-delta.js";
 import { r3fRequireGlobalEffectCleanup } from "./rules/r3f/r3f-require-global-effect-cleanup.js";
 import { r3fRequireInstancedBufferUpdate } from "./rules/r3f/r3f-require-instanced-buffer-update.js";
+import { r3fRequireLightingForPbr } from "./rules/r3f/r3f-require-lighting-for-pbr.js";
+import { r3fRequireLitMaterialNormals } from "./rules/r3f/r3f-require-lit-material-normals.js";
 import { r3fRequireOwnedTextureCleanup } from "./rules/r3f/r3f-require-owned-texture-cleanup.js";
 import { r3fRequirePositionBufferUpdate } from "./rules/r3f/r3f-require-position-buffer-update.js";
 import { r3fRequireProjectionMatrixUpdate } from "./rules/r3f/r3f-require-projection-matrix-update.js";
@@ -582,6 +585,7 @@ import { r3fRequireRenderWithPositivePriority } from "./rules/r3f/r3f-require-re
 import { r3fRequireRootUnmount } from "./rules/r3f/r3f-require-root-unmount.js";
 import { r3fRequireShadowsEnabled } from "./rules/r3f/r3f-require-shadows-enabled.js";
 import { r3fRequireTransparentForOpacity } from "./rules/r3f/r3f-require-transparent-for-opacity.js";
+import { r3fRequireUvForTextureMap } from "./rules/r3f/r3f-require-uv-for-texture-map.js";
 import { r3fTextureRepeatRequiresWrapping } from "./rules/r3f/r3f-texture-repeat-requires-wrapping.js";
 import { r3fValidBufferAttributeArrayLength } from "./rules/r3f/r3f-valid-buffer-attribute-array-length.js";
 import { r3fValidBufferAttributeItemSize } from "./rules/r3f/r3f-valid-buffer-attribute-item-size.js";
@@ -800,10 +804,13 @@ import { threeRequireControlsCleanup } from "./rules/r3f/three-require-controls-
 import { threeRequireControlsUpdate } from "./rules/r3f/three-require-controls-update.js";
 import { threeRequireDataTextureUpdate } from "./rules/r3f/three-require-data-texture-update.js";
 import { threeRequireDynamicBufferUsage } from "./rules/r3f/three-require-dynamic-buffer-usage.js";
+import { threeRequireEnvironmentForMetal } from "./rules/r3f/three-require-environment-for-metal.js";
 import { threeRequireFrameDelta } from "./rules/r3f/three-require-frame-delta.js";
 import { threeRequireGpuComputationCleanup } from "./rules/r3f/three-require-gpu-computation-cleanup.js";
 import { threeRequireInstancedBufferUpdate } from "./rules/r3f/three-require-instanced-buffer-update.js";
 import { threeRequireKtx2DetectSupport } from "./rules/r3f/three-require-ktx2-detect-support.js";
+import { threeRequireLightingForPbr } from "./rules/r3f/three-require-lighting-for-pbr.js";
+import { threeRequireLitMaterialNormals } from "./rules/r3f/three-require-lit-material-normals.js";
 import { threeRequireLoaderErrorHandling } from "./rules/r3f/three-require-loader-error-handling.js";
 import { threeRequireOwnedGeometryCleanup } from "./rules/r3f/three-require-owned-geometry-cleanup.js";
 import { threeRequireOwnedMaterialCleanup } from "./rules/r3f/three-require-owned-material-cleanup.js";
@@ -820,6 +827,7 @@ import { threeRequireRendererSize } from "./rules/r3f/three-require-renderer-siz
 import { threeRequireShadowsEnabled } from "./rules/r3f/three-require-shadows-enabled.js";
 import { threeRequireTextureUpdateAfterWrappingChange } from "./rules/r3f/three-require-texture-update-after-wrapping-change.js";
 import { threeRequireTransparentForOpacity } from "./rules/r3f/three-require-transparent-for-opacity.js";
+import { threeRequireUvForTextureMap } from "./rules/r3f/three-require-uv-for-texture-map.js";
 import { threeRequireWorkerLoaderCleanup } from "./rules/r3f/three-require-worker-loader-cleanup.js";
 import { threeShaderNoConstantOutOfBoundsIndex } from "./rules/r3f/three-shader-no-constant-out-of-bounds-index.js";
 import { threeShaderNoDerivativesInNonuniformFlow } from "./rules/r3f/three-shader-no-derivatives-in-nonuniform-flow.js";
@@ -7813,6 +7821,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/r3f-require-environment-for-metal",
+    id: "r3f-require-environment-for-metal",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireEnvironmentForMetal,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireEnvironmentForMetal.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireEnvironmentForMetal.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/r3f-require-frame-delta",
     id: "r3f-require-frame-delta",
     source: "react-doctor",
@@ -7858,6 +7881,36 @@ export const reactDoctorRules = [
           "r3f",
           ...(r3fRequireInstancedBufferUpdate.requires ?? []),
         ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-lighting-for-pbr",
+    id: "r3f-require-lighting-for-pbr",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireLightingForPbr,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireLightingForPbr.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireLightingForPbr.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-lit-material-normals",
+    id: "r3f-require-lit-material-normals",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireLitMaterialNormals,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireLitMaterialNormals.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireLitMaterialNormals.requires ?? [])]),
       ],
     },
   },
@@ -7994,6 +8047,21 @@ export const reactDoctorRules = [
           "r3f",
           ...(r3fRequireTransparentForOpacity.requires ?? []),
         ]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/r3f-require-uv-for-texture-map",
+    id: "r3f-require-uv-for-texture-map",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...r3fRequireUvForTextureMap,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["r3f", "webgl", ...(r3fRequireUvForTextureMap.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["react", "r3f", ...(r3fRequireUvForTextureMap.requires ?? [])]),
       ],
     },
   },
@@ -10828,6 +10896,21 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/three-require-environment-for-metal",
+    id: "three-require-environment-for-metal",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireEnvironmentForMetal,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireEnvironmentForMetal.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireEnvironmentForMetal.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/three-require-frame-delta",
     id: "three-require-frame-delta",
     source: "react-doctor",
@@ -10882,6 +10965,34 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeRequireKtx2DetectSupport.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["three", ...(threeRequireKtx2DetectSupport.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-lighting-for-pbr",
+    id: "three-require-lighting-for-pbr",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireLightingForPbr,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireLightingForPbr.tags ?? [])])],
+      requires: [...new Set<Capability>(["three", ...(threeRequireLightingForPbr.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/three-require-lit-material-normals",
+    id: "three-require-lit-material-normals",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireLitMaterialNormals,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireLitMaterialNormals.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireLitMaterialNormals.requires ?? [])]),
       ],
     },
   },
@@ -11147,6 +11258,21 @@ export const reactDoctorRules = [
       tags: [...new Set(["three", "webgl", ...(threeRequireTransparentForOpacity.tags ?? [])])],
       requires: [
         ...new Set<Capability>(["three", ...(threeRequireTransparentForOpacity.requires ?? [])]),
+      ],
+    },
+  },
+  {
+    key: "react-doctor/three-require-uv-for-texture-map",
+    id: "three-require-uv-for-texture-map",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...threeRequireUvForTextureMap,
+      framework: "global",
+      category: "Bugs",
+      tags: [...new Set(["three", "webgl", ...(threeRequireUvForTextureMap.tags ?? [])])],
+      requires: [
+        ...new Set<Capability>(["three", ...(threeRequireUvForTextureMap.requires ?? [])]),
       ],
     },
   },

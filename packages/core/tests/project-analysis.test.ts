@@ -890,6 +890,24 @@ describe("analyzeProject", () => {
     expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/admin/index.tsx");
   });
 
+  it("resolves Webpack path helpers relative to the configuration module", async () => {
+    const rootDirectory = createProject(
+      {
+        "webpack.config.ts": `
+          import path from "node:path";
+          export default { entry: path.join("src", "index.ts") };
+        `,
+        "src/index.ts": "export const application = true;",
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      { devDependencies: { webpack: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it("does not infer computed Webpack entries from arbitrary helpers", async () => {
     const rootDirectory = createProject(
       {

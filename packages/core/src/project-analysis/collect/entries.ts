@@ -1114,11 +1114,16 @@ const extractComputedWebpackEntries = (configPath: string, projectDirectory: str
       ) {
         continue;
       }
-      const directoryName = entryProperty.initializer.expression.name.text;
-      for (const candidatePath of [
-        resolve(projectDirectory, directoryName, ...pathSegments),
-        resolve(projectDirectory, "src", directoryName, ...pathSegments),
-      ]) {
+      const pathObjectName = entryProperty.initializer.expression.expression.text;
+      const pathMethodName = entryProperty.initializer.expression.name.text;
+      const candidatePaths =
+        pathObjectName === "path" && (pathMethodName === "join" || pathMethodName === "resolve")
+          ? [resolve(dirname(modulePath), ...pathSegments)]
+          : [
+              resolve(projectDirectory, pathMethodName, ...pathSegments),
+              resolve(projectDirectory, "src", pathMethodName, ...pathSegments),
+            ];
+      for (const candidatePath of candidatePaths) {
         const resolvedEntry = resolveEntryWithExtensions(candidatePath);
         if (resolvedEntry) entries.push(resolvedEntry);
       }

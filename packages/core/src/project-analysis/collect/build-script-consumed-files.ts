@@ -65,6 +65,7 @@ const unwrapExpression = (expression: ts.Expression): ts.Expression => {
   while (
     ts.isParenthesizedExpression(unwrappedExpression) ||
     ts.isAsExpression(unwrappedExpression) ||
+    ts.isSatisfiesExpression(unwrappedExpression) ||
     ts.isTypeAssertionExpression(unwrappedExpression) ||
     ts.isNonNullExpression(unwrappedExpression)
   ) {

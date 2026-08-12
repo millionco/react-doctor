@@ -227,11 +227,13 @@ describe("build-script filesystem consumers", () => {
           import buildAnonymousFunction from "./anonymous-function";
           import buildNamedArrow from "./named-arrow";
           import buildAnonymousArrow from "./anonymous-arrow";
+          import buildSatisfiesArrow from "./satisfies-arrow";
           import dormantBuilder from "./dormant";
           buildNamedFunction();
           buildAnonymousFunction();
           buildNamedArrow();
           buildAnonymousArrow();
+          buildSatisfiesArrow();
           console.log(dormantBuilder);
         `,
         "scripts/named-function.ts": `
@@ -255,6 +257,10 @@ describe("build-script filesystem consumers", () => {
           import fs from "node:fs";
           export default () => fs.readFileSync("anonymous-arrow/registry.json", "utf8");
         `,
+        "scripts/satisfies-arrow.ts": `
+          import fs from "node:fs";
+          export default (() => fs.readFileSync("satisfies-arrow/registry.json", "utf8")) satisfies (() => string);
+        `,
         "scripts/dormant.ts": `
           import fs from "node:fs";
           export default () => fs.readFileSync("dormant/registry.json", "utf8");
@@ -267,6 +273,8 @@ describe("build-script filesystem consumers", () => {
         "named-arrow/input.ts": "export const input = true;",
         "anonymous-arrow/registry.json": JSON.stringify({ files: [{ path: "input.ts" }] }),
         "anonymous-arrow/input.ts": "export const input = true;",
+        "satisfies-arrow/registry.json": JSON.stringify({ files: [{ path: "input.ts" }] }),
+        "satisfies-arrow/input.ts": "export const input = true;",
         "dormant/registry.json": JSON.stringify({ files: [{ path: "input.ts" }] }),
         "dormant/input.ts": "export const input = true;",
       },
@@ -281,6 +289,7 @@ describe("build-script filesystem consumers", () => {
         "anonymous-function/input.ts",
         "named-arrow/input.ts",
         "anonymous-arrow/input.ts",
+        "satisfies-arrow/input.ts",
       ]),
     );
     expect(unusedFiles).toContain("dormant/input.ts");

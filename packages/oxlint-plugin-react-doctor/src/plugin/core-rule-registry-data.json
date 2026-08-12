@@ -3887,6 +3887,22 @@
     }
   },
   {
+    "key": "react-doctor/no-crowded-component-file",
+    "id": "no-crowded-component-file",
+    "source": "react-doctor",
+    "originallyExternal": false,
+    "rule": {
+      "id": "no-crowded-component-file",
+      "title": "Crowded component file",
+      "severity": "warn",
+      "recommendation": "Move unrelated secondary components into their own files while keeping cohesive feature modules and component part sets together.",
+      "category": "Maintainability",
+      "framework": "global",
+      "requires": ["react"],
+      "isScanRule": false
+    }
+  },
+  {
     "key": "react-doctor/no-crushed-letter-spacing",
     "id": "no-crushed-letter-spacing",
     "source": "react-doctor",
@@ -5766,10 +5782,11 @@
       "id": "no-multi-comp",
       "title": "Multiple components in one file",
       "severity": "warn",
-      "recommendation": "Move secondary components into their own files so each component stays easier to find, test, and change.",
+      "recommendation": "Move every secondary component into its own file.",
       "category": "Maintainability",
       "framework": "global",
       "requires": ["react"],
+      "defaultEnabled": false,
       "isScanRule": false
     }
   },

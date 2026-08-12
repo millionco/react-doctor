@@ -245,6 +245,7 @@ import { noCreateObjectUrlInRender } from "./rules/state-and-effects/no-create-o
 import { noCreateObjectUrlWithoutRevoke } from "./rules/js-performance/no-create-object-url-without-revoke.js";
 import { noCreateRefInFunctionComponent } from "./rules/react-builtins/no-create-ref-in-function-component.js";
 import { noCreateStoreInRender } from "./rules/state-and-effects/no-create-store-in-render.js";
+import { noCrowdedComponentFile } from "./rules/react-builtins/no-crowded-component-file.js";
 import { noCrushedLetterSpacing } from "./rules/design/no-crushed-letter-spacing.js";
 import { noDanger } from "./rules/react-builtins/no-danger.js";
 import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-children.js";
@@ -3719,6 +3720,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noCreateStoreInRender.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-crowded-component-file",
+    id: "no-crowded-component-file",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCrowdedComponentFile,
+      framework: "global",
+      category: "Maintainability",
+      requires: [...new Set<Capability>(["react", ...(noCrowdedComponentFile.requires ?? [])])],
     },
   },
   {

@@ -165,6 +165,16 @@ export const createOxlintConfig = ({
 
   const capabilities = getCapabilities(project);
   const settingsRootDirectory = resolveSettingsRootDirectory(project.rootDirectory);
+  const noMultiCompOverride = resolveRuleSeverityOverride(
+    { ruleKey: "react-doctor/no-multi-comp" },
+    severityControls,
+  );
+  const crowdedComponentFileOverride = resolveRuleSeverityOverride(
+    { ruleKey: "react-doctor/no-crowded-component-file" },
+    severityControls,
+  );
+  const shouldUseExplicitNoMultiCompPolicy =
+    noMultiCompOverride !== undefined && crowdedComponentFileOverride === undefined;
 
   const enabledReactDoctorRules: Record<string, OxlintRuleSeverity> = {};
   for (const registryEntry of REACT_DOCTOR_RULES) {
@@ -185,6 +195,8 @@ export const createOxlintConfig = ({
     // Scan rules run via core's check-security-scan environment
     // check, not oxlint — registering them would only add dead visitors.
     if (rule.isScanRule) continue;
+    if (registryEntry.id === "no-crowded-component-file" && shouldUseExplicitNoMultiCompPolicy)
+      continue;
     // `customRulesOnly` mirrors the historical behavior of the pre-port
     // builtin-react / builtin-a11y gate — skip everything ported 1:1
     // from upstream OXC plugins.

@@ -393,7 +393,46 @@ describe("createOxlintConfig settings", () => {
       severityControls: { categories: { Maintainability: "error" } },
     });
 
+    expect(config.rules["react-doctor/no-crowded-component-file"]).toBe("error");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
+  });
+
+  it("opts the faithful no-multi-comp port in through its upstream alias", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react/no-multi-comp": "error" } },
+    });
+
     expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-crowded-component-file");
+  });
+
+  it("preserves no-multi-comp off overrides for the curated replacement", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react-doctor/no-multi-comp": "off" } },
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-crowded-component-file");
+  });
+
+  it("allows both component-file policies when both are explicit", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: {
+        rules: {
+          "react/no-multi-comp": "error",
+          "react-doctor/no-crowded-component-file": "warn",
+        },
+      },
+    });
+
+    expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
+    expect(config.rules["react-doctor/no-crowded-component-file"]).toBe("warn");
   });
 
   it("a per-rule severity opts a default-disabled rule in", () => {

@@ -22,6 +22,13 @@ describe("rule-key-aliases", () => {
     it("matches native key to legacy alias", () => {
       expect(isSameRuleKey("react-doctor/jsx-key", "react/jsx-key")).toBe(true);
       expect(isSameRuleKey("react-doctor/alt-text", "jsx-a11y/alt-text")).toBe(true);
+      expect(isSameRuleKey("react-doctor/no-multi-comp", "react/no-multi-comp")).toBe(true);
+    });
+
+    it("keeps the curated component-file rule distinct from no-multi-comp", () => {
+      expect(isSameRuleKey("react-doctor/no-crowded-component-file", "react/no-multi-comp")).toBe(
+        false,
+      );
     });
 
     it("matches short id to qualified key", () => {

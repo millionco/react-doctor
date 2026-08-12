@@ -165,6 +165,7 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "no-uninformative-aria-label",
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",
+  "no-crowded-component-file",
   "no-call-component-as-function",
   "no-string-false-on-boolean-attribute",
   "hook-import-rename-loses-use-prefix",

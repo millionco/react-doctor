@@ -238,19 +238,6 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     failSkips: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     reason: "Intentional: skip data-collection prop names (list, items, options, data, etc.).",
   },
-  "no-multi-comp": {
-    // OXC flags a file with 2+ components. React Doctor intentionally
-    // only flags 3+: a "1 main + 1 sub-component" file (e.g.
-    // `ErrorBoundary` + `OptionalErrorBoundary`) is idiomatic
-    // co-location, not a smell — see the `flagged.length <= 2` guard in
-    // the rule, plus the barrel / feature-module exemptions. Every OXC
-    // fail fixture here declares exactly 2 components, so all 20 fall
-    // below our threshold. The 3+ behaviour and the exemptions are
-    // covered by `no-multi-comp.regressions.test.ts`.
-    failSkips: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
-    reason:
-      "Intentional: flag only 3+ components (OXC flags 2+); idiomatic 2-component co-location is allowed.",
-  },
   "no-array-index-key": {
     // OXC's rule covers both the JSX `key={index}` attribute and the
     // `React.cloneElement(child, { key: index })` shape. React Doctor's

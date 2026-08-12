@@ -1,6 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -20,11 +22,16 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { forEachChildNode, walkAst } from "../../utils/walk-ast.js";
 import { REACT_HOC_NAMES, REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
 
-const MESSAGE =
-  "This file declares several components, so each component is harder to find, test, and change.";
+const MESSAGE = "Declare only one React component per file.";
 
 interface NoMultiCompSettings {
   ignoreStateless?: boolean;
+}
+
+interface NoMultiCompDetectionOptions {
+  message: string;
+  shouldAllowRelatedComponentColocation: boolean;
+  shouldSkipTestlikeFiles: boolean;
 }
 
 const resolveSettings = (
@@ -833,120 +840,131 @@ const walkComponentSearch = (node: EsTreeNode, context: VisitContext): void => {
 //
 // Component nesting is tracked: components defined INSIDE another
 // component aren't double-counted.
+export const createNoMultiCompVisitors = (
+  context: RuleContext,
+  options: NoMultiCompDetectionOptions,
+): RuleVisitors => {
+  const settings = resolveSettings(context.settings);
+  const shouldSkipFile = options.shouldSkipTestlikeFiles && isTestlikeFilename(context.filename);
+  return {
+    Program(node: EsTreeNodeOfType<"Program">) {
+      if (shouldSkipFile) return;
+      const visitContext: VisitContext = {
+        components: [],
+        componentDepth: 0,
+        currentVarName: null,
+        scopes: context.scopes,
+        visitChild: (child) => walkComponentSearch(child, visitContext),
+      };
+      for (const statement of node.body) walkComponentSearch(statement as EsTreeNode, visitContext);
+
+      const flagged = settings.ignoreStateless
+        ? visitContext.components.filter((component) => !component.isStateless)
+        : visitContext.components;
+      if (!options.shouldAllowRelatedComponentColocation) {
+        for (const component of flagged.slice(1)) {
+          context.report({ node: component.reportNode, message: options.message });
+        }
+        return;
+      }
+      // Co-located helper pattern: a file with at most 2 detected
+      // components is the canonical "1 main + 1 sub-component" shape
+      // (e.g. `ErrorBoundary` + `OptionalErrorBoundary`, `FPSMeter` +
+      // `FpsMeterInner`, `ArrowShapeUtil` + `ArrowClipPath`,
+      // `getSvgJsx.tsx`'s `SvgExport` + `ForeignObjectShape`). Forcing
+      // a second file for the helper fragments tightly-coupled UI
+      // without any maintenance benefit — the helper is a private
+      // implementation detail of the main component, not a sibling.
+      if (flagged.length <= 2) return;
+      // Two exemption shapes, both informed by the corpus:
+      //
+      //   1. BARREL: 4+ components, 75%+ exported — icon barrels, menu
+      //      groups, shadcn re-export files. Splitting would be churn.
+      //
+      //   2. PAGE-WITH-HELPERS: exactly ONE exported component plus N
+      //      private helpers (`function FooHelper() { ... }` only used
+      //      by the exported page). This is the canonical "feature
+      //      module" shape — `<SettingsAdminNewAiProvider>` with a
+      //      couple internal subcomponents — and forcing the user to
+      //      split each helper into its own file would only fragment
+      //      tightly-coupled UI.
+      const reExportedNames = collectReExportedNames(node as EsTreeNode, context.scopes);
+      const exportedCount = flagged.filter((component) =>
+        isExportedDeclaration(component.reportNode, reExportedNames),
+      ).length;
+      // BARREL: many components, most exported. Two band-tightnesses
+      // (tuned against the corpus):
+      //   - 4+ components, 70 %+ exported  → tight shadcn-style barrel
+      //     (uses `Math.floor` so 11/15 = 73 % counts; the strictly-
+      //     ceil version excluded `WebAnalyticsTile.tsx`-style files
+      //     that are clearly a tile module by structure)
+      //   - 8+ components, 50 %+ exported  → bigger feature module
+      //     where a handful of private helpers (`PreferencesToggle*`
+      //     / `Cell` / `SortableCell` style) sit alongside the
+      //     public exports
+      //   - every component exported (3+ components) — parts / atoms /
+      //     shadcn primitive files (`Alert` + `AlertTitle` +
+      //     `AlertDescription`, `Table` + `TableRow` + `TableHeader`).
+      //     The 4-component band already forgave 2-of-4 exported, so
+      //     3-of-3 firing was an inconsistency, and the corpus showed
+      //     it was the single most common FP shape for this rule.
+      const isBarrelLikeFile =
+        exportedCount >= flagged.length ||
+        (flagged.length >= 4 && exportedCount >= Math.floor(flagged.length * 0.7)) ||
+        (flagged.length >= 8 && exportedCount >= Math.floor(flagged.length * 0.5));
+      if (isBarrelLikeFile) return;
+      // Feature module: small exported surface + N private helpers
+      // making up the bulk of the file. Two band-tightnesses:
+      //   - 1–2 exported (any flagged.length) — the canonical
+      //     `<FeatureScene />` + `<FeatureSceneHeader />` two-piece
+      //     public API shape with a couple of internal helpers.
+      //   - 1–4 exported AND flagged.length >= 8 AND the private
+      //     helpers are the majority (exportedCount * 2 <
+      //     flagged.length) — `PlayerSummaryViews.tsx`-style coherent
+      //     feature module where one public surface like
+      //     `<SessionSummary />` is implemented via a handful of
+      //     internal exports plus many private subcomponents.
+      const isSmallFeatureModule =
+        exportedCount > 0 && exportedCount <= 2 && exportedCount < flagged.length;
+      const isLargeFeatureModule =
+        exportedCount > 0 &&
+        exportedCount <= 4 &&
+        flagged.length >= 8 &&
+        exportedCount * 2 < flagged.length;
+      // Very-large feature module: 8+ exports, 12+ total, private
+      // helpers still 30 %+ of the file. PostHog's
+      // `WebAnalyticsFilters.tsx` / `WebAnalyticsDashboard.tsx` shape
+      // — feature modules with a public surface of 5–8 named
+      // components plus a handful of private subcomponents
+      // (`<HeaderRow>`, `<MaybeWrapInTooltip>`, etc.). Splitting each
+      // public component into its own file would fragment a tightly-
+      // coupled UI without any maintenance benefit; the file already
+      // names the feature.
+      const isVeryLargeFeatureModule =
+        exportedCount >= 5 &&
+        flagged.length >= 12 &&
+        // Private helpers ≥ 25 % of the file (so we're not just
+        // exempting a barrel that mostly re-exports).
+        (flagged.length - exportedCount) * 4 >= flagged.length;
+      if (isSmallFeatureModule || isLargeFeatureModule || isVeryLargeFeatureModule) return;
+      for (const component of flagged.slice(1)) {
+        context.report({ node: component.reportNode, message: options.message });
+      }
+    },
+  };
+};
+
 export const noMultiComp = defineRule({
   id: "no-multi-comp",
   title: "Multiple components in one file",
   severity: "warn",
-  recommendation:
-    "Move secondary components into their own files so each component stays easier to find, test, and change.",
+  recommendation: "Move every secondary component into its own file.",
   category: "Architecture",
-  create: (context) => {
-    const settings = resolveSettings(context.settings);
-    const isTestlikeFile = isTestlikeFilename(context.filename);
-    return {
-      Program(node: EsTreeNodeOfType<"Program">) {
-        // Test / story / Cypress files routinely declare several tiny
-        // throwaway components in a single file to exercise different
-        // scenarios — that's the point of fixture co-location, not a
-        // bug. Skip them.
-        if (isTestlikeFile) return;
-        const visitContext: VisitContext = {
-          components: [],
-          componentDepth: 0,
-          currentVarName: null,
-          scopes: context.scopes,
-          visitChild: (child) => walkComponentSearch(child, visitContext),
-        };
-        for (const statement of node.body)
-          walkComponentSearch(statement as EsTreeNode, visitContext);
-
-        const flagged = settings.ignoreStateless
-          ? visitContext.components.filter((component) => !component.isStateless)
-          : visitContext.components;
-        // Co-located helper pattern: a file with at most 2 detected
-        // components is the canonical "1 main + 1 sub-component" shape
-        // (e.g. `ErrorBoundary` + `OptionalErrorBoundary`, `FPSMeter` +
-        // `FpsMeterInner`, `ArrowShapeUtil` + `ArrowClipPath`,
-        // `getSvgJsx.tsx`'s `SvgExport` + `ForeignObjectShape`). Forcing
-        // a second file for the helper fragments tightly-coupled UI
-        // without any maintenance benefit — the helper is a private
-        // implementation detail of the main component, not a sibling.
-        if (flagged.length <= 2) return;
-        // Two exemption shapes, both informed by the corpus:
-        //
-        //   1. BARREL: 4+ components, 75%+ exported — icon barrels, menu
-        //      groups, shadcn re-export files. Splitting would be churn.
-        //
-        //   2. PAGE-WITH-HELPERS: exactly ONE exported component plus N
-        //      private helpers (`function FooHelper() { ... }` only used
-        //      by the exported page). This is the canonical "feature
-        //      module" shape — `<SettingsAdminNewAiProvider>` with a
-        //      couple internal subcomponents — and forcing the user to
-        //      split each helper into its own file would only fragment
-        //      tightly-coupled UI.
-        const reExportedNames = collectReExportedNames(node as EsTreeNode, context.scopes);
-        const exportedCount = flagged.filter((component) =>
-          isExportedDeclaration(component.reportNode, reExportedNames),
-        ).length;
-        // BARREL: many components, most exported. Two band-tightnesses
-        // (tuned against the corpus):
-        //   - 4+ components, 70 %+ exported  → tight shadcn-style barrel
-        //     (uses `Math.floor` so 11/15 = 73 % counts; the strictly-
-        //     ceil version excluded `WebAnalyticsTile.tsx`-style files
-        //     that are clearly a tile module by structure)
-        //   - 8+ components, 50 %+ exported  → bigger feature module
-        //     where a handful of private helpers (`PreferencesToggle*`
-        //     / `Cell` / `SortableCell` style) sit alongside the
-        //     public exports
-        //   - every component exported (3+ components) — parts / atoms /
-        //     shadcn primitive files (`Alert` + `AlertTitle` +
-        //     `AlertDescription`, `Table` + `TableRow` + `TableHeader`).
-        //     The 4-component band already forgave 2-of-4 exported, so
-        //     3-of-3 firing was an inconsistency, and the corpus showed
-        //     it was the single most common FP shape for this rule.
-        const isBarrelLikeFile =
-          exportedCount >= flagged.length ||
-          (flagged.length >= 4 && exportedCount >= Math.floor(flagged.length * 0.7)) ||
-          (flagged.length >= 8 && exportedCount >= Math.floor(flagged.length * 0.5));
-        if (isBarrelLikeFile) return;
-        // Feature module: small exported surface + N private helpers
-        // making up the bulk of the file. Two band-tightnesses:
-        //   - 1–2 exported (any flagged.length) — the canonical
-        //     `<FeatureScene />` + `<FeatureSceneHeader />` two-piece
-        //     public API shape with a couple of internal helpers.
-        //   - 1–4 exported AND flagged.length >= 8 AND the private
-        //     helpers are the majority (exportedCount * 2 <
-        //     flagged.length) — `PlayerSummaryViews.tsx`-style coherent
-        //     feature module where one public surface like
-        //     `<SessionSummary />` is implemented via a handful of
-        //     internal exports plus many private subcomponents.
-        const isSmallFeatureModule =
-          exportedCount > 0 && exportedCount <= 2 && exportedCount < flagged.length;
-        const isLargeFeatureModule =
-          exportedCount > 0 &&
-          exportedCount <= 4 &&
-          flagged.length >= 8 &&
-          exportedCount * 2 < flagged.length;
-        // Very-large feature module: 8+ exports, 12+ total, private
-        // helpers still 30 %+ of the file. PostHog's
-        // `WebAnalyticsFilters.tsx` / `WebAnalyticsDashboard.tsx` shape
-        // — feature modules with a public surface of 5–8 named
-        // components plus a handful of private subcomponents
-        // (`<HeaderRow>`, `<MaybeWrapInTooltip>`, etc.). Splitting each
-        // public component into its own file would fragment a tightly-
-        // coupled UI without any maintenance benefit; the file already
-        // names the feature.
-        const isVeryLargeFeatureModule =
-          exportedCount >= 5 &&
-          flagged.length >= 12 &&
-          // Private helpers ≥ 25 % of the file (so we're not just
-          // exempting a barrel that mostly re-exports).
-          (flagged.length - exportedCount) * 4 >= flagged.length;
-        if (isSmallFeatureModule || isLargeFeatureModule || isVeryLargeFeatureModule) return;
-        for (const component of flagged.slice(1)) {
-          context.report({ node: component.reportNode, message: MESSAGE });
-        }
-      },
-    };
-  },
+  defaultEnabled: false,
+  create: (context) =>
+    createNoMultiCompVisitors(context, {
+      message: MESSAGE,
+      shouldAllowRelatedComponentColocation: false,
+      shouldSkipTestlikeFiles: false,
+    }),
 });

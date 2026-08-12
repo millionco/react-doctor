@@ -1,4 +1,5 @@
 import { GENERATED_SOURCE_HEADER_CHARACTERS } from "../constants.js";
+import { hasGraphqlCodegenSignature } from "./has-graphql-codegen-signature.js";
 
 const GENERATED_SOURCE_DIRECTORY_PATTERN =
   /(?:^|\/)(?:__generated__|generated|__registry__)(?:\/|$)/i;
@@ -40,4 +41,5 @@ const hasGeneratedSourceHeader = (sourceText: string): boolean => {
 export const isGeneratedSource = (filePath: string, sourceText: string): boolean =>
   GENERATED_SOURCE_DIRECTORY_PATTERN.test(filePath) ||
   GENERATED_SOURCE_FILE_PATTERN.test(filePath) ||
-  hasGeneratedSourceHeader(sourceText);
+  hasGeneratedSourceHeader(sourceText) ||
+  hasGraphqlCodegenSignature(sourceText);

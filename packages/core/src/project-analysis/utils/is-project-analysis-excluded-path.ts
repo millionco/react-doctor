@@ -13,8 +13,8 @@ export const isProjectAnalysisExcludedPath = (
   const isRootPublicFile = relativeFilePath === "public" || relativeFilePath.startsWith("public/");
   return (
     isRootPublicFile ||
-    isGeneratedSource(filePath, "") ||
-    EXTERNALLY_OWNED_DIRECTORY_PATTERN.test(filePath) ||
-    FIGMA_CODE_CONNECT_FILE_PATTERN.test(filePath)
+    isGeneratedSource(relativeFilePath, "") ||
+    EXTERNALLY_OWNED_DIRECTORY_PATTERN.test(relativeFilePath) ||
+    FIGMA_CODE_CONNECT_FILE_PATTERN.test(relativeFilePath)
   );
 };

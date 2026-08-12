@@ -9,6 +9,8 @@ import {
 import { parseSourceFile } from "./parse.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 import { extractScriptFileReferences } from "../utils/extract-script-file-references.js";
+import { extractPreviewRegistryNamesFromMdx } from "../utils/extract-preview-registry-names-from-mdx.js";
+import { areSourceFilesStructurallyEquivalent } from "../utils/are-source-files-structurally-equivalent.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
 
 interface InvokedScriptFile {
@@ -1127,6 +1129,59 @@ const collectShadcnRegistryFiles = (
     if (!existsSync(manifestPath)) continue;
     for (const filePath of expandManifestPaths(manifestPath, projectRoot)) {
       consumedFiles.add(filePath);
+    }
+
+    const referencedRegistryNames = new Set<string>();
+    for (const documentationPath of fg.sync("**/*.{md,mdx}", {
+      cwd: workingDirectory,
+      absolute: true,
+      onlyFiles: true,
+      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.next/**", "public/**"],
+      deep: BUILD_SCRIPT_PACKAGE_SCAN_MAX_DEPTH,
+    })) {
+      const documentationSource = readFileSync(documentationPath, "utf8");
+      for (const registryName of extractPreviewRegistryNamesFromMdx(documentationSource)) {
+        referencedRegistryNames.add(registryName);
+      }
+    }
+
+    for (const registryName of referencedRegistryNames) {
+      const publishedRegistryPath = resolve(workingDirectory, "public/r", `${registryName}.json`);
+      const publishedRegistry = readJson(publishedRegistryPath);
+      if (
+        typeof publishedRegistry !== "object" ||
+        publishedRegistry === null ||
+        Object.entries(publishedRegistry).find(([key]) => key === "name")?.[1] !== registryName ||
+        !String(Object.entries(publishedRegistry).find(([key]) => key === "type")?.[1]).startsWith(
+          "registry:",
+        )
+      ) {
+        continue;
+      }
+      const publishedFiles = Object.entries(publishedRegistry).find(
+        ([key]) => key === "files",
+      )?.[1];
+      if (!Array.isArray(publishedFiles)) continue;
+      for (const publishedFile of publishedFiles) {
+        if (typeof publishedFile !== "object" || publishedFile === null) continue;
+        const sourcePath = Object.entries(publishedFile).find(([key]) => key === "path")?.[1];
+        const sourceContent = Object.entries(publishedFile).find(([key]) => key === "content")?.[1];
+        if (typeof sourcePath !== "string" || typeof sourceContent !== "string") continue;
+        const absoluteSourcePath = resolve(workingDirectory, sourcePath);
+        if (
+          isPathInsideDirectory(projectRoot, absoluteSourcePath) &&
+          existsSync(absoluteSourcePath) &&
+          statSync(absoluteSourcePath).isFile() &&
+          SOURCE_FILE_EXTENSION_PATTERN.test(absoluteSourcePath) &&
+          areSourceFilesStructurallyEquivalent(
+            absoluteSourcePath,
+            readFileSync(absoluteSourcePath, "utf8"),
+            sourceContent,
+          )
+        ) {
+          consumedFiles.add(absoluteSourcePath);
+        }
+      }
     }
   }
 };

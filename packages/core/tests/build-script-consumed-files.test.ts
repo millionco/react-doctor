@@ -103,6 +103,76 @@ describe("build-script filesystem consumers", () => {
     expect(await relativeUnusedFiles(rootDirectory)).toEqual(["src/orphan.ts"]);
   });
 
+  it("keeps sources embedded by a rendered registry preview without widening stale artifacts", async () => {
+    const publishedSource = "export const published = true;";
+    const rootDirectory = createProject(
+      {
+        "registry.json": JSON.stringify({
+          $schema: "https://ui.shadcn.com/schema.json",
+          items: [],
+        }),
+        "content/components.mdx": [
+          "<PreviewComponents",
+          '  registryName="published"',
+          "/>",
+          "",
+          '<!-- <PreviewComponents registryName="commented" /> -->',
+          "",
+          "```tsx",
+          '<PreviewComponents registryName="fenced" />',
+          "```",
+        ].join("\n"),
+        "public/r/published.json": JSON.stringify({
+          name: "published",
+          type: "registry:block",
+          files: [
+            {
+              path: "src/registry/published.tsx",
+              content: publishedSource,
+              target: "components/published.tsx",
+            },
+            {
+              path: "src/registry/stale.tsx",
+              content: "export const stale = 'old';",
+              target: "components/stale.tsx",
+            },
+          ],
+        }),
+        "public/r/commented.json": JSON.stringify({
+          name: "commented",
+          type: "registry:block",
+          files: [
+            {
+              path: "src/registry/commented.tsx",
+              content: "export const commented = true;",
+            },
+          ],
+        }),
+        "public/r/fenced.json": JSON.stringify({
+          name: "fenced",
+          type: "registry:block",
+          files: [
+            {
+              path: "src/registry/fenced.tsx",
+              content: "export const fenced = true;",
+            },
+          ],
+        }),
+        "src/registry/published.tsx": publishedSource,
+        "src/registry/stale.tsx": "export const stale = 'current';",
+        "src/registry/commented.tsx": "export const commented = true;",
+        "src/registry/fenced.tsx": "export const fenced = true;",
+      },
+      { scripts: { "build:shadcn": "npx shadcn@latest build" } },
+    );
+
+    expect(await relativeUnusedFiles(rootDirectory)).toEqual([
+      "src/registry/commented.tsx",
+      "src/registry/fenced.tsx",
+      "src/registry/stale.tsx",
+    ]);
+  });
+
   it("resolves workspace scripts and manifests from the package working directory", async () => {
     const rootDirectory = createProject(
       {

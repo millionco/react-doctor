@@ -393,7 +393,7 @@ describe("createOxlintConfig settings", () => {
       severityControls: { categories: { Maintainability: "error" } },
     });
 
-    expect(config.rules["react-doctor/no-crowded-component-file"]).toBe("error");
+    expect(config.rules["react-doctor/no-multi-component-file"]).toBe("error");
     expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
   });
 
@@ -405,7 +405,7 @@ describe("createOxlintConfig settings", () => {
     });
 
     expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
-    expect(config.rules).not.toHaveProperty("react-doctor/no-crowded-component-file");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-component-file");
   });
 
   it("preserves no-multi-comp off overrides for the curated replacement", () => {
@@ -416,7 +416,7 @@ describe("createOxlintConfig settings", () => {
     });
 
     expect(config.rules).not.toHaveProperty("react-doctor/no-multi-comp");
-    expect(config.rules).not.toHaveProperty("react-doctor/no-crowded-component-file");
+    expect(config.rules).not.toHaveProperty("react-doctor/no-multi-component-file");
   });
 
   it("allows both component-file policies when both are explicit", () => {
@@ -426,13 +426,13 @@ describe("createOxlintConfig settings", () => {
       severityControls: {
         rules: {
           "react/no-multi-comp": "error",
-          "react-doctor/no-crowded-component-file": "warn",
+          "react-doctor/no-multi-component-file": "warn",
         },
       },
     });
 
     expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
-    expect(config.rules["react-doctor/no-crowded-component-file"]).toBe("warn");
+    expect(config.rules["react-doctor/no-multi-component-file"]).toBe("warn");
   });
 
   it("a per-rule severity opts a default-disabled rule in", () => {

@@ -728,7 +728,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-cramped-container-padding": {
     code: 'const Panel = () => <div className="border rounded p-1">Status</div>;',
   },
-  "no-crowded-component-file": {
+  "no-multi-component-file": {
     code: "const Foo = () => <div />; const Bar = () => <div />; const Baz = () => <div />;",
   },
   "no-crushed-letter-spacing": {

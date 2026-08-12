@@ -245,7 +245,6 @@ import { noCreateObjectUrlInRender } from "./rules/state-and-effects/no-create-o
 import { noCreateObjectUrlWithoutRevoke } from "./rules/js-performance/no-create-object-url-without-revoke.js";
 import { noCreateRefInFunctionComponent } from "./rules/react-builtins/no-create-ref-in-function-component.js";
 import { noCreateStoreInRender } from "./rules/state-and-effects/no-create-store-in-render.js";
-import { noCrowdedComponentFile } from "./rules/react-builtins/no-crowded-component-file.js";
 import { noCrushedLetterSpacing } from "./rules/design/no-crushed-letter-spacing.js";
 import { noDanger } from "./rules/react-builtins/no-danger.js";
 import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-children.js";
@@ -359,6 +358,7 @@ import { noMixedSrcsetDescriptors } from "./rules/correctness/no-mixed-srcset-de
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMonotonousPageSpacing } from "./rules/design/no-monotonous-page-spacing.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
+import { noMultiComponentFile } from "./rules/react-builtins/no-multi-component-file.js";
 import { noMultipleMainLandmarks } from "./rules/a11y/no-multiple-main-landmarks.js";
 import { noMultipleUnlabeledNavigationLandmarks } from "./rules/a11y/no-multiple-unlabeled-navigation-landmarks.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
@@ -3723,18 +3723,6 @@ export const reactDoctorRules = [
     },
   },
   {
-    key: "react-doctor/no-crowded-component-file",
-    id: "no-crowded-component-file",
-    source: "react-doctor",
-    originallyExternal: false,
-    rule: {
-      ...noCrowdedComponentFile,
-      framework: "global",
-      category: "Maintainability",
-      requires: [...new Set<Capability>(["react", ...(noCrowdedComponentFile.requires ?? [])])],
-    },
-  },
-  {
     key: "react-doctor/no-crushed-letter-spacing",
     id: "no-crushed-letter-spacing",
     source: "react-doctor",
@@ -5109,6 +5097,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(noMultiComp.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-multi-component-file",
+    id: "no-multi-component-file",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMultiComponentFile,
+      framework: "global",
+      category: "Maintainability",
+      requires: [...new Set<Capability>(["react", ...(noMultiComponentFile.requires ?? [])])],
     },
   },
   {

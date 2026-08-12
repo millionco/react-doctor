@@ -26,7 +26,7 @@ describe("rule-key-aliases", () => {
     });
 
     it("keeps the curated component-file rule distinct from no-multi-comp", () => {
-      expect(isSameRuleKey("react-doctor/no-crowded-component-file", "react/no-multi-comp")).toBe(
+      expect(isSameRuleKey("react-doctor/no-multi-component-file", "react/no-multi-comp")).toBe(
         false,
       );
     });

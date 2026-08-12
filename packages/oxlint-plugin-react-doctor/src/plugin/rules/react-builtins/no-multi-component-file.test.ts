@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
-import { noCrowdedComponentFile } from "./no-crowded-component-file.js";
+import { noMultiComponentFile } from "./no-multi-component-file.js";
 
 const expectFail = (code: string): void => {
-  const result = runRule(noCrowdedComponentFile, code);
+  const result = runRule(noMultiComponentFile, code);
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics.length).toBeGreaterThan(0);
 };
 
 const expectPass = (code: string): void => {
-  const result = runRule(noCrowdedComponentFile, code);
+  const result = runRule(noMultiComponentFile, code);
   expect(result.parseErrors).toEqual([]);
   expect(result.diagnostics).toHaveLength(0);
 };
 
-describe("react-builtins/no-crowded-component-file", () => {
+describe("react-builtins/no-multi-component-file", () => {
   it("does not flag a 2-component file (idiomatic main + helper co-location)", () => {
     expectPass(`const Foo = () => <div />; const Bar = () => <div />;`);
   });
@@ -576,7 +576,7 @@ describe("react-builtins/no-crowded-component-file", () => {
 
   it("does not infer an exported component from an unrelated CommonJS property value", () => {
     const result = runRule(
-      noCrowdedComponentFile,
+      noMultiComponentFile,
       `function Alpha() { return <div />; }
        function Beta() { return <div />; }
        function Feature() { return <div />; }
@@ -608,7 +608,7 @@ describe("react-builtins/no-crowded-component-file", () => {
        module.exports.Feature = () => <main />;`,
     ];
     for (const source of sources) {
-      const result = runRule(noCrowdedComponentFile, source);
+      const result = runRule(noMultiComponentFile, source);
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(2);
     }

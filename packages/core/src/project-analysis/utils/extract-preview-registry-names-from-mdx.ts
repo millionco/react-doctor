@@ -5,7 +5,7 @@ export const extractPreviewRegistryNamesFromMdx = (sourceText: string): string[]
   const renderedLines: string[] = [];
   let fenceMarker = "";
   let fenceLength = 0;
-  let isInHtmlComment = false;
+  let commentEndMarker = "";
 
   for (const line of sourceText.split("\n")) {
     const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
@@ -29,20 +29,25 @@ export const extractPreviewRegistryNamesFromMdx = (sourceText: string): string[]
     let renderedLine = "";
     let remainingLine = line;
     while (remainingLine.length > 0) {
-      if (isInHtmlComment) {
-        const commentEnd = remainingLine.indexOf("-->");
+      if (commentEndMarker) {
+        const commentEnd = remainingLine.indexOf(commentEndMarker);
         if (commentEnd === -1) break;
-        isInHtmlComment = false;
-        remainingLine = remainingLine.slice(commentEnd + 3);
+        remainingLine = remainingLine.slice(commentEnd + commentEndMarker.length);
+        commentEndMarker = "";
         continue;
       }
-      const commentStart = remainingLine.indexOf("<!--");
-      if (commentStart === -1) {
+      const htmlCommentStart = remainingLine.indexOf("<!--");
+      const jsxCommentStart = remainingLine.indexOf("{/*");
+      const commentStarts = [htmlCommentStart, jsxCommentStart].filter(
+        (commentStart) => commentStart !== -1,
+      );
+      if (commentStarts.length === 0) {
         renderedLine += remainingLine;
         break;
       }
+      const commentStart = Math.min(...commentStarts);
       renderedLine += remainingLine.slice(0, commentStart);
-      isInHtmlComment = true;
+      commentEndMarker = commentStart === htmlCommentStart ? "-->" : "*/}";
       remainingLine = remainingLine.slice(commentStart + 4);
     }
     renderedLines.push(renderedLine);

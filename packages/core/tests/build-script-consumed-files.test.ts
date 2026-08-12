@@ -118,6 +118,10 @@ describe("build-script filesystem consumers", () => {
           "",
           '<!-- <PreviewComponents registryName="commented" /> -->',
           "",
+          "{/*",
+          '  <PreviewComponents registryName="jsx-commented" />',
+          "*/}",
+          "",
           "```tsx",
           '<PreviewComponents registryName="fenced" />',
           "```",
@@ -158,10 +162,21 @@ describe("build-script filesystem consumers", () => {
             },
           ],
         }),
+        "public/r/jsx-commented.json": JSON.stringify({
+          name: "jsx-commented",
+          type: "registry:block",
+          files: [
+            {
+              path: "src/registry/jsx-commented.tsx",
+              content: "export const jsxCommented = true;",
+            },
+          ],
+        }),
         "src/registry/published.tsx": publishedSource,
         "src/registry/stale.tsx": "export const stale = 'current';",
         "src/registry/commented.tsx": "export const commented = true;",
         "src/registry/fenced.tsx": "export const fenced = true;",
+        "src/registry/jsx-commented.tsx": "export const jsxCommented = true;",
       },
       { scripts: { "build:shadcn": "npx shadcn@latest build" } },
     );
@@ -169,6 +184,7 @@ describe("build-script filesystem consumers", () => {
     expect(await relativeUnusedFiles(rootDirectory)).toEqual([
       "src/registry/commented.tsx",
       "src/registry/fenced.tsx",
+      "src/registry/jsx-commented.tsx",
       "src/registry/stale.tsx",
     ]);
   });

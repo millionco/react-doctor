@@ -49,6 +49,28 @@ describe("three-no-new-in-animation-loop", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it.each(["??=", "||="])("ignores a truthy lazy initializer using %s", (operator) => {
+    const result = runRule(
+      threeNoNewInAnimationLoop,
+      `import { WebGLRenderer } from "three";
+       const renderer = new WebGLRenderer();
+       let positions;
+       renderer.setAnimationLoop(() => { positions ${operator} new Float32Array(12); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("retains a repeated &&= allocation", () => {
+    const result = runRule(
+      threeNoNewInAnimationLoop,
+      `import { WebGLRenderer } from "three";
+       const renderer = new WebGLRenderer();
+       let positions = new Float32Array(12);
+       renderer.setAnimationLoop(() => { positions &&= new Float32Array(12); });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it.each([
     `const renderer = createRenderer(); renderer.setAnimationLoop(() => new Vector3());`,
     `import { WebGLRenderer } from "other-renderer"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => new Vector3());`,

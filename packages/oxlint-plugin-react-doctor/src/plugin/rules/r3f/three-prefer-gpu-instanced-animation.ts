@@ -23,8 +23,9 @@ export const threePreferGpuInstancedAnimation = defineRule({
         const callback = resolveThreeAnimationLoopCallback(node, context.scopes);
         if (!callback || analyzedCallbacks.has(callback)) return;
         analyzedCallbacks.add(callback);
-        walkFunctionExecution(callback, context.scopes, (candidate) => {
+        walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
           if (
+            isConditionallyExecuted ||
             !isNodeOfType(candidate, "CallExpression") ||
             !isNodeOfType(candidate.callee, "MemberExpression") ||
             getStaticPropertyName(candidate.callee) !== "setMatrixAt" ||

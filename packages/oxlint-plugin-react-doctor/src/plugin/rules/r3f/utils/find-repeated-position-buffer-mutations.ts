@@ -170,9 +170,11 @@ export const findRepeatedPositionBufferMutations = (
   callback: EsTreeNode,
   context: RuleContext,
   managedPositionBufferRefSymbolIds: ReadonlySet<number> = new Set(),
+  includeConditionallyExecuted = true,
 ): ReadonlyArray<EsTreeNode> => {
   const mutations = new Set<EsTreeNode>();
-  walkFunctionExecution(callback, context.scopes, (candidate) => {
+  walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
+    if (!includeConditionallyExecuted && isConditionallyExecuted) return;
     if (
       isRepeatedPositionBufferMutation(
         candidate,

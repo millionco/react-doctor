@@ -673,7 +673,7 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
   it("still flags a non-HTML encoder that does not escape markup", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/widgets/display.ts",
-      content: `el.innerHTML = encodeForDisplay(data.body);\n`,
+      content: `el.innerHTML = encodeForDisplay(response.data.body);\n`,
     });
     expect(findings).toHaveLength(1);
   });
@@ -1000,6 +1000,35 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent when a local HTML helper only receives values without taint provenance", () => {
+    const content = [
+      "const renderPreview = (element, html) => {",
+      "  element.innerHTML = html;",
+      "};",
+      "renderPreview(titleElement, game.title);",
+      "renderPreview(scoreElement, formatScore(game.score));",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/game/hud.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on internally generated game markup and result data", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/ui/hud.ts",
+      content: `
+interface GameResult { title: string; score: number }
+const renderHud = (element: HTMLElement, result: GameResult) => {
+  const html = \`<h1>\${result.title}</h1><strong>\${result.score}</strong>\`;
+  element.innerHTML = html;
+};
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("stays silent when trusted helper arguments pass through local aliases", () => {
     const content = [
       "const renderPreview = (element, html) => {",
@@ -1045,6 +1074,18 @@ return <div dangerouslySetInnerHTML={{ __html: content }} />;
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/components/preview.ts",
       content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags an exported async helper parameter without local call sites", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content: `export async function renderPreview(element, html) {
+  await preparePreview(element);
+  element.innerHTML = html;
+}
+`,
     });
     expect(findings).toHaveLength(1);
   });

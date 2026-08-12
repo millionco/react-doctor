@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { threeValidOrthographicCamera } from "./three-valid-orthographic-camera.js";
 
 describe("three-valid-orthographic-camera", () => {
-  it("reports degenerate frusta and invalid clipping planes", () => {
+  it("reports degenerate frusta and reversed clipping planes", () => {
     const code = `
       import { OrthographicCamera as Camera } from "three";
       import * as THREE from "three";
@@ -14,7 +14,7 @@ describe("three-valid-orthographic-camera", () => {
       const camera = new Camera();
       camera.near = -0.1;
     `;
-    expect(runRule(threeValidOrthographicCamera, code).diagnostics).toHaveLength(5);
+    expect(runRule(threeValidOrthographicCamera, code).diagnostics).toHaveLength(3);
   });
 
   it("allows valid, dynamic, and unrelated cameras", () => {
@@ -22,6 +22,7 @@ describe("three-valid-orthographic-camera", () => {
       import { OrthographicCamera } from "three";
       import { OrthographicCamera as OtherCamera } from "camera-kit";
       new OrthographicCamera(-1, 1, 1, -1, 0, 100);
+      new OrthographicCamera(-1, 1, 1, -1, -1, 1);
       new OrthographicCamera(left, right, top, bottom, near, far);
       new OtherCamera(1, 1, 1, 1, -1, -1);
     `;

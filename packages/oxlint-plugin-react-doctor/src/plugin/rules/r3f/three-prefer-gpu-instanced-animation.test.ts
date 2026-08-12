@@ -33,4 +33,22 @@ describe("three-prefer-gpu-instanced-animation", () => {
     `;
     expect(runRule(threePreferGpuInstancedAnimation, code).diagnostics).toHaveLength(0);
   });
+
+  it("allows a dirty-gated batch that does not animate every frame", () => {
+    const code = `
+      import { InstancedMesh, WebGLRenderer } from "three";
+      const renderer = new WebGLRenderer();
+      const instances = new InstancedMesh(geometry, material, count);
+      const updateInstances = () => {
+        for (let index = 0; index < count; index += 1) {
+          instances.setMatrixAt(index, matrix);
+        }
+      };
+      renderer.setAnimationLoop(() => {
+        if (isDirty) updateInstances();
+        renderer.render(scene, camera);
+      });
+    `;
+    expect(runRule(threePreferGpuInstancedAnimation, code).diagnostics).toHaveLength(0);
+  });
 });

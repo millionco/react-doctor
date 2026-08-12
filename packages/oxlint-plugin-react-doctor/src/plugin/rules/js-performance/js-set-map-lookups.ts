@@ -348,6 +348,7 @@ const isFreshArrayReceiver = (receiver: EsTreeNode): boolean => {
   if (receiver.callee.property.name === "split") {
     return isLikelyStringReceiver(receiver.callee.object);
   }
+  if (receiver.callee.property.name === "slice") return true;
   const sourceReceiver = stripParenExpression(receiver.callee.object);
   return isKnownNativeArrayReceiver(sourceReceiver) || isFreshArrayReceiver(sourceReceiver);
 };
@@ -768,7 +769,11 @@ const getArrayElementType = (typeNode: EsTreeNode | null): EsTreeNode | null => 
     return typeNode.typeArguments?.params?.[0] ?? null;
   }
   if (isNodeOfType(typeNode, "TSUnionType")) {
-    const arrayElementTypes = typeNode.types.map(getArrayElementType).filter(Boolean);
+    const arrayElementTypes: EsTreeNode[] = [];
+    for (const unionMemberType of typeNode.types) {
+      const arrayElementType = getArrayElementType(unionMemberType);
+      if (arrayElementType) arrayElementTypes.push(arrayElementType);
+    }
     return arrayElementTypes.length === 1 ? arrayElementTypes[0] : null;
   }
   return null;
@@ -859,6 +864,21 @@ const getIdentifierDeclaredType = (
   }
   return null;
 };
+
+const isStringType = (typeNode: EsTreeNode | null): boolean => {
+  if (!typeNode) return false;
+  if (isNodeOfType(typeNode, "TSStringKeyword")) return true;
+  if (isNodeOfType(typeNode, "TSLiteralType")) {
+    return isNodeOfType(typeNode.literal, "Literal") && typeof typeNode.literal.value === "string";
+  }
+  if (isNodeOfType(typeNode, "TSUnionType")) {
+    return typeNode.types.length > 0 && typeNode.types.every(isStringType);
+  }
+  return false;
+};
+
+const isDeclaredStringReceiver = (receiver: EsTreeNode): boolean =>
+  isNodeOfType(receiver, "Identifier") && isStringType(getIdentifierDeclaredType(receiver));
 
 const isNativeIterationIndex = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifier, identifier.name);
@@ -1530,15 +1550,16 @@ const findNearestLoopContext = (node: EsTreeNode): EsTreeNode | null => {
 // pass — converting it to a Set each iteration costs more than the scan,
 // so hoisting advice does not apply.
 const isReceiverDeclaredInNearestLoop = (receiver: EsTreeNode, lookupCall: EsTreeNode): boolean => {
-  if (!isNodeOfType(receiver, "Identifier")) return false;
-  const binding = findVariableInitializer(receiver, receiver.name);
-  if (!binding || !binding.initializer) return false;
   const nearestLoop = findNearestLoopContext(lookupCall);
   if (!nearestLoop) return false;
-  let ancestor: EsTreeNode | null | undefined = binding.bindingIdentifier;
-  while (ancestor) {
-    if (ancestor === nearestLoop) return true;
-    ancestor = ancestor.parent;
+  for (const dependencyName of collectReceiverDependencyNames(receiver)) {
+    const binding = findVariableInitializer(receiver, dependencyName);
+    if (!binding?.initializer) continue;
+    let ancestor: EsTreeNode | null | undefined = binding.bindingIdentifier;
+    while (ancestor) {
+      if (ancestor === nearestLoop) return true;
+      ancestor = ancestor.parent;
+    }
   }
   return false;
 };
@@ -1553,6 +1574,14 @@ const collectEnclosingLoopIterationBindingNames = (lookupCall: EsTreeNode): Set<
   const iterationNames = new Set<string>();
   let ancestor: EsTreeNode | null | undefined = lookupCall.parent;
   while (ancestor) {
+    if (isNodeOfType(ancestor, "ForStatement")) {
+      const initializer = ancestor.init;
+      if (isNodeOfType(initializer, "VariableDeclaration")) {
+        for (const declarator of initializer.declarations ?? []) {
+          if (declarator.id) collectPatternNames(declarator.id, iterationNames);
+        }
+      }
+    }
     if (isNodeOfType(ancestor, "ForOfStatement") || isNodeOfType(ancestor, "ForInStatement")) {
       const left = ancestor.left;
       if (isNodeOfType(left, "VariableDeclaration")) {
@@ -1580,14 +1609,22 @@ const collectEnclosingLoopIterationBindingNames = (lookupCall: EsTreeNode): Set<
 // chain: `BACKEND_URLS[key]` depends on both `BACKEND_URLS` and `key`.
 const collectReceiverDependencyNames = (receiver: EsTreeNode): Set<string> => {
   const dependencyNames = new Set<string>();
-  let current = stripParenExpression(receiver);
-  while (isNodeOfType(current, "MemberExpression")) {
-    if (current.computed && isNodeOfType(current.property, "Identifier")) {
-      dependencyNames.add(current.property.name);
+  const collectFromExpression = (expression: EsTreeNode): void => {
+    const current = stripParenExpression(expression);
+    if (isNodeOfType(current, "Identifier")) {
+      dependencyNames.add(current.name);
+      return;
     }
-    current = stripParenExpression(current.object);
-  }
-  if (isNodeOfType(current, "Identifier")) dependencyNames.add(current.name);
+    if (isNodeOfType(current, "MemberExpression")) {
+      collectFromExpression(current.object);
+      if (current.computed) collectFromExpression(current.property);
+      return;
+    }
+    if (isNodeOfType(current, "CallExpression")) {
+      collectFromExpression(current.callee);
+    }
+  };
+  collectFromExpression(receiver);
   return dependencyNames;
 };
 
@@ -1702,6 +1739,7 @@ export const jsSetMapLookups = defineRule({
         return;
       }
       if (isLikelyStringReceiver(receiver)) return;
+      if (isDeclaredStringReceiver(receiver)) return;
       if (isFreshArrayReceiver(receiver)) return;
       if (isTypeScriptRestHelperLookup(node, receiver, context.scopes)) return;
       if (isSmallInlineLiteralArray(receiver)) return;

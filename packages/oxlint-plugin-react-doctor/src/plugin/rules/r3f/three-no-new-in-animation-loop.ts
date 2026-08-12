@@ -5,6 +5,15 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveThreeAnimationLoopCallback } from "./utils/resolve-three-animation-loop-callback.js";
 import { walkFunctionExecution } from "./utils/walk-function-execution.js";
 
+const isTruthyLazyInitializer = (node: EsTreeNode): boolean => {
+  const parent = node.parent;
+  return (
+    parent?.type === "AssignmentExpression" &&
+    parent.right === node &&
+    (parent.operator === "??=" || parent.operator === "||=")
+  );
+};
+
 export const threeNoNewInAnimationLoop = defineRule({
   id: "three-no-new-in-animation-loop",
   title: "Allocation inside Three.js animation loop",
@@ -19,7 +28,12 @@ export const threeNoNewInAnimationLoop = defineRule({
         if (!callback || analyzedCallbacks.has(callback)) return;
         analyzedCallbacks.add(callback);
         walkFunctionExecution(callback, context.scopes, (candidate, isConditionallyExecuted) => {
-          if (candidate.type !== "NewExpression" || isConditionallyExecuted) return;
+          if (
+            candidate.type !== "NewExpression" ||
+            isConditionallyExecuted ||
+            isTruthyLazyInitializer(candidate)
+          )
+            return;
           context.report({
             node: candidate,
             message:

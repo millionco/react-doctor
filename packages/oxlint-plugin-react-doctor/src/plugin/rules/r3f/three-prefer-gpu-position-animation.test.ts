@@ -86,6 +86,23 @@ describe("three-prefer-gpu-position-animation", () => {
     expect(runRule(threePreferGpuPositionAnimation, code).diagnostics).toHaveLength(0);
   });
 
+  it("allows conditionally streamed position data that is not continuous animation", () => {
+    const code = `
+      import { WebGLRenderer } from "three";
+      const renderer = new WebGLRenderer();
+      const positions = particles.geometry.attributes.position;
+      renderer.setAnimationLoop(() => {
+        if (hasNewTrace) {
+          for (let index = 0; index < positions.count; index += 1) {
+            positions.setXYZ(index, trace[index].x, trace[index].y, trace[index].z);
+          }
+          positions.needsUpdate = true;
+        }
+      });
+    `;
+    expect(runRule(threePreferGpuPositionAnimation, code).diagnostics).toHaveLength(0);
+  });
+
   it("ignores non-rendering loops and unrelated renderers", () => {
     const code = `
       const update = () => {

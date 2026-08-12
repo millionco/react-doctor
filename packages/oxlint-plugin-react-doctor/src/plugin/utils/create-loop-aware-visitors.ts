@@ -31,7 +31,7 @@ const ITERATOR_CALLBACK_METHOD_NAMES: ReadonlySet<string> = new Set([
   "reduceRight",
 ]);
 
-const FUNCTION_EXPRESSION_TYPES = ["ArrowFunctionExpression", "FunctionExpression"];
+const FUNCTION_TYPES = ["ArrowFunctionExpression", "FunctionExpression", "FunctionDeclaration"];
 
 const isIteratorCallback = (node: EsTreeNode): boolean => {
   const parent = node.parent;
@@ -49,6 +49,7 @@ export const createLoopAwareVisitors = (
   options: LoopAwareVisitorOptions = {},
 ): RuleVisitors => {
   let loopDepth = 0;
+  const functionLoopDepthStack: number[] = [];
   const incrementLoopDepth = (): void => {
     loopDepth++;
   };
@@ -63,15 +64,15 @@ export const createLoopAwareVisitors = (
     visitors[`${loopType}:exit`] = decrementLoopDepth;
   }
 
-  if (options.treatIteratorCallbacksAsLoops) {
-    for (const functionType of FUNCTION_EXPRESSION_TYPES) {
-      visitors[functionType] = (node: EsTreeNode) => {
-        if (isIteratorCallback(node)) loopDepth++;
-      };
-      visitors[`${functionType}:exit`] = (node: EsTreeNode) => {
-        if (isIteratorCallback(node)) loopDepth--;
-      };
-    }
+  for (const functionType of FUNCTION_TYPES) {
+    visitors[functionType] = (node: EsTreeNode) => {
+      functionLoopDepthStack.push(loopDepth);
+      loopDepth =
+        options.treatIteratorCallbacksAsLoops && isIteratorCallback(node) ? loopDepth + 1 : 0;
+    };
+    visitors[`${functionType}:exit`] = () => {
+      loopDepth = functionLoopDepthStack.pop() ?? 0;
+    };
   }
 
   for (const [nodeType, handler] of Object.entries(innerVisitors)) {

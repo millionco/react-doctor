@@ -1,5 +1,4 @@
 import { PROPERTY_ACCESS_REPEAT_THRESHOLD } from "../../constants/thresholds.js";
-import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -28,32 +27,10 @@ const buildMemberAccessKey = (node: EsTreeNode): string | null => {
   return `${objectKey}.${node.property.name}`;
 };
 
-// An assignment to a name that is shadowed by an enclosing nested
-// function's parameter rebinds the INNER binding, not the loop-level one,
-// so it must not suppress a report about the outer chain.
-const isNameShadowedByEnclosingFunctionParameter = (
-  node: EsTreeNode,
-  name: string,
-  boundary: EsTreeNode,
-): boolean => {
-  let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor && ancestor !== boundary) {
-    if (isFunctionLike(ancestor)) {
-      const parameterNames = new Set<string>();
-      for (const parameter of ancestor.params ?? []) {
-        collectPatternNames(parameter, parameterNames);
-      }
-      if (parameterNames.has(name)) return true;
-    }
-    ancestor = ancestor.parent ?? null;
-  }
-  return false;
-};
-
 // HACK: detect repeated deep `obj.a.b.c` reads inside the same loop —
 // JS engines can sometimes optimize, but reads through proxies, getters,
 // or hot user-code paths often benefit from caching the access in a const
-// at the top of the loop body. We require a member-expression depth ≥ 2
+// immediately before its repeated reads. We require a member-expression depth ≥ 2
 // (two dots) and ≥ 3 occurrences in the same loop block to fire.
 export const jsCachePropertyAccess = defineRule({
   id: "js-cache-property-access",
@@ -61,7 +38,7 @@ export const jsCachePropertyAccess = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Read the value once into a variable at the top of the loop: `const { x, y } = obj.deeply.nested`",
+    "When the value is unchanged between reads, cache it immediately before the first read inside the loop",
   create: (context: RuleContext) => {
     const inspectLoopBody = (loopBody: EsTreeNode): void => {
       const counts = new Map<string, { count: number; firstNode: EsTreeNode }>();
@@ -71,18 +48,25 @@ export const jsCachePropertyAccess = defineRule({
       // extends a written prefix, later reads dereference a different
       // object, so caching the first read would snapshot a stale value.
       const writtenAccessPrefixes = new Set<string>();
+      const calledReceiverPrefixes = new Set<string>();
       const recordWriteTarget = (writeTarget: EsTreeNode): void => {
         const writtenKey = buildMemberAccessKey(writeTarget);
         if (!writtenKey) return;
-        const rootName = writtenKey.split(".")[0];
-        if (isNameShadowedByEnclosingFunctionParameter(writeTarget, rootName, loopBody)) return;
         writtenAccessPrefixes.add(writtenKey);
       };
       // Write targets and read counts inspect disjoint node types, and the
       // write-prefix set is only consulted after the walk — one pass fills both.
       walkAst(loopBody, (child: EsTreeNode) => {
+        if (child !== loopBody && isFunctionLike(child)) return false;
         if (isNodeOfType(child, "AssignmentExpression")) recordWriteTarget(child.left);
         if (isNodeOfType(child, "UpdateExpression")) recordWriteTarget(child.argument);
+        if (
+          isNodeOfType(child, "CallExpression") &&
+          isNodeOfType(child.callee, "MemberExpression")
+        ) {
+          const receiverKey = buildMemberAccessKey(child.callee.object);
+          if (receiverKey?.includes(".")) calledReceiverPrefixes.add(receiverKey);
+        }
         if (!isNodeOfType(child, "MemberExpression")) return;
         if (child.computed) return;
         // Skip if this MemberExpression is itself nested inside another (only
@@ -115,19 +99,21 @@ export const jsCachePropertyAccess = defineRule({
         if (count < PROPERTY_ACCESS_REPEAT_THRESHOLD) continue;
         const segments = key.split(".");
         let accessPrefix = segments[0];
-        let doesExtendWrittenPrefix = writtenAccessPrefixes.has(accessPrefix);
+        let doesExtendUnstablePrefix =
+          writtenAccessPrefixes.has(accessPrefix) || calledReceiverPrefixes.has(accessPrefix);
         for (
           let segmentIndex = 1;
-          segmentIndex < segments.length && !doesExtendWrittenPrefix;
+          segmentIndex < segments.length && !doesExtendUnstablePrefix;
           segmentIndex++
         ) {
           accessPrefix = `${accessPrefix}.${segments[segmentIndex]}`;
-          doesExtendWrittenPrefix = writtenAccessPrefixes.has(accessPrefix);
+          doesExtendUnstablePrefix =
+            writtenAccessPrefixes.has(accessPrefix) || calledReceiverPrefixes.has(accessPrefix);
         }
-        if (doesExtendWrittenPrefix) continue;
+        if (doesExtendUnstablePrefix) continue;
         context.report({
           node: firstNode,
-          message: `This slows the loop because ${key} is read ${count} times inside it, so read it once into a variable at the top`,
+          message: `This may slow the loop because ${key} is read ${count} times inside it; if the value stays unchanged between those reads, cache it immediately before the first read`,
         });
       }
     };

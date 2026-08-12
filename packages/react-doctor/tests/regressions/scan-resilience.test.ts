@@ -19,6 +19,9 @@
  *          exports — older plugin versions can lack newer compiler rules,
  *          so React Compiler users would otherwise hit
  *          "Rule 'void-use-memo' not found in plugin 'react-hooks-js'".
+ *   #1635 — parseRuleCode must handle diagnostics with no code field —
+ *          some oxlint diagnostics (like parse errors) omit the code field,
+ *          causing "Cannot read properties of undefined (reading 'match')".
  */
 
 import { spawnSync } from "node:child_process";

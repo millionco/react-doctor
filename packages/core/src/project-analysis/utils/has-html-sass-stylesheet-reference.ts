@@ -231,7 +231,7 @@ const collectParcelHtmlEntryPaths = (rootDirectory: string): string[] => {
           const entryPattern = isAbsolute(entrySpecifier)
             ? entrySpecifier
             : resolve(dirname(scriptPath), entrySpecifier);
-          for (const htmlEntryPath of fg.sync(entryPattern, {
+          for (const htmlEntryPath of fg.sync(entryPattern.replaceAll("\\", "/"), {
             absolute: true,
             onlyFiles: true,
           })) {

@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { analyzeProject } from "../src/project-analysis/analyze-project.js";
+import { toPosixPath } from "../src/project-analysis/utils/to-posix-path.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -48,7 +49,7 @@ describe("runtime-owned project analysis contracts", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
 
     expect(result.unusedFiles.map((finding) => finding.path)).toEqual([
-      path.join(rootDirectory, "supabase/functions/shared/helper.ts"),
+      toPosixPath(path.join(rootDirectory, "supabase/functions/shared/helper.ts")),
     ]);
   });
 
@@ -74,7 +75,7 @@ describe("runtime-owned project analysis contracts", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
 
     expect(result.unusedFiles.map((finding) => finding.path)).toEqual([
-      path.join(rootDirectory, "src/orphan.ts"),
+      toPosixPath(path.join(rootDirectory, "src/orphan.ts")),
     ]);
   });
 
@@ -108,7 +109,7 @@ describe("runtime-owned project analysis contracts", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
 
     expect(result.unusedFiles.map((finding) => finding.path)).toEqual([
-      path.join(rootDirectory, "src/registry/default/block/sidebar/hooks/orphan.tsx"),
+      toPosixPath(path.join(rootDirectory, "src/registry/default/block/sidebar/hooks/orphan.tsx")),
     ]);
   });
 
@@ -135,7 +136,9 @@ describe("runtime-owned project analysis contracts", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
 
     expect(result.unusedFiles.map((finding) => finding.path)).toEqual([
-      path.join(rootDirectory, "src/registry/default/block/sidebar/hooks/use-sidebar.tsx"),
+      toPosixPath(
+        path.join(rootDirectory, "src/registry/default/block/sidebar/hooks/use-sidebar.tsx"),
+      ),
     ]);
   });
 

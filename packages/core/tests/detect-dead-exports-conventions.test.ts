@@ -218,4 +218,31 @@ describe("convention-consumed exports", () => {
       "theme.config.tsx::default",
     ]);
   });
+
+  it("credits conventions when graph paths use a symlinked project alias", () => {
+    const project = createProject({
+      files: {
+        "app/page.tsx": `
+          export const runtime = "edge";
+          export const pageOnly = true;
+        `,
+      },
+      modulePaths: ["app/page.tsx"],
+      packageJson: { dependencies: { next: "1.0.0" } },
+    });
+    const aliasParentDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "react-doctor-export-conventions-alias-"),
+    );
+    temporaryDirectories.push(aliasParentDirectory);
+    const aliasRootDirectory = path.join(aliasParentDirectory, "project");
+    fs.symlinkSync(project.rootDirectory, aliasRootDirectory, "junction");
+    project.graph.modules[0].fileId.path = path.join(aliasRootDirectory, "app/page.tsx");
+
+    const unusedExportNames = detectDeadExports(
+      project.graph,
+      defineProjectAnalysisConfig({ rootDir: project.rootDirectory }),
+    ).map((finding) => finding.name);
+
+    expect(unusedExportNames).toEqual(["pageOnly"]);
+  });
 });

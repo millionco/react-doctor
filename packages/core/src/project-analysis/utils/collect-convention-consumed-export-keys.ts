@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import type { DependencyGraph } from "../types.js";
+import { toCanonicalPath } from "../../utils/to-canonical-path.js";
 import { resolveEntryWithExtensions } from "./resolve-entry-with-extensions.js";
 import { toPosixPath } from "./to-posix-path.js";
 
@@ -198,11 +199,21 @@ export const collectConventionConsumedExportKeys = (
   const packageMetadataByDirectory = new Map<string, ConventionPackageMetadata | undefined>();
   const packageDirectoryBySourceDirectory = new Map<string, string | undefined>();
   const themeConfigPathsByPackageDirectory = new Map<string, ReadonlySet<string>>();
+  const canonicalAnalysisRootDirectory = toCanonicalPath(resolve(analysisRootDirectory));
 
   for (const module of graph.modules) {
+    const resolvedModuleFilePath = resolve(module.fileId.path);
+    const relativeModulePath = relative(canonicalAnalysisRootDirectory, resolvedModuleFilePath);
+    const isModulePathInsideCanonicalRoot =
+      relativeModulePath !== ".." &&
+      !relativeModulePath.startsWith(`..${sep}`) &&
+      !isAbsolute(relativeModulePath);
+    const canonicalModuleFilePath = isModulePathInsideCanonicalRoot
+      ? resolvedModuleFilePath
+      : toCanonicalPath(resolvedModuleFilePath);
     const packageDirectory = findOwningPackageDirectory(
-      module.fileId.path,
-      analysisRootDirectory,
+      canonicalModuleFilePath,
+      canonicalAnalysisRootDirectory,
       packageDirectoryBySourceDirectory,
     );
     if (!packageDirectory) continue;
@@ -213,20 +224,19 @@ export const collectConventionConsumedExportKeys = (
     const packageMetadata = packageMetadataByDirectory.get(packageDirectory);
     if (!packageMetadata) continue;
 
-    const packageRelativePath = toPosixPath(relative(packageDirectory, module.fileId.path));
+    const packageRelativePath = toPosixPath(relative(packageDirectory, canonicalModuleFilePath));
     const isNextRouteSegmentModule =
       hasDependency(packageMetadata, "next") &&
       NEXT_ROUTE_SEGMENT_MODULE_PATTERN.test(packageRelativePath);
     const isContentCollectionsConfig =
       hasDependency(packageMetadata, "@content-collections/core") &&
-      dirname(module.fileId.path) === packageDirectory &&
-      basename(module.fileId.path) === "content-collections.ts";
+      packageRelativePath === "content-collections.ts";
     const isReactEmailTemplate = isReactEmailDevTemplate(packageRelativePath, packageMetadata);
 
     let isReferencedNextraThemeConfig = false;
     if (
       hasDependency(packageMetadata, "nextra") &&
-      basename(module.fileId.path) === "theme.config.tsx"
+      basename(canonicalModuleFilePath) === "theme.config.tsx"
     ) {
       if (!themeConfigPathsByPackageDirectory.has(packageDirectory)) {
         themeConfigPathsByPackageDirectory.set(
@@ -235,7 +245,7 @@ export const collectConventionConsumedExportKeys = (
         );
       }
       isReferencedNextraThemeConfig = Boolean(
-        themeConfigPathsByPackageDirectory.get(packageDirectory)?.has(module.fileId.path),
+        themeConfigPathsByPackageDirectory.get(packageDirectory)?.has(canonicalModuleFilePath),
       );
     }
 

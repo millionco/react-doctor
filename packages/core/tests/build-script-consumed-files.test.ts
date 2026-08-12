@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { analyzeProject } from "../src/project-analysis/analyze-project.js";
+import { expandBuildScriptPaths } from "../src/project-analysis/collect/build-script-consumed-files.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -35,6 +36,25 @@ const relativeUnusedFiles = async (rootDirectory: string): Promise<string[]> => 
 };
 
 describe("build-script filesystem consumers", () => {
+  it("expands a Vite config seed through its static plugin helper tree", () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `import { createPlugins } from "./build/plugins"; export default { plugins: createPlugins() };`,
+        "build/plugins/index.ts": `import { setupInspect } from "./inspect"; export const createPlugins = () => [setupInspect()];`,
+        "build/plugins/inspect.ts": `import Inspect from "vite-plugin-inspect"; export const setupInspect = () => Inspect();`,
+        "build/unrelated.ts": "export const unrelated = true;",
+      },
+      { devDependencies: { vite: "1.0.0", "vite-plugin-inspect": "1.0.0" } },
+    );
+
+    expect(
+      expandBuildScriptPaths({
+        projectRoot: rootDirectory,
+        initialPaths: [path.join(rootDirectory, "vite.config.ts")],
+      }).map((filePath) => path.relative(rootDirectory, filePath).replaceAll("\\", "/")),
+    ).toEqual(["vite.config.ts", "build/plugins/index.ts", "build/plugins/inspect.ts"]);
+  });
+
   it("keeps registry source and generated files used by an invoked registry builder", async () => {
     const rootDirectory = createProject(
       {

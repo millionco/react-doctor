@@ -19,5 +19,7 @@ export const defineProjectAnalysisConfig = (
     paths: options.paths,
     reportTypes: options.reportTypes ?? true,
     includeEntryExports: options.includeEntryExports ?? false,
+    hasExplicitEntryPatterns:
+      options.hasExplicitEntryPatterns ?? options.entryPatterns !== undefined,
   };
 };

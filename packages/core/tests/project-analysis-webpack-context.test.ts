@@ -36,6 +36,64 @@ const relativeUnusedPaths = (
   );
 
 describe("legacy Webpack registries", () => {
+  it("resolves aliases declared through local path helpers in build configs", async () => {
+    const rootDirectory = createProject(
+      {
+        "build/webpack.base.conf.js": `
+          const path = require("path");
+          require("../config/settings");
+          function resolve(directory) { return path.join(__dirname, "..", directory); }
+          module.exports = {
+            entry: { app: "./src/index.jsx" },
+            resolve: { alias: { "@": resolve("src") } },
+          };
+        `,
+        "src/index.jsx": `import routes from "./routes"; console.log(routes);`,
+        "src/routes.jsx": `import Home from "@/views/Home"; export default Home;`,
+        "src/views/Home.jsx": `import Card from "@/components/Card"; export default Card;`,
+        "src/components/Card.jsx": "export default null;",
+        "config/settings.js": "module.exports = {};",
+        "src/orphan.jsx": "export default null;",
+      },
+      { devDependencies: { webpack: "2.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativeUnusedPaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.jsx"]);
+  });
+
+  it("discovers Webpack entries assigned by invoked Gulp builds", async () => {
+    const rootDirectory = createProject(
+      {
+        "gulpfile.js": `
+          const webpack = require("webpack");
+          const config = require("./webpack.config");
+          config.entry = { app: "./js/index.jsx" };
+          gulp.task("build", () => webpack(config));
+        `,
+        "webpack.config.js": "module.exports = {};",
+        "js/index.jsx": `import Controller from "./controller"; export default Controller;`,
+        "js/controller.jsx": "export default null;",
+        "js/customize-preview.js": "export const preview = true;",
+        "functions.php": `wp_enqueue_script(
+          "theme-preview",
+          get_template_directory_uri() . "/js/customize-preview.js",
+          array("jquery")
+        );`,
+        "js/orphan.jsx": "export default null;",
+      },
+      {
+        scripts: { build: "NODE_ENV=production gulp" },
+        devDependencies: { gulp: "3.0.0", webpack: "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativeUnusedPaths(rootDirectory, result.unusedFiles)).toEqual(["js/orphan.jsx"]);
+  });
+
   it("resolves ancestor modulesDirectories and applies the exact require.context filter", async () => {
     const rootDirectory = createProject(
       {

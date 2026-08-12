@@ -24,6 +24,7 @@ export const detectDeadExports = (
   const unusedExports: UnusedExport[] = [];
 
   for (const module of graph.modules) {
+    if (module.hasPackageDynamicLoaderUncertainty) continue;
     if (!module.isReachable && !module.isExternallyConsumed) continue;
     if (module.isDeclarationFile) continue;
     if (module.isGitIgnored) continue;

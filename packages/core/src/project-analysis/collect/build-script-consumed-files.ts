@@ -18,6 +18,11 @@ interface InvokedScriptFile {
   workingDirectory: string;
 }
 
+export interface ExpandBuildScriptPathsInput {
+  projectRoot: string;
+  initialPaths: ReadonlyArray<string>;
+}
+
 interface ScriptAnalysis {
   scriptFile: InvokedScriptFile;
   sourceFile: ts.SourceFile;
@@ -42,6 +47,7 @@ interface DirectoryConsumption {
 }
 
 const SOURCE_FILE_EXTENSION_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
+const GULP_INVOCATION_PATTERN = /(?:^|[\s;&|])gulp(?:\s|$)/;
 const buildScriptAnalysisKey = (scriptFile: InvokedScriptFile): string =>
   `${scriptFile.workingDirectory}\0${scriptFile.filePath}`;
 
@@ -142,6 +148,14 @@ const collectWebpackEntrySpecifiers = (filePath: string): string[] => {
         (ts.isStringLiteralLike(node.name) && node.name.text === "entry"))
     ) {
       collectStringLiterals(node.initializer);
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(node.left) &&
+      node.left.name.text === "entry"
+    ) {
+      collectStringLiterals(node.right);
     }
     if (
       ts.isCallExpression(node) &&
@@ -288,6 +302,18 @@ const extractInvokedScriptFiles = (
 
     for (const command of Object.values(scripts)) {
       if (typeof command !== "string") continue;
+      if (GULP_INVOCATION_PATTERN.test(command)) {
+        for (const gulpFilePath of fg.sync("gulpfile.{js,ts,mjs,cjs}", {
+          cwd: workingDirectory,
+          absolute: true,
+          onlyFiles: true,
+        })) {
+          scriptFiles.set(`${workingDirectory}\0${gulpFilePath}`, {
+            filePath: gulpFilePath,
+            workingDirectory,
+          });
+        }
+      }
       for (const scriptReference of extractScriptFileReferences(command)) {
         const scriptPath = resolveBuildReference(scriptReference, workingDirectory, projectRoot);
         if (
@@ -356,6 +382,34 @@ const expandInvokedScriptFiles = (
 
   return [...scriptFiles.values()];
 };
+
+const findScriptWorkingDirectory = (filePath: string, projectRoot: string): string => {
+  let currentDirectory = dirname(resolve(filePath));
+  const absoluteProjectRoot = resolve(projectRoot);
+  while (isPathInsideDirectory(absoluteProjectRoot, currentDirectory)) {
+    if (existsSync(join(currentDirectory, "package.json"))) return currentDirectory;
+    if (currentDirectory === absoluteProjectRoot) break;
+    const parentDirectory = dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) break;
+    currentDirectory = parentDirectory;
+  }
+  return absoluteProjectRoot;
+};
+
+export const expandBuildScriptPaths = ({
+  projectRoot,
+  initialPaths,
+}: ExpandBuildScriptPathsInput): string[] =>
+  expandInvokedScriptFiles(
+    initialPaths
+      .map((filePath) => resolve(filePath))
+      .filter((filePath) => existsSync(filePath) && statSync(filePath).isFile())
+      .map((filePath) => ({
+        filePath,
+        workingDirectory: findScriptWorkingDirectory(filePath, projectRoot),
+      })),
+    resolve(projectRoot),
+  ).map((scriptFile) => toPosixPath(scriptFile.filePath));
 
 const buildScriptAnalyses = (
   invokedScriptFiles: ReadonlyArray<InvokedScriptFile>,
@@ -1352,6 +1406,9 @@ export const extractBuildScriptConsumedFiles = (projectRoot: string): string[] =
     extractInvokedScriptFiles(projectRoot, packageJsonPaths),
     projectRoot,
   );
+  for (const invokedScriptFile of invokedScriptFiles) {
+    consumedFiles.add(invokedScriptFile.filePath);
+  }
   const scriptAnalyses = buildScriptAnalyses(invokedScriptFiles, projectRoot);
 
   for (const analysis of scriptAnalyses.values()) {

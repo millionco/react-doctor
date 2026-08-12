@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { analyzeProject } from "../src/project-analysis/analyze-project.js";
+import { MINIFIED_DETECTION_MIN_BYTES } from "../src/project-analysis/constants.js";
 import { isProjectAnalysisExcludedPath } from "../src/project-analysis/utils/is-project-analysis-excluded-path.js";
 
 const temporaryDirectories: string[] = [];
@@ -25,6 +26,37 @@ const createProject = (
     const filePath = path.join(rootDirectory, relativePath);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, source);
+  }
+  const dependencies = {
+    ...(typeof packageJson.dependencies === "object" && packageJson.dependencies !== null
+      ? packageJson.dependencies
+      : {}),
+    ...(typeof packageJson.devDependencies === "object" && packageJson.devDependencies !== null
+      ? packageJson.devDependencies
+      : {}),
+  };
+  if (
+    !("package-lock.json" in files) &&
+    !Object.keys(files).some((relativePath) => relativePath.startsWith("node_modules/"))
+  ) {
+    fs.writeFileSync(
+      path.join(rootDirectory, "package-lock.json"),
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          "": {
+            dependencies: packageJson.dependencies,
+            devDependencies: packageJson.devDependencies,
+          },
+          ...Object.fromEntries(
+            Object.entries(dependencies).map(([dependencyName, version]) => [
+              `node_modules/${dependencyName}`,
+              { version },
+            ]),
+          ),
+        },
+      }),
+    );
   }
   return fs.realpathSync(rootDirectory);
 };
@@ -1097,6 +1129,22 @@ describe("analyzeProject", () => {
     expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
   });
 
+  it("expands static template-literal import.meta.glob patterns", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "import './registry';",
+        "src/registry.ts": "export const pages = import.meta.glob(`/src/pages/**/loading.tsx`);",
+        "src/pages/loading.tsx": "export default () => null;",
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it("binds project-root Vite globs to the owning root across workspaces", async () => {
     const rootDirectory = createProject(
       {
@@ -1510,6 +1558,127 @@ describe("analyzeProject", () => {
     );
   });
 
+  it("treats package export entries as externally consumed public surfaces", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": 'export * from "./components";',
+        "src/components.ts": `
+          export const Button = () => null;
+          export interface ButtonProps { label: string }
+        `,
+        "src/internal.ts": "export const internal = true;",
+        "src/dormant.ts": "export const dormant = true;",
+        "src/app.ts": 'import "./internal"; console.log("app");',
+      },
+      {
+        name: "@example/library",
+        exports: { ".": "./src/index.ts" },
+        scripts: { start: "tsx src/app.ts" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("src/dormant.ts");
+    expect(result.unusedExports).toEqual([]);
+  });
+
+  it("treats nested package export patterns as public surfaces", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/Common/Avatar/Overlay/index.tsx": `
+          export interface AvatarOverlayProps { label: string }
+          export const AvatarOverlay = (props: AvatarOverlayProps) => props.label;
+        `,
+      },
+      {
+        name: "@example/components",
+        exports: { "./*": "./src/*" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(result.unusedExports).toEqual([]);
+  });
+
+  it("credits bundleless glob entry modules", async () => {
+    const rootDirectory = createProject(
+      {
+        "tsup.config.ts": `export default { entry: ["./src/**/*.{ts,tsx}"] };`,
+        "src/index.ts": 'export { publicUtility } from "./utils/public-utility";',
+        "src/utils/public-utility.ts": "export const publicUtility = true;",
+      },
+      {
+        name: "@example/bundleless-library",
+        scripts: { build: "tsup" },
+        exports: { "./*": "./*" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(result.unusedExports).toEqual([]);
+  });
+
+  it("resolves imports from TSX with large inline data", async () => {
+    const embeddedSvgPath = "M".repeat(MINIFIED_DETECTION_MIN_BYTES);
+    const rootDirectory = createProject(
+      {
+        "app/(demo)/page.tsx": `
+          import { ClientPage } from "./page.client";
+          export default () => <svg><path d="${embeddedSvgPath}" /><ClientPage /></svg>;
+        `,
+        "app/(demo)/page.client.tsx": "export const ClientPage = () => null;",
+      },
+      { dependencies: { next: "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(result.unusedExports).toEqual([]);
+  });
+
+  it("resolves package proxies to root-preserving build output", async () => {
+    const rootDirectory = createProject(
+      {
+        "app.plugin.js": 'module.exports = require("./dist/plugins/with-example");',
+        "plugins/with-example.ts": "export default () => null;",
+        "tsconfig.json": JSON.stringify({ compilerOptions: { outDir: "dist" } }),
+      },
+      {
+        name: "@example/expo-plugin",
+        files: ["dist", "app.plugin.js"],
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(result.unusedExports).toEqual([]);
+  });
+
+  it("credits modules dynamically loaded by Next config", async () => {
+    const rootDirectory = createProject(
+      {
+        "next.config.mjs": `
+          import { createJiti } from "jiti";
+          const loadTypeScript = createJiti(import.meta.url);
+          const { schema } = await loadTypeScript.import("./src/schema.ts");
+          schema.parse({});
+          export default {};
+        `,
+        "src/schema.ts": "export const schema = { parse: (value: unknown) => value };",
+      },
+      {
+        dependencies: { next: "1.0.0", react: "1.0.0", jiti: "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(result.unusedExports).toEqual([]);
+  });
+
   it("credits packages referenced by scripts, config, and CI workflows", async () => {
     const rootDirectory = createProject(
       {
@@ -1648,7 +1817,7 @@ describe("analyzeProject", () => {
     );
   });
 
-  it("credits known binary aliases, release config plugins, and wrapper peers", async () => {
+  it("credits known binary aliases and release config plugins without guessing wrapper peers", async () => {
     const rootDirectory = createProject(
       {
         "src/index.ts": `import Chart from "react-apexcharts"; console.log(Chart);`,
@@ -1674,7 +1843,6 @@ describe("analyzeProject", () => {
     const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
 
     for (const usedPackageName of [
-      "apexcharts",
       "@babel/cli",
       "@remix-run/serve",
       "release-plugin",
@@ -1682,6 +1850,7 @@ describe("analyzeProject", () => {
     ]) {
       expect(unusedPackageNames).not.toContain(usedPackageName);
     }
+    expect(unusedPackageNames).toContain("apexcharts");
   });
 
   it("credits packages named by tool config surfaces", async () => {
@@ -1890,7 +2059,7 @@ describe("analyzeProject", () => {
     expect(unusedPackageNames).toEqual(["foo"]);
   });
 
-  it("credits used wrappers' required peer packages", async () => {
+  it("does not infer wrapper peers without authoritative metadata", async () => {
     const rootDirectory = createProject(
       {
         "src/index.ts": `
@@ -1919,9 +2088,10 @@ describe("analyzeProject", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
     const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
 
-    for (const usedPackageName of ["shiki", "prisma", "react-refresh", "@stripe/stripe-js"]) {
-      expect(unusedPackageNames).not.toContain(usedPackageName);
-    }
+    expect(unusedPackageNames).toEqual(
+      expect.arrayContaining(["shiki", "react-refresh", "@stripe/stripe-js"]),
+    );
+    expect(unusedPackageNames).not.toContain("prisma");
   });
 
   it("does not infer Prisma CLI use from the optional client peer alone", async () => {
@@ -1930,6 +2100,7 @@ describe("analyzeProject", () => {
         "src/index.ts": `import { PrismaClient } from "@prisma/client"; console.log(PrismaClient);`,
         "node_modules/@prisma/client/package.json": JSON.stringify({
           name: "@prisma/client",
+          version: "1.0.0",
           peerDependencies: { prisma: "*" },
           peerDependenciesMeta: { prisma: { optional: true } },
         }),
@@ -2122,10 +2293,12 @@ describe("analyzeProject", () => {
         "src/index.ts": `import usedPackage from "used-package"; console.log(usedPackage);`,
         "node_modules/used-package/package.json": JSON.stringify({
           name: "used-package",
+          version: "1.0.0",
           peerDependencies: { "peer-package": "*" },
         }),
         "node_modules/bin-package/package.json": JSON.stringify({
           name: "bin-package",
+          version: "1.0.0",
           bin: { "bin-command": "cli.js" },
         }),
       },
@@ -2192,6 +2365,31 @@ describe("analyzeProject", () => {
         "src/function-b.ts": `
           import { callFunctionCycle } from "./function-a";
           export const functionB = () => callFunctionCycle();
+        `,
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.circularDependencies).toEqual([]);
+  });
+
+  it("suppresses cycles that pass through generated route trees", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `
+          import { routeTree } from "./routeTree.gen";
+          console.log(routeTree);
+        `,
+        "src/routeTree.gen.ts": `
+          // This file was automatically generated by TanStack Router.
+          import { Route } from "./routes/root";
+          export const routeTree = Route;
+        `,
+        "src/routes/root.ts": `
+          import { routeTree } from "../routeTree.gen";
+          export const Route = routeTree;
         `,
       },
       {},

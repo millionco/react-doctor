@@ -77,15 +77,28 @@ describe("Karma config dependencies", () => {
   });
 
   it("keeps semantically selected plugins out of unused dependency findings", async () => {
+    const devDependencies = {
+      karma: "1.0.0",
+      "karma-chrome-launcher": "1.0.0",
+      "karma-mocha": "1.0.0",
+      "karma-webpack": "1.0.0",
+      "unused-tool": "1.0.0",
+    };
     const rootDirectory = createProject({
       "package.json": JSON.stringify({
         scripts: { test: "karma start" },
-        devDependencies: {
-          karma: "1.0.0",
-          "karma-chrome-launcher": "1.0.0",
-          "karma-mocha": "1.0.0",
-          "karma-webpack": "1.0.0",
-          "unused-tool": "1.0.0",
+        devDependencies,
+      }),
+      "package-lock.json": JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          "": { devDependencies },
+          ...Object.fromEntries(
+            Object.entries(devDependencies).map(([dependencyName, version]) => [
+              `node_modules/${dependencyName}`,
+              { version },
+            ]),
+          ),
         },
       }),
       "src/index.ts": "console.log('application');",

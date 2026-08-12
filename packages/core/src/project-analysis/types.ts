@@ -63,6 +63,7 @@ export interface SourceModuleAnalysis {
   localIdentifierReferences: string[];
   topLevelImportReferences: string[];
   referencedFilenames: string[];
+  hasUnknownDynamicModuleLoad: boolean;
 }
 
 export interface SourceModule extends SourceModuleAnalysis {
@@ -76,6 +77,10 @@ export interface SourceModule extends SourceModuleAnalysis {
   isConfigFile: boolean;
   isGitIgnored: boolean;
   isAnalysisExcluded: boolean;
+  isAuthoritativeEntryPoint: boolean;
+  isExplicitEntryPoint: boolean;
+  isPackageGraphComplete: boolean;
+  hasPackageDynamicLoaderUncertainty: boolean;
 }
 
 export interface ReExportMapping {
@@ -128,7 +133,11 @@ export interface UnusedDependency {
   reason: string;
 }
 
-export type SkippedDependencyReason = "allowlisted-name" | "ambiguous-binary" | "provides-binary";
+export type SkippedDependencyReason =
+  | "allowlisted-name"
+  | "ambiguous-binary"
+  | "provides-binary"
+  | "incomplete-peer-metadata";
 
 export interface SkippedDependency {
   name: string;
@@ -142,6 +151,8 @@ export interface CircularDependency {
 
 export interface ResolvedEntries {
   productionEntries: string[];
+  authoritativeProductionEntries: string[];
+  explicitProductionEntries: string[];
   testEntries: string[];
   alwaysUsedFiles: string[];
   externallyConsumedFiles: string[];
@@ -165,4 +176,17 @@ export interface ProjectAnalysisConfig {
   paths: Record<string, string[]> | undefined;
   reportTypes: boolean;
   includeEntryExports: boolean;
+  hasExplicitEntryPatterns: boolean;
+}
+
+export interface PackageLockPackageMetadata {
+  version?: string;
+  bin?: string | Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+}
+
+export interface PeerSatisfiedPackageCollection {
+  peerSatisfiedPackageNames: Set<string>;
+  isPeerMetadataComplete: boolean;
 }

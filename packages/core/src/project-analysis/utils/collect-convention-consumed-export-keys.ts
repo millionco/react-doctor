@@ -5,8 +5,12 @@ import type { DependencyGraph } from "../types.js";
 import { toCanonicalPath } from "../../utils/to-canonical-path.js";
 import { resolveEntryWithExtensions } from "./resolve-entry-with-extensions.js";
 import { toPosixPath } from "./to-posix-path.js";
+import { extractReactEmailTemplateDirectories } from "./extract-react-email-template-directories.js";
+import { collectDynamicBuildConsumedExportKeys } from "./collect-dynamic-build-consumed-export-keys.js";
+import { buildExportKey } from "./build-export-key.js";
 
 interface ConventionPackageJson {
+  cromwell?: { type?: string };
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
@@ -16,6 +20,7 @@ interface ConventionPackageJson {
 
 interface ConventionPackageMetadata {
   dependencyNames: Set<string>;
+  isCromwellPlugin: boolean;
   scripts: ReadonlyArray<string>;
 }
 
@@ -30,11 +35,6 @@ const NEXT_ROUTE_SEGMENT_MODULE_PATTERN =
   /^(?:src\/)?app\/(?:.*\/)?(?:page|layout|route|default|loading|error|not-found|template|global-error|forbidden|unauthorized|opengraph-image|twitter-image|icon|apple-icon|manifest|sitemap|robots)\.(?:ts|tsx|js|jsx)$/;
 
 const REACT_EMAIL_TEMPLATE_EXTENSION_PATTERN = /\.(?:js|jsx|tsx)$/;
-
-const REACT_EMAIL_DEV_COMMAND_PATTERN = /(?:^|\s)email\s+dev(?:\s|$)/;
-
-const buildExportKey = (filePath: string, exportName: string): string =>
-  `${filePath}::${exportName}`;
 
 const hasDependency = (
   packageMetadata: ConventionPackageMetadata,
@@ -53,6 +53,7 @@ const readPackageMetadata = (packageDirectory: string): ConventionPackageMetadat
         ...Object.keys(packageJson.optionalDependencies ?? {}),
         ...Object.keys(packageJson.peerDependencies ?? {}),
       ]),
+      isCromwellPlugin: packageJson.cromwell?.type === "plugin",
       scripts: Object.values(packageJson.scripts ?? {}),
     };
   } catch {
@@ -180,15 +181,21 @@ const isReactEmailDevTemplate = (
   ) {
     return false;
   }
-  if (!packageMetadata.scripts.some((script) => REACT_EMAIL_DEV_COMMAND_PATTERN.test(script))) {
-    return false;
-  }
-  const pathSegments = packageRelativePath.split("/");
-  if (pathSegments[0] !== "emails" || pathSegments[1] !== "templates") return false;
-  if (pathSegments.slice(2, -1).some((pathSegment) => pathSegment.startsWith("_"))) {
-    return false;
-  }
-  return REACT_EMAIL_TEMPLATE_EXTENSION_PATTERN.test(packageRelativePath);
+  const templateDirectories = extractReactEmailTemplateDirectories(packageMetadata.scripts);
+  return templateDirectories.some((templateDirectory) => {
+    const normalizedTemplateDirectory = toPosixPath(templateDirectory).replace(/^\.\//, "");
+    if (!packageRelativePath.startsWith(`${normalizedTemplateDirectory}/`)) return false;
+    const relativeTemplatePath = packageRelativePath.slice(normalizedTemplateDirectory.length + 1);
+    if (
+      relativeTemplatePath
+        .split("/")
+        .slice(0, -1)
+        .some((segment) => segment.startsWith("_"))
+    ) {
+      return false;
+    }
+    return REACT_EMAIL_TEMPLATE_EXTENSION_PATTERN.test(relativeTemplatePath);
+  });
 };
 
 export const collectConventionConsumedExportKeys = (
@@ -199,6 +206,7 @@ export const collectConventionConsumedExportKeys = (
   const packageMetadataByDirectory = new Map<string, ConventionPackageMetadata | undefined>();
   const packageDirectoryBySourceDirectory = new Map<string, string | undefined>();
   const themeConfigPathsByPackageDirectory = new Map<string, ReadonlySet<string>>();
+  const dynamicBuildConsumedExportKeysByPackageDirectory = new Map<string, ReadonlySet<string>>();
   const canonicalAnalysisRootDirectory = toCanonicalPath(resolve(analysisRootDirectory));
 
   for (const module of graph.modules) {
@@ -232,6 +240,17 @@ export const collectConventionConsumedExportKeys = (
       hasDependency(packageMetadata, "@content-collections/core") &&
       packageRelativePath === "content-collections.ts";
     const isReactEmailTemplate = isReactEmailDevTemplate(packageRelativePath, packageMetadata);
+    const isCromwellPluginFrontendEntry =
+      packageMetadata.isCromwellPlugin && packageRelativePath === "src/frontend/index.tsx";
+
+    if (!dynamicBuildConsumedExportKeysByPackageDirectory.has(packageDirectory)) {
+      dynamicBuildConsumedExportKeysByPackageDirectory.set(
+        packageDirectory,
+        collectDynamicBuildConsumedExportKeys(packageDirectory, packageMetadata.scripts),
+      );
+    }
+    const dynamicBuildConsumedExportKeys =
+      dynamicBuildConsumedExportKeysByPackageDirectory.get(packageDirectory);
 
     let isReferencedNextraThemeConfig = false;
     if (
@@ -254,6 +273,10 @@ export const collectConventionConsumedExportKeys = (
     for (const exportInfo of module.exports) {
       if (
         (isNextRouteSegmentModule && exportInfo.name === "runtime") ||
+        (isCromwellPluginFrontendEntry && exportInfo.name === "getStaticProps") ||
+        dynamicBuildConsumedExportKeys?.has(
+          buildExportKey(canonicalModuleFilePath, exportInfo.name),
+        ) ||
         (exportInfo.isDefault &&
           (isContentCollectionsConfig || isReactEmailTemplate || isReferencedNextraThemeConfig))
       ) {

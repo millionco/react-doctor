@@ -7,7 +7,7 @@ import type { ProjectAnalysisConfig } from "../types.js";
 import {
   RESOLVER_EXTENSIONS,
   REACT_NATIVE_PLATFORM_EXTENSIONS,
-  OUTPUT_DIRECTORIES,
+  SOURCE_FALLBACK_OUTPUT_DIRECTORIES,
   SOURCE_EXTENSIONS,
 } from "../constants.js";
 import { resolveSourcePath } from "./source-path.js";
@@ -52,7 +52,7 @@ export const trySourceFallback = (resolvedPath: string): string | undefined => {
   const segments = resolvedPath.split(sep);
 
   const isOutputDirectory = (segment: string): boolean =>
-    OUTPUT_DIRECTORIES.some(
+    SOURCE_FALLBACK_OUTPUT_DIRECTORIES.some(
       (outputDirectory) => segment === outputDirectory || segment.startsWith(`${outputDirectory}-`),
     );
 
@@ -80,9 +80,11 @@ export const trySourceFallback = (resolvedPath: string): string | undefined => {
     ? suffix.slice(0, suffix.length - fileExtension.length)
     : suffix;
 
-  for (const sourceExtension of SOURCE_EXTENSIONS) {
-    const sourceCandidate = join(prefix, "src", `${stemmedSuffix}.${sourceExtension}`);
-    if (existsAsFile(sourceCandidate)) return sourceCandidate;
+  for (const sourceDirectory of [join(prefix, "src"), prefix]) {
+    for (const sourceExtension of SOURCE_EXTENSIONS) {
+      const sourceCandidate = join(sourceDirectory, `${stemmedSuffix}.${sourceExtension}`);
+      if (existsAsFile(sourceCandidate)) return sourceCandidate;
+    }
   }
   return undefined;
 };
@@ -213,6 +215,7 @@ const WEBPACK_CONFIG_GLOBS = [
   "**/webpack*.config.{js,ts,mjs,cjs}",
   "**/webpack.config*.{js,ts,mjs,cjs}",
   "**/webpack*.config*.babel.{js,ts}",
+  "**/webpack*.conf.{js,ts,mjs,cjs}",
 ];
 
 const VITE_CONFIG_GLOBS = [
@@ -238,7 +241,9 @@ const JEST_CONFIG_GLOBS = [
 
 const ALIAS_BLOCK_PATTERN = /alias\s*:\s*\{([\s\S]*?)\}/g;
 const ALIAS_ENTRY_PATTERN =
-  /["']?([@\w$./*-]+)["']?\s*:\s*(?:path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)|fileURLToPath\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\s*\)|["']([^"']+)["'])/g;
+  /["']?([@\w$./*-]+)["']?\s*:\s*(?:path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)|fileURLToPath\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\s*\)|["']([^"']+)["']|([\w$]+)\(\s*["']([^"']+)["']\s*\))/g;
+const LOCAL_PATH_HELPER_PATTERN =
+  /function\s+([\w$]+)\s*\(\s*([\w$]+)\s*\)\s*\{\s*return\s+path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["']\s*,\s*)*)\2\s*\)\s*;?\s*\}/g;
 const JEST_MODULE_NAME_MAPPER_BLOCK_PATTERN = /moduleNameMapper\s*:\s*\{([\s\S]*?)\}/g;
 const JEST_MODULE_NAME_MAPPER_ENTRY_PATTERN = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;
 const STRING_LITERAL_PATTERN = /["']([^"']+)["']/g;
@@ -351,6 +356,15 @@ const findConfigScope = (configPath: string, rootDir: string): string => {
 
 const extractBundlerAliases = (content: string, configDirectory: string): BundlerAlias[] => {
   const aliases: BundlerAlias[] = [];
+  const localPathHelperRoots = new Map<string, string>();
+  let localPathHelperMatch: RegExpExecArray | null;
+  LOCAL_PATH_HELPER_PATTERN.lastIndex = 0;
+  while ((localPathHelperMatch = LOCAL_PATH_HELPER_PATTERN.exec(content)) !== null) {
+    localPathHelperRoots.set(
+      localPathHelperMatch[1],
+      resolve(configDirectory, ...extractQuotedSegments(localPathHelperMatch[3])),
+    );
+  }
   let aliasBlockMatch: RegExpExecArray | null;
   ALIAS_BLOCK_PATTERN.lastIndex = 0;
 
@@ -364,6 +378,8 @@ const extractBundlerAliases = (content: string, configDirectory: string): Bundle
       const pathCallSegments = aliasEntryMatch[2];
       const fileUrlTarget = aliasEntryMatch[3];
       const stringTarget = aliasEntryMatch[4];
+      const localPathHelperName = aliasEntryMatch[5];
+      const localPathHelperTarget = aliasEntryMatch[6];
       const isExact = rawName.endsWith("$");
       const name = rawName.replace(/\$$/, "").replace(/\/\*$/, "").replace(/\/$/, "");
 
@@ -377,6 +393,10 @@ const extractBundlerAliases = (content: string, configDirectory: string): Bundle
           stringTarget.replace(/\/\*$/, ""),
           configDirectory,
         );
+      } else if (localPathHelperName && localPathHelperTarget) {
+        const localPathHelperRoot = localPathHelperRoots.get(localPathHelperName);
+        if (!localPathHelperRoot) continue;
+        targetDirectory = resolve(localPathHelperRoot, localPathHelperTarget);
       } else {
         continue;
       }
@@ -662,7 +682,7 @@ const loadBundlerAliasConfigs = (rootDir: string): BundlerAliasConfig[] => {
       cwd: rootDir,
       absolute: true,
       onlyFiles: true,
-      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
+      ignore: ["**/node_modules/**", "**/dist/**"],
       deep: 4,
     },
   );
@@ -722,6 +742,13 @@ const EXPORT_CONDITION_PRIORITY = ["import", "require", "default", "types"];
 
 const resolveExportConditionTarget = (exportValue: unknown): string | undefined => {
   if (typeof exportValue === "string") return exportValue;
+  if (Array.isArray(exportValue)) {
+    for (const fallbackTarget of exportValue) {
+      const resolvedFallbackTarget = resolveExportConditionTarget(fallbackTarget);
+      if (resolvedFallbackTarget) return resolvedFallbackTarget;
+    }
+    return undefined;
+  }
   if (!isExportConditionRecord(exportValue)) return undefined;
   for (const condition of EXPORT_CONDITION_PRIORITY) {
     const conditionTarget = resolveExportConditionTarget(exportValue[condition]);

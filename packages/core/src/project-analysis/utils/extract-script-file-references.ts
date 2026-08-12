@@ -6,12 +6,18 @@ export const extractScriptFileReferences = (command: string): string[] => {
   let quote = "";
 
   const collectCurrentToken = (): void => {
+    const mappingSeparatorIndex = currentToken.indexOf(":");
+    const mappingPrefix = currentToken.slice(0, mappingSeparatorIndex);
+    const scriptFileReference =
+      mappingSeparatorIndex > 0 && /^[\w-]+$/.test(mappingPrefix)
+        ? currentToken.slice(mappingSeparatorIndex + 1)
+        : currentToken;
     if (
       !currentToken.startsWith("-") &&
       !currentToken.includes("=") &&
-      SCRIPT_FILE_EXTENSION_PATTERN.test(currentToken)
+      SCRIPT_FILE_EXTENSION_PATTERN.test(scriptFileReference)
     ) {
-      references.add(currentToken);
+      references.add(scriptFileReference);
     }
     currentToken = "";
   };

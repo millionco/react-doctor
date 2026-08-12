@@ -1,5 +1,9 @@
 import type { DependencyGraph, UnusedFile, SourceModule } from "../types.js";
 
+interface DetectOrphanFilesOptions {
+  requireCompletePackageGraph?: boolean;
+}
+
 const EXCLUDED_EXTENSIONS = new Set([
   ".html",
   ".mdx",
@@ -56,10 +60,14 @@ const isOpaqueToAnalysis = (module: SourceModule): boolean =>
     (parseError) => parseError.code && PARSE_OPAQUE_ERROR_CODES.has(parseError.code),
   );
 
-export const detectOrphanFiles = (graph: DependencyGraph): UnusedFile[] => {
+export const detectOrphanFiles = (
+  graph: DependencyGraph,
+  options: DetectOrphanFilesOptions = {},
+): UnusedFile[] => {
   const unusedFiles: UnusedFile[] = [];
 
   for (const module of graph.modules) {
+    if (options.requireCompletePackageGraph && !module.isPackageGraphComplete) continue;
     if (module.isReachable) continue;
     if (module.isEntryPoint) continue;
     if (module.isExternallyConsumed) continue;

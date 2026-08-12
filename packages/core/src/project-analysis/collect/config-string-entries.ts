@@ -4,10 +4,12 @@ import fg from "fast-glob";
 import ts from "typescript";
 import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
+import { extractJitiLoadReferences } from "../utils/extract-jiti-load-references.js";
 
 const CONFIG_STRING_ENTRY_GLOBS = [
   "webpack.config.{js,ts,mjs,cjs}",
   "**/webpack*.config.{js,ts,mjs,cjs,babel.js}",
+  "**/webpack*.conf.{js,ts,mjs,cjs}",
   "**/configs/webpack.config.{js,ts,mjs,cjs,babel.js}",
   "**/configs/webpack*.config.{js,ts,mjs,cjs,babel.js}",
   "jest.config.{js,ts,mjs,cjs,cts}",
@@ -40,6 +42,8 @@ const CONFIG_STRING_ENTRY_GLOBS = [
   "**/scripts/build.ts",
   "**/scripts/utils/createJestConfig.js",
 ];
+
+const NEXT_CONFIG_LOADER_GLOBS = ["next.config.{js,ts,mjs,mts,cjs,cts}"];
 
 const CONFIG_RELATIVE_PATH_PATTERN = /['"`]((\.{1,2}\/|\.\.\/)[^'"`\n]+?|\.\/[^'"`\n]+?)['"`]/g;
 
@@ -311,9 +315,28 @@ export const extractConfigStringReferencedEntries = (directory: string): string[
     cwd: directory,
     absolute: true,
     onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
+    ignore: ["**/node_modules/**", "**/dist/**"],
     deep: 6,
   });
+  const nextConfigPaths = fg.sync(NEXT_CONFIG_LOADER_GLOBS, {
+    cwd: directory,
+    absolute: true,
+    onlyFiles: true,
+    ignore: ["**/node_modules/**", "**/dist/**"],
+  });
+
+  for (const configPath of nextConfigPaths) {
+    try {
+      const content = readFileSync(configPath, "utf-8");
+      for (const loaderPath of extractJitiLoadReferences(content).flatMap((reference) =>
+        reference.path ? [reference.path] : [],
+      )) {
+        addResolvedConfigPath(loaderPath, dirname(configPath), directory, entries);
+      }
+    } catch {
+      continue;
+    }
+  }
 
   for (const configPath of configPaths) {
     try {

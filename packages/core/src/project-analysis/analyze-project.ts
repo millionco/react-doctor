@@ -4,6 +4,7 @@ import type {
   CircularDependency,
   ProjectAnalysisConfig,
   ProjectAnalysisError,
+  SkippedDependency,
   UnusedDependency,
   UnusedExport,
   UnusedFile,
@@ -41,6 +42,8 @@ import { collectGitLinguistIgnoredPaths } from "../utils/collect-git-linguist-ig
 import { toPosixPath } from "./utils/to-posix-path.js";
 import { extractBuildScriptConsumedFiles } from "./collect/build-script-consumed-files.js";
 import { buildPlatformSiblingIndex } from "./utils/build-platform-sibling-index.js";
+import { collectUnpluginAutoImportReferences } from "./collect/unplugin-auto-import-entries.js";
+import { markCompletePackageGraphs } from "./utils/mark-complete-package-graphs.js";
 
 export interface AnalyzeProjectInput {
   readonly rootDirectory: string;
@@ -58,6 +61,14 @@ export interface ProjectAnalysisResult {
   readonly totalFiles: number;
   readonly totalExports: number;
   readonly analysisTimeMs: number;
+}
+
+interface ProjectAnalysisWorkerResult extends ProjectAnalysisResult {
+  readonly skippedDependencies: ReadonlyArray<SkippedDependency>;
+}
+
+interface ProjectAnalysisInternalResult extends ProjectAnalysisWorkerResult {
+  readonly verifiedUnusedFiles: ReadonlyArray<UnusedFile>;
 }
 
 const REACT_NATIVE_ENABLERS = ["react-native", "expo"];
@@ -102,10 +113,12 @@ const isPathInsideDirectory = (filePath: string, directory: string): boolean => 
 const buildEmptyProjectAnalysisResult = (
   errors: ReadonlyArray<ProjectAnalysisError>,
   elapsedMs: number,
-): ProjectAnalysisResult => ({
+): ProjectAnalysisInternalResult => ({
   unusedFiles: [],
+  verifiedUnusedFiles: [],
   unusedExports: [],
   unusedDependencies: [],
+  skippedDependencies: [],
   circularDependencies: [],
   analysisErrors: errors,
   totalFiles: 0,
@@ -128,7 +141,7 @@ const validateConfig = (config: ProjectAnalysisConfig): ProjectAnalysisError | u
 
 const analyzeProjectConfig = async (
   config: ProjectAnalysisConfig,
-): Promise<ProjectAnalysisResult> => {
+): Promise<ProjectAnalysisInternalResult> => {
   const pipelineStartTime = performance.now();
   const setupErrors: ProjectAnalysisError[] = [];
 
@@ -243,6 +256,8 @@ const analyzeProjectConfig = async (
       );
       return {
         productionEntries: [],
+        authoritativeProductionEntries: [],
+        explicitProductionEntries: [],
         testEntries: [],
         alwaysUsedFiles: [],
         externallyConsumedFiles: [],
@@ -319,6 +334,13 @@ const analyzeProjectConfig = async (
     return buildEmptyProjectAnalysisResult(setupErrors, performance.now() - pipelineStartTime);
   }
   const parsedModules = files.map((file) => parseSourceFile(file.path));
+  const autoImportReferencesByModuleIndex = collectUnpluginAutoImportReferences(
+    absoluteRoot,
+    files,
+  );
+  for (const [moduleIndex, autoImportReferences] of autoImportReferencesByModuleIndex) {
+    parsedModules[moduleIndex].imports.push(...autoImportReferences);
+  }
 
   const discoveredEntries = await entriesPromise;
   const buildScriptConsumedFiles = extractBuildScriptConsumedFiles(absoluteRoot);
@@ -403,6 +425,18 @@ const analyzeProjectConfig = async (
     for (const module of moduleGraph.modules) module.isReachable = true;
   }
 
+  markCompletePackageGraphs({
+    graph: moduleGraph,
+    packageRootDirectories: [
+      absoluteRoot,
+      ...workspacePackages.map((workspacePackage) => workspacePackage.directory),
+    ],
+    resolvedLocalImportSpecifiersByFilePath:
+      moduleLinkInputsResult.resolvedLocalImportSpecifiersByFilePath,
+    unresolvedImportingFilePaths: moduleLinkInputsResult.unresolvedImportingFilePaths,
+    setupErrors,
+  });
+
   const runReportDetector = <Result>(
     detectorName: string,
     detector: () => Result,
@@ -421,6 +455,11 @@ const analyzeProjectConfig = async (
     () => detectOrphanFiles(moduleGraph),
     [],
   );
+  const verifiedUnusedFiles = runReportDetector(
+    "detectVerifiedOrphanFiles",
+    () => detectOrphanFiles(moduleGraph, { requireCompletePackageGraph: true }),
+    [],
+  );
   const unusedExports = runReportDetector(
     "detectDeadExports",
     () => detectDeadExports(moduleGraph, config, platformSiblingIndex),
@@ -436,10 +475,12 @@ const analyzeProjectConfig = async (
     () => detectCycles(moduleGraph),
     [],
   );
-  const analysisResult: ProjectAnalysisResult = {
+  const analysisResult: ProjectAnalysisInternalResult = {
     unusedFiles,
+    verifiedUnusedFiles,
     unusedExports,
     unusedDependencies: stalePackageReport.unusedDependencies,
+    skippedDependencies: stalePackageReport.skippedDependencies,
     circularDependencies,
     analysisErrors: setupErrors,
     totalFiles: moduleGraph.modules.length,
@@ -457,13 +498,46 @@ const analyzeProjectConfig = async (
   return analysisResult;
 };
 
-export const analyzeProject = (input: AnalyzeProjectInput): Promise<ProjectAnalysisResult> =>
-  analyzeProjectConfig(
-    defineProjectAnalysisConfig({
-      rootDir: input.rootDirectory,
-      entryPatterns: input.entryPatterns === undefined ? undefined : [...input.entryPatterns],
-      ignorePatterns: input.ignorePatterns === undefined ? undefined : [...input.ignorePatterns],
-      tsConfigPath: input.tsConfigPath,
-      reportTypes: true,
-    }),
-  );
+const defineAnalyzeProjectConfig = (input: AnalyzeProjectInput): ProjectAnalysisConfig =>
+  defineProjectAnalysisConfig({
+    rootDir: input.rootDirectory,
+    entryPatterns: input.entryPatterns === undefined ? undefined : [...input.entryPatterns],
+    ignorePatterns: input.ignorePatterns === undefined ? undefined : [...input.ignorePatterns],
+    tsConfigPath: input.tsConfigPath,
+    reportTypes: true,
+  });
+
+const toPublicProjectAnalysisResult = (
+  result: ProjectAnalysisInternalResult,
+): ProjectAnalysisResult => ({
+  unusedFiles: result.unusedFiles,
+  unusedExports: result.unusedExports,
+  unusedDependencies: result.unusedDependencies,
+  circularDependencies: result.circularDependencies,
+  analysisErrors: result.analysisErrors,
+  totalFiles: result.totalFiles,
+  totalExports: result.totalExports,
+  analysisTimeMs: result.analysisTimeMs,
+});
+
+const toWorkerProjectAnalysisResult = (
+  result: ProjectAnalysisInternalResult,
+): ProjectAnalysisWorkerResult => ({
+  unusedFiles: result.verifiedUnusedFiles,
+  unusedExports: result.unusedExports,
+  unusedDependencies: result.unusedDependencies,
+  skippedDependencies: result.skippedDependencies,
+  circularDependencies: result.circularDependencies,
+  analysisErrors: result.analysisErrors,
+  totalFiles: result.totalFiles,
+  totalExports: result.totalExports,
+  analysisTimeMs: result.analysisTimeMs,
+});
+
+export const analyzeProject = async (input: AnalyzeProjectInput): Promise<ProjectAnalysisResult> =>
+  toPublicProjectAnalysisResult(await analyzeProjectConfig(defineAnalyzeProjectConfig(input)));
+
+export const analyzeProjectForWorker = (
+  input: AnalyzeProjectInput,
+): Promise<ProjectAnalysisWorkerResult> =>
+  analyzeProjectConfig(defineAnalyzeProjectConfig(input)).then(toWorkerProjectAnalysisResult);

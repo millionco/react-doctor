@@ -219,9 +219,10 @@ const collectExportPaths = (
   if (typeof exportValue === "string") {
     if (exportValue.includes("*")) {
       const normalizedPattern = exportValue.startsWith("./") ? exportValue.slice(2) : exportValue;
-      entries.push(
-        ...findImportableFiles(normalizedPattern, rootDirectory, ["**/node_modules/**"]),
-      );
+      const recursivePattern = normalizedPattern.includes("/")
+        ? normalizedPattern.replace("*", "**/*")
+        : normalizedPattern;
+      entries.push(...findImportableFiles(recursivePattern, rootDirectory, ["**/node_modules/**"]));
     } else {
       entries.push(resolveEntryPath(exportValue, rootDirectory));
     }

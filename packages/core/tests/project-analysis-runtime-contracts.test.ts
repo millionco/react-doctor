@@ -2,7 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { analyzeProject } from "../src/project-analysis/analyze-project.js";
+import {
+  analyzeProject,
+  analyzeProjectForWorker,
+} from "../src/project-analysis/analyze-project.js";
 import { toPosixPath } from "../src/project-analysis/utils/to-posix-path.js";
 
 const temporaryDirectories: string[] = [];
@@ -29,6 +32,21 @@ const createProject = (
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, source);
   }
+  fs.writeFileSync(
+    path.join(rootDirectory, "package-lock.json"),
+    JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies },
+        ...Object.fromEntries(
+          Object.entries(dependencies).map(([dependencyName, version]) => [
+            `node_modules/${dependencyName}`,
+            { version },
+          ]),
+        ),
+      },
+    }),
+  );
   return fs.realpathSync(rootDirectory);
 };
 
@@ -38,6 +56,20 @@ const getUnusedExportNames = async (rootDirectory: string): Promise<string[]> =>
 };
 
 describe("runtime-owned project analysis contracts", () => {
+  it("keeps skipped dependency metadata on the worker wire only", async () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": `import "used-package";` },
+      { "used-package": "1.0.0", "unused-package": "1.0.0" },
+    );
+    const input = { rootDirectory, entryPatterns: ["src/index.ts"] };
+
+    const publicResult = await analyzeProject(input);
+    const workerResult = await analyzeProjectForWorker(input);
+
+    expect("skippedDependencies" in publicResult).toBe(false);
+    expect(workerResult.skippedDependencies).toEqual([]);
+  });
+
   it("discovers Supabase Edge Function entry modules", async () => {
     const rootDirectory = createProject({
       "src/index.ts": `console.log("application");`,

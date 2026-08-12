@@ -1,32 +1,43 @@
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import fg from "fast-glob";
+import { satisfies, validRange } from "semver";
 import type {
   DependencyGraph,
   ProjectAnalysisConfig,
+  PackageLockPackageMetadata,
+  PeerSatisfiedPackageCollection,
   SkippedDependency,
   SkippedDependencyReason,
   UnusedDependency,
 } from "../types.js";
-import { IMPLICIT_DEPENDENCIES } from "../constants.js";
+import { IMPLICIT_DEPENDENCIES, TOOLING_SOURCE_MAX_DEPTH } from "../constants.js";
 import { extractPackageName } from "../utils/package-name.js";
 import {
   collectOverrideMappingsFromRecord,
   type OverrideMapping,
 } from "../utils/collect-override-mappings-from-record.js";
 import { collectPnpmWorkspaceOverrideMappings } from "../utils/parse-pnpm-workspace-overrides.js";
-import { matchesPackageImportReference } from "../utils/matches-package-import-reference.js";
+import { collectPackageLockPackageMetadata } from "../utils/collect-package-lock-package-metadata.js";
+import { collectPackageImportNames } from "../utils/matches-package-import-reference.js";
+import { collectPackageConfigReferences } from "../utils/matches-package-config-reference.js";
 import { extractScriptBinaryNames } from "../utils/extract-script-binary-names.js";
 import { extractLocalScriptFileReference } from "../utils/extract-local-script-file-reference.js";
 import { hasHtmlSassStylesheetReference } from "../utils/has-html-sass-stylesheet-reference.js";
 import { matchesPackageCliOptionReference } from "../utils/matches-package-cli-option-reference.js";
 import { matchesNodeModulesPackageReference } from "../utils/matches-node-modules-package-reference.js";
+import { matchesExecutableNodeModulesPackageReference } from "../utils/matches-executable-node-modules-package-reference.js";
+import { matchesIconifyCollectionReference } from "../utils/matches-iconify-collection-reference.js";
 import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractExpoConfigPluginEntries } from "../collect/expo-config-plugin-entries.js";
+import { resolveWorkspaces } from "../collect/workspaces.js";
 import { extractKarmaConfigPackageReferences } from "../utils/extract-karma-config-package-references.js";
 import { hasExpoReactServerFunctions } from "../utils/has-expo-react-server-functions.js";
-import { extractInvokedBuildScriptPaths } from "../collect/build-script-consumed-files.js";
+import {
+  expandBuildScriptPaths,
+  extractInvokedBuildScriptPaths,
+} from "../collect/build-script-consumed-files.js";
 
 interface PackageFileGlobOptions {
   readonly ignore: ReadonlyArray<string>;
@@ -48,9 +59,6 @@ const globPackageFiles = (
     ...(options.dot === undefined ? {} : { dot: options.dot }),
   });
 
-const containsPackageName = (content: string, packageName: string): boolean =>
-  content.includes(packageName);
-
 const matchPackageNamesInFile = (
   filePath: string,
   names: ReadonlySet<string>,
@@ -62,6 +70,15 @@ const matchPackageNamesInFile = (
     if (matcher(content, packageName)) matchedNames.push(packageName);
   }
   return matchedNames;
+};
+
+const collectDeclaredPackageNamesInFile = (
+  filePath: string,
+  names: ReadonlySet<string>,
+  collector: (content: string) => ReadonlySet<string>,
+): string[] => {
+  const referencedPackageNames = collector(readFileSync(filePath, "utf-8"));
+  return [...referencedPackageNames].filter((packageName) => names.has(packageName));
 };
 
 interface PackageJsonDependencies {
@@ -141,8 +158,51 @@ export const detectStalePackages = (
       allPackageJsonPaths.push(monorepoPackageJson);
     }
   }
+  const lockedMetadataByPackageName = collectPackageLockPackageMetadata(
+    nodeModulesSearchRoots,
+    config.rootDir,
+    { ...dependencies, ...devDependencies },
+  );
+  const workspaceMetadataByPackageName = new Map<string, PackageLockPackageMetadata>();
+  const workspaceRoot = monorepoRoot ?? config.rootDir;
+  for (const workspacePackage of resolveWorkspaces(workspaceRoot).packages) {
+    if (!workspacePackage.isDeclaredWorkspace) continue;
+    try {
+      const workspacePackageMetadata = JSON.parse(
+        readFileSync(join(workspacePackage.directory, "package.json"), "utf-8"),
+      );
+      if (workspacePackageMetadata.name === workspacePackage.name) {
+        workspaceMetadataByPackageName.set(workspacePackageMetadata.name, workspacePackageMetadata);
+      }
+    } catch {
+      continue;
+    }
+  }
+  for (const [dependencyName, dependencySpecifier] of Object.entries({
+    ...dependencies,
+    ...devDependencies,
+  })) {
+    const localPathMatch = /^(?:file|link):(.+)$/.exec(dependencySpecifier);
+    if (!localPathMatch) continue;
+    try {
+      const localPackageMetadata = JSON.parse(
+        readFileSync(resolve(config.rootDir, localPathMatch[1], "package.json"), "utf-8"),
+      );
+      if (localPackageMetadata.name === dependencyName) {
+        workspaceMetadataByPackageName.set(dependencyName, localPackageMetadata);
+      }
+    } catch {
+      continue;
+    }
+  }
 
-  const { binToPackage } = buildBinaryPackageIndex(nodeModulesSearchRoots, declaredNames);
+  const { binToPackage } = buildBinaryPackageIndex(
+    nodeModulesSearchRoots,
+    declaredNames,
+    workspaceMetadataByPackageName,
+    lockedMetadataByPackageName,
+    { ...dependencies, ...devDependencies },
+  );
 
   for (const workspacePackageJsonPath of allPackageJsonPaths) {
     const scriptReferences = collectScriptReferencedPackages(
@@ -164,10 +224,10 @@ export const detectStalePackages = (
 
   for (const buildScriptPath of extractInvokedBuildScriptPaths(config.rootDir)) {
     try {
-      for (const packageName of matchPackageNamesInFile(
+      for (const packageName of collectDeclaredPackageNamesInFile(
         buildScriptPath,
         declaredNames,
-        matchesPackageImportReference,
+        collectPackageImportNames,
       )) {
         markPackageUsed(packageName);
       }
@@ -290,24 +350,23 @@ export const detectStalePackages = (
     }
   }
 
-  const peerSatisfied = collectPeerSatisfiedPackages(
+  const initialPeerCollection = collectPeerSatisfiedPackages(
     nodeModulesSearchRoots,
     declaredNames,
     usedPackageNames,
+    lockedMetadataByPackageName,
+    workspaceMetadataByPackageName,
+    { ...dependencies, ...devDependencies },
   );
-  for (const packageName of peerSatisfied) usedPackageNames.add(packageName);
+  const { peerSatisfiedPackageNames } = initialPeerCollection;
+  let isPeerMetadataComplete = initialPeerCollection.isPeerMetadataComplete;
+  for (const packageName of peerSatisfiedPackageNames) usedPackageNames.add(packageName);
 
   const overrideMappings = collectOverrideMappings(
     configSearchRoots,
     allPackageJsonPaths,
     monorepoRoot,
   );
-  for (const { fromPackage, toPackage } of overrideMappings) {
-    if (declaredNames.has(toPackage)) markPackageUsed(toPackage);
-    if (usedPackageNames.has(fromPackage) && declaredNames.has(toPackage)) {
-      markPackageUsed(toPackage);
-    }
-  }
 
   const candidateUnused = new Set<string>();
   const skippedDependenciesByName = new Map<string, Set<SkippedDependencyReason>>();
@@ -321,7 +380,9 @@ export const detectStalePackages = (
   };
 
   for (const [dependencyName] of declaredDependencies) {
-    if (observedPackageNames.has(dependencyName) || peerSatisfied.has(dependencyName)) continue;
+    if (observedPackageNames.has(dependencyName) || peerSatisfiedPackageNames.has(dependencyName)) {
+      continue;
+    }
     if (isAlwaysConsideredUsed(dependencyName)) {
       recordSkippedDependency(dependencyName, "allowlisted-name");
     }
@@ -343,6 +404,34 @@ export const detectStalePackages = (
       markPackageUsed(packageName);
       candidateUnused.delete(packageName);
     }
+  }
+
+  for (const { fromPackage, toPackage } of overrideMappings) {
+    if (usedPackageNames.has(fromPackage) && declaredNames.has(toPackage)) {
+      markPackageUsed(toPackage);
+      candidateUnused.delete(toPackage);
+    }
+  }
+
+  const finalPeerCollection = collectPeerSatisfiedPackages(
+    nodeModulesSearchRoots,
+    declaredNames,
+    observedPackageNames,
+    lockedMetadataByPackageName,
+    workspaceMetadataByPackageName,
+    { ...dependencies, ...devDependencies },
+  );
+  isPeerMetadataComplete &&= finalPeerCollection.isPeerMetadataComplete;
+  for (const packageName of finalPeerCollection.peerSatisfiedPackageNames) {
+    usedPackageNames.add(packageName);
+    candidateUnused.delete(packageName);
+  }
+
+  if (!isPeerMetadataComplete) {
+    for (const dependencyName of candidateUnused) {
+      recordSkippedDependency(dependencyName, "incomplete-peer-metadata");
+    }
+    candidateUnused.clear();
   }
 
   const unusedDependencies: UnusedDependency[] = [];
@@ -389,64 +478,56 @@ const hasJsxFiles = (graph: DependencyGraph): boolean =>
     return filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
   });
 
-// Peer relationships knowable WITHOUT an installed node_modules tree, for
-// the same uninstalled-checkout reason as `KNOWN_PACKAGE_BIN_NAMES`: the
-// host app must install these peers for the consumer package to work, so
-// flagging them breaks the consumer.
-const KNOWN_PEER_DEPENDENCY_NAMES = new Map<string, ReadonlyArray<string>>([
-  ["vitest-axe", ["axe-core"]],
-  ["jest-axe", ["axe-core"]],
-  ["@apollo/client", ["graphql"]],
-  ["@fortawesome/react-fontawesome", ["@fortawesome/fontawesome-svg-core"]],
-  ["@react-three/fiber", ["three"]],
-  ["react-apexcharts", ["apexcharts"]],
-  ["react-chartjs-2", ["chart.js"]],
-  ["rehype-pretty-code", ["shiki"]],
-  ["@pmmmwh/react-refresh-webpack-plugin", ["react-refresh"]],
-  ["@stripe/react-stripe-js", ["@stripe/stripe-js"]],
-]);
-
 const collectPeerSatisfiedPackages = (
   nodeModulesSearchRoots: string[],
   declaredNames: Set<string>,
   confirmedUsedNames: Set<string>,
-): Set<string> => {
-  const peerSatisfied = new Set<string>();
+  lockedMetadataByPackageName: Map<string, PackageLockPackageMetadata>,
+  workspaceMetadataByPackageName: Map<string, PackageLockPackageMetadata>,
+  declaredDependencySpecifiers: Readonly<Record<string, string>>,
+): PeerSatisfiedPackageCollection => {
+  const peerSatisfiedPackageNames = new Set<string>();
+  let isPeerMetadataComplete = true;
 
   for (const installedName of declaredNames) {
     if (!confirmedUsedNames.has(installedName)) continue;
-
-    for (const knownPeerName of KNOWN_PEER_DEPENDENCY_NAMES.get(installedName) ?? []) {
-      if (declaredNames.has(knownPeerName)) {
-        peerSatisfied.add(knownPeerName);
-      }
-    }
 
     const installedPackageJsonPath = findInstalledPackageJsonPath(
       installedName,
       nodeModulesSearchRoots,
     );
-    if (!installedPackageJsonPath) continue;
-
-    try {
-      const content = readFileSync(installedPackageJsonPath, "utf-8");
-      const packageJson = JSON.parse(content);
-      const peerDeps = packageJson.peerDependencies;
-      const peerDependenciesMeta = packageJson.peerDependenciesMeta;
-      if (peerDeps && typeof peerDeps === "object") {
-        for (const peerName of Object.keys(peerDeps)) {
-          if (peerDependenciesMeta?.[peerName]?.optional === true) continue;
-          if (declaredNames.has(peerName)) {
-            peerSatisfied.add(peerName);
-          }
-        }
+    let installedPackageMetadata: PackageLockPackageMetadata | undefined;
+    if (installedPackageJsonPath) {
+      try {
+        installedPackageMetadata = JSON.parse(readFileSync(installedPackageJsonPath, "utf-8"));
+      } catch {
+        installedPackageMetadata = undefined;
       }
-    } catch {
+    }
+    const packageMetadata =
+      workspaceMetadataByPackageName.get(installedName) ??
+      lockedMetadataByPackageName.get(installedName) ??
+      (installedPackageMetadata &&
+      typeof installedPackageMetadata.version === "string" &&
+      validRange(declaredDependencySpecifiers[installedName]) &&
+      satisfies(installedPackageMetadata.version, declaredDependencySpecifiers[installedName], {
+        includePrerelease: true,
+      })
+        ? installedPackageMetadata
+        : undefined);
+    if (!packageMetadata) {
+      isPeerMetadataComplete = false;
       continue;
+    }
+    for (const peerName of Object.keys(packageMetadata.peerDependencies ?? {})) {
+      if (packageMetadata.peerDependenciesMeta?.[peerName]?.optional === true) continue;
+      if (declaredNames.has(peerName)) {
+        peerSatisfiedPackageNames.add(peerName);
+      }
     }
   }
 
-  return peerSatisfied;
+  return { peerSatisfiedPackageNames, isPeerMetadataComplete };
 };
 
 const findInstalledPackageJsonPath = (
@@ -495,7 +576,7 @@ const KNOWN_PACKAGE_BIN_NAMES = new Map<string, ReadonlyArray<string>>([
 
 const staticBinNamesForPackage = (packageName: string): string[] => {
   const binNames = [...(KNOWN_PACKAGE_BIN_NAMES.get(packageName) ?? [])];
-  const unscopedName = packageName.split("/").pop()!;
+  const unscopedName = packageName.split("/").at(-1) ?? packageName;
   if (unscopedName.endsWith("-cli") && unscopedName.length > "-cli".length) {
     binNames.push(unscopedName.slice(0, -"-cli".length));
   }
@@ -505,6 +586,9 @@ const staticBinNamesForPackage = (packageName: string): string[] => {
 const buildBinaryPackageIndex = (
   nodeModulesSearchRoots: string[],
   declaredNames: Set<string>,
+  workspaceMetadataByPackageName: Map<string, PackageLockPackageMetadata>,
+  lockedMetadataByPackageName: Map<string, PackageLockPackageMetadata>,
+  declaredDependencySpecifiers: Readonly<Record<string, string>>,
 ): BinaryPackageIndex => {
   const binToPackage = new Map<string, Set<string>>();
   const addBinMapping = (binaryName: string, packageName: string): void => {
@@ -516,14 +600,35 @@ const buildBinaryPackageIndex = (
     for (const staticBinName of staticBinNamesForPackage(packageName)) {
       addBinMapping(staticBinName, packageName);
     }
+    const authoritativePackageMetadata =
+      workspaceMetadataByPackageName.get(packageName) ??
+      lockedMetadataByPackageName.get(packageName);
+    if (authoritativePackageMetadata) {
+      const binField = authoritativePackageMetadata.bin;
+      if (typeof binField === "string") {
+        addBinMapping(packageName.split("/").at(-1) ?? packageName, packageName);
+      } else if (binField) {
+        for (const binaryName of Object.keys(binField)) addBinMapping(binaryName, packageName);
+      }
+      continue;
+    }
     const packageBinJsonPath = findInstalledPackageJsonPath(packageName, nodeModulesSearchRoots);
     if (!packageBinJsonPath) continue;
     try {
       const binContent = readFileSync(packageBinJsonPath, "utf-8");
       const binPackageJson = JSON.parse(binContent);
+      if (
+        typeof binPackageJson.version !== "string" ||
+        !validRange(declaredDependencySpecifiers[packageName]) ||
+        !satisfies(binPackageJson.version, declaredDependencySpecifiers[packageName], {
+          includePrerelease: true,
+        })
+      ) {
+        continue;
+      }
       const binField = binPackageJson.bin;
       if (typeof binField === "string" && binField.length > 0) {
-        addBinMapping(packageName.split("/").pop()!, packageName);
+        addBinMapping(packageName.split("/").at(-1) ?? packageName, packageName);
       } else if (typeof binField === "object" && binField !== null) {
         const binaryNames = Object.keys(binField);
         if (binaryNames.length === 0) continue;
@@ -690,12 +795,21 @@ const CONFIG_FILE_GLOBS = [
   "commitlint.config.{js,cjs,mjs,ts}",
   ".commitlintrc.{js,cjs,mjs,json,yaml,yml}",
   "tslint.json",
+  "Gruntfile.{js,ts,mjs,cjs}",
+  "**/Gruntfile.{js,ts,mjs,cjs}",
   ".remarkrc",
   ".remarkrc.{js,cjs,mjs,json}",
   ".dumirc.ts",
   ".dumirc.js",
   "dumi.config.{ts,js}",
 ];
+
+const collectConfigFilePaths = (rootDir: string): string[] =>
+  globPackageFiles(rootDir, CONFIG_FILE_GLOBS, {
+    ignore: ["**/node_modules/**"],
+    dot: true,
+    deep: 3,
+  });
 
 const collectConfigReferencedPackages = (
   rootDir: string,
@@ -717,6 +831,23 @@ const collectConfigReferencedPackages = (
     }
   };
 
+  const addCollectedMatchesFromFile = (
+    filePath: string,
+    collector: (content: string) => ReadonlySet<string>,
+  ): void => {
+    try {
+      for (const packageName of collectDeclaredPackageNamesInFile(
+        filePath,
+        declaredNames,
+        collector,
+      )) {
+        referenced.add(packageName);
+      }
+    } catch {
+      return;
+    }
+  };
+
   const addKarmaConfigMatches = (filePath: string): void => {
     if (!/^karma\.(?:conf|config)\.[cm]?[jt]s$/.test(basename(filePath))) return;
     try {
@@ -731,18 +862,21 @@ const collectConfigReferencedPackages = (
 
   for (const module of graph.modules) {
     if (!module.isConfigFile) continue;
-    addMatchesFromFile(module.fileId.path, containsPackageName);
+    addCollectedMatchesFromFile(module.fileId.path, (content) =>
+      collectPackageConfigReferences(module.fileId.path, content),
+    );
     addKarmaConfigMatches(module.fileId.path);
   }
 
-  const configFiles = globPackageFiles(rootDir, CONFIG_FILE_GLOBS, {
-    ignore: ["**/node_modules/**"],
-    dot: true,
-    deep: 3,
+  const configFiles = expandBuildScriptPaths({
+    projectRoot: rootDir,
+    initialPaths: collectConfigFilePaths(rootDir),
   });
 
   for (const configPath of configFiles) {
-    addMatchesFromFile(configPath, containsPackageName);
+    addCollectedMatchesFromFile(configPath, (content) =>
+      collectPackageConfigReferences(configPath, content),
+    );
     addKarmaConfigMatches(configPath);
     if (
       declaredNames.has("release-it") &&
@@ -752,26 +886,28 @@ const collectConfigReferencedPackages = (
     }
   }
 
-  const documentationFiles = globPackageFiles(rootDir, ["**/*.{mdx,md}"], {
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/CHANGELOG.md"],
-    deep: 6,
-  });
-
-  for (const documentationPath of documentationFiles) {
-    addMatchesFromFile(documentationPath, matchesPackageImportReference);
-  }
-
   // Dot-directory tooling source trees (a dumi docs theme, storybook config
   // components) import real dependencies but live outside the module graph's
   // traversal, so their imports must be credited by content scan.
   const toolingSourceFiles = globPackageFiles(
     rootDir,
     ["**/{.dumi,.storybook,.docz,.styleguidist}/**/*.{ts,tsx,js,jsx,mts,mjs}"],
-    { ignore: ["**/node_modules/**"], dot: true, deep: 8 },
+    { ignore: ["**/node_modules/**"], dot: true, deep: TOOLING_SOURCE_MAX_DEPTH },
   );
 
   for (const toolingSourcePath of toolingSourceFiles) {
-    addMatchesFromFile(toolingSourcePath, matchesPackageImportReference);
+    addCollectedMatchesFromFile(toolingSourcePath, collectPackageImportNames);
+  }
+
+  const toolingExecutionFiles = globPackageFiles(rootDir, ["**/{.husky,.github}/**/*"], {
+    ignore: ["**/node_modules/**"],
+    dot: true,
+    deep: TOOLING_SOURCE_MAX_DEPTH,
+  });
+
+  for (const toolingExecutionPath of toolingExecutionFiles) {
+    addCollectedMatchesFromFile(toolingExecutionPath, collectPackageImportNames);
+    addMatchesFromFile(toolingExecutionPath, matchesNodeModulesPackageReference);
   }
 
   return referenced;
@@ -790,14 +926,18 @@ const PACKAGE_JSON_CONFIG_SECTIONS = [
   "ava",
   "config",
   "pnpm",
-  "resolutions",
-  "overrides",
   "release",
   "release-it",
   "pre-commit",
+  "browser",
+  "oclif",
+  "prisma",
+  "cosmos",
+  "react-cosmos",
 ] as const;
 
 const PACKAGE_JSON_CONFIG_OWNERS = new Map<string, string>([
+  ["browserslist", "browserslist"],
   ["pre-commit", "pre-commit"],
   ["release-it", "release-it"],
 ]);
@@ -884,7 +1024,13 @@ const collectPackageJsonReferences = (
         referenced.add(ownerPackageName);
       }
 
-      const sectionText = JSON.stringify(sectionValue);
+      const referenceSectionValue =
+        sectionName === "pnpm" && typeof sectionValue === "object" && !Array.isArray(sectionValue)
+          ? Object.fromEntries(
+              Object.entries(sectionValue).filter(([fieldName]) => fieldName !== "overrides"),
+            )
+          : sectionValue;
+      const sectionText = JSON.stringify(referenceSectionValue);
       for (const packageName of declaredNames) {
         if (sectionText.includes(packageName)) {
           referenced.add(packageName);
@@ -1048,7 +1194,9 @@ const extractExtendsPackageName = (extendsValue: string): string | undefined => 
   return extendsValue.split("/")[0];
 };
 
-const SOURCE_FILE_GLOBS = ["**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs,css,scss,sass}"];
+const SOURCE_FILE_GLOBS = [
+  "**/*.{ts,tsx,js,jsx,mts,mjs,cts,cjs,css,scss,sass,less,styl,html,vue,svelte,astro,coffee,es6,sol,gradle,xml,yml,yaml,patch}",
+];
 
 const SOURCE_FILE_IGNORES = [
   "**/node_modules/**",
@@ -1058,7 +1206,6 @@ const SOURCE_FILE_IGNORES = [
   "**/.git/**",
   "**/coverage/**",
   "**/*.min.js",
-  "**/*.d.ts",
 ];
 
 const scanSourceFilesForPackageImports = (
@@ -1070,6 +1217,7 @@ const scanSourceFilesForPackageImports = (
 
   const sourceFiles = globPackageFiles(rootDir, SOURCE_FILE_GLOBS, {
     ignore: SOURCE_FILE_IGNORES,
+    dot: true,
     deep: 15,
   });
 
@@ -1077,6 +1225,7 @@ const scanSourceFilesForPackageImports = (
     if (candidatePackages.size === 0) break;
     try {
       const content = readFileSync(filePath, "utf-8");
+      const isPatchFile = filePath.endsWith(".patch");
       const isStylesheet = /\.(?:css|scss|sass)$/.test(filePath);
       const stylesheetPackages = isStylesheet
         ? new Set(
@@ -1085,10 +1234,36 @@ const scanSourceFilesForPackageImports = (
               .filter((packageName) => packageName !== undefined),
           )
         : new Set<string>();
+      const importedPackageNames =
+        isStylesheet || isPatchFile ? new Set<string>() : collectPackageImportNames(content);
+      const usesJavaScriptSyntax = /\.(?:[cm]?[jt]sx?|coffee|es6|sol)$/.test(filePath);
       for (const packageName of candidatePackages) {
+        const escapedPatchPackageName = packageName
+          .replaceAll("/", "+")
+          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const isPatchPackageFile = new RegExp(
+          `(?:^|[\\/])patches[\\/]${escapedPatchPackageName}\\+[^\\/]+\\.patch$`,
+        ).test(filePath);
+        const hasPatchTargetReference =
+          isPatchFile &&
+          (isPatchPackageFile ||
+            content
+              .split("\n")
+              .some(
+                (line) =>
+                  /^(?:diff --git|---|\+\+\+) /.test(line) &&
+                  matchesNodeModulesPackageReference(line, packageName),
+              ));
         const isReferenced = isStylesheet
-          ? stylesheetPackages.has(packageName)
-          : matchesPackageImportReference(content, packageName);
+          ? stylesheetPackages.has(packageName) ||
+            matchesNodeModulesPackageReference(content, packageName)
+          : isPatchFile
+            ? hasPatchTargetReference
+            : importedPackageNames.has(packageName) ||
+              (usesJavaScriptSyntax
+                ? matchesExecutableNodeModulesPackageReference(content, packageName)
+                : matchesNodeModulesPackageReference(content, packageName)) ||
+              matchesIconifyCollectionReference(content, packageName);
         if (isReferenced) {
           found.add(packageName);
           candidatePackages.delete(packageName);
@@ -1111,6 +1286,23 @@ const SASS_COMPILER_HOST_PACKAGES = [
   "gatsby-plugin-sass",
   "astro",
   "parcel-bundler",
+];
+
+const IMPLICIT_STYLE_COMPILER_CONTRACTS = [
+  {
+    compilerPackageName: "less",
+    sourcePattern: /\.less(?:[?#].*)?$/,
+    hostPackageNames: [...SASS_COMPILER_HOST_PACKAGES, "less-loader"],
+  },
+  {
+    compilerPackageName: "stylus",
+    sourcePattern: /\.styl(?:[?#].*)?$/,
+    hostPackageNames: [
+      ...SASS_COMPILER_HOST_PACKAGES,
+      "stylus-loader",
+      "react-native-stylus-transformer",
+    ],
+  },
 ];
 
 const collectProjectConventionReferencedPackages = (
@@ -1180,6 +1372,22 @@ const collectProjectConventionReferencedPackages = (
         referenced.add("sass");
       }
     }
+  }
+
+  for (const styleCompilerContract of IMPLICIT_STYLE_COMPILER_CONTRACTS) {
+    if (!declaredNames.has(styleCompilerContract.compilerPackageName)) continue;
+    const hasUsedCompilerHost = styleCompilerContract.hostPackageNames.some((packageName) =>
+      usedPackageNames.has(packageName),
+    );
+    if (!hasUsedCompilerHost) continue;
+    const hasImportedStyleSource = graph.modules.some(
+      (module) =>
+        module.isReachable &&
+        module.imports.some((importReference) =>
+          styleCompilerContract.sourcePattern.test(importReference.specifier),
+        ),
+    );
+    if (hasImportedStyleSource) referenced.add(styleCompilerContract.compilerPackageName);
   }
 
   if (

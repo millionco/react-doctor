@@ -35,6 +35,8 @@ import { extractSupabaseFunctionEntries } from "./supabase-function-entries.js";
 import { extractStaticGlobbyEntries } from "./static-globby-entries.js";
 import { extractNetlifyFunctionEntries } from "./netlify-function-entries.js";
 import { extractMuiDocsMetadataEntries } from "./mui-docs-metadata-entries.js";
+import { extractWordPressScriptEntries } from "./wordpress-script-entries.js";
+import { extractReactEmailTemplateEntries } from "./react-email-template-entries.js";
 import { extractPackageJsonEntries, findDefaultIndexEntry } from "./package-json-entries.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 import { toPosixPath } from "../utils/to-posix-path.js";
@@ -150,6 +152,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
   );
 
   const workspaceEntries: string[] = [];
+  const authoritativeWorkspaceEntries: string[] = [];
   const workspacePublicAssetFiles: string[] = [];
   for (const workspacePackage of workspacePackages) {
     const isEligible = isEntryEligible(workspacePackage);
@@ -161,6 +164,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     if (shouldRunFrameworkDetection) {
       const workspaceFrameworkEntries = detectFrameworkEntries(workspacePackage.directory);
       workspaceEntries.push(...workspaceFrameworkEntries);
+      authoritativeWorkspaceEntries.push(...workspaceFrameworkEntries);
       const workspaceDependencies = readPackageJsonDependencies(
         join(workspacePackage.directory, "package.json"),
       );
@@ -197,6 +201,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
       );
       if (hasValidEntries) {
         workspaceEntries.push(...workspacePackageJsonEntries);
+        authoritativeWorkspaceEntries.push(...workspacePackageJsonEntries);
       } else {
         const defaultFallback = findDefaultIndexEntry(workspacePackage.directory);
         if (defaultFallback) {
@@ -375,6 +380,11 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
   );
   const netlifyFunctionEntries = extractNetlifyFunctionEntries(absoluteRoot);
   const muiDocsMetadataEntries = extractMuiDocsMetadataEntries(absoluteRoot);
+  const wordPressScriptEntries = extractWordPressScriptEntries(absoluteRoot);
+  const reactEmailTemplateEntries = extractReactEmailTemplateEntries(absoluteRoot);
+  for (const workspacePackage of entryEligiblePackages) {
+    reactEmailTemplateEntries.push(...extractReactEmailTemplateEntries(workspacePackage.directory));
+  }
 
   const testEntries = [
     ...new Set([...testRunnerDiscovery.entryFiles, ...testSetupEntries].map(toPosixPath)),
@@ -412,6 +422,44 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
         ...staticGlobbyEntries,
         ...netlifyFunctionEntries,
         ...muiDocsMetadataEntries,
+        ...wordPressScriptEntries,
+        ...reactEmailTemplateEntries,
+      ].map(toPosixPath),
+    ),
+  ].filter((entryPath) => !testEntryPathSet.has(entryPath));
+  const authoritativeProductionEntries = [
+    ...new Set(
+      [
+        ...(config.hasExplicitEntryPatterns ? entryFiles : []),
+        ...packageJsonEntries,
+        ...authoritativeWorkspaceEntries,
+        ...frameworkEntries,
+        ...scriptEntries,
+        ...webpackEntries,
+        ...viteEntries,
+        ...bundlerConfigEntries,
+        ...htmlScriptEntries,
+        ...angularEntries,
+        ...browserExtensionEntries,
+        ...webWorkerEntries,
+        ...configStringEntries,
+        ...graphqlCodegenEntries.schemaEntries,
+        ...taroPageEntries,
+        ...expoConfigPluginEntries,
+        ...sectionsModuleEntries,
+        ...coffeeScriptRequireEntries,
+        ...siblingWorkspaceImportEntries,
+        ...wranglerEntries,
+        ...pluginFileEntries,
+        ...toolingDiscovery.entryFiles,
+        ...umiDvaModelEntries,
+        ...ciEntries,
+        ...supabaseFunctionEntries,
+        ...staticGlobbyEntries,
+        ...netlifyFunctionEntries,
+        ...muiDocsMetadataEntries,
+        ...wordPressScriptEntries,
+        ...reactEmailTemplateEntries,
       ].map(toPosixPath),
     ),
   ].filter((entryPath) => !testEntryPathSet.has(entryPath));
@@ -448,6 +496,8 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
 
   return {
     productionEntries,
+    authoritativeProductionEntries,
+    explicitProductionEntries: config.hasExplicitEntryPatterns ? entryFiles.map(toPosixPath) : [],
     testEntries,
     alwaysUsedFiles,
     externallyConsumedFiles,
@@ -1095,6 +1145,17 @@ const extractBundlerConfigEntryPoints = (directory: string): string[] => {
         BUNDLER_CONFIG_ENTRY_STRING_PATTERN.lastIndex = 0;
         while ((stringMatch = BUNDLER_CONFIG_ENTRY_STRING_PATTERN.exec(arrayContent)) !== null) {
           const entryPath = stringMatch[1];
+          if (entryPath.includes("*")) {
+            entries.push(
+              ...fg.sync(entryPath, {
+                cwd: directory,
+                absolute: true,
+                onlyFiles: true,
+                ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
+              }),
+            );
+            continue;
+          }
           const absoluteEntryPath = resolve(directory, entryPath);
           const resolvedPath = resolveEntryWithExtensions(absoluteEntryPath);
           if (resolvedPath) {
@@ -1230,6 +1291,7 @@ const extractWebpackEntryPoints = (directory: string): string[] => {
       "**/webpack*.config.{js,ts,mjs,cjs}",
       "**/webpack.config*.{js,ts,mjs,cjs}",
       "**/webpack*.config*.babel.{js,ts}",
+      "**/webpack*.conf.{js,ts,mjs,cjs}",
     ],
     {
       cwd: directory,
@@ -2299,6 +2361,7 @@ const FRAMEWORK_PATTERNS: ToolingPluginDefinition[] = [
     enablerPrefixes: [],
     entryPatterns: ["src/index.{ts,tsx,js,jsx}"],
     alwaysUsed: [
+      "src/setupProxy.{ts,tsx,js,jsx}",
       "src/setupTests.{ts,tsx,js,jsx}",
       "src/reportWebVitals.{ts,tsx,js,jsx}",
       "src/react-app-env.d.ts",

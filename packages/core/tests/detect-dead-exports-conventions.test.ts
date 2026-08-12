@@ -131,6 +131,210 @@ describe("convention-consumed exports", () => {
     ]);
   });
 
+  it("does not hide same-named exports for dynamic build generators without module evidence", () => {
+    const project = createProject({
+      files: {
+        "docgen/index.ts": `
+          const entrypoint = "generated.js";
+          await build({ entry: [filePath] });
+          const elements = await import(entrypoint);
+          console.log(elements.__docConfig);
+          if (declaration.name.getText() === "__docConfig") console.log(declaration);
+        `,
+        "src/widget.tsx": `
+          export const __docConfig = {};
+          export const unusedValue = true;
+        `,
+        "src/unrelated.ts": "export const __docConfig = {};",
+      },
+      modulePaths: ["src/widget.tsx", "src/unrelated.ts"],
+      packageJson: { scripts: { docs: "tsx ./docgen/index.ts" } },
+    });
+
+    expect(collectUnusedExports(project)).toEqual([
+      "src/unrelated.ts::__docConfig",
+      "src/widget.tsx::__docConfig",
+      "src/widget.tsx::unusedValue",
+    ]);
+  });
+
+  it("credits dynamic imports only for exports read from exact build glob modules", () => {
+    const project = createProject({
+      files: {
+        "docgen/index.ts": `
+          import * as glob from "glob";
+          import * as path from "path";
+          import { build } from "tsup";
+
+          const files = glob
+            .sync(path.join(__dirname, "../src/**/*.tsx"))
+            .filter((filePath) => {
+              return !filePath.includes("/src/ui/");
+            });
+
+          files.map(async (filePath) => {
+            const relativePath = path.relative(path.join(__dirname, "../src"), filePath);
+            const entrypoint = path.join(
+              __dirname,
+              "../.tmp",
+              path.basename(relativePath, ".tsx") + ".js",
+            );
+            await build({ entry: [filePath], outDir: path.dirname(entrypoint), format: "cjs" });
+            const elements = await import(entrypoint);
+            console.log(elements.__docConfig);
+          });
+        `,
+        "src/compile/compile.tsx": `
+          export const __docConfig = {};
+          export const unusedCompileValue = true;
+        `,
+        "src/markdown/markdown.tsx": `
+          export const __docConfig = {};
+          export const unusedMarkdownValue = true;
+        `,
+        "src/ui/excluded.tsx": "export const __docConfig = {};",
+        "src/outside.ts": "export const __docConfig = {};",
+        "other/same-name.tsx": "export const __docConfig = {};",
+      },
+      modulePaths: [
+        "src/compile/compile.tsx",
+        "src/markdown/markdown.tsx",
+        "src/ui/excluded.tsx",
+        "src/outside.ts",
+        "other/same-name.tsx",
+      ],
+      packageJson: { scripts: { docs: "tsx ./docgen/index.ts" } },
+    });
+
+    expect(collectUnusedExports(project)).toEqual([
+      "other/same-name.tsx::__docConfig",
+      "src/compile/compile.tsx::unusedCompileValue",
+      "src/markdown/markdown.tsx::unusedMarkdownValue",
+      "src/outside.ts::__docConfig",
+      "src/ui/excluded.tsx::__docConfig",
+    ]);
+  });
+
+  it("does not credit exports when the imported filename is not the build output", () => {
+    const project = createProject({
+      files: {
+        "docgen/index.ts": `
+          import * as glob from "glob";
+          import * as path from "path";
+          import { build } from "tsup";
+          const files = glob.sync(path.join(__dirname, "../src/**/*.tsx"));
+          files.map(async (filePath) => {
+            const entrypoint = path.join(__dirname, "../.tmp/unrelated.js");
+            await build({ entry: [filePath], outDir: path.dirname(entrypoint), format: "cjs" });
+            const elements = await import(entrypoint);
+            console.log(elements.__docConfig);
+          });
+        `,
+        "src/compile.tsx": "export const __docConfig = {};",
+        "src/markdown.tsx": "export const __docConfig = {};",
+      },
+      modulePaths: ["src/compile.tsx", "src/markdown.tsx"],
+      packageJson: { scripts: { docs: "tsx ./docgen/index.ts" } },
+    });
+
+    expect(collectUnusedExports(project)).toEqual([
+      "src/compile.tsx::__docConfig",
+      "src/markdown.tsx::__docConfig",
+    ]);
+  });
+
+  it("does not credit exports through shadowed dynamic-build bindings", () => {
+    const project = createProject({
+      files: {
+        "docgen/index.ts": `
+          import * as glob from "glob";
+          import * as path from "path";
+          import { build } from "tsup";
+          const files = glob.sync(path.join(__dirname, "../src/**/*.tsx"));
+          files.map(async (filePath) => {
+            const relativePath = path.relative(path.join(__dirname, "../src"), filePath);
+            const entrypoint = path.join(
+              __dirname,
+              "../.tmp",
+              path.basename(relativePath, ".tsx") + ".js",
+            );
+            const build = async () => undefined;
+            await build({ entry: [filePath], outDir: path.dirname(entrypoint), format: "cjs" });
+            const elements = await import(entrypoint);
+            console.log(elements.__docConfig);
+          });
+        `,
+        "src/compile.tsx": "export const __docConfig = {};",
+      },
+      modulePaths: ["src/compile.tsx"],
+      packageJson: { scripts: { docs: "tsx ./docgen/index.ts" } },
+    });
+
+    expect(collectUnusedExports(project)).toEqual(["src/compile.tsx::__docConfig"]);
+  });
+
+  it("does not credit exports through a shadowed imported namespace", () => {
+    const project = createProject({
+      files: {
+        "docgen/index.ts": `
+          import * as glob from "glob";
+          import * as path from "path";
+          import { build } from "tsup";
+          const files = glob.sync(path.join(__dirname, "../src/**/*.tsx"));
+          files.map(async (filePath) => {
+            const relativePath = path.relative(path.join(__dirname, "../src"), filePath);
+            const entrypoint = path.join(
+              __dirname,
+              "../.tmp",
+              path.basename(relativePath, ".tsx") + ".js",
+            );
+            await build({ entry: [filePath], outDir: path.dirname(entrypoint), format: "cjs" });
+            const elements = await import(entrypoint);
+            const consume = (elements) => elements.__docConfig;
+            consume({});
+          });
+        `,
+        "src/compile.tsx": "export const __docConfig = {};",
+      },
+      modulePaths: ["src/compile.tsx"],
+      packageJson: { scripts: { docs: "tsx ./docgen/index.ts" } },
+    });
+
+    expect(collectUnusedExports(project)).toEqual(["src/compile.tsx::__docConfig"]);
+  });
+
+  it("does not credit exports through a shadowed glob collection", () => {
+    const project = createProject({
+      files: {
+        "docgen/index.ts": `
+          import * as glob from "glob";
+          import * as path from "path";
+          import { build } from "tsup";
+          const files = glob.sync(path.join(__dirname, "../src/**/*.tsx"));
+          {
+            const files = ["./unrelated.tsx"];
+            files.map(async (filePath) => {
+              const relativePath = path.relative(path.join(__dirname, "../src"), filePath);
+              const entrypoint = path.join(
+                __dirname,
+                "../.tmp",
+                path.basename(relativePath, ".tsx") + ".js",
+              );
+              await build({ entry: [filePath], outDir: path.dirname(entrypoint), format: "cjs" });
+              const elements = await import(entrypoint);
+              console.log(elements.__docConfig);
+            });
+          }
+        `,
+        "src/compile.tsx": "export const __docConfig = {};",
+      },
+      modulePaths: ["src/compile.tsx"],
+      packageJson: { scripts: { docs: "tsx ./docgen/index.ts" } },
+    });
+
+    expect(collectUnusedExports(project)).toEqual(["src/compile.tsx::__docConfig"]);
+  });
+
   it("credits only the Nextra theme default explicitly referenced by next.config", () => {
     const project = createProject({
       files: {
@@ -164,21 +368,21 @@ describe("convention-consumed exports", () => {
   it("credits React Email dev template defaults without hiding adjacent modules", () => {
     const project = createProject({
       files: {
-        "emails/templates/welcome.tsx": `
+        "emails/welcome.tsx": `
           export const welcomeData = {};
           export default () => null;
         `,
-        "emails/templates/nested/invite.jsx": "export default () => null;",
-        "emails/templates/_components/layout.tsx": "export default () => null;",
-        "emails/template/misspelled.tsx": "export default () => null;",
-        "src/emails/templates/source.tsx": "export default () => null;",
+        "emails/nested/invite.jsx": "export default () => null;",
+        "emails/_components/layout.tsx": "export default () => null;",
+        "email-templates/misspelled.tsx": "export default () => null;",
+        "src/emails/source.tsx": "export default () => null;",
       },
       modulePaths: [
-        "emails/templates/welcome.tsx",
-        "emails/templates/nested/invite.jsx",
-        "emails/templates/_components/layout.tsx",
-        "emails/template/misspelled.tsx",
-        "src/emails/templates/source.tsx",
+        "emails/welcome.tsx",
+        "emails/nested/invite.jsx",
+        "emails/_components/layout.tsx",
+        "email-templates/misspelled.tsx",
+        "src/emails/source.tsx",
       ],
       packageJson: {
         devDependencies: { "react-email": "1.0.0" },
@@ -187,10 +391,10 @@ describe("convention-consumed exports", () => {
     });
 
     expect(collectUnusedExports(project)).toEqual([
-      "emails/template/misspelled.tsx::default",
-      "emails/templates/_components/layout.tsx::default",
-      "emails/templates/welcome.tsx::welcomeData",
-      "src/emails/templates/source.tsx::default",
+      "email-templates/misspelled.tsx::default",
+      "emails/_components/layout.tsx::default",
+      "emails/welcome.tsx::welcomeData",
+      "src/emails/source.tsx::default",
     ]);
   });
 
@@ -217,6 +421,21 @@ describe("convention-consumed exports", () => {
       "emails/templates/welcome.tsx::default",
       "theme.config.tsx::default",
     ]);
+  });
+
+  it("credits the Cromwell plugin frontend getStaticProps contract", () => {
+    const project = createProject({
+      files: {
+        "src/frontend/index.tsx": `
+          export const getStaticProps = async () => ({ props: {} });
+          export const unusedValue = true;
+        `,
+      },
+      modulePaths: ["src/frontend/index.tsx"],
+      packageJson: { cromwell: { type: "plugin" } },
+    });
+
+    expect(collectUnusedExports(project)).toEqual(["src/frontend/index.tsx::unusedValue"]);
   });
 
   it("credits conventions when graph paths use a symlinked project alias", () => {

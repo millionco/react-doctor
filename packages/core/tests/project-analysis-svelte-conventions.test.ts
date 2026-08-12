@@ -35,6 +35,39 @@ const getUnusedFilePaths = async (rootDirectory: string): Promise<string[]> => {
 };
 
 describe("SvelteKit project analysis", () => {
+  it("treats instance export let declarations as component props", async () => {
+    const rootDirectory = createProject({
+      "src/routes/+page.svelte": `
+        <script>
+          import Widget from "../components/widget.svelte";
+        </script>
+        <Widget label="Visible" />
+      `,
+      "src/components/widget.svelte": `
+        <script context="module">
+          export let unusedModuleValue = true;
+        </script>
+        <script lang="ts">
+          export let label: string;
+          export const unusedValue = true;
+        </script>
+        <main>{label}</main>
+      `,
+    });
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(
+      result.unusedExports.map((unusedExport) => ({
+        path: path.relative(rootDirectory, unusedExport.path).replaceAll("\\", "/"),
+        name: unusedExport.name,
+      })),
+    ).toEqual([
+      { path: "src/components/widget.svelte", name: "unusedModuleValue" },
+      { path: "src/components/widget.svelte", name: "unusedValue" },
+    ]);
+  });
+
   it("resolves explicit wildcard aliases", async () => {
     const rootDirectory = createProject({
       "svelte.config.js": `export default { kit: { alias: {
@@ -89,5 +122,26 @@ describe("SvelteKit project analysis", () => {
     await expect(getUnusedFilePaths(rootDirectory)).resolves.toEqual([
       "src/docs/data/long-types/orphan.ts",
     ]);
+  });
+});
+
+describe("Astro project analysis", () => {
+  it("treats exported Props as the component prop contract", async () => {
+    const rootDirectory = createProject({
+      "src/pages/index.ts": `import "../components/card.astro";`,
+      "src/components/card.astro": `---
+export interface Props { title: string }
+export const unusedValue = true;
+const { title } = Astro.props;
+---
+<main>{title}</main>`,
+    });
+
+    const result = await analyzeProject({
+      rootDirectory,
+      entryPatterns: ["src/pages/index.ts"],
+    });
+
+    expect(result.unusedExports.map((unusedExport) => unusedExport.name)).toEqual(["unusedValue"]);
   });
 });

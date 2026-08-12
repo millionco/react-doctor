@@ -1,4 +1,7 @@
-import { analyzeProject, type AnalyzeProjectInput } from "./project-analysis/analyze-project.js";
+import {
+  analyzeProjectForWorker,
+  type AnalyzeProjectInput,
+} from "./project-analysis/analyze-project.js";
 
 interface SerializedProjectAnalysisError {
   readonly name?: string;
@@ -8,7 +11,7 @@ interface SerializedProjectAnalysisError {
 
 interface ProjectAnalysisWorkerSuccess {
   readonly ok: true;
-  readonly result: Awaited<ReturnType<typeof analyzeProject>>;
+  readonly result: Awaited<ReturnType<typeof analyzeProjectForWorker>>;
 }
 
 interface ProjectAnalysisWorkerFailure {
@@ -32,7 +35,7 @@ export const startProjectAnalysisWorker = (): void => {
     void (async () => {
       try {
         const input: AnalyzeProjectInput = JSON.parse(Buffer.concat(inputChunks).toString("utf8"));
-        const result = await analyzeProject(input);
+        const result = await analyzeProjectForWorker(input);
         emit({ ok: true, result });
       } catch (error) {
         emit({ ok: false, error: serializeError(error) });

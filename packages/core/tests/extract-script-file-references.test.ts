@@ -13,4 +13,10 @@ describe("extractScriptFileReferences", () => {
   it("ignores source-looking text that is part of another token", () => {
     expect(extractScriptFileReferences("echo source.ts.map --config=build.ts")).toEqual([]);
   });
+
+  it("extracts compiler files from language mappings", () => {
+    expect(extractScriptFileReferences("mocha --compilers css:mocha-compiler.js")).toEqual([
+      "mocha-compiler.js",
+    ]);
+  });
 });

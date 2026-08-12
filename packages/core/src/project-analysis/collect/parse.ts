@@ -5,7 +5,7 @@ import {
   BINARY_DETECTION_NULL_BYTE_THRESHOLD,
   BINARY_DETECTION_SAMPLE_BYTES,
   MAX_PARSE_FILE_SIZE_BYTES,
-  MINIFIED_DETECTION_AVG_LINE_LENGTH_THRESHOLD,
+  MINIFIED_DETECTION_MEDIAN_LINE_LENGTH_THRESHOLD,
   MINIFIED_DETECTION_MIN_BYTES,
 } from "../constants.js";
 import {
@@ -38,6 +38,7 @@ import { extractDefaultExportLocalName } from "../utils/extract-default-export-l
 import { getIdentifierName } from "../utils/oxc-ast-node.js";
 import { isGeneratedSource } from "../utils/is-generated-source.js";
 import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
+import { extractJitiLoadReferences } from "../utils/extract-jiti-load-references.js";
 
 export interface ParsedSource extends SourceModuleAnalysis {
   errors: ProjectAnalysisError[];
@@ -176,12 +177,13 @@ const ASTRO_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/;
 const ASTRO_SCRIPT_TAG_PATTERN =
   /<script\b([^>]*?)\/>|<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
 const ASTRO_SCRIPT_SRC_ATTRIBUTE_PATTERN = /\bsrc\s*=\s*["']([^"']+)["']/i;
+const ASTRO_PROPS_EXPORT_PATTERN = /\bexport\s+(?=(?:interface|type)\s+Props\b)/g;
 
 const extractAstroSources = (sourceText: string): string => {
   const sections: string[] = [];
   const frontmatterMatch = sourceText.match(ASTRO_FRONTMATTER_PATTERN);
   if (frontmatterMatch) {
-    sections.push(frontmatterMatch[1]);
+    sections.push(frontmatterMatch[1].replace(ASTRO_PROPS_EXPORT_PATTERN, ""));
   }
   ASTRO_SCRIPT_TAG_PATTERN.lastIndex = 0;
   let scriptMatch: RegExpExecArray | null;
@@ -216,16 +218,24 @@ const extractVueScriptContent = (sourceText: string): string => {
   return scriptBlocks.join("\n");
 };
 
-const SVELTE_SCRIPT_PATTERN = /<script[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi;
+const SVELTE_SCRIPT_PATTERN = /<script([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
+const SVELTE_MODULE_SCRIPT_ATTRIBUTE_PATTERN =
+  /(?:^|\s)(?:context\s*=\s*["']module["']|module)(?:\s|$)/i;
+const SVELTE_PROP_EXPORT_PATTERN = /\bexport\s+(?=let\b)/g;
 
 const extractSvelteScriptContent = (sourceText: string): string => {
   const scriptBlocks: string[] = [];
   let scriptMatch: RegExpExecArray | null;
   SVELTE_SCRIPT_PATTERN.lastIndex = 0;
   while ((scriptMatch = SVELTE_SCRIPT_PATTERN.exec(sourceText)) !== null) {
-    if (scriptMatch[1]) {
-      scriptBlocks.push(scriptMatch[1]);
+    const attributes = scriptMatch[1] ?? "";
+    const scriptBody = scriptMatch[2];
+    if (!scriptBody) continue;
+    if (SVELTE_MODULE_SCRIPT_ATTRIBUTE_PATTERN.test(attributes)) {
+      scriptBlocks.push(scriptBody);
+      continue;
     }
+    scriptBlocks.push(scriptBody.replace(SVELTE_PROP_EXPORT_PATTERN, ""));
   }
   return scriptBlocks.join("\n");
 };
@@ -264,6 +274,7 @@ const parseCssImports = (filePath: string): ParsedSource => {
     localIdentifierReferences: [],
     topLevelImportReferences: [],
     referencedFilenames: [],
+    hasUnknownDynamicModuleLoad: false,
     errors: [],
     isGenerated: false,
   };
@@ -511,6 +522,7 @@ const createEmptyParsedSource = (): ParsedSource => ({
   localIdentifierReferences: [],
   topLevelImportReferences: [],
   referencedFilenames: [],
+  hasUnknownDynamicModuleLoad: false,
   errors: [],
   isGenerated: false,
 });
@@ -532,12 +544,12 @@ const looksLikeBinaryContent = (sourceText: string): boolean => {
 
 const looksLikeMinifiedSource = (sourceText: string): boolean => {
   if (sourceText.length < MINIFIED_DETECTION_MIN_BYTES) return false;
-  let newlineCount = 0;
-  for (let scanIndex = 0; scanIndex < sourceText.length; scanIndex++) {
-    if (sourceText.charCodeAt(scanIndex) === 10) newlineCount++;
-  }
-  const averageLineLength = sourceText.length / (newlineCount + 1);
-  return averageLineLength > MINIFIED_DETECTION_AVG_LINE_LENGTH_THRESHOLD;
+  const lineLengths = sourceText
+    .split("\n")
+    .map((sourceLine) => sourceLine.length)
+    .sort((leftLength, rightLength) => leftLength - rightLength);
+  const medianLineLength = lineLengths[Math.floor(lineLengths.length / 2)];
+  return medianLineLength > MINIFIED_DETECTION_MEDIAN_LINE_LENGTH_THRESHOLD;
 };
 
 const safeReadSourceFile = (
@@ -813,13 +825,10 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     undefined,
   );
 
-  safeWalk(
+  const hasUnknownDynamicModuleLoad = safeWalk(
     "collectDynamicImports",
-    () => {
-      collectDynamicImports(program.body, sourceText, imports);
-      return undefined;
-    },
-    undefined,
+    () => collectDynamicImports(program.body, sourceText, imports),
+    true,
   );
 
   const namespaceLocalNames = collectNamespaceLocalNames(imports);
@@ -862,6 +871,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     localIdentifierReferences,
     topLevelImportReferences,
     referencedFilenames,
+    hasUnknownDynamicModuleLoad,
     errors: [...earlyErrors, ...detectorErrors],
     isGenerated,
   };
@@ -1434,6 +1444,19 @@ const extractGlobPatterns = (callArguments: unknown): string[] => {
     return [];
   }
 
+  if (firstArgument.type === "TemplateLiteral") {
+    const cookedValues = getTemplateCookedValues(firstArgument);
+    if (
+      cookedValues?.length === 1 &&
+      (cookedValues[0].startsWith("./") ||
+        cookedValues[0].startsWith("../") ||
+        cookedValues[0].startsWith("/"))
+    ) {
+      return [cookedValues[0]];
+    }
+    return [];
+  }
+
   if (firstArgument.type === "ArrayExpression") {
     if (!Array.isArray(firstArgument.elements)) return [];
     return firstArgument.elements.flatMap((element) => {
@@ -1551,11 +1574,30 @@ const collectDynamicImports = (
   bodyNodes: Array<Statement | ModuleDeclaration>,
   sourceText: string,
   imports: ImportReference[],
-): void => {
+): boolean => {
+  const jitiLoadReferences = extractJitiLoadReferences(sourceText);
+  let hasUnknownDynamicModuleLoad = jitiLoadReferences.some(
+    (jitiLoadReference) => jitiLoadReference.path === undefined,
+  );
+  for (const jitiLoadReference of jitiLoadReferences) {
+    if (!jitiLoadReference.path) continue;
+    imports.push({
+      specifier: jitiLoadReference.path,
+      importedNames: [createNamespaceImportBinding()],
+      isTypeOnly: false,
+      isDynamic: true,
+      isSideEffect: false,
+      line: jitiLoadReference.line,
+      column: jitiLoadReference.column,
+    });
+  }
   const walkNode = (node: WalkableNode, parentNode?: WalkableNode): void => {
     if (node.type === "ImportExpression") {
       const sourceExpression = isWalkableNode(node.source) ? node.source : undefined;
-      if (!sourceExpression) return;
+      if (!sourceExpression) {
+        hasUnknownDynamicModuleLoad = true;
+        return;
+      }
       if (sourceExpression.type === "Literal") {
         if (typeof sourceExpression.value === "string" && sourceExpression.value) {
           imports.push({
@@ -1583,14 +1625,33 @@ const collectDynamicImports = (
               line: getLineFromOffset(sourceText, node.start),
               column: getColumnFromOffset(sourceText, node.start),
             });
+          } else {
+            hasUnknownDynamicModuleLoad = true;
           }
+        } else {
+          hasUnknownDynamicModuleLoad = true;
         }
+      } else {
+        hasUnknownDynamicModuleLoad = true;
       }
       return;
     }
 
     if (node.type === "CallExpression") {
       const callee = isWalkableNode(node.callee) ? node.callee : undefined;
+      const directCalleeName = getIdentifierName(callee);
+      const memberCalleeName =
+        callee?.type === "MemberExpression" && !callee.computed
+          ? getIdentifierName(callee.property)
+          : undefined;
+      if (
+        directCalleeName === "readdir" ||
+        directCalleeName === "readdirSync" ||
+        memberCalleeName === "readdir" ||
+        memberCalleeName === "readdirSync"
+      ) {
+        hasUnknownDynamicModuleLoad = true;
+      }
       if (getIdentifierName(callee) === "require") {
         const requireSpecifier = extractStringLiteralFromArgument(node.arguments);
         if (requireSpecifier) {
@@ -1626,6 +1687,8 @@ const collectDynamicImports = (
             line: getLineFromOffset(sourceText, node.start),
             column: getColumnFromOffset(sourceText, node.start),
           });
+        } else {
+          hasUnknownDynamicModuleLoad = true;
         }
       }
 
@@ -1646,6 +1709,8 @@ const collectDynamicImports = (
               line: getLineFromOffset(sourceText, node.start),
               column: getColumnFromOffset(sourceText, node.start),
             });
+          } else {
+            hasUnknownDynamicModuleLoad = true;
           }
         }
 
@@ -1661,6 +1726,8 @@ const collectDynamicImports = (
               line: getLineFromOffset(sourceText, node.start),
               column: getColumnFromOffset(sourceText, node.start),
             });
+          } else {
+            hasUnknownDynamicModuleLoad = true;
           }
         }
 
@@ -1694,6 +1761,7 @@ const collectDynamicImports = (
         }
         if (isImportMeta(callee.object) && propertyName === "glob") {
           const globPatterns = extractGlobPatterns(node.arguments);
+          if (globPatterns.length === 0) hasUnknownDynamicModuleLoad = true;
           for (const globPattern of globPatterns) {
             imports.push({
               specifier: globPattern,
@@ -1730,6 +1798,8 @@ const collectDynamicImports = (
               line: getLineFromOffset(sourceText, node.start),
               column: getColumnFromOffset(sourceText, node.start),
             });
+          } else {
+            hasUnknownDynamicModuleLoad = true;
           }
         }
       }
@@ -1819,6 +1889,7 @@ const collectDynamicImports = (
   for (const topLevelNode of bodyNodes) {
     if (isWalkableNode(topLevelNode)) walkNode(topLevelNode);
   }
+  return hasUnknownDynamicModuleLoad;
 };
 
 const ROUTE_CALL_FILE_ARG_INDEX: Record<string, number> = {

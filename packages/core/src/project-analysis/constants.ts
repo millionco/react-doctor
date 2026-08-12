@@ -55,6 +55,7 @@ export const HIDDEN_DIRECTORY_ALLOWLIST = [
 ];
 
 export const OUTPUT_DIRECTORIES = ["dist", "build", "out", "esm", "cjs"];
+export const SOURCE_FALLBACK_OUTPUT_DIRECTORIES = [...OUTPUT_DIRECTORIES, "lib"];
 
 export const SOURCE_EXTENSIONS = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
 
@@ -82,6 +83,10 @@ export const DEFAULT_ENTRY_GLOBS = [
   "index.{ts,tsx,js,jsx}",
   "main.{ts,tsx,js,jsx}",
 ];
+
+export const UNUSED_FILE_INCOMPLETE_CONTAINER_EXTENSIONS = [".astro", ".mdx", ".svelte", ".vue"];
+
+export const UNUSED_FILE_UNSUPPORTED_FRAMEWORK_DEPENDENCIES = ["electron", "expo", "react-native"];
 
 export const EXPO_CONFIG_SCAN_MAX_DEPTH = 6;
 
@@ -311,6 +316,8 @@ export const RESOLVER_EXTENSIONS = [
 
 export const SHALLOW_WORKSPACE_MAX_DEPTH = 2;
 
+export const TOOLING_SOURCE_MAX_DEPTH = 8;
+
 export const MAX_CYCLES_PER_SCC = 20;
 
 export const MAX_TOTAL_CYCLES = 200;
@@ -327,6 +334,6 @@ export const BINARY_DETECTION_NULL_BYTE_THRESHOLD = 4;
 
 export const MINIFIED_DETECTION_MIN_BYTES = 5000;
 
-export const MINIFIED_DETECTION_AVG_LINE_LENGTH_THRESHOLD = 500;
+export const MINIFIED_DETECTION_MEDIAN_LINE_LENGTH_THRESHOLD = 500;
 
 export const GIT_CHECK_IGNORE_MAX_BUFFER_BYTES = 10 * 1024 * 1024;

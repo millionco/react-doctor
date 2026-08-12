@@ -27,6 +27,8 @@ interface BuildModuleLinkInputsOptions {
 interface ModuleLinkInputsResult {
   graphInputs: ModuleLinkInput[];
   errors: ProjectAnalysisError[];
+  resolvedLocalImportSpecifiersByFilePath: Map<string, Set<string>>;
+  unresolvedImportingFilePaths: Set<string>;
 }
 
 interface ModuleResolutionContext {
@@ -163,11 +165,17 @@ const buildSourceModuleLinkInputs = (
 ): ModuleLinkInputsResult => {
   const errors: ProjectAnalysisError[] = [];
   const productionEntryPaths = new Set(options.resolvedEntries.productionEntries);
+  const authoritativeProductionEntryPaths = new Set(
+    options.resolvedEntries.authoritativeProductionEntries,
+  );
+  const explicitProductionEntryPaths = new Set(options.resolvedEntries.explicitProductionEntries);
   const testEntryPaths = new Set(options.resolvedEntries.testEntries);
   const alwaysUsedFilePaths = new Set(options.resolvedEntries.alwaysUsedFiles);
   const externallyConsumedFilePaths = new Set(options.resolvedEntries.externallyConsumedFiles);
   const analysisExcludedFilePaths = new Set(options.resolvedEntries.analysisExcludedFiles);
   const graphInputs: ModuleLinkInput[] = [];
+  const resolvedLocalImportSpecifiersByFilePath = new Map<string, Set<string>>();
+  const unresolvedImportingFilePaths = new Set<string>();
   const resolutionContext: ModuleResolutionContext = {
     errors,
     resolveModule: options.resolveModule,
@@ -193,6 +201,21 @@ const buildSourceModuleLinkInputs = (
     };
     const resolvedImports = collectSourceImports(parsedModule, file.path, resolutionContext);
     collectReExportImports(parsedModule, file.path, resolvedImports, resolutionContext);
+    const resolvedLocalImportSpecifiers = new Set(
+      [...resolvedImports]
+        .filter(([, resolvedImport]) => resolvedImport.resolvedPath && !resolvedImport.isExternal)
+        .map(([specifier]) => specifier),
+    );
+    if (resolvedLocalImportSpecifiers.size > 0) {
+      resolvedLocalImportSpecifiersByFilePath.set(file.path, resolvedLocalImportSpecifiers);
+    }
+    if (
+      [...resolvedImports.values()].some(
+        (resolvedImport) => !resolvedImport.resolvedPath && !resolvedImport.isExternal,
+      )
+    ) {
+      unresolvedImportingFilePaths.add(file.path);
+    }
 
     graphInputs.push({
       fileId: file,
@@ -208,10 +231,18 @@ const buildSourceModuleLinkInputs = (
       isAnalysisExcluded:
         analysisExcludedFilePaths.has(file.path) ||
         isProjectAnalysisExcludedPath(file.path, options.projectRootDirectories[0]),
+      isAuthoritativeEntryPoint:
+        authoritativeProductionEntryPaths.has(file.path) || alwaysUsedFilePaths.has(file.path),
+      isExplicitEntryPoint: explicitProductionEntryPaths.has(file.path),
     });
   }
 
-  return { graphInputs, errors };
+  return {
+    graphInputs,
+    errors,
+    resolvedLocalImportSpecifiersByFilePath,
+    unresolvedImportingFilePaths,
+  };
 };
 
 const findUndiscoveredStyleFilePath = (
@@ -279,6 +310,8 @@ const buildStyleModuleLinkInputs = (
 ): ModuleLinkInputsResult => {
   const errors: ProjectAnalysisError[] = [];
   const graphInputs: ModuleLinkInput[] = [];
+  const resolvedLocalImportSpecifiersByFilePath = new Map<string, Set<string>>();
+  const unresolvedImportingFilePaths = new Set<string>();
   const discoveredFilePaths = new Set(options.files.map((file) => file.path));
   const pendingStyleFilePaths = collectPendingStyleFilePaths(
     sourceGraphInputs,
@@ -303,6 +336,21 @@ const buildStyleModuleLinkInputs = (
       styleFilePath,
       discoveryContext,
     );
+    const resolvedLocalImportSpecifiers = new Set(
+      [...resolvedStyleImports]
+        .filter(([, resolvedImport]) => resolvedImport.resolvedPath && !resolvedImport.isExternal)
+        .map(([specifier]) => specifier),
+    );
+    if (resolvedLocalImportSpecifiers.size > 0) {
+      resolvedLocalImportSpecifiersByFilePath.set(styleFilePath, resolvedLocalImportSpecifiers);
+    }
+    if (
+      [...resolvedStyleImports.values()].some(
+        (resolvedImport) => !resolvedImport.resolvedPath && !resolvedImport.isExternal,
+      )
+    ) {
+      unresolvedImportingFilePaths.add(styleFilePath);
+    }
 
     graphInputs.push({
       fileId: { index: nextFileIndex, path: styleFilePath },
@@ -316,12 +364,19 @@ const buildStyleModuleLinkInputs = (
         styleFilePath,
         options.projectRootDirectories[0],
       ),
+      isAuthoritativeEntryPoint: false,
+      isExplicitEntryPoint: false,
     });
     discoveredFilePaths.add(styleFilePath);
     nextFileIndex++;
   }
 
-  return { graphInputs, errors };
+  return {
+    graphInputs,
+    errors,
+    resolvedLocalImportSpecifiersByFilePath,
+    unresolvedImportingFilePaths,
+  };
 };
 
 export const buildModuleLinkInputs = (
@@ -332,5 +387,13 @@ export const buildModuleLinkInputs = (
   return {
     graphInputs: [...sourceResult.graphInputs, ...styleResult.graphInputs],
     errors: [...sourceResult.errors, ...styleResult.errors],
+    resolvedLocalImportSpecifiersByFilePath: new Map([
+      ...sourceResult.resolvedLocalImportSpecifiersByFilePath,
+      ...styleResult.resolvedLocalImportSpecifiersByFilePath,
+    ]),
+    unresolvedImportingFilePaths: new Set([
+      ...sourceResult.unresolvedImportingFilePaths,
+      ...styleResult.unresolvedImportingFilePaths,
+    ]),
   };
 };

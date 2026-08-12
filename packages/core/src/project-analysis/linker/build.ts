@@ -23,6 +23,8 @@ export interface ModuleLinkInput {
   isTestEntry: boolean;
   isGitIgnored: boolean;
   isAnalysisExcluded: boolean;
+  isAuthoritativeEntryPoint: boolean;
+  isExplicitEntryPoint: boolean;
 }
 
 export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph => {
@@ -48,6 +50,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
     localIdentifierReferences: input.parsed.localIdentifierReferences,
     topLevelImportReferences: input.parsed.topLevelImportReferences,
     referencedFilenames: input.parsed.referencedFilenames,
+    hasUnknownDynamicModuleLoad: input.parsed.hasUnknownDynamicModuleLoad,
     parseErrors: input.parsed.errors,
     isEntryPoint: input.isEntryPoint,
     isExternallyConsumed: input.isExternallyConsumed,
@@ -60,6 +63,10 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
     isConfigFile: isConfigFile(input.fileId.path),
     isGitIgnored: input.isGitIgnored,
     isAnalysisExcluded: input.isAnalysisExcluded || input.parsed.isGenerated,
+    isAuthoritativeEntryPoint: input.isAuthoritativeEntryPoint,
+    isExplicitEntryPoint: input.isExplicitEntryPoint,
+    isPackageGraphComplete: false,
+    hasPackageDynamicLoaderUncertainty: false,
   }));
 
   const edges: Edge[] = [];

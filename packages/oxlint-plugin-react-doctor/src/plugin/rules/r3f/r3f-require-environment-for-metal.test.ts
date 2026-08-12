@@ -9,6 +9,8 @@ describe("r3f-require-environment-for-metal", () => {
     `import { Canvas as FiberCanvas } from "@react-three/fiber";
      const METALNESS = 3 / 4;
      const Scene = () => <FiberCanvas><mesh><sphereGeometry /><meshPhysicalMaterial metalness={METALNESS} /></mesh></FiberCanvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = () => <Canvas><mesh><boxGeometry /><meshStandardMaterial metalness={1} envMap={null} /></mesh></Canvas>;`,
   ])("reports strongly metallic materials in a closed Canvas without an environment", (code) => {
     expect(runRule(r3fRequireEnvironmentForMetal, code).diagnostics).toHaveLength(1);
   });

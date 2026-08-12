@@ -2,6 +2,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { getAuthoritativeJsxAttribute } from "../../../utils/get-authoritative-jsx-attribute.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../../utils/is-nullish-expression.js";
 import { resolveJsxElementType } from "../../../utils/resolve-jsx-element-type.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { PBR_MATERIAL_CONSTRUCTOR_NAMES, THREE_LIGHT_CONSTRUCTOR_NAMES } from "../constants.js";
@@ -9,9 +10,9 @@ import { DREI_PUBLIC_MODULES } from "./drei-public-modules.js";
 import { getApiReferenceProvenance } from "./get-api-reference-provenance.js";
 import { getJsxAttributeExpression } from "./get-jsx-attribute-expression.js";
 import { getR3fConstructorName } from "./get-r3f-constructor-name.js";
+import { getR3fSurfaceVisibility } from "./get-r3f-surface-visibility.js";
 import { getStaticNumber } from "./get-static-number.js";
 import { isR3fHostIntrinsic } from "./is-r3f-host-intrinsic.js";
-import { readStaticJsxBooleanAttribute } from "./read-static-jsx-boolean-attribute.js";
 
 export interface ClosedR3fPbrMaterialFact {
   constructorName: string;
@@ -33,6 +34,16 @@ const hasAttribute = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   attributeName: string,
 ): boolean => Boolean(getAuthoritativeJsxAttribute(node.attributes, attributeName));
+
+const hasNonNullishAttribute = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  attributeName: string,
+): boolean => {
+  const attribute = getAuthoritativeJsxAttribute(node.attributes, attributeName);
+  if (!attribute) return false;
+  const expression = getJsxAttributeExpression(node, attributeName);
+  return expression === null || (expression !== undefined && !isNullishExpression(expression));
+};
 
 const isDefaultMeshMaterial = (
   material: EsTreeNodeOfType<"JSXElement">,
@@ -133,21 +144,15 @@ export const analyzeClosedR3fCanvasLighting = (
         PBR_MATERIAL_CONSTRUCTOR_NAMES.has(constructorName) &&
         isDefaultMeshMaterial(child, parent)
       ) {
-        const opacityExpression = getJsxAttributeExpression(openingElement, "opacity");
-        const opacity = opacityExpression
-          ? getStaticNumber(opacityExpression, context.scopes)
+        const surfaceVisibility = parent
+          ? getR3fSurfaceVisibility(parent, openingElement, context)
           : null;
-        const transparentAttribute = getAuthoritativeJsxAttribute(
-          openingElement.attributes,
-          "transparent",
-        );
-        const isFullyTransparent = Boolean(
-          transparentAttribute &&
-          readStaticJsxBooleanAttribute(transparentAttribute) === true &&
-          opacity !== null &&
-          opacity <= 0,
-        );
-        if (isFullyTransparent) {
+        if (surfaceVisibility === null) {
+          analysis.isComplete = false;
+          visitChildren(child.children, child, childIsVisible);
+          continue;
+        }
+        if (!surfaceVisibility) {
           visitChildren(child.children, child, childIsVisible);
           continue;
         }
@@ -162,11 +167,12 @@ export const analyzeClosedR3fCanvasLighting = (
           analysis.materials.push({
             constructorName,
             hasEmissiveSource:
-              hasAttribute(openingElement, "emissive") ||
-              hasAttribute(openingElement, "emissiveNode"),
+              hasNonNullishAttribute(openingElement, "emissive") ||
+              hasNonNullishAttribute(openingElement, "emissiveNode"),
             hasEnvironmentMap:
-              hasAttribute(openingElement, "envMap") || hasAttribute(openingElement, "envNode"),
-            hasLightMap: hasAttribute(openingElement, "lightMap"),
+              hasNonNullishAttribute(openingElement, "envMap") ||
+              hasNonNullishAttribute(openingElement, "envNode"),
+            hasLightMap: hasNonNullishAttribute(openingElement, "lightMap"),
             metalness: metalnessExpression
               ? getStaticNumber(metalnessExpression, context.scopes)
               : null,

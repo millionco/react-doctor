@@ -8,6 +8,7 @@ import { UV_ATTRIBUTE_NAMES, UV_MAPPED_MATERIAL_CONSTRUCTOR_NAMES } from "./cons
 import { getActiveR3fMaterialTexturePropertyNames } from "./utils/get-active-r3f-material-texture-property-names.js";
 import { getClosedR3fBufferGeometryAttributes } from "./utils/get-closed-r3f-buffer-geometry-attributes.js";
 import { getR3fConstructorName } from "./utils/get-r3f-constructor-name.js";
+import { getR3fSurfaceVisibility } from "./utils/get-r3f-surface-visibility.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isR3fHostIntrinsic } from "./utils/is-r3f-host-intrinsic.js";
 
@@ -52,7 +53,8 @@ export const r3fRequireUvForTextureMap = defineRule({
             getActiveR3fMaterialTexturePropertyNames(
               child.openingElement,
               getR3fConstructorName(elementType),
-            ).length > 0,
+            ).length > 0 &&
+            !getAuthoritativeJsxAttribute(child.openingElement.attributes, "attach"),
           );
         });
         if (geometryChildren.length !== 1 || mappedMaterialChildren.length !== 1) return;
@@ -82,6 +84,7 @@ export const r3fRequireUvForTextureMap = defineRule({
         }
         const materialType = resolveJsxElementType(material.openingElement);
         if (!materialType) return;
+        if (getR3fSurfaceVisibility(node, material.openingElement, context) !== true) return;
         const texturePropertyNames = getActiveR3fMaterialTexturePropertyNames(
           material.openingElement,
           getR3fConstructorName(materialType),

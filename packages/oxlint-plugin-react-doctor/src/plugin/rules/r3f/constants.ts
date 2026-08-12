@@ -89,6 +89,17 @@ export const THREE_LIGHT_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
   "RectAreaLight",
   "SpotLight",
 ]);
+export const THREE_LIGHT_INTENSITY_ARGUMENT_INDEX_BY_CONSTRUCTOR: ReadonlyMap<string, number> =
+  new Map([
+    ["AmbientLight", 1],
+    ["DirectionalLight", 1],
+    ["HemisphereLight", 2],
+    ["LightProbe", 1],
+    ["PointLight", 1],
+    ["RectAreaLight", 1],
+    ["SpotLight", 1],
+  ]);
+export const DEFAULT_THREE_LIGHT_INTENSITY = 1;
 export const METAL_ENVIRONMENT_THRESHOLD = 0.5;
 export const LIT_MATERIAL_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
   "MeshLambertMaterial",

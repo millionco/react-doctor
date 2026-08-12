@@ -14,6 +14,16 @@ describe("three-require-lighting-for-pbr", () => {
      scene.add(new THREE.Mesh(geometry, material));
      const renderer = new THREE.WebGLRenderer();
      renderer.render(scene, camera);`,
+    `import { AmbientLight, Mesh, MeshStandardMaterial, Scene, WebGLRenderer } from "three";
+     const scene = new Scene();
+     scene.add(new AmbientLight(0xffffff, 0), new Mesh(geometry, new MeshStandardMaterial()));
+     new WebGLRenderer().render(scene, camera);`,
+    `import { AmbientLight, Mesh, MeshStandardMaterial, Scene, WebGLRenderer } from "three";
+     const scene = new Scene();
+     const light = new AmbientLight();
+     light.intensity = 0;
+     scene.add(light, new Mesh(geometry, new MeshStandardMaterial()));
+     new WebGLRenderer().render(scene, camera);`,
   ])("reports PBR materials in a closed rendered scene without lighting", (code) => {
     expect(runRule(threeRequireLightingForPbr, code).diagnostics).toHaveLength(1);
   });

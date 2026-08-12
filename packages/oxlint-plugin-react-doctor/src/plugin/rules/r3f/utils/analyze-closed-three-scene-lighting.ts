@@ -12,6 +12,7 @@ import { walkAst } from "../../../utils/walk-ast.js";
 import { THREE_LIGHT_CONSTRUCTOR_NAMES, THREE_MESH_MATERIAL_ARGUMENT_INDEX } from "../constants.js";
 import type { StaticThreePbrMaterialLighting } from "./get-static-three-pbr-material-lighting.js";
 import { getStaticThreePbrMaterialLighting } from "./get-static-three-pbr-material-lighting.js";
+import { getStaticThreeLightIntensity } from "./get-static-three-light-intensity.js";
 import { resolveThreeConstructor } from "./resolve-three-constructor.js";
 
 export interface ClosedThreeSceneLighting {
@@ -92,7 +93,12 @@ export const analyzeClosedThreeSceneLighting = (
             return;
           }
           if (THREE_LIGHT_CONSTRUCTOR_NAMES.has(constructor.constructorName)) {
-            hasLight = true;
+            const light = getStaticThreeLightIntensity(argument, node, renderCall, context);
+            if (!light?.isComplete) {
+              isComplete = false;
+              return;
+            }
+            if (light.intensity > 0) hasLight = true;
             continue;
           }
           if (constructor.constructorName === "Mesh") {

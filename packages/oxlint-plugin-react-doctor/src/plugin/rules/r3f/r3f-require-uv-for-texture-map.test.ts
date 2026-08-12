@@ -31,6 +31,14 @@ describe("r3f-require-uv-for-texture-map", () => {
      const Scene = ({ texture }) => <Canvas><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshBasicMaterial normalMap={texture} /></mesh></Canvas>;`,
     `import { Canvas } from "@react-three/fiber";
      const Scene = ({ texture }) => <Canvas><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshToonMaterial gradientMap={texture} /></mesh></Canvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = ({ texture }) => <Canvas><group visible={false}><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial map={texture} /></mesh></group></Canvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = ({ texture }) => <Canvas><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial map={texture} transparent opacity={0} /></mesh></Canvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = ({ texture, visible }) => <Canvas><mesh visible={visible}><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial map={texture} /></mesh></Canvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = ({ texture }) => <Canvas><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial attach="customDepthMaterial" map={texture} /></mesh></Canvas>;`,
   ])("keeps valid and unresolved mapped geometry quiet", (code) => {
     expect(runRule(r3fRequireUvForTextureMap, code).diagnostics).toHaveLength(0);
   });

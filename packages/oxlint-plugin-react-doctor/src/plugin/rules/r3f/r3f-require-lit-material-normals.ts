@@ -8,6 +8,7 @@ import { LIT_MATERIAL_CONSTRUCTOR_NAMES } from "./constants.js";
 import { getActiveR3fMaterialTexturePropertyNames } from "./utils/get-active-r3f-material-texture-property-names.js";
 import { getClosedR3fBufferGeometryAttributes } from "./utils/get-closed-r3f-buffer-geometry-attributes.js";
 import { getR3fConstructorName } from "./utils/get-r3f-constructor-name.js";
+import { getR3fSurfaceVisibility } from "./utils/get-r3f-surface-visibility.js";
 import { hasR3fRuntimeImport } from "./utils/has-r3f-runtime-import.js";
 import { isR3fHostIntrinsic } from "./utils/is-r3f-host-intrinsic.js";
 
@@ -53,7 +54,8 @@ export const r3fRequireLitMaterialNormals = defineRule({
             getActiveR3fMaterialTexturePropertyNames(
               child.openingElement,
               materialConstructorName,
-            ).includes("normalMap"),
+            ).includes("normalMap") &&
+            !getAuthoritativeJsxAttribute(child.openingElement.attributes, "attach"),
           );
         });
         if (geometryChildren.length !== 1 || materialChildren.length !== 1) return;
@@ -72,6 +74,10 @@ export const r3fRequireLitMaterialNormals = defineRule({
           return;
         }
         const materialType = resolveJsxElementType(materialChildren[0]?.openingElement);
+        const material = materialChildren[0];
+        if (!material || getR3fSurfaceVisibility(node, material.openingElement, context) !== true) {
+          return;
+        }
         context.report({
           node: geometry.openingElement,
           message: `${materialType ?? "This lit material"} applies a normalMap to this custom bufferGeometry, but the geometry defines positions without the normals needed to establish its normal basis`,

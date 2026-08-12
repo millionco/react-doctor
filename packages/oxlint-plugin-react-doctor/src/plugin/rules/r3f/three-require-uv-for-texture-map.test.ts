@@ -68,6 +68,15 @@ describe("three-require-uv-for-texture-map", () => {
      const geometry = new BufferGeometry();
      geometry.setAttribute("position", new BufferAttribute(positions, 3));
      new Mesh(geometry, new ShaderMaterial({ uniforms: { map: { value: new Texture() } } }));`,
+    `import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three";
+     const geometry = new BufferGeometry();
+     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+     new Mesh(geometry, new MeshStandardMaterial({ map: new Texture(), transparent: true, opacity: 0 }));`,
+    `import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three";
+     const geometry = new BufferGeometry();
+     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+     const mesh = new Mesh(geometry, new MeshStandardMaterial({ map: new Texture() }));
+     mesh.visible = false;`,
   ])("keeps valid, channel-aware, and unresolved map contracts quiet", (code) => {
     expect(runRule(threeRequireUvForTextureMap, code).diagnostics).toHaveLength(0);
   });

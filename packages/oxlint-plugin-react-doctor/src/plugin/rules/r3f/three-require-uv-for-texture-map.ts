@@ -9,6 +9,7 @@ import {
 } from "./constants.js";
 import { getStaticThreeBufferGeometryAttributes } from "./utils/get-static-three-buffer-geometry-attributes.js";
 import { getStaticThreeMaterialTextureProperties } from "./utils/get-static-three-material-texture-properties.js";
+import { getStaticThreeMeshVisibility } from "./utils/get-static-three-mesh-visibility.js";
 import { getThreeConstructorName } from "./utils/get-three-constructor-name.js";
 
 export const threeRequireUvForTextureMap = defineRule({
@@ -31,6 +32,8 @@ export const threeRequireUvForTextureMap = defineRule({
       if (
         !attributes?.isComplete ||
         !textureProperties?.isComplete ||
+        !textureProperties.isVisible ||
+        getStaticThreeMeshVisibility(node, context) !== true ||
         !attributes.attributeNames.has("position") ||
         textureProperties.propertyNames.size === 0 ||
         [...UV_ATTRIBUTE_NAMES].some((attributeName) =>

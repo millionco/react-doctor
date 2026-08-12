@@ -59,6 +59,15 @@ describe("three-require-lit-material-normals", () => {
      new Mesh(geometry, material);`,
     `import { Mesh, MeshStandardMaterial } from "three";
      new Mesh(importedGeometry, new MeshStandardMaterial());`,
+    `import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three";
+     const geometry = new BufferGeometry();
+     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+     new Mesh(geometry, new MeshStandardMaterial({ normalMap: new Texture(), visible: false }));`,
+    `import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three";
+     const geometry = new BufferGeometry();
+     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+     const mesh = new Mesh(geometry, new MeshStandardMaterial({ normalMap: new Texture() }));
+     mesh.visible = false;`,
     `import { BufferAttribute, BufferGeometry, Mesh, ShaderMaterial } from "three";
      const geometry = new BufferGeometry();
      geometry.setAttribute("position", new BufferAttribute(positions, 3));

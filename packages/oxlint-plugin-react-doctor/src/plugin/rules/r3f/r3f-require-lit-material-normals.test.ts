@@ -30,6 +30,14 @@ describe("r3f-require-lit-material-normals", () => {
      const Scene = () => <Canvas><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshBasicMaterial /></mesh></Canvas>;`,
     `import { Canvas } from "@react-three/fiber";
      const Scene = () => <Canvas><mesh geometry={geometry}><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial /></mesh></Canvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = ({ texture }) => <Canvas><group visible={false}><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial normalMap={texture} /></mesh></group></Canvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = ({ texture }) => <Canvas><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial normalMap={texture} transparent opacity={0} /></mesh></Canvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = ({ texture, visible }) => <Canvas><mesh visible={visible}><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial normalMap={texture} /></mesh></Canvas>;`,
+    `import { Canvas } from "@react-three/fiber";
+     const Scene = ({ texture }) => <Canvas><mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial attach="customDepthMaterial" normalMap={texture} /></mesh></Canvas>;`,
     `const Scene = () => <mesh><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><meshStandardMaterial /></mesh>;`,
   ])("keeps valid, externally mutable, and unrelated geometry quiet", (code) => {
     expect(runRule(r3fRequireLitMaterialNormals, code).diagnostics).toHaveLength(0);

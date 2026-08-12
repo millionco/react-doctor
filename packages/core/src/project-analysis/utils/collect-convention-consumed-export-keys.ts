@@ -245,7 +245,9 @@ export const collectConventionConsumedExportKeys = (
         );
       }
       isReferencedNextraThemeConfig = Boolean(
-        themeConfigPathsByPackageDirectory.get(packageDirectory)?.has(canonicalModuleFilePath),
+        themeConfigPathsByPackageDirectory
+          .get(packageDirectory)
+          ?.has(toPosixPath(canonicalModuleFilePath)),
       );
     }
 

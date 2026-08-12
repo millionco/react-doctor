@@ -202,6 +202,21 @@ describe("react-builtins/no-multi-comp — regressions", () => {
     );
   });
 
+  // Regression test for issue #1639: A file with 3 components where 1 is
+  // exported falls under the "feature module" exemption (1-2 exports + private
+  // helpers). This is intentional — users who want strict "one component per
+  // file" enforcement should use oxlint's `react/no-multi-comp` via
+  // `.oxlintrc.json` instead of the lenient react-doctor version.
+  it("exempts a file with 1 exported component + 2 private helpers (feature module)", () => {
+    expectPass(
+      `function Row() { return <li>row</li>; }
+       function Header() { return <h1>header</h1>; }
+       export function List() {
+         return <div><Header /><Row /></div>;
+       }`,
+    );
+  });
+
   it("does not trace an overwritten mutable React HoC alias", () => {
     expectFail(
       `import { memo } from "react";

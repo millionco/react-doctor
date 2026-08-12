@@ -23,6 +23,20 @@ import { REACT_HOC_NAMES, REACT_RUNTIME_MODULE_SOURCES } from "../../constants/r
 const MESSAGE =
   "This file declares several components, so each component is harder to find, test, and change.";
 
+// React Doctor's `no-multi-comp` is intentionally more lenient than oxlint's
+// `react/no-multi-comp` to accommodate common real-world React patterns:
+//
+// - Files with ≤2 components (1 main + 1 helper) are exempt
+// - Feature modules (1-2 public exports + private helpers) are exempt
+// - Barrel files (mostly-exported components) are exempt
+//
+// For stricter "one component per file" enforcement matching oxlint's behavior,
+// create an `.oxlintrc.json` with:
+//   {"plugins": ["react"], "rules": {"react/no-multi-comp": "error"}}
+//
+// This rule was corpus-tuned to avoid false positives in design systems,
+// feature modules, and icon barrels. See regression tests for examples.
+
 interface NoMultiCompSettings {
   ignoreStateless?: boolean;
 }

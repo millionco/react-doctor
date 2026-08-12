@@ -73,6 +73,7 @@ export default defineConfig({
         alwaysBundle: [
           "commander",
           "ink",
+          "ink-spinner",
           "ora",
           "react",
           "react-devtools-core",

@@ -2,6 +2,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findTransparentExpressionRoot } from "../../../utils/find-transparent-expression-root.js";
 import { findProgramRoot } from "../../../utils/find-program-root.js";
 import { getStaticPropertyName } from "../../../utils/get-static-property-name.js";
+import { isNodeConditionallyExecuted } from "../../../utils/is-node-conditionally-executed.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { readStaticBoolean } from "../../../utils/read-static-boolean.js";
 import { resolveExpressionKey } from "../../../utils/resolve-expression-key.js";
@@ -39,7 +40,8 @@ export const getStaticThreeMeshVisibility = (
   }
   const program = findProgramRoot(expression);
   if (!program) return null;
-  let hasStaticHiddenWrite = false;
+  const owner = context.cfg.enclosingFunction(expression) ?? program;
+  let isVisible = true;
   let isComplete = true;
   walkAst(program, (node) => {
     if (!isComplete) return;
@@ -77,10 +79,17 @@ export const getStaticThreeMeshVisibility = (
     ) {
       return;
     }
-    const isVisible = readStaticBoolean(node.right);
-    if (isVisible === null) isComplete = false;
-    else if (!isVisible) hasStaticHiddenWrite = true;
+    if (
+      (context.cfg.enclosingFunction(node) ?? program) !== owner ||
+      isNodeConditionallyExecuted(node, owner)
+    ) {
+      isComplete = false;
+      return;
+    }
+    const staticVisibility = readStaticBoolean(node.right);
+    if (staticVisibility === null) isComplete = false;
+    else isVisible = staticVisibility;
   });
   if (!isComplete) return null;
-  return !hasStaticHiddenWrite;
+  return isVisible;
 };

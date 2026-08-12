@@ -70,6 +70,10 @@ describe("three-require-lighting-for-pbr", () => {
      const scene = new Scene();
      scene.add(new Mesh(geometry, new MeshStandardMaterial({ transparent: true, opacity: 0 })));
      new WebGLRenderer().render(scene, camera);`,
+    `import { AmbientLight, Mesh, MeshStandardMaterial, Scene, WebGLRenderer } from "three";
+     const scene = new Scene();
+     scene.add(new AmbientLight(...lightArguments), new Mesh(geometry, new MeshStandardMaterial()));
+     new WebGLRenderer().render(scene, camera);`,
   ])("keeps lit, self-lit, and open rendered-scene contracts quiet", (code) => {
     expect(runRule(threeRequireLightingForPbr, code).diagnostics).toHaveLength(0);
   });

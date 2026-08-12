@@ -19,6 +19,12 @@ describe("three-require-uv-for-texture-map", () => {
      const geometry = new BufferGeometry();
      geometry.setAttribute("position", new BufferAttribute(positions, 3));
      new Mesh(geometry, new MeshPhysicalMaterial({ anisotropyMap: new Texture() }));`,
+    `import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three";
+     const geometry = new BufferGeometry();
+     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+     const mesh = new Mesh(geometry, new MeshStandardMaterial({ map: new Texture() }));
+     mesh.visible = false;
+     mesh.visible = true;`,
   ])("reports closed mapped geometry without UVs", (code) => {
     expect(runRule(threeRequireUvForTextureMap, code).diagnostics).toHaveLength(1);
   });
@@ -77,6 +83,11 @@ describe("three-require-uv-for-texture-map", () => {
      geometry.setAttribute("position", new BufferAttribute(positions, 3));
      const mesh = new Mesh(geometry, new MeshStandardMaterial({ map: new Texture() }));
      mesh.visible = false;`,
+    `import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three";
+     const geometry = new BufferGeometry();
+     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+     const mesh = new Mesh(geometry, new MeshStandardMaterial({ map: new Texture() }));
+     if (shouldHide) mesh.visible = false;`,
   ])("keeps valid, channel-aware, and unresolved map contracts quiet", (code) => {
     expect(runRule(threeRequireUvForTextureMap, code).diagnostics).toHaveLength(0);
   });

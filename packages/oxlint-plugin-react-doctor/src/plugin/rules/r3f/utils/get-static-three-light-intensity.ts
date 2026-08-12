@@ -34,14 +34,16 @@ export const getStaticThreeLightIntensity = (
   const intensityArgument = constructor.node.arguments[intensityArgumentIndex];
   let intensity = DEFAULT_THREE_LIGHT_INTENSITY;
   let isComplete = true;
-  if (intensityArgument) {
-    if (isNodeOfType(intensityArgument, "SpreadElement")) {
-      isComplete = false;
-    } else {
-      const staticIntensity = getStaticNumber(intensityArgument, context.scopes);
-      if (staticIntensity === null) isComplete = false;
-      else intensity = staticIntensity;
-    }
+  if (
+    constructor.node.arguments
+      .slice(0, intensityArgumentIndex + 1)
+      .some((argument) => isNodeOfType(argument, "SpreadElement"))
+  ) {
+    isComplete = false;
+  } else if (intensityArgument) {
+    const staticIntensity = getStaticNumber(intensityArgument, context.scopes);
+    if (staticIntensity === null) isComplete = false;
+    else intensity = staticIntensity;
   }
   const lightKey = resolveExpressionKey(expression, context);
   if (!lightKey) {

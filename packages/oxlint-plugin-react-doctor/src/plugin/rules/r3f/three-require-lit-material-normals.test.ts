@@ -16,6 +16,12 @@ describe("three-require-lit-material-normals", () => {
      const material = new THREE.MeshPhongMaterial();
      material.normalMap = new THREE.Texture();
      new THREE.Mesh(geometry, material);`,
+    `import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three";
+     const geometry = new BufferGeometry();
+     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+     const mesh = new Mesh(geometry, new MeshStandardMaterial({ normalMap: new Texture() }));
+     mesh.visible = false;
+     mesh.visible = true;`,
   ])("reports closed custom geometry without normals", (code) => {
     expect(runRule(threeRequireLitMaterialNormals, code).diagnostics).toHaveLength(1);
   });
@@ -68,6 +74,11 @@ describe("three-require-lit-material-normals", () => {
      geometry.setAttribute("position", new BufferAttribute(positions, 3));
      const mesh = new Mesh(geometry, new MeshStandardMaterial({ normalMap: new Texture() }));
      mesh.visible = false;`,
+    `import { BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, Texture } from "three";
+     const geometry = new BufferGeometry();
+     geometry.setAttribute("position", new BufferAttribute(positions, 3));
+     const mesh = new Mesh(geometry, new MeshStandardMaterial({ normalMap: new Texture() }));
+     if (shouldHide) mesh.visible = false;`,
     `import { BufferAttribute, BufferGeometry, Mesh, ShaderMaterial } from "three";
      const geometry = new BufferGeometry();
      geometry.setAttribute("position", new BufferAttribute(positions, 3));

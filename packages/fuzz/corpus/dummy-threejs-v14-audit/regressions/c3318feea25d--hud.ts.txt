@@ -1,0 +1,282 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit c3318feea25dce5f8fb08cafdd486e349f5389e8fcd306b1093ec804cf88c045
+/**
+ * DOM overlay: status readouts, the build deck, contextual prompts, the
+ * between-wave upgrade choice, and the start / end sheets.
+ */
+import type { DefenseKind } from "./defenses";
+import type { Upgrade } from "./waves";
+
+const DECK: { kind: DefenseKind; key: string; name: string; desc: string }[] = [
+  { kind: "turret", key: "1", name: "Lane Turret", desc: "Rails everything in a straight corridor running outward." },
+  { kind: "barrier", key: "2", name: "Ward Barrier", desc: "Solid wall. Husks slide along it into your kill zones." },
+  { kind: "trap", key: "3", name: "Pulse Trap", desc: "Charges, then detonates. Hits harder on tight clusters." },
+];
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+export class Hud {
+  readonly root = el("div");
+  private integrityFill: HTMLElement;
+  private integrityBar: HTMLElement;
+  private integrityValue: HTMLElement;
+  private energyValue: HTMLElement;
+  private waveName: HTMLElement;
+  private waveSub: HTMLElement;
+  private prompt: HTMLElement;
+  private toasts: HTMLElement;
+  private reticle: HTMLElement;
+  private vignette: HTMLElement;
+  private modal: HTMLElement;
+  private cards = new Map<DefenseKind, { root: HTMLElement; foot: HTMLElement }>();
+
+  constructor() {
+    this.root.id = "ui";
+    document.body.appendChild(this.root);
+
+    /* status */
+    const status = el("div", "panel");
+    status.id = "status";
+    const r1 = el("div", "row");
+    r1.appendChild(el("div", "label", "Keep"));
+    this.integrityBar = el("div", "bar");
+    this.integrityBar.id = "integrity-bar";
+    this.integrityFill = el("i");
+    this.integrityBar.appendChild(this.integrityFill);
+    r1.appendChild(this.integrityBar);
+    this.integrityValue = el("div", "value", "100");
+    r1.appendChild(this.integrityValue);
+    const r2 = el("div", "row");
+    r2.appendChild(el("div", "label", "Energy"));
+    this.energyValue = el("div", "value");
+    this.energyValue.id = "energy-value";
+    this.energyValue.textContent = "0";
+    this.energyValue.style.flex = "1";
+    this.energyValue.style.textAlign = "left";
+    r2.appendChild(this.energyValue);
+    status.append(r1, r2);
+    this.root.appendChild(status);
+
+    /* wave banner */
+    const wave = el("div", "panel");
+    wave.id = "wave";
+    this.waveName = el("div", undefined, "Orbkeep");
+    this.waveName.id = "wave-name";
+    this.waveSub = el("div", undefined, "");
+    this.waveSub.id = "wave-sub";
+    wave.append(this.waveName, this.waveSub);
+    this.root.appendChild(wave);
+
+    /* toasts */
+    this.toasts = el("div");
+    this.toasts.id = "toasts";
+    this.root.appendChild(this.toasts);
+
+    /* build deck */
+    const deck = el("div");
+    deck.id = "deck";
+    for (const d of DECK) {
+      const card = el("div", "card");
+      const top = el("div", "card-top");
+      top.appendChild(el("span", "card-key", d.key));
+      top.appendChild(el("span", "card-key", "PLACE"));
+      (top.lastChild as HTMLElement).style.background = "transparent";
+      (top.lastChild as HTMLElement).style.color = "var(--dim)";
+      card.appendChild(top);
+      card.appendChild(el("div", "card-name", d.name));
+      card.appendChild(el("div", "card-desc", d.desc));
+      const foot = el("div", "card-foot", `<span>0</span><span class="lim">0/0</span>`);
+      card.appendChild(foot);
+      deck.appendChild(card);
+      this.cards.set(d.kind, { root: card, foot });
+    }
+    this.root.appendChild(deck);
+
+    /* prompt + help */
+    this.prompt = el("div");
+    this.prompt.id = "prompt";
+    this.root.appendChild(this.prompt);
+
+    const help = el("div", "panel");
+    help.id = "help";
+    help.innerHTML = `<b>WASD</b> move &nbsp; <b>Mouse</b> aim &nbsp; <b>E</b> collect orb<br /><b>1 2 3</b> select defence &nbsp; <b>Click</b> place &nbsp; <b>Q</b> cancel<br /><b>Click</b> with nothing selected fires your sidearm<br /><b>Space</b> start the wave early`;
+    this.root.appendChild(help);
+
+    /* reticle + vignette */
+    this.reticle = el("div");
+    this.reticle.id = "reticle";
+    this.root.appendChild(this.reticle);
+    this.vignette = el("div");
+    this.vignette.id = "vignette";
+    this.root.appendChild(this.vignette);
+
+    /* modal */
+    this.modal = el("div");
+    this.modal.id = "modal";
+    this.root.appendChild(this.modal);
+  }
+
+  setIntegrity(v: number, max: number) {
+    const f = Math.max(0, v / max);
+    this.integrityFill.style.transform = `scaleX(${f})`;
+    this.integrityValue.textContent = String(Math.max(0, Math.ceil(v)));
+    this.integrityBar.classList.toggle("warn", f <= 0.55 && f > 0.28);
+    this.integrityBar.classList.toggle("crit", f <= 0.28);
+  }
+
+  setEnergy(v: number) {
+    this.energyValue.textContent = String(Math.floor(v));
+  }
+
+  setWave(name: string, sub: string) {
+    this.waveName.textContent = name;
+    this.waveSub.innerHTML = sub;
+  }
+
+  setDeck(
+    selected: DefenseKind | null,
+    info: Record<DefenseKind, { cost: number; count: number; max: number; afford: boolean }>,
+  ) {
+    for (const d of DECK) {
+      const c = this.cards.get(d.kind);
+      if (!c) continue;
+      const i = info[d.kind];
+      const full = i.count >= i.max;
+      c.root.classList.toggle("sel", selected === d.kind);
+      c.root.classList.toggle("no", !i.afford || full);
+      c.foot.innerHTML = `<span>${i.cost} energy</span><span class="lim">${i.count}/${i.max}</span>`;
+    }
+  }
+
+  showPrompt(html: string | null) {
+    if (html) {
+      this.prompt.innerHTML = html;
+      this.prompt.classList.add("on");
+    } else {
+      this.prompt.classList.remove("on");
+    }
+  }
+
+  moveReticle(x: number, y: number) {
+    this.reticle.style.left = `${x}px`;
+    this.reticle.style.top = `${y}px`;
+  }
+
+  setReticleVisible(v: boolean) {
+    this.reticle.style.display = v ? "block" : "none";
+  }
+
+  damageFlash(intensity: number) {
+    this.vignette.style.opacity = String(Math.min(0.95, intensity));
+    window.setTimeout(() => {
+      this.vignette.style.opacity = "0";
+    }, 120);
+  }
+
+  toast(text: string, kind: "" | "good" | "bad" = "") {
+    const t = el("div", `toast ${kind}`.trim(), text);
+    this.toasts.appendChild(t);
+    window.setTimeout(() => t.classList.add("out"), 1500);
+    window.setTimeout(() => t.remove(), 1900);
+  }
+
+  private sheet(html: string): HTMLElement {
+    this.modal.innerHTML = "";
+    const s = el("div", "sheet", html);
+    this.modal.appendChild(s);
+    this.modal.classList.add("on");
+    return s;
+  }
+
+  hideModal() {
+    this.modal.classList.remove("on");
+    this.modal.innerHTML = "";
+  }
+
+  get modalOpen() {
+    return this.modal.classList.contains("on");
+  }
+
+  showTitle(onStart: () => void) {
+    const s = this.sheet(`
+      <h1>ORBKEEP</h1>
+      <h2>Four waves. One crystal. Hold the plateau.</h2>
+      <p>You are the keep's courier. Walk the broken ground, draw energy orbs out of the fissures,
+      and spend them on three defences that only work when they work together.</p>
+      <p><b>Lane turrets</b> rail a straight corridor outward and ignore everything behind them.
+      <b>Ward barriers</b> stop husks dead and shove them sideways into someone else's lane.
+      <b>Pulse traps</b> charge slowly and hit hardest when a crowd is standing on them.
+      Anything that slips past your lanes is yours to finish: click with no defence selected
+      to fire the gauntlet.</p>
+      <div class="keys">
+        <span><b>W A S D</b> move</span>
+        <span><b>Mouse</b> aim</span>
+        <span><b>E</b> collect orb</span>
+        <span><b>1 2 3</b> choose defence</span>
+        <span><b>Click</b> place</span>
+        <span><b>Click</b> (nothing selected) sidearm</span>
+        <span><b>Q</b> cancel</span>
+        <span><b>Space</b> start wave early</span>
+      </div>
+      <button class="btn" id="start-btn">Begin the watch</button>
+    `);
+    s.querySelector<HTMLElement>("#start-btn")?.addEventListener("click", onStart);
+  }
+
+  showUpgrades(wave: number, picks: Upgrade[], onPick: (u: Upgrade) => void) {
+    const cards = picks
+      .map(
+        (u, i) => `
+        <div class="pick" data-i="${i}">
+          <span class="tag">${u.tag}</span>
+          <h3>${u.name}</h3>
+          <p>${u.desc}</p>
+          <div class="hint">PRESS ${i + 1}</div>
+        </div>`,
+      )
+      .join("");
+    const s = this.sheet(`
+      <h2>Wave ${["I", "II", "III", "IV"][wave - 1] ?? wave} held</h2>
+      <p>The crystal steadies. Take one boon before the next tide.</p>
+      <div class="picks">${cards}</div>
+    `);
+    s.querySelectorAll<HTMLElement>(".pick").forEach((node) => {
+      node.addEventListener("click", () => {
+        const i = Number(node.dataset.i);
+        const u = picks[i];
+        if (u) onPick(u);
+      });
+    });
+  }
+
+  showEnd(won: boolean, stats: { waves: number; kills: number; energy: number }, onRestart: () => void) {
+    const s = this.sheet(`
+      <h1>${won ? "HELD" : "FALLEN"}</h1>
+      <h2>${won ? "The keep still stands." : "The crystal goes dark."}</h2>
+      <p>${
+        won
+          ? "Four waves broke against your lanes and the light never guttered. The plateau is quiet again."
+          : "The husks reached the heart. The plateau drifts on without its keeper."
+      }</p>
+      <div class="stats">
+        <div><b>${stats.waves}</b>WAVES SURVIVED</div>
+        <div><b>${stats.kills}</b>HUSKS BROKEN</div>
+        <div><b>${stats.energy}</b>ENERGY GATHERED</div>
+      </div>
+      <button class="btn" id="again-btn">Run it again</button>
+    `);
+    s.querySelector<HTMLElement>("#again-btn")?.addEventListener("click", onRestart);
+  }
+}

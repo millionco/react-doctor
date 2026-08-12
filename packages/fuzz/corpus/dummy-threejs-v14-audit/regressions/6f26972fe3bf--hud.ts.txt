@@ -1,0 +1,270 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 6f26972fe3bf5c06d03e77fa568451ec9d116af3bf3395578b28affa77364c2f
+import { CHANNELS, type ChannelId } from "../core/channels";
+
+export type MessageTone = "good" | "bad" | "neutral";
+
+const TONE_COLOR: Record<MessageTone, string> = {
+  good: "var(--good)",
+  bad: "var(--bad)",
+  neutral: "var(--ink)",
+};
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+/** All DOM chrome for the run: state readout, timing window, channel markers. */
+export class Hud {
+  private root: HTMLElement;
+  private scoreEl: HTMLElement;
+  private levelEl: HTMLElement;
+  private streakEl: HTMLElement;
+  private attemptsEl: HTMLElement;
+  private phaseEl: HTMLElement;
+  private subEl: HTMLElement;
+  private windowEl: HTMLElement;
+  private windowFill: HTMLElement;
+  private messageEl: HTMLElement;
+  private sightEl: HTMLElement;
+  private overlayEl: HTMLElement;
+  private loaderEl: HTMLElement;
+  private loaderFill: HTMLElement;
+  private loaderWhat: HTMLElement;
+  private chips = new Map<ChannelId, HTMLElement>();
+  private messageTimer = 0;
+  private lastScore = -1;
+
+  constructor(host: HTMLElement) {
+    this.root = host;
+    host.appendChild(el("div", "vignette"));
+
+    const stats = el("div", "panel");
+    stats.id = "stats";
+    stats.innerHTML = `
+      <div class="row"><span class="label">Score</span><span class="value" id="hud-score">0</span></div>
+      <div class="row"><span class="label">Sequence</span><span class="value" id="hud-level">1</span></div>
+      <div class="row"><span class="label">Streak</span><span class="value" id="hud-streak">0</span></div>
+      <div id="attempts"></div>`;
+    host.appendChild(stats);
+    this.scoreEl = must(stats.querySelector("#hud-score"));
+    this.levelEl = must(stats.querySelector("#hud-level"));
+    this.streakEl = must(stats.querySelector("#hud-streak"));
+    this.attemptsEl = must(stats.querySelector("#attempts"));
+
+    const banner = el("div", "panel");
+    banner.id = "banner";
+    banner.innerHTML = `
+      <div id="phase">Standby</div>
+      <div id="sub"></div>
+      <div id="window"><span></span></div>`;
+    host.appendChild(banner);
+    this.phaseEl = must(banner.querySelector("#phase"));
+    this.subEl = must(banner.querySelector("#sub"));
+    this.windowEl = must(banner.querySelector("#window"));
+    this.windowFill = must(banner.querySelector("#window > span"));
+
+    const channels = el("div");
+    channels.id = "channels";
+    for (const def of CHANNELS) {
+      const chip = el("div", "chip");
+      chip.dataset.id = def.id;
+      chip.innerHTML = `
+        <span class="bar"></span>
+        <div class="name">${def.label}</div>
+        <div class="hint">${def.hint}</div>
+        <div class="value"></div>`;
+      channels.appendChild(chip);
+      this.chips.set(def.id, chip);
+    }
+    host.appendChild(channels);
+
+    this.messageEl = el("div");
+    this.messageEl.id = "message";
+    host.appendChild(this.messageEl);
+
+    this.sightEl = el("div", undefined, "SIGHT LINE BLOCKED — REPOSITION");
+    this.sightEl.id = "sight";
+    host.appendChild(this.sightEl);
+
+    const legend = el("div", "panel");
+    legend.id = "legend";
+    legend.innerHTML = `
+      <b>WASD / ARROWS</b> drive the reader<br />
+      <b>DRAG MOUSE</b> gesture channel<br />
+      <b>SPACE</b> pulse channel (tap the count)<br />
+      <b>J K L</b> key channel<br />
+      Stand near the armed pylon for a wider window.<br />
+      Climb a lens pad to see over the baffles.`;
+    host.appendChild(legend);
+
+    this.overlayEl = el("div");
+    this.overlayEl.id = "overlay";
+    host.appendChild(this.overlayEl);
+
+    this.loaderEl = el("div");
+    this.loaderEl.id = "loader";
+    this.loaderEl.innerHTML = `
+      <div class="title">PULSE RECALL</div>
+      <div class="track"><span></span></div>
+      <div class="what">forging surfaces</div>`;
+    host.appendChild(this.loaderEl);
+    this.loaderFill = must(this.loaderEl.querySelector(".track > span"));
+    this.loaderWhat = must(this.loaderEl.querySelector(".what"));
+  }
+
+  setLoading(fraction: number, label: string): void {
+    this.loaderFill.style.width = `${Math.round(fraction * 100)}%`;
+    this.loaderWhat.textContent = label.toUpperCase();
+  }
+
+  finishLoading(): void {
+    this.loaderEl.classList.add("done");
+    setTimeout(() => this.loaderEl.remove(), 700);
+  }
+
+  setScore(score: number): void {
+    const rounded = Math.round(score);
+    if (rounded === this.lastScore) return;
+    this.lastScore = rounded;
+    this.scoreEl.textContent = rounded.toLocaleString();
+    this.scoreEl.classList.add("bump");
+    setTimeout(() => this.scoreEl.classList.remove("bump"), 200);
+  }
+
+  setLevel(length: number): void {
+    this.levelEl.textContent = String(length);
+  }
+
+  setStreak(streak: number): void {
+    this.streakEl.textContent = streak > 0 ? `x${(1 + Math.min(streak, 12) * 0.1).toFixed(1)}` : "—";
+  }
+
+  setAttempts(remaining: number, max: number): void {
+    if (this.attemptsEl.childElementCount !== max) {
+      this.attemptsEl.innerHTML = "";
+      for (let i = 0; i < max; i++) this.attemptsEl.appendChild(el("i"));
+    }
+    const pips = this.attemptsEl.children;
+    for (let i = 0; i < pips.length; i++) {
+      pips[i]?.classList.toggle("spent", i >= remaining);
+    }
+  }
+
+  setPhase(title: string, sub = ""): void {
+    this.phaseEl.textContent = title;
+    this.subEl.textContent = sub;
+  }
+
+  /** `remaining` is 0..1 of the response window; colour warns as it closes. */
+  setWindow(remaining: number | null): void {
+    if (remaining === null) {
+      this.windowEl.classList.remove("on");
+      return;
+    }
+    this.windowEl.classList.add("on");
+    const t = Math.max(0, Math.min(1, remaining));
+    this.windowFill.style.transform = `scaleX(${t})`;
+    this.windowFill.style.background =
+      t > 0.55 ? "var(--good)" : t > 0.25 ? "var(--pulse)" : "var(--bad)";
+  }
+
+  setArmed(id: ChannelId | null, valueLabel = ""): void {
+    for (const [key, chip] of this.chips) {
+      const armed = key === id;
+      chip.classList.toggle("armed", armed);
+      chip.classList.remove("expected");
+      const value = chip.querySelector(".value");
+      if (value) value.textContent = armed ? valueLabel : "";
+    }
+  }
+
+  /** Called on a miss so the player is told exactly which channel was due. */
+  markExpected(id: ChannelId, valueLabel: string): void {
+    for (const [key, chip] of this.chips) {
+      chip.classList.remove("armed", "expected");
+      if (key === id) {
+        chip.classList.add("expected");
+        const value = chip.querySelector(".value");
+        if (value) value.textContent = valueLabel;
+      }
+    }
+  }
+
+  message(text: string, tone: MessageTone = "neutral", detail = ""): void {
+    this.messageEl.innerHTML = `${text}${detail ? `<span class="detail">${detail}</span>` : ""}`;
+    this.messageEl.style.color = TONE_COLOR[tone];
+    this.messageEl.classList.remove("show");
+    // Force a reflow so the animation restarts even for repeated messages.
+    void this.messageEl.offsetWidth;
+    this.messageEl.classList.add("show");
+    this.messageTimer = 0.95;
+  }
+
+  setSightBlocked(blocked: boolean): void {
+    this.sightEl.classList.toggle("on", blocked);
+  }
+
+  showOverlay(html: string): void {
+    this.overlayEl.innerHTML = html;
+    this.overlayEl.classList.add("on");
+  }
+
+  hideOverlay(): void {
+    this.overlayEl.classList.remove("on");
+  }
+
+  update(dt: number): void {
+    if (this.messageTimer > 0) {
+      this.messageTimer -= dt;
+      if (this.messageTimer <= 0) this.messageEl.classList.remove("show");
+    }
+  }
+
+  get element(): HTMLElement {
+    return this.root;
+  }
+}
+
+function must<T extends Element>(node: T | null): HTMLElement {
+  if (!node) throw new Error("HUD element missing");
+  return node as unknown as HTMLElement;
+}
+
+export function titleOverlay(): string {
+  return `
+    <div class="tag">memory · rhythm · line of sight</div>
+    <h1>PULSE&nbsp;<em>RECALL</em></h1>
+    <div class="lines">
+      The arena plays a pattern. Each cue arms one input channel.<br />
+      Repeat it in order — <span class="k">drag</span> for gesture,
+      <span class="k">SPACE</span> for pulse, <span class="k">J K L</span> for key.<br />
+      Drive the reader with <span class="k">WASD</span>: the spire and the baffles will
+      hide cues you have no sight line to, and standing near the armed pylon
+      widens your timing window.
+    </div>
+    <div class="cta">PRESS ANY KEY OR CLICK TO BEGIN</div>`;
+}
+
+export function gameOverOverlay(score: number, best: number, length: number, level: number): string {
+  return `
+    <div class="tag">pattern lost</div>
+    <h1>RECALL&nbsp;<em>BROKEN</em></h1>
+    <div class="score-line">SCORE <b>${Math.round(score).toLocaleString()}</b></div>
+    <div class="lines">
+      Longest sequence held: <span class="k">${length}</span> cues over
+      <span class="k">${level}</span> rounds.<br />
+      Best this session: <span class="k">${Math.round(best).toLocaleString()}</span>
+    </div>
+    <div class="cta">PRESS ENTER TO RUN IT AGAIN</div>`;
+}

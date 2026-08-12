@@ -1,0 +1,262 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 74c0bcb6f03656db831863a59a8fecddf0ce9d51ea3d0e38586803d7d7e105e2
+import type { Puzzle } from "../game/puzzles";
+
+export type Tool = "overview" | "unfold" | "undo" | "hint" | "sound";
+
+export interface HudCallbacks {
+  onBegin(): void;
+  onTool(tool: Tool): void;
+  onRestart(): void;
+}
+
+const RULE_DIAGRAM = `
+<svg width="264" height="52" viewBox="0 0 264 52" role="img" aria-label="Two distant squares folding into one">
+  <g fill="none" stroke="#7b6136" stroke-width="1">
+    <rect x="1" y="12" width="88" height="28" />
+    <rect x="175" y="12" width="88" height="28" />
+  </g>
+  <rect x="1" y="12" width="22" height="28" fill="#46586a" />
+  <rect x="67" y="12" width="22" height="28" fill="#d8c9a4" />
+  <rect x="175" y="12" width="22" height="28" fill="#46586a" />
+  <path d="M197 12 L219 12 L197 40 Z" fill="#d8c9a4" />
+  <path d="M100 26 h58" stroke="#c9a05a" stroke-width="1.5" fill="none" />
+  <path d="M152 21 l8 5 l-8 5 z" fill="#c9a05a" />
+  <path d="M129 8 v36" stroke="#c9a05a" stroke-width="1.5" stroke-dasharray="4 3" />
+  <text x="12" y="50" fill="#b7a98d" font-size="8" font-family="system-ui">a1</text>
+  <text x="72" y="50" fill="#b7a98d" font-size="8" font-family="system-ui">h1</text>
+  <text x="186" y="50" fill="#c9a05a" font-size="8" font-family="system-ui">a1 | h1</text>
+</svg>`;
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private readonly loadFill: HTMLElement;
+  private readonly loadLabel: HTMLElement;
+  private readonly loadOverlay: HTMLElement;
+  private readonly titleOverlay: HTMLElement;
+  private readonly endOverlay: HTMLElement;
+  private readonly endBody: HTMLElement;
+  private readonly endTitle: HTMLElement;
+  private readonly nameEl: HTMLElement;
+  private readonly objectiveEl: HTMLElement;
+  private readonly dotsEl: HTMLElement;
+  private readonly tallyEl: HTMLElement;
+  private readonly promptEl: HTMLElement;
+  private readonly movesEl: HTMLElement;
+  private readonly bannerEl: HTMLElement;
+  private readonly buttons = new Map<Tool, HTMLButtonElement>();
+  private bannerTimer = 0;
+
+  constructor(private readonly callbacks: HudCallbacks) {
+    this.root = document.createElement("div");
+    this.root.innerHTML = `
+      <div id="hud">
+        <div class="row">
+          <div class="panel" id="puzzle">
+            <p class="eyebrow" id="puzzle-count">Sheet 1 of 5</p>
+            <h2 id="puzzle-name">—</h2>
+            <p id="objective">—</p>
+            <div id="dots"></div>
+            <div id="tally"></div>
+          </div>
+          <div class="panel" id="rule">
+            <h3>Fold&#8209;Transfer</h3>
+            <p>Squares pressed together by the fold become <b>one square</b>.
+               A piece standing there stands on <b>both halves</b> — it moves,
+               blocks and attacks from each.</p>
+            ${RULE_DIAGRAM}
+            <p class="sub">A crease is refused if it would press two pieces
+               together, or if it would deliver check on its own.</p>
+          </div>
+        </div>
+
+        <div class="row" style="align-items:flex-start">
+          <div></div>
+          <div class="panel empty" id="moves">
+            <p class="eyebrow">Line</p>
+            <ol></ol>
+          </div>
+        </div>
+
+        <div class="row bottom">
+          <div class="panel" id="prompt">
+            <div class="main">—</div>
+            <div class="aside"></div>
+          </div>
+          <div id="tools"></div>
+        </div>
+      </div>
+
+      <div id="banner"><div class="kicker"></div><h1></h1><p></p></div>
+
+      <div class="overlay" id="load">
+        <div class="card">
+          <h1>Creasemate</h1>
+          <p class="tagline">one crease, one mate</p>
+          <div id="loadbar"><div id="loadfill"></div></div>
+          <div id="loadlabel">preparing the sheet</div>
+        </div>
+      </div>
+
+      <div class="overlay hidden" id="title">
+        <div class="card">
+          <h1>Creasemate</h1>
+          <p class="tagline">one crease, one mate</p>
+          <div class="body">
+            <p>Draw a single crease across the canvas board, then fold it until
+               two distant squares are pressed together.</p>
+            <p><b>Drag</b> across the cloth to draw a crease · <b>click</b> a
+               white piece, then its destination · <b>drag empty space</b> to orbit,
+               <b>scroll</b> to zoom.</p>
+            <p>Squares that touch become one. Find mate from there.</p>
+          </div>
+          <div class="actions"><button class="primary" id="begin">Begin</button></div>
+          <p class="credit">Tabletop pieces and props from
+            <b>KayKit&nbsp;: Board Game Bits</b> by Kay Lousberg — CC0&nbsp;1.0.</p>
+        </div>
+      </div>
+
+      <div class="overlay hidden" id="end">
+        <div class="card">
+          <h1 id="end-title">Complete</h1>
+          <div class="body" id="end-body"></div>
+          <div class="actions"><button class="primary" id="again">Play again</button></div>
+        </div>
+      </div>`;
+    document.body.appendChild(this.root);
+
+    const q = <T extends HTMLElement>(id: string): T =>
+      this.root.querySelector(`#${id}`) as T;
+    this.loadOverlay = q("load");
+    this.loadFill = q("loadfill");
+    this.loadLabel = q("loadlabel");
+    this.titleOverlay = q("title");
+    this.endOverlay = q("end");
+    this.endBody = q("end-body");
+    this.endTitle = q("end-title");
+    this.nameEl = q("puzzle-name");
+    this.objectiveEl = q("objective");
+    this.dotsEl = q("dots");
+    this.tallyEl = q("tally");
+    this.promptEl = q("prompt");
+    this.movesEl = q("moves");
+    this.bannerEl = q("banner");
+
+    q<HTMLButtonElement>("begin").addEventListener("click", () => callbacks.onBegin());
+    q<HTMLButtonElement>("again").addEventListener("click", () => callbacks.onRestart());
+
+    const tools: [Tool, string, string][] = [
+      ["hint", "Hint", "Reveal a little more about this sheet"],
+      ["undo", "Undo", "Take back the last move"],
+      ["unfold", "Unfold", "Flatten the sheet and choose another crease"],
+      ["overview", "Overview", "Frame the whole diorama"],
+      ["sound", "Sound", "Mute or unmute"],
+    ];
+    const bar = q("tools");
+    for (const [tool, label, title] of tools) {
+      const button = document.createElement("button");
+      button.textContent = label;
+      button.title = title;
+      button.addEventListener("click", () => callbacks.onTool(tool));
+      bar.appendChild(button);
+      this.buttons.set(tool, button);
+    }
+  }
+
+  setLoading(progress: number, label: string): void {
+    this.loadFill.style.width = `${Math.round(progress * 100)}%`;
+    this.loadLabel.textContent = label;
+  }
+
+  showTitle(): void {
+    this.loadOverlay.classList.add("hidden");
+    this.titleOverlay.classList.remove("hidden");
+  }
+
+  hideTitle(): void {
+    this.titleOverlay.classList.add("hidden");
+  }
+
+  showEnd(title: string, bodyHtml: string): void {
+    this.endTitle.textContent = title;
+    this.endBody.innerHTML = bodyHtml;
+    this.endOverlay.classList.remove("hidden");
+  }
+
+  hideEnd(): void {
+    this.endOverlay.classList.add("hidden");
+  }
+
+  setPuzzle(index: number, total: number, puzzle: Puzzle, solved: boolean[]): void {
+    (this.root.querySelector("#puzzle-count") as HTMLElement).textContent =
+      `Sheet ${index + 1} of ${total}`;
+    this.nameEl.textContent = puzzle.name;
+    this.objectiveEl.textContent = `White to play. Fold once, then mate in ${puzzle.depth}.`;
+    this.dotsEl.innerHTML = "";
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement("i");
+      if (solved[i]) dot.classList.add("done");
+      if (i === index) dot.classList.add("now");
+      this.dotsEl.appendChild(dot);
+    }
+  }
+
+  setTally(entries: [string, string][]): void {
+    this.tallyEl.innerHTML = entries
+      .map(([k, v]) => `<span>${k} <b>${v}</b></span>`)
+      .join("");
+  }
+
+  setPrompt(main: string, aside = "", tone: "" | "warn" | "good" = ""): void {
+    (this.promptEl.querySelector(".main") as HTMLElement).textContent = main;
+    (this.promptEl.querySelector(".aside") as HTMLElement).textContent = aside;
+    this.promptEl.className = `panel ${tone}`;
+  }
+
+  setMoves(entries: string[]): void {
+    const list = this.movesEl.querySelector("ol")!;
+    list.innerHTML = entries
+      .map((e, i) => `<li class="${i % 2 === 0 ? "white" : ""}">${e}</li>`)
+      .join("");
+    this.movesEl.classList.toggle("empty", entries.length === 0);
+  }
+
+  setToolEnabled(tool: Tool, enabled: boolean): void {
+    const button = this.buttons.get(tool);
+    if (button) button.disabled = !enabled;
+  }
+
+  setSoundLabel(muted: boolean): void {
+    const button = this.buttons.get("sound");
+    if (button) button.textContent = muted ? "Sound off" : "Sound on";
+  }
+
+  banner(kind: "win" | "fail" | "info", kicker: string, title: string, note: string,
+    holdMs = 2600): void {
+    this.bannerEl.className = `${kind} show`;
+    (this.bannerEl.querySelector(".kicker") as HTMLElement).textContent = kicker;
+    (this.bannerEl.querySelector("h1") as HTMLElement).textContent = title;
+    (this.bannerEl.querySelector("p") as HTMLElement).textContent = note;
+    clearTimeout(this.bannerTimer);
+    if (holdMs > 0) {
+      this.bannerTimer = setTimeout(() => this.bannerEl.classList.remove("show"), holdMs) as unknown as number;
+    }
+  }
+
+  hideBanner(): void {
+    clearTimeout(this.bannerTimer);
+    this.bannerEl.classList.remove("show");
+  }
+
+  addAction(label: string, primary: boolean, handler: () => void): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.textContent = label;
+    if (primary) button.classList.add("primary");
+    button.addEventListener("click", handler);
+    this.root.querySelector("#tools")!.prepend(button);
+    return button;
+  }
+}

@@ -1,0 +1,241 @@
+// rule: server-sequential-independent-await
+// file-path: src/app/scene.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit f710ca45fca731d1f5d5cba132b43fc6b3b9e362331ccd26a3f186abf04d626c
+/**
+ * Scene assembly: builds every visual system once and exposes the handles the
+ * application loop needs. Kept separate from main.ts so the wiring of inputs, panels
+ * and simulation stays readable.
+ */
+
+import * as THREE from "three";
+import type { Catalog } from "../sim/catalog";
+import { buildCatalog } from "../sim/catalog";
+import { KM_TO_UNITS, SHELLS } from "../sim/domain";
+import { buildEarth, EARTH_RADIUS_UNITS, type Earth } from "../gfx/earth";
+import { buildEarthTextures, type EarthTextures } from "../gfx/earthTextures";
+import { buildDebrisField, type DebrisField } from "../gfx/field";
+import { buildHardwareTextures, type HardwareTextures } from "../gfx/hardwareTextures";
+import { buildInspectView, type InspectView } from "../gfx/inspect";
+import {
+  buildPathOverlay,
+  buildShellOverlay,
+  buildStationOverlay,
+  type PathOverlay,
+  type ShellOverlay,
+  type StationOverlay,
+} from "../gfx/overlays";
+import { createRenderStage, type RenderStage, SUN_DIRECTION } from "../gfx/renderStage";
+import { buildStarfield, type Starfield } from "../gfx/starfield";
+import { buildStation, type Station } from "../gfx/station";
+import { loadShipLibrary, type ShipLibrary } from "../gfx/ships";
+import { createOrbitCamera, type OrbitCamera } from "../gfx/cameraRig";
+
+export interface Servicer {
+  group: THREE.Group;
+  role: string;
+  /** Orbit radius and phase for the ferry loop between hub and target band. */
+  radius: number;
+  phase: number;
+  rate: number;
+  inclination: number;
+}
+
+export interface SceneBundle {
+  stage: RenderStage;
+  orbit: OrbitCamera;
+  earth: Earth;
+  earthTextures: EarthTextures;
+  hardware: HardwareTextures;
+  stars: Starfield;
+  field: DebrisField;
+  shells: ShellOverlay;
+  paths: PathOverlay;
+  stations: StationOverlay;
+  station: Station;
+  ships: ShipLibrary;
+  servicers: Servicer[];
+  inspect: InspectView;
+  catalog: Catalog;
+  /** Group that carries the hub and its servicers; the shadow camera tracks it. */
+  hubGroup: THREE.Group;
+  dispose(): void;
+}
+
+export interface BuildProgress {
+  (label: string, fraction: number): Promise<void>;
+}
+
+/** The hub flies in the constellation band, where most traffic is. */
+const HUB_ALT_KM = 620;
+const HUB_INCLINATION_DEG = 51.6;
+
+export async function buildScene(
+  canvas: HTMLCanvasElement,
+  totalModelledTracked: number,
+  progress: BuildProgress,
+): Promise<SceneBundle> {
+  const width = Math.max(1, canvas.clientWidth || window.innerWidth);
+  const height = Math.max(1, canvas.clientHeight || window.innerHeight);
+
+  const stage = createRenderStage(canvas);
+  stage.resize(width, height);
+
+  let step = 0;
+  const totalSteps = 13;
+  const advance = async (label: string): Promise<void> => {
+    step++;
+    await progress(label, step / totalSteps);
+  };
+
+  // ---- procedural surfaces (the expensive part of start-up) ----
+  const earthTextures = await buildEarthTextures(async (label) => {
+    await advance(label);
+  });
+  const hardware = await buildHardwareTextures(async (label) => {
+    await advance(label);
+  });
+
+  await advance("Assembling globe");
+  const earth = buildEarth(earthTextures);
+  earth.setSunDirection(SUN_DIRECTION);
+  stage.scene.add(earth.group);
+
+  await advance("Seeding starfield");
+  const stars = buildStarfield();
+  stage.scene.add(stars.group);
+
+  await advance("Populating debris catalogue");
+  const catalog = buildCatalog(totalModelledTracked);
+  const field = buildDebrisField(catalog, hardware);
+  field.setPixelRatio(stage.pixelRatio);
+  stage.scene.add(field.group);
+
+  const shells = buildShellOverlay();
+  stage.scene.add(shells.group);
+  const paths = buildPathOverlay();
+  stage.scene.add(paths.group);
+  const stations = buildStationOverlay(catalog);
+  // Station markers are fixed to the surface, so they ride the globe's rotation.
+  earth.surface.add(stations.group);
+
+  await advance("Building coordination hub");
+  const station = buildStation(hardware);
+  // Like the debris markers, the hub is drawn at symbolic scale — a real depot would be
+  // a few hundred metres across and invisible here. Disclosed in the provenance panel.
+  station.group.scale.setScalar(0.34);
+  const hubGroup = new THREE.Group();
+  hubGroup.name = "hub-group";
+  hubGroup.add(station.group);
+  stage.scene.add(hubGroup);
+  stage.setShadowFocus(hubGroup);
+
+  await advance("Loading servicer hulls");
+  const ships = await loadShipLibrary(hardware);
+  const servicers: Servicer[] = [];
+  for (let i = 0; i < 3; i++) {
+    const group = ships.makeServicer(i + 1);
+    // Servicers are drawn oversize like everything else in the field, but smaller than
+    // the hub so the size relationship still reads.
+    group.scale.setScalar(0.075);
+    const radius = (6371 + HUB_ALT_KM + 40 + i * 90) * KM_TO_UNITS;
+    servicers.push({
+      group,
+      role: String(group.userData.role ?? "Servicer"),
+      radius,
+      phase: (i / 3) * Math.PI * 2,
+      rate: Math.sqrt(398600.4418 / Math.pow(radius / KM_TO_UNITS, 3)),
+      inclination: THREE.MathUtils.degToRad(HUB_INCLINATION_DEG + (i - 1) * 6),
+    });
+    hubGroup.add(group);
+  }
+
+  await advance("Preparing inspection rig");
+  const inspect = buildInspectView(hardware, ships);
+  inspect.setSunDirection(SUN_DIRECTION);
+  inspect.resize(320, 200);
+
+  // ---- camera bounds: never inside the atmosphere, never so far the shells merge ----
+  const topShellRadius = (6371 + (SHELLS[SHELLS.length - 1]?.altHiKm ?? 1300)) * KM_TO_UNITS;
+  const orbit = createOrbitCamera(width, height, {
+    // Close enough to inspect a single object in the field, but never inside the
+    // atmosphere — the centre-distance floor enforces that independently of the target.
+    minRadius: 0.55,
+    maxRadius: 62,
+    minPolar: THREE.MathUtils.degToRad(14),
+    maxPolar: THREE.MathUtils.degToRad(166),
+    minCentreDistance: EARTH_RADIUS_UNITS + 0.42,
+  });
+  void topShellRadius;
+  orbit.update(0.016);
+
+  await advance("Ready");
+
+  return {
+    stage,
+    orbit,
+    earth,
+    earthTextures,
+    hardware,
+    stars,
+    field,
+    shells,
+    paths,
+    stations,
+    station,
+    ships,
+    servicers,
+    inspect,
+    catalog,
+    hubGroup,
+    dispose() {
+      stars.dispose();
+      field.dispose();
+      shells.dispose();
+      paths.dispose();
+      stations.dispose();
+      station.dispose();
+      ships.dispose();
+      inspect.dispose();
+      earth.dispose();
+      stage.dispose();
+    },
+  };
+}
+
+/** Advance the hub and its servicers along their orbits. */
+export function updateHub(bundle: SceneBundle, orbitTime: number, elapsed: number): void {
+  const hubRadius = (6371 + HUB_ALT_KM) * KM_TO_UNITS;
+  const inc = THREE.MathUtils.degToRad(HUB_INCLINATION_DEG);
+  const n = Math.sqrt(398600.4418 / Math.pow(6371 + HUB_ALT_KM, 3));
+  const u = orbitTime * n;
+
+  const place = (radius: number, inclination: number, phase: number, out: THREE.Vector3): void => {
+    const cu = Math.cos(phase) * radius;
+    const su = Math.sin(phase) * radius;
+    const ci = Math.cos(inclination);
+    const si = Math.sin(inclination);
+    out.set(cu, su * si, su * ci);
+  };
+
+  const pos = new THREE.Vector3();
+  place(hubRadius, inc, u, pos);
+  bundle.station.group.position.copy(pos);
+  // Keep the hub's long axis along-track and its radiators facing away from Earth.
+  const ahead = new THREE.Vector3();
+  place(hubRadius, inc, u + 0.01, ahead);
+  bundle.station.group.up.copy(pos).normalize();
+  bundle.station.group.lookAt(ahead);
+  bundle.station.update(elapsed);
+
+  for (const s of bundle.servicers) {
+    place(s.radius, s.inclination, orbitTime * s.rate + s.phase, pos);
+    s.group.position.copy(pos);
+    place(s.radius, s.inclination, orbitTime * s.rate + s.phase + 0.01, ahead);
+    s.group.up.copy(pos).normalize();
+    s.group.lookAt(ahead);
+  }
+}
+
+export { EARTH_RADIUS_UNITS, HUB_ALT_KM };

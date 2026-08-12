@@ -1,0 +1,497 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit f2572563f9e3aecbe619f9ccc022c3d745c2fe72323401aedfde4d6e8245ca9f
+/**
+ * Analytical HUD.
+ *
+ * Panels are re-rendered from state; every interactive element carries a
+ * `data-action` so a single delegated listener covers all pointer filtering.
+ * Keyboard shortcuts in `input.ts` dispatch the same actions.
+ */
+
+import type { Network } from "../data/fixture";
+import { ATTACKS, MEDIA, OPERATORS, REGIONS, TIER_NAMES, attackDef } from "../data/fixture";
+import { POSTURE_LABEL, POSTURE_SHORT, type ArmConfig, type Route } from "../data/routing";
+import { SURROGATE_WEIGHTS, trustBand, trustProvenanceLine, trustServiceConfigured } from "../data/trust";
+import type { Analysis, AppState } from "../state";
+import { FIXTURE_SEED } from "../data/fixture";
+
+export type HudAction = (action: string, value: string) => void;
+
+const QUESTION =
+  "Under the selected attack, which corridor still delivers the payload with the lowest residual exposure — and does the quantum-safe posture change which corridor wins?";
+
+/** [rendered key glyphs, description] — description is escaped, glyphs are not. */
+const KEY_ROWS: [string, string][] = [
+  ["<kbd>1</kbd>…<kbd>6</kbd>", "attack scenario"],
+  ["<kbd>Q</kbd> <kbd>W</kbd>", "cycle Arm A / Arm B (posture × trust check)"],
+  ["<kbd>C</kbd>", "compare arms on / off"],
+  ["<kbd>D</kbd>", "fixture ground-truth overlay"],
+  ["<kbd>T</kbd> <kbd>R</kbd>", "cycle tier filter / region filter"],
+  ["<kbd>[</kbd> <kbd>]</kbd>", "minimum trust score"],
+  ["<kbd>F</kbd>", "focus the inspected relay's corridor"],
+  ["<kbd>X</kbd>", "clear filters and focus"],
+  ["<kbd>0</kbd> <kbd>Esc</kbd>", "reset state and camera"],
+  ["<kbd>L</kbd> <kbd>E</kbd> <kbd>G</kbd> <kbd>V</kbd>", "labels · risk envelope · reference rings · alternates"],
+  ["<kbd>Space</kbd>", "pause payload flow"],
+  ["<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd>", "orbit the camera"],
+  ["<kbd>+</kbd> <kbd>−</kbd>", "zoom in / out"],
+  ['<span class="mouse">drag</span>', "orbit · shift-drag or right-drag pans · wheel zooms"],
+  ['<span class="mouse">click</span>', "inspect a relay · double-click focuses · click empty space clears"],
+];
+
+function pct(value: number, digits = 1): string {
+  return `${(value * 100).toFixed(digits)}%`;
+}
+
+function ppMagnitude(value: number): string {
+  return `${(Math.abs(value) * 100).toFixed(1)} pp`;
+}
+
+function armLabel(arm: ArmConfig): string {
+  return `${POSTURE_SHORT[arm.posture]} · ${arm.trustCheck ? "AI trust check on" : "no trust check"}`;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
+  );
+}
+
+function bar(value: number, sigma: number, tone: string): string {
+  const centre = Math.max(0, Math.min(1, value)) * 100;
+  const low = Math.max(0, Math.min(1, value - sigma)) * 100;
+  const high = Math.max(0, Math.min(1, value + sigma)) * 100;
+  return `<span class="bar" data-tone="${tone}">
+    <span class="bar-band" style="left:${low.toFixed(2)}%;width:${Math.max(0.6, high - low).toFixed(2)}%"></span>
+    <span class="bar-fill" style="width:${centre.toFixed(2)}%"></span>
+    <span class="bar-tick" style="left:${centre.toFixed(2)}%"></span>
+  </span>`;
+}
+
+export class Hud {
+  private readonly root: HTMLElement;
+  private readonly net: Network;
+  private readonly onAction: HudAction;
+
+  private readonly brief: HTMLElement;
+  private readonly controls: HTMLElement;
+  private readonly compare: HTMLElement;
+  private readonly inspect: HTMLElement;
+  private readonly provenance: HTMLElement;
+  private readonly help: HTMLElement;
+  private readonly left: HTMLElement;
+  private readonly right: HTMLElement;
+  private modelOpen = false;
+  private sliderActive = false;
+  private cachedRects: DOMRect[] = [];
+
+  constructor(root: HTMLElement, net: Network, onAction: HudAction) {
+    this.root = root;
+    this.net = net;
+    this.onAction = onAction;
+
+    const left = document.createElement("div");
+    left.className = "column left";
+    const right = document.createElement("div");
+    right.className = "column right";
+    this.root.append(left, right);
+    this.left = left;
+    this.right = right;
+
+    this.brief = this.panel(left, "panel brief", "brief");
+    this.controls = this.panel(left, "panel controls", "controls");
+    this.compare = this.panel(right, "panel compare", "compare");
+    this.inspect = this.panel(right, "panel inspect", "inspect");
+    this.provenance = this.panel(right, "panel provenance", "provenance");
+    this.help = this.panel(this.root, "help-overlay", "help");
+
+    this.root.addEventListener("click", this.handleClick);
+    this.root.addEventListener("input", this.handleInput);
+    // A re-render mid-drag would replace the range input and drop the gesture.
+    this.root.addEventListener("pointerdown", (event) => {
+      if ((event.target as HTMLElement | null)?.tagName === "INPUT") this.sliderActive = true;
+    });
+    window.addEventListener("pointerup", () => {
+      this.sliderActive = false;
+    });
+  }
+
+  private panel(parent: HTMLElement, className: string, id: string): HTMLElement {
+    const element = document.createElement("section");
+    element.className = className;
+    element.id = `qsp-${id}`;
+    parent.appendChild(element);
+    return element;
+  }
+
+  /** Bounding boxes of the HUD columns, so world labels can avoid them. */
+  occupiedRects(): DOMRect[] {
+    return this.cachedRects;
+  }
+
+  measure(): void {
+    this.cachedRects = [this.left, this.right]
+      .map((column) => column.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+  }
+
+  private readonly handleClick = (event: Event): void => {
+    const target = (event.target as HTMLElement | null)?.closest<HTMLElement>("[data-action]");
+    if (!target) return;
+    const action = target.dataset["action"] ?? "";
+    if (action === "modelDetails") {
+      this.modelOpen = !this.modelOpen;
+      return;
+    }
+    event.preventDefault();
+    this.onAction(action, target.dataset["value"] ?? "");
+  };
+
+  private readonly handleInput = (event: Event): void => {
+    const target = event.target as HTMLInputElement | null;
+    if (!target?.dataset["action"]) return;
+    this.onAction(target.dataset["action"], target.value);
+  };
+
+  render(state: AppState, analysis: Analysis): void {
+    const leftScroll = this.left.scrollTop;
+    const rightScroll = this.right.scrollTop;
+
+    this.renderBrief(state);
+    if (!this.sliderActive) this.renderControls(state, analysis);
+    this.renderCompare(state, analysis);
+    this.renderInspect(state, analysis);
+    this.renderProvenance(state, analysis);
+    this.renderHelp(state);
+
+    this.left.scrollTop = leftScroll;
+    this.right.scrollTop = rightScroll;
+    this.measure();
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  private renderBrief(state: AppState): void {
+    const attack = attackDef(state.attack);
+    this.brief.innerHTML = `
+      <h1>Quantum-Safe Paths</h1>
+      <p class="sub">A routing sandbox for comparing quantum-resistant transport and AI trust checks under attack.</p>
+      <p class="question">${escapeHtml(QUESTION)}</p>
+      <div class="scenario">
+        <span class="tag">scenario ${escapeHtml(attack.key)}</span>
+        <strong>${escapeHtml(attack.name)}</strong>
+        <span class="blurb">${escapeHtml(attack.blurb)}</span>
+      </div>
+      <p class="hint">Orbit to look behind the transit shell · scroll to zoom · click a relay to inspect · <kbd>H</kbd> for all controls</p>
+    `;
+  }
+
+  private renderControls(state: AppState, analysis: Analysis): void {
+    const attackButtons = ATTACKS.map(
+      (a) => `<button data-action="attack" data-value="${a.id}" class="chip${
+        state.attack === a.id ? " on" : ""
+      }"><kbd>${a.key}</kbd>${escapeHtml(a.name.split(" — ")[0] ?? a.name)}</button>`,
+    ).join("");
+
+    const tierButtons = [null, 0, 1, 2]
+      .map(
+        (t) =>
+          `<button data-action="tier" data-value="${t ?? "all"}" class="chip${
+            state.tierFilter === t ? " on" : ""
+          }">${t === null ? "all tiers" : escapeHtml(TIER_NAMES[t as 0 | 1 | 2])}</button>`,
+      )
+      .join("");
+
+    const regionButtons = [null, 0, 1, 2, 3, 4]
+      .map(
+        (r) =>
+          `<button data-action="region" data-value="${r ?? "all"}" class="chip small${
+            state.regionFilter === r ? " on" : ""
+          }">${r === null ? "all regions" : escapeHtml(REGIONS[r]!.name)}</button>`,
+      )
+      .join("");
+
+    const toggle = (action: string, on: boolean, label: string, key: string): string =>
+      `<button data-action="${action}" class="chip toggle${on ? " on" : ""}"><kbd>${key}</kbd>${label}</button>`;
+
+    const hidden = this.net.nodes.filter((n) => {
+      if (state.tierFilter !== null && n.tier !== state.tierFilter) return true;
+      if (state.regionFilter !== null && n.region !== state.regionFilter) return true;
+      if (state.trustFloor > 0 && (analysis.trust.node[n.id] ?? 1) < state.trustFloor) return true;
+      if (analysis.focusSet && !analysis.focusSet.has(n.id)) return true;
+      return false;
+    }).length;
+
+    this.controls.innerHTML = `
+      <h2>Attack scenario</h2>
+      <div class="row wrap">${attackButtons}</div>
+
+      <h2>Deployment arms</h2>
+      <div class="arms">
+        <button data-action="armA" class="arm a">
+          <span class="swatch a"></span><kbd>Q</kbd>
+          <span class="arm-body"><strong>Arm A</strong><em>${escapeHtml(armLabel(state.armA))}</em>
+          <small>${escapeHtml(POSTURE_LABEL[state.armA.posture])}</small></span>
+        </button>
+        <button data-action="armB" class="arm b${state.compare ? "" : " off"}">
+          <span class="swatch b"></span><kbd>W</kbd>
+          <span class="arm-body"><strong>Arm B</strong><em>${escapeHtml(armLabel(state.armB))}</em>
+          <small>${escapeHtml(POSTURE_LABEL[state.armB.posture])}</small></span>
+        </button>
+      </div>
+      <div class="row">${toggle("compare", state.compare, "compare A/B", "C")}${toggle(
+        "groundTruth",
+        state.showGroundTruth,
+        "fixture ground truth",
+        "D",
+      )}</div>
+
+      <h2>Filters</h2>
+      <div class="row wrap">${tierButtons}</div>
+      <div class="row wrap">${regionButtons}</div>
+      <label class="slider">
+        <span>minimum trust score <b>${state.trustFloor.toFixed(2)}</b></span>
+        <input type="range" min="0" max="0.95" step="0.05" value="${state.trustFloor}" data-action="trustFloor" />
+        <span class="keys"><kbd>[</kbd><kbd>]</kbd></span>
+      </label>
+      <p class="note">${hidden} of ${this.net.nodes.length} relays filtered out of the reading.</p>
+
+      <h2>Display</h2>
+      <div class="row wrap">
+        ${toggle("labels", state.showLabels, "labels", "L")}
+        ${toggle("envelope", state.showEnvelope, "risk envelope", "E")}
+        ${toggle("reference", state.showReference, "reference rings", "G")}
+        ${toggle("alternates", state.showAlternates, "alternate corridors", "V")}
+        ${toggle("pause", state.paused, "pause flow", "␣")}
+      </div>
+      <div class="row wrap">
+        <button data-action="clear" class="chip"><kbd>X</kbd>clear filters</button>
+        <button data-action="reset" class="chip"><kbd>0</kbd>reset all</button>
+      </div>
+    `;
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  private routeBlock(tag: string, arm: ArmConfig, route: Route, tone: string, active: boolean): string {
+    if (!active || !route.ok) {
+      return `<div class="route-block off"><header><span class="swatch ${tone}"></span><strong>${tag}</strong>
+        <em>${escapeHtml(armLabel(arm))}</em></header><p class="none">no corridor shown</p></div>`;
+    }
+    return `<div class="route-block">
+      <header><span class="swatch ${tone}"></span><strong>${tag}</strong><em>${escapeHtml(armLabel(arm))}</em></header>
+      <div class="corridor">corridor <b>${escapeHtml(route.corridor)}</b> · ${route.hops} hops · ${route.latency.toFixed(
+        1,
+      )} ms</div>
+      <div class="metric">
+        <span class="metric-label">residual exposure</span>
+        <span class="metric-value">${pct(route.exposure)} <small>± ${(route.exposureSigma * 100).toFixed(
+          1,
+        )} pp</small></span>
+      </div>
+      ${bar(route.exposure, route.exposureSigma, tone)}
+      <div class="metric">
+        <span class="metric-label">delivery integrity</span>
+        <span class="metric-value">${pct(route.delivery)} <small>± ${(route.deliverySigma * 100).toFixed(
+          1,
+        )} pp</small></span>
+      </div>
+      ${bar(route.delivery, route.deliverySigma, tone)}
+      <div class="split">
+        <span>relay-side share of exposure</span><b>${pct(route.endpointShare, 0)}</b>
+      </div>
+      <div class="split">
+        <span>selector cost <em>(arbitrary units, not comparable between arms)</em></span><b>${route.perceivedCost.toFixed(
+          1,
+        )}</b>
+      </div>
+    </div>`;
+  }
+
+  private renderCompare(state: AppState, analysis: Analysis): void {
+    const { routeA, routeB } = analysis;
+    let verdict: string;
+    let verdictTone = "neutral";
+
+    if (!state.compare) {
+      verdict = "Comparison is off — only Arm A is solved. Press <kbd>C</kbd> to put a second deployment beside it.";
+    } else if (!routeA.ok || !routeB.ok) {
+      verdict = "At least one arm has no path to the destination under this scenario.";
+      verdictTone = "warn";
+    } else {
+      const delta = routeA.exposure - routeB.exposure;
+      const combined = Math.hypot(routeA.exposureSigma, routeB.exposureSigma);
+      const sameCorridor = routeA.linkIds.join(",") === routeB.linkIds.join(",");
+      const winner = delta > 0 ? "B" : "A";
+      const inside = Math.abs(delta) <= combined;
+
+      const corridorSentence = sameCorridor
+        ? `Both arms select the same corridor <b>${escapeHtml(routeA.corridor)}</b>.`
+        : `Arm A routes via <b>${escapeHtml(routeA.corridor)}</b>; Arm B routes via <b>${escapeHtml(
+            routeB.corridor,
+          )}</b> — the posture and trust check change which corridor wins.`;
+
+      const magnitudeSentence = inside
+        ? `Arm ${winner} shows the lower residual exposure (by ${ppMagnitude(
+            delta,
+          )}), but the gap sits inside the model's own stated uncertainty (±${(combined * 100).toFixed(
+            1,
+          )} pp) — treat the two as indistinguishable.`
+        : `Arm ${winner} lowers residual exposure by <b>${ppMagnitude(
+            delta,
+          )}</b>, outside the combined uncertainty band (±${(combined * 100).toFixed(1)} pp).`;
+
+      verdict = `${corridorSentence} ${magnitudeSentence}`;
+      verdictTone = inside ? "neutral" : "good";
+    }
+
+    const attack = attackDef(state.attack);
+    this.compare.innerHTML = `
+      <h2>Comparison</h2>
+      ${this.routeBlock("Arm A", state.armA, routeA, "a", true)}
+      ${this.routeBlock("Arm B", state.armB, routeB, "b", state.compare)}
+      <div class="verdict" data-tone="${verdictTone}">${verdict}</div>
+      <details class="model"${this.modelOpen ? " open" : ""}>
+        <summary data-action="modelDetails">what moves these numbers</summary>
+        <ul>
+          <li>Recorded-traffic risk is multiplied by a stipulated posture factor: classical ×1.00, quantum-safe hybrid ×0.10, ×0.85 on any span the downgrade attack forces back to classical, ×0.70 where a peer cannot negotiate the hybrid suite.</li>
+          <li>Relay-side leakage is <em>not</em> reduced by the posture under core compromise: a controlled relay sees plaintext whatever the key exchange.</li>
+          <li>The trust check prices distrust into path cost; it never forbids a path. Its detection rate for this scenario is a fixture constant of ${(
+            attack.detectability * 100
+          ).toFixed(0)}%, so it misses elements by design.</li>
+          <li>Per-span capture events are treated as independent. Correlated collection would give a higher figure than shown.</li>
+          <li>An arm without a trust check has no signal that anything is wrong, so its corridor is the same under every scenario except the route hijack — which works precisely by moving the cheapest path. That invariance is a property of the model, not a rendering artefact.</li>
+        </ul>
+      </details>
+    `;
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  private renderInspect(state: AppState, analysis: Analysis): void {
+    const id = state.inspectId;
+    if (id === null) {
+      this.inspect.innerHTML = `<h2>Relay inspector</h2><p class="none">Click a relay to inspect it. <kbd>F</kbd> focuses its corridor.</p>`;
+      return;
+    }
+    const node = this.net.nodes[id]!;
+    const trust = analysis.trust.node[id] ?? 1;
+    const confidence = analysis.trust.nodeConfidence[id] ?? 0.5;
+    const [low, high] = trustBand(trust, confidence);
+    const threat = analysis.threat.nodes[id]!;
+    const degree = (this.net.adjacency[id] ?? []).length;
+    const onA = analysis.routeA.nodeIds.includes(id);
+    const onB = analysis.routeB.ok && analysis.routeB.nodeIds.includes(id);
+
+    const media = new Set<string>();
+    for (const linkId of this.net.adjacency[id] ?? []) {
+      media.add(MEDIA[this.net.links[linkId]!.medium] ?? "");
+    }
+
+    this.inspect.innerHTML = `
+      <h2>Relay inspector</h2>
+      <div class="ident"><strong>${escapeHtml(node.name)}</strong>
+        <span>${escapeHtml(TIER_NAMES[node.tier])} · ${escapeHtml(REGIONS[node.region]!.name)}</span></div>
+      <dl>
+        <div><dt>operator class</dt><dd>${escapeHtml(OPERATORS[node.operator] ?? "—")}</dd></div>
+        <div><dt>spans</dt><dd>${degree} (${escapeHtml([...media].join(", "))})</dd></div>
+        <div><dt>capacity</dt><dd>${pct(node.capacity, 0)}</dd></div>
+        <div><dt>key-store grade</dt><dd>${pct(node.hwSecurity, 0)}</dd></div>
+        <div><dt>patch currency</dt><dd>${pct(node.patch, 0)}</dd></div>
+        <div><dt>PQ-ready stack</dt><dd>${pct(node.pqReady, 0)}</dd></div>
+        <div><dt>classical fallback</dt><dd>${node.allowsFallback ? "permitted" : "refused"}</dd></div>
+        <div><dt>trust score</dt><dd>${trust.toFixed(2)} <small>band ${low.toFixed(2)}–${high.toFixed(
+          2,
+        )}</small></dd></div>
+        ${
+          state.showGroundTruth
+            ? `<div class="truth"><dt>fixture ground truth</dt><dd>${
+                threat.compromised > 0
+                  ? "relay under adversary control"
+                  : threat.leak > 0
+                    ? `leakage ${pct(threat.leak, 0)}`
+                    : "no stipulated compromise"
+              }</dd></div>`
+            : ""
+        }
+      </dl>
+      <p class="on-route">${onA || onB ? `on corridor ${onA ? "A" : ""}${onA && onB ? " + " : ""}${onB ? "B" : ""}` : "not on a shown corridor"}</p>
+      <div class="row wrap">
+        <button data-action="setSource" data-value="${id}" class="chip small${
+          state.srcId === id ? " on" : ""
+        }">set as origin</button>
+        <button data-action="setDest" data-value="${id}" class="chip small${
+          state.dstId === id ? " on" : ""
+        }">set as destination</button>
+        <button data-action="focus" data-value="${id}" class="chip small${
+          state.focusId === id ? " on" : ""
+        }"><kbd>F</kbd>focus</button>
+      </div>
+    `;
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  private renderProvenance(state: AppState, analysis: Analysis): void {
+    void state;
+    this.provenance.innerHTML = `
+      <h2>Provenance &amp; limits</h2>
+      <ul class="prov">
+        <li><b>Data:</b> deterministic synthetic fixture, seed <code>${FIXTURE_SEED}</code> — ${
+          this.net.nodes.length
+        } relays, ${this.net.links.length} spans. Not measured, not sampled from any real network.</li>
+        <li><b>Trust layer:</b> ${escapeHtml(trustProvenanceLine(analysis.trust.source))}${
+          trustServiceConfigured ? "" : " (no external AI service configured)"
+        }. Three.js performs no inference.</li>
+        <li><b>Surrogate inputs:</b> ${SURROGATE_WEIGHTS.map((w) => `${escapeHtml(w.label)} (${w.w.toFixed(2)})`).join(
+          ", ",
+        )}, plus a seeded miss/false-flag term.</li>
+        <li><b>Uncertainty:</b> bands are fixture-declared, not observed. They describe the model's stated confidence, nothing about the world.</li>
+        <li><b>Status:</b> illustrative teaching model. Simplified routing, simplified cryptographic posture, independence assumed between spans. <b>No scientific validation.</b></li>
+      </ul>
+    `;
+  }
+
+  private renderHelp(state: AppState): void {
+    this.help.classList.toggle("open", state.help);
+    if (!state.help) {
+      this.help.innerHTML = "";
+      return;
+    }
+    this.help.innerHTML = `
+      <div class="help-card">
+        <button class="close" data-action="help">close ✕</button>
+        <h2>Reading this scene</h2>
+        <p>${escapeHtml(QUESTION)}</p>
+        <ol>
+          <li>Pick an attack (<kbd>1</kbd>–<kbd>6</kbd>). Watch the corridors re-solve.</li>
+          <li>Orbit. The core exchange sits inside the transit shell and behind the risk envelope — the winning corridor is frequently hidden from the default angle.</li>
+          <li>Zoom in on a relay to read its badge; zoom out to see which region the corridor crosses.</li>
+          <li>Filter by tier, region or minimum trust to strip the scene back to the elements that carry the argument.</li>
+          <li>Compare Arm A against Arm B (<kbd>C</kbd>), then switch the ground-truth overlay (<kbd>D</kbd>) to see what the trust check missed.</li>
+        </ol>
+        <h2>Controls</h2>
+        <dl class="key-grid">
+          ${KEY_ROWS.map(
+            (row) =>
+              `<div><span class="keys">${row[0]}</span><span class="what">${escapeHtml(row[1])}</span></div>`,
+          ).join("")}
+        </dl>
+        <h2>Legend</h2>
+        <div class="legend">
+          <span><i class="sw a"></i>Arm A corridor</span>
+          <span><i class="sw b"></i>Arm B corridor</span>
+          <span><i class="sw ghost"></i>alternate corridors</span>
+          <span><i class="sw high"></i>trust ≥ 0.75</span>
+          <span><i class="sw mid"></i>trust ≈ 0.5</span>
+          <span><i class="sw low"></i>trust ≤ 0.25</span>
+          <span><i class="sw copy"></i>recorded copy en route to the adversary archive</span>
+        </div>
+        <p class="fine">Relay size encodes capacity. Height encodes tier: access edge, transit, core exchange. Contact pools on the deck give the vertical read. Everything shown is a fixture — no measurement, no validation.</p>
+      </div>
+    `;
+  }
+}

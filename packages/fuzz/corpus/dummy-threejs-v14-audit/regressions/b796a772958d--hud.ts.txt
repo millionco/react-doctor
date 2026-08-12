@@ -1,0 +1,399 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit b796a772958da53948ec2b52de56d22c2dfab138f1787dcd790c557deef21561
+/**
+ * HUD.
+ *
+ * Two jobs beyond readouts:
+ *  - the detection compass around the reticle turns every guard's awareness
+ *    into a directional wedge, so "something has noticed you and it is behind
+ *    and to the left" is legible without turning the camera,
+ *  - the alert ladder makes the recovery arc visible: which rung, how long is
+ *    left on it, and how many full alarms remain before the run is over.
+ */
+
+import * as THREE from "three";
+import { Alert, ALERT_LABEL, SURFACE_PROFILE, type Surface } from "../world/types";
+import type { Mission } from "../game/mission";
+import type { Garrison } from "../ai/garrison";
+import type { Player } from "../player/player";
+
+const ALERT_COLOUR: Record<Alert, string> = {
+  [Alert.Calm]: "#62c8dc",
+  [Alert.Suspicious]: "#f0b429",
+  [Alert.Searching]: "#ff7a1a",
+  [Alert.Alarm]: "#ff3b45",
+};
+
+export class Hud {
+  private root: HTMLDivElement;
+  private els: Record<string, HTMLElement> = {};
+  private compass: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D | null;
+  private bannerKey = "";
+  private flashUntil = 0;
+  private objDone = [false, false];
+
+  constructor(private onStart: () => void) {
+    const ui = document.createElement("div");
+    ui.id = "ui";
+    ui.innerHTML = TEMPLATE;
+    document.body.appendChild(ui);
+    this.root = ui;
+
+    // Screens live outside #ui so fading the HUD never fades the overlays.
+    const screens = document.createElement("div");
+    screens.innerHTML = SCREENS;
+    document.body.appendChild(screens);
+
+    for (const id of [
+      "clock", "clockValue", "clockLabel", "alertDot", "alertName", "alertSub", "ladder",
+      "recoveryFill", "alarmPipList", "objList", "expBar", "expVal", "noiseBar", "noiseVal",
+      "surfaceVal", "stanceRow", "chargeIcons", "fuseWarn", "promptBox", "promptText",
+      "promptKey", "banners", "reticle", "duress", "flash", "loading", "loadFill", "loadName",
+      "overlay", "overlayCard", "paused",
+    ]) {
+      const el = document.getElementById(id);
+      if (el) this.els[id] = el;
+    }
+
+    this.compass = document.getElementById("compass") as HTMLCanvasElement;
+    this.ctx = this.compass.getContext("2d");
+    this.resize();
+    addEventListener("resize", () => this.resize());
+
+    this.els.overlay!.addEventListener("click", () => this.onStart());
+  }
+
+  private resize(): void {
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    this.compass.width = 320 * dpr;
+    this.compass.height = 320 * dpr;
+    if (this.ctx) this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // -- loading / overlays ---------------------------------------------------
+
+  setLoading(fraction: number, name: string): void {
+    (this.els.loadFill as HTMLElement).style.width = `${Math.round(fraction * 100)}%`;
+    (this.els.loadName as HTMLElement).textContent = name.toUpperCase();
+  }
+
+  hideLoading(): void {
+    this.els.loading!.classList.add("hidden");
+  }
+
+  showBriefing(): void {
+    this.els.overlayCard!.innerHTML = BRIEFING;
+    this.els.overlay!.classList.remove("hidden", "end");
+  }
+
+  showEnd(win: boolean, title: string, detail: string, stats: { label: string; value: string }[]): void {
+    const statHtml = stats
+      .map((s) => `<div>${s.label}<b>${s.value}</b></div>`)
+      .join("");
+    this.els.overlayCard!.innerHTML = `
+      <div class="kicker">${win ? "OPERATION COMPLETE" : "OPERATION FAILED"}</div>
+      <h1 class="${win ? "win" : "lose"}">${title}</h1>
+      <div class="sub">${detail}</div>
+      <div class="stats">${statHtml}</div>
+      <div class="rule"></div>
+      <div class="cta">CLICK TO RUN IT AGAIN</div>`;
+    this.els.overlay!.classList.add("end");
+    this.els.overlay!.classList.remove("hidden");
+  }
+
+  hideOverlay(): void {
+    this.els.overlay!.classList.add("hidden");
+  }
+
+  setHudVisible(v: boolean): void {
+    this.root.style.opacity = v ? "1" : "0";
+  }
+
+  setPaused(v: boolean): void {
+    this.els.paused!.classList.toggle("on", v);
+  }
+
+  flash(strength: number): void {
+    this.flashUntil = performance.now() + 90;
+    (this.els.flash as HTMLElement).style.opacity = String(Math.min(0.55, strength));
+  }
+
+  // -- per-frame ------------------------------------------------------------
+
+  update(mission: Mission, garrison: Garrison, player: Player, camera: THREE.Camera): void {
+    // Clock.
+    const dl = mission.urgentDeadline;
+    const mm = Math.floor(dl.seconds / 60);
+    const ss = Math.floor(dl.seconds % 60);
+    this.els.clockValue!.textContent = `${mm}:${ss.toString().padStart(2, "0")}`;
+    this.els.clockLabel!.textContent = dl.label;
+    this.els.clock!.classList.toggle("critical", dl.critical);
+
+    // Alert ladder.
+    const colour = ALERT_COLOUR[garrison.alert];
+    (this.els.alertDot as HTMLElement).style.color = colour;
+    this.els.alertName!.textContent = ALERT_LABEL[garrison.alert];
+    (this.els.alertName as HTMLElement).style.color = colour;
+    this.els.alertSub!.textContent =
+      garrison.alert === Alert.Calm ? "" : `STANDS DOWN IN ${Math.ceil(garrison.recoveryLeft)}s`;
+    const rungs = this.els.ladder!.children;
+    for (let i = 0; i < rungs.length; i++) {
+      const on = i < garrison.alert;
+      (rungs[i] as HTMLElement).style.background = on ? colour : "rgba(255,255,255,0.1)";
+    }
+    const total = garrison.alert === Alert.Calm ? 1 : Math.max(1, recoveryTotal(garrison.alert));
+    (this.els.recoveryFill as HTMLElement).style.width =
+      garrison.alert === Alert.Calm ? "0%" : `${(garrison.recoveryLeft / total) * 100}%`;
+
+    const pips = this.els.alarmPipList!.children;
+    for (let i = 0; i < pips.length; i++) {
+      (pips[i] as HTMLElement).classList.toggle("used", i < garrison.alarmCount);
+    }
+
+    // Objectives.
+    for (let i = 0; i < mission.objectives.length; i++) {
+      const o = mission.objectives[i]!;
+      if (o.done !== this.objDone[i]) {
+        this.objDone[i] = o.done;
+        const row = this.els.objList!.children[i] as HTMLElement | undefined;
+        row?.classList.toggle("done", o.done);
+      }
+    }
+
+    // Exposure / noise readouts.
+    const exp = player.exposure;
+    (this.els.expBar!.firstElementChild as HTMLElement).style.width = `${Math.round(exp * 100)}%`;
+    (this.els.expBar!.firstElementChild as HTMLElement).style.background =
+      exp > 0.55 ? "#ff7a1a" : exp > 0.28 ? "#f0b429" : "#62c8dc";
+    this.els.expVal!.textContent = exp > 0.55 ? "LIT" : exp > 0.28 ? "DIM" : "DARK";
+
+    const profile = SURFACE_PROFILE[player.surface as Surface];
+    const speed = Math.hypot(player.velocity.x, player.velocity.z);
+    const noise = THREE.MathUtils.clamp(
+      (player.crouching ? 0.1 : player.sprinting ? 1.0 : 0.5) * profile.loudness * (speed > 0.3 ? 1 : 0.15),
+      0,
+      1,
+    );
+    (this.els.noiseBar!.firstElementChild as HTMLElement).style.width = `${Math.round(noise * 100)}%`;
+    (this.els.noiseBar!.firstElementChild as HTMLElement).style.background =
+      noise > 0.6 ? "#ff3b45" : noise > 0.3 ? "#f0b429" : "#62c8dc";
+    this.els.noiseVal!.textContent = noise > 0.6 ? "LOUD" : noise > 0.3 ? "AUDIBLE" : "QUIET";
+    this.els.surfaceVal!.textContent = profile.label;
+
+    const chips = this.els.stanceRow!.children;
+    (chips[0] as HTMLElement).classList.toggle("on", player.crouching);
+    (chips[1] as HTMLElement).classList.toggle("on", player.sprinting);
+    (chips[2] as HTMLElement).classList.toggle("on", Math.abs(player.lean) > 0.25);
+    (chips[3] as HTMLElement).classList.toggle("on", player.peek > 0.5);
+
+    // Kit.
+    const icons = this.els.chargeIcons!.children;
+    for (let i = 0; i < icons.length; i++) {
+      (icons[i] as HTMLElement).classList.toggle("full", i < mission.charges);
+    }
+    // Whichever fuse is burning gets the red readout: the mission-critical
+    // magazine, or the breaching charges the player just lit.
+    const fuse = mission.magazineFuse;
+    const breach = mission.breachFuse;
+    if (breach >= 0) {
+      this.els.fuseWarn!.classList.add("on");
+      this.els.fuseWarn!.textContent = `CHARGES ${breach.toFixed(1)}s`;
+    } else if (fuse >= 0 && fuse < 30) {
+      this.els.fuseWarn!.classList.add("on");
+      this.els.fuseWarn!.textContent = `MAGAZINE ${Math.ceil(fuse)}s`;
+    } else {
+      this.els.fuseWarn!.classList.remove("on");
+      if (fuse >= 0) this.els.fuseWarn!.textContent = `MAGAZINE ${Math.ceil(fuse)}s`;
+    }
+
+    // Prompt.
+    const p = mission.prompt;
+    const box = this.els.promptBox!;
+    if (p) {
+      box.classList.add("on");
+      box.classList.toggle("blocked", p.blocked === true);
+      this.els.promptText!.textContent = p.text;
+      (this.els.promptKey as HTMLElement).style.display = p.key ? "" : "none";
+      this.els.promptKey!.textContent = p.key;
+    } else {
+      box.classList.remove("on");
+    }
+
+    // Banners. Only rebuilt when the set changes, so the entry animation is
+    // not restarted every frame.
+    const key = mission.banners.map((b) => b.title).join("|");
+    if (key !== this.bannerKey) {
+      this.bannerKey = key;
+      this.els.banners!.innerHTML = mission.banners
+        .map((b) => `<div class="banner ${b.tone}"><div class="t">${b.title}</div><div class="b">${b.body}</div></div>`)
+        .join("");
+    }
+
+    // Grades.
+    (this.els.duress as HTMLElement).style.opacity = String(mission.duress * 0.85);
+    this.els.reticle!.classList.toggle("peek", player.peek > 0.5);
+    if (performance.now() > this.flashUntil) {
+      const cur = parseFloat((this.els.flash as HTMLElement).style.opacity || "0");
+      if (cur > 0.001) (this.els.flash as HTMLElement).style.opacity = String(cur * 0.82);
+    }
+
+    this.drawCompass(garrison, player, camera);
+  }
+
+  /** Directional awareness wedges around the reticle. */
+  private drawCompass(garrison: Garrison, player: Player, camera: THREE.Camera): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 320, 320);
+    const cx = 160;
+    const cy = 160;
+
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    const camYaw = Math.atan2(camDir.x, camDir.z);
+
+    let peak = 0;
+    for (const g of garrison.guards) {
+      if (g.awareness < 0.03 && g.mode === "patrol") continue;
+      peak = Math.max(peak, g.awareness);
+      const dx = g.position.x - player.position.x;
+      const dz = g.position.z - player.position.z;
+      const dist = Math.hypot(dx, dz);
+      let rel = Math.atan2(dx, dz) - camYaw;
+      while (rel > Math.PI) rel -= Math.PI * 2;
+      while (rel < -Math.PI) rel += Math.PI * 2;
+
+      const radius = 66 + THREE.MathUtils.clamp(dist / 34, 0, 1) * 26;
+      const a = g.awareness;
+      const width = 0.1 + 0.16 * a;
+      const colour = g.mode === "pursue" ? "255,59,69" : a > 0.62 ? "255,122,26" : a > 0.28 ? "240,180,41" : "98,200,220";
+
+      // Angle 0 = straight ahead, drawn at the top of the compass.
+      const screenAngle = -Math.PI / 2 + rel;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, screenAngle - width, screenAngle + width);
+      ctx.strokeStyle = `rgba(${colour},${0.16 + a * 0.7})`;
+      ctx.lineWidth = 2 + a * 4;
+      ctx.lineCap = "round";
+      ctx.stroke();
+
+      if (a > 0.02) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, screenAngle - width, screenAngle - width + width * 2 * a);
+        ctx.strokeStyle = `rgba(${colour},0.95)`;
+        ctx.lineWidth = 3 + a * 5;
+        ctx.stroke();
+      }
+    }
+
+    // A tightening ring as somebody closes in on certainty.
+    if (peak > 0.05) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, 26 - peak * 10, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,255,255,${0.06 + peak * 0.3})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+}
+
+function recoveryTotal(a: Alert): number {
+  return a === Alert.Alarm ? 17 : a === Alert.Searching ? 15 : 11;
+}
+
+const TEMPLATE = /* html */ `
+<div id="vignette" class="grade"></div>
+<div id="duress" class="grade"></div>
+<div id="flash" class="grade"></div>
+
+<div id="status" class="panel">
+  <div id="clock"><span class="value" id="clockValue">5:00</span><span class="label" id="clockLabel">WINDOW</span></div>
+  <div id="alertRow">
+    <span id="alertDot"></span>
+    <span id="alertName">UNDISTURBED</span>
+    <span id="alertSub"></span>
+  </div>
+  <div id="ladder"><div></div><div></div><div></div></div>
+  <div id="recovery"><div id="recoveryFill"></div></div>
+  <div id="alarmPips">FULL ALARMS<span class="pips" id="alarmPipList"><i></i><i></i></span></div>
+</div>
+
+<div id="objectives" class="panel">
+  <h4>OBJECTIVES</h4>
+  <div id="objList">
+    <div class="obj"><span class="box"></span><span><span class="name">GARRISON LEDGER</span><br><span class="detail">Keep — upper chamber</span></span></div>
+    <div class="obj"><span class="box"></span><span><span class="name">POWDER MAGAZINE</span><br><span class="detail">Set the demolition charge</span></span></div>
+  </div>
+</div>
+
+<div id="readout" class="panel">
+  <div class="meter"><span class="tag">EXPOSURE</span><span class="bar" id="expBar"><i></i></span><span class="val" id="expVal">DARK</span></div>
+  <div class="meter"><span class="tag">FOOTFALL</span><span class="bar" id="noiseBar"><i></i></span><span class="val" id="noiseVal">QUIET</span></div>
+  <div class="meter"><span class="tag">UNDERFOOT</span><span class="bar" style="visibility:hidden"><i></i></span><span class="val" id="surfaceVal">EARTH</span></div>
+  <div id="stanceRow">
+    <span class="chip">CROUCH</span><span class="chip">RUN</span><span class="chip">LEAN</span><span class="chip">PEEK</span>
+  </div>
+</div>
+
+<div id="kit" class="panel">
+  <div class="hint">BREACHING CHARGES</div>
+  <div id="chargeIcons"><i class="full"></i><i class="full"></i><i class="full"></i><i class="full"></i></div>
+  <div class="hint">F PLANT &nbsp;·&nbsp; R FIRE</div>
+  <div id="fuseWarn"></div>
+</div>
+
+<div id="centre">
+  <canvas id="compass" width="320" height="320" style="width:320px;height:320px"></canvas>
+  <div id="reticle"></div>
+</div>
+
+<div id="promptBox"><span id="promptKey">F</span><span id="promptText"></span></div>
+<div id="banners"></div>
+<div id="paused"><div class="t">PAUSED</div><div class="b">CLICK TO RESUME &nbsp;·&nbsp; ESC RELEASES THE CURSOR</div></div>
+`;
+
+const BRIEFING = /* html */ `
+  <div class="kicker">QUIET DETONATION</div>
+  <h1>THE HOLLOW KEEP</h1>
+  <div class="sub">One saboteur · Two objectives · Five minutes · One alarm of margin</div>
+  <p>
+    Marshal Verre's garrison holds a hill fort with a soft belly: a scoured drain at the
+    foot of the north wall, a gravel yard that shouts under a running boot, and a timber
+    gallery on the ramparts that does the same. Study the patrol cones before you cross
+    anything. Every stretch of curtain wall is masonry you can take down — a charge makes
+    a door where there wasn't one, drops the gallery above it, and piles enough rubble to
+    climb. It also makes a window, and a very loud noise.
+  </p>
+  <p>
+    Take the <b style="border:0;background:none;padding:0;color:#62c8dc">garrison ledger</b>
+    from the keep's upper chamber, set the demolition charge in the
+    <b style="border:0;background:none;padding:0;color:#62c8dc">powder magazine</b>, and be
+    on the eastern crag before it goes up. They can rouse the whole fortress once and you
+    can still walk away from it. Twice and you will not.
+  </p>
+  <div class="rule"></div>
+  <div class="keys">
+    <div><b>W A S D</b> move</div>
+    <div><b>MOUSE</b> look</div>
+    <div><b>C</b> crouch</div>
+    <div><b>SHIFT</b> run</div>
+    <div><b>Q / E</b> lean out</div>
+    <div><b>RIGHT MB</b> tactical peek</div>
+    <div><b>F</b> hold to act</div>
+    <div><b>R</b> fire charges</div>
+  </div>
+  <div class="cta">CLICK TO BEGIN</div>
+`;
+
+const SCREENS = /* html */ `
+<div id="loading">
+  <div class="title">QUIET DETONATION</div>
+  <div id="loadBar"><div id="loadFill"></div></div>
+  <div id="loadName">PREPARING</div>
+</div>
+<div id="overlay" class="hidden"><div class="card" id="overlayCard"></div></div>
+`;

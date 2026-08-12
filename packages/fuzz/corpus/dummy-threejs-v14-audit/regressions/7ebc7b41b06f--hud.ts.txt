@@ -1,0 +1,316 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 7ebc7b41b06fa9e3a9dd3b77271cca51d9b900206d094ea815ece398743b4e67
+/** DOM overlay: rosters, meters, the live gate readout, and the run overlays. */
+
+import type { GateReadout } from "../gates/common";
+
+export type ToastKind = "ok" | "warn" | "bad";
+
+interface GateChip {
+  root: HTMLDivElement;
+  state: HTMLSpanElement;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  parent?: HTMLElement,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  if (parent) parent.appendChild(node);
+  return node;
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private chips: GateChip[] = [];
+  private objective: HTMLDivElement;
+  private waveLabel: HTMLElement;
+  private waveEta: HTMLElement;
+  private waveMeter: HTMLElement;
+  private waveTicks: HTMLDivElement;
+  private integrityMeter: HTMLDivElement;
+  private integrityFill: HTMLElement;
+  private integrityLabel: HTMLElement;
+  private purgeFill: HTMLElement;
+  private purgeLabel: HTMLElement;
+  private alert: HTMLDivElement;
+  private alertText: HTMLElement;
+  private readout: HTMLDivElement;
+  private readStatus: HTMLDivElement;
+  private readTitle: HTMLElement;
+  private readRows: HTMLDivElement;
+  private readHint: HTMLDivElement;
+  private readGrids: HTMLDivElement;
+  private gridA: HTMLCanvasElement;
+  private gridB: HTMLCanvasElement;
+  private prompt: HTMLDivElement;
+  private toasts: HTMLDivElement;
+  private overlay: HTMLDivElement;
+  private overlayCard: HTMLDivElement;
+  private glitch: HTMLDivElement;
+  private rebootText: HTMLDivElement;
+  private rebootLog: HTMLDivElement;
+  private lastPrompt = "";
+
+  constructor() {
+    this.root = el("div");
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    /* ------------------------------------------------------ gate roster */
+    const gates = el("div", "panel", this.root);
+    gates.id = "gates";
+    el("h2", undefined, gates, "Verification Gates");
+    for (let i = 0; i < 3; i++) {
+      const row = el("div", "gate-row", gates);
+      el("i", "gate-dot", row);
+      el("span", "gate-name", row, `GATE 0${i + 1}`);
+      const state = el("span", "gate-state", row, "LOCKED");
+      this.chips.push({ root: row, state });
+    }
+    this.objective = el("div", undefined, gates, "");
+    this.objective.id = "objective";
+
+    /* -------------------------------------------------------- wave panel */
+    const waves = el("div", "panel", this.root);
+    waves.id = "waves";
+    el("h2", undefined, waves, "Corruption");
+    const wr = el("div", "row", waves);
+    this.waveLabel = el("b", undefined, wr, "WAVE 1 / 2");
+    this.waveEta = el("span", undefined, wr, "--s");
+    const meter = el("div", "meter", waves);
+    this.waveMeter = el("i", undefined, meter);
+    this.waveTicks = el("div", undefined, waves);
+    this.waveTicks.id = "waveTicks";
+    el("span", undefined, this.waveTicks);
+    el("span", undefined, this.waveTicks);
+
+    /* ------------------------------------------------------------ vitals */
+    const vitals = el("div", "panel", this.root);
+    vitals.id = "vitals";
+    el("h2", undefined, vitals, "Host Status");
+    const ir = el("div", "row", vitals);
+    el("span", undefined, ir, "INTEGRITY");
+    this.integrityLabel = el("b", undefined, ir, "100%");
+    this.integrityMeter = el("div", "meter integrity", vitals);
+    this.integrityFill = el("i", undefined, this.integrityMeter);
+    const pr = el("div", "row", vitals);
+    el("span", undefined, pr, "PURGE EMITTER");
+    this.purgeLabel = el("b", undefined, pr, "READY");
+    const pmeter = el("div", "meter purge", vitals);
+    this.purgeFill = el("i", undefined, pmeter);
+    this.alert = el("div", undefined, vitals);
+    this.alert.id = "alert";
+    el("i", undefined, this.alert).id = "alertBead";
+    this.alertText = el("span", undefined, this.alert, "NO SURVEILLANCE CONTACT");
+
+    /* ----------------------------------------------------------- readout */
+    this.readout = el("div", "panel", this.root);
+    this.readout.id = "readout";
+    this.readTitle = el("h2", undefined, this.readout, "Gate");
+    this.readStatus = el("div", undefined, this.readout, "");
+    this.readStatus.id = "readStatus";
+    this.readGrids = el("div", undefined, this.readout);
+    this.readGrids.id = "readGrids";
+    const wrapA = el("div", "grid-wrap", this.readGrids);
+    this.gridA = el("canvas", undefined, wrapA);
+    el("label", undefined, wrapA, "READING");
+    const wrapB = el("div", "grid-wrap", this.readGrids);
+    this.gridB = el("canvas", undefined, wrapB);
+    el("label", undefined, wrapB, "REQUIRED");
+    for (const c of [this.gridA, this.gridB]) {
+      c.width = 5 * 14;
+      c.height = 5 * 14;
+      c.style.width = "70px";
+      c.style.height = "70px";
+    }
+    this.readRows = el("div", undefined, this.readout);
+    this.readHint = el("div", undefined, this.readout, "");
+    this.readHint.id = "readHint";
+
+    /* ------------------------------------------------------------ prompt */
+    this.prompt = el("div", undefined, this.root, "");
+    this.prompt.id = "prompt";
+
+    this.toasts = el("div", undefined, this.root);
+    this.toasts.id = "toasts";
+
+    /* ---------------------------------------------------------- overlays */
+    this.glitch = el("div", undefined, this.root);
+    this.glitch.id = "glitch";
+    this.rebootText = el("div", undefined, this.root);
+    this.rebootText.id = "rebootText";
+    el("div", "big", this.rebootText, "INTEGRITY LOST");
+    this.rebootLog = el("div", "log", this.rebootText, "");
+
+    this.overlay = el("div", undefined, this.root);
+    this.overlay.id = "overlay";
+    this.overlayCard = el("div", undefined, this.overlay);
+    this.overlayCard.id = "overlayCard";
+  }
+
+  /* ------------------------------------------------------------- roster */
+
+  setGates(names: string[]): void {
+    names.forEach((n, i) => {
+      const chip = this.chips[i];
+      if (!chip) return;
+      const nameEl = chip.root.querySelector(".gate-name");
+      if (nameEl) nameEl.textContent = `0${i + 1} · ${n}`;
+    });
+  }
+
+  updateGates(solved: boolean[], activeIndex: number): void {
+    this.chips.forEach((chip, i) => {
+      chip.root.classList.toggle("done", !!solved[i]);
+      chip.root.classList.toggle("active", activeIndex === i && !solved[i]);
+      chip.state.textContent = solved[i] ? "VERIFIED" : activeIndex === i ? "IN RANGE" : "LOCKED";
+    });
+  }
+
+  setObjective(text: string): void {
+    this.objective.textContent = text;
+  }
+
+  /* -------------------------------------------------------------- meters */
+
+  setWave(index: number, progress: number, completed: number, seconds: number): void {
+    this.waveLabel.textContent = `WAVE ${Math.min(index + 1, 2)} / 2`;
+    this.waveEta.textContent = Number.isFinite(seconds) ? `${Math.max(0, Math.ceil(seconds))}s` : "--s";
+    this.waveMeter.style.width = `${Math.min(100, progress * 100).toFixed(1)}%`;
+    const ticks = this.waveTicks.children;
+    for (let i = 0; i < ticks.length; i++) ticks[i]!.classList.toggle("done", i < completed);
+  }
+
+  setIntegrity(value: number, max: number): void {
+    const pct = Math.max(0, (value / max) * 100);
+    this.integrityFill.style.width = `${pct.toFixed(0)}%`;
+    this.integrityLabel.textContent = `${Math.round(pct)}%`;
+    this.integrityMeter.classList.toggle("low", pct <= 35);
+  }
+
+  setPurge(ready: number): void {
+    this.purgeFill.style.width = `${(ready * 100).toFixed(0)}%`;
+    this.purgeLabel.textContent = ready >= 0.999 ? "READY" : "CHARGING";
+  }
+
+  setAlert(level: number, spotted: boolean): void {
+    this.alert.classList.toggle("warn", level > 0.05 && level < 0.99);
+    this.alert.classList.toggle("hot", level >= 0.99);
+    this.alertText.textContent =
+      level >= 0.99
+        ? "ALARM — SWEEP ACCELERATING"
+        : spotted
+          ? `SCANNED · ${Math.round(level * 100)}%`
+          : level > 0.05
+            ? `SUSPICION ${Math.round(level * 100)}%`
+            : "NO SURVEILLANCE CONTACT";
+  }
+
+  /* ------------------------------------------------------------ readout */
+
+  showReadout(title: string, r: GateReadout | null): void {
+    if (!r) {
+      this.readout.classList.remove("on");
+      return;
+    }
+    this.readout.classList.add("on");
+    this.readout.classList.toggle("blocked", r.blocked);
+    this.readTitle.textContent = title;
+    this.readStatus.textContent = r.status;
+    this.readHint.textContent = r.hint;
+
+    // Rows are rebuilt only when their shape changes; text updates are cheap.
+    while (this.readRows.children.length > r.rows.length) {
+      this.readRows.removeChild(this.readRows.lastChild!);
+    }
+    while (this.readRows.children.length < r.rows.length) {
+      const row = el("div", "read-row", this.readRows);
+      el("span", undefined, row);
+      el("span", undefined, row);
+    }
+    r.rows.forEach((row, i) => {
+      const node = this.readRows.children[i] as HTMLElement;
+      node.className = `read-row ${row.state}`;
+      (node.children[0] as HTMLElement).textContent = row.label;
+      (node.children[1] as HTMLElement).textContent = row.value;
+    });
+
+    if (r.grid) {
+      this.readGrids.classList.add("on");
+      this.drawGrid(this.gridA, r.grid.cells, r.grid.size, "#63f0c8");
+      this.drawGrid(this.gridB, r.grid.target, r.grid.size, "#f0a84a");
+    } else {
+      this.readGrids.classList.remove("on");
+    }
+  }
+
+  private drawGrid(canvas: HTMLCanvasElement, cells: boolean[], size: number, color: string): void {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const s = canvas.width / size;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#080d11";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const on = cells[r * size + c];
+        ctx.fillStyle = on ? color : "#141c22";
+        ctx.fillRect(c * s + 1, r * s + 1, s - 2, s - 2);
+        if (on) {
+          ctx.fillStyle = "rgba(255,255,255,0.35)";
+          ctx.fillRect(c * s + 1, r * s + 1, s - 2, 2);
+        }
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------- prompt */
+
+  setPrompt(main: string, sub = ""): void {
+    const key = `${main}|${sub}`;
+    if (key === this.lastPrompt) return;
+    this.lastPrompt = key;
+    this.prompt.innerHTML = main ? `${main}${sub ? `<small>${sub}</small>` : ""}` : "";
+  }
+
+  toast(message: string, kind: ToastKind = "ok", ms = 2600): void {
+    const node = el("div", `toast ${kind === "ok" ? "" : kind}`, this.toasts, message);
+    while (this.toasts.children.length > 4) this.toasts.removeChild(this.toasts.firstChild!);
+    window.setTimeout(() => {
+      node.classList.add("fade");
+      window.setTimeout(() => node.remove(), 420);
+    }, ms);
+  }
+
+  /* ------------------------------------------------------------ overlays */
+
+  showOverlay(html: string): void {
+    this.overlayCard.innerHTML = html;
+    this.overlay.classList.add("on");
+  }
+
+  hideOverlay(): void {
+    this.overlay.classList.remove("on");
+  }
+
+  get overlayElement(): HTMLElement {
+    return this.overlayCard;
+  }
+
+  /** Drives the failure→recovery sweep. `t` runs 0→1. */
+  setReboot(t: number, log: string): void {
+    const vis = t > 0 && t < 1;
+    this.glitch.style.opacity = vis ? `${Math.min(1, Math.sin(t * Math.PI) * 1.6)}` : "0";
+    this.glitch.style.transform = vis ? `translateX(${Math.sin(t * 44) * 5}px)` : "none";
+    this.rebootText.style.opacity = vis ? `${Math.min(1, Math.sin(t * Math.PI) * 2.2)}` : "0";
+    this.rebootLog.textContent = log;
+  }
+}

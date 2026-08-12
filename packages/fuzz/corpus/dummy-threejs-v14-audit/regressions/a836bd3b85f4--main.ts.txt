@@ -1,0 +1,615 @@
+// rule: three-effect-composer-require-size-on-resize, three-no-compile-in-animation-loop
+// file-path: src/main.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit a836bd3b85f40b07f0defad52e7488dbb689cb070933e438a262204c5c3dc69f
+import "./style.css";
+import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+
+import { clamp01, easeOut, lerp } from "./core/rng";
+import { SurfaceLoader, type SurfaceLibrary } from "./gfx/library";
+import { buildEnvironment } from "./gfx/atmosphere";
+import { buildArena, type Arena } from "./world/arena";
+import { tileX } from "./world/layout";
+import { Duelist } from "./entities/duelist";
+import { Director } from "./game/director";
+import { WardenMind } from "./game/ai";
+import {
+  ACTION_BY_ID,
+  initialState,
+  previewStep,
+  resolveRound,
+  TARGET_SCORE,
+  type ActionId,
+  type DuelState,
+  type Resolution,
+  type Side,
+} from "./game/rules";
+import { Hud, type Phase } from "./ui/hud";
+
+// ---------------------------------------------------------------------------
+// Renderer
+// ---------------------------------------------------------------------------
+
+const canvas = document.querySelector("#view") as HTMLCanvasElement;
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  powerPreference: "high-performance",
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// The key light stays low; the exposure is what makes the baked cavity shading
+// and occlusion legible rather than pushing more direct light at everything.
+renderer.toneMappingExposure = 1.45;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x04060a);
+scene.fog = new THREE.FogExp2(0x05080d, 0.028);
+
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 140);
+camera.position.set(0, 3.0, 9.5);
+
+// The environment map is convolved through PMREM, which compiles shaders and
+// renders six faces. Doing that at module scope stalls the page load before
+// anything has been drawn, so it waits until the loading screen is up.
+scene.environmentIntensity = 1.15;
+
+let composer: EffectComposer | null = null;
+let gtao: GTAOPass | null = null;
+let bloom: UnrealBloomPass | null = null;
+
+function buildComposer(): void {
+  try {
+    const c = new EffectComposer(renderer);
+    c.addPass(new RenderPass(scene, camera));
+
+    const ao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
+    ao.blendIntensity = 0.95;
+    ao.updateGtaoMaterial({
+      radius: 0.32,
+      distanceExponent: 1.2,
+      thickness: 0.6,
+      scale: 1.1,
+      samples: 8,
+    });
+    ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, samples: 8 });
+    c.addPass(ao);
+    gtao = ao;
+
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.5,
+      0.62,
+      0.82,
+    );
+    c.addPass(bloomPass);
+    bloom = bloomPass;
+    c.addPass(new OutputPass());
+    composer = c;
+  } catch {
+    composer = null;
+    gtao = null;
+    bloom = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Game state
+// ---------------------------------------------------------------------------
+
+let arena: Arena | null = null;
+let fighters: Record<Side, Duelist> | null = null;
+let director: Director | null = null;
+const mind = new WardenMind();
+
+let state: DuelState = initialState();
+let phase: Phase = "loading";
+let selected: ActionId | null = null;
+let previewIndex: number | null = null;
+let resetTimer = 0;
+let pendingReset = false;
+let shake = 0;
+let matchStarted = false;
+
+const hud = new Hud({
+  onSelect: (action) => select(action),
+  onLock: () => lockIn(),
+  onBegin: () => beginMatch(),
+  onRestart: () => restart(),
+});
+
+// ---------------------------------------------------------------------------
+// Preview marker
+// ---------------------------------------------------------------------------
+
+const marker = new THREE.Group();
+const markerRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.32, 0.44, 40),
+  new THREE.MeshBasicMaterial({
+    color: 0x7fd4ff,
+    transparent: true,
+    opacity: 0.55,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  }),
+);
+markerRing.rotation.x = -Math.PI / 2;
+markerRing.position.y = 0.035;
+marker.add(markerRing);
+for (let i = 0; i < 4; i++) {
+  const tick = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.055, 0.17),
+    new THREE.MeshBasicMaterial({
+      color: 0x7fd4ff,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+  tick.position.set(Math.cos(a) * 0.52, 0.035, Math.sin(a) * 0.52);
+  tick.rotation.x = -Math.PI / 2;
+  tick.rotation.z = -a;
+  marker.add(tick);
+}
+marker.visible = false;
+scene.add(marker);
+
+// ---------------------------------------------------------------------------
+// Loading
+// ---------------------------------------------------------------------------
+
+let library: SurfaceLibrary | null = null;
+const loader = new SurfaceLoader((progress) => hud.setLoading(progress.fraction, progress.label));
+// Per-surface build times, handy for profiling the procedural pass in a console.
+(window as unknown as { secretBladesBuild: string[] }).secretBladesBuild = loader.timings;
+
+let worldStage = 0;
+let compiled = false;
+
+/**
+ * Raising the world is itself several hundred milliseconds of geometry and
+ * shader work, so it is staged across frames the same way the surfaces are.
+ * Returns true once the arena is standing and play can begin.
+ */
+function buildWorld(lib: SurfaceLibrary): boolean {
+  switch (worldStage) {
+    case 0:
+      hud.setLoading(1, "kindling the braziers");
+      scene.environment = buildEnvironment(renderer);
+      break;
+    case 1:
+      hud.setLoading(1, "raising the causeway");
+      arena = buildArena(lib);
+      scene.add(arena.group);
+      break;
+    case 2:
+      hud.setLoading(1, "arming the Marshal");
+      fighters = {
+        left: new Duelist("left", "marshal", lib),
+        right: null as unknown as Duelist,
+      };
+      scene.add(fighters.left.root);
+      break;
+    case 3:
+      hud.setLoading(1, "waking the Warden");
+      if (fighters) {
+        fighters.right = new Duelist("right", "warden", lib);
+        scene.add(fighters.right.root);
+      }
+      break;
+    case 4:
+      // Linking every shader on the first drawn frame is a stall long enough
+      // that the browser stops presenting. Compiling up front, off the render
+      // path, keeps the page alive and the first frame of play instant.
+      hud.setLoading(1, "letting the light in");
+      renderer.compileAsync(scene, camera).then(() => {
+        compiled = true;
+      });
+      break;
+    case 5:
+      if (!compiled) return false;
+      break;
+    default:
+      if (!fighters || !arena) return false;
+      director = new Director(fighters, arena, {
+        onEvent: (event) => hud.push(event),
+        onImpact: (strength) => {
+          shake = Math.max(shake, strength);
+        },
+        onComplete: (res) => completeRound(res),
+      });
+      director.settle(state.left.pos, state.right.pos, 1, -1);
+      buildComposer();
+      applyQuality();
+      hud.hideLoading();
+      hud.showBrief();
+      phase = "over";
+      updateHud();
+      return true;
+  }
+
+  worldStage += 1;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Flow
+// ---------------------------------------------------------------------------
+
+function beginMatch(): void {
+  if (!director) return;
+  matchStarted = true;
+  hud.hideBrief();
+  hud.clearLog();
+  hud.pushHeader("The Warden steps onto the causeway and waits. Choose in secret.");
+  phase = "choose";
+  selected = null;
+  updateHud();
+}
+
+function restart(): void {
+  hud.hideEnd();
+  state = initialState();
+  selected = null;
+  previewIndex = null;
+  pendingReset = false;
+  arena?.resetTiles();
+  arena?.setLanterns("left", 0);
+  arena?.setLanterns("right", 0);
+  director?.settle(state.left.pos, state.right.pos, 1, -1);
+  hud.clearLog();
+  hud.pushHeader("Blades again. Three exchanges.");
+  phase = "choose";
+  updateHud();
+}
+
+function select(action: ActionId): void {
+  if (phase !== "choose") return;
+  selected = action;
+  previewIndex =
+    action === "advance" || action === "retreat" ? previewStep(state, "left", action) : null;
+  updateHud();
+}
+
+/** Arrow keys pick by direction on screen rather than by rule name. */
+function selectByDirection(worldDir: -1 | 1): void {
+  if (phase !== "choose") return;
+  select(worldDir === state.left.facing ? "advance" : "retreat");
+}
+
+function lockIn(): void {
+  if (phase !== "choose" || !selected || !director) return;
+  const playerAction = selected;
+  const measureBefore = state.right.pos - state.left.pos;
+  const wardenAction = mind.choose(state);
+  mind.observe(measureBefore, playerAction);
+
+  const res = resolveRound(state, playerAction, wardenAction);
+
+  hud.pushHeader(
+    `You call ${ACTION_BY_ID[playerAction].name}. The Warden calls ${ACTION_BY_ID[wardenAction].name}.`,
+  );
+  arena?.pulseArbiter(1);
+  phase = "resolving";
+  previewIndex = null;
+  marker.visible = false;
+  director.play(res);
+  updateHud();
+}
+
+function completeRound(res: Resolution): void {
+  state = res.after;
+  hud.push({
+    text: res.headline,
+    tone: res.scorer === "left" ? "hit" : res.scorer ? "taken" : "neutral",
+  });
+  arena?.setLanterns("left", state.left.score);
+  arena?.setLanterns("right", state.right.score);
+
+  if (res.matchDrawn) {
+    phase = "over";
+    hud.showEnd(
+      null,
+      "Three exchanges thrown out with nothing to separate you. The ring goes dark, the causeway is left standing, and neither of you has taken a step worth counting.",
+    );
+    updateHud();
+    return;
+  }
+
+  if (res.matchWinner) {
+    phase = "over";
+    const won = res.matchWinner === "left";
+    hud.showEnd(
+      won,
+      won
+        ? `Three exchanges to ${state.right.score}. The Warden goes over the edge, and the glyphs go quiet.`
+        : `The Warden takes it ${state.right.score} to ${state.left.score}. It was reading your measure before you were.`,
+    );
+    updateHud();
+    return;
+  }
+
+  if (res.exchangeOver) {
+    pendingReset = true;
+    resetTimer = 1.15;
+    phase = "resolving";
+    updateHud();
+    return;
+  }
+
+  selected = null;
+  phase = "choose";
+  updateHud();
+}
+
+function finishExchangeReset(): void {
+  pendingReset = false;
+  arena?.resetTiles();
+  director?.settle(state.left.pos, state.right.pos, state.left.facing, state.right.facing);
+  hud.pushHeader(
+    `Exchange ${state.exchange}. ${state.left.score}–${state.right.score}, first to ${TARGET_SCORE}. Back to the marks.`,
+  );
+  selected = null;
+  phase = "choose";
+  updateHud();
+}
+
+function updateHud(): void {
+  hud.update(state, phase, selected);
+}
+
+// ---------------------------------------------------------------------------
+// Input
+// ---------------------------------------------------------------------------
+
+const KEY_ACTIONS: Record<string, ActionId> = {
+  "1": "advance",
+  "2": "retreat",
+  "3": "high",
+  "4": "low",
+  "5": "guard",
+  "6": "shove",
+};
+
+window.addEventListener("keydown", (event) => {
+  if (event.repeat) return;
+  const key = event.key;
+
+  if (key === " " || key === "Spacebar") {
+    event.preventDefault();
+    if (phase === "over") {
+      if (!director) return;
+      if (matchStarted) restart();
+      else beginMatch();
+      return;
+    }
+    lockIn();
+    return;
+  }
+
+  const mapped = KEY_ACTIONS[key];
+  if (mapped) {
+    select(mapped);
+    return;
+  }
+
+  if (key === "ArrowLeft") {
+    event.preventDefault();
+    selectByDirection(-1);
+  } else if (key === "ArrowRight") {
+    event.preventDefault();
+    selectByDirection(1);
+  } else if (key === "ArrowUp") {
+    event.preventDefault();
+    select("high");
+  } else if (key === "ArrowDown") {
+    event.preventDefault();
+    select("low");
+  }
+});
+
+window.addEventListener("resize", () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer?.setSize(w, h);
+  gtao?.setSize(w, h);
+});
+
+// ---------------------------------------------------------------------------
+// Camera
+// ---------------------------------------------------------------------------
+
+const camPos = new THREE.Vector3(0, 3.0, 9.5);
+const camTarget = new THREE.Vector3(0, 1.05, 0);
+const wantPos = new THREE.Vector3();
+const wantTarget = new THREE.Vector3();
+
+function updateCamera(dt: number, time: number): void {
+  if (!fighters) return;
+  const lx = fighters.left.worldX;
+  const rx = fighters.right.worldX;
+  const centre = (lx + rx) / 2;
+  const spread = Math.abs(rx - lx);
+
+  // Push in when they are close, pull out when they are measuring.
+  const dist = lerp(5.3, 7.6, clamp01(spread / 6));
+  const height = lerp(1.85, 2.45, clamp01(spread / 6));
+  const drift = Math.sin(time * 0.19) * 0.3;
+  const impulse = easeOut(clamp01(shake));
+
+  wantPos.set(
+    centre * 0.62 + drift - impulse * 0.25,
+    height + Math.sin(time * 0.27) * 0.09,
+    dist - impulse * 0.45,
+  );
+  wantTarget.set(centre * 0.85, 1.02, 0);
+
+  camPos.lerp(wantPos, Math.min(1, dt * 2.4));
+  camTarget.lerp(wantTarget, Math.min(1, dt * 3.2));
+
+  camera.position.copy(camPos);
+  if (shake > 0.001) {
+    const s = shake * shake * 0.1;
+    camera.position.x += Math.sin(time * 71) * s;
+    camera.position.y += Math.sin(time * 63.7) * s;
+  }
+  camera.lookAt(camTarget);
+}
+
+// ---------------------------------------------------------------------------
+// Adaptive quality
+// ---------------------------------------------------------------------------
+
+/**
+ * The scene is expensive by design, so it steps itself down rather than
+ * stuttering: first the resolution, then screen-space occlusion (the surfaces
+ * still carry their own baked AO), then bloom, then shadows.
+ */
+const quality = {
+  // Starts plain and climbs. Opening at full quality on a machine that cannot
+  // hold it costs several seconds of stutter right when the scene first
+  // appears; climbing into it costs a second nobody notices.
+  level: 3,
+  samples: [] as number[],
+  cooldown: 1.5,
+};
+
+function adaptQuality(dt: number): void {
+  // A single catastrophic frame is enough evidence; do not wait for a sample
+  // window that, at two frames a second, would take half a minute to fill.
+  if (dt > 0.2 && quality.level < 4) {
+    quality.level += 1;
+    quality.cooldown = 2;
+    quality.samples.length = 0;
+    applyQuality();
+    return;
+  }
+
+  if (quality.cooldown > 0) {
+    quality.cooldown -= dt;
+    return;
+  }
+  quality.samples.push(dt);
+  if (quality.samples.length < 14) return;
+  const sorted = quality.samples.slice().sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] as number;
+  quality.samples.length = 0;
+
+  if (median > 0.042 && quality.level < 4) {
+    quality.level += 1;
+    quality.cooldown = 2.5;
+    applyQuality();
+  } else if (median < 0.019 && quality.level > 0) {
+    quality.level -= 1;
+    quality.cooldown = 8;
+    applyQuality();
+  }
+}
+
+function applyQuality(): void {
+  const level = quality.level;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, level >= 1 ? 1 : 1.75));
+  if (gtao) gtao.enabled = level < 2;
+  if (bloom) bloom.enabled = level < 3;
+  // Dropping the light's shadow rather than the whole shadow map keeps THREE's
+  // lighting state consistent and lets it recompile cleanly.
+  if (arena) arena.keyLight.castShadow = level < 4;
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer?.setSize(window.innerWidth, window.innerHeight);
+}
+
+// ---------------------------------------------------------------------------
+// Loop
+// ---------------------------------------------------------------------------
+
+const clock = new THREE.Timer();
+let veilTick = 0;
+
+function step(): void {
+  clock.update();
+  // Clamped so a stalled frame cannot teleport anyone across the causeway, but
+  // not so tightly that a slow machine plays the whole duel in slow motion.
+  const dt = Math.min(0.1, clock.getDelta());
+  const time = clock.getElapsed();
+
+  if (phase === "loading") {
+    // Cheap while the veil is up, but it keeps the canvas presenting frames so
+    // the page never looks hung. Once the world is in the scene, drawing it
+    // would force the very synchronous shader link we are trying to avoid, so
+    // the DOM veil carries the frames from there.
+    if (worldStage < 1) renderer.render(scene, camera);
+    if (!library) library = loader.update();
+    if (library) buildWorld(library);
+    return;
+  }
+
+  shake = Math.max(0, shake - dt * 2.2);
+  adaptQuality(dt);
+
+  if (pendingReset) {
+    resetTimer -= dt;
+    if (resetTimer <= 0) finishExchangeReset();
+  }
+
+  director?.update(dt);
+  fighters?.left.update(dt, time);
+  fighters?.right.update(dt, time);
+  arena?.update(dt, time);
+
+  if (phase === "choose" && previewIndex !== null) {
+    marker.visible = true;
+    marker.position.x = tileX(previewIndex);
+    (markerRing.material as THREE.MeshBasicMaterial).opacity =
+      0.42 + 0.25 * Math.sin(time * 4.2);
+    marker.rotation.y = time * 0.6;
+  } else {
+    marker.visible = false;
+  }
+
+  updateCamera(dt, time);
+
+  // Behind a briefing or result overlay the duel is barely visible, so it is
+  // drawn at a quarter rate: the atmosphere still moves through the veil and
+  // the machine gets three frames in four back.
+  veilTick = (veilTick + 1) % 4;
+  if (hud.veiled && veilTick !== 0) return;
+
+  // Below level 3 the composer is doing real work; at or above it every pass is
+  // disabled and the extra full-screen blit buys nothing, so bypass it.
+  if (composer && quality.level < 3) composer.render();
+  else renderer.render(scene, camera);
+
+}
+
+
+/**
+ * One thrown frame must not end the game. Without this an exception anywhere in
+ * update or render stops the loop being rescheduled and the page simply freezes
+ * with no clue as to why.
+ */
+function frame(): void {
+  try {
+    step();
+  } catch (error) {
+    console.error("frame failed", error);
+  }
+  requestAnimationFrame(frame);
+}
+
+hud.update(state, phase, null);
+requestAnimationFrame(frame);

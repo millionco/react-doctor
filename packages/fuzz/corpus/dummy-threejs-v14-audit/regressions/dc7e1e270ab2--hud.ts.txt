@@ -1,0 +1,485 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit dc7e1e270ab2b58b42d46d4210a5bb84800ca8ed7f8dcd7f35aa1116875d09c3
+import { ICONS, type IconName } from "./icons";
+import { CSS } from "../art/palette";
+import { formatClock, group } from "../core/mathx";
+import { TOOLS, type ToolId } from "../sim/solver";
+import { STRATA, type Stratum } from "../world/site";
+
+/** The interface.
+ *
+ *  Plain DOM over the canvas: everything the solver knows is reported as a
+ *  number, because the game is a planning problem and the player has to be
+ *  able to compare two candidate cuts. The projection panel in particular is
+ *  a direct read-out of the dry-run solve, not an estimate. */
+
+export interface StratumReport {
+  tag: string;
+  name: string;
+  alive: number;
+  total: number;
+  bearing: boolean;
+}
+
+export interface LandmarkReport {
+  name: string;
+  subtitle: string;
+  icon: IconName;
+  standing: boolean;
+  atRisk: boolean;
+}
+
+export interface ProjectionReport {
+  volume: number;
+  stages: number;
+  deep: number;
+  supports: number;
+  losesLandmarks: string[];
+  strained: number;
+  cost: number;
+}
+
+export interface HudModel {
+  clock: number;
+  clockMax: number;
+  actionsUsed: number;
+  actionsMax: number;
+  displaced: number;
+  target: number;
+  score: number;
+  tool: ToolId;
+  stratum: number;
+  strata: StratumReport[];
+  readout: { label: string; value: string };
+  projection: ProjectionReport | null;
+  landmarks: LandmarkReport[];
+  planning: boolean;
+  rewinds: number;
+  settling: boolean;
+  muted: boolean;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+export class Hud {
+  readonly root = el("div", "bg-ui");
+  private clockValue = el("div", "clock-value", "3:00");
+  private clockBar = el("i");
+  private actionPips: HTMLElement[] = [];
+  private scoreValue = el("div", "stat-value", "0");
+  private volValue = el("div", "stat-value", "0");
+  private volBar = el("i");
+  private targetLabel = el("div", "stat-sub", "");
+  private toolButtons = new Map<ToolId, HTMLElement>();
+  private toolBlurb = el("div", "tool-blurb", "");
+  private depthRows: HTMLElement[] = [];
+  private readoutLabel = el("span", "ro-label", "RADIUS");
+  private readoutValue = el("span", "ro-value", "0.0 m");
+  private projPanel = el("div", "panel proj");
+  private projBody = el("div", "proj-body");
+  private landmarkRows: HTMLElement[] = [];
+  private toast = el("div", "toast");
+  private toastTimer = 0;
+  private rewindPip = el("div", "rewind");
+  private soundBtn = el("button", "icon-btn");
+  private banner = el("div", "banner");
+
+  onTool: (id: ToolId) => void = () => {};
+  onDepth: (index: number) => void = () => {};
+  onToggleSound: () => void = () => {};
+
+  constructor() {
+    this.root.appendChild(this.buildTopLeft());
+    this.root.appendChild(this.buildTopRight());
+    this.root.appendChild(this.buildBottom());
+    this.root.appendChild(this.buildProjection());
+    this.root.appendChild(this.buildLegend());
+    this.root.appendChild(this.toast);
+    this.root.appendChild(this.banner);
+    document.body.appendChild(this.root);
+  }
+
+  // ── construction ─────────────────────────────────────────────────────────
+  private buildTopLeft(): HTMLElement {
+    const box = el("div", "corner top-left");
+    const card = el("div", "panel mission");
+    card.appendChild(
+      el(
+        "div",
+        "mission-head",
+        `<div class="eyebrow">WARD COMPACT SEVEN · CONTROLLED SUBSIDENCE</div>
+         <div class="title">THE HOLLOW AT KESSEL REACH</div>`,
+      ),
+    );
+
+    const stats = el("div", "stat-row");
+    const vol = el("div", "stat");
+    vol.appendChild(el("div", "stat-head", `${ICONS.volume}<span>DISPLACED</span>`));
+    vol.appendChild(this.volValue);
+    const bar = el("div", "bar");
+    bar.appendChild(this.volBar);
+    vol.appendChild(bar);
+    vol.appendChild(this.targetLabel);
+    stats.appendChild(vol);
+    card.appendChild(stats);
+
+    const listed = el("div", "listed");
+    listed.appendChild(el("div", "eyebrow", "LISTED STRUCTURES · KEEP ONE"));
+    for (let i = 0; i < 2; i++) {
+      const row = el("div", "listed-row");
+      listed.appendChild(row);
+      this.landmarkRows.push(row);
+    }
+    card.appendChild(listed);
+    box.appendChild(card);
+    return box;
+  }
+
+  private buildTopRight(): HTMLElement {
+    const box = el("div", "corner top-right");
+    const card = el("div", "panel clockcard");
+
+    const head = el("div", "clock-head", `${ICONS.clock}<span>SHIFT CLOCK</span>`);
+    card.appendChild(head);
+    card.appendChild(this.clockValue);
+    const bar = el("div", "bar thin");
+    bar.appendChild(this.clockBar);
+    card.appendChild(bar);
+
+    const acts = el("div", "acts");
+    acts.appendChild(el("div", "acts-head", `${ICONS.actions}<span>ACTIONS</span>`));
+    const pips = el("div", "pips");
+    for (let i = 0; i < 5; i++) {
+      const p = el("i");
+      pips.appendChild(p);
+      this.actionPips.push(p);
+    }
+    acts.appendChild(pips);
+    card.appendChild(acts);
+
+    const sc = el("div", "score");
+    sc.appendChild(el("div", "stat-head", "<span>SCORE</span>"));
+    sc.appendChild(this.scoreValue);
+    card.appendChild(sc);
+
+    this.soundBtn.innerHTML = ICONS.sound;
+    this.soundBtn.onclick = (): void => this.onToggleSound();
+    const tools = el("div", "cornertools");
+    tools.appendChild(this.soundBtn);
+    card.appendChild(tools);
+
+    box.appendChild(card);
+    return box;
+  }
+
+  private buildBottom(): HTMLElement {
+    const box = el("div", "corner bottom-centre");
+
+    const depth = el("div", "panel depth");
+    depth.appendChild(el("div", "eyebrow", `${ICONS.depth}<span>WORKING DEPTH · Q / E</span>`));
+    const ladder = el("div", "ladder");
+    for (let i = 0; i < 4; i++) {
+      const s = STRATA[i] as Stratum;
+      const row = el("div", "ladder-row");
+      row.innerHTML = `<b>${s.tag}</b><span class="lname">${s.name}</span><span class="lcount"></span>`;
+      row.onclick = (): void => this.onDepth(i);
+      ladder.appendChild(row);
+      this.depthRows.push(row);
+    }
+    depth.appendChild(ladder);
+    box.appendChild(depth);
+
+    const tools = el("div", "panel tools");
+    const row = el("div", "tool-row");
+    for (const t of TOOLS) {
+      const b = el("button", "tool");
+      b.innerHTML = `<div class="tool-icon">${ICONS[t.id as IconName]}</div><div class="tool-name">${t.name}</div><div class="tool-call">${t.callsign}</div>`;
+      b.onclick = (): void => this.onTool(t.id);
+      row.appendChild(b);
+      this.toolButtons.set(t.id, b);
+    }
+    tools.appendChild(row);
+    tools.appendChild(this.toolBlurb);
+    const ro = el("div", "readout");
+    ro.appendChild(this.readoutLabel);
+    ro.appendChild(this.readoutValue);
+    tools.appendChild(ro);
+    box.appendChild(tools);
+    return box;
+  }
+
+  private buildProjection(): HTMLElement {
+    const box = el("div", "corner bottom-left");
+    this.projPanel.appendChild(el("div", "eyebrow", `${ICONS.plan}<span>PROJECTED COLLAPSE</span>`));
+    this.projPanel.appendChild(this.projBody);
+    this.rewindPip.innerHTML = `${ICONS.rewind}<span>REWIND ×1 — R</span>`;
+    box.appendChild(this.projPanel);
+    box.appendChild(this.rewindPip);
+    return box;
+  }
+
+  private buildLegend(): HTMLElement {
+    const box = el("div", "corner mid-right");
+    const card = el("div", "panel legend");
+    const keys: [string, string][] = [
+      ["POINTER", "aim on the working plane"],
+      ["DRAG", "set extent"],
+      ["SPACE", "commit"],
+      ["Q / E", "working depth"],
+      ["⇧ Q / E", "cycle tool"],
+      ["1 2 3", "tool direct"],
+      ["TAB", "planning view"],
+      ["RMB", "orbit"],
+      ["WHEEL", "range"],
+      ["R", "rewind last commit"],
+      ["ENTER", "end shift"],
+    ];
+    for (const [k, v] of keys) {
+      const r = el("div", "legend-row");
+      r.innerHTML = `<kbd>${k}</kbd><span>${v}</span>`;
+      card.appendChild(r);
+    }
+    box.appendChild(card);
+    return box;
+  }
+
+  // ── updates ──────────────────────────────────────────────────────────────
+  update(m: HudModel, dt: number): void {
+    this.clockValue.textContent = formatClock(m.clock);
+    this.clockValue.classList.toggle("urgent", m.clock < 30);
+    this.clockBar.style.width = `${Math.max(0, (m.clock / m.clockMax) * 100).toFixed(1)}%`;
+    this.clockBar.style.background = m.clock < 30 ? CSS.alert : CSS.amber;
+
+    for (let i = 0; i < this.actionPips.length; i++) {
+      const p = this.actionPips[i] as HTMLElement;
+      p.className = i < m.actionsUsed ? "spent" : "";
+    }
+
+    this.scoreValue.textContent = group(m.score);
+    this.volValue.textContent = `${group(m.displaced)} m³`;
+    const pct = Math.min(100, (m.displaced / Math.max(1, m.target)) * 100);
+    this.volBar.style.width = `${pct.toFixed(1)}%`;
+    this.volBar.style.background = pct >= 100 ? CSS.safe : CSS.cyan;
+    this.targetLabel.textContent =
+      m.displaced >= m.target
+        ? `TARGET MET · ${group(m.target)} m³ required`
+        : `${group(Math.max(0, m.target - m.displaced))} m³ still required of ${group(m.target)}`;
+    this.targetLabel.classList.toggle("ok", m.displaced >= m.target);
+
+    for (let i = 0; i < this.landmarkRows.length; i++) {
+      const row = this.landmarkRows[i] as HTMLElement;
+      const l = m.landmarks[i];
+      if (!l) {
+        row.innerHTML = "";
+        continue;
+      }
+      const state = l.standing ? (l.atRisk ? "risk" : "ok") : "lost";
+      const badge = l.standing ? (l.atRisk ? ICONS.warn : ICONS.check) : ICONS.cross;
+      row.className = `listed-row ${state}`;
+      row.innerHTML = `<div class="lm-icon">${ICONS[l.icon]}</div><div class="lm-text"><b>${l.name}</b><span>${l.subtitle}</span></div><div class="lm-state">${badge}</div>`;
+    }
+
+    for (const [id, btn] of this.toolButtons) btn.classList.toggle("active", id === m.tool);
+    const spec = TOOLS.find((t) => t.id === m.tool);
+    this.toolBlurb.textContent = spec ? spec.blurb : "";
+    this.readoutLabel.textContent = m.readout.label;
+    this.readoutValue.textContent = m.readout.value;
+
+    for (let i = 0; i < this.depthRows.length; i++) {
+      const row = this.depthRows[i] as HTMLElement;
+      const rep = m.strata[i];
+      row.classList.toggle("active", i === m.stratum);
+      const count = row.querySelector(".lcount");
+      if (count && rep) {
+        count.textContent = rep.bearing ? `${rep.alive}/${rep.total} bearing` : `${rep.alive}/${rep.total} blocks`;
+        count.classList.toggle("low", rep.total > 0 && rep.alive / rep.total < 0.4);
+      }
+    }
+
+    this.root.classList.toggle("planning", m.planning);
+    this.rewindPip.classList.toggle("spent", m.rewinds <= 0);
+    this.soundBtn.innerHTML = m.muted ? ICONS.mute : ICONS.sound;
+
+    // projection
+    const p = m.projection;
+    if (!p || m.settling) {
+      this.projPanel.classList.add("idle");
+      this.projBody.innerHTML = m.settling
+        ? `<div class="proj-idle">ground is moving — stand by</div>`
+        : `<div class="proj-idle">aim on the working plane to project a cut</div>`;
+    } else {
+      this.projPanel.classList.remove("idle");
+      const risk = p.losesLandmarks.length
+        ? `<div class="proj-risk">${ICONS.warn}<span>WOULD LOSE ${p.losesLandmarks.join(" + ")}</span></div>`
+        : `<div class="proj-safe">${ICONS.check}<span>LISTED STRUCTURES HOLD</span></div>`;
+      this.projBody.innerHTML = `
+        <div class="proj-main"><b>${group(p.volume)}</b><span>m³</span></div>
+        <div class="proj-grid">
+          <div><span>STAGES</span><b>${p.stages}</b></div>
+          <div><span>VAULT</span><b>${group(p.deep)} m³</b></div>
+          <div><span>MEMBERS</span><b>${p.supports}</b></div>
+          <div><span>CLOCK</span><b>−${p.cost}s</b></div>
+        </div>
+        ${p.strained > 0 ? `<div class="proj-note">${p.strained} member${p.strained === 1 ? "" : "s"} left over ${85}% load</div>` : ""}
+        ${risk}
+        <div class="proj-cta">SPACE to commit</div>`;
+    }
+
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toast.classList.remove("show");
+    }
+  }
+
+  say(text: string, kind: "info" | "warn" | "good" = "info", seconds = 2.6): void {
+    this.toast.className = `toast show ${kind}`;
+    this.toast.textContent = text;
+    this.toastTimer = seconds;
+  }
+
+  setBanner(text: string | null, kind = "info"): void {
+    if (!text) {
+      this.banner.className = "banner";
+      this.banner.textContent = "";
+      return;
+    }
+    this.banner.className = `banner show ${kind}`;
+    this.banner.textContent = text;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// full-screen overlays
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class Loader {
+  readonly root = el("div", "overlay loader");
+  private bar = el("i");
+  private label = el("div", "load-label", "");
+
+  constructor() {
+    const card = el("div", "load-card");
+    card.appendChild(el("div", "load-title", "BELOWGROUND"));
+    card.appendChild(el("div", "load-sub", "a study in controlled subsidence"));
+    const bar = el("div", "bar thick");
+    bar.appendChild(this.bar);
+    card.appendChild(bar);
+    card.appendChild(this.label);
+    this.root.appendChild(card);
+    document.body.appendChild(this.root);
+  }
+
+  progress(t: number, label: string): void {
+    this.bar.style.width = `${(t * 100).toFixed(1)}%`;
+    this.label.textContent = label;
+  }
+
+  done(): void {
+    this.root.classList.add("gone");
+    setTimeout(() => this.root.remove(), 900);
+  }
+}
+
+export interface BriefOptions {
+  target: number;
+  actions: number;
+  clock: number;
+}
+
+export class Brief {
+  readonly root = el("div", "overlay brief");
+  private resolve: (() => void) | null = null;
+
+  constructor(o: BriefOptions) {
+    const card = el("div", "brief-card");
+    card.innerHTML = `
+      <div class="eyebrow">WARD COMPACT SEVEN</div>
+      <h1>BELOWGROUND</h1>
+      <p class="lede">The ground under Kessel Reach was mined hollow a century ago and
+      the ward has finally condemned it. You are the shift engineer. Bring the
+      plaza down into its own workings — cleanly, on the clock, and without
+      taking either listed structure with it.</p>
+      <div class="brief-grid">
+        <div><span>DISPLACE</span><b>${group(o.target)} m³</b></div>
+        <div><span>ACTIONS</span><b>${o.actions} max</b></div>
+        <div><span>SHIFT</span><b>${formatClock(o.clock)}</b></div>
+        <div><span>KEEP</span><b>1 listed structure</b></div>
+      </div>
+      <p class="lede small">The site is two mined galleries stacked under a paved crust.
+      Iron <b>stanchions</b> hold the crust up; ashlar <b>piles</b> hold the vault course
+      that the stanchions stand on. Take a pile and you lose a vault; lose a vault and
+      every stanchion standing on it goes with it. Depth is the whole game.</p>
+      <div class="brief-keys">
+        <div><kbd>TAB</kbd> freeze into the planning view — see the pillars and the workings</div>
+        <div><kbd>Q</kbd><kbd>E</kbd> change working depth — hold <kbd>⇧</kbd> to change tool instead</div>
+        <div><kbd>DRAG</kbd> set the extent · <kbd>SPACE</kbd> commit · <kbd>R</kbd> rewind once</div>
+      </div>
+      <button class="go">BEGIN SHIFT</button>`;
+    this.root.appendChild(card);
+    document.body.appendChild(this.root);
+    const btn = card.querySelector(".go") as HTMLButtonElement;
+    btn.onclick = (): void => this.close();
+  }
+
+  wait(): Promise<void> {
+    return new Promise((r) => {
+      this.resolve = r;
+    });
+  }
+
+  close(): void {
+    this.root.classList.add("gone");
+    setTimeout(() => this.root.remove(), 600);
+    this.resolve?.();
+    this.resolve = null;
+  }
+}
+
+export interface VerdictLine {
+  label: string;
+  value: string;
+  good?: boolean;
+}
+
+export class Verdict {
+  readonly root = el("div", "overlay verdict");
+
+  constructor(
+    success: boolean,
+    grade: string,
+    headline: string,
+    lines: VerdictLine[],
+    total: number,
+    onAgain: () => void,
+  ) {
+    const card = el("div", `verdict-card ${success ? "win" : "lose"}`);
+    const rows = lines
+      .map((l) => `<div class="vrow ${l.good ? "good" : ""}"><span>${l.label}</span><b>${l.value}</b></div>`)
+      .join("");
+    card.innerHTML = `
+      <div class="eyebrow">${success ? "SHIFT SIGNED OFF" : "SHIFT REJECTED"}</div>
+      <div class="grade">${grade}</div>
+      <h2>${headline}</h2>
+      <div class="vrows">${rows}</div>
+      <div class="vtotal"><span>FINAL</span><b>${group(total)}</b></div>
+      <button class="go">RUN THE SHIFT AGAIN</button>`;
+    this.root.appendChild(card);
+    document.body.appendChild(this.root);
+    (card.querySelector(".go") as HTMLButtonElement).onclick = (): void => {
+      this.root.remove();
+      onAgain();
+    };
+  }
+}

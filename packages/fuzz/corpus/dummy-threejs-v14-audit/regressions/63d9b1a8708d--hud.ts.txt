@@ -1,0 +1,424 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 63d9b1a8708da54f14ddc168a45121bb75693f131ab999fc00b639c4dff30061
+/**
+ * DOM heads-up display. Kept as plain elements updated imperatively so the
+ * render loop never touches layout unless a value actually changed.
+ */
+
+import { clamp01, formatTime } from "../core/util";
+
+export type ScreenName = "loading" | "title" | "play" | "win" | "lose" | "paused";
+
+export interface RivalPip {
+  hull: number;
+  alive: boolean;
+  targeted: boolean;
+}
+
+export interface MarkerState {
+  id: number;
+  x: number;
+  y: number;
+  onScreen: boolean;
+  weak: boolean;
+  locked: boolean;
+  label: string;
+}
+
+export interface RunStats {
+  score: number;
+  wrecks: number;
+  weakHits: number;
+  bestCombo: number;
+  time: number;
+  wave: number;
+  waves: number;
+}
+
+const el = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+};
+
+export class Hud {
+  readonly root: HTMLDivElement;
+
+  private readonly screens = new Map<ScreenName, HTMLElement>();
+  private readonly hud: HTMLElement;
+  private readonly hullFill: HTMLElement;
+  private readonly hullGhost: HTMLElement;
+  private readonly hullValue: HTMLElement;
+  private readonly ramFill: HTMLElement;
+  private readonly ramValue: HTMLElement;
+  private readonly waveTitle: HTMLElement;
+  private readonly objective: HTMLElement;
+  private readonly pipRow: HTMLElement;
+  private readonly scoreEl: HTMLElement;
+  private readonly comboEl: HTMLElement;
+  private readonly clockEl: HTMLElement;
+  private readonly hintEl: HTMLElement;
+  private readonly toastList: HTMLElement;
+  private readonly markerLayer: HTMLElement;
+  private readonly hitflash: HTMLElement;
+  private readonly lowhull: HTMLElement;
+  private readonly speedlines: HTMLElement;
+  private readonly loadingBar: HTMLElement;
+  private readonly loadingStep: HTMLElement;
+  private readonly winStats: HTMLElement;
+  private readonly loseStats: HTMLElement;
+  private readonly loseTitle: HTMLElement;
+
+  private readonly markers = new Map<number, HTMLElement>();
+  private readonly pips: HTMLElement[] = [];
+  private lastScore = -1;
+  private lastCombo = -1;
+  private lastClock = "";
+  private lastHull = -1;
+  private lastRam = -1;
+  private hitTimer = 0;
+  private current: ScreenName = "loading";
+
+  constructor(parent: HTMLElement) {
+    this.root = el("div");
+    this.root.id = "ui";
+
+    // ---------------------------------------------------------- play HUD
+    this.hud = el("div");
+    this.hud.id = "hud";
+
+    const vignette = el("div");
+    vignette.id = "vignette";
+    this.hitflash = el("div");
+    this.hitflash.id = "hitflash";
+    this.lowhull = el("div");
+    this.lowhull.id = "lowhull";
+    this.speedlines = el("div");
+    this.speedlines.id = "speedlines";
+    this.markerLayer = el("div");
+    this.markerLayer.id = "markers";
+
+    const left = el("div", "panel");
+    left.id = "hud-left";
+    left.innerHTML = `
+      <div class="meter-row"><span class="label">Hull Integrity</span><span class="value" data-hull>100%</span></div>
+      <div class="meter"><i class="ghost" data-ghost></i><i class="fill hull" data-hullfill></i><i class="ticks"></i></div>
+      <div class="meter-row" style="margin-top:.7em"><span class="label">Ram Charge</span><span class="value" data-ram>0%</span></div>
+      <div class="meter"><i class="fill ram" data-ramfill></i><i class="ticks"></i></div>
+    `;
+    this.hullFill = left.querySelector("[data-hullfill]") as HTMLElement;
+    this.hullGhost = left.querySelector("[data-ghost]") as HTMLElement;
+    this.hullValue = left.querySelector("[data-hull]") as HTMLElement;
+    this.ramFill = left.querySelector("[data-ramfill]") as HTMLElement;
+    this.ramValue = left.querySelector("[data-ram]") as HTMLElement;
+
+    const top = el("div", "panel");
+    top.id = "hud-top";
+    top.innerHTML = `
+      <div id="wave-title">HEAT 1</div>
+      <div id="objective">Wreck every rival</div>
+      <div id="rival-pips"></div>
+    `;
+    this.waveTitle = top.querySelector("#wave-title") as HTMLElement;
+    this.objective = top.querySelector("#objective") as HTMLElement;
+    this.pipRow = top.querySelector("#rival-pips") as HTMLElement;
+
+    const right = el("div", "panel");
+    right.id = "hud-right";
+    right.innerHTML = `
+      <div class="label">Scrap</div>
+      <div id="score">0</div>
+      <div id="combo">CHAIN x1</div>
+      <div id="clock">0:00</div>
+    `;
+    this.scoreEl = right.querySelector("#score") as HTMLElement;
+    this.comboEl = right.querySelector("#combo") as HTMLElement;
+    this.clockEl = right.querySelector("#clock") as HTMLElement;
+
+    this.hintEl = el("div", "panel");
+    this.hintEl.id = "hint";
+
+    this.toastList = el("div");
+    this.toastList.id = "toasts";
+
+    this.hud.append(
+      vignette,
+      this.speedlines,
+      this.lowhull,
+      this.hitflash,
+      this.markerLayer,
+      left,
+      top,
+      right,
+      this.hintEl,
+      this.toastList,
+    );
+
+    // ---------------------------------------------------------- screens
+    const loading = el("div", "screen on");
+    loading.id = "loading";
+    loading.innerHTML = `
+      <div class="badge">Wreckyard</div>
+      <h1 style="font-size:clamp(28px,5vw,64px);margin-top:.35em">BUILDING THE YARD</h1>
+      <div class="bar"><i data-bar></i></div>
+      <div class="step" data-step>warming up</div>
+    `;
+    this.loadingBar = loading.querySelector("[data-bar]") as HTMLElement;
+    this.loadingStep = loading.querySelector("[data-step]") as HTMLElement;
+
+    const title = el("div", "screen");
+    title.id = "title";
+    title.innerHTML = `
+      <div class="badge">Demolition Heat &mdash; Solo Entry</div>
+      <h1>WRECKYARD<span class="accent">LAST</span></h1>
+      <div class="sub">Outlast every rival in the pit</div>
+      <div class="panel card">
+        <dl class="controls">
+          <dt><kbd>W</kbd><kbd>S</kbd></dt><dd>Throttle / brake &amp; reverse</dd>
+          <dt><kbd>A</kbd><kbd>D</kbd></dt><dd>Steer</dd>
+          <dt><kbd>Space</kbd></dt><dd>Handbrake &mdash; swing the tail round</dd>
+          <dt><kbd>Shift</kbd></dt><dd>Ram charge &mdash; burst of speed, heavy hit</dd>
+          <dt><kbd>Mouse</kbd></dt><dd>Glance sideways; the camera recentres itself</dd>
+          <dt><kbd>P</kbd> <kbd>M</kbd> <kbd>R</kbd></dt><dd>Pause &middot; mute &middot; restart</dd>
+        </dl>
+        <div class="muted">
+          Every rival has one buckled panel glowing <b style="color:var(--cyan)">cyan</b>. Ram <em>that</em> face
+          and it caves in &mdash; hit the armour instead and you take the damage. Pin a rival against the barriers,
+          the stacks or the wall for a crush bonus, and drive over <b style="color:var(--green)">green</b> repair
+          pallets to patch your hull.
+        </div>
+      </div>
+      <div class="prompt">PRESS ENTER TO DROP IN</div>
+    `;
+
+    const win = el("div", "screen");
+    win.id = "win";
+    win.innerHTML = `
+      <div class="badge" style="border-color:rgba(77,255,158,.5);color:var(--green)">Heat complete</div>
+      <h2 style="color:var(--green);text-shadow:0 3px 0 #06301c,0 0 40px rgba(77,255,158,.25)">LAST ONE RUNNING</h2>
+      <div class="panel card"><div class="stats" data-stats></div></div>
+      <div class="prompt">PRESS <kbd>R</kbd> TO RUN IT BACK</div>
+    `;
+    this.winStats = win.querySelector("[data-stats]") as HTMLElement;
+
+    const lose = el("div", "screen");
+    lose.id = "lose";
+    lose.innerHTML = `
+      <div class="badge" style="border-color:rgba(255,75,50,.5);color:var(--red)">Hull failure</div>
+      <h2 data-title style="color:var(--red);text-shadow:0 3px 0 #380a04,0 0 40px rgba(255,75,50,.25)">SCRAPPED</h2>
+      <div class="panel card"><div class="stats" data-stats></div></div>
+      <div class="prompt">PRESS <kbd>R</kbd> TO RUN IT BACK</div>
+    `;
+    this.loseStats = lose.querySelector("[data-stats]") as HTMLElement;
+    this.loseTitle = lose.querySelector("[data-title]") as HTMLElement;
+
+    const paused = el("div", "screen");
+    paused.id = "paused";
+    paused.innerHTML = `
+      <h2 style="color:var(--amber)">PAUSED</h2>
+      <div class="sub">Press P to get back in it</div>
+    `;
+
+    this.screens.set("loading", loading);
+    this.screens.set("title", title);
+    this.screens.set("win", win);
+    this.screens.set("lose", lose);
+    this.screens.set("paused", paused);
+
+    this.root.append(this.hud, loading, title, win, lose, paused);
+    parent.append(this.root);
+  }
+
+  // ------------------------------------------------------------- screens
+  show(name: ScreenName): void {
+    this.current = name;
+    for (const [key, node] of this.screens) {
+      node.classList.toggle("on", key === name);
+    }
+    this.hud.classList.toggle("on", name === "play" || name === "paused");
+  }
+
+  get screen(): ScreenName {
+    return this.current;
+  }
+
+  setLoading(step: string, fraction: number): void {
+    this.loadingBar.style.width = `${Math.round(clamp01(fraction) * 100)}%`;
+    this.loadingStep.textContent = step;
+  }
+
+  // ---------------------------------------------------------------- meters
+  setHull(fraction: number): void {
+    const f = clamp01(fraction);
+    if (Math.abs(f - this.lastHull) < 0.002) return;
+    this.lastHull = f;
+    this.hullFill.style.transform = `scaleX(${f})`;
+    this.hullGhost.style.transform = `scaleX(${f})`;
+    this.hullValue.textContent = `${Math.round(f * 100)}%`;
+    this.lowhull.classList.toggle("on", f < 0.28);
+  }
+
+  setRam(fraction: number): void {
+    const f = clamp01(fraction);
+    if (Math.abs(f - this.lastRam) < 0.004) return;
+    this.lastRam = f;
+    this.ramFill.style.transform = `scaleX(${f})`;
+    this.ramValue.textContent = f >= 0.999 ? "READY" : `${Math.round(f * 100)}%`;
+  }
+
+  setBoosting(on: boolean): void {
+    this.speedlines.style.opacity = on ? "1" : "0";
+  }
+
+  setWave(label: string, objective: string): void {
+    if (this.waveTitle.textContent !== label) this.waveTitle.textContent = label;
+    if (this.objective.textContent !== objective) this.objective.textContent = objective;
+  }
+
+  setRivals(pips: readonly RivalPip[]): void {
+    while (this.pips.length < pips.length) {
+      const pip = el("div", "pip", "<i></i>");
+      this.pipRow.append(pip);
+      this.pips.push(pip);
+    }
+    for (let i = 0; i < this.pips.length; i++) {
+      const node = this.pips[i];
+      if (!node) continue;
+      const data = pips[i];
+      if (!data) {
+        node.style.display = "none";
+        continue;
+      }
+      node.style.display = "";
+      node.classList.toggle("dead", !data.alive);
+      node.classList.toggle("weak-target", data.targeted && data.alive);
+      const bar = node.firstElementChild as HTMLElement | null;
+      if (bar) bar.style.width = `${clamp01(data.hull) * 100}%`;
+    }
+  }
+
+  setScore(score: number): void {
+    const v = Math.round(score);
+    if (v === this.lastScore) return;
+    this.lastScore = v;
+    this.scoreEl.textContent = v.toLocaleString("en-US");
+  }
+
+  setCombo(combo: number): void {
+    if (combo === this.lastCombo) return;
+    this.lastCombo = combo;
+    this.comboEl.textContent = `CHAIN x${combo}`;
+    this.comboEl.classList.toggle("on", combo > 1);
+  }
+
+  setClock(seconds: number): void {
+    const t = formatTime(seconds);
+    if (t === this.lastClock) return;
+    this.lastClock = t;
+    this.clockEl.textContent = t;
+  }
+
+  setHint(text: string | null): void {
+    if (text === null) {
+      this.hintEl.classList.remove("on");
+      return;
+    }
+    if (this.hintEl.innerHTML !== text) this.hintEl.innerHTML = text;
+    this.hintEl.classList.add("on");
+  }
+
+  toast(text: string, kind: "weak" | "crush" | "repair" | "bad" | "info" = "info"): void {
+    const node = el("div", `toast ${kind}`, text);
+    this.toastList.append(node);
+    while (this.toastList.childElementCount > 5) this.toastList.firstElementChild?.remove();
+    window.setTimeout(() => {
+      node.classList.add("fade");
+      window.setTimeout(() => node.remove(), 420);
+    }, 1500);
+  }
+
+  flashDamage(severity: number): void {
+    this.hitTimer = Math.max(this.hitTimer, 0.14 + severity * 0.2);
+    this.hitflash.style.opacity = String(clamp01(0.25 + severity * 0.75));
+  }
+
+  update(dt: number): void {
+    if (this.hitTimer > 0) {
+      this.hitTimer -= dt;
+      if (this.hitTimer <= 0) this.hitflash.style.opacity = "0";
+    }
+  }
+
+  // -------------------------------------------------------------- markers
+  syncMarkers(states: readonly MarkerState[]): void {
+    const seen = new Set<number>();
+    for (const state of states) {
+      seen.add(state.id);
+      let node = this.markers.get(state.id);
+      if (!node) {
+        node = el("div", "marker", `<div class="ring"></div><div class="chev"></div>`);
+        this.markerLayer.append(node);
+        this.markers.set(state.id, node);
+      }
+      node.style.transform = `translate(${state.x.toFixed(1)}px, ${state.y.toFixed(1)}px)`;
+      node.classList.toggle("weak", state.weak);
+      node.classList.toggle("locked", state.locked);
+      const chev = node.lastElementChild as HTMLElement | null;
+      if (chev && chev.textContent !== state.label) chev.textContent = state.label;
+      node.style.display = "";
+    }
+    for (const [id, node] of this.markers) {
+      if (!seen.has(id)) {
+        node.remove();
+        this.markers.delete(id);
+      }
+    }
+  }
+
+  clearMarkers(): void {
+    for (const [, node] of this.markers) node.remove();
+    this.markers.clear();
+  }
+
+  // ------------------------------------------------------------- results
+  private renderStats(target: HTMLElement, stats: RunStats): void {
+    target.innerHTML = `
+      <div class="k">Scrap earned</div><div class="v hi">${Math.round(stats.score).toLocaleString("en-US")}</div>
+      <div class="k">Rivals wrecked</div><div class="v">${stats.wrecks}</div>
+      <div class="k">Weak-point hits</div><div class="v">${stats.weakHits}</div>
+      <div class="k">Best chain</div><div class="v">x${stats.bestCombo}</div>
+      <div class="k">Heats survived</div><div class="v">${stats.wave} / ${stats.waves}</div>
+      <div class="k">Time in the pit</div><div class="v">${formatTime(stats.time)}</div>
+    `;
+  }
+
+  showWin(stats: RunStats): void {
+    this.renderStats(this.winStats, stats);
+    this.show("win");
+  }
+
+  showLose(stats: RunStats, title = "SCRAPPED"): void {
+    this.loseTitle.textContent = title;
+    this.renderStats(this.loseStats, stats);
+    this.show("lose");
+  }
+
+  resetPlayState(): void {
+    this.lastScore = -1;
+    this.lastCombo = -1;
+    this.lastClock = "";
+    this.lastHull = -1;
+    this.lastRam = -1;
+    this.hitflash.style.opacity = "0";
+    this.toastList.innerHTML = "";
+    this.clearMarkers();
+  }
+}

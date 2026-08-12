@@ -1,0 +1,454 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 5e374b94e81eda3bed96c59740efbd1ab913dcd7fc12c6825f3268d3455244ce
+/**
+ * DOM head-up display: possession clock, depth ladder, target readout with the
+ * geometric verdict for each lane, charge meter, banners and the briefing /
+ * result cards that close the replay loop.
+ */
+
+import { PLATES, RULES } from "../game/config";
+import type { Match, PassTarget, Prediction } from "../game/match";
+import { clamp01 } from "../core/mathx";
+
+export interface HudHandlers {
+  onBegin(): void;
+  onReplay(): void;
+  onSelect(index: number): void;
+}
+
+const RULE_TEXT = [
+  "Two crews hold opposing faces of the lattice. Move the <b>core</b> from your terrace to the far <b>goal aperture</b> three times.",
+  "Every depth change must thread a <b>rotating gate</b>. The lane preview tells you the truth about the geometry — read it, then wait for the opening.",
+  "<b>Hold to charge.</b> A soft throw is quiet; a hard throw is heard by every warden in the slab, whether they can see it or not.",
+  "Pylons and baffles block sight. A lane hidden behind structure is answered <b>late</b> — that is the whole game.",
+  "Rejections, interceptions, overthrows and an empty clock each cost a <b>cycle</b>. Lose three and the lattice holds.",
+];
+
+const LADDER = ["Muster deck", "Relay — mid", "Relay — deep", "Goal aperture"];
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (html !== undefined) node.innerHTML = html;
+  return node;
+}
+
+export class Hud {
+  private readonly root: HTMLElement;
+  private readonly deliveryPips: HTMLElement[] = [];
+  private readonly cyclePips: HTMLElement[] = [];
+  private readonly clockRing: SVGCircleElement;
+  private readonly clockNum: HTMLElement;
+  private readonly ladderRungs: HTMLElement[] = [];
+  private readonly gateBars: HTMLElement[] = [];
+  private readonly targetList: HTMLElement;
+  private readonly chargePanel: HTMLElement;
+  private readonly ladder: HTMLElement;
+  private readonly targetRows: HTMLElement[] = [];
+  private readonly chargeFill: HTMLElement;
+  private readonly chargeMode: HTMLElement;
+  private readonly chargeHint: HTMLElement;
+  private readonly banner: HTMLElement;
+  private readonly chainReadout: HTMLElement;
+  private readonly cameraLabel: HTMLElement;
+  private readonly zoomKnob: HTMLElement;
+  private readonly escalationLabel: HTMLElement;
+  private readonly briefing: HTMLElement;
+  private readonly result: HTMLElement;
+  private readonly resultTitle: HTMLElement;
+  private readonly resultSub: HTMLElement;
+  private readonly statGrid: HTMLElement;
+  private readonly flash: HTMLElement;
+  private readonly ring = 2 * Math.PI * 27;
+  private flashTimer = 0;
+
+  constructor(handlers: HudHandlers) {
+    this.root = el("div");
+    this.root.id = "hud";
+    document.body.appendChild(this.root);
+
+    // -- camera panel --------------------------------------------------------
+    const camera = el("div", "panel");
+    camera.id = "camera";
+    camera.appendChild(el("div", "label", "View"));
+    this.cameraLabel = el("div", undefined, "Terrace");
+    this.cameraLabel.style.fontSize = "11.5px";
+    camera.appendChild(this.cameraLabel);
+    const track = el("div");
+    track.id = "zoomtrack";
+    this.zoomKnob = el("div");
+    this.zoomKnob.id = "zoomknob";
+    track.appendChild(this.zoomKnob);
+    camera.appendChild(track);
+    camera.appendChild(el("div", "label", "Near — bounded — far"));
+    this.root.appendChild(camera);
+
+    // -- top bar -------------------------------------------------------------
+    const topbar = el("div");
+    topbar.id = "topbar";
+
+    const title = el("div", "panel block");
+    title.id = "title";
+    title.appendChild(el("div", "name", "THROUGHCUBE"));
+    this.escalationLabel = el("div", "label", "Lattice pressure — nominal");
+    title.appendChild(this.escalationLabel);
+    topbar.appendChild(title);
+
+    const delivered = el("div", "panel block");
+    delivered.appendChild(el("div", "label", "Delivered"));
+    const dPips = el("div", "pips");
+    for (let i = 0; i < RULES.deliveriesToWin; i++) {
+      const pip = el("div", "pip");
+      this.deliveryPips.push(pip);
+      dPips.appendChild(pip);
+    }
+    delivered.appendChild(dPips);
+    topbar.appendChild(delivered);
+
+    const clockBlock = el("div", "panel block");
+    const clockWrap = el("div");
+    clockWrap.id = "clockwrap";
+    clockWrap.innerHTML = `<svg viewBox="0 0 64 64">
+      <circle cx="32" cy="32" r="27" fill="none" stroke="rgba(160,180,210,0.16)" stroke-width="3"/>
+      <circle id="clockring" cx="32" cy="32" r="27" fill="none" stroke="#ffe6a3" stroke-width="3"
+        stroke-linecap="butt" stroke-dasharray="${this.ring}" stroke-dashoffset="0"/>
+    </svg>`;
+    this.clockNum = el("div");
+    this.clockNum.id = "clocknum";
+    this.clockNum.textContent = "15";
+    clockWrap.appendChild(this.clockNum);
+    clockBlock.appendChild(clockWrap);
+    clockBlock.appendChild(el("div", "label", "Possession"));
+    topbar.appendChild(clockBlock);
+    this.clockRing = clockWrap.querySelector("#clockring") as unknown as SVGCircleElement;
+
+    const cycles = el("div", "panel block");
+    cycles.appendChild(el("div", "label", "Cycles left"));
+    const cPips = el("div", "pips");
+    for (let i = 0; i < RULES.cyclesAllowed; i++) {
+      const pip = el("div", "pip on");
+      this.cyclePips.push(pip);
+      cPips.appendChild(pip);
+    }
+    cycles.appendChild(cPips);
+    topbar.appendChild(cycles);
+    this.root.appendChild(topbar);
+
+    // -- depth ladder --------------------------------------------------------
+    const ladder = el("div", "panel");
+    ladder.id = "ladder";
+    ladder.appendChild(el("div", "label head", "Depth"));
+    for (let i = 0; i < LADDER.length; i++) {
+      const rung = el("div", "rung");
+      rung.appendChild(el("div", "dot"));
+      rung.appendChild(el("div", "name", LADDER[i]!));
+      this.ladderRungs.push(rung);
+      ladder.appendChild(rung);
+      if (i < PLATES.length) {
+        const bar = el("div", "gatebar", `${PLATES[i]!.id}<b>—</b>`);
+        this.gateBars.push(bar);
+        ladder.appendChild(bar);
+      }
+    }
+    this.ladder = ladder;
+    this.root.appendChild(ladder);
+
+    // -- targets -------------------------------------------------------------
+    this.targetList = el("div");
+    this.targetList.id = "targets";
+    this.root.appendChild(this.targetList);
+    this.targetList.addEventListener("pointerdown", (e) => {
+      const row = (e.target as HTMLElement).closest(".target") as HTMLElement | null;
+      if (!row) return;
+      const index = this.targetRows.indexOf(row);
+      if (index >= 0) handlers.onSelect(index);
+    });
+    this.targetList.style.pointerEvents = "auto";
+    this.targetList.style.transition = "opacity 0.35s ease";
+
+    // -- charge --------------------------------------------------------------
+    const charge = el("div", "panel");
+    charge.id = "charge";
+    const head = el("div");
+    head.id = "chargehead";
+    head.appendChild(el("div", "label", "Throw power"));
+    this.chargeMode = el("div");
+    this.chargeMode.id = "chargemode";
+    this.chargeMode.textContent = "QUIET";
+    head.appendChild(this.chargeMode);
+    charge.appendChild(head);
+    const bar = el("div");
+    bar.id = "chargebar";
+    this.chargeFill = el("div");
+    this.chargeFill.id = "chargefill";
+    bar.appendChild(this.chargeFill);
+    const mark = el("div");
+    mark.id = "chargemark";
+    mark.style.left = `${RULES.loudThreshold * 100}%`;
+    bar.appendChild(mark);
+    charge.appendChild(bar);
+    this.chargeHint = el("div");
+    this.chargeHint.id = "chargehint";
+    this.chargeHint.innerHTML = "Hold <b>left mouse</b> on a receiver or <b>space</b> — release to throw";
+    charge.appendChild(this.chargeHint);
+    charge.style.transition = "opacity 0.35s ease";
+    this.chargePanel = charge;
+    this.root.appendChild(charge);
+
+    // -- banners -------------------------------------------------------------
+    this.banner = el("div");
+    this.banner.id = "banner";
+    this.root.appendChild(this.banner);
+    this.chainReadout = el("div");
+    this.chainReadout.id = "chain";
+    this.root.appendChild(this.chainReadout);
+
+    const hints = el("div");
+    hints.id = "hints";
+    hints.innerHTML = `
+      <div><kbd>drag</kbd>orbit &nbsp; <kbd>wheel</kbd>zoom</div>
+      <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>pick lane &nbsp; <kbd>space</kbd>charge</div>
+      <div><kbd>C</kbd>view &nbsp; <kbd>V</kbd>sightline &nbsp; <kbd>M</kbd>sound &nbsp; <kbd>R</kbd>restart</div>`;
+    this.root.appendChild(hints);
+
+    this.flash = el("div");
+    this.flash.id = "flash";
+    this.root.appendChild(this.flash);
+
+    // -- briefing ------------------------------------------------------------
+    this.briefing = el("div", "overlay");
+    this.briefing.id = "briefing";
+    const card = el("div", "panel");
+    card.id = "briefcard";
+    card.appendChild(el("h1", undefined, "THROUGHCUBE"));
+    card.appendChild(
+      el("div", "tag", "Ember crew · relay discipline · three deliveries"),
+    );
+    const ol = el("ol");
+    for (const line of RULE_TEXT) ol.appendChild(el("li", undefined, line));
+    card.appendChild(ol);
+    const begin = el("button", "btn", "Take the core");
+    begin.addEventListener("click", () => handlers.onBegin());
+    card.appendChild(begin);
+    this.briefing.appendChild(card);
+    this.root.appendChild(this.briefing);
+
+    // -- result --------------------------------------------------------------
+    this.result = el("div", "overlay hidden");
+    this.result.id = "result";
+    const rcard = el("div", "panel");
+    rcard.id = "resultcard";
+    this.resultTitle = el("div");
+    this.resultTitle.id = "resulttitle";
+    rcard.appendChild(this.resultTitle);
+    this.resultSub = el("div");
+    this.resultSub.id = "resultsub";
+    rcard.appendChild(this.resultSub);
+    this.statGrid = el("div");
+    this.statGrid.id = "stats";
+    rcard.appendChild(this.statGrid);
+    const replay = el("button", "btn", "Run it again");
+    replay.addEventListener("click", () => handlers.onReplay());
+    rcard.appendChild(replay);
+    this.result.appendChild(rcard);
+    this.root.appendChild(this.result);
+  }
+
+  showBriefing(show: boolean): void {
+    this.briefing.classList.toggle("hidden", !show);
+  }
+
+  showResult(won: boolean, stats: Match["stats"]): void {
+    this.result.classList.remove("hidden");
+    this.resultTitle.textContent = won ? "LATTICE BROKEN" : "CYCLES SPENT";
+    this.resultTitle.className = won ? "win" : "lose";
+    this.resultSub.textContent = won
+      ? "Three deliveries through contested depth"
+      : "The wardens kept the deep lanes";
+    const minutes = Math.floor(stats.elapsed / 60);
+    const seconds = Math.floor(stats.elapsed % 60);
+    const entries: Array<[string, string]> = [
+      [String(stats.deliveries), "Delivered"],
+      [String(stats.passes), "Relays thrown"],
+      [String(stats.quiet), "Quiet relays"],
+      [String(stats.bestChain), "Best chain"],
+      [String(stats.cyclesLost), "Cycles spent"],
+      [`${minutes}:${String(seconds).padStart(2, "0")}`, "Time"],
+    ];
+    this.statGrid.innerHTML = "";
+    for (const [value, key] of entries) {
+      const cell = el("div");
+      cell.appendChild(el("div", "v", value));
+      cell.appendChild(el("div", "k", key));
+      this.statGrid.appendChild(cell);
+    }
+  }
+
+  hideResult(): void {
+    this.result.classList.add("hidden");
+  }
+
+  pulse(color: string, strength = 0.4): void {
+    this.flash.style.background = `radial-gradient(circle at 50% 45%, ${color} 0%, transparent 68%)`;
+    this.flash.style.opacity = String(strength);
+    this.flashTimer = 0.08;
+  }
+
+  update(
+    dt: number,
+    match: Match,
+    view: { presetLabel: string; zoom: number; muted: boolean },
+  ): void {
+    const live = match.phase !== "briefing" && match.phase !== "over";
+    this.targetList.style.opacity = live ? "1" : "0";
+    this.targetList.style.pointerEvents = live ? "auto" : "none";
+    this.chargePanel.style.opacity = live ? "1" : "0";
+    this.ladder.style.opacity = live ? "1" : "0.3";
+
+    if (this.flashTimer > 0) {
+      this.flashTimer -= dt;
+      if (this.flashTimer <= 0) this.flash.style.opacity = "0";
+    }
+
+    for (let i = 0; i < this.deliveryPips.length; i++) {
+      this.deliveryPips[i]!.classList.toggle("on", i < match.stats.deliveries);
+    }
+    const left = RULES.cyclesAllowed - match.stats.cyclesLost;
+    for (let i = 0; i < this.cyclePips.length; i++) {
+      const pip = this.cyclePips[i]!;
+      pip.classList.toggle("on", i < left);
+      pip.classList.toggle("lost", i >= left);
+    }
+
+    const fraction = clamp01(match.clock / RULES.possessionTime);
+    this.clockRing.style.strokeDashoffset = String(this.ring * (1 - fraction));
+    this.clockRing.style.stroke =
+      match.clock < 4 ? "#ff4d66" : match.clock < 8 ? "#ffe6a3" : "#7cf0b0";
+    this.clockNum.textContent = String(Math.max(0, Math.ceil(match.clock)));
+
+    const layer = match.carrier.layer;
+    for (let i = 0; i < this.ladderRungs.length; i++) {
+      const rung = this.ladderRungs[i]!;
+      rung.classList.toggle("active", i === layer);
+      rung.classList.toggle("done", i < layer);
+    }
+    for (let i = 0; i < this.gateBars.length; i++) {
+      const open = this.gateOpenForCarrier(match, i);
+      const bar = this.gateBars[i]!;
+      bar.innerHTML = `${PLATES[i]!.id}<b class="${open === null ? "" : open ? "open" : "shut"}">${
+        open === null ? "—" : open ? "OPEN" : "SHUT"
+      }</b>`;
+    }
+
+    this.syncTargets(match);
+
+    this.chargeFill.style.width = `${match.power * 100}%`;
+    const loud = match.power > RULES.loudThreshold;
+    this.chargeMode.textContent = loud ? "LOUD" : "QUIET";
+    this.chargeMode.classList.toggle("loud", loud);
+    this.chargeHint.style.opacity = match.phase === "aim" ? "1" : "0.35";
+
+    const banner = match.phase === "over" ? null : match.banner;
+    if (banner && match.time < banner.until) {
+      if (this.banner.textContent !== banner.text) {
+        this.banner.textContent = banner.text;
+        this.banner.className = `show ${banner.tone}`;
+        // Restart the entry animation.
+        void this.banner.offsetWidth;
+      }
+      this.banner.classList.add("show");
+    } else {
+      this.banner.classList.remove("show");
+      if (!banner || match.time >= banner.until) this.banner.textContent = "";
+    }
+
+    if (match.chain >= 2 && match.phase !== "over") {
+      this.chainReadout.textContent = `CHAIN ×${match.chain}`;
+      this.chainReadout.style.opacity = "1";
+    } else {
+      this.chainReadout.style.opacity = "0";
+    }
+
+    this.cameraLabel.textContent = view.presetLabel + (view.muted ? "  ·  muted" : "");
+    this.zoomKnob.style.left = `calc(${clamp01(view.zoom) * 100}% - 1.5px)`;
+
+    const pressure = match.stats.deliveries;
+    this.escalationLabel.textContent =
+      pressure === 0
+        ? "Lattice pressure — nominal"
+        : pressure === 1
+          ? "Lattice pressure — raised"
+          : "Lattice pressure — critical";
+  }
+
+  /** Is the gate the carrier must next thread currently lined up? */
+  private gateOpenForCarrier(match: Match, plateIndex: number): boolean | null {
+    const layer = match.carrier.layer;
+    if (plateIndex !== layer) return null;
+    const p = match.prediction;
+    if (!p) return null;
+    const gate = p.gates.find((g) => g.plate === plateIndex);
+    return gate ? gate.open : false;
+  }
+
+  private syncTargets(match: Match): void {
+    const targets = match.targets;
+    while (this.targetRows.length > targets.length) {
+      const row = this.targetRows.pop();
+      row?.remove();
+    }
+    while (this.targetRows.length < targets.length) {
+      const row = el("div", "target");
+      row.innerHTML = `<div class="key"></div><div class="info"><div class="name"></div><div class="sub"></div></div><div class="expo"><i></i></div>`;
+      this.targetRows.push(row);
+      this.targetList.appendChild(row);
+    }
+
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i]!;
+      const row = this.targetRows[i]!;
+      const selected = i === match.selected;
+      row.classList.toggle("sel", selected);
+      (row.querySelector(".key") as HTMLElement).textContent = String(i + 1);
+      (row.querySelector(".name") as HTMLElement).textContent = target.label;
+      const sub = row.querySelector(".sub") as HTMLElement;
+      const fill = row.querySelector(".expo i") as HTMLElement;
+
+      if (selected && match.prediction) {
+        const p = match.prediction;
+        sub.innerHTML = this.verdict(p, target);
+        const e = clamp01(p.peakExposure);
+        fill.style.width = `${e * 100}%`;
+        fill.style.background = e > 0.66 ? "#ff4d66" : e > 0.33 ? "#ffe6a3" : "#7cf0b0";
+      } else {
+        sub.innerHTML = target.forward
+          ? `<span class="warn">forward</span> · select to read lane`
+          : `sidestep · select to read lane`;
+        fill.style.width = "0%";
+      }
+    }
+  }
+
+  private verdict(p: Prediction, target: PassTarget): string {
+    if (p.stopReason === "plate") return `<span class="bad">gate shut</span> · no line`;
+    if (p.stopReason === "block") return `<span class="bad">structure</span> · lane fouled`;
+    if (p.stopReason === "out") return `<span class="bad">off the lattice</span>`;
+    const e = p.peakExposure;
+    const seen =
+      e > 0.66
+        ? `<span class="bad">watched</span>`
+        : e > 0.33
+          ? `<span class="warn">half-seen</span>`
+          : `<span class="ok">shadowed</span>`;
+    return `<span class="ok">lane clear</span> · ${seen} · ${p.flightTime.toFixed(2)}s${
+      target.goal ? " · shot" : ""
+    }`;
+  }
+}

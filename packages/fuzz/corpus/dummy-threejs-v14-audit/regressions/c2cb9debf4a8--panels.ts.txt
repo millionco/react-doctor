@@ -1,0 +1,691 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/panels.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit c2cb9debf4a83f2b230db340dd01d253d6008b480328324a27e956252cf0dea7
+/**
+ * HTML control surface: lifecycle rail, filters, inspector, compare tray and
+ * the programme HUD. All interaction is delegated from a single listener using
+ * `data-act` attributes so the panels can be re-rendered freely.
+ */
+
+import type { Analysis, ItemNode } from "../data/graph";
+import { formatDays } from "../data/graph";
+import { STATUS_LABELS } from "../data/model";
+import type { ProcessModel, StatusKey } from "../data/types";
+import type { AppState, Ref, TraceMode } from "../state";
+import { parseRef } from "../state";
+
+export interface UiActions {
+  select(ref: Ref | null): void;
+  frame(ref: Ref | null): void;
+  advance(): void;
+  rollback(): void;
+  reset(): void;
+  setTrace(mode: TraceMode): void;
+  toggleOwner(id: string): void;
+  toggleStatus(status: StatusKey): void;
+  toggleCritical(): void;
+  toggleLens(): void;
+  toggleFailures(): void;
+  pin(ref: Ref): void;
+  unpin(slot: number): void;
+  resolve(id: string): void;
+  openEvidence(id: string | null): void;
+  setExplode(value: number): void;
+}
+
+const STATUS_ORDER: StatusKey[] = ["complete", "active", "blocked", "planned"];
+
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+}
+
+function el(html: string): HTMLElement {
+  const t = document.createElement("template");
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild as HTMLElement;
+}
+
+interface CompareMetric {
+  label: string;
+  value: number;
+  text: string;
+  better: "lower" | "higher" | "none";
+  unit?: string;
+}
+
+export class Ui {
+  private root: HTMLElement;
+  private model: ProcessModel;
+  private actions: UiActions;
+
+  private railBody!: HTMLElement;
+  private inspectorBody!: HTMLElement;
+  private inspectorTitle!: HTMLElement;
+  private hudEl!: HTMLElement;
+  private toastEl!: HTMLElement;
+  private toastTimer = 0;
+
+  constructor(root: HTMLElement, model: ProcessModel, actions: UiActions) {
+    this.root = root;
+    this.model = model;
+    this.actions = actions;
+    this.buildSkeleton();
+    this.bind();
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  private buildSkeleton(): void {
+    const left = el(`<div id="col-left"></div>`);
+    const right = el(`<div id="col-right"></div>`);
+    this.root.appendChild(left);
+    this.root.appendChild(right);
+
+    const header = el(`
+      <div class="panel" id="header">
+        <div class="prog">${esc(this.model.programme.name)}</div>
+        <div class="sub">${esc(this.model.programme.section)}</div>
+        <div class="unit">${esc(this.model.programme.unit)}</div>
+      </div>`);
+    left.appendChild(header);
+
+    const rail = el(`
+      <div class="panel" id="rail">
+        <div class="panel-title"><span>Lifecycle &amp; filters</span><span data-act="reset" class="btn">Reset</span></div>
+        <div class="panel-body scroll"></div>
+      </div>`);
+    this.railBody = rail.querySelector(".panel-body") as HTMLElement;
+    left.appendChild(rail);
+
+    const inspector = el(`
+      <div class="panel" id="inspector">
+        <div class="panel-title"><span>Inspector</span><span class="insp-hint"></span></div>
+        <div class="panel-body scroll"></div>
+      </div>`);
+    this.inspectorBody = inspector.querySelector(".panel-body") as HTMLElement;
+    this.inspectorTitle = inspector.querySelector(".insp-hint") as HTMLElement;
+    right.appendChild(inspector);
+
+    const hud = el(`
+      <div class="panel" id="hud">
+        <div class="panel-title"><span>Programme &amp; compare</span><span data-act="clearcompare" class="btn">Clear</span></div>
+        <div class="hud-grid"></div>
+        <div class="panel-body"></div>
+      </div>`);
+    this.hudEl = hud;
+    right.appendChild(hud);
+
+    const legend = el(`
+      <div class="panel" id="legend">
+        <div class="panel-title"><span>Legend</span></div>
+        <div class="panel-body">
+          <div class="legend-grid">
+            <div><i style="background:var(--complete)"></i>Complete</div>
+            <div><i style="background:var(--active)"></i>Active</div>
+            <div><i style="background:var(--blocked)"></i>Blocked (capability gap)</div>
+            <div><i style="background:var(--planned)"></i>Planned</div>
+            <div><i style="background:var(--upstream)"></i>Upstream driver</div>
+            <div><i style="background:var(--downstream)"></i>Downstream impact</div>
+            <div><i style="background:var(--critical)"></i>Critical path</div>
+            <div><i style="background:#8f4438"></i>Failure / rework loop</div>
+          </div>
+          <div class="keys">
+            <b>Click</b> token, platform, gate or airframe part &nbsp;·&nbsp; <b>Dbl-click</b> to frame<br />
+            <b>T</b> trace &nbsp; <b>C</b> pin compare &nbsp; <b>E</b> evidence &nbsp; <b>B</b> bottleneck lens<br />
+            <b>[ ]</b> stage back / advance &nbsp; <b>1-6</b> stage &nbsp; <b>R</b> reset &nbsp; <b>Esc</b> clear
+          </div>
+        </div>
+      </div>`);
+    left.appendChild(legend);
+
+    this.toastEl = el(`<div id="toast"></div>`);
+    this.root.appendChild(this.toastEl);
+  }
+
+  private bind(): void {
+    this.root.addEventListener("click", (e) => {
+      const target = (e.target as HTMLElement).closest("[data-act]") as HTMLElement | null;
+      if (!target) return;
+      const act = target.dataset.act!;
+      const arg = target.dataset.arg ?? "";
+      e.stopPropagation();
+      switch (act) {
+        case "item":
+        case "stage":
+        case "gate":
+        case "component":
+          this.actions.select({ kind: act, id: arg });
+          break;
+        case "frame":
+          this.actions.frame(parseRef(arg));
+          break;
+        case "advance":
+          this.actions.advance();
+          break;
+        case "rollback":
+          this.actions.rollback();
+          break;
+        case "reset":
+          this.actions.reset();
+          break;
+        case "trace":
+          this.actions.setTrace(arg as TraceMode);
+          break;
+        case "owner":
+          this.actions.toggleOwner(arg);
+          break;
+        case "status":
+          this.actions.toggleStatus(arg as StatusKey);
+          break;
+        case "critical":
+          this.actions.toggleCritical();
+          break;
+        case "lens":
+          this.actions.toggleLens();
+          break;
+        case "failures":
+          this.actions.toggleFailures();
+          break;
+        case "pin": {
+          const ref = parseRef(arg);
+          if (ref) this.actions.pin(ref);
+          break;
+        }
+        case "unpin":
+          this.actions.unpin(Number(arg));
+          break;
+        case "clearcompare":
+          this.actions.unpin(0);
+          this.actions.unpin(1);
+          break;
+        case "resolve":
+          this.actions.resolve(arg);
+          break;
+        case "evidence":
+          this.actions.openEvidence(arg || null);
+          break;
+      }
+    });
+
+    this.root.addEventListener("input", (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.dataset.act === "explode") this.actions.setExplode(Number(t.value) / 100);
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+
+  toast(message: string): void {
+    this.toastEl.innerHTML = message;
+    this.toastEl.classList.add("show");
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove("show"), 4200);
+  }
+
+  render(state: AppState, analysis: Analysis): void {
+    this.renderRail(state, analysis);
+    this.renderInspector(state, analysis);
+    this.renderHud(state, analysis);
+  }
+
+  /* ------------------------------------------------------------ rail */
+
+  private renderRail(state: AppState, analysis: Analysis): void {
+    const rows = this.model.stages
+      .map((stage) => {
+        const met = analysis.stages.get(stage.id)!;
+        const pips = STATUS_ORDER.flatMap((s) => Array.from({ length: met.counts[s] }, () => `<i class="pip ${s}"></i>`)).join("");
+        const gateClass = met.gateStatus === "passed" ? "passed" : met.gateStatus === "hold" ? "hold" : met.gateReady ? "ready" : "";
+        const sel = state.selection?.kind === "stage" && state.selection.id === stage.id;
+        return `
+        <div class="stage-row ${stage.index === state.currentStage ? "current" : ""} ${stage.index < state.currentStage ? "done" : ""} ${sel ? "selected" : ""}" data-act="stage" data-arg="${stage.id}">
+          <div class="code">${stage.code}</div>
+          <div>
+            <div class="name">${esc(stage.label)}</div>
+            <div class="meta">${formatDays(met.span)} span · ${met.counts.blocked ? `${met.counts.blocked} blocked` : `${met.criticalItems} critical`}</div>
+            <div class="pips">${pips}</div>
+          </div>
+          <div class="gate-chip ${gateClass}">${stage.gate.code}</div>
+        </div>`;
+      })
+      .join("");
+
+    const ownerChips = this.model.owners
+      .map((o) => {
+        const on = state.owners.has(o.id);
+        return `<span class="chip ${on ? "on" : "off"}" data-act="owner" data-arg="${o.id}" title="${esc(o.label)}"><i class="swatch" style="background:hsl(${o.hue} 34% 58%)"></i>${o.code}</span>`;
+      })
+      .join("");
+
+    const statusChips = STATUS_ORDER.map((s) => {
+      const on = state.statuses.has(s);
+      return `<span class="chip ${on ? "on" : "off"}" data-act="status" data-arg="${s}"><i class="swatch" style="background:var(--${s})"></i>${STATUS_LABELS[s]}</span>`;
+    }).join("");
+
+    const stage = this.model.stages[state.currentStage];
+    const met = stage ? analysis.stages.get(stage.id) : undefined;
+    const canAdvance = state.currentStage < this.model.stages.length - 1;
+
+    this.railBody.innerHTML = `
+      <div class="section-label">Stages · gate status</div>
+      ${rows}
+      <div class="row" style="margin-top:9px">
+        <button class="btn" data-act="rollback" ${state.currentStage === 0 ? "disabled" : ""}>&#9664; Roll back</button>
+        <button class="btn ${met?.gateReady ? "on" : ""}" data-act="advance" ${canAdvance ? "" : "disabled"}>Advance ${stage ? stage.gate.code : ""} &#9654;</button>
+      </div>
+      ${
+        met && met.gateStatus === "hold"
+          ? `<div class="insp-note" style="color:var(--blocked);margin-top:7px">Gate ${stage!.gate.code} is on hold: ${met.blockers.length} blocked item${met.blockers.length > 1 ? "s" : ""} must be dispositioned before the stage can close.</div>`
+          : ""
+      }
+
+      <div class="section-label">Owner</div>
+      <div class="row">${ownerChips}</div>
+
+      <div class="section-label">Status</div>
+      <div class="row">${statusChips}</div>
+
+      <div class="section-label">Analysis</div>
+      <div class="row">
+        <span class="btn ${state.criticalOnly ? "on" : ""}" data-act="critical">Critical path</span>
+        <span class="btn ${state.lens ? "on" : ""}" data-act="lens">Bottleneck lens</span>
+        <span class="btn ${state.showFailures ? "on" : ""}" data-act="failures">Failure paths</span>
+      </div>
+      <div class="row" style="margin-top:6px">
+        ${(["off", "up", "down", "both"] as TraceMode[])
+          .map(
+            (m) =>
+              `<span class="btn ${state.trace === m ? "on" : ""}" data-act="trace" data-arg="${m}">${
+                { off: "No trace", up: "Upstream", down: "Downstream", both: "Both" }[m]
+              }</span>`,
+          )
+          .join("")}
+      </div>
+
+      <div class="section-label">Disassembly</div>
+      <input class="slider" type="range" min="0" max="100" value="${Math.round(state.explode * 100)}" data-act="explode" />
+      <div class="meta" style="font-size:10px;color:var(--text-faint);margin-top:4px;font-family:var(--font)">
+        ${Math.round(state.explode * 100)}% exploded · components appear as the build standard matures
+      </div>`;
+  }
+
+  /* ------------------------------------------------------- inspector */
+
+  private renderInspector(state: AppState, analysis: Analysis): void {
+    const sel = state.selection;
+    this.inspectorTitle.textContent = sel ? sel.kind.toUpperCase() : "";
+    if (!sel) {
+      this.inspectorBody.innerHTML = `
+        <div class="insp-kind">No selection</div>
+        <div class="insp-title">Section 43 lifecycle explorer</div>
+        <p class="insp-note">
+          Six stage platforms carry the work items for this fuselage section. Select a token to trace what drives it and
+          what it drives, a platform to roll up a stage, a gate to see its criteria, or a part of the airframe to see the
+          work attached to it.
+        </p>
+        <p class="insp-note">
+          Two capability gaps are currently unsourced. Their effect on the schedule is visible in the programme HUD and in
+          the red hold bars on the affected gates.
+        </p>
+        <div class="row" style="margin-top:10px">
+          ${this.model.capabilities
+            .filter((c) => c.status !== "qualified")
+            .map(
+              (c) =>
+                `<span class="tag ${c.status === "gap" ? "t-fail" : "t-warn"}">${c.status === "gap" ? "GAP" : "IN QUAL"} · ${esc(c.label.split(",")[0]!)}</span>`,
+            )
+            .join(" ")}
+        </div>`;
+      return;
+    }
+
+    if (sel.kind === "item") this.inspectorBody.innerHTML = this.itemHtml(sel.id, state, analysis);
+    else if (sel.kind === "stage") this.inspectorBody.innerHTML = this.stageHtml(sel.id, state, analysis);
+    else if (sel.kind === "gate") this.inspectorBody.innerHTML = this.gateHtml(sel.id, analysis);
+    else this.inspectorBody.innerHTML = this.componentHtml(sel.id, analysis);
+  }
+
+  private itemHtml(id: string, state: AppState, analysis: Analysis): string {
+    const n = analysis.nodes.get(id);
+    if (!n) return `<div class="insp-kind">Unknown item</div>`;
+    const item = n.item;
+    const owner = this.model.owners.find((o) => o.id === item.owner)!;
+    const stage = this.model.stages.find((s) => s.id === item.stage)!;
+    const comp = this.model.components.find((c) => c.id === item.component)!;
+    const cap = n.capability;
+    const capFlag = cap.status === "gap" ? "t-fail" : cap.status === "in-qualification" ? "t-warn" : "t-ok";
+    const deps = item.deps.map((d) => analysis.nodes.get(d)).filter(Boolean) as ItemNode[];
+    const dependents = (this.model.items.filter((x) => x.deps.includes(id)) ?? []).map((x) => analysis.nodes.get(x.id)!);
+    const failuresOut = this.model.failures.filter((f) => f.from === id);
+    const failuresIn = this.model.failures.filter((f) => f.to === id);
+
+    const evidence = item.evidence
+      .map((e) => {
+        const open = state.evidence === e.id;
+        return `
+        <div class="evidence">
+          <div class="ev-head" data-act="evidence" data-arg="${open ? "" : e.id}">
+            <div class="ev-kind">${e.kind}</div>
+            <div><div class="ev-title">${esc(e.title)}</div><div class="ev-ref">${esc(e.ref)} · ${e.date}</div></div>
+            <div class="ev-ref">${open ? "&#9662;" : "&#9656;"}</div>
+          </div>
+          ${
+            open
+              ? `<div class="ev-body">
+                  <div class="ev-summary">${esc(e.summary)}</div>
+                  ${e.metrics
+                    .map(
+                      (mm) =>
+                        `<div class="metric"><span>${esc(mm.label)}</span><span class="${mm.flag ? `t-${mm.flag}` : ""}">${esc(mm.value)}</span></div>`,
+                    )
+                    .join("")}
+                </div>`
+              : ""
+          }
+        </div>`;
+      })
+      .join("");
+
+    return `
+      <div class="insp-kind">${stage.code} · Work item · ${item.id.toUpperCase()}</div>
+      <div class="insp-title">${esc(item.label)}</div>
+      <div class="row" style="margin-top:6px">
+        <span class="tag t-${n.status}">${STATUS_LABELS[n.status]}</span>
+        ${n.critical ? `<span class="tag" style="color:var(--critical)">Critical path</span>` : ""}
+        ${n.resolved ? `<span class="tag t-warn">Rework accepted</span>` : ""}
+      </div>
+      <p class="insp-note">${esc(item.note)}</p>
+
+      <dl class="kv">
+        <dt>Owner</dt><dd><span style="color:hsl(${owner.hue} 38% 66%)">${owner.code}</span> · ${esc(owner.label)}</dd>
+        <dt>Component</dt><dd><span class="link" data-act="component" data-arg="${comp.id}">${esc(comp.label)}</span></dd>
+        <dt>Duration</dt><dd>${n.duration} d${n.item.reworkDays && !n.resolved ? ` <span style="color:var(--text-faint)">(+${n.item.reworkDays} d if reworked)</span>` : ""}</dd>
+        <dt>Window</dt><dd>day ${Math.round(n.earlyStart)} &rarr; ${Math.round(n.earlyFinish)}${n.gapDays ? ` <span class="t-fail">after ${n.gapDays} d capability wait</span>` : ""}</dd>
+        <dt>Total float</dt><dd>${n.float === 0 ? `<span class="t-fail">0 d — driving</span>` : `${n.float} d`}</dd>
+        <dt>Capability</dt><dd><span class="tag ${capFlag}">${cap.status}</span> ${esc(cap.label)}</dd>
+        <dt>Source</dt><dd>${esc(cap.supplier)}${cap.leadWeeks ? ` · ${cap.leadWeeks} wk lead` : ""}</dd>
+      </dl>
+      ${cap.status !== "qualified" ? `<p class="insp-note">${esc(cap.note)}</p>` : ""}
+
+      <div class="section-label">Downstream exposure</div>
+      <div class="metric"><span>Items that cannot start until this finishes</span><span>${n.downstream.length}</span></div>
+      <div class="metric"><span>Work held behind it</span><span>${Math.round(n.downstreamDays)} d</span></div>
+      <div class="metric"><span>Bottleneck weight</span><span>${Math.round(n.bottleneck * 100)}%</span></div>
+      <div class="bar"><i style="width:${Math.round(n.bottleneck * 100)}%;background:${n.blocked ? "var(--blocked)" : "var(--accent)"}"></i></div>
+
+      ${
+        deps.length
+          ? `<div class="section-label">Depends on</div><div class="link-list">${deps
+              .map((d) => `<span class="link up" data-act="item" data-arg="${d.item.id}">${esc(d.item.label)}</span>`)
+              .join("")}</div>`
+          : `<div class="section-label">Depends on</div><div class="insp-note">Nothing — this is a programme entry point.</div>`
+      }
+      ${
+        dependents.length
+          ? `<div class="section-label">Drives</div><div class="link-list">${dependents
+              .map((d) => `<span class="link down" data-act="item" data-arg="${d.item.id}">${esc(d.item.label)}</span>`)
+              .join("")}</div>`
+          : ""
+      }
+      ${
+        failuresOut.length
+          ? `<div class="section-label">Failure path</div>${failuresOut
+              .map(
+                (f) =>
+                  `<div class="insp-note"><span class="tag t-fail">${esc(f.trigger)}</span><br/>${esc(f.label)} &rarr; <span class="link" data-act="item" data-arg="${f.to}">${esc(
+                    this.model.items.find((x) => x.id === f.to)?.label ?? f.to,
+                  )}</span> · costs ${f.costDays} d</div>`,
+              )
+              .join("")}`
+          : ""
+      }
+      ${
+        failuresIn.length
+          ? `<div class="section-label">Rework target of</div><div class="link-list">${failuresIn
+              .map((f) => `<span class="link" data-act="item" data-arg="${f.from}">${esc(f.trigger)}</span>`)
+              .join("")}</div>`
+          : ""
+      }
+
+      <div class="section-label">Evidence</div>
+      ${evidence || `<div class="insp-note">No evidence attached.</div>`}
+
+      <div class="row" style="margin-top:11px">
+        <span class="btn" data-act="trace" data-arg="${state.trace === "both" ? "off" : "both"}">${state.trace === "both" ? "Clear trace" : "Trace both ways"}</span>
+        <span class="btn" data-act="pin" data-arg="item:${item.id}">Pin to compare</span>
+        <span class="btn" data-act="frame" data-arg="item:${item.id}">Frame</span>
+        ${n.blocked ? `<span class="btn danger" data-act="resolve" data-arg="${item.id}">Accept rework (+${item.reworkDays} d)</span>` : ""}
+        ${n.resolved ? `<span class="btn" data-act="resolve" data-arg="${item.id}">Undo rework</span>` : ""}
+      </div>`;
+  }
+
+  private stageHtml(id: string, state: AppState, analysis: Analysis): string {
+    const stage = this.model.stages.find((s) => s.id === id)!;
+    const met = analysis.stages.get(id)!;
+    const items = this.model.items.filter((i) => i.stage === id);
+    const massDelta = met.massKg - met.baselineKg;
+    return `
+      <div class="insp-kind">${stage.code} · Lifecycle stage</div>
+      <div class="insp-title">${esc(stage.label)}</div>
+      <p class="insp-note">${esc(stage.subtitle)} — ${esc(stage.buildNote)}</p>
+      <dl class="kv">
+        <dt>Span</dt><dd>day ${Math.round(met.start)} &rarr; ${Math.round(met.finish)} (${formatDays(met.span)})</dd>
+        <dt>Effort</dt><dd>${met.effort} d across ${items.length} items</dd>
+        <dt>Owners</dt><dd>${met.owners.map((o) => this.model.owners.find((x) => x.id === o)?.code).join(" · ")}</dd>
+        <dt>Critical</dt><dd>${met.criticalItems} item${met.criticalItems === 1 ? "" : "s"} with zero float</dd>
+        <dt>Components</dt><dd>${met.massKg} kg touched · <span class="${massDelta < 0 ? "t-ok" : "t-warn"}">${massDelta >= 0 ? "+" : ""}${massDelta} kg vs baseline</span></dd>
+        <dt>Exit gate</dt><dd><span class="tag ${met.gateStatus === "passed" ? "t-ok" : met.gateStatus === "hold" ? "t-fail" : "t-warn"}">${stage.gate.code} ${met.gateStatus}</span></dd>
+      </dl>
+      <div class="section-label">Work items</div>
+      ${items
+        .map((i) => {
+          const n = analysis.nodes.get(i.id)!;
+          const owner = this.model.owners.find((o) => o.id === i.owner)!;
+          return `<div class="metric" style="cursor:pointer" data-act="item" data-arg="${i.id}">
+            <span><span class="tag t-${n.status}" style="border:none;padding:0;margin-right:5px">&#9632;</span>${esc(i.label)}</span>
+            <span>${owner.code} · ${n.duration}d${n.float === 0 ? " · CP" : ""}</span>
+          </div>`;
+        })
+        .join("")}
+      <div class="section-label">Gate criteria — ${esc(stage.gate.label)}</div>
+      ${stage.gate.criteria.map((c) => `<div class="metric"><span>${esc(c)}</span><span>${met.gateStatus === "passed" ? "closed" : "open"}</span></div>`).join("")}
+      <div class="row" style="margin-top:11px">
+        <span class="btn" data-act="pin" data-arg="stage:${stage.id}">Pin to compare</span>
+        <span class="btn" data-act="frame" data-arg="stage:${stage.id}">Frame</span>
+        <span class="btn" data-act="gate" data-arg="${stage.gate.id}">Open gate</span>
+      </div>
+      ${state.criticalOnly ? `<p class="insp-note">Critical-path filter is on: only zero-float items are lit.</p>` : ""}`;
+  }
+
+  private gateHtml(id: string, analysis: Analysis): string {
+    const stage = this.model.stages.find((s) => s.gate.id === id)!;
+    const met = analysis.stages.get(stage.id)!;
+    const blockers = met.blockers.map((b) => analysis.nodes.get(b)!);
+    return `
+      <div class="insp-kind">Review gate · ${stage.code} exit</div>
+      <div class="insp-title">${stage.gate.code} — ${esc(stage.gate.label)}</div>
+      <div class="row" style="margin-top:6px">
+        <span class="tag ${met.gateStatus === "passed" ? "t-ok" : met.gateStatus === "hold" ? "t-fail" : "t-warn"}">${met.gateStatus}</span>
+        ${met.gateReady ? `<span class="tag t-warn">Ready to advance</span>` : ""}
+      </div>
+      <div class="section-label">Criteria</div>
+      ${stage.gate.criteria
+        .map((c) => `<div class="metric"><span>${esc(c)}</span><span class="${met.gateStatus === "passed" ? "t-ok" : ""}">${met.gateStatus === "passed" ? "met" : "open"}</span></div>`)
+        .join("")}
+      ${
+        blockers.length
+          ? `<div class="section-label">Holding the gate</div>${blockers
+              .map(
+                (b) =>
+                  `<div class="metric" style="cursor:pointer" data-act="item" data-arg="${b.item.id}"><span>${esc(b.item.label)}</span><span class="t-fail">${b.gapDays} d wait</span></div>`,
+              )
+              .join("")}
+             <p class="insp-note">Each blocked item can be dispositioned by accepting its rework loop, which closes the gap at a schedule cost.</p>`
+          : `<p class="insp-note">No open blockers recorded against this gate.</p>`
+      }
+      <div class="row" style="margin-top:11px">
+        <span class="btn" data-act="stage" data-arg="${stage.id}">Open stage</span>
+        <span class="btn" data-act="frame" data-arg="gate:${id}">Frame</span>
+      </div>`;
+  }
+
+  private componentHtml(id: string, analysis: Analysis): string {
+    const comp = this.model.components.find((c) => c.id === id);
+    if (!comp) return `<div class="insp-kind">Unknown component</div>`;
+    const related = this.model.items.filter((i) => i.component === id);
+    const delta = comp.massKg - comp.baselineKg;
+    const pct = ((delta / comp.baselineKg) * 100).toFixed(1);
+    return `
+      <div class="insp-kind">Airframe component</div>
+      <div class="insp-title">${esc(comp.label)}</div>
+      <p class="insp-note">${esc(comp.note)}</p>
+      <dl class="kv">
+        <dt>Material</dt><dd>${esc(comp.materialClass)}</dd>
+        <dt>Mass</dt><dd>${comp.massKg} kg <span class="${delta < 0 ? "t-ok" : delta > 0 ? "t-warn" : ""}">(${delta >= 0 ? "+" : ""}${delta} kg, ${pct}%)</span></dd>
+        <dt>Baseline</dt><dd>${comp.baselineKg} kg</dd>
+        <dt>Source</dt><dd>${esc(comp.supplier)}</dd>
+      </dl>
+      <div class="section-label">Work attached to this component</div>
+      ${related
+        .map((i) => {
+          const n = analysis.nodes.get(i.id)!;
+          const stage = this.model.stages.find((s) => s.id === i.stage)!;
+          return `<div class="metric" style="cursor:pointer" data-act="item" data-arg="${i.id}">
+            <span><span class="tag t-${n.status}" style="border:none;padding:0;margin-right:5px">&#9632;</span>${esc(i.label)}</span>
+            <span>${stage.code}</span>
+          </div>`;
+        })
+        .join("")}
+      <div class="row" style="margin-top:11px">
+        <span class="btn" data-act="pin" data-arg="component:${comp.id}">Pin to compare</span>
+        <span class="btn" data-act="frame" data-arg="component:${comp.id}">Frame</span>
+      </div>`;
+  }
+
+  /* ------------------------------------------------------------- hud */
+
+  private renderHud(state: AppState, analysis: Analysis): void {
+    const grid = this.hudEl.querySelector(".hud-grid") as HTMLElement;
+    const body = this.hudEl.querySelector(".panel-body") as HTMLElement;
+    const slip = analysis.projectDays - analysis.baselineProjectDays;
+    const massDelta = analysis.totals.massKg - analysis.totals.baselineKg;
+    grid.innerHTML = `
+      <div class="hud-cell">
+        <div class="k">Schedule</div>
+        <div class="v">${Math.round(analysis.projectDays / 5)}<span style="font-size:10px;color:var(--text-faint)"> wk</span></div>
+        <div class="d ${slip > 0 ? "t-fail" : "t-ok"}">${slip > 0 ? "+" : ""}${Math.round(slip / 5)} wk vs plan</div>
+      </div>
+      <div class="hud-cell">
+        <div class="k">Blocked</div>
+        <div class="v ${analysis.totals.blocked ? "t-fail" : ""}">${analysis.totals.blocked}</div>
+        <div class="d">${analysis.totals.exposureDays} d exposure</div>
+      </div>
+      <div class="hud-cell">
+        <div class="k">Critical</div>
+        <div class="v">${analysis.criticalPath.length}</div>
+        <div class="d">items on the driving chain</div>
+      </div>
+      <div class="hud-cell">
+        <div class="k">Mass</div>
+        <div class="v ${massDelta < 0 ? "t-ok" : ""}">${massDelta >= 0 ? "+" : ""}${massDelta}</div>
+        <div class="d">kg vs ${analysis.totals.baselineKg} kg baseline</div>
+      </div>`;
+
+    body.innerHTML = this.compareHtml(state, analysis);
+  }
+
+  private compareHtml(state: AppState, analysis: Analysis): string {
+    const slots = state.compare.map((ref, i) => {
+      if (!ref) {
+        return `<div class="cmp-slot"><div class="s-kind">Slot ${i + 1}</div><div class="s-name" style="color:var(--text-faint)">Pin a stage, item or component</div></div>`;
+      }
+      return `<div class="cmp-slot filled">
+        <div class="s-kind">${ref.kind} <span class="link" data-act="unpin" data-arg="${i}" style="float:right;padding:0 3px">&times;</span></div>
+        <div class="s-name" data-act="${ref.kind}" data-arg="${ref.id}" style="cursor:pointer">${esc(this.refName(ref))}</div>
+      </div>`;
+    });
+
+    const a = state.compare[0];
+    const b = state.compare[1];
+    let rows = "";
+    if (a && b && a.kind === b.kind) {
+      const ma = this.metricsFor(a, analysis);
+      const mb = this.metricsFor(b, analysis);
+      rows = ma
+        .map((m, i) => {
+          const other = mb[i];
+          if (!other) return "";
+          const d = other.value - m.value;
+          const cls = d === 0 ? "same" : m.better === "none" ? "same" : (d > 0) === (m.better === "higher") ? "down" : "up";
+          const dTxt = m.better === "none" ? "—" : `${d > 0 ? "+" : ""}${Math.round(d * 10) / 10}`;
+          return `<div class="cmp-row"><span class="lab">${m.label}</span><span class="a">${m.text}</span><span class="b">${other.text}</span><span class="d ${cls}">${dTxt}</span></div>`;
+        })
+        .join("");
+      rows = `<div class="cmp-row" style="border:0"><span class="lab"></span><span class="a" style="color:var(--text-faint)">A</span><span class="b" style="color:var(--text-faint)">B</span><span class="d" style="color:var(--text-faint)">Δ</span></div>${rows}`;
+    } else if (a && b) {
+      rows = `<div class="insp-note">Pin two items of the same kind to see a delta.</div>`;
+    }
+    return `<div class="cmp-slots">${slots.join("")}</div>${rows ? `<div style="margin-top:8px">${rows}</div>` : ""}`;
+  }
+
+  private refName(ref: Ref): string {
+    if (ref.kind === "item") return this.model.items.find((i) => i.id === ref.id)?.label ?? ref.id;
+    if (ref.kind === "stage") return this.model.stages.find((s) => s.id === ref.id)?.label ?? ref.id;
+    if (ref.kind === "gate") return this.model.stages.find((s) => s.gate.id === ref.id)?.gate.label ?? ref.id;
+    return this.model.components.find((c) => c.id === ref.id)?.label ?? ref.id;
+  }
+
+  private metricsFor(ref: Ref, analysis: Analysis): CompareMetric[] {
+    if (ref.kind === "stage") {
+      const met = analysis.stages.get(ref.id)!;
+      return [
+        { label: "Span (wk)", value: met.span / 5, text: `${Math.round(met.span / 5)}`, better: "lower" },
+        { label: "Effort (d)", value: met.effort, text: `${met.effort}`, better: "lower" },
+        { label: "Items", value: Object.values(met.counts).reduce((x, y) => x + y, 0), text: `${Object.values(met.counts).reduce((x, y) => x + y, 0)}`, better: "none" },
+        { label: "Blocked", value: met.counts.blocked, text: `${met.counts.blocked}`, better: "lower" },
+        { label: "Critical items", value: met.criticalItems, text: `${met.criticalItems}`, better: "lower" },
+        { label: "Owners", value: met.owners.length, text: `${met.owners.length}`, better: "none" },
+        { label: "Mass Δ (kg)", value: met.massKg - met.baselineKg, text: `${met.massKg - met.baselineKg}`, better: "lower" },
+      ];
+    }
+    if (ref.kind === "item") {
+      const n = analysis.nodes.get(ref.id)!;
+      return [
+        { label: "Duration (d)", value: n.duration, text: `${n.duration}`, better: "lower" },
+        { label: "Float (d)", value: n.float, text: `${n.float}`, better: "higher" },
+        { label: "Gap wait (d)", value: n.gapDays, text: `${n.gapDays}`, better: "lower" },
+        { label: "Drives", value: n.downstream.length, text: `${n.downstream.length}`, better: "lower" },
+        { label: "Held work (d)", value: Math.round(n.downstreamDays), text: `${Math.round(n.downstreamDays)}`, better: "lower" },
+        { label: "Bottleneck", value: Math.round(n.bottleneck * 100), text: `${Math.round(n.bottleneck * 100)}%`, better: "lower" },
+        { label: "Evidence", value: n.item.evidence.length, text: `${n.item.evidence.length}`, better: "higher" },
+      ];
+    }
+    if (ref.kind === "component") {
+      const c = this.model.components.find((x) => x.id === ref.id)!;
+      const related = this.model.items.filter((i) => i.component === ref.id);
+      const blocked = related.filter((i) => analysis.nodes.get(i.id)?.blocked).length;
+      return [
+        { label: "Mass (kg)", value: c.massKg, text: `${c.massKg}`, better: "lower" },
+        { label: "Baseline (kg)", value: c.baselineKg, text: `${c.baselineKg}`, better: "none" },
+        { label: "Δ (kg)", value: c.massKg - c.baselineKg, text: `${c.massKg - c.baselineKg}`, better: "lower" },
+        { label: "Work items", value: related.length, text: `${related.length}`, better: "none" },
+        { label: "Blocked", value: blocked, text: `${blocked}`, better: "lower" },
+        {
+          label: "Effort (d)",
+          value: related.reduce((s, i) => s + (analysis.nodes.get(i.id)?.duration ?? 0), 0),
+          text: `${related.reduce((s, i) => s + (analysis.nodes.get(i.id)?.duration ?? 0), 0)}`,
+          better: "lower",
+        },
+      ];
+    }
+    const stage = this.model.stages.find((s) => s.gate.id === ref.id)!;
+    const met = analysis.stages.get(stage.id)!;
+    return [
+      { label: "Blockers", value: met.blockers.length, text: `${met.blockers.length}`, better: "lower" },
+      { label: "Criteria", value: stage.gate.criteria.length, text: `${stage.gate.criteria.length}`, better: "none" },
+      { label: "Closes day", value: met.finish, text: `${Math.round(met.finish)}`, better: "lower" },
+    ];
+  }
+}

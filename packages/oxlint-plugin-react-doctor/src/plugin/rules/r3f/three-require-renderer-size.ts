@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getStaticObjectPropertyValue } from "../../utils/get-static-object-property-value.js";
 import { getStaticPropertyName } from "../../utils/get-static-property-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -38,8 +39,9 @@ const rendererEscapesModule = (
   const symbol = context.scopes.symbolFor(construction.bindingIdentifier);
   if (!symbol) return true;
   return symbol.references.some((reference) => {
-    const parent = reference.identifier.parent;
-    return !isNodeOfType(parent, "MemberExpression") || parent.object !== reference.identifier;
+    const referenceRoot = findTransparentExpressionRoot(reference.identifier);
+    const parent = referenceRoot.parent;
+    return !isNodeOfType(parent, "MemberExpression") || parent.object !== referenceRoot;
   });
 };
 

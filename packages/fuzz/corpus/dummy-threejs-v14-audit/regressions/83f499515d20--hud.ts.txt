@@ -1,0 +1,162 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 83f499515d20a70a0f19d3ac620e0710ff642e13e6e49d3edc10bee2cf102e7b
+// DOM overlay: lap timing, race position, boost, best-lap delta and the
+// state messages (countdown, switchback prompt, crash recovery, results).
+
+export interface HudState {
+  lap: number;
+  totalLaps: number;
+  lapTime: number;
+  bestLap: number | null;
+  delta: number | null;
+  position: number;
+  fieldSize: number;
+  gapAhead: number | null;
+  boost: number;
+  boostActive: boolean;
+  charging: number;
+  inZone: boolean;
+  speedKph: number;
+  resets: number;
+}
+
+export function formatTime(t: number): string {
+  if (!isFinite(t) || t < 0) return "--.---";
+  const m = Math.floor(t / 60);
+  const s = t - m * 60;
+  const ss = s < 10 ? `0${s.toFixed(3)}` : s.toFixed(3);
+  return m > 0 ? `${m}:${ss}` : ss;
+}
+
+const HTML = `
+<div class="hud" id="hud">
+  <div class="panel tl">
+    <div class="row"><span class="lbl">LAP</span><span class="val" id="lapNum">1</span><span class="sub" id="lapTot">/ 3</span></div>
+    <div class="big mono" id="lapTime">00.000</div>
+    <div class="row small"><span class="lbl">BEST</span><span class="mono" id="bestLap">--.---</span></div>
+    <div class="row small"><span class="lbl">DELTA</span><span class="mono delta" id="delta">--.---</span></div>
+  </div>
+
+  <div class="panel tr">
+    <div class="posbox"><span class="pos" id="pos">4</span><span class="sub" id="field">/ 4</span></div>
+    <div class="row small right"><span class="lbl">GAP</span><span class="mono" id="gap">--.-</span></div>
+  </div>
+
+  <div class="zone" id="zone">
+    <span class="zlabel">SWITCHBACK</span>
+    <span class="zhint">DRIFT TO CHARGE</span>
+    <div class="zbar"><i id="zfill"></i></div>
+  </div>
+
+  <div class="panel bl boostwrap">
+    <div class="boostmeter"><div class="boostfill" id="boostFill"></div><div class="ticks"></div></div>
+    <div class="boostlbl">BOOST <span class="key">SHIFT</span></div>
+  </div>
+
+  <div class="panel br">
+    <div class="speed"><span class="mono" id="speed">0</span><span class="unit">KM/H</span></div>
+  </div>
+
+  <div class="centre" id="centre"></div>
+  <div class="help" id="help">
+    <b>WASD / ARROWS</b> steer &amp; throttle · <b>SPACE</b> brake + drift ·
+    <b>SHIFT</b> boost · <b>C</b> recentre camera · <b>R</b> recover
+  </div>
+  <div class="loader" id="loader"><div class="lgrid"></div><div class="ltitle">SWITCHBACK</div><div class="lsub" id="loadMsg">building the canyon…</div><div class="lbar"><i id="loadFill"></i></div></div>
+</div>
+`;
+
+export class Hud {
+  private readonly el: Record<string, HTMLElement> = {};
+  private helpTimer = 13;
+
+  constructor() {
+    const host = document.createElement("div");
+    host.innerHTML = HTML;
+    document.body.appendChild(host.firstElementChild as HTMLElement);
+    for (const id of [
+      "lapNum",
+      "lapTot",
+      "lapTime",
+      "bestLap",
+      "delta",
+      "pos",
+      "field",
+      "gap",
+      "zone",
+      "zfill",
+      "boostFill",
+      "speed",
+      "centre",
+      "help",
+      "loader",
+      "loadMsg",
+      "loadFill",
+    ]) {
+      this.el[id] = document.getElementById(id) as HTMLElement;
+    }
+  }
+
+  loading(msg: string, frac: number): void {
+    this.el.loadMsg!.textContent = msg;
+    this.el.loadFill!.style.width = `${Math.round(frac * 100)}%`;
+  }
+
+  loaded(): void {
+    this.el.loader!.classList.add("gone");
+  }
+
+  centre(html: string, cls = ""): void {
+    const c = this.el.centre!;
+    if (c.dataset.cur === html + cls) return;
+    c.dataset.cur = html + cls;
+    c.innerHTML = html;
+    c.className = `centre ${cls}`;
+  }
+
+  update(s: HudState, dt: number): void {
+    this.el.lapNum!.textContent = String(Math.min(s.lap, s.totalLaps));
+    this.el.lapTot!.textContent = `/ ${s.totalLaps}`;
+    this.el.lapTime!.textContent = formatTime(s.lapTime);
+    this.el.bestLap!.textContent = s.bestLap == null ? "--.---" : formatTime(s.bestLap);
+
+    const d = this.el.delta!;
+    if (s.delta == null) {
+      d.textContent = "--.---";
+      d.className = "mono delta";
+    } else {
+      const sign = s.delta >= 0 ? "+" : "-";
+      d.textContent = `${sign}${Math.abs(s.delta).toFixed(3)}`;
+      d.className = `mono delta ${s.delta >= 0 ? "worse" : "better"}`;
+    }
+
+    this.el.pos!.textContent = String(s.position);
+    this.el.field!.textContent = `/ ${s.fieldSize}`;
+    this.el.gap!.textContent = s.gapAhead == null ? "LEADER" : `${s.gapAhead.toFixed(1)}s`;
+
+    const bf = this.el.boostFill!;
+    bf.style.height = `${Math.round(s.boost * 100)}%`;
+    bf.classList.toggle("hot", s.boost > 0.66);
+    bf.classList.toggle("firing", s.boostActive);
+
+    this.el.speed!.textContent = String(Math.round(s.speedKph));
+
+    const z = this.el.zone!;
+    z.classList.toggle("on", s.inZone);
+    z.classList.toggle("charging", s.charging > 0.1);
+    this.el.zfill!.style.width = `${Math.round(Math.min(1, s.charging) * 100)}%`;
+
+    if (this.helpTimer > 0) {
+      this.helpTimer -= dt;
+      if (this.helpTimer <= 0) this.el.help!.classList.add("gone");
+    }
+  }
+
+  showHelp(): void {
+    this.helpTimer = 9;
+    this.el.help!.classList.remove("gone");
+  }
+}

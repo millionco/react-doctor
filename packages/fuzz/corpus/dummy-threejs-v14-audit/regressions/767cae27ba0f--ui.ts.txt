@@ -1,0 +1,1023 @@
+// rule: js-index-maps
+// file-path: src/editor/ui.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 767cae27ba0f6e78bfe1b119464925a44102557b3ab60bb453b58a26beec9b5b
+import { ASSIGNABLE_MATERIALS } from "../world/materials";
+import { PROP_SPECS } from "../world/props";
+import type { Editor, GizmoMode } from "./editor";
+import { suggestFor } from "./suggestions";
+import {
+  clearStorage,
+  downloadSceneJson,
+  exportGltf,
+  pickSceneFile,
+  saveToStorage,
+} from "./io";
+
+/** Compact silhouettes for the prop catalogue, drawn on a 24×24 grid. */
+const PROP_GLYPHS: Record<string, string> = {
+  plinth: "M3 20h18v-2H3zM5 18v-3h14v3zM7 15v-3h10v3zM9 12V9h6v3z",
+  barrel: "M8 4h8l2 8-2 8H8l-2-8zM5 9h14v1.4H5zM5 14h14v1.4H5z",
+  crate: "M4 6h16v14H4zM4 10h16M4 16h16M8 6v14M16 6v14",
+  well: "M5 13h14v7H5zM5 16h14M7 13V9l5-4 5 4v4M12 5v11",
+  kiln: "M4 20h16v-2H4zM5 18c0-7 3-11 7-11s7 4 7 11zM10 18v-5a2 2 0 0 1 4 0v5zM11 4h2v3h-2z",
+  arch: "M4 20V9a8 8 0 0 1 16 0v11h-4V9a4 4 0 0 0-8 0v11z",
+  steps: "M3 20h18v-3h-4v-3h-4v-3H9v-3H5v9H3z",
+  monolith: "M9 20l-1-9 2-8h3l2 8-1 9zM8.6 12h6.8M9 16h6",
+  conifer: "M12 2l4 5h-8zM12 6l5 6H7zM12 11l6 7H6zM11 18h2v3h-2z",
+  lantern: "M11 20h2V9h-2zM8 9h8V6l-4-3-4 3zM9 20h6v1H9zM10 6h4v3h-4z",
+  anvil: "M8 20h8v-2H8zM10 18v-4h4v4zM4 10h16l-3 4H7zM6 8h12v2H6z",
+  rocks: "M2 20h9l-3-6-4 2zM9 20h13l-5-9-5 5zM14 9l2-3 3 4z",
+  trough: "M3 10h18l-2 9H5zM3 10V8h18v2M6 19h12",
+};
+
+interface Control {
+  root: HTMLElement;
+  update?: () => void;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function icon(path: string, size = 22): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("aria-hidden", "true");
+  const shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  shape.setAttribute("d", path);
+  shape.setAttribute("fill", "none");
+  shape.setAttribute("stroke", "currentColor");
+  shape.setAttribute("stroke-width", "1.35");
+  shape.setAttribute("stroke-linejoin", "round");
+  shape.setAttribute("stroke-linecap", "round");
+  svg.appendChild(shape);
+  return svg;
+}
+
+const TINTS: Array<[string, string]> = [
+  ["#ffffff", "None"],
+  ["#f0d9bb", "Warm"],
+  ["#c9d6e4", "Cool"],
+  ["#d7c4a8", "Sand"],
+  ["#b9c9b2", "Verdant"],
+  ["#d3b1a8", "Clay"],
+  ["#a9a3ad", "Ash"],
+];
+
+export class Ui {
+  private readonly root = el("div", "ws-ui");
+  private readonly updaters: Array<() => void> = [];
+  private readonly outlinerList = el("div", "ws-outliner");
+  private readonly inspectorBody = el("div", "ws-inspector");
+  private readonly toast = el("div", "ws-toast");
+  private readonly suggestionPanel = el("aside", "ws-suggestions");
+  private readonly suggestionList = el("div", "ws-suggestion-list");
+  private readonly previewBar = el("div", "ws-preview-bar");
+  private nameField!: HTMLInputElement;
+  private undoButton!: HTMLButtonElement;
+  private redoButton!: HTMLButtonElement;
+  private outlinerSignature = "";
+  private toastTimer = 0;
+  private busy = false;
+
+  constructor(private readonly editor: Editor) {
+    document.body.appendChild(this.root);
+    this.buildTopBar();
+    this.buildLeftPanel();
+    this.buildRightPanel();
+    this.buildSuggestions();
+    this.buildPreviewBar();
+    this.root.appendChild(this.toast);
+
+    editor.bind({
+      onDocChanged: () => {
+        this.refresh();
+        saveToStorage(editor.doc);
+      },
+      onSelectionChanged: () => this.refresh(),
+      onModeChanged: () => this.refresh(),
+    });
+
+    this.installShortcuts();
+    this.refresh();
+  }
+
+  // -- chrome -----------------------------------------------------------------
+
+  private buildTopBar(): void {
+    const bar = el("header", "ws-topbar");
+
+    const brand = el("div", "ws-brand");
+    brand.appendChild(el("span", "ws-brand-mark", "◈"));
+    const brandText = el("div", "ws-brand-text");
+    brandText.appendChild(el("strong", undefined, "Worldsmith"));
+    brandText.appendChild(el("span", undefined, "diorama bench"));
+    brand.appendChild(brandText);
+    bar.appendChild(brand);
+
+    this.nameField = el("input", "ws-name");
+    this.nameField.type = "text";
+    this.nameField.spellcheck = false;
+    this.nameField.setAttribute("aria-label", "Scene name");
+    this.nameField.addEventListener("change", () => {
+      const value = this.nameField.value.trim();
+      this.editor.edit((doc) => {
+        doc.name = value.length > 0 ? value : "Untitled Diorama";
+      });
+    });
+    bar.appendChild(this.nameField);
+
+    const actions = el("div", "ws-actions");
+
+    this.undoButton = this.action(actions, "Undo", "⟲", () => this.editor.undo());
+    this.redoButton = this.action(actions, "Redo", "⟳", () => this.editor.redo());
+    actions.appendChild(el("div", "ws-sep"));
+
+    this.action(actions, "Preview", "▶", () => this.setPreview(true), "primary");
+    this.action(actions, "Notes", "✦", () => this.toggleSuggestions());
+    actions.appendChild(el("div", "ws-sep"));
+
+    this.action(actions, "Save JSON", "⬇", () => {
+      const filename = downloadSceneJson(this.editor.doc);
+      this.notify(`Saved ${filename}`);
+    });
+    this.action(actions, "Load JSON", "⬆", () => {
+      void pickSceneFile().then((doc) => {
+        if (!doc) {
+          this.notify("No scene loaded");
+          return;
+        }
+        this.editor.replaceDoc(doc, true);
+        this.notify(`Loaded “${doc.name}”`);
+      });
+    });
+    this.action(actions, "Export glTF", "⬚", () => {
+      if (this.busy) return;
+      this.busy = true;
+      this.notify("Packing glTF…", 20000);
+      void exportGltf(this.editor)
+        .then((filename) => this.notify(`Exported ${filename}`))
+        .catch(() => this.notify("Export failed"))
+        .finally(() => {
+          this.busy = false;
+        });
+    });
+    actions.appendChild(el("div", "ws-sep"));
+    this.action(actions, "Reset scene", "✱", () => {
+      clearStorage();
+      this.editor.resetScene();
+      this.notify("Reset to the starter diorama");
+    });
+
+    bar.appendChild(actions);
+    this.root.appendChild(bar);
+  }
+
+  private action(
+    parent: HTMLElement,
+    label: string,
+    glyph: string,
+    onClick: () => void,
+    variant = "",
+  ): HTMLButtonElement {
+    const button = el("button", `ws-action ${variant}`.trim());
+    button.type = "button";
+    button.title = label;
+    button.appendChild(el("span", "ws-action-glyph", glyph));
+    button.appendChild(el("span", "ws-action-label", label));
+    button.addEventListener("click", onClick);
+    parent.appendChild(button);
+    return button;
+  }
+
+  private buildLeftPanel(): void {
+    const panel = el("aside", "ws-panel ws-panel-left");
+
+    panel.appendChild(this.sectionTitle("Props", `${PROP_SPECS.length} built-in`));
+    const grid = el("div", "ws-prop-grid");
+    for (const spec of PROP_SPECS) {
+      const button = el("button", "ws-prop");
+      button.type = "button";
+      button.title = `${spec.label} — ${spec.note}`;
+      const glyph = PROP_GLYPHS[spec.type];
+      if (glyph) button.appendChild(icon(glyph));
+      button.appendChild(el("span", undefined, spec.label));
+      button.addEventListener("click", () => {
+        this.editor.addProp(spec.type);
+        this.notify(`Placed ${spec.label}`);
+      });
+      grid.appendChild(button);
+    }
+    panel.appendChild(grid);
+
+    panel.appendChild(this.sectionTitle("Outliner"));
+    panel.appendChild(this.outlinerList);
+
+    const clear = el("button", "ws-wide-button", "Clear the turntable");
+    clear.type = "button";
+    clear.addEventListener("click", () => {
+      this.editor.clearScene();
+      this.notify("Turntable cleared");
+    });
+    panel.appendChild(clear);
+
+    this.root.appendChild(panel);
+  }
+
+  private buildRightPanel(): void {
+    const panel = el("aside", "ws-panel ws-panel-right");
+
+    panel.appendChild(this.sectionTitle("Inspector"));
+    panel.appendChild(this.inspectorBody);
+
+    panel.appendChild(this.sectionTitle("Key light", "one light"));
+    panel.appendChild(this.buildLightSection());
+
+    panel.appendChild(this.sectionTitle("Camera"));
+    panel.appendChild(this.buildCameraSection());
+
+    panel.appendChild(this.sectionTitle("Studio"));
+    panel.appendChild(this.buildStudioSection());
+
+    this.root.appendChild(panel);
+  }
+
+  private sectionTitle(text: string, note?: string): HTMLElement {
+    const heading = el("div", "ws-section-title");
+    heading.appendChild(el("span", undefined, text));
+    if (note) heading.appendChild(el("em", undefined, note));
+    return heading;
+  }
+
+  // -- controls ---------------------------------------------------------------
+
+  private slider(options: {
+    label: string;
+    min: number;
+    max: number;
+    step: number;
+    get: () => number;
+    set: (value: number) => void;
+    commit: () => void;
+    format?: (value: number) => string;
+  }): Control {
+    const row = el("div", "ws-row");
+    const head = el("div", "ws-row-head");
+    head.appendChild(el("label", undefined, options.label));
+    const readout = el("span", "ws-readout");
+    head.appendChild(readout);
+    row.appendChild(head);
+
+    const input = el("input", "ws-slider");
+    input.type = "range";
+    input.min = String(options.min);
+    input.max = String(options.max);
+    input.step = String(options.step);
+    row.appendChild(input);
+
+    const format = options.format ?? ((v: number) => v.toFixed(2));
+    const update = (): void => {
+      const value = options.get();
+      if (document.activeElement !== input) input.value = String(value);
+      readout.textContent = format(value);
+    };
+
+    input.addEventListener("input", () => {
+      options.set(Number(input.value));
+      readout.textContent = format(Number(input.value));
+    });
+    input.addEventListener("change", options.commit);
+    input.addEventListener("pointerup", options.commit);
+
+    return { root: row, update };
+  }
+
+  private select(options: {
+    label: string;
+    choices: Array<[string, string]>;
+    get: () => string;
+    set: (value: string) => void;
+  }): Control {
+    const row = el("div", "ws-row");
+    const head = el("div", "ws-row-head");
+    head.appendChild(el("label", undefined, options.label));
+    row.appendChild(head);
+    const group = el("div", "ws-segmented");
+    const buttons: HTMLButtonElement[] = [];
+    for (const [value, label] of options.choices) {
+      const button = el("button", "ws-segment", label);
+      button.type = "button";
+      button.dataset.value = value;
+      button.addEventListener("click", () => options.set(value));
+      group.appendChild(button);
+      buttons.push(button);
+    }
+    row.appendChild(group);
+    return {
+      root: row,
+      update: () => {
+        const current = options.get();
+        for (const button of buttons) {
+          button.classList.toggle("is-active", button.dataset.value === current);
+        }
+      },
+    };
+  }
+
+  private colourRow(options: {
+    label: string;
+    get: () => string;
+    set: (value: string) => void;
+  }): Control {
+    const row = el("div", "ws-row");
+    const head = el("div", "ws-row-head");
+    head.appendChild(el("label", undefined, options.label));
+    row.appendChild(head);
+    const input = el("input", "ws-colour");
+    input.type = "color";
+    input.addEventListener("input", () => options.set(input.value));
+    row.appendChild(input);
+    return {
+      root: row,
+      update: () => {
+        if (document.activeElement !== input) input.value = options.get();
+      },
+    };
+  }
+
+  private register(control: Control, parent: HTMLElement): void {
+    parent.appendChild(control.root);
+    if (control.update) this.updaters.push(control.update);
+  }
+
+  // -- light / camera / studio -------------------------------------------------
+
+  private buildLightSection(): HTMLElement {
+    const body = el("div", "ws-group");
+    const editor = this.editor;
+    const live = (mutate: (doc: import("../state/doc").SceneDoc) => void): void =>
+      editor.editLive(mutate);
+    const commit = (): void => editor.endLiveEdit();
+
+    this.register(
+      this.select({
+        label: "Type",
+        choices: [
+          ["directional", "Sun"],
+          ["spot", "Spot"],
+          ["point", "Bulb"],
+        ],
+        get: () => editor.doc.light.kind,
+        set: (value) =>
+          editor.edit((doc) => {
+            doc.light.kind = value as import("../state/doc").LightKind;
+          }),
+      }),
+      body,
+    );
+
+    this.register(
+      this.colourRow({
+        label: "Colour",
+        get: () => editor.doc.light.color,
+        set: (value) => {
+          live((doc) => {
+            doc.light.color = value;
+          });
+          commit();
+        },
+      }),
+      body,
+    );
+
+    this.register(
+      this.slider({
+        label: "Intensity",
+        min: 0,
+        max: 6,
+        step: 0.05,
+        get: () => editor.doc.light.intensity,
+        set: (v) =>
+          live((doc) => {
+            doc.light.intensity = v;
+          }),
+        commit,
+      }),
+      body,
+    );
+    this.register(
+      this.slider({
+        label: "Azimuth",
+        min: -180,
+        max: 180,
+        step: 1,
+        format: (v) => `${Math.round(v)}°`,
+        get: () => editor.doc.light.azimuth,
+        set: (v) =>
+          live((doc) => {
+            doc.light.azimuth = v;
+          }),
+        commit,
+      }),
+      body,
+    );
+    this.register(
+      this.slider({
+        label: "Elevation",
+        min: 3,
+        max: 88,
+        step: 1,
+        format: (v) => `${Math.round(v)}°`,
+        get: () => editor.doc.light.elevation,
+        set: (v) =>
+          live((doc) => {
+            doc.light.elevation = v;
+          }),
+        commit,
+      }),
+      body,
+    );
+    this.register(
+      this.slider({
+        label: "Distance",
+        min: 0.8,
+        max: 6,
+        step: 0.05,
+        get: () => editor.doc.light.distance,
+        set: (v) =>
+          live((doc) => {
+            doc.light.distance = v;
+          }),
+        commit,
+      }),
+      body,
+    );
+    this.register(
+      this.slider({
+        label: "Shadow softness",
+        min: 0,
+        max: 12,
+        step: 0.1,
+        format: (v) => v.toFixed(1),
+        get: () => editor.doc.light.softness,
+        set: (v) =>
+          live((doc) => {
+            doc.light.softness = v;
+          }),
+        commit,
+      }),
+      body,
+    );
+
+    const cone = this.slider({
+      label: "Cone",
+      min: 6,
+      max: 70,
+      step: 1,
+      format: (v) => `${Math.round(v)}°`,
+      get: () => editor.doc.light.cone,
+      set: (v) =>
+        live((doc) => {
+          doc.light.cone = v;
+        }),
+      commit,
+    });
+    this.register(cone, body);
+    this.updaters.push(() => {
+      cone.root.style.display = editor.doc.light.kind === "spot" ? "" : "none";
+    });
+
+    body.appendChild(
+      el(
+        "p",
+        "ws-hint",
+        "The studio around the bench supplies a fixed ambient fill; this is the only light you place.",
+      ),
+    );
+    return body;
+  }
+
+  private buildCameraSection(): HTMLElement {
+    const body = el("div", "ws-group");
+    const editor = this.editor;
+
+    this.register(
+      this.slider({
+        label: "Field of view",
+        min: 14,
+        max: 80,
+        step: 1,
+        format: (v) => `${Math.round(v)}°`,
+        get: () => editor.doc.camera.fov,
+        set: (v) =>
+          editor.editLive((doc) => {
+            doc.camera.fov = v;
+          }),
+        commit: () => editor.endLiveEdit(),
+      }),
+      body,
+    );
+
+    const readout = el("div", "ws-vector");
+    this.updaters.push(() => {
+      const c = editor.doc.camera;
+      readout.textContent = `eye ${c.position.map((n) => n.toFixed(2)).join(", ")}   ·   look ${c.target
+        .map((n) => n.toFixed(2))
+        .join(", ")}`;
+    });
+    body.appendChild(readout);
+
+    const buttons = el("div", "ws-button-row");
+    const capture = el("button", "ws-wide-button", "Capture view");
+    capture.type = "button";
+    capture.addEventListener("click", () => {
+      editor.captureView();
+      this.notify("Presentation camera updated");
+    });
+    const goto = el("button", "ws-wide-button", "Go to camera");
+    goto.type = "button";
+    goto.addEventListener("click", () => editor.gotoDocCamera());
+    buttons.appendChild(capture);
+    buttons.appendChild(goto);
+    body.appendChild(buttons);
+
+    body.appendChild(
+      el("p", "ws-hint", "Orbit with the mouse, then capture. Saved files and glTF exports carry this camera."),
+    );
+    return body;
+  }
+
+  private buildStudioSection(): HTMLElement {
+    const body = el("div", "ws-group");
+    const editor = this.editor;
+
+    this.register(
+      this.slider({
+        label: "Studio fill",
+        min: 0,
+        max: 2.2,
+        step: 0.02,
+        get: () => editor.doc.fill,
+        set: (v) =>
+          editor.editLive((doc) => {
+            doc.fill = v;
+          }),
+        commit: () => editor.endLiveEdit(),
+      }),
+      body,
+    );
+    this.register(
+      this.slider({
+        label: "Exposure",
+        min: 0.3,
+        max: 2.2,
+        step: 0.01,
+        get: () => editor.doc.exposure,
+        set: (v) =>
+          editor.editLive((doc) => {
+            doc.exposure = v;
+          }),
+        commit: () => editor.endLiveEdit(),
+      }),
+      body,
+    );
+    return body;
+  }
+
+  // -- inspector ---------------------------------------------------------------
+
+  private rebuildInspector(): void {
+    const editor = this.editor;
+    const prop = editor.selectedProp;
+    this.inspectorBody.replaceChildren();
+
+    if (!prop) {
+      const empty = el("div", "ws-empty");
+      empty.appendChild(el("p", undefined, "Nothing selected."));
+      empty.appendChild(
+        el("p", "ws-hint", "Click a prop on the turntable, or place one from the catalogue on the left."),
+      );
+      this.inspectorBody.appendChild(empty);
+      return;
+    }
+
+    const propId = prop.id;
+    const live = (mutate: (p: import("../state/doc").PropRecord) => void): void =>
+      editor.updateSelected(mutate, true);
+    const commit = (): void => editor.endLiveEdit();
+    const localUpdaters: Array<() => void> = [];
+    const reg = (control: Control): void => {
+      this.inspectorBody.appendChild(control.root);
+      if (control.update) {
+        control.update();
+        localUpdaters.push(control.update);
+      }
+    };
+
+    const nameRow = el("div", "ws-row");
+    const nameInput = el("input", "ws-text");
+    nameInput.type = "text";
+    nameInput.value = prop.name;
+    nameInput.spellcheck = false;
+    nameInput.addEventListener("change", () => {
+      const value = nameInput.value.trim();
+      editor.updateSelected((p) => {
+        p.name = value.length > 0 ? value : "Prop";
+      });
+    });
+    nameRow.appendChild(nameInput);
+    this.inspectorBody.appendChild(nameRow);
+
+    reg(
+      this.select({
+        label: "Gizmo",
+        choices: [
+          ["translate", "Move"],
+          ["rotate", "Turn"],
+          ["scale", "Size"],
+        ],
+        get: () => editor.gizmoMode,
+        set: (value) => {
+          editor.setGizmoMode(value as GizmoMode);
+        },
+      }),
+    );
+
+    const axes: Array<["x" | "y" | "z", number, string, number, number]> = [
+      ["x", 0, "Position X", -0.7, 0.7],
+      ["y", 1, "Height", 0, 0.7],
+      ["z", 2, "Position Z", -0.7, 0.7],
+    ];
+    for (const [, index, label, min, max] of axes) {
+      reg(
+        this.slider({
+          label,
+          min,
+          max,
+          step: 0.005,
+          format: (v) => v.toFixed(3),
+          get: () => editor.selectedProp?.position[index] ?? 0,
+          set: (v) =>
+            live((p) => {
+              p.position[index] = v;
+            }),
+          commit,
+        }),
+      );
+    }
+
+    const rot: Array<[number, string, number]> = [
+      [1, "Turn", 180],
+      [0, "Tilt X", 30],
+      [2, "Tilt Z", 30],
+    ];
+    for (const [index, label, range] of rot) {
+      reg(
+        this.slider({
+          label,
+          min: -range,
+          max: range,
+          step: 1,
+          format: (v) => `${Math.round(v)}°`,
+          get: () => ((editor.selectedProp?.rotation[index] ?? 0) * 180) / Math.PI,
+          set: (v) =>
+            live((p) => {
+              p.rotation[index] = (v * Math.PI) / 180;
+            }),
+          commit,
+        }),
+      );
+    }
+
+    reg(
+      this.slider({
+        label: "Scale",
+        min: 0.25,
+        max: 2.6,
+        step: 0.01,
+        get: () => editor.selectedProp?.scale ?? 1,
+        set: (v) =>
+          live((p) => {
+            p.scale = v;
+          }),
+        commit,
+      }),
+    );
+
+    reg(this.materialPicker("Body material", "bodyMaterial"));
+    reg(this.materialPicker("Trim material", "trimMaterial"));
+    reg(this.tintPicker());
+
+    const buttons = el("div", "ws-button-row");
+    const frame = el("button", "ws-wide-button", "Frame");
+    frame.type = "button";
+    frame.addEventListener("click", () => editor.frameSelection());
+    const duplicate = el("button", "ws-wide-button", "Duplicate");
+    duplicate.type = "button";
+    duplicate.addEventListener("click", () => editor.duplicateSelection());
+    const remove = el("button", "ws-wide-button danger", "Delete");
+    remove.type = "button";
+    remove.addEventListener("click", () => editor.deleteSelection());
+    buttons.appendChild(frame);
+    buttons.appendChild(duplicate);
+    buttons.appendChild(remove);
+    this.inspectorBody.appendChild(buttons);
+
+    this.inspectorBody.dataset.propId = propId;
+    this.inspectorUpdaters = localUpdaters;
+  }
+
+  private inspectorUpdaters: Array<() => void> = [];
+
+  private materialPicker(
+    label: string,
+    field: "bodyMaterial" | "trimMaterial",
+  ): Control {
+    const editor = this.editor;
+    const row = el("div", "ws-row");
+    const head = el("div", "ws-row-head");
+    head.appendChild(el("label", undefined, label));
+    const note = el("span", "ws-readout");
+    head.appendChild(note);
+    row.appendChild(head);
+
+    const grid = el("div", "ws-swatches");
+    const chips: HTMLButtonElement[] = [];
+    for (const spec of ASSIGNABLE_MATERIALS) {
+      const chip = el("button", "ws-swatch");
+      chip.type = "button";
+      chip.dataset.value = spec.id;
+      chip.title = `${spec.label} — ${spec.note}`;
+      chip.style.setProperty("--swatch", spec.swatch);
+      chip.addEventListener("click", () => {
+        editor.updateSelected((p) => {
+          p[field] = spec.id;
+        });
+      });
+      chip.addEventListener("pointerenter", () => {
+        note.textContent = spec.label;
+      });
+      grid.appendChild(chip);
+      chips.push(chip);
+    }
+    row.appendChild(grid);
+
+    return {
+      root: row,
+      update: () => {
+        const current = editor.selectedProp?.[field];
+        for (const chip of chips) chip.classList.toggle("is-active", chip.dataset.value === current);
+        const active = ASSIGNABLE_MATERIALS.find((spec) => spec.id === current);
+        note.textContent = active?.label ?? "";
+      },
+    };
+  }
+
+  private tintPicker(): Control {
+    const editor = this.editor;
+    const row = el("div", "ws-row");
+    const head = el("div", "ws-row-head");
+    head.appendChild(el("label", undefined, "Tint"));
+    row.appendChild(head);
+    const grid = el("div", "ws-swatches");
+    const chips: HTMLButtonElement[] = [];
+    for (const [value, name] of TINTS) {
+      const chip = el("button", "ws-swatch ws-swatch-tint");
+      chip.type = "button";
+      chip.dataset.value = value;
+      chip.title = name;
+      chip.style.setProperty("--swatch", value);
+      chip.addEventListener("click", () => {
+        editor.updateSelected((p) => {
+          p.tint = value;
+        });
+      });
+      grid.appendChild(chip);
+      chips.push(chip);
+    }
+    row.appendChild(grid);
+    return {
+      root: row,
+      update: () => {
+        const current = editor.selectedProp?.tint ?? "#ffffff";
+        for (const chip of chips) chip.classList.toggle("is-active", chip.dataset.value === current);
+      },
+    };
+  }
+
+  // -- outliner ----------------------------------------------------------------
+
+  private rebuildOutliner(): void {
+    const editor = this.editor;
+    this.outlinerList.replaceChildren();
+
+    if (editor.doc.props.length === 0) {
+      this.outlinerList.appendChild(el("p", "ws-hint", "The turntable is empty."));
+      return;
+    }
+
+    for (const prop of editor.doc.props) {
+      const entry = el("div", "ws-outliner-row");
+      entry.classList.toggle("is-selected", prop.id === editor.selectedId);
+
+      const pick = el("button", "ws-outliner-pick");
+      pick.type = "button";
+      const glyph = PROP_GLYPHS[prop.type];
+      if (glyph) pick.appendChild(icon(glyph, 16));
+      pick.appendChild(el("span", undefined, prop.name));
+      pick.addEventListener("click", () => editor.select(prop.id));
+      entry.appendChild(pick);
+
+      const eye = el("button", "ws-icon-button", prop.visible ? "◉" : "○");
+      eye.type = "button";
+      eye.title = prop.visible ? "Hide" : "Show";
+      eye.addEventListener("click", () => {
+        editor.edit((doc) => {
+          const target = doc.props.find((p) => p.id === prop.id);
+          if (target) target.visible = !target.visible;
+        });
+      });
+      entry.appendChild(eye);
+
+      this.outlinerList.appendChild(entry);
+    }
+  }
+
+  // -- suggestions --------------------------------------------------------------
+
+  private buildSuggestions(): void {
+    this.suggestionPanel.classList.add("is-hidden");
+    const head = el("div", "ws-suggestion-head");
+    head.appendChild(el("strong", undefined, "Bench notes"));
+    head.appendChild(el("span", undefined, "local fixtures · no network"));
+    const close = el("button", "ws-icon-button", "✕");
+    close.type = "button";
+    close.addEventListener("click", () => this.toggleSuggestions(false));
+    head.appendChild(close);
+    this.suggestionPanel.appendChild(head);
+    this.suggestionPanel.appendChild(this.suggestionList);
+    this.suggestionPanel.appendChild(
+      el(
+        "p",
+        "ws-hint",
+        "Three notes chosen by rule from a fixed local table. The same scene always produces the same three.",
+      ),
+    );
+    this.root.appendChild(this.suggestionPanel);
+  }
+
+  private toggleSuggestions(force?: boolean): void {
+    const show = force ?? this.suggestionPanel.classList.contains("is-hidden");
+    this.suggestionPanel.classList.toggle("is-hidden", !show);
+    if (show) {
+      this.suggestionSignature = "";
+      this.refreshSuggestions();
+    }
+  }
+
+  private suggestionSignature = "";
+
+  private refreshSuggestions(): void {
+    if (this.suggestionPanel.classList.contains("is-hidden")) return;
+    const suggestions = suggestFor(this.editor.doc);
+    const signature = suggestions.map((s) => s.id + s.body).join("|");
+    if (signature === this.suggestionSignature) return;
+    this.suggestionSignature = signature;
+    this.suggestionList.replaceChildren();
+    for (const suggestion of suggestions) {
+      const card = el("article", "ws-suggestion");
+      card.appendChild(el("h3", undefined, suggestion.title));
+      card.appendChild(el("p", undefined, suggestion.body));
+      this.suggestionList.appendChild(card);
+    }
+  }
+
+  // -- preview ------------------------------------------------------------------
+
+  private buildPreviewBar(): void {
+    this.previewBar.classList.add("is-hidden");
+    this.previewBar.appendChild(el("span", undefined, "Preview — presentation camera"));
+    const exit = el("button", "ws-wide-button", "Back to the bench");
+    exit.type = "button";
+    exit.addEventListener("click", () => this.setPreview(false));
+    this.previewBar.appendChild(exit);
+    this.root.appendChild(this.previewBar);
+  }
+
+  setPreview(previewing: boolean): void {
+    this.editor.setPreviewing(previewing);
+    this.root.classList.toggle("is-previewing", previewing);
+    this.previewBar.classList.toggle("is-hidden", !previewing);
+  }
+
+  // -- shared --------------------------------------------------------------------
+
+  notify(message: string, duration = 2600): void {
+    this.toast.textContent = message;
+    this.toast.classList.add("is-visible");
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => {
+      this.toast.classList.remove("is-visible");
+    }, duration) as unknown as number;
+  }
+
+  refresh(): void {
+    const editor = this.editor;
+    if (document.activeElement !== this.nameField) this.nameField.value = editor.doc.name;
+    this.undoButton.disabled = !editor.history.canUndo;
+    this.redoButton.disabled = !editor.history.canRedo;
+
+    const signature = editor.doc.props
+      .map((p) => `${p.id}:${p.name}:${p.visible ? 1 : 0}`)
+      .join("|");
+    if (signature !== this.outlinerSignature) {
+      this.outlinerSignature = signature;
+      this.rebuildOutliner();
+    } else {
+      for (const row of this.outlinerList.querySelectorAll(".ws-outliner-row")) {
+        row.classList.remove("is-selected");
+      }
+      const index = editor.doc.props.findIndex((p) => p.id === editor.selectedId);
+      if (index >= 0) {
+        this.outlinerList.querySelectorAll(".ws-outliner-row")[index]?.classList.add("is-selected");
+      }
+    }
+
+    if (this.inspectorBody.dataset.propId !== (editor.selectedId ?? "")) {
+      if (editor.selectedProp) {
+        this.rebuildInspector();
+      } else {
+        this.inspectorBody.dataset.propId = "";
+        this.inspectorUpdaters = [];
+        this.rebuildInspector();
+      }
+    } else {
+      for (const update of this.inspectorUpdaters) update();
+    }
+
+    for (const update of this.updaters) update();
+    this.refreshSuggestions();
+  }
+
+  private installShortcuts(): void {
+    addEventListener("keydown", (event) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+
+      const meta = event.ctrlKey || event.metaKey;
+      if (meta && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) this.editor.redo();
+        else this.editor.undo();
+        return;
+      }
+      if (meta && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        this.editor.redo();
+        return;
+      }
+
+      switch (event.key.toLowerCase()) {
+        case "w":
+          this.editor.setGizmoMode("translate");
+          break;
+        case "e":
+          this.editor.setGizmoMode("rotate");
+          break;
+        case "r":
+          this.editor.setGizmoMode("scale");
+          break;
+        case "f":
+          this.editor.frameSelection();
+          break;
+        case "d":
+          this.editor.duplicateSelection();
+          break;
+        case "p":
+          this.setPreview(!this.editor.previewing);
+          break;
+        case "delete":
+        case "backspace":
+          this.editor.deleteSelection();
+          break;
+        case "escape":
+          if (this.editor.previewing) this.setPreview(false);
+          else this.editor.select(null);
+          break;
+        default:
+          break;
+      }
+    });
+  }
+}

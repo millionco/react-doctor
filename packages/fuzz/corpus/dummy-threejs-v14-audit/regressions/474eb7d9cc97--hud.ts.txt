@@ -1,0 +1,344 @@
+// rule: dangerous-html-sink
+// file-path: src/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 474eb7d9cc97be62790803714a46e7603d58329cb53dd061aa00e6cff4ddea56
+/**
+ * DOM overlay: order tickets, objective readout, tool belt, contextual
+ * prompts, screen-space alarm markers and the full-screen state cards.
+ */
+
+import * as THREE from "three";
+import { DISHES, type DishId, type Stage } from "./world/food";
+import { TOOLS, type ToolId } from "./entities/player";
+
+export interface TicketView {
+  id: number;
+  dish: DishId;
+  patience: number;
+  stageHint: string;
+}
+
+export interface MarkerRequest {
+  key: string;
+  world: THREE.Vector3;
+  text: string;
+  severity: "warn" | "alarm";
+}
+
+const STAGE_LABEL: Record<Stage, string> = {
+  raw: "raw",
+  prepped: "prepped",
+  cooked: "ready",
+  burnt: "ruined",
+};
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private readonly ticketList: HTMLDivElement;
+  private readonly ticketEls = new Map<number, HTMLDivElement>();
+  private readonly goalOrders: HTMLDivElement;
+  private readonly goalBursts: HTMLDivElement;
+  private readonly goalStations: HTMLDivElement;
+  private readonly beltEls: HTMLDivElement[] = [];
+  private readonly promptEl: HTMLDivElement;
+  private readonly carryEl: HTMLDivElement;
+  private readonly markerLayer: HTMLDivElement;
+  private readonly markerEls = new Map<string, HTMLDivElement>();
+  private readonly bannerLayer: HTMLDivElement;
+  private readonly screen: HTMLDivElement;
+  private readonly screenCard: HTMLDivElement;
+  private readonly alarmVig: HTMLDivElement;
+  private readonly recoveryVig: HTMLDivElement;
+  private loadPct = -1;
+  private loadLabel = "";
+
+  constructor() {
+    this.root = el("div");
+    this.root.id = "ui";
+
+    /* tickets */
+    const tickets = el("div");
+    tickets.id = "tickets";
+    tickets.appendChild(el("div", "hdr", "Order rail"));
+    this.ticketList = el("div");
+    this.ticketList.style.display = "flex";
+    this.ticketList.style.flexDirection = "column";
+    this.ticketList.style.gap = "8px";
+    tickets.appendChild(this.ticketList);
+    this.root.appendChild(tickets);
+
+    /* objective */
+    const objective = el("div", "panel");
+    objective.id = "objective";
+    this.goalOrders = el("div", "goal");
+    this.goalBursts = el("div", "goal");
+    this.goalStations = el("div", "goal");
+    objective.append(this.goalOrders, this.goalBursts, this.goalStations);
+    this.root.appendChild(objective);
+
+    /* tool belt */
+    const belt = el("div");
+    belt.id = "belt";
+    for (let i = 0; i < TOOLS.length; i++) {
+      const t = TOOLS[i]!;
+      const d = el("div", "panel tool");
+      d.innerHTML = `<div class="num">KEY ${i + 1}</div><div class="nm">${t.name}</div><div class="hint">${t.hint}</div><div class="meter"><i style="width:100%"></i></div>`;
+      belt.appendChild(d);
+      this.beltEls.push(d);
+    }
+    this.root.appendChild(belt);
+
+    /* prompt + controls + carry */
+    this.promptEl = el("div", "panel");
+    this.promptEl.id = "prompt";
+    this.root.appendChild(this.promptEl);
+
+    const controls = el("div", "panel");
+    controls.id = "controls";
+    controls.innerHTML = `
+      <div><b>W A S D</b> — move</div>
+      <div><b>E</b> — pick up / place / serve</div>
+      <div><b>1 2 3 4</b> — tools</div>
+      <div><b>SPACE</b> — use tool (hold 2 &amp; 3)</div>
+      <div><b>R</b> — recover after a collapse</div>`;
+    this.root.appendChild(controls);
+
+    this.carryEl = el("div", "panel");
+    this.carryEl.id = "carry";
+    this.root.appendChild(this.carryEl);
+
+    /* markers, banners */
+    this.markerLayer = el("div");
+    this.markerLayer.id = "markers";
+    this.root.appendChild(this.markerLayer);
+
+    this.bannerLayer = el("div");
+    this.bannerLayer.id = "banners";
+    this.root.appendChild(this.bannerLayer);
+
+    /* vignettes */
+    this.alarmVig = el("div");
+    this.alarmVig.id = "alarmvig";
+    this.root.appendChild(this.alarmVig);
+    this.recoveryVig = el("div");
+    this.recoveryVig.id = "recovery";
+    this.root.appendChild(this.recoveryVig);
+
+    /* screen */
+    this.screen = el("div");
+    this.screen.id = "screen";
+    this.screenCard = el("div", "panel card");
+    this.screen.appendChild(this.screenCard);
+    this.root.appendChild(this.screen);
+
+    document.body.appendChild(this.root);
+  }
+
+  /* ------------------------------- objective ------------------------------ */
+
+  setObjective(orders: number, ordersGoal: number, bursts: number, burstGoal: number, stationsDown: number, totalStations: number): void {
+    const pips = (n: number, total: number, cls: string): string => {
+      let s = '<div class="pips">';
+      for (let i = 0; i < total; i++) s += `<div class="pip ${i < n ? cls : ""}"></div>`;
+      return s + "</div>";
+    };
+    this.goalOrders.className = `goal${orders >= ordersGoal ? " done" : ""}`;
+    this.goalOrders.innerHTML = `<div class="k">Orders out</div><div class="v">${orders} / ${ordersGoal}</div>${pips(orders, ordersGoal, "on")}`;
+    this.goalBursts.className = `goal${bursts >= burstGoal ? " done" : ""}`;
+    this.goalBursts.innerHTML = `<div class="k">Rushes held</div><div class="v">${bursts} / ${burstGoal}</div>${pips(bursts, burstGoal, "on")}`;
+    this.goalStations.className = `goal${stationsDown > 0 ? " bad" : " done"}`;
+    this.goalStations.innerHTML = `<div class="k">Stations down</div><div class="v">${stationsDown}</div>${pips(stationsDown, totalStations, "hot")}`;
+  }
+
+  /* -------------------------------- tickets ------------------------------- */
+
+  setTickets(views: TicketView[]): void {
+    const seen = new Set<number>();
+    for (const v of views) {
+      seen.add(v.id);
+      let node = this.ticketEls.get(v.id);
+      const def = DISHES[v.dish];
+      if (!node) {
+        node = el("div", "panel ticket");
+        node.innerHTML = `
+          <div class="accent" style="background:${def.color}"></div>
+          <div class="row"><span class="glyph">${def.glyph}</span><span class="nm">${def.name}</span></div>
+          <div class="stg"></div>
+          <div class="bar"><i></i></div>`;
+        this.ticketList.appendChild(node);
+        this.ticketEls.set(v.id, node);
+      }
+      const pct = Math.max(0, Math.min(1, v.patience));
+      node.className = `panel ticket${pct < 0.25 ? " urgent" : pct < 0.55 ? " mid" : ""}`;
+      const bar = node.querySelector("i") as HTMLElement | null;
+      if (bar) bar.style.width = `${pct * 100}%`;
+      const stg = node.querySelector(".stg") as HTMLElement | null;
+      if (stg) stg.textContent = v.stageHint;
+    }
+    for (const [id, node] of this.ticketEls) {
+      if (!seen.has(id)) {
+        node.remove();
+        this.ticketEls.delete(id);
+      }
+    }
+  }
+
+  /* --------------------------------- belt --------------------------------- */
+
+  setTool(tool: ToolId, bombCharges: number, bombMax: number): void {
+    for (let i = 0; i < this.beltEls.length; i++) {
+      const d = this.beltEls[i]!;
+      d.className = `panel tool${i === tool ? " sel" : ""}`;
+      const meter = d.querySelector("i") as HTMLElement | null;
+      if (meter) {
+        meter.style.width = i === 3 ? `${(bombCharges / bombMax) * 100}%` : "100%";
+        meter.style.background = i === 3 && bombCharges === 0 ? "#7a6f62" : "";
+      }
+    }
+  }
+
+  setPrompt(text: string | null): void {
+    this.promptEl.style.opacity = text ? "1" : "0";
+    if (text) this.promptEl.innerHTML = text;
+  }
+
+  setCarry(dish: DishId | null, stage: Stage | null, note: string): void {
+    if (!dish || !stage) {
+      this.carryEl.innerHTML = `<div class="k">Hands</div><div class="v">Empty</div><div class="hint" style="font-size:11px;color:var(--dim)">${note}</div>`;
+      return;
+    }
+    const def = DISHES[dish];
+    this.carryEl.innerHTML = `<div class="k">Carrying</div><div class="v">${def.glyph} ${def.name}</div><div style="font-size:11px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">${STAGE_LABEL[stage]} &middot; ${note}</div>`;
+  }
+
+  /* -------------------------------- markers ------------------------------- */
+
+  updateMarkers(requests: MarkerRequest[], camera: THREE.Camera): void {
+    const seen = new Set<string>();
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const pad = 54;
+    const v = new THREE.Vector3();
+
+    for (const r of requests) {
+      seen.add(r.key);
+      let node = this.markerEls.get(r.key);
+      if (!node) {
+        node = el("div", "marker");
+        node.innerHTML = `<span class="arrow"></span><span class="lbl"></span>`;
+        this.markerLayer.appendChild(node);
+        this.markerEls.set(r.key, node);
+      }
+      const lbl = node.querySelector(".lbl") as HTMLElement | null;
+      if (lbl && lbl.textContent !== r.text) lbl.textContent = r.text;
+
+      v.copy(r.world).project(camera);
+      const behind = v.z > 1;
+      let sx = (v.x * 0.5 + 0.5) * w;
+      let sy = (-v.y * 0.5 + 0.5) * h;
+      if (behind) {
+        sx = w - sx;
+        sy = h - sy;
+      }
+      const offscreen = behind || sx < pad || sx > w - pad || sy < pad || sy > h - pad;
+      const cxp = w / 2;
+      const cyp = h / 2;
+      let angle = 0;
+      if (offscreen) {
+        const dx = sx - cxp;
+        const dy = sy - cyp;
+        const scale = Math.min(
+          (w / 2 - pad) / Math.max(1e-3, Math.abs(dx)),
+          (h / 2 - pad) / Math.max(1e-3, Math.abs(dy)),
+        );
+        sx = cxp + dx * scale;
+        sy = cyp + dy * scale;
+        angle = Math.atan2(dy, dx);
+      } else {
+        angle = -Math.PI / 2;
+      }
+      node.className = `marker ${r.severity === "alarm" ? "pulse" : "warn"}`;
+      node.style.left = `${sx}px`;
+      node.style.top = `${sy}px`;
+      const arrow = node.querySelector(".arrow") as HTMLElement | null;
+      if (arrow) arrow.style.transform = `rotate(${angle * (180 / Math.PI) - 45}deg)`;
+    }
+
+    for (const [key, node] of this.markerEls) {
+      if (!seen.has(key)) {
+        node.remove();
+        this.markerEls.delete(key);
+      }
+    }
+  }
+
+  /* -------------------------------- banners ------------------------------- */
+
+  banner(text: string, kind: "good" | "bad" | "info" = "info", ms = 2200): void {
+    const b = el("div", `panel banner ${kind}`, text);
+    this.bannerLayer.appendChild(b);
+    window.setTimeout(() => {
+      b.style.transition = "opacity .3s ease, transform .3s ease";
+      b.style.opacity = "0";
+      b.style.transform = "translateY(-8px)";
+      window.setTimeout(() => b.remove(), 320);
+    }, ms);
+  }
+
+  setAlarmLevel(level: number): void {
+    const v = Math.min(1, level);
+    this.alarmVig.className = v > 0.01 ? "on" : "";
+    if (v > 0.01) this.alarmVig.style.opacity = String(v);
+  }
+
+  setRecoveryLevel(level: number): void {
+    const v = Math.min(1, level);
+    this.recoveryVig.className = v > 0.01 ? "on" : "";
+    if (v > 0.01) this.recoveryVig.style.opacity = String(v);
+  }
+
+  /* -------------------------------- screens ------------------------------- */
+
+  /** Boot progress card, shown while the surface library is being baked. */
+  showLoading(progress: number, label: string): void {
+    // touching the DOM every frame invalidates the whole overlay; only write
+    // when the readout has actually moved
+    const pct = Math.round(Math.min(1, progress) * 100);
+    if (pct === this.loadPct && label === this.loadLabel) return;
+    this.loadPct = pct;
+    this.loadLabel = label;
+    if (this.screen.className !== "on boot") {
+      this.screen.className = "on boot";
+      this.screenCard.innerHTML = `
+        <h1>Rush Hour Kitchen</h1>
+        <h2>Prepping the line</h2>
+        <div class="loadbar"><i></i></div>
+        <p class="loadlabel"></p>`;
+    }
+    const bar = this.screenCard.querySelector(".loadbar i") as HTMLElement | null;
+    if (bar) bar.style.width = `${pct}%`;
+    const lbl = this.screenCard.querySelector(".loadlabel") as HTMLElement | null;
+    if (lbl && lbl.textContent !== label) lbl.textContent = label;
+  }
+
+  showScreen(kind: "intro" | "collapse" | "win" | "none", html = ""): void {
+    if (kind === "none") {
+      this.screen.className = "";
+      return;
+    }
+    this.screen.className = `on ${kind}`;
+    this.screenCard.innerHTML = html;
+  }
+}

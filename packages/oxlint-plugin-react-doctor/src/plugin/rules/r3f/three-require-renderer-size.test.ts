@@ -39,4 +39,16 @@ describe("three-require-renderer-size", () => {
     `;
     expect(runRule(threeRequireRendererSize, code).diagnostics).toHaveLength(0);
   });
+
+  it("treats TypeScript wrappers around renderer receivers as transparent", () => {
+    const code = `
+      import { WebGLRenderer } from "three";
+      const unsized = new WebGLRenderer();
+      (unsized as any).render(scene, camera);
+      const sized = new WebGLRenderer();
+      sized!.setSize(width, height);
+      sized!.render(scene, camera);
+    `;
+    expect(runRule(threeRequireRendererSize, code).diagnostics).toHaveLength(1);
+  });
 });

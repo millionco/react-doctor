@@ -1,0 +1,539 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 1b92d5bcf6f5c5000851482b35251ff4939ebdb871debd8abc951e4dbec383cb
+/**
+ * The instrument overlay.
+ *
+ * Progress, success and failure all need to be legible at a glance while the
+ * player is flying: the depth rail shows where the survey locks are relative to
+ * the hull, the quota pips fill as specimens are logged, and the reticle arc is
+ * the scan hold. Everything is plain DOM over the canvas.
+ */
+
+import { clamp01, formatTime } from "../core/util";
+import { SPECIES, type SpeciesDef } from "../entities/creatures";
+import { ZONES, GATE_DEPTHS } from "../world/field";
+
+const MAX_DEPTH = 344;
+
+export interface RunSummary {
+  cataloged: number;
+  total: number;
+  time: number;
+  hull: number;
+  power: number;
+  species: number;
+  speciesTotal: number;
+}
+
+export type HudScreen = "loading" | "title" | "catalog" | "paused" | "success" | "failure" | "none";
+
+function el<T extends Element = HTMLElement>(root: ParentNode, sel: string): T {
+  const found = root.querySelector(sel);
+  if (!found) throw new Error(`HUD element missing: ${sel}`);
+  return found as unknown as T;
+}
+
+const ZONE_COLORS = ["rgba(80,200,225,0.30)", "rgba(46,140,185,0.28)", "rgba(28,74,110,0.30)", "rgba(120,74,36,0.30)"];
+
+export class Hud {
+  readonly root: HTMLDivElement;
+  private readonly zoneName: HTMLElement;
+  private readonly zoneSub: HTMLElement;
+  private readonly objective: HTMLElement;
+  private readonly quotaDots: HTMLElement;
+  private readonly statTime: HTMLElement;
+  private readonly statLogged: HTMLElement;
+  private readonly statZoom: HTMLElement;
+  private readonly depthMarker: HTMLElement;
+  private readonly depthValue: HTMLElement;
+  private readonly targetTick: HTMLElement;
+  private readonly powerBar: HTMLElement;
+  private readonly powerVal: HTMLElement;
+  private readonly hullBar: HTMLElement;
+  private readonly hullVal: HTMLElement;
+  private readonly powerWrap: HTMLElement;
+  private readonly hullWrap: HTMLElement;
+  private readonly scanArc: SVGCircleElement;
+  private readonly scanRing: SVGCircleElement;
+  private readonly reticleBrackets: SVGGElement;
+  private readonly targetName: HTMLElement;
+  private readonly targetSub: HTMLElement;
+  private readonly toasts: HTMLElement;
+  private readonly prompt: HTMLElement;
+  private readonly promptText: HTMLElement;
+  private readonly promptFill: HTMLElement;
+  private readonly damageFlash: HTMLElement;
+  private readonly lampState: HTMLElement;
+  private readonly hudLayer: HTMLElement;
+  private readonly gateTicks: HTMLElement[] = [];
+
+  private readonly overlays: Record<string, HTMLElement> = {};
+  private readonly loadFill: HTMLElement;
+  private readonly loadLabel: HTMLElement;
+  private readonly beginBtn: HTMLButtonElement;
+  private readonly resumeBtn: HTMLButtonElement;
+  private readonly restartBtns: HTMLButtonElement[] = [];
+  private readonly closeCatalogBtn: HTMLButtonElement;
+  private readonly catalogList: HTMLElement;
+  private readonly successResults: HTMLElement;
+  private readonly failResults: HTMLElement;
+  private readonly failTitle: HTMLElement;
+  private readonly failReason: HTMLElement;
+  private readonly successRank: HTMLElement;
+
+  private arcLength = 0;
+  private lastScreen: HudScreen = "loading";
+
+  constructor(parent: HTMLElement) {
+    const root = document.createElement("div");
+    root.id = "ui";
+    root.innerHTML = TEMPLATE;
+    parent.appendChild(root);
+    this.root = root;
+
+    this.hudLayer = el(root, "#hudLayer");
+    this.zoneName = el(root, "#zoneName");
+    this.zoneSub = el(root, "#zoneSub");
+    this.objective = el(root, "#objective");
+    this.quotaDots = el(root, "#quotaDots");
+    this.statTime = el(root, "#statTime");
+    this.statLogged = el(root, "#statLogged");
+    this.statZoom = el(root, "#statZoom");
+    this.depthMarker = el(root, "#depthMarker");
+    this.depthValue = el(root, "#depthValue");
+    this.targetTick = el(root, "#targetTick");
+    this.powerBar = el(root, "#powerFill");
+    this.powerVal = el(root, "#powerVal");
+    this.hullBar = el(root, "#hullFill");
+    this.hullVal = el(root, "#hullVal");
+    this.powerWrap = el(root, "#powerBar");
+    this.hullWrap = el(root, "#hullBar");
+    this.scanArc = el<SVGCircleElement>(root, "#scanArc");
+    this.scanRing = el<SVGCircleElement>(root, "#scanRing");
+    this.reticleBrackets = el<SVGGElement>(root, "#brackets");
+    this.targetName = el(root, "#targetName");
+    this.targetSub = el(root, "#targetSub");
+    this.toasts = el(root, "#toasts");
+    this.prompt = el(root, "#prompt");
+    this.promptText = el(root, "#promptText");
+    this.promptFill = el(root, "#promptFill");
+    this.damageFlash = el(root, "#damageFlash");
+    this.lampState = el(root, "#lampState");
+
+    this.overlays["loading"] = el(root, "#loadingOverlay");
+    this.overlays["title"] = el(root, "#titleOverlay");
+    this.overlays["paused"] = el(root, "#pauseOverlay");
+    this.overlays["catalog"] = el(root, "#catalogOverlay");
+    this.overlays["success"] = el(root, "#successOverlay");
+    this.overlays["failure"] = el(root, "#failureOverlay");
+
+    this.loadFill = el(root, "#loadFill");
+    this.loadLabel = el(root, "#loadLabel");
+    this.beginBtn = el<HTMLButtonElement>(root, "#beginBtn");
+    this.resumeBtn = el<HTMLButtonElement>(root, "#resumeBtn");
+    this.closeCatalogBtn = el<HTMLButtonElement>(root, "#closeCatalogBtn");
+    this.restartBtns.push(el<HTMLButtonElement>(root, "#restartSuccess"));
+    this.restartBtns.push(el<HTMLButtonElement>(root, "#restartFailure"));
+    this.restartBtns.push(el<HTMLButtonElement>(root, "#restartPause"));
+    this.catalogList = el(root, "#catalogList");
+    this.successResults = el(root, "#successResults");
+    this.failResults = el(root, "#failResults");
+    this.failTitle = el(root, "#failTitle");
+    this.failReason = el(root, "#failReason");
+    this.successRank = el(root, "#successRank");
+
+    const r = Number(this.scanArc.getAttribute("r") ?? 62);
+    this.arcLength = 2 * Math.PI * r;
+    this.scanArc.style.strokeDasharray = `${this.arcLength}`;
+    this.scanArc.style.strokeDashoffset = `${this.arcLength}`;
+
+    this.buildDepthRail();
+    this.buildCatalog(new Set());
+  }
+
+  // --- wiring -------------------------------------------------------------
+
+  onBegin(fn: () => void): void {
+    this.beginBtn.addEventListener("click", fn);
+  }
+  onResume(fn: () => void): void {
+    this.resumeBtn.addEventListener("click", fn);
+    this.closeCatalogBtn.addEventListener("click", fn);
+  }
+  onRestart(fn: () => void): void {
+    for (const b of this.restartBtns) b.addEventListener("click", fn);
+  }
+
+  // --- static build -------------------------------------------------------
+
+  private buildDepthRail(): void {
+    const track = el(this.root, "#depthTrack");
+    for (let i = 0; i < ZONES.length; i++) {
+      const z = ZONES[i]!;
+      const band = document.createElement("div");
+      band.className = "zoneBand";
+      band.style.top = `${(z.top / MAX_DEPTH) * 100}%`;
+      band.style.height = `${((z.bottom - z.top) / MAX_DEPTH) * 100}%`;
+      band.style.background = ZONE_COLORS[i] ?? "rgba(60,120,150,0.2)";
+      track.appendChild(band);
+    }
+    const rail = el(this.root, "#depthRail");
+    for (const d of GATE_DEPTHS) {
+      const tick = document.createElement("div");
+      tick.className = "gateTick";
+      tick.style.top = `${(d / MAX_DEPTH) * 100}%`;
+      rail.appendChild(tick);
+      this.gateTicks.push(tick);
+    }
+  }
+
+  buildCatalog(logged: Set<string>): void {
+    const sections = ZONES.map((zone) => {
+      const inZone = SPECIES.filter((sp) => sp.zone === zone.index);
+      const known = inZone.filter((sp) => logged.has(sp.id)).length;
+      const rows = inZone
+        .map((sp, i) => {
+          const done = logged.has(sp.id);
+          const code = `${zone.index + 1}-${String.fromCharCode(65 + i)}`;
+          return `<div class="species${done ? " done" : ""}">
+            <i></i>
+            <div>
+              <b>${done ? sp.name : `SPECIMEN ${code} · UNIDENTIFIED`}</b>
+              <u>${done ? sp.latin : "awaiting a clean scan"}</u>
+              <p>${done ? sp.note : "Range, an unobstructed line and a steady hold will resolve it."}</p>
+            </div>
+          </div>`;
+        })
+        .join("");
+      return `<section class="zoneGroup">
+        <header><span>${zone.name}</span><b>${known}/${inZone.length}</b></header>
+        ${rows}
+      </section>`;
+    }).join("");
+    const total = SPECIES.filter((sp) => logged.has(sp.id)).length;
+    this.catalogList.innerHTML =
+      `<p class="logSummary">${total} of ${SPECIES.length} species recorded on this expedition.</p>` + sections;
+  }
+
+  // --- per-frame ----------------------------------------------------------
+
+  setZone(name: string, sub: string, objective: string, count: number, quota: number): void {
+    if (this.zoneName.textContent !== name) this.zoneName.textContent = name;
+    if (this.zoneSub.textContent !== sub) this.zoneSub.textContent = sub;
+    if (this.objective.textContent !== objective) this.objective.textContent = objective;
+    if (this.quotaDots.childElementCount !== quota) {
+      this.quotaDots.innerHTML = Array.from({ length: quota }, () => `<div class="dot"></div>`).join("");
+    }
+    const dots = this.quotaDots.children;
+    for (let i = 0; i < dots.length; i++) {
+      dots[i]!.classList.toggle("filled", i < count);
+    }
+  }
+
+  setDepth(depth: number, targetDepth: number | null): void {
+    const pct = clamp01(depth / MAX_DEPTH) * 100;
+    this.depthMarker.style.top = `${pct}%`;
+    this.depthValue.style.top = `${pct}%`;
+    this.depthValue.textContent = `${Math.round(depth)} m`;
+    if (targetDepth === null) {
+      this.targetTick.classList.add("hidden");
+    } else {
+      this.targetTick.classList.remove("hidden");
+      this.targetTick.style.top = `${clamp01(targetDepth / MAX_DEPTH) * 100}%`;
+    }
+  }
+
+  setGates(openFlags: boolean[]): void {
+    for (let i = 0; i < this.gateTicks.length; i++) {
+      this.gateTicks[i]!.classList.toggle("open", openFlags[i] === true);
+    }
+  }
+
+  setGauges(power01: number, hull01: number): void {
+    this.powerBar.style.width = `${clamp01(power01) * 100}%`;
+    this.hullBar.style.width = `${clamp01(hull01) * 100}%`;
+    this.powerVal.textContent = `${Math.round(power01 * 100)}%`;
+    this.hullVal.textContent = `${Math.round(hull01 * 100)}%`;
+    this.powerWrap.classList.toggle("warn", power01 < 0.35 && power01 >= 0.15);
+    this.powerWrap.classList.toggle("crit", power01 < 0.15);
+    this.hullWrap.classList.toggle("warn", hull01 < 0.5 && hull01 >= 0.25);
+    this.hullWrap.classList.toggle("crit", hull01 < 0.25);
+  }
+
+  setStatus(time: number, logged: number, total: number, zoom01: number): void {
+    this.statTime.textContent = formatTime(time);
+    this.statLogged.textContent = `${logged}/${total}`;
+    this.statZoom.textContent = `${Math.round(zoom01 * 100)}%`;
+  }
+
+  setLamps(on: boolean): void {
+    this.lampState.textContent = on ? "LAMPS ON" : "LAMPS OFF";
+    this.lampState.style.color = on ? "var(--cyan)" : "var(--amber)";
+  }
+
+  setScan(
+    progress: number,
+    target: SpeciesDef | null,
+    inRange: boolean,
+    reason: string | null,
+    distance: number,
+  ): void {
+    const blocked = reason !== null;
+    this.scanArc.style.strokeDashoffset = `${this.arcLength * (1 - clamp01(progress))}`;
+    this.scanArc.style.stroke = blocked
+      ? "var(--red)"
+      : progress > 0
+        ? "var(--green)"
+        : inRange
+          ? "var(--cyan)"
+          : "rgba(111,240,255,0.35)";
+    this.scanRing.style.stroke = target ? "rgba(111,240,255,0.55)" : "rgba(111,240,255,0.2)";
+    this.reticleBrackets.style.opacity = target ? "1" : "0.25";
+    this.reticleBrackets.style.transform = `scale(${target ? 1 : 0.86})`;
+
+    if (target) {
+      const name = target.name.toUpperCase();
+      if (this.targetName.textContent !== name) this.targetName.textContent = name;
+      const sub = blocked ? reason : `${target.latin} · ${distance.toFixed(1)} m`;
+      if (this.targetSub.textContent !== sub) this.targetSub.textContent = sub;
+      this.targetSub.style.color = blocked ? "var(--red)" : "#79aebd";
+    } else if (this.targetName.textContent !== "") {
+      this.targetName.textContent = "";
+      this.targetSub.textContent = "";
+    }
+  }
+
+  setPrompt(text: string | null, progress = 0): void {
+    if (!text) {
+      this.prompt.classList.add("hidden");
+      return;
+    }
+    this.prompt.classList.remove("hidden");
+    if (this.promptText.textContent !== text) this.promptText.textContent = text;
+    this.promptFill.style.width = `${clamp01(progress) * 100}%`;
+  }
+
+  setDamageFlash(v: number): void {
+    this.damageFlash.style.opacity = `${clamp01(v)}`;
+  }
+
+  toast(text: string, kind: "info" | "warn" | "good" | "bad" = "info", ms = 2600): void {
+    const node = document.createElement("div");
+    node.className = `toast${kind === "info" ? "" : ` ${kind}`}`;
+    node.textContent = text;
+    this.toasts.appendChild(node);
+    setTimeout(() => {
+      node.classList.add("out");
+      setTimeout(() => node.remove(), 500);
+    }, ms);
+  }
+
+  clearToasts(): void {
+    this.toasts.innerHTML = "";
+  }
+
+  // --- screens ------------------------------------------------------------
+
+  setLoading(fraction: number, label: string): void {
+    this.loadFill.style.width = `${clamp01(fraction) * 100}%`;
+    this.loadLabel.textContent = label.toUpperCase();
+  }
+
+  enableBegin(): void {
+    this.beginBtn.disabled = false;
+    this.beginBtn.textContent = "BEGIN DIVE";
+  }
+
+  showScreen(screen: HudScreen): void {
+    this.lastScreen = screen;
+    for (const [key, node] of Object.entries(this.overlays)) {
+      node.classList.toggle("hidden", key !== screen);
+    }
+    const playing = screen === "none";
+    this.hudLayer.classList.toggle("hidden", !playing && screen !== "catalog" && screen !== "paused");
+  }
+
+  get screen(): HudScreen {
+    return this.lastScreen;
+  }
+
+  showSuccess(summary: RunSummary, rank: string): void {
+    this.successResults.innerHTML = resultsHtml(summary);
+    this.successRank.textContent = rank;
+    this.showScreen("success");
+  }
+
+  showFailure(title: string, reason: string, summary: RunSummary): void {
+    this.failTitle.textContent = title;
+    this.failReason.textContent = reason;
+    this.failResults.innerHTML = resultsHtml(summary);
+    this.showScreen("failure");
+  }
+}
+
+function resultsHtml(s: RunSummary): string {
+  return `
+    <div class="result"><span>SPECIMENS</span><b>${s.cataloged}/${s.total}</b></div>
+    <div class="result"><span>SPECIES</span><b>${s.species}/${s.speciesTotal}</b></div>
+    <div class="result"><span>DIVE TIME</span><b>${formatTime(s.time)}</b></div>
+    <div class="result"><span>HULL</span><b>${Math.round(s.hull * 100)}%</b></div>
+    <div class="result"><span>RESERVE</span><b>${Math.round(s.power * 100)}%</b></div>`;
+}
+
+const TEMPLATE = /* html */ `
+<div id="hudLayer" class="hidden">
+  <div id="zoneBox" class="panel">
+    <div id="zoneName">EPIPELAGIC SHELF</div>
+    <div id="zoneSub">0 – 70 m</div>
+    <div id="objective">Catalogue 3 specimens</div>
+    <div id="quotaDots"></div>
+  </div>
+
+  <div id="statusBox" class="panel">
+    <div class="stat"><span>ELAPSED</span><span id="statTime">0:00</span></div>
+    <div class="stat"><span>LOGGED</span><span id="statLogged">0/14</span></div>
+    <div class="stat"><span>BOOM</span><span id="statZoom">50%</span></div>
+  </div>
+
+  <div id="depthRail">
+    <div id="depthTrack"></div>
+    <div id="targetTick" class="hidden"></div>
+    <div id="depthMarker"></div>
+    <div id="depthValue">0 m</div>
+  </div>
+
+  <div id="gauges" class="panel">
+    <div class="gauge">
+      <div class="gaugeHead"><span>RESERVE</span><b id="powerVal">100%</b></div>
+      <div class="bar" id="powerBar"><i id="powerFill"></i></div>
+    </div>
+    <div class="gauge">
+      <div class="gaugeHead"><span>HULL INTEGRITY</span><b id="hullVal">100%</b></div>
+      <div class="bar hull" id="hullBar"><i id="hullFill"></i></div>
+    </div>
+  </div>
+
+  <div id="hints" class="panel">
+    <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> thrust · <kbd>SPC</kbd>/<kbd>C</kbd> trim</div>
+    <div><kbd>SHIFT</kbd> boost · <kbd>F</kbd>/<kbd>LMB</kbd> scan · <kbd>E</kbd> act</div>
+    <div><kbd>L</kbd> <span id="lampState">LAMPS ON</span> · <kbd>WHEEL</kbd> boom · <kbd>TAB</kbd> log</div>
+  </div>
+
+  <div id="reticle">
+    <svg viewBox="-84 -84 168 168">
+      <circle id="scanRing" cx="0" cy="0" r="62" fill="none" stroke="rgba(111,240,255,0.2)" stroke-width="1"></circle>
+      <circle id="scanArc" cx="0" cy="0" r="62" fill="none" stroke="var(--cyan)" stroke-width="3"
+              stroke-linecap="round" transform="rotate(-90)"></circle>
+      <g id="brackets" stroke="rgba(111,240,255,0.75)" stroke-width="1.6" fill="none">
+        <path d="M -46 -32 L -46 -46 L -32 -46"></path>
+        <path d="M 46 -32 L 46 -46 L 32 -46"></path>
+        <path d="M 46 32 L 46 46 L 32 46"></path>
+        <path d="M -46 32 L -46 46 L -32 46"></path>
+        <path d="M 0 -18 L 0 -8 M 0 18 L 0 8 M -18 0 L -8 0 M 18 0 L 8 0"></path>
+      </g>
+    </svg>
+    <div id="reticleCore"></div>
+  </div>
+
+  <div id="targetInfo">
+    <div id="targetName"></div>
+    <div id="targetSub"></div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <div id="prompt" class="panel hidden">
+    <div id="promptText">HOLD E</div>
+    <div id="promptBar"><i id="promptFill"></i></div>
+  </div>
+
+  <div id="damageFlash"></div>
+</div>
+
+<div id="loadingOverlay" class="overlay">
+  <div class="card panel">
+    <h1>BATHYMETRY RUN</h1>
+    <h2>PREPARING DIVE SITE</h2>
+    <p>Authoring terrain, specimens and instrumentation. Every surface in this dive is generated in the browser.</p>
+    <div id="loadBar"><i id="loadFill"></i></div>
+    <div id="loadLabel">STARTING</div>
+  </div>
+</div>
+
+<div id="titleOverlay" class="overlay hidden">
+  <div class="card panel">
+    <h1>BATHYMETRY RUN</h1>
+    <h2>R/V CHARON · SOLO DESCENT · DSV NAUTILID</h2>
+    <p>
+      You are the only diver aboard. Take the Nautilid down the shaft, <b>log the quota of live
+      specimens in every zone</b>, then plant the bathymetric datum on the trench floor at 344 m.
+    </p>
+    <p>
+      Each zone ends at a <b>survey lock</b>: the dive computer refuses to take you deeper until that
+      zone's specimens are recorded. A scan needs <b>range, an unobstructed line and a steady hold</b>,
+      so rock between you and an animal is a real problem — and so is charging at one that spooks.
+    </p>
+    <p>
+      Reserve power drains faster the deeper you sit, and faster again with lamps and boost running.
+      Finishing a zone survey buys you reserve back. When the datum is planted, <b>get home to the moon
+      pool before the reserve runs out.</b>
+    </p>
+    <div class="keys">
+      <div><em>W A S D</em> thrust / strafe</div>
+      <div><em>SPACE / C</em> ascend / descend</div>
+      <div><em>SHIFT</em> boost (costly)</div>
+      <div><em>F or LMB</em> hold to scan</div>
+      <div><em>E</em> deploy / dock</div>
+      <div><em>L</em> toggle lamps</div>
+      <div><em>WHEEL</em> camera boom</div>
+      <div><em>TAB</em> specimen log</div>
+      <div><em>ESC</em> pause</div>
+      <div><em>M</em> mute</div>
+    </div>
+    <button id="beginBtn" class="btn" disabled>PREPARING…</button>
+  </div>
+</div>
+
+<div id="pauseOverlay" class="overlay hidden">
+  <div class="card panel">
+    <h1>DIVE HELD</h1>
+    <h2>SYSTEMS NOMINAL</h2>
+    <p>Station keeping. Reserve and hull are frozen while held.</p>
+    <button id="resumeBtn" class="btn">RESUME</button>
+    <button id="restartPause" class="btn ghost">ABORT &amp; RESTART</button>
+  </div>
+</div>
+
+<div id="catalogOverlay" class="overlay hidden">
+  <div class="card panel">
+    <h1>SPECIMEN LOG</h1>
+    <h2>EXPEDITION RECORD</h2>
+    <div id="catalogList" class="speciesList"></div>
+    <button id="closeCatalogBtn" class="btn">CLOSE</button>
+  </div>
+</div>
+
+<div id="successOverlay" class="overlay hidden">
+  <div class="card panel">
+    <h1>DATUM SET</h1>
+    <h2>NAUTILID RECOVERED · SURVEY COMPLETE</h2>
+    <p>The bathymetric datum is transmitting from 344 m and you are back inside the moon pool.</p>
+    <div id="successResults" class="results"></div>
+    <p>EXPEDITION RATING: <b id="successRank">—</b></p>
+    <button id="restartSuccess" class="btn">DIVE AGAIN</button>
+  </div>
+</div>
+
+<div id="failureOverlay" class="overlay hidden">
+  <div class="card panel">
+    <h1 id="failTitle">DIVE LOST</h1>
+    <h2>NAUTILID NON-RESPONSIVE</h2>
+    <p id="failReason">—</p>
+    <div id="failResults" class="results"></div>
+    <button id="restartFailure" class="btn">DIVE AGAIN</button>
+  </div>
+</div>
+`;

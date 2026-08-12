@@ -1,0 +1,442 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 391dcf88ef835775d8142f1f5307b6f4ba670cd3d0bb828ad0752eaf7c9a7827
+/**
+ * The analytical chrome: filter constraints, mode controls, aggregate
+ * readouts, and the inspector. Every control here has a keyboard twin, and
+ * every control mutates the same state the keyboard does.
+ */
+
+import { cssHeat } from '../core/palette';
+import { ERAS, HOURS, K_ANONYMITY, MOODS } from '../data/dataset';
+
+export type ActionName =
+  | 'focus'
+  | 'trace'
+  | 'compare'
+  | 'clear'
+  | 'reset'
+  | 'labels'
+  | 'graticule'
+  | 'help'
+  | 'flow';
+
+export interface HudCallbacks {
+  toggleFacet(facet: 'era' | 'mood' | 'hour', index: number): void;
+  setMinListeners(value: number): void;
+  setKAnon(value: boolean): void;
+  setDepth(value: number): void;
+  action(name: ActionName): void;
+  hoverCity(id: number): void;
+  pickCity(id: number): void;
+}
+
+export interface FacetBar {
+  label: string;
+  value: number;
+  active: boolean;
+}
+
+export interface CityReadout {
+  id: number;
+  name: string;
+  region: string;
+  active: number;
+  total: number;
+  share: number;
+  heat: number;
+  suppressed: boolean;
+  depth: number;
+  era: FacetBar[];
+  mood: FacetBar[];
+  hour: FacetBar[];
+  links: { id: number; name: string; strength: number }[];
+}
+
+export interface Aggregate {
+  cities: number;
+  suppressed: number;
+  routes: number;
+  listeners: number;
+  totalListeners: number;
+  depthHistogram: number[];
+}
+
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+}
+
+function compact(n: number): string {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  return `${Math.round(n)}`;
+}
+
+function bars(items: FacetBar[], accent: string): string {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  return items
+    .map(
+      (i) => `<div class="bar${i.active ? '' : ' bar--off'}">
+        <span class="bar__label">${esc(i.label)}</span>
+        <span class="bar__track"><span class="bar__fill" style="width:${((i.value / max) * 100).toFixed(1)}%;background:${accent}"></span></span>
+        <span class="bar__value">${compact(i.value)}</span>
+      </div>`,
+    )
+    .join('');
+}
+
+export class Hud {
+  private readonly el: {
+    facets: HTMLDivElement;
+    minRange: HTMLInputElement;
+    minValue: HTMLElement;
+    kAnon: HTMLButtonElement;
+    depthRange: HTMLInputElement;
+    depthValue: HTMLElement;
+    stats: HTMLDivElement;
+    inspector: HTMLDivElement;
+    status: HTMLDivElement;
+    help: HTMLDivElement;
+    modeButtons: Map<ActionName, HTMLButtonElement>;
+  };
+
+  private helpOpen = false;
+  private readonly rectSources: HTMLElement[] = [];
+  private cachedRects: { x: number; y: number; w: number; h: number }[] = [];
+
+  constructor(
+    root: HTMLElement,
+    private readonly cb: HudCallbacks,
+  ) {
+    const wrap = document.createElement('div');
+    wrap.className = 'hud';
+    wrap.innerHTML = /* html */ `
+      <header class="hud__title">
+        <h1>Listening World</h1>
+        <p>Anonymous heat on a shared sculpture &mdash; synthetic telemetry, aggregated at source.</p>
+      </header>
+
+      <section class="panel panel--filters" data-panel="filters">
+        <h2>Constraints</h2>
+        <div class="facets"></div>
+        <label class="slider">
+          <span>Minimum listeners <em data-min-value>0</em></span>
+          <input type="range" min="0" max="600" step="10" value="0" data-min-range>
+        </label>
+        <label class="slider">
+          <span>Network depth <em data-depth-value>all</em></span>
+          <input type="range" min="0" max="6" step="1" value="6" data-depth-range>
+        </label>
+        <button class="toggle" data-kanon>k-anonymity floor &middot; k=${K_ANONYMITY}</button>
+        <p class="privacy">No personal data is used, requested, or stored. Records are
+        synthesised locally, aggregated into coarse cells, then discarded. Cities under the
+        floor are suppressed to hollow marks.</p>
+      </section>
+
+      <section class="panel panel--modes">
+        <h2>Actions</h2>
+        <div class="modes">
+          <button data-action="focus"><b>F</b> Focus</button>
+          <button data-action="trace"><b>T</b> Trace</button>
+          <button data-action="compare"><b>C</b> Compare</button>
+          <button data-action="clear"><b>X</b> Clear</button>
+          <button data-action="reset"><b>R</b> Reset</button>
+          <button data-action="labels"><b>L</b> Labels</button>
+          <button data-action="graticule"><b>G</b> Grid</button>
+          <button data-action="flow"><b>Space</b> Flow</button>
+          <button data-action="help"><b>H</b> Help</button>
+        </div>
+        <div class="status" data-status>Drag to orbit &middot; shift-drag to pan &middot; click a mark to select</div>
+      </section>
+
+      <section class="panel panel--stats" data-stats></section>
+      <section class="panel panel--inspector" data-inspector></section>
+
+      <div class="help" data-help hidden>
+        <div class="help__inner">
+          <h2>Listening World</h2>
+          <p>Each mark is a city aggregate of synthetic listening records. Mark height is
+          active listeners; colour and the warmth bleeding across the terrain are the same
+          quantity. Arcs are co-listening affinity: altitude encodes hop distance from the
+          focused city, so the network re-lofts whenever you change what you are asking of it.</p>
+          <div class="help__cols">
+            <div>
+              <h3>Pointer</h3>
+              <ul>
+                <li><b>Drag</b> orbit</li>
+                <li><b>Shift-drag</b> / middle-drag pan</li>
+                <li><b>Wheel</b> zoom</li>
+                <li><b>Click mark</b> select</li>
+                <li><b>Double-click mark</b> focus</li>
+                <li><b>Chips / sliders</b> constrain</li>
+              </ul>
+            </div>
+            <div>
+              <h3>Keyboard</h3>
+              <ul>
+                <li><b>Arrows / WASD</b> orbit</li>
+                <li><b>Shift + arrows</b> pan</li>
+                <li><b>Q / E</b> or <b>+ / -</b> zoom</li>
+                <li><b>F</b> focus &middot; <b>T</b> trace &middot; <b>C</b> compare</li>
+                <li><b>X</b> clear &middot; <b>R</b> reset</li>
+                <li><b>1-4</b> era &middot; <b>5-8</b> mood</li>
+                <li><b>, . /</b> hour bands</li>
+                <li><b>[ ]</b> network depth</li>
+                <li><b>; '</b> minimum listeners</li>
+                <li><b>K</b> k-anonymity &middot; <b>L</b> labels &middot; <b>G</b> grid</li>
+                <li><b>Space</b> pause flow &middot; <b>H</b> this panel</li>
+              </ul>
+            </div>
+          </div>
+          <p class="help__foot">Press <b>H</b> or click anywhere to dismiss.</p>
+        </div>
+      </div>
+    `;
+    root.appendChild(wrap);
+
+    const q = <T extends Element>(sel: string): T => {
+      const found = wrap.querySelector<T>(sel);
+      if (!found) throw new Error(`HUD element missing: ${sel}`);
+      return found;
+    };
+
+    const modeButtons = new Map<ActionName, HTMLButtonElement>();
+    wrap.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((b) => {
+      const name = b.dataset.action as ActionName;
+      modeButtons.set(name, b);
+      b.addEventListener('click', () => cb.action(name));
+    });
+
+    this.el = {
+      facets: q<HTMLDivElement>('.facets'),
+      minRange: q<HTMLInputElement>('[data-min-range]'),
+      minValue: q<HTMLElement>('[data-min-value]'),
+      kAnon: q<HTMLButtonElement>('[data-kanon]'),
+      depthRange: q<HTMLInputElement>('[data-depth-range]'),
+      depthValue: q<HTMLElement>('[data-depth-value]'),
+      stats: q<HTMLDivElement>('[data-stats]'),
+      inspector: q<HTMLDivElement>('[data-inspector]'),
+      status: q<HTMLDivElement>('[data-status]'),
+      help: q<HTMLDivElement>('[data-help]'),
+      modeButtons,
+    };
+
+    this.el.facets.innerHTML = [
+      this.facetGroup('era', 'Era', ERAS as readonly string[], ['1', '2', '3', '4']),
+      this.facetGroup('mood', 'Character', MOODS as readonly string[], ['5', '6', '7', '8']),
+      this.facetGroup('hour', 'Local hour', HOURS as readonly string[], [',', '.', '/']),
+    ].join('');
+
+    this.el.facets.querySelectorAll<HTMLButtonElement>('[data-facet]').forEach((b) => {
+      b.addEventListener('click', () => {
+        cb.toggleFacet(b.dataset.facet as 'era' | 'mood' | 'hour', Number(b.dataset.index));
+      });
+    });
+
+    this.el.minRange.addEventListener('input', () => cb.setMinListeners(Number(this.el.minRange.value)));
+    this.el.depthRange.addEventListener('input', () => {
+      const v = Number(this.el.depthRange.value);
+      cb.setDepth(v >= 6 ? -1 : v);
+    });
+    this.el.kAnon.addEventListener('click', () =>
+      cb.setKAnon(this.el.kAnon.dataset.on !== 'true'),
+    );
+
+    this.el.help.addEventListener('click', () => this.setHelp(false));
+
+    this.el.inspector.addEventListener('click', (e) => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-city]');
+      if (t) cb.pickCity(Number(t.dataset.city));
+    });
+    this.el.inspector.addEventListener('pointerover', (e) => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-city]');
+      cb.hoverCity(t ? Number(t.dataset.city) : -1);
+    });
+    this.el.inspector.addEventListener('pointerleave', () => cb.hoverCity(-1));
+
+    wrap.querySelectorAll<HTMLElement>('.panel, .hud__title').forEach((e) => this.rectSources.push(e));
+    this.refreshRects();
+  }
+
+  /** Screen-space regions labels must not be placed into. */
+  refreshRects(): void {
+    this.cachedRects = this.rectSources.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left - 8, y: r.top - 6, w: r.width + 16, h: r.height + 12 };
+    });
+  }
+
+  reservedRects(): readonly { x: number; y: number; w: number; h: number }[] {
+    return this.cachedRects;
+  }
+
+  private facetGroup(key: string, title: string, labels: readonly string[], keys: string[]): string {
+    return `<div class="facet">
+      <h3>${title}</h3>
+      <div class="chips">
+        ${labels
+          .map(
+            (l, i) =>
+              `<button class="chip" data-facet="${key}" data-index="${i}"><kbd>${esc(keys[i] ?? '')}</kbd>${esc(l)}</button>`,
+          )
+          .join('')}
+      </div>
+    </div>`;
+  }
+
+  syncFilters(filters: {
+    era: boolean[];
+    mood: boolean[];
+    hour: boolean[];
+    minListeners: number;
+    kAnon: boolean;
+    depthLimit: number;
+  }): void {
+    this.el.facets.querySelectorAll<HTMLButtonElement>('[data-facet]').forEach((b) => {
+      const facet = b.dataset.facet as 'era' | 'mood' | 'hour';
+      const on = filters[facet][Number(b.dataset.index)] === true;
+      b.dataset.on = String(on);
+    });
+    this.el.minRange.value = String(filters.minListeners);
+    this.el.minValue.textContent = String(filters.minListeners);
+    this.el.kAnon.dataset.on = String(filters.kAnon);
+    this.el.depthRange.value = String(filters.depthLimit < 0 ? 6 : filters.depthLimit);
+    this.el.depthValue.textContent = filters.depthLimit < 0 ? 'all' : `${filters.depthLimit} hop${filters.depthLimit === 1 ? '' : 's'}`;
+  }
+
+  setToggle(name: ActionName, on: boolean): void {
+    const b = this.el.modeButtons.get(name);
+    if (b) b.dataset.on = String(on);
+  }
+
+  setStatus(text: string): void {
+    this.el.status.textContent = text;
+  }
+
+  setAggregate(a: Aggregate): void {
+    const pct = a.totalListeners > 0 ? (a.listeners / a.totalListeners) * 100 : 0;
+    const maxD = Math.max(1, ...a.depthHistogram);
+    const ladder = a.depthHistogram.length
+      ? `<div class="ladder">${a.depthHistogram
+          .map(
+            (v, i) =>
+              `<div class="ladder__row"><span>${i}</span><span class="ladder__track"><span style="width:${((v / maxD) * 100).toFixed(1)}%"></span></span><span>${v}</span></div>`,
+          )
+          .join('')}</div>`
+      : '';
+    this.el.stats.innerHTML = /* html */ `
+      <h2>Aggregate</h2>
+      <div class="grid">
+        <div><em>${compact(a.listeners)}</em><span>active listeners</span></div>
+        <div><em>${pct.toFixed(1)}%</em><span>of corpus</span></div>
+        <div><em>${a.cities}</em><span>cities shown</span></div>
+        <div><em>${a.suppressed}</em><span>suppressed</span></div>
+        <div><em>${a.routes}</em><span>routes</span></div>
+      </div>
+      ${ladder ? `<h3>Hops from focus</h3>${ladder}` : ''}
+    `;
+  }
+
+  setInspectorEmpty(message: string): void {
+    this.el.inspector.innerHTML = `<h2>Inspector</h2><p class="empty">${esc(message)}</p>`;
+  }
+
+  setInspectorCity(c: CityReadout): void {
+    this.el.inspector.innerHTML = /* html */ `
+      <h2>Inspector</h2>
+      <div class="readout">
+        <div class="readout__head">
+          <span class="swatch" style="background:${cssHeat(c.heat)}"></span>
+          <div>
+            <strong>${esc(c.name)}</strong>
+            <span>${esc(c.region)}${c.depth > 0 ? ` &middot; ${c.depth} hop${c.depth === 1 ? '' : 's'} out` : ''}</span>
+          </div>
+        </div>
+        <div class="grid grid--tight">
+          <div><em>${compact(c.active)}</em><span>active</span></div>
+          <div><em>${compact(c.total)}</em><span>total</span></div>
+          <div><em>${(c.share * 100).toFixed(2)}%</em><span>share</span></div>
+        </div>
+        ${c.suppressed ? `<p class="suppressed">Below the k-anonymity floor. Aggregate only; no label, no detail.</p>` : ''}
+        <h3>Era</h3>${bars(c.era, '#7fc6bd')}
+        <h3>Character</h3>${bars(c.mood, '#9fb6d8')}
+        <h3>Local hour</h3>${bars(c.hour, '#d8b487')}
+        <h3>Strongest links</h3>
+        <ul class="links">
+          ${c.links
+            .map(
+              (l) =>
+                `<li data-city="${l.id}"><span>${esc(l.name)}</span><span class="links__bar"><span style="width:${(l.strength * 100).toFixed(0)}%"></span></span></li>`,
+            )
+            .join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  setInspectorCompare(a: CityReadout | null, b: CityReadout | null, shared: string[], similarity: number): void {
+    const col = (c: CityReadout | null, tag: string, accent: string) =>
+      c
+        ? `<div class="cmp__col">
+            <span class="cmp__tag" style="color:${accent}">${tag}</span>
+            <strong>${esc(c.name)}</strong>
+            <span class="cmp__sub">${esc(c.region)}</span>
+            <em>${compact(c.active)}</em>
+            ${bars(c.era, accent)}
+            ${bars(c.mood, accent)}
+          </div>`
+        : `<div class="cmp__col cmp__col--empty"><span class="cmp__tag" style="color:${accent}">${tag}</span><p>Hover a mark and press <b>C</b>.</p></div>`;
+
+    this.el.inspector.innerHTML = /* html */ `
+      <h2>Compare</h2>
+      <div class="cmp">${col(a, 'A', '#63d2c8')}${col(b, 'B', '#a98cf2')}</div>
+      ${
+        a && b
+          ? `<div class="cmp__foot">
+              <div><em>${(similarity * 100).toFixed(1)}%</em><span>profile overlap</span></div>
+              <div><em>${shared.length}</em><span>shared neighbours</span></div>
+             </div>
+             ${shared.length ? `<p class="shared">${shared.map(esc).join(' &middot; ')}</p>` : ''}`
+          : ''
+      }
+    `;
+  }
+
+  setInspectorTrace(steps: { id: number; name: string; affinity: number }[], resistance: number, from: string, to: string): void {
+    if (steps.length === 0) {
+      this.el.inspector.innerHTML = `<h2>Trace</h2><p class="empty">${
+        from ? `No surviving route from ${esc(from)}${to ? ` to ${esc(to)}` : ''} under the current constraints.` : 'Hover a mark and press <b>T</b> to set the origin, then again for the destination.'
+      }</p>`;
+      return;
+    }
+    this.el.inspector.innerHTML = /* html */ `
+      <h2>Trace</h2>
+      <div class="grid grid--tight">
+        <div><em>${steps.length - 1}</em><span>hops</span></div>
+        <div><em>${resistance.toFixed(2)}</em><span>resistance</span></div>
+      </div>
+      <ol class="trace">
+        ${steps
+          .map(
+            (s, i) =>
+              `<li data-city="${s.id}"><span class="trace__i">${i}</span><span>${esc(s.name)}</span>${
+                i > 0 ? `<span class="trace__aff">${(s.affinity * 100).toFixed(0)}%</span>` : ''
+              }</li>`,
+          )
+          .join('')}
+      </ol>
+    `;
+  }
+
+  setHelp(open: boolean): void {
+    this.helpOpen = open;
+    this.el.help.hidden = !open;
+    this.setToggle('help', open);
+  }
+
+  toggleHelp(): void {
+    this.setHelp(!this.helpOpen);
+  }
+}

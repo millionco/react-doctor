@@ -1,0 +1,597 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 6a14b07b3c30ab412113214e8c00539083249ac60f795ef53154e717f04c09e5
+/** All DOM chrome: commission board, guild roster, cutting readout, overlays. */
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+}
+
+export interface TicketView {
+  kindName: string;
+  color: number;
+  planName: string;
+  meta: string;
+}
+
+export interface SocketChipView {
+  planName: string;
+  color: number | null;
+  target: boolean;
+  grade?: string;
+}
+
+export interface MateView {
+  name: string;
+  color: number;
+  activity: string;
+  progress: number;
+}
+
+export interface CutView {
+  tiltDeg: number;
+  indexDeg: number;
+  depth: number;
+  cutsLeft: number;
+  cutsTotal: number;
+  carat: number;
+  minCarat: number;
+  symmetry: number;
+  clarity: number;
+  yieldScore: number;
+  grade: string;
+  removedPct: number;
+  inclHit: number;
+  inclLeft: number;
+  risk: number;
+  planName: string;
+  kindName: string;
+  canCut: boolean;
+  aimLabel: string;
+  aimAngle: number;
+  aimDepth: number;
+  aimOk: boolean;
+}
+
+export interface ResultRow {
+  label: string;
+  value: string;
+}
+
+type Handlers = {
+  onTicket(i: number): void;
+  onCut(): void;
+  onFinish(): void;
+  onNextGuide(): void;
+  onAdjust(dTilt: number, dIndex: number, dDepth: number): void;
+  onView(mode: "overview" | "bench" | "piece"): void;
+  onStart(): void;
+  onNext(): void;
+  onRetry(): void;
+  onMute(): void;
+};
+
+export class Hud {
+  private readonly root: HTMLElement;
+  private readonly commissionTitle: HTMLElement;
+  private readonly commissionPatron: HTMLElement;
+  private readonly socketsRow: HTMLElement;
+  private readonly timerVal: HTMLElement;
+  private readonly timerBar: HTMLElement;
+  private readonly rosterBody: HTMLElement;
+  private readonly dock: HTMLElement;
+  private readonly dockTitle: HTMLElement;
+  private readonly dockHint: HTMLElement;
+  private readonly dockBody: HTMLElement;
+  private readonly toasts: HTMLElement;
+  private readonly overlay: HTMLElement;
+  private readonly viewbar: HTMLElement;
+  private readonly loading: HTMLElement;
+  private readonly h: Handlers;
+
+  private cutNodes: {
+    tilt: HTMLElement;
+    index: HTMLElement;
+    depth: HTMLElement;
+    cuts: HTMLElement;
+    carat: HTMLElement;
+    removed: HTMLElement;
+    aim: HTMLElement;
+    sym: HTMLElement;
+    cla: HTMLElement;
+    yld: HTMLElement;
+    symN: HTMLElement;
+    claN: HTMLElement;
+    yldN: HTMLElement;
+    grade: HTMLElement;
+    risk: HTMLElement;
+    cutBtn: HTMLButtonElement;
+    finishBtn: HTMLButtonElement;
+  } | null = null;
+
+  constructor(handlers: Handlers) {
+    this.h = handlers;
+    this.root = document.getElementById("ui") as HTMLElement;
+
+    /* --- loading veil (painted before the world is built) --------------- */
+    this.loading = el("div");
+    this.loading.id = "loading";
+    this.loading.textContent = "Lighting the guild lamps";
+    document.body.appendChild(this.loading);
+
+    /* --- commission ------------------------------------------------------ */
+    const c = el("div", "panel");
+    c.id = "commission";
+    c.appendChild(el("div", "label", "Guild commission"));
+    this.commissionTitle = el("h1", undefined, "—");
+    c.appendChild(this.commissionTitle);
+    this.commissionPatron = el("div", "patron", "");
+    c.appendChild(this.commissionPatron);
+    c.appendChild(el("div", "label", "Settings"));
+    this.socketsRow = el("div", "sockets-row");
+    c.appendChild(this.socketsRow);
+    const tr = el("div", "timer-row");
+    this.timerVal = el("div");
+    this.timerVal.id = "timer-val";
+    this.timerVal.textContent = "0:00";
+    const tb = el("div", "bar");
+    tb.id = "timer-bar";
+    this.timerBar = el("i");
+    tb.appendChild(this.timerBar);
+    tr.appendChild(this.timerVal);
+    tr.appendChild(tb);
+    c.appendChild(tr);
+    this.root.appendChild(c);
+
+    /* --- roster ---------------------------------------------------------- */
+    const r = el("div", "panel");
+    r.id = "roster";
+    r.appendChild(el("div", "label", "At the benches"));
+    this.rosterBody = el("div");
+    r.appendChild(this.rosterBody);
+    this.root.appendChild(r);
+
+    /* --- dock ------------------------------------------------------------ */
+    this.dock = el("div", "panel");
+    this.dock.id = "dock";
+    const dh = el("div", "dock-head");
+    this.dockTitle = el("div", "dock-title", "");
+    this.dockHint = el("div", "dock-hint", "");
+    dh.appendChild(this.dockTitle);
+    dh.appendChild(this.dockHint);
+    this.dock.appendChild(dh);
+    this.dockBody = el("div");
+    this.dock.appendChild(this.dockBody);
+    this.root.appendChild(this.dock);
+
+    /* --- toasts + hints + viewbar ---------------------------------------- */
+    this.toasts = el("div");
+    this.toasts.id = "toasts";
+    this.root.appendChild(this.toasts);
+
+    const hints = el("div", "panel");
+    hints.id = "hints";
+    hints.innerHTML =
+      "<b>Drag</b> orbit &nbsp; <b>Wheel</b> zoom<br>" +
+      "<b>W/S</b> tilt &nbsp; <b>A/D</b> index<br>" +
+      "<b>Q/E</b> depth &nbsp; <b>Shift</b> fine<br>" +
+      "<b>Space</b> cut &nbsp; <b>G</b> next facet<br>" +
+      "<b>Click</b> a ghost facet or setting";
+    this.root.appendChild(hints);
+
+    this.viewbar = el("div", "panel");
+    this.viewbar.id = "viewbar";
+    const mk = (label: string, mode: "overview" | "bench" | "piece"): HTMLButtonElement => {
+      const b = el("button", "btn", label);
+      b.addEventListener("click", () => this.h.onView(mode));
+      this.viewbar.appendChild(b);
+      return b;
+    };
+    mk("Overview", "overview");
+    mk("Bench", "bench");
+    mk("Piece", "piece");
+    const mute = el("button", "btn", "Sound");
+    mute.addEventListener("click", () => {
+      this.h.onMute();
+      mute.classList.toggle("on");
+    });
+    mute.classList.add("on");
+    this.viewbar.appendChild(mute);
+    this.root.appendChild(this.viewbar);
+
+    /* --- overlay --------------------------------------------------------- */
+    this.overlay = el("div", "overlay hidden");
+    this.root.appendChild(this.overlay);
+  }
+
+  hideLoading(): void {
+    this.loading.classList.add("gone");
+    setTimeout(() => this.loading.remove(), 700);
+  }
+
+  /* ------------------------------------------------------------ commission */
+
+  setCommission(name: string, patron: string): void {
+    this.commissionTitle.textContent = name;
+    this.commissionPatron.textContent = patron;
+  }
+
+  setSockets(views: SocketChipView[]): void {
+    this.socketsRow.textContent = "";
+    for (const v of views) {
+      const chip = el("div", "socket-chip");
+      chip.textContent = v.color !== null ? (v.grade ?? "•").slice(0, 2) : v.planName.slice(0, 2);
+      chip.title = v.color !== null ? `${v.planName} — ${v.grade ?? "set"}` : `Empty ${v.planName} setting`;
+      if (v.color !== null) {
+        chip.classList.add("filled");
+        chip.style.background = `#${v.color.toString(16).padStart(6, "0")}`;
+      }
+      if (v.target) chip.classList.add("target");
+      this.socketsRow.appendChild(chip);
+    }
+  }
+
+  setTimer(seconds: number, fraction: number): void {
+    const s = Math.max(0, Math.ceil(seconds));
+    this.timerVal.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    this.timerBar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
+    document.body.classList.toggle("urgent", fraction < 0.22);
+  }
+
+  setRoster(mates: MateView[]): void {
+    if (this.rosterBody.children.length !== mates.length) {
+      this.rosterBody.textContent = "";
+      for (const m of mates) {
+        const row = el("div", "mate");
+        const dot = el("div", "dot");
+        dot.style.color = `#${m.color.toString(16).padStart(6, "0")}`;
+        const col = el("div");
+        col.appendChild(el("div", "nm", m.name));
+        col.appendChild(el("div", "act", ""));
+        const bar = el("div", "bar");
+        bar.appendChild(el("i"));
+        col.appendChild(bar);
+        row.appendChild(dot);
+        row.appendChild(col);
+        this.rosterBody.appendChild(row);
+      }
+    }
+    mates.forEach((m, i) => {
+      const row = this.rosterBody.children[i] as HTMLElement | undefined;
+      if (!row) return;
+      const act = row.querySelector(".act") as HTMLElement;
+      const fill = row.querySelector(".bar > i") as HTMLElement;
+      if (act.textContent !== m.activity) act.textContent = m.activity;
+      fill.style.width = `${Math.max(0, Math.min(1, m.progress)) * 100}%`;
+      fill.style.background = `#${m.color.toString(16).padStart(6, "0")}`;
+    });
+  }
+
+  /* ------------------------------------------------------------------ dock */
+
+  hideDock(): void {
+    this.dock.classList.remove("on");
+    this.cutNodes = null;
+  }
+
+  showTickets(tickets: TicketView[], title: string, hint: string): void {
+    this.dock.classList.add("on");
+    this.dockTitle.textContent = title;
+    this.dockHint.textContent = hint;
+    this.dockBody.textContent = "";
+    this.cutNodes = null;
+    const wrap = el("div", "tickets");
+    tickets.forEach((t, i) => {
+      const b = el("button", "ticket");
+      const top = el("div", "tk-top");
+      const sw = el("div", "swatch");
+      sw.style.color = `#${t.color.toString(16).padStart(6, "0")}`;
+      top.appendChild(sw);
+      top.appendChild(el("div", "tk-name", t.kindName));
+      b.appendChild(top);
+      b.appendChild(el("div", "tk-plan", t.planName + " cut"));
+      b.appendChild(el("div", "tk-meta", t.meta));
+      b.addEventListener("click", () => this.h.onTicket(i));
+      wrap.appendChild(b);
+    });
+    this.dockBody.appendChild(wrap);
+  }
+
+  showSettingPrompt(text: string): void {
+    this.dock.classList.add("on");
+    this.dockTitle.textContent = "Set the stone";
+    this.dockHint.textContent = "Click a glowing setting on the reliquary";
+    this.dockBody.textContent = "";
+    this.cutNodes = null;
+    const p = el("div", "tk-meta");
+    p.style.fontSize = "13px";
+    p.textContent = text;
+    this.dockBody.appendChild(p);
+  }
+
+  showCutPanel(): void {
+    this.dock.classList.add("on");
+    this.dockTitle.textContent = "Faceting bench";
+    this.dockHint.textContent = "Orbit to read the stone before every cut";
+    this.dockBody.textContent = "";
+
+    const grid = el("div", "cut-grid");
+
+    const readout = el("div", "readout");
+    const kv = (k: string): HTMLElement => {
+      readout.appendChild(el("div", "k", k));
+      const v = el("div", "v", "—");
+      readout.appendChild(v);
+      return v;
+    };
+    const tilt = kv("Tilt");
+    const index = kv("Index");
+    const depth = kv("Depth");
+    const cuts = kv("Cuts left");
+    const carat = kv("Carat");
+    const removed = kv("This cut");
+    const aim = kv("On facet");
+    grid.appendChild(readout);
+
+    const meters = el("div", "meters");
+    const meter = (name: string, cls: string): { fill: HTMLElement; num: HTMLElement } => {
+      const row = el("div", "meter-row");
+      row.appendChild(el("div", undefined, name));
+      const bar = el("div", "bar");
+      const fill = el("i", cls);
+      bar.appendChild(fill);
+      row.appendChild(bar);
+      const num = el("div", "num", "0%");
+      row.appendChild(num);
+      meters.appendChild(row);
+      return { fill, num };
+    };
+    const sym = meter("Symmetry", "sym");
+    const cla = meter("Clarity", "cla");
+    const yld = meter("Yield", "yld");
+    const gradeRow = el("div", "meter-row");
+    gradeRow.appendChild(el("div", undefined, "Grade"));
+    const grade = el("div", undefined, "—");
+    grade.style.color = "var(--gold)";
+    grade.style.fontSize = "12px";
+    gradeRow.appendChild(grade);
+    gradeRow.appendChild(el("div", "num", ""));
+    meters.appendChild(gradeRow);
+    grid.appendChild(meters);
+
+    const actions = el("div", "cut-actions");
+    const row1 = el("div", "row");
+    const cutBtn = el("button", "btn primary", "Cut ⌷ Space");
+    cutBtn.addEventListener("click", () => this.h.onCut());
+    const guideBtn = el("button", "btn", "Next facet ⌷ G");
+    guideBtn.addEventListener("click", () => this.h.onNextGuide());
+    row1.appendChild(cutBtn);
+    row1.appendChild(guideBtn);
+    actions.appendChild(row1);
+
+    const row2 = el("div", "row");
+    const finishBtn = el("button", "btn", "Finish stone");
+    finishBtn.addEventListener("click", () => this.h.onFinish());
+    row2.appendChild(finishBtn);
+    actions.appendChild(row2);
+
+    const nudge = el("div", "row");
+    const nb = (label: string, dt: number, di: number, dd: number): void => {
+      const b = el("button", "btn", label);
+      b.addEventListener("click", () => this.h.onAdjust(dt, di, dd));
+      nudge.appendChild(b);
+    };
+    const D = Math.PI / 180;
+    nb("Tilt −", -2 * D, 0, 0);
+    nb("Tilt +", 2 * D, 0, 0);
+    nb("Deep −", 0, 0, -0.02);
+    nb("Deep +", 0, 0, 0.02);
+    actions.appendChild(nudge);
+    grid.appendChild(actions);
+
+    this.dockBody.appendChild(grid);
+    const risk = el("div");
+    risk.id = "risk";
+    this.dockBody.appendChild(risk);
+
+    this.cutNodes = {
+      tilt,
+      index,
+      depth,
+      cuts,
+      carat,
+      removed,
+      aim,
+      sym: sym.fill,
+      cla: cla.fill,
+      yld: yld.fill,
+      symN: sym.num,
+      claN: cla.num,
+      yldN: yld.num,
+      grade,
+      risk,
+      cutBtn: cutBtn as HTMLButtonElement,
+      finishBtn: finishBtn as HTMLButtonElement,
+    };
+  }
+
+  updateCut(v: CutView): void {
+    const n = this.cutNodes;
+    if (!n) return;
+    this.dockTitle.textContent = `${v.kindName} — ${v.planName} cut`;
+    n.tilt.textContent = `${v.tiltDeg.toFixed(1)}°`;
+    n.index.textContent = `${v.indexDeg.toFixed(1)}°`;
+    n.depth.textContent = v.depth.toFixed(3);
+    n.cuts.textContent = `${v.cutsLeft} / ${v.cutsTotal}`;
+    const short = v.carat < v.minCarat;
+    n.carat.textContent = `${v.carat.toFixed(2)} ct  (need ${v.minCarat.toFixed(2)})`;
+    n.carat.style.color = short ? "var(--rose)" : "var(--ink)";
+    n.removed.textContent =
+      `−${(v.removedPct * 100).toFixed(1)}%` + (v.inclHit > 0 ? `  ·  ${v.inclHit} flaw${v.inclHit > 1 ? "s" : ""}` : "");
+    n.removed.style.color = v.inclHit > 0 ? "var(--teal)" : "var(--ink)";
+
+    if (v.aimLabel === "free cut") {
+      n.aim.textContent = "free cut — off plan";
+      n.aim.style.color = "var(--dim)";
+    } else {
+      const dir = v.aimDepth > 0 ? "shallow" : "deep";
+      n.aim.textContent =
+        `${v.aimLabel}  ${v.aimAngle.toFixed(1)}° off  ·  ${Math.abs(v.aimDepth).toFixed(3)} ${dir}`;
+      n.aim.style.color = v.aimOk ? "#7dffae" : "var(--gold)";
+    }
+
+    const pct = (x: number): string => `${Math.round(x * 100)}%`;
+    n.sym.style.width = pct(v.symmetry);
+    n.cla.style.width = pct(v.clarity);
+    n.yld.style.width = pct(v.yieldScore);
+    n.symN.textContent = pct(v.symmetry);
+    n.claN.textContent = pct(v.clarity);
+    n.yldN.textContent = pct(v.yieldScore);
+    n.grade.textContent = `${v.grade}${v.inclLeft ? ` · ${v.inclLeft} flaw${v.inclLeft > 1 ? "s" : ""}` : ""}`;
+    n.cutBtn.disabled = !v.canCut;
+
+    if (v.risk > 0) {
+      n.risk.classList.add("on");
+      n.risk.innerHTML =
+        `<b>Cleavage plane.</b> This angle runs along the stone's grain — take ` +
+        `only shallow bites here (currently −${(v.removedPct * 100).toFixed(1)}%) or it will split.`;
+    } else {
+      n.risk.classList.remove("on");
+    }
+  }
+
+  /* ---------------------------------------------------------------- toasts */
+
+  toast(text: string, kind: "" | "good" | "bad" | "gold" = "", ms = 3400): void {
+    const t = el("div", `toast ${kind}`.trim(), text);
+    this.toasts.appendChild(t);
+    while (this.toasts.children.length > 5) this.toasts.children[0]!.remove();
+    setTimeout(() => {
+      t.classList.add("fade");
+      setTimeout(() => t.remove(), 500);
+    }, ms);
+  }
+
+  /* -------------------------------------------------------------- overlays */
+
+  hideOverlay(): void {
+    this.overlay.classList.add("hidden");
+    this.overlay.classList.remove("result");
+    this.overlay.textContent = "";
+  }
+
+  showTitle(): void {
+    this.overlay.classList.remove("hidden");
+    this.overlay.textContent = "";
+    const card = el("div", "card");
+    card.appendChild(el("div", "title-mark", "The Lapidary Hall"));
+    card.appendChild(el("h2", undefined, "Facet Guild"));
+    card.appendChild(
+      el(
+        "p",
+        undefined,
+        "Your guild takes shared commissions. Rough stones come in flawed and " +
+          "uneven; you grind them into the cut a setting was made for, then set " +
+          "them into the piece alongside your guildmates' work.",
+      ),
+    );
+    card.appendChild(
+      el(
+        "p",
+        undefined,
+        "Every cut is a plane through the stone. Orbit to find the flaws buried " +
+          "inside it and the grain it will split along — the angle you cannot see " +
+          "is the one that ruins the gem.",
+      ),
+    );
+    const kr = el("div", "keyrow");
+    kr.innerHTML =
+      "<div><kbd>Drag</kbd>orbit</div><div><kbd>Wheel</kbd>zoom</div>" +
+      "<div><kbd>W A S D</kbd>aim</div><div><kbd>Q E</kbd>depth</div>" +
+      "<div><kbd>Space</kbd>cut</div>";
+    card.appendChild(kr);
+    const actions = el("div", "actions");
+    const b = el("button", "btn primary", "Enter the workshop");
+    b.addEventListener("click", () => this.h.onStart());
+    actions.appendChild(b);
+    card.appendChild(actions);
+    this.overlay.appendChild(card);
+  }
+
+  showBriefing(
+    kicker: string,
+    name: string,
+    patron: string,
+    detail: string,
+    onGo: () => void,
+  ): void {
+    this.overlay.classList.remove("hidden");
+    this.overlay.textContent = "";
+    const card = el("div", "card");
+    card.appendChild(el("div", "kicker", kicker));
+    card.appendChild(el("h2", undefined, name));
+    card.appendChild(el("p", undefined, patron));
+    card.appendChild(el("p", undefined, detail));
+    const actions = el("div", "actions");
+    const b = el("button", "btn primary", "Take the commission");
+    b.addEventListener("click", onGo);
+    actions.appendChild(b);
+    card.appendChild(actions);
+    this.overlay.appendChild(card);
+  }
+
+  showResult(
+    won: boolean,
+    grade: string,
+    stars: number,
+    rows: ResultRow[],
+    blurb: string,
+    canContinue: boolean,
+  ): void {
+    this.overlay.classList.remove("hidden");
+    this.overlay.classList.add("result");
+    this.overlay.textContent = "";
+    const card = el("div", "card");
+    card.appendChild(el("div", "kicker", won ? "Commission delivered" : "Commission failed"));
+    const g = el("div", "big-grade", grade);
+    g.style.color = won ? "var(--teal)" : "var(--rose)";
+    card.appendChild(g);
+    card.appendChild(el("div", "stars", "★".repeat(stars) + "☆".repeat(Math.max(0, 3 - stars))));
+    card.appendChild(el("p", undefined, blurb));
+    const grid = el("div", "score-grid");
+    for (const r of rows) {
+      const row = el("div", "row");
+      row.appendChild(el("span", undefined, r.label));
+      row.appendChild(el("span", undefined, r.value));
+      grid.appendChild(row);
+    }
+    card.appendChild(grid);
+    const actions = el("div", "actions");
+    if (canContinue) {
+      const b = el("button", "btn primary", "Next commission");
+      b.addEventListener("click", () => this.h.onNext());
+      actions.appendChild(b);
+    }
+    const r = el("button", "btn" + (canContinue ? "" : " primary"), "Retry this piece");
+    r.addEventListener("click", () => this.h.onRetry());
+    actions.appendChild(r);
+    card.appendChild(actions);
+    this.overlay.appendChild(card);
+  }
+
+  setViewActive(mode: "overview" | "bench" | "piece"): void {
+    const labels = ["overview", "bench", "piece"];
+    Array.from(this.viewbar.children).forEach((c, i) => {
+      if (i < 3) c.classList.toggle("on", labels[i] === mode);
+    });
+  }
+}

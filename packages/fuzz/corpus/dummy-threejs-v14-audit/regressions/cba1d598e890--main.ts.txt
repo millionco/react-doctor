@@ -1,0 +1,876 @@
+// rule: server-sequential-independent-await
+// file-path: src/main.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit cba1d598e89033e33fd49b4a9cebe8633990c7e1a47513af392525c8c7db60ac
+import "./style.css";
+import * as THREE from "three";
+import { Board } from "./game/board";
+import { CARDS, HERO_CLASSES } from "./game/content";
+import { CELL, LEVEL_HEIGHT } from "./game/level";
+import { Game, type ActionOffer } from "./game/state";
+import type { Actor, Coord, HeroClassDef, Tile } from "./game/types";
+import { CardHand } from "./render/cards";
+import { buildDungeon, type DungeonHandles } from "./render/dungeon";
+import { loadKit } from "./render/kit";
+import { BoardOverlays, OVERLAY_COLOURS } from "./render/overlays";
+import { PAWN_PROFILES, createPieceMaterials, makePawn, makeStatusRing } from "./render/pieces";
+import { Stage } from "./render/stage";
+import { buildSurfaceLibrary } from "./render/textures";
+import { Hud, describeActor, describeCard, describeTile } from "./ui/hud";
+
+const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
+const stage = new Stage(canvas);
+const hud = new Hud();
+
+const game = new Game();
+const board = game.board;
+const overlays = new BoardOverlays(CELL);
+const hand = new CardHand();
+
+interface PieceView {
+  actor: Actor;
+  group: THREE.Group;
+  ring: THREE.Mesh;
+  ringMaterial: THREE.MeshBasicMaterial;
+  queue: Coord[];
+  position: THREE.Vector3;
+  held: boolean;
+  heldTarget: THREE.Vector3;
+  skipNextPath: boolean;
+  impulse: THREE.Vector3;
+  flash: number;
+  fade: number;
+}
+
+const pieces = new Map<number, PieceView>();
+let dungeon: DungeonHandles | null = null;
+let pickMesh: THREE.InstancedMesh | null = null;
+const featureTargets = new Map<number, { rotation: number; lift: number }>();
+
+/* ------------------------------------------------------------------ */
+/* Geometry helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+function tileSurfaceY(tile: Tile): number {
+  // On a flight of stairs a piece stands part way up, not on the landing.
+  return tile.level * LEVEL_HEIGHT - (tile.kind === "stairs" ? 0.85 : 0);
+}
+
+function worldOf(x: number, z: number, out = new THREE.Vector3()): THREE.Vector3 {
+  const tile = board.at(x, z);
+  const [cx, , cz] = board.worldCentre(x, z);
+  return out.set(cx, tile ? tileSurfaceY(tile) : 0, cz);
+}
+
+/* ------------------------------------------------------------------ */
+/* Boot                                                                */
+/* ------------------------------------------------------------------ */
+
+async function boot(): Promise<void> {
+  hud.setProgress("Reading the ruin", 0.02);
+  const surfaces = await buildSurfaceLibrary((label, fraction) =>
+    hud.setProgress(label, 0.05 + fraction * 0.55),
+  );
+  const kit = await loadKit(undefined, (label, fraction) =>
+    hud.setProgress(label, 0.6 + fraction * 0.35),
+  );
+
+  hud.setProgress("Setting the board", 0.97);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  dungeon = buildDungeon(board, kit, surfaces);
+  stage.scene.add(dungeon.root);
+  stage.scene.add(overlays.group);
+  stage.overlayScene.add(hand.group);
+  hand.setAspect(innerWidth / innerHeight);
+
+  buildPickMesh();
+  buildPieces(surfaces);
+  applyQuality();
+
+  hud.setProgress("Ready", 1);
+  hud.showClassSelect();
+}
+
+/**
+ * Warm point lights and shadow casting are the first things to go when the
+ * stage drops a quality tier, so the board stays legible on slow hardware.
+ */
+function applyQuality(): void {
+  const tier = stage.tier;
+  if (!dungeon) return;
+  let budget = tier.emberLights;
+  for (const ember of dungeon.emberLights) {
+    const keep = ember.essential || budget-- > 0;
+    ember.light.visible = keep;
+  }
+  for (const view of pieces.values()) {
+    view.group.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (mesh.isMesh) mesh.castShadow = tier.shadows;
+    });
+  }
+}
+
+stage.onQualityChange = () => applyQuality();
+
+if (import.meta.env?.DEV) {
+  // Handy for profiling from the test harness.
+  (globalThis as unknown as Record<string, unknown>).__ruinhand = {
+    stage,
+    game,
+    pieces,
+    hand,
+    overlays,
+    startRun: (index: number) => startRun(HERO_CLASSES[index] ?? HERO_CLASSES[0]!),
+  };
+}
+
+function buildPickMesh(): void {
+  const geometry = new THREE.BoxGeometry(CELL * 0.98, 0.5, CELL * 0.98);
+  const mesh = new THREE.InstancedMesh(
+    geometry,
+    new THREE.MeshBasicMaterial(),
+    board.tiles.length,
+  );
+  const matrix = new THREE.Matrix4();
+  for (let i = 0; i < board.tiles.length; i++) {
+    const tile = board.tiles[i]!;
+    const [cx, , cz] = board.worldCentre(tile.x, tile.z);
+    matrix.makeTranslation(cx, tile.level * LEVEL_HEIGHT + 0.1, cz);
+    mesh.setMatrixAt(i, matrix);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.updateMatrixWorld(true);
+  // Never added to a rendered scene; it exists purely for pointer picking.
+  pickMesh = mesh;
+}
+
+let makePieceMaterial: (color: number, emissive: number) => THREE.Material;
+
+/** Piece materials are shared per colour so every pawn hits the same program. */
+function buildPieces(surfaces: Parameters<typeof createPieceMaterials>[0]): void {
+  const factory = createPieceMaterials(surfaces);
+  const cache = new Map<string, THREE.Material>();
+  makePieceMaterial = (color, emissive) => {
+    const key = `${color}:${emissive}`;
+    let material = cache.get(key);
+    if (!material) {
+      material = factory.make(color, emissive);
+      cache.set(key, material);
+    }
+    return material;
+  };
+}
+
+function pieceKey(actor: Actor): string {
+  return actor.side === "hero" ? game.heroClass.id : (actor.def?.id ?? "husk");
+}
+
+function spawnPiece(actor: Actor): PieceView {
+  const key = pieceKey(actor);
+  const profile = PAWN_PROFILES[key] ?? PAWN_PROFILES.husk!;
+  const geometry = makePawn(profile);
+  const tint = actor.side === "hero" ? game.heroClass.tint : (actor.def?.tint ?? 0x8a8f7a);
+  // A little self-glow in the piece's own colour guarantees it reads against
+  // the dark vault without needing another light.
+  const emissive = new THREE.Color(tint).multiplyScalar(0.34).getHex();
+  const mesh = new THREE.Mesh(geometry, makePieceMaterial(tint, emissive));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.65,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+    side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(makeStatusRing(profile.base), ringMaterial);
+  ring.position.y = 0.04;
+  ring.renderOrder = 4;
+
+  const group = new THREE.Group();
+  group.add(mesh, ring);
+  const position = worldOf(actor.x, actor.z);
+  group.position.copy(position);
+  stage.scene.add(group);
+
+  const view: PieceView = {
+    actor,
+    group,
+    ring,
+    ringMaterial,
+    queue: [],
+    position,
+    held: false,
+    heldTarget: new THREE.Vector3(),
+    skipNextPath: false,
+    impulse: new THREE.Vector3(),
+    flash: 0,
+    fade: 1,
+  };
+  pieces.set(actor.uid, view);
+  return view;
+}
+
+function clearPieces(): void {
+  for (const view of pieces.values()) {
+    stage.scene.remove(view.group);
+    view.ringMaterial.dispose();
+  }
+  pieces.clear();
+}
+
+/* ------------------------------------------------------------------ */
+/* Game event wiring                                                   */
+/* ------------------------------------------------------------------ */
+
+let reachField = new Map<number, { cost: number; from: number }>();
+let floatQueue = 0;
+
+function refreshField(): void {
+  reachField = game.isHeroTurn() ? game.movementField() : new Map();
+}
+
+game.events.on("changed", () => {
+  refreshField();
+  hud.refresh(game);
+  syncHand();
+});
+
+game.events.on("log", (entry) => hud.pushLog(entry));
+
+game.events.on("phase", (phase) => {
+  if (phase === "won" || phase === "lost") {
+    setTimeout(() => hud.showEnd(phase === "won", game), 900);
+  }
+});
+
+game.events.on("move", ({ actor, path }) => {
+  const view = pieces.get(actor.uid);
+  if (!view) return;
+  if (view.skipNextPath) {
+    view.skipNextPath = false;
+    view.queue = [];
+    return;
+  }
+  for (let i = 1; i < path.length; i++) view.queue.push(path[i]!);
+});
+
+game.events.on("attack", ({ attacker, target }) => {
+  const view = pieces.get(attacker.uid);
+  if (!view) return;
+  const from = worldOf(attacker.x, attacker.z);
+  const to = worldOf(target.x, target.z);
+  view.impulse.copy(to).sub(from).setY(0).normalize().multiplyScalar(0.85);
+});
+
+game.events.on("hurt", ({ actor, amount, blocked }) => {
+  const view = pieces.get(actor.uid);
+  if (view) view.flash = 1;
+  const delay = floatQueue++ * 150;
+  const world = worldOf(actor.x, actor.z).add(new THREE.Vector3(0, 2.4, 0));
+  setTimeout(() => {
+    const screen = projectToScreen(world);
+    if (blocked > 0) hud.float(`-${blocked}`, screen.x, screen.y - 22, "block");
+    if (amount > 0) hud.float(`-${amount}`, screen.x, screen.y, "bad");
+    else if (blocked > 0 && amount === 0) hud.float("blocked", screen.x, screen.y, "block");
+    floatQueue = Math.max(0, floatQueue - 1);
+  }, delay);
+});
+
+game.events.on("died", ({ actor }) => {
+  const view = pieces.get(actor.uid);
+  if (view) view.fade = 0.999;
+});
+
+game.events.on("feature", ({ x, z, type }) => {
+  if (!dungeon) return;
+  const index = board.index(x, z);
+  const tile = board.at(x, z);
+  if (type === "door" || type === "gate") {
+    const feature = dungeon.doors.get(index);
+    if (feature && tile) {
+      feature.open = tile.open;
+      featureTargets.set(index, {
+        rotation: feature.kind === "door" && tile.open ? -Math.PI * 0.62 : 0,
+        lift: feature.kind === "gate" && tile.open ? 3.35 : 0,
+      });
+    }
+  }
+  if (type === "rubble") {
+    const heap = dungeon.rubble.get(index);
+    if (heap) heap.userData.clearing = true;
+  }
+  if (type === "cache") {
+    const cache = dungeon.caches.get(index);
+    if (cache) cache.opened = true;
+  }
+  if (type === "lantern") dungeon.addLantern(x, z);
+  if (type === "trap" || type === "trapfired" || type === "snare") {
+    const plate = dungeon.trapPlates.get(index);
+    if (plate && tile?.trap?.revealed) plate.visible = true;
+  }
+});
+
+game.events.on("spark", ({ x, z, kind }) => {
+  const world = worldOf(x, z).add(new THREE.Vector3(0, 2, 0));
+  const screen = projectToScreen(world);
+  const labels: Record<string, [string, "good" | "bad" | "block"]> = {
+    heal: ["mended", "good"],
+    shield: ["shielded", "block"],
+    support: ["+pool", "good"],
+    ember: ["ember", "bad"],
+    burst: ["cinder", "bad"],
+    wake: ["awake", "bad"],
+    dart: ["dart!", "bad"],
+    snare: ["snared", "bad"],
+  };
+  const entry = labels[kind];
+  if (entry) hud.float(entry[0], screen.x, screen.y, entry[1]);
+});
+
+const projected = new THREE.Vector3();
+function projectToScreen(world: THREE.Vector3): { x: number; y: number } {
+  projected.copy(world).project(stage.camera);
+  return {
+    x: (projected.x * 0.5 + 0.5) * innerWidth,
+    y: (-projected.y * 0.5 + 0.5) * innerHeight,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Hand                                                                */
+/* ------------------------------------------------------------------ */
+
+function syncHand(): void {
+  const defs = game.hand.map((id) => CARDS[id]!);
+  const playable = game.hand.map((id) => game.cardPlayable(id));
+  hand.setHand(defs, playable);
+}
+
+/* ------------------------------------------------------------------ */
+/* Pointer input                                                       */
+/* ------------------------------------------------------------------ */
+
+type DragMode = "none" | "piece" | "card";
+
+const raycaster = new THREE.Raycaster();
+const overlayRaycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let dragMode: DragMode = "none";
+let dragCardIndex = -1;
+let pointerDownAt = { x: 0, y: 0 };
+let pointerMoved = false;
+let hoverTile: Tile | null = null;
+let hoverOffer: ActionOffer | null = null;
+let pointerInside = false;
+
+function updatePointer(event: PointerEvent): void {
+  pointer.set((event.clientX / innerWidth) * 2 - 1, -(event.clientY / innerHeight) * 2 + 1);
+}
+
+function pickCard(): number {
+  overlayRaycaster.setFromCamera(pointer, stage.overlayCamera);
+  const hits = overlayRaycaster.intersectObjects(hand.pickables, false);
+  const hit = hits[0];
+  if (!hit) return -1;
+  const index = hit.object.userData.handIndex;
+  return typeof index === "number" ? index : -1;
+}
+
+function pickTile(): Tile | null {
+  if (!pickMesh) return null;
+  raycaster.setFromCamera(pointer, stage.camera);
+  const targets: THREE.Object3D[] = [pickMesh];
+  for (const view of pieces.values()) if (view.actor.alive) targets.push(view.group);
+  const hits = raycaster.intersectObjects(targets, true);
+  for (const hit of hits) {
+    if (hit.object === pickMesh || (hit.object as THREE.InstancedMesh).isInstancedMesh) {
+      const id = hit.instanceId;
+      if (id === undefined) continue;
+      return board.tiles[id] ?? null;
+    }
+    // A hit on a piece resolves to the tile that piece occupies.
+    for (const view of pieces.values()) {
+      if (view.actor.alive && isDescendant(hit.object, view.group)) {
+        return board.at(view.actor.x, view.actor.z);
+      }
+    }
+  }
+  return null;
+}
+
+function isDescendant(object: THREE.Object3D, ancestor: THREE.Object3D): boolean {
+  let node: THREE.Object3D | null = object;
+  while (node) {
+    if (node === ancestor) return true;
+    node = node.parent;
+  }
+  return false;
+}
+
+canvas.addEventListener("pointerdown", (event) => {
+  if (game.phase === "select") return;
+  updatePointer(event);
+  pointerDownAt = { x: event.clientX, y: event.clientY };
+  pointerMoved = false;
+
+  const cardIndex = pickCard();
+  if (cardIndex >= 0) {
+    dragMode = "card";
+    dragCardIndex = cardIndex;
+    hand.dragging = cardIndex;
+    hand.setDragPosition(pointer.x * stage.overlayCamera.right, pointer.y);
+    canvas.classList.add("grabbing");
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
+
+  const tile = pickTile();
+  if (tile && game.isHeroTurn() && !isBusy() && tile.x === game.hero.x && tile.z === game.hero.z) {
+    dragMode = "piece";
+    const view = pieces.get(game.hero.uid);
+    if (view) view.held = true;
+    canvas.classList.add("grabbing");
+    canvas.setPointerCapture(event.pointerId);
+  }
+});
+
+canvas.addEventListener("pointermove", (event) => {
+  pointerInside = true;
+  updatePointer(event);
+  if (Math.hypot(event.clientX - pointerDownAt.x, event.clientY - pointerDownAt.y) > 5) {
+    pointerMoved = true;
+  }
+
+  if (dragMode === "card") {
+    hand.setDragPosition(pointer.x * stage.overlayCamera.right, pointer.y);
+  } else if (dragMode === "none") {
+    hand.hovered = pickCard();
+  }
+
+  hoverTile = pickTile();
+  hoverOffer = hoverTile ? game.offerForTile(hoverTile.x, hoverTile.z) : null;
+  updateDragPrompt(event.clientX, event.clientY);
+  updateCursor();
+});
+
+canvas.addEventListener("pointerleave", () => {
+  pointerInside = false;
+  hoverTile = null;
+  hoverOffer = null;
+  hud.setPrompt(null);
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  updatePointer(event);
+  const tile = pickTile();
+
+  if (dragMode === "card") {
+    const index = dragCardIndex;
+    hand.dragging = -1;
+    dragCardIndex = -1;
+    dragMode = "none";
+    canvas.classList.remove("grabbing");
+    const cardId = game.hand[index];
+    if (!pointerMoved) {
+      if (cardId) hud.showInspect(describeCard(game, cardId));
+    } else if (cardId && tile && game.cardPlayable(cardId) && game.cardTargetValid(cardId, tile.x, tile.z)) {
+      game.playCard(index, tile.x, tile.z);
+    }
+    hud.setPrompt(null);
+    return;
+  }
+
+  if (dragMode === "piece") {
+    const view = pieces.get(game.hero.uid);
+    dragMode = "none";
+    canvas.classList.remove("grabbing");
+    if (view) view.held = false;
+    if (pointerMoved && tile) {
+      const offer = game.offerForTile(tile.x, tile.z);
+      if (offer) {
+        // A dropped piece is placed, not walked: suppress the path animation,
+        // but only if the action actually goes through.
+        if (view && offer.kind === "move") view.skipNextPath = true;
+        const done = game.perform(offer, tile.x, tile.z);
+        if (view && !done) view.skipNextPath = false;
+      }
+    } else if (tile) {
+      inspectTile(tile);
+    }
+    hud.setPrompt(null);
+    return;
+  }
+
+  if (!pointerMoved && tile) inspectTile(tile);
+});
+
+function inspectTile(tile: Tile): void {
+  const actor = game.actorAt(tile.x, tile.z);
+  if (actor) hud.showInspect(describeActor(game, actor));
+  else hud.showInspect(describeTile(game, tile));
+}
+
+function updateCursor(): void {
+  if (dragMode !== "none") return;
+  const overHero =
+    !!hoverTile && hoverTile.x === game.hero.x && hoverTile.z === game.hero.z && game.isHeroTurn();
+  const overCard = hand.hovered >= 0;
+  canvas.classList.toggle("grabbable", overHero || overCard);
+}
+
+function updateDragPrompt(clientX: number, clientY: number): void {
+  if (dragMode === "card") {
+    const cardId = game.hand[dragCardIndex];
+    if (!cardId || !hoverTile) {
+      hud.setPrompt(null);
+      return;
+    }
+    const card = CARDS[cardId]!;
+    const valid = game.cardPlayable(cardId) && game.cardTargetValid(cardId, hoverTile.x, hoverTile.z);
+    hud.setPrompt(
+      valid
+        ? `<b>${card.name}</b> &middot; ${card.cost} point${card.cost === 1 ? "" : "s"}`
+        : `<b>Not a legal target</b>`,
+      clientX,
+      clientY,
+      !valid,
+    );
+    return;
+  }
+  if (dragMode === "piece") {
+    if (!hoverOffer) {
+      hud.setPrompt("<b>Cannot act there</b>", clientX, clientY, true);
+      return;
+    }
+    hud.setPrompt(
+      `<b>${hoverOffer.label}</b> &middot; ${hoverOffer.cost} point${hoverOffer.cost === 1 ? "" : "s"}`,
+      clientX,
+      clientY,
+    );
+    return;
+  }
+  hud.setPrompt(null);
+}
+
+canvas.addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault();
+    stage.zoom(Math.sign(event.deltaY) * 7);
+  },
+  { passive: false },
+);
+
+addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+  if (key === "q") stage.rotate(1);
+  else if (key === "e") stage.rotate(-1);
+  else if (key === " " && game.isHeroTurn() && !isBusy()) {
+    event.preventDefault();
+    game.endTurn();
+  } else if (key === "f" && game.isHeroTurn() && !isBusy()) {
+    game.search();
+  } else if (key === "?" || key === "h") hud.showHelp();
+});
+
+/* ------------------------------------------------------------------ */
+/* HUD callbacks                                                       */
+/* ------------------------------------------------------------------ */
+
+hud.onChoose = (hero: HeroClassDef) => startRun(hero);
+hud.onEndTurn = () => {
+  if (game.isHeroTurn() && !isBusy()) game.endTurn();
+};
+hud.onSearch = () => {
+  if (game.isHeroTurn() && !isBusy()) game.search();
+};
+hud.onRestart = () => {
+  hud.hideScreens();
+  hud.showClassSelect();
+};
+
+function startRun(hero: HeroClassDef): void {
+  hud.hideScreens();
+  hud.clearLog();
+  clearPieces();
+  resetBoardVisuals();
+  game.start(hero, 0x51ce);
+  spawnPiece(game.hero);
+  for (const foe of game.foes) spawnPiece(foe);
+  hud.refresh(game);
+  syncHand();
+  refreshField();
+}
+
+function resetBoardVisuals(): void {
+  if (!dungeon) return;
+  dungeon.clearLanterns();
+  for (const tile of board.tiles) {
+    tile.open = false;
+    tile.cleared = false;
+    tile.cacheOpened = false;
+    if (tile.trap) {
+      tile.trap.armed = true;
+      tile.trap.revealed = false;
+    }
+  }
+  // Restore any snarewires the previous run left behind.
+  for (const tile of board.tiles) {
+    if (tile.trap?.friendly) tile.trap = null;
+  }
+  for (const [index, feature] of dungeon.doors) {
+    feature.open = false;
+    featureTargets.set(index, { rotation: 0, lift: 0 });
+  }
+  for (const plate of dungeon.trapPlates.values()) plate.visible = false;
+  for (const heap of dungeon.rubble.values()) {
+    heap.userData.clearing = false;
+    heap.scale.setScalar(1);
+    heap.visible = true;
+  }
+  for (const cache of dungeon.caches.values()) cache.opened = false;
+  applyQuality();
+}
+
+/* ------------------------------------------------------------------ */
+/* Frame                                                               */
+/* ------------------------------------------------------------------ */
+
+function isBusy(): boolean {
+  for (const view of pieces.values()) if (view.queue.length > 0) return true;
+  return false;
+}
+
+const tmp = new THREE.Vector3();
+const tmp2 = new THREE.Vector3();
+
+function updatePieces(dt: number): void {
+  for (const view of pieces.values()) {
+    const actor = view.actor;
+
+    if (!actor.alive) {
+      view.fade = Math.max(0, view.fade - dt * 1.6);
+      view.group.scale.setScalar(Math.max(0.001, view.fade));
+      view.group.position.y = view.position.y - (1 - view.fade) * 1.4;
+      view.group.rotation.z = (1 - view.fade) * 1.1;
+      view.ringMaterial.opacity = view.fade * 0.5;
+      view.group.visible = view.fade > 0.02;
+      continue;
+    }
+
+    if (view.held) {
+      const target = hoverTile ? worldOf(hoverTile.x, hoverTile.z, tmp) : view.position;
+      view.heldTarget.copy(target).setY(target.y + 2.6);
+      view.position.lerp(view.heldTarget, 1 - Math.pow(0.0002, dt));
+    } else if (view.queue.length > 0) {
+      const next = view.queue[0]!;
+      worldOf(next.x, next.z, tmp);
+      const distance = view.position.distanceTo(tmp);
+      const speed = 15;
+      if (distance <= speed * dt) {
+        view.position.copy(tmp);
+        view.queue.shift();
+      } else {
+        view.position.addScaledVector(tmp2.copy(tmp).sub(view.position).normalize(), speed * dt);
+      }
+      // Arc slightly while stepping so movement reads as picked-up-and-placed.
+      view.position.y += Math.min(0.5, distance * 0.12) * 0.35;
+    } else {
+      worldOf(actor.x, actor.z, tmp);
+      view.position.lerp(tmp, 1 - Math.pow(0.0001, dt));
+    }
+
+    view.impulse.multiplyScalar(Math.pow(0.0025, dt));
+    view.group.position.copy(view.position).add(view.impulse);
+    view.group.scale.setScalar(1);
+    view.group.rotation.z = 0;
+    view.group.visible = true;
+
+    // Face roughly toward the hero (or the nearest foe, for the hero).
+    let facing: Coord | null = null;
+    if (actor.side === "foe") facing = game.hero;
+    else {
+      let bestDistance = Infinity;
+      for (const foe of game.foes) {
+        if (!foe.alive) continue;
+        const d = Board.distance(actor, foe);
+        if (d < bestDistance) {
+          bestDistance = d;
+          facing = foe;
+        }
+      }
+    }
+    if (facing) {
+      const [fx, , fz] = board.worldCentre(facing.x, facing.z);
+      const desired = Math.atan2(fx - view.position.x, fz - view.position.z);
+      let delta = desired - view.group.rotation.y;
+      while (delta > Math.PI) delta -= Math.PI * 2;
+      while (delta < -Math.PI) delta += Math.PI * 2;
+      view.group.rotation.y += delta * (1 - Math.pow(0.02, dt));
+    }
+
+    view.flash = Math.max(0, view.flash - dt * 3);
+
+    // Status ring: selection, sleep, snare and injury all read from the base.
+    const isHero = actor.side === "hero";
+    const hpFraction = actor.hp / actor.maxHp;
+    let colour = isHero ? 0x7fc4ff : actor.awake ? 0xff6a4d : 0x6d6a63;
+    if (actor.stunned > 0) colour = 0xffc45a;
+    view.ringMaterial.color.setHex(colour);
+    const pulse = isHero && game.isHeroTurn() ? 0.18 + Math.sin(clock * 3.4) * 0.07 : 0;
+    view.ringMaterial.opacity =
+      0.3 + pulse + view.flash * 0.6 + (1 - hpFraction) * 0.18 + (view.held ? 0.25 : 0);
+    view.ring.scale.setScalar(1 + view.flash * 0.35 + (view.held ? 0.15 : 0));
+    view.ring.position.y = view.held ? -2.4 : 0.04;
+  }
+}
+
+function updateFeatures(dt: number): void {
+  if (!dungeon) return;
+  const ease = 1 - Math.pow(0.004, dt);
+  for (const [index, feature] of dungeon.doors) {
+    const target = featureTargets.get(index) ?? { rotation: 0, lift: 0 };
+    feature.pivot.rotation.y += (target.rotation - feature.pivot.rotation.y) * ease;
+    feature.pivot.position.y += (target.lift - feature.pivot.position.y) * ease;
+  }
+  for (const heap of dungeon.rubble.values()) {
+    if (!heap.userData.clearing) continue;
+    const s = Math.max(0, heap.scale.x - dt * 2.2);
+    heap.scale.setScalar(s);
+    heap.visible = s > 0.02;
+  }
+  for (const cache of dungeon.caches.values()) {
+    const target = cache.opened ? -1.15 : 0;
+    cache.lid.rotation.x += (target - cache.lid.rotation.x) * ease;
+  }
+  // Ember flicker keeps the warm pools alive without adding real light cost.
+  for (const ember of dungeon.emberLights) {
+    const n =
+      Math.sin(clock * 6.1 + ember.phase) * 0.5 +
+      Math.sin(clock * 11.3 + ember.phase * 2.1) * 0.3 +
+      Math.sin(clock * 2.7 + ember.phase * 0.7) * 0.2;
+    ember.light.intensity = ember.base * (0.82 + n * 0.16);
+  }
+  for (const coal of dungeon.coals) {
+    const material = coal.material as THREE.MeshStandardMaterial;
+    material.emissiveIntensity = 2.1 + Math.sin(clock * 5.2 + coal.position.x) * 0.5;
+  }
+  dungeon.relic.rotation.y += dt * 0.55;
+  dungeon.relic.position.y += Math.sin(clock * 1.6) * dt * 0.35;
+}
+
+function updateOverlays(): void {
+  overlays.begin();
+  if (game.phase === "hero" || game.phase === "foes") {
+    const hero = game.hero;
+
+    // Reachable ground.
+    if (game.isHeroTurn() && dragMode !== "card") {
+      for (const [index, record] of reachField) {
+        if (record.cost === 0) continue;
+        const tile = board.tiles[index]!;
+        const [cx, , cz] = board.worldCentre(tile.x, tile.z);
+        const strength = dragMode === "piece" ? 0.5 : 0.26;
+        overlays.tile(cx, tileSurfaceY(tile) + 0.06, cz, OVERLAY_COLOURS.move, strength, 0.86);
+      }
+    }
+
+    // Card targets.
+    if (dragMode === "card") {
+      const cardId = game.hand[dragCardIndex];
+      if (cardId && game.cardPlayable(cardId)) {
+        for (const tile of board.tiles) {
+          if (!game.cardTargetValid(cardId, tile.x, tile.z)) continue;
+          const [cx, , cz] = board.worldCentre(tile.x, tile.z);
+          overlays.tile(cx, tileSurfaceY(tile) + 0.07, cz, OVERLAY_COLOURS.card, 0.6, 0.9);
+        }
+      }
+    }
+
+    // Path preview while dragging the piece.
+    if (dragMode === "piece" && hoverOffer?.path) {
+      const path = hoverOffer.path;
+      for (let i = 1; i < path.length; i++) {
+        const step = path[i]!;
+        const tile = board.at(step.x, step.z);
+        if (!tile) continue;
+        const [cx, , cz] = board.worldCentre(step.x, step.z);
+        overlays.pip(cx, tileSurfaceY(tile) + 0.12, cz, OVERLAY_COLOURS.path, 0.95, 1);
+      }
+    }
+
+    // Revealed traps.
+    for (const tile of board.tiles) {
+      if (!tile.trap?.revealed || !tile.trap.armed) continue;
+      const [cx, , cz] = board.worldCentre(tile.x, tile.z);
+      const colour = tile.trap.friendly ? OVERLAY_COLOURS.goal : OVERLAY_COLOURS.trap;
+      const pulse = 0.4 + Math.sin(clock * 3 + tile.x) * 0.12;
+      overlays.tile(cx, tileSurfaceY(tile) + 0.08, cz, colour, pulse, 0.7);
+    }
+
+    // Hover marker and its meaning.
+    if (hoverTile && pointerInside) {
+      const [cx, , cz] = board.worldCentre(hoverTile.x, hoverTile.z);
+      const y = tileSurfaceY(hoverTile) + 0.1;
+      let colour: number = OVERLAY_COLOURS.hover;
+      if (hoverOffer?.kind === "strike") colour = OVERLAY_COLOURS.strike;
+      else if (hoverOffer && hoverOffer.kind !== "move") colour = OVERLAY_COLOURS.card;
+      overlays.tile(cx, y, cz, colour, 0.85, 1);
+    }
+
+    // Goal marker while the guardian still stands.
+    const guard = game.guardian();
+    if (guard?.alive) {
+      const [gx, , gz] = board.worldCentre(guard.x, guard.z);
+      const tile = board.at(guard.x, guard.z);
+      overlays.ring(
+        gx,
+        (tile ? tileSurfaceY(tile) : 0) + 0.09,
+        gz,
+        OVERLAY_COLOURS.goal,
+        0.35 + Math.sin(clock * 2) * 0.1,
+        1.15,
+      );
+    }
+    void hero;
+  }
+  overlays.end();
+}
+
+let clock = 0;
+let last = performance.now();
+
+function frame(now: number): void {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  clock += dt;
+
+  stage.update(dt);
+  updatePieces(dt);
+  updateFeatures(dt);
+  updateOverlays();
+  hand.update(dt);
+  stage.render();
+  requestAnimationFrame(frame);
+}
+
+addEventListener("resize", () => hand.setAspect(innerWidth / innerHeight));
+
+// The render loop only starts once the ruin is built: under software rendering
+// a busy loop would otherwise starve asset loading of main-thread time.
+boot()
+  .then(() => {
+    last = performance.now();
+    requestAnimationFrame(frame);
+  })
+  .catch((error) => {
+    console.error(error);
+    hud.setProgress("Failed to prepare the ruin", 1);
+  });

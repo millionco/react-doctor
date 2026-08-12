@@ -1,0 +1,200 @@
+// rule: three-shader-require-position-on-all-paths
+// file-path: src/contactShadows.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 80438696eef985f04412bc7057123c1f2e2f211182bf1e89635136ca01665341
+/**
+ * Soft contact shadows.
+ *
+ * An orthographic camera sits on the shadow plane looking straight up and
+ * renders the scene with a depth-to-alpha override; the closer geometry is to
+ * the plane, the darker the accumulation. Two separable blur passes soften it.
+ *
+ * This is what grounds the shells on the deck. The direct lights are dim by
+ * design, so without a contact term the domes float; with it, the point where
+ * each shell meets its gauge ring is unambiguous.
+ */
+
+import * as THREE from "three";
+
+/**
+ * Objects opt into casting by enabling this layer. The deck itself sits on
+ * the shadow plane, so if everything cast, the deck would shade itself black.
+ */
+export const SHADOW_LAYER = 2;
+
+const depthVertex = /* glsl */ `
+  varying float vDepth;
+  #include <clipping_planes_pars_vertex>
+  void main() {
+    #include <begin_vertex>
+    #include <project_vertex>
+    // Orthographic: view-space -z is a linear distance from the plane.
+    vDepth = -mvPosition.z;
+    #include <clipping_planes_vertex>
+  }
+`;
+
+const depthFragment = /* glsl */ `
+  varying float vDepth;
+  uniform float uHeight;
+  uniform float uDarkness;
+  #include <clipping_planes_pars_fragment>
+  void main() {
+    #include <clipping_planes_fragment>
+    float t = clamp(vDepth / uHeight, 0.0, 1.0);
+    // Quadratic falloff: tight, dark contact right under the object.
+    float a = pow(1.0 - t, 2.2) * uDarkness;
+    gl_FragColor = vec4(0.0, 0.0, 0.0, a);
+  }
+`;
+
+const blurVertex = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  }
+`;
+
+const blurFragment = /* glsl */ `
+  varying vec2 vUv;
+  uniform sampler2D uMap;
+  uniform vec2 uDir;
+  void main() {
+    // 9-tap gaussian, weights normalised inline.
+    vec4 sum = texture2D(uMap, vUv) * 0.227027;
+    sum += texture2D(uMap, vUv + uDir * 1.3846) * 0.316216;
+    sum += texture2D(uMap, vUv - uDir * 1.3846) * 0.316216;
+    sum += texture2D(uMap, vUv + uDir * 3.2308) * 0.070270;
+    sum += texture2D(uMap, vUv - uDir * 3.2308) * 0.070270;
+    gl_FragColor = sum;
+  }
+`;
+
+export class ContactShadows {
+  readonly mesh: THREE.Mesh;
+  readonly group = new THREE.Group();
+
+  private readonly camera: THREE.OrthographicCamera;
+  private readonly rt: THREE.WebGLRenderTarget;
+  private readonly rtBlur: THREE.WebGLRenderTarget;
+  private readonly depthMaterial: THREE.ShaderMaterial;
+  private readonly blurMaterial: THREE.ShaderMaterial;
+  private readonly blurQuad: THREE.Mesh;
+  private readonly blurScene = new THREE.Scene();
+  private readonly blurCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private readonly planeMaterial: THREE.MeshBasicMaterial;
+
+  constructor(
+    size: number,
+    height: number,
+    resolution = 1024,
+    darkness = 1.35,
+    private readonly blurAmount = 2.1,
+  ) {
+    this.camera = new THREE.OrthographicCamera(
+      -size / 2, size / 2, size / 2, -size / 2, 0, height,
+    );
+    // Look straight up from the shadow plane.
+    this.camera.rotation.x = Math.PI / 2;
+    this.camera.layers.set(SHADOW_LAYER);
+    this.group.add(this.camera);
+
+    const rtOpts = { format: THREE.RGBAFormat, type: THREE.UnsignedByteType };
+    this.rt = new THREE.WebGLRenderTarget(resolution, resolution, rtOpts);
+    this.rtBlur = new THREE.WebGLRenderTarget(resolution, resolution, rtOpts);
+    this.rt.texture.generateMipmaps = false;
+    this.rtBlur.texture.generateMipmaps = false;
+
+    this.depthMaterial = new THREE.ShaderMaterial({
+      vertexShader: depthVertex,
+      fragmentShader: depthFragment,
+      uniforms: {
+        uHeight: { value: height },
+        uDarkness: { value: darkness },
+      },
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.SrcAlphaFactor,
+      blendDst: THREE.OneMinusSrcAlphaFactor,
+    });
+
+    this.blurMaterial = new THREE.ShaderMaterial({
+      vertexShader: blurVertex,
+      fragmentShader: blurFragment,
+      uniforms: { uMap: { value: null }, uDir: { value: new THREE.Vector2() } },
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.blurQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.blurMaterial);
+    this.blurQuad.frustumCulled = false;
+    this.blurScene.add(this.blurQuad);
+
+    this.planeMaterial = new THREE.MeshBasicMaterial({
+      map: this.rt.texture,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      toneMapped: false,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.ZeroFactor,
+      blendDst: THREE.OneMinusSrcAlphaFactor,
+    });
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), this.planeMaterial);
+    this.mesh.rotation.x = -Math.PI / 2;
+    this.mesh.renderOrder = 2;
+    this.group.add(this.mesh);
+  }
+
+  setOpacity(value: number): void {
+    this.planeMaterial.opacity = value;
+  }
+
+  /** Re-render the shadow buffer from everything on SHADOW_LAYER. */
+  render(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
+    const prevBackground = scene.background;
+    const prevOverride = scene.overrideMaterial;
+    const prevTarget = renderer.getRenderTarget();
+    const wasVisible = this.group.visible;
+
+    this.group.visible = false;
+    scene.background = null;
+    scene.overrideMaterial = this.depthMaterial;
+
+    renderer.setRenderTarget(this.rt);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    renderer.render(scene, this.camera);
+
+    // Separable blur: horizontal into rtBlur, vertical back into rt.
+    const px = this.blurAmount / this.rt.width;
+    this.blurMaterial.uniforms.uMap!.value = this.rt.texture;
+    this.blurMaterial.uniforms.uDir!.value.set(px, 0);
+    renderer.setRenderTarget(this.rtBlur);
+    renderer.render(this.blurScene, this.blurCamera);
+
+    this.blurMaterial.uniforms.uMap!.value = this.rtBlur.texture;
+    this.blurMaterial.uniforms.uDir!.value.set(0, px);
+    renderer.setRenderTarget(this.rt);
+    renderer.render(this.blurScene, this.blurCamera);
+
+    scene.overrideMaterial = prevOverride;
+    scene.background = prevBackground;
+    this.group.visible = wasVisible;
+    renderer.setRenderTarget(prevTarget);
+  }
+
+  dispose(): void {
+    this.rt.dispose();
+    this.rtBlur.dispose();
+    this.depthMaterial.dispose();
+    this.blurMaterial.dispose();
+    this.planeMaterial.dispose();
+    this.blurQuad.geometry.dispose();
+    this.mesh.geometry.dispose();
+  }
+}

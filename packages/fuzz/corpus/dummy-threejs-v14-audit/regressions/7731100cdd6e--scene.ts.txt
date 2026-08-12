@@ -1,0 +1,463 @@
+// rule: server-sequential-independent-await
+// file-path: src/scene.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 7731100cdd6e6b5cc0d7907ed4b797e6dc9bf1d55365d51da612916da04d148a
+/**
+ * Scene assembly: generates every texture, builds the world, wires the
+ * lighting rig, and exposes a single update hook for all ambient motion.
+ */
+
+import * as THREE from "three";
+import { createBoat } from "./boat";
+import type { Boat } from "./boat";
+import { createGodRays, createMarineSnow, createBubbles, createSky, depthMood } from "./atmosphere";
+import type { BubbleSystem, DepthMood, GodRays, MarineSnow } from "./atmosphere";
+import { WorldField } from "./field";
+import type { AlcoveShape } from "./field";
+import { buildSeabed, buildShaft, buildShore } from "./terrain";
+import type { ShaftBuild, TerrainMaterial } from "./terrain";
+import { buildProps } from "./props";
+import {
+  createBubbleSprite,
+  createCausticsTexture,
+  createCoralFamily,
+  createContactShadow,
+  createEnvTexture,
+  createGlowSprite,
+  createHullTextures,
+  createMetalTextures,
+  createMoteSprite,
+  createRockTextures,
+  createRopeTextures,
+  createSandTextures,
+  createSkinFamily,
+  tintCoral,
+  tintSkin,
+  createWaterNormal,
+  createWetsuitTextures,
+} from "./textures";
+import type { Stage, SurfaceTextures } from "./textures";
+import { createOcean, createPocketSurface } from "./water";
+import type { Ocean, PocketSurface } from "./water";
+
+export interface WorldTextures {
+  rock: SurfaceTextures;
+  sand: SurfaceTextures;
+  coralA: SurfaceTextures;
+  coralB: SurfaceTextures;
+  hull: SurfaceTextures;
+  metal: SurfaceTextures;
+  rope: SurfaceTextures;
+  wetsuit: SurfaceTextures;
+  skinEel: SurfaceTextures;
+  skinRay: SurfaceTextures;
+  skinAngler: SurfaceTextures;
+  skinSquid: SurfaceTextures;
+  caustics: THREE.CanvasTexture;
+  waterNormal: THREE.CanvasTexture;
+  mote: THREE.CanvasTexture;
+  bubble: THREE.CanvasTexture;
+  glow: THREE.CanvasTexture;
+  contact: THREE.CanvasTexture;
+  env: THREE.CanvasTexture;
+}
+
+export interface PocketState {
+  alcove: AlcoveShape;
+  surface: PocketSurface;
+  light: THREE.PointLight;
+  /** Remaining supply, 0..1. */
+  charge: number;
+  surfaceY: number;
+  lastBuiltY: number;
+  visited: boolean;
+}
+
+export interface World {
+  scene: THREE.Scene;
+  field: WorldField;
+  textures: WorldTextures;
+  boat: Boat;
+  pockets: PocketState[];
+  sun: THREE.DirectionalLight;
+  hemi: THREE.HemisphereLight;
+  ocean: Ocean;
+  godRays: GodRays;
+  snow: MarineSnow;
+  bubbles: BubbleSystem;
+  sky: THREE.Mesh;
+  mood: DepthMood;
+  terrainMaterials: TerrainMaterial[];
+  startPoint: THREE.Vector3;
+  wreckPosition: THREE.Vector3;
+  update(dt: number, elapsed: number, camera: THREE.Camera): void;
+  /** Quality hooks: trim the fill-heavy effects on weak renderers. */
+  setParticleFraction(fraction: number): void;
+  setGodRaysEnabled(enabled: boolean): void;
+  setSunShadowResolution(size: number): void;
+}
+
+const nextFrame = (): Promise<void> =>
+  new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+
+const nextTask = (): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+/**
+ * Drives a staged builder against a time budget.
+ *
+ * Yielding is done with a macrotask rather than a frame, because frames are
+ * vsync-bound: waiting for one would cap throughput at a fraction of a second
+ * of work per second. A frame is only requested periodically, which is all the
+ * loading bar needs in order to repaint.
+ */
+async function runStage<T>(gen: Stage<T>, budgetMs = 26): Promise<T> {
+  let sinceFrame = 0;
+  for (;;) {
+    const t0 = performance.now();
+    let r = gen.next();
+    while (!r.done && performance.now() - t0 < budgetMs) r = gen.next();
+    if (r.done) return r.value;
+    sinceFrame += performance.now() - t0;
+    if (sinceFrame > 180) {
+      sinceFrame = 0;
+      await nextFrame();
+    } else {
+      await nextTask();
+    }
+  }
+}
+
+export type ProgressFn = (label: string, fraction: number) => void;
+
+export async function createWorld(
+  renderer: THREE.WebGLRenderer,
+  onProgress: ProgressFn,
+): Promise<World> {
+  const tex: Partial<WorldTextures> = {};
+  const steps: [string, () => Stage<void>][] = [
+    [
+      "quarrying limestone",
+      function* () {
+        tex.rock = yield* createRockTextures(384, 11);
+      },
+    ],
+    [
+      "sifting the seabed",
+      function* () {
+        tex.sand = yield* createSandTextures(384, 23);
+      },
+    ],
+    [
+      "growing coral",
+      function* () {
+        const fam = yield* createCoralFamily(224, 37);
+        tex.coralA = yield* tintCoral(fam, [0.58, 0.14, 0.30], [0.95, 0.46, 0.24]);
+        tex.coralB = yield* tintCoral(fam, [0.22, 0.30, 0.52], [0.80, 0.62, 0.28]);
+      },
+    ],
+    [
+      "caulking the skiff",
+      function* () {
+        tex.hull = yield* createHullTextures(320, 59);
+        tex.rope = yield* createRopeTextures(192, 173);
+      },
+    ],
+    [
+      "checking gear",
+      function* () {
+        tex.metal = yield* createMetalTextures(224, 83);
+        tex.wetsuit = yield* createWetsuitTextures(224, 101);
+      },
+    ],
+    [
+      "waking the residents",
+      function* () {
+        const scales = yield* createSkinFamily("scales", 224, 131);
+        tex.skinEel = yield* tintSkin(scales, [0.05, 0.10, 0.13], [0.32, 0.52, 0.44]);
+      },
+    ],
+    [
+      "lighting the lures",
+      function* () {
+        // Ray and angler are both warty-skinned; they share one relief set.
+        const papillae = yield* createSkinFamily("papillae", 224, 197);
+        tex.skinRay = yield* tintSkin(papillae, [0.06, 0.07, 0.10], [0.34, 0.36, 0.44]);
+        tex.skinAngler = yield* tintSkin(papillae, [0.03, 0.04, 0.05], [0.20, 0.16, 0.18]);
+        const spots = yield* createSkinFamily("spots", 224, 269);
+        tex.skinSquid = yield* tintSkin(spots, [0.32, 0.36, 0.46], [0.72, 0.78, 0.86]);
+      },
+    ],
+    [
+      "stirring the water",
+      function* () {
+        tex.waterNormal = yield* createWaterNormal(384, 211);
+        tex.caustics = yield* createCausticsTexture(224, 307);
+      },
+    ],
+    [
+      "seeding the drift",
+      function* () {
+        tex.mote = createMoteSprite(64, 401);
+        tex.bubble = createBubbleSprite(64);
+        tex.glow = createGlowSprite(128);
+        tex.contact = createContactShadow(128, 555);
+        tex.env = createEnvTexture(256);
+      },
+    ],
+  ];
+
+  const TOTAL_STEPS = steps.length + 4;
+  for (let i = 0; i < steps.length; i++) {
+    const entry = steps[i]!;
+    onProgress(entry[0], i / TOTAL_STEPS);
+    await runStage(entry[1]());
+  }
+
+  const textures = tex as WorldTextures;
+  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  const applyAniso = (t: THREE.Texture): void => {
+    t.anisotropy = Math.min(8, maxAniso);
+  };
+  for (const set of [
+    textures.rock,
+    textures.sand,
+    textures.coralA,
+    textures.coralB,
+    textures.hull,
+    textures.metal,
+    textures.rope,
+    textures.wetsuit,
+    textures.skinEel,
+    textures.skinRay,
+    textures.skinAngler,
+    textures.skinSquid,
+  ]) {
+    applyAniso(set.map);
+    applyAniso(set.normalMap);
+    applyAniso(set.roughnessMap);
+    applyAniso(set.aoMap);
+    if (set.emissiveMap) applyAniso(set.emissiveMap);
+  }
+  applyAniso(textures.caustics);
+  applyAniso(textures.waterNormal);
+
+  onProgress("carving the blue hole", (steps.length + 1) / TOTAL_STEPS);
+  await nextFrame();
+
+  const scene = new THREE.Scene();
+  const field = new WorldField();
+
+  const sunDir = new THREE.Vector3(0.42, 0.80, 0.44).normalize();
+
+  const shaft: ShaftBuild = await runStage(buildShaft(textures.rock, textures.sand, textures.caustics));
+  const seabed: ShaftBuild = await runStage(buildSeabed(textures.sand, textures.rock, textures.caustics));
+  const shore: ShaftBuild = await runStage(buildShore(textures.rock, textures.sand, textures.caustics));
+  scene.add(shaft.mesh, seabed.mesh, shore.mesh);
+
+  onProgress("settling the wreckage", (steps.length + 2) / TOTAL_STEPS);
+  await nextFrame();
+
+  const props = await runStage(
+    buildProps(field, {
+      rock: textures.rock,
+      sand: textures.sand,
+      coralA: textures.coralA,
+      coralB: textures.coralB,
+      hull: textures.hull,
+      contactShadow: textures.contact,
+    }),
+  );
+  scene.add(props.group);
+
+  onProgress("mooring the skiff", (steps.length + 3) / TOTAL_STEPS);
+  await nextFrame();
+
+  // Moor the skiff off-centre so the shaft mouth stays readable from below.
+  const boatAngle = 2.0;
+  const boatRadius = 9.5;
+  const startPoint = new THREE.Vector3(
+    Math.cos(boatAngle) * boatRadius,
+    0,
+    Math.sin(boatAngle) * boatRadius,
+  );
+  const boat = createBoat(textures.hull, textures.metal, textures.rope, startPoint);
+  scene.add(boat.group);
+
+  const ocean = createOcean(textures.waterNormal, textures.caustics);
+  ocean.material.uniforms.uSun!.value.copy(sunDir);
+  scene.add(ocean.mesh);
+
+  const sky = createSky(sunDir);
+  scene.add(sky);
+
+  const godRays = createGodRays(sunDir);
+  scene.add(godRays.group);
+
+  const snow = createMarineSnow(textures.mote, 1900, 24);
+  scene.add(snow.points);
+
+  const bubbles = createBubbles(textures.bubble, 460);
+  scene.add(bubbles.points);
+
+  /* --- Air pockets ---------------------------------------------- */
+  // A single light serves whichever pocket is nearest: three simultaneous
+  // point lights would cost every lit fragment in the scene for no gain, as
+  // the pockets are tens of metres apart.
+  const pocketLight = new THREE.PointLight(0x8fe6ff, 0, 18, 2.0);
+  scene.add(pocketLight);
+  const pockets: PocketState[] = [];
+  for (const alcove of field.alcoves) {
+    const surface = createPocketSurface(field, alcove, textures.waterNormal);
+    scene.add(surface.mesh);
+    pockets.push({
+      alcove,
+      surface,
+      light: pocketLight,
+      charge: 1,
+      surfaceY: alcove.fullSurfaceY,
+      lastBuiltY: alcove.fullSurfaceY,
+      visited: false,
+    });
+  }
+
+  /* --- Lighting rig --------------------------------------------- */
+  const sun = new THREE.DirectionalLight(0xfff1d6, 3.3);
+  sun.position.copy(sunDir).multiplyScalar(140);
+  sun.target.position.set(0, -14, 0);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1536, 1536);
+  const sc = sun.shadow.camera;
+  sc.left = -52;
+  sc.right = 52;
+  sc.top = 62;
+  sc.bottom = -62;
+  sc.near = 40;
+  sc.far = 280;
+  sc.updateProjectionMatrix();
+  sun.shadow.bias = -0.0006;
+  sun.shadow.normalBias = 0.4;
+  sun.shadow.radius = 2;
+  scene.add(sun, sun.target);
+
+  const hemi = new THREE.HemisphereLight(0x8fd8ee, 0x08222c, 0.85);
+  scene.add(hemi);
+
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  const envRT = pmrem.fromEquirectangular(textures.env);
+  scene.environment = envRT.texture;
+  scene.environmentIntensity = 1;
+  pmrem.dispose();
+
+  scene.fog = new THREE.FogExp2(0x0a3f5c, 0.03);
+
+  const mood: DepthMood = { fogColor: new THREE.Color(0x0a3f5c), density: 0.03, ambient: 1 };
+  let godRaysEnabled = true;
+  const terrainMaterials = [shaft.material, seabed.material, shore.material];
+
+  onProgress("ready", 1);
+
+  const baseHemi = hemi.intensity;
+  const baseSun = sun.intensity;
+
+  return {
+    scene,
+    field,
+    textures,
+    boat,
+    pockets,
+    sun,
+    hemi,
+    ocean,
+    godRays,
+    snow,
+    bubbles,
+    sky,
+    mood,
+    terrainMaterials,
+    startPoint,
+    wreckPosition: props.wreckPosition,
+    setParticleFraction(fraction: number) {
+      snow.setFraction(fraction);
+    },
+    setGodRaysEnabled(enabled: boolean) {
+      godRaysEnabled = enabled;
+      godRays.group.visible = enabled;
+    },
+    setSunShadowResolution(size: number) {
+      if (sun.shadow.mapSize.x === size) return;
+      sun.shadow.mapSize.set(size, size);
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;
+    },
+    update(dt: number, elapsed: number, camera: THREE.Camera) {
+      boat.update(elapsed);
+      ocean.material.uniforms.uTime!.value = elapsed;
+      ocean.material.uniforms.uCamDepth!.value = Math.max(0, -camera.position.y);
+      for (const m of terrainMaterials) {
+        m.userData.uniforms.uTime.value = elapsed;
+      }
+      for (const clock of props.swayClocks) clock.uTime.value = elapsed;
+      const camDepth = Math.max(0, -camera.position.y);
+      if (godRaysEnabled) godRays.update(elapsed, camDepth);
+      snow.update(dt, camera);
+      bubbles.update(dt);
+
+      depthMood(camera.position.y, mood);
+      const fog = scene.fog as THREE.FogExp2;
+      fog.color.copy(mood.fogColor);
+      fog.density = mood.density;
+      scene.environmentIntensity = 0.10 + mood.ambient * 1.0;
+      hemi.intensity = baseHemi * (0.1 + mood.ambient * 0.95);
+      sun.intensity = baseSun * (0.16 + mood.ambient * 0.9);
+      sky.position.copy(camera.position);
+      const skyMat = sky.material as THREE.ShaderMaterial;
+      skyMat.uniforms.uSubmerge!.value = THREE.MathUtils.smoothstep(-camera.position.y, -0.5, 0.8);
+      (skyMat.uniforms.uWater!.value as THREE.Color).copy(mood.fogColor);
+
+      let nearestPocket: PocketState | null = null;
+      let nearestDist = Infinity;
+      for (const p of pockets) {
+        const target = THREE.MathUtils.lerp(p.alcove.fullSurfaceY, p.alcove.ceilingY - 0.15, 1 - p.charge);
+        p.surfaceY += (target - p.surfaceY) * Math.min(1, dt * 3);
+        if (Math.abs(p.surfaceY - p.lastBuiltY) > 0.05) {
+          p.surface.rebuild(p.surfaceY);
+          p.lastBuiltY = p.surfaceY;
+        }
+        p.surface.material.uniforms.uTime!.value = elapsed;
+        p.surface.material.uniforms.uCharge!.value = p.charge;
+        (p.surface.material.uniforms.uFog!.value as THREE.Color).copy(mood.fogColor);
+        p.surface.material.uniforms.uFogDensity!.value = mood.density;
+        const d = camera.position.distanceTo(p.alcove.center);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestPocket = p;
+        }
+        if (p.charge > 0.02 && Math.random() < dt * 1.6) {
+          bubbles.emit(
+            new THREE.Vector3(
+              p.alcove.center.x + (Math.random() - 0.5) * 2,
+              p.surfaceY - 1.2 - Math.random(),
+              p.alcove.center.z + (Math.random() - 0.5) * 2,
+            ),
+            2,
+            0.3,
+            0.5,
+          );
+        }
+      }
+      if (nearestPocket && nearestDist < 42) {
+        pocketLight.position.copy(nearestPocket.alcove.center).setY(nearestPocket.surfaceY - 0.5);
+        pocketLight.intensity = (2.5 + nearestPocket.charge * 8) * (1 - THREE.MathUtils.smoothstep(nearestDist, 26, 42));
+      } else {
+        pocketLight.intensity = 0;
+      }
+    },
+  };
+}

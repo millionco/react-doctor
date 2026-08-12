@@ -1,0 +1,1261 @@
+// rule: three-prefer-gpu-position-animation
+// file-path: src/main.ts
+// verdict: fail
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 795ab3ee78731726cb3423c3192bf3caec361a8e4774a2aa1ba792b1a0795aa7
+/**
+ * Lamplight Vigil — a caretaker relights six protective lamps in a night sanctuary
+ * while a single ghost hunts the dark between them.
+ *
+ * The spatial mechanic: a lit lamp projects a sphere of safe ground that is removed
+ * from the ghost's navigation lattice. Lighting order therefore decides which routes
+ * remain open to it, where you can retreat to, and how far you can stray for oil.
+ */
+import "./style.css";
+import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+
+import { AudioEngine } from "./audio";
+import { Brazier, Lamp, Lantern, OilFlask } from "./entities";
+import { Ghost, NavGraph, type SafeZone } from "./ghost";
+import { Hud, loadSettings, type CompassMark, type GameSettings } from "./hud";
+import { CollisionWorld, Input, Player, type LookSettings } from "./player";
+import { clamp, mulberry32 } from "./rng";
+import { nightSkyTexture, radialAlphaTexture, setParallaxQuality, SurfaceLibrary } from "./textures";
+import { buildSanctuary, type Sanctuary } from "./world";
+
+// ---------------------------------------------------------------------------
+// tuning
+// ---------------------------------------------------------------------------
+
+const LAMP_COUNT = 6;
+const FLASKS_ON_MAP = 11;
+const INTERACT_RANGE = 2.9;
+const KINDLE_TIME = 0.55;
+const REFILL_TIME = 1.0;
+const TAKE_TIME = 0.4;
+const VIGIL_TIME = 7.0;
+const WARD_DRAIN = 0.115;
+const ATTUNE_DRAIN = 0.016;
+const LANTERN_BURN = 0.0072;
+const WORLD_SEED = 20260728;
+
+type Phase = "loading" | "title" | "playing" | "paused" | "ending" | "ended";
+
+// ---------------------------------------------------------------------------
+// renderer + scene scaffolding
+// ---------------------------------------------------------------------------
+
+const canvas = document.querySelector("#view") as HTMLCanvasElement;
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: false,
+  powerPreference: "high-performance",
+  stencil: false,
+});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.6));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.info.autoReset = false;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a1220, 0.017);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.08, 260);
+camera.position.set(0, 3, 14);
+
+const sky = nightSkyTexture(11);
+scene.background = sky;
+scene.backgroundIntensity = 0.9;
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envMap = pmrem.fromEquirectangular(sky).texture;
+scene.environment = envMap;
+scene.environmentIntensity = 0.35;
+
+const hemi = new THREE.HemisphereLight(0x3a5a80, 0x0c1014, 0.34);
+scene.add(hemi);
+
+const moon = new THREE.DirectionalLight(0xa8c8ee, 2.0);
+moon.position.set(26, 62, -24);
+moon.castShadow = true;
+moon.shadow.mapSize.set(2048, 2048);
+moon.shadow.camera.left = -48;
+moon.shadow.camera.right = 48;
+moon.shadow.camera.top = 48;
+moon.shadow.camera.bottom = -48;
+moon.shadow.camera.near = 1;
+moon.shadow.camera.far = 150;
+moon.shadow.bias = -0.0012;
+moon.shadow.normalBias = 0.04;
+scene.add(moon, moon.target);
+
+// ---------------------------------------------------------------------------
+// grade pass — desaturation and vignette driven by dread, plus a light grain
+// ---------------------------------------------------------------------------
+
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uDread: { value: 0 },
+    uChill: { value: 0 },
+    uTime: { value: 0 },
+    uFade: { value: 0 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uDread;
+    uniform float uChill;
+    uniform float uTime;
+    uniform float uFade;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 c = texture2D( tDiffuse, vUv );
+      float lum = dot( c.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+
+      // Dread bleeds the colour out and pulls what is left toward ember red.
+      c.rgb = mix( c.rgb, vec3( lum ), uDread * 0.55 );
+      c.rgb = mix( c.rgb, vec3( lum * 1.14, lum * 0.62, lum * 0.55 ), uDread * 0.35 );
+      // Proximity chill tints the shadows blue without touching the lamplight.
+      c.rgb = mix( c.rgb, c.rgb * vec3( 0.72, 0.94, 1.16 ), uChill * ( 1.0 - smoothstep( 0.18, 0.6, lum ) ) );
+
+      vec2 d = vUv - 0.5;
+      float vig = 1.0 - dot( d, d ) * ( 0.66 + uDread * 0.85 );
+      c.rgb *= clamp( vig, 0.0, 1.0 );
+
+      // Fine grain keeps the deep shadows from banding.
+      float g = fract( sin( dot( vUv * 1024.0 + uTime * 0.7, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+      c.rgb += ( g - 0.5 ) * 0.02 * ( 1.0 - lum * 0.7 );
+
+      c.rgb *= 1.0 - uFade;
+      gl_FragColor = vec4( c.rgb, 1.0 );
+    }
+  `,
+};
+
+// ---------------------------------------------------------------------------
+// state
+// ---------------------------------------------------------------------------
+
+const settings: GameSettings = loadSettings();
+const look: LookSettings = {
+  sensitivity: settings.sensitivity,
+  invertY: settings.invertY,
+  smoothing: settings.smoothing,
+  fov: settings.fov,
+};
+
+const hud = new Hud(settings);
+const input = new Input(canvas);
+const audio = new AudioEngine();
+camera.add(audio.listener);
+scene.add(camera);
+
+let phase: Phase = "loading";
+let composer: EffectComposer | null = null;
+let gtao: GTAOPass | null = null;
+let bloom: UnrealBloomPass | null = null;
+let grade: ShaderPass | null = null;
+
+let lib: SurfaceLibrary;
+let sanctuary: Sanctuary;
+let collision: CollisionWorld;
+let nav: NavGraph;
+let ghost: Ghost;
+const lamps: Lamp[] = [];
+const flasks: OilFlask[] = [];
+let brazier: Brazier;
+let lantern: Lantern;
+let traceCloud: THREE.Points;
+
+const player = new Player();
+
+interface RunState {
+  seed: number;
+  elapsed: number;
+  carried: number;
+  flasksFound: number;
+  lampsLit: number;
+  dread: number;
+  peakDread: number;
+  closest: number;
+  awareness: number;
+  hold: number;
+  holdTarget: string | null;
+  attune: number;
+  ward: number;
+  banish: number;
+  fade: number;
+  won: boolean;
+  endTimer: number;
+  lastStep: number;
+  heartTimer: number;
+  allLitAnnounced: boolean;
+  lowOilWarned: boolean;
+}
+
+function freshRun(seed: number): RunState {
+  return {
+    seed,
+    elapsed: 0,
+    // Start with one flask so the first lamp can be kindled without a scavenger
+    // hunt that reads as "E does nothing".
+    carried: 1,
+    flasksFound: 0,
+    lampsLit: 0,
+    dread: 0,
+    peakDread: 0,
+    closest: 999,
+    awareness: 0,
+    hold: 0,
+    holdTarget: null,
+    attune: 0,
+    ward: 0,
+    banish: 0,
+    fade: 0,
+    won: false,
+    endTimer: 0,
+    lastStep: 0,
+    heartTimer: 0,
+    allLitAnnounced: false,
+    lowOilWarned: false,
+  };
+}
+
+let run: RunState = freshRun(WORLD_SEED);
+
+// ---------------------------------------------------------------------------
+// asynchronous build
+// ---------------------------------------------------------------------------
+
+async function boot(): Promise<void> {
+  hud.show("loading");
+  lib = new SurfaceLibrary();
+  const total = lib.count + 4;
+  let done = 0;
+  const step = async (note: string, work: () => void) => {
+    hud.setLoadProgress(done / total, note);
+    await new Promise((r) => requestAnimationFrame(r));
+    work();
+    done++;
+    hud.setLoadProgress(done / total, note);
+  };
+
+  for (let i = 0; i < lib.count; i++) {
+    await step("Weathering surfaces", () => {
+      lib.bakeAt(i);
+    });
+  }
+
+  await step("Raising the sanctuary", () => {
+    sanctuary = buildSanctuary(lib, WORLD_SEED);
+    scene.add(sanctuary.root);
+    collision = new CollisionWorld(sanctuary.walls, sanctuary.floors);
+  });
+
+  await step("Hanging the lamps", () => {
+    nav = new NavGraph(sanctuary.navNodes, collision);
+    for (const a of sanctuary.lampAnchors) {
+      const lamp = new Lamp(a.id, a.name, a.position, lib);
+      lamps.push(lamp);
+      scene.add(lamp.group);
+    }
+    brazier = new Brazier(sanctuary.brazier, lib);
+    scene.add(brazier.group);
+    for (let i = 0; i < Math.min(FLASKS_ON_MAP, sanctuary.oilSpots.length); i++) {
+      const f = new OilFlask(sanctuary.oilSpots[i]!, lib, i);
+      flasks.push(f);
+      scene.add(f.group);
+    }
+    lantern = new Lantern(lib);
+    camera.add(lantern.group);
+  });
+
+  await step("Listening for the cold", () => {
+    ghost = new Ghost(nav, WORLD_SEED);
+    scene.add(ghost.group);
+
+    const traceGeo = new THREE.BufferGeometry();
+    traceGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(64 * 3), 3));
+    traceCloud = new THREE.Points(
+      traceGeo,
+      new THREE.PointsMaterial({
+        size: 0.5,
+        map: radialAlphaTexture(48, 1.5),
+        color: 0x9fe6f6,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true,
+        fog: false,
+      }),
+    );
+    traceCloud.frustumCulled = false;
+    traceCloud.renderOrder = 8;
+    scene.add(traceCloud);
+
+    buildComposer();
+    applySettings(settings);
+    // A software rasteriser can never carry the full tier; start at the floor and
+    // let the governor climb back if it turns out to be capable.
+    if (isSoftware) applyTier("minimal");
+    resetRun(WORLD_SEED, false);
+  });
+
+  hud.setLoadProgress(1, "Ready");
+  phase = "title";
+  hud.show("title");
+}
+
+function buildComposer(): void {
+  composer?.dispose();
+  const c = new EffectComposer(renderer);
+  c.setPixelRatio(renderer.getPixelRatio());
+  c.setSize(innerWidth, innerHeight);
+  c.addPass(new RenderPass(scene, camera));
+
+  gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+  gtao.output = GTAOPass.OUTPUT.Default;
+  gtao.blendIntensity = 0.45;
+  gtao.updateGtaoMaterial({
+    radius: 0.5,
+    distanceExponent: 1.5,
+    thickness: 1.1,
+    scale: 1.3,
+    samples: 16,
+    distanceFallOff: 1,
+    screenSpaceRadius: false,
+  });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3.2, radius: 4, rings: 2, samples: 16 });
+  c.addPass(gtao);
+
+  bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.62, 0.55, 0.72);
+  c.addPass(bloom);
+
+  grade = new ShaderPass(GradeShader);
+  c.addPass(grade);
+
+  c.addPass(new OutputPass());
+  composer = c;
+}
+
+// ---------------------------------------------------------------------------
+// quality tiers + adaptive governor
+//
+// The scene is expensive by design (parallax relief, an AO pass, several shadowed
+// lights). A governor watches real frame time and steps the tier down until the
+// frame fits, so a weak or software renderer still gets a playable, readable scene.
+// ---------------------------------------------------------------------------
+
+const TIERS = ["minimal", "low", "medium", "high"] as const;
+type Tier = (typeof TIERS)[number];
+
+interface TierSpec {
+  pixelRatio: number;
+  /** Image-based lighting from the night sky; the costliest single term. */
+  env: boolean;
+  ao: boolean;
+  bloom: boolean;
+  grade: boolean;
+  parallax: number;
+  parallaxLayers: number;
+  moonShadow: number;
+  /** Half-extent of the moon's shadow frustum around the camera, in metres. */
+  moonExtent: number;
+  lampLights: number;
+  lampShadows: number;
+  lanternShadow: boolean;
+}
+
+const TIER_SPECS: Record<Tier, TierSpec> = {
+  minimal: {
+    pixelRatio: 0.45,
+    env: false,
+    ao: false,
+    bloom: false,
+    grade: true,
+    parallax: 0,
+    parallaxLayers: 6,
+    moonShadow: 512,
+    moonExtent: 24,
+    lampLights: 2,
+    lampShadows: 0,
+    lanternShadow: false,
+  },
+  low: {
+    pixelRatio: 0.8,
+    env: false,
+    ao: false,
+    bloom: true,
+    grade: true,
+    parallax: 0,
+    parallaxLayers: 8,
+    moonShadow: 1024,
+    moonExtent: 30,
+    lampLights: 3,
+    lampShadows: 1,
+    lanternShadow: false,
+  },
+  medium: {
+    pixelRatio: Math.min(devicePixelRatio, 1.25),
+    env: true,
+    ao: true,
+    bloom: true,
+    grade: true,
+    parallax: 0.6,
+    parallaxLayers: 12,
+    moonShadow: 2048,
+    moonExtent: 42,
+    lampLights: 4,
+    lampShadows: 2,
+    lanternShadow: true,
+  },
+  high: {
+    pixelRatio: Math.min(devicePixelRatio, 1.6),
+    env: true,
+    ao: true,
+    bloom: true,
+    grade: true,
+    parallax: 1,
+    parallaxLayers: 20,
+    moonShadow: 2048,
+    moonExtent: 48,
+    lampLights: 4,
+    lampShadows: 2,
+    lanternShadow: true,
+  },
+};
+
+function detectSoftwareRenderer(): boolean {
+  try {
+    const gl = renderer.getContext();
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    if (!dbg) return false;
+    const name = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) ?? "");
+    return /swiftshader|llvmpipe|software|basic render|microsoft basic/i.test(name);
+  } catch {
+    return false;
+  }
+}
+
+const isSoftware = detectSoftwareRenderer();
+let userTier: Tier = settings.quality;
+let tier: Tier = isSoftware ? "minimal" : settings.quality;
+let currentSpec: TierSpec = TIER_SPECS[tier];
+
+function applyTier(next: Tier): void {
+  tier = next;
+  const spec = TIER_SPECS[next];
+  currentSpec = spec;
+  renderer.setPixelRatio(spec.pixelRatio);
+  composer?.setPixelRatio(spec.pixelRatio);
+  composer?.setSize(innerWidth, innerHeight);
+  // Keep a dim env on every tier — metals go black without any IBL.
+  scene.environment = envMap;
+  scene.environmentIntensity = spec.env ? 0.35 : 0.14;
+  hemi.intensity = spec.env ? 0.34 : 0.7;
+  if (gtao) {
+    gtao.enabled = spec.ao;
+    gtao.blendIntensity = 0.45;
+  }
+  if (bloom) bloom.enabled = spec.bloom;
+  if (grade) grade.enabled = spec.grade;
+  setParallaxQuality(spec.parallax, spec.parallaxLayers);
+  if (moon.shadow.mapSize.x !== spec.moonShadow) {
+    moon.shadow.mapSize.set(spec.moonShadow, spec.moonShadow);
+    moon.shadow.map?.dispose();
+    moon.shadow.map = null;
+  }
+  const e = spec.moonExtent;
+  moon.shadow.camera.left = -e;
+  moon.shadow.camera.right = e;
+  moon.shadow.camera.top = e;
+  moon.shadow.camera.bottom = -e;
+  moon.shadow.camera.updateProjectionMatrix();
+}
+
+function applySettings(s: GameSettings): void {
+  look.sensitivity = s.sensitivity;
+  look.invertY = s.invertY;
+  look.smoothing = s.smoothing;
+  look.fov = s.fov;
+  if (audio.initialised) audio.setMaster(s.volume);
+  userTier = s.quality;
+  applyTier(s.quality);
+}
+
+hud.onSettingsChange = (s) => applySettings(s);
+
+let frameAcc = 0;
+let frameCount = 0;
+let governTimer = 0;
+let governCooldown = 3;
+
+function governQuality(rawDt: number): void {
+  frameAcc += rawDt;
+  frameCount++;
+  governTimer += rawDt;
+  governCooldown -= rawDt;
+  if (governTimer < 1.2) return;
+  const avg = frameAcc / frameCount;
+  governTimer = 0;
+  frameAcc = 0;
+  frameCount = 0;
+  const idx = TIERS.indexOf(tier);
+  if (avg > 0.3 && idx > 0) {
+    // Hopelessly slow (software rasteriser, or a tab starved of GPU): go straight
+    // to the floor rather than crawling down one tier at a time.
+    applyTier("minimal");
+    governCooldown = 4;
+  } else if (avg > 0.05 && idx > 0) {
+    applyTier(TIERS[idx - 1]!);
+    governCooldown = 2.5;
+  } else if (avg < 0.017 && governCooldown <= 0) {
+    const ceiling = TIERS.indexOf(userTier);
+    if (idx < ceiling) {
+      applyTier(TIERS[idx + 1]!);
+      governCooldown = 6;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// run lifecycle
+// ---------------------------------------------------------------------------
+
+function resetRun(seed: number, announce: boolean): void {
+  run = freshRun(seed);
+  const rand = mulberry32(seed ^ 0x9e37);
+  player.reset(sanctuary.spawn, sanctuary.spawnYaw);
+  for (const l of lamps) {
+    l.reset();
+    audio.stopLoop(`fire${l.id}`);
+  }
+  brazier.reset();
+
+  // Which oil spots actually hold a flask varies between vigils, so the route you
+  // have to walk is never quite the same twice.
+  flasks.forEach((f) => f.reset());
+  const order = flasks.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const a = order[i]!;
+    order[i] = order[j]!;
+    order[j] = a;
+  }
+  for (const i of order.slice(0, Math.max(0, flasks.length - 9))) {
+    flasks[i]!.taken = true;
+    flasks[i]!.group.visible = false;
+  }
+
+  lantern.oil = 1;
+  ghost.reset(ghost.pickSpawn(sanctuary.spawn));
+  ghost.group.scale.setScalar(1);
+  hud.clearToasts();
+  if (announce) hud.toast("Six lamps are dark. Hold E at a lamp to kindle.", "");
+}
+
+function beginPlaying(seed: number): void {
+  audio.init();
+  audio.setMaster(settings.volume);
+  audio.stopAllLoops();
+  resetRun(seed, true);
+  phase = "playing";
+  hud.show("none");
+  input.requestLock();
+  audio.loop2d("wind", "wind", 0.2);
+  audio.loopAt("ghost", "ghost", ghost.group, 0.02, 8);
+}
+
+function pauseRun(): void {
+  if (phase !== "playing") return;
+  phase = "paused";
+  hud.show("pause");
+  input.releaseLock();
+}
+
+function resumeRun(): void {
+  if (phase !== "paused") return;
+  phase = "playing";
+  hud.show("none");
+  input.requestLock();
+}
+
+function quitToTitle(): void {
+  phase = "title";
+  hud.show("title");
+  input.releaseLock();
+  audio.stopAllLoops();
+  resetRun(WORLD_SEED, false);
+  run.fade = 0;
+}
+
+function endRun(won: boolean): void {
+  if (phase === "ending" || phase === "ended") return;
+  phase = "ending";
+  run.won = won;
+  run.endTimer = 0;
+  input.releaseLock();
+  audio.stopLoop("wind");
+  audio.play(won ? "win" : "fail", won ? 0.85 : 0.9);
+  if (won) hud.triggerFlash(0.55);
+}
+
+function showEndScreen(): void {
+  phase = "ended";
+  audio.stopAllLoops();
+  const mins = Math.floor(run.elapsed / 60);
+  const secs = Math.floor(run.elapsed % 60);
+  const stats: [string, string][] = [
+    ["Time kept", `${mins}:${String(secs).padStart(2, "0")}`],
+    ["Lamps kindled", `${run.lampsLit} / ${LAMP_COUNT}`],
+    ["Oil recovered", `${run.flasksFound}`],
+    ["Closest approach", run.closest === 999 ? "—" : `${run.closest.toFixed(1)} m`],
+    ["Peak dread", `${Math.round(run.peakDread * 100)}%`],
+  ];
+  hud.showEnd(
+    run.won,
+    run.won
+      ? "The brazier caught, and the cold thing came apart in the light. The sanctuary keeps itself until morning."
+      : run.lampsLit >= 4
+        ? "So close. The dark closed the last stretch of corridor before you reached the flame."
+        : "The lamps stayed dark, and the sanctuary belonged to it after all.",
+    stats,
+    String(run.seed),
+  );
+}
+
+hud.onStart = () => beginPlaying(WORLD_SEED + Math.floor(Math.random() * 1e6));
+hud.onResume = () => resumeRun();
+hud.onRestart = () => beginPlaying(WORLD_SEED + Math.floor(Math.random() * 1e6));
+hud.onQuit = () => quitToTitle();
+
+input.onLock((locked) => {
+  if (!locked && phase === "playing") pauseRun();
+});
+
+addEventListener("keydown", (e) => {
+  if (e.code === "Escape" && phase === "paused") resumeRun();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && phase === "playing") pauseRun();
+});
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+const tmpVec = new THREE.Vector3();
+const forwardVec = new THREE.Vector3();
+
+function safeZones(): SafeZone[] {
+  const zones: SafeZone[] = [];
+  for (const l of lamps) {
+    if (l.intensity > 0.02) zones.push({ position: l.lightPosition, radius: l.activeRadius });
+  }
+  if (brazier.intensity > 0.02) {
+    zones.push({ position: brazier.position, radius: 2.4 + brazier.intensity * 8.2 });
+  }
+  return zones;
+}
+
+function safety(pos: THREE.Vector3, zones: SafeZone[]): number {
+  let best = 0;
+  for (const z of zones) {
+    const d = Math.hypot(pos.x - z.position.x, pos.z - z.position.z, (pos.y - z.position.y) * 0.6);
+    if (d < z.radius) best = Math.max(best, 1 - d / z.radius);
+  }
+  return best;
+}
+
+function bearingTo(from: THREE.Vector3, to: THREE.Vector3): number {
+  return Math.atan2(to.x - from.x, -(to.z - from.z));
+}
+
+interface Interaction {
+  name: string;
+  action: string;
+  key: string;
+  duration: number;
+  id: string;
+  ready: boolean;
+  act: () => void;
+}
+
+function findInteraction(): Interaction | null {
+  const eye = player.eyePosition;
+  forwardVec.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  let best: Interaction | null = null;
+  let bestScore = -1;
+
+  const consider = (pos: THREE.Vector3, height: number, make: () => Interaction | null) => {
+    const dx = pos.x - eye.x;
+    const dz = pos.z - eye.z;
+    const dy = pos.y + height - eye.y;
+    const flat = Math.hypot(dx, dz);
+    if (flat > INTERACT_RANGE || Math.abs(dy) > 2.4) return;
+    const dot = flat < 0.4 ? 1 : (dx * forwardVec.x + dz * forwardVec.z) / flat;
+    if (dot < 0.2) return;
+    const score = dot * 2 - flat * 0.3;
+    if (score <= bestScore) return;
+    const made = make();
+    if (!made) return;
+    bestScore = score;
+    best = made;
+  };
+
+  for (const lamp of lamps) {
+    consider(lamp.position, 1.4, () => {
+      if (!lamp.lit) {
+        return {
+          name: lamp.name,
+          action: run.carried > 0 ? "Kindle" : "No oil to spare",
+          key: "E",
+          duration: KINDLE_TIME,
+          id: `lamp${lamp.id}`,
+          ready: run.carried > 0,
+          act: () => kindleLamp(lamp),
+        };
+      }
+      if (lantern.oil < 0.985) {
+        return {
+          name: `${lamp.name} · burning`,
+          action: "Refill lantern",
+          key: "E",
+          duration: REFILL_TIME,
+          id: `refill${lamp.id}`,
+          ready: true,
+          act: () => {
+            lantern.oil = 1;
+            run.lowOilWarned = false;
+            audio.play("pickup", 0.45, 0.8);
+            hud.toast("Lantern refilled", "");
+          },
+        };
+      }
+      return null;
+    });
+  }
+
+  for (let i = 0; i < flasks.length; i++) {
+    const f = flasks[i]!;
+    if (f.taken) continue;
+    consider(f.position, 0.3, () => ({
+      name: "Flask of lamp oil",
+      action: "Take",
+      key: "E",
+      duration: TAKE_TIME,
+      id: `oil${i}`,
+      ready: true,
+      act: () => {
+        f.taken = true;
+        f.group.visible = false;
+        run.carried++;
+        run.flasksFound++;
+        audio.play("pickup", 0.5);
+        hud.toast(`Oil taken · ${run.carried} carried`, "");
+      },
+    }));
+  }
+
+  consider(brazier.position, 1.0, () => {
+    if (run.won) return null;
+    const ready = run.lampsLit >= LAMP_COUNT;
+    return {
+      name: "The Vigil Brazier",
+      action: ready ? "Hold the vigil" : `${LAMP_COUNT - run.lampsLit} lamps still dark`,
+      key: "E",
+      duration: VIGIL_TIME,
+      id: "vigil",
+      ready,
+      act: () => {},
+    };
+  });
+
+  return best;
+}
+
+function kindleLamp(lamp: Lamp): void {
+  if (lamp.lit || run.carried <= 0) return;
+  run.carried--;
+  lamp.kindle();
+  run.lampsLit++;
+  audio.playAt("ignite", lamp.group, 0.65, 8);
+  audio.play("bell", 0.36, 1 + run.lampsLit * 0.03);
+  audio.loopAt(`fire${lamp.id}`, "fire", lamp.group, 0.3, 6);
+  hud.triggerFlash(0.2);
+  hud.toast(`${lamp.name} burns · ${run.lampsLit} of ${LAMP_COUNT}`, "");
+  if (run.lampsLit >= LAMP_COUNT && !run.allLitAnnounced) {
+    run.allLitAnnounced = true;
+    hud.toast("All six lamps burn. Return to the brazier.", "cold");
+    audio.play("attune", 0.6, 0.65);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// per-frame light budget — a handful of shadowed lights, chosen by distance
+// ---------------------------------------------------------------------------
+
+const lampOrder: { lamp: Lamp; d: number }[] = [];
+
+function shadowConfig(light: THREE.SpotLight, size: number, bias: number): void {
+  if (light.shadow.mapSize.x === size) return;
+  light.shadow.mapSize.set(size, size);
+  light.shadow.bias = bias;
+  light.shadow.normalBias = 0.035;
+  light.shadow.map?.dispose();
+  light.shadow.map = null;
+}
+
+function updateLightBudget(): void {
+  lampOrder.length = 0;
+  for (const l of lamps) {
+    if (l.intensity <= 0.02) {
+      l.light.visible = false;
+      l.spot.visible = false;
+      continue;
+    }
+    lampOrder.push({ lamp: l, d: l.lightPosition.distanceToSquared(camera.position) });
+  }
+  lampOrder.sort((a, b) => a.d - b.d);
+  lampOrder.forEach((entry, i) => {
+    const l = entry.lamp;
+    l.light.visible = i < currentSpec.lampLights;
+    l.spot.visible = i < Math.max(1, currentSpec.lampShadows);
+    l.spot.castShadow = i < currentSpec.lampShadows;
+    if (l.spot.castShadow) shadowConfig(l.spot, 1024, -0.0016);
+  });
+  const on = brazier.intensity > 0.02;
+  brazier.light.visible = on;
+  brazier.spot.visible = on;
+  brazier.spot.castShadow = on && currentSpec.lampShadows > 0;
+  if (brazier.spot.castShadow) shadowConfig(brazier.spot, 1024, -0.0016);
+  lantern.spot.castShadow = currentSpec.lanternShadow;
+  if (lantern.spot.castShadow) shadowConfig(lantern.spot, 1024, -0.0022);
+}
+
+// ---------------------------------------------------------------------------
+// world ambience
+// ---------------------------------------------------------------------------
+
+let dustBase: Float32Array | null = null;
+
+function animateWorld(time: number): void {
+  const waterMat = sanctuary.water.material as THREE.MeshStandardMaterial;
+  if (waterMat.normalMap) waterMat.normalMap.offset.set(time * 0.013, time * 0.008);
+  const wp = sanctuary.water.geometry.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < wp.count; i++) {
+    const x = wp.getX(i);
+    const y = wp.getY(i);
+    wp.setZ(i, Math.sin(x * 0.9 + time * 0.9) * 0.02 + Math.sin(y * 1.3 - time * 0.7) * 0.015);
+  }
+  wp.needsUpdate = true;
+
+  for (const b of sanctuary.banners) {
+    const pos = b.mesh.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const bx = b.base[i * 3] as number;
+      const by = b.base[i * 3 + 1] as number;
+      const hang = clamp((2.1 - by) / 4.2, 0, 1);
+      pos.setXYZ(
+        i,
+        bx,
+        by,
+        Math.sin(by * 1.6 + time * 1.25 + b.phase) * 0.15 * hang + Math.sin(bx * 2.2 - time * 0.8) * 0.05 * hang,
+      );
+    }
+    pos.needsUpdate = true;
+  }
+
+  const dp = sanctuary.dust.geometry.attributes.position as THREE.BufferAttribute;
+  const seeds = sanctuary.dust.geometry.attributes.aSeed as THREE.BufferAttribute;
+  dustBase ??= new Float32Array(dp.array as Float32Array);
+  for (let i = 0; i < dp.count; i++) {
+    const s = seeds.getX(i);
+    dp.setXYZ(
+      i,
+      (dustBase[i * 3] as number) + Math.sin(time * 0.19 + s) * 0.85,
+      (dustBase[i * 3 + 1] as number) + ((time * 0.13 + s * 0.37) % 2.2) - 1.1,
+      (dustBase[i * 3 + 2] as number) + Math.cos(time * 0.15 + s * 1.7) * 0.85,
+    );
+  }
+  dp.needsUpdate = true;
+}
+
+// ---------------------------------------------------------------------------
+// the frame
+// ---------------------------------------------------------------------------
+
+let last = performance.now();
+let clockTime = 0;
+let titleAngle = 0.6;
+let fovCurrent = settings.fov;
+let frameInteraction: Interaction | null = null;
+
+function frame(now: number): void {
+  const raw = (now - last) / 1000;
+  last = now;
+  const dt = Math.min(raw, 0.1);
+  clockTime += dt;
+  if (phase !== "loading") governQuality(Math.min(raw, 1.5));
+
+  if (phase === "loading") {
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  frameInteraction = null;
+  const menu = phase === "title" || phase === "ended";
+  lantern.group.visible = !menu;
+
+  if (menu) {
+    // A slow, steady dolly around the garth behind the menus.
+    titleAngle += dt * 0.04;
+    const r = 12.8;
+    camera.position.set(Math.sin(titleAngle) * r, 3.2 + Math.sin(titleAngle * 0.7) * 0.45, Math.cos(titleAngle) * r);
+    camera.lookAt(0, 1.4, 0);
+  }
+
+  const running = phase === "playing" || phase === "ending";
+
+  if (phase === "playing") {
+    const [dx, dy] = input.consumeMouse();
+    if (input.locked || input.dragging) player.look(dx, dy, look, dt);
+
+    const forward = (input.down("KeyW", "ArrowUp") ? 1 : 0) - (input.down("KeyS", "ArrowDown") ? 1 : 0);
+    const strafe = (input.down("KeyD", "ArrowRight") ? 1 : 0) - (input.down("KeyA", "ArrowLeft") ? 1 : 0);
+    const hurry = input.down("ShiftLeft", "ShiftRight");
+    const attuning = input.down("KeyQ") && lantern.oil > 0.01;
+    const warding = input.down("KeyF") && lantern.oil > 0.02;
+
+    if (attuning && run.attune < 0.05) audio.play("attune", 0.3);
+    if (warding && run.ward < 0.05) audio.play("ward", 0.4);
+    run.attune += ((attuning ? 1 : 0) - run.attune) * (1 - Math.exp(-dt * 8));
+    run.ward += ((warding ? 1 : 0) - run.ward) * (1 - Math.exp(-dt * 7));
+
+    const slow = 1 - run.attune * 0.45 - run.ward * 0.25;
+    player.update(dt, { forward, strafe, hurry }, collision, Math.max(0.3, slow));
+
+    lantern.oil = clamp(
+      lantern.oil - dt * (LANTERN_BURN + run.attune * ATTUNE_DRAIN + run.ward * WARD_DRAIN),
+      0,
+      1,
+    );
+    if (lantern.oil < 0.2 && !run.lowOilWarned) {
+      run.lowOilWarned = true;
+      hud.toast("The lantern is guttering — refill it at a burning lamp.", "warn");
+    }
+
+    // --- interaction ------------------------------------------------------
+    const interaction = findInteraction() as Interaction | null;
+    frameInteraction = interaction;
+    const holding = input.down("KeyE");
+    if (interaction && holding && interaction.ready) {
+      if (run.holdTarget !== interaction.id) {
+        run.holdTarget = interaction.id;
+        run.hold = 0;
+      }
+      run.hold += dt / interaction.duration;
+      if (interaction.id === "vigil") brazier.progress = clamp(run.hold, 0, 1);
+      if (run.hold >= 1) {
+        if (interaction.id === "vigil") {
+          brazier.progress = 1;
+          endRun(true);
+        } else {
+          interaction.act();
+        }
+        run.hold = 0;
+        run.holdTarget = null;
+      }
+    } else if (run.holdTarget === "vigil" && run.hold > 0) {
+      // Let go of the vigil and the brazier sinks back — it has to be held.
+      run.hold = Math.max(0, run.hold - dt * 0.45);
+      brazier.progress = clamp(run.hold, 0, 1);
+      if (run.hold <= 0) run.holdTarget = null;
+    } else {
+      if (interaction && holding && !interaction.ready && run.holdTarget !== "denied") {
+        run.holdTarget = "denied";
+        audio.play("deny", 0.3);
+      }
+      run.hold = Math.max(0, run.hold - dt * 3);
+      if (run.hold <= 0 && run.holdTarget !== "denied") run.holdTarget = null;
+      if (!holding && run.holdTarget === "denied") run.holdTarget = null;
+    }
+
+    // --- discovery --------------------------------------------------------
+    for (const f of flasks) {
+      if (f.taken || f.discovered) continue;
+      if (
+        f.position.distanceTo(player.position) < 17 &&
+        Math.abs(f.position.y - player.position.y) < 3.2 &&
+        collision.segmentClear(player.eyePosition, f.position, player.eyeY - 0.7)
+      ) {
+        f.discovered = true;
+      }
+    }
+
+    if (player.position.y < -14) {
+      player.reset(sanctuary.spawn, sanctuary.spawnYaw);
+      hud.toast("You find yourself back at the south walk.", "cold");
+    }
+
+    run.elapsed += dt;
+  }
+
+  // --- ghost + threat ------------------------------------------------------
+  const zones = safeZones();
+  const safeness = safety(player.position, zones);
+  const inSafe = safeness > 0.02;
+
+  if (running) {
+    const gd = Math.hypot(
+      ghost.position.x - player.position.x,
+      ghost.position.z - player.position.z,
+      (ghost.position.y - player.position.y) * 1.4,
+    );
+    run.closest = Math.min(run.closest, gd);
+
+    if (phase === "playing") {
+      const prox = clamp((34 - gd) / 34, 0, 1);
+      const gain = inSafe ? -0.7 : (player.state.hurrying ? 0.5 : 0.2) * prox + 0.02;
+      run.awareness = clamp(run.awareness + dt * gain, 0, 1.4);
+      ghost.update(dt, clockTime, player.position, inSafe, zones, run.ward, run.awareness > 0.5);
+
+      let rate: number;
+      if (inSafe) rate = -0.42 - safeness * 0.3;
+      else if (gd < 1.8) rate = 0.95;
+      else if (gd < 11) rate = Math.pow((11 - gd) / 11, 1.5) * 0.38;
+      else rate = -0.1;
+      run.dread = clamp(run.dread + rate * dt, 0, 1);
+      run.peakDread = Math.max(run.peakDread, run.dread);
+      if (run.dread >= 1) endRun(false);
+    } else {
+      run.endTimer += dt;
+      if (run.won) {
+        run.banish = clamp(run.endTimer / 2.6, 0, 1);
+        ghost.setBanished(run.banish);
+        brazier.progress = 1;
+      } else {
+        ghost.position.lerp(
+          tmpVec.set(player.position.x, player.position.y, player.position.z),
+          1 - Math.exp(-dt * 3),
+        );
+        ghost.group.position.set(ghost.position.x, ghost.position.y + 0.1, ghost.position.z);
+        ghost.setOpacity(0.9);
+        run.dread = 1;
+      }
+      run.fade = clamp((run.endTimer - 1.5) / 1.3, 0, 1);
+      if (run.endTimer > 2.95) {
+        showEndScreen();
+        run.fade = 0;
+      }
+    }
+  }
+
+  // --- entity animation ----------------------------------------------------
+  for (const l of lamps) l.update(dt, clockTime);
+  brazier.update(dt, clockTime);
+  for (const f of flasks) f.update(dt, clockTime);
+  lantern.update(dt, clockTime, player.state.stepPhase, player.state.moving, run.ward);
+  animateWorld(clockTime);
+  updateLightBudget();
+
+  // Cold trail — readable only while attuned.
+  {
+    const mat = traceCloud.material as THREE.PointsMaterial;
+    mat.opacity = run.attune * 0.7;
+    if (run.attune > 0.01) {
+      const pos = traceCloud.geometry.attributes.position as THREE.BufferAttribute;
+      const n = Math.min(pos.count, ghost.traces.length);
+      for (let i = 0; i < pos.count; i++) {
+        if (i < n) {
+          const t = ghost.traces[ghost.traces.length - 1 - i]!;
+          pos.setXYZ(i, t.position.x, t.position.y + 0.35, t.position.z);
+        } else {
+          pos.setXYZ(i, 0, -999, 0);
+        }
+      }
+      pos.needsUpdate = true;
+    }
+  }
+
+  // --- camera --------------------------------------------------------------
+  if (!menu) {
+    player.applyTo(camera);
+    // Gentle FOV widening while hurrying: a first-order filter with no overshoot
+    // and no positional component. The view itself never shakes.
+    const targetFov = look.fov + (player.state.hurrying ? 2.5 : 0);
+    fovCurrent += (targetFov - fovCurrent) * (1 - Math.exp(-dt * 3.5));
+  } else {
+    fovCurrent += (look.fov - fovCurrent) * (1 - Math.exp(-dt * 3.5));
+  }
+  if (Math.abs(camera.fov - fovCurrent) > 0.01) {
+    camera.fov = fovCurrent;
+    camera.updateProjectionMatrix();
+  }
+  moon.target.position.set(camera.position.x, 0, camera.position.z);
+  moon.position.set(camera.position.x + 26, 62, camera.position.z - 24);
+
+  // --- audio ---------------------------------------------------------------
+  if (audio.initialised && running) {
+    const gd = ghost.position.distanceTo(player.position);
+    audio.loopAt(
+      "ghost",
+      "ghost",
+      ghost.group,
+      clamp(0.5 - gd * 0.011, 0.04, 0.5) * (0.55 + ghost.wrath * 0.75),
+      9,
+    );
+    if (player.state.moving && phase === "playing") {
+      const s = Math.floor(player.state.stepPhase * 2);
+      if (s !== run.lastStep) {
+        run.lastStep = s;
+        audio.play(`step${(s & 3) as 0}` as "step0", player.state.hurrying ? 0.3 : 0.19, 0.9 + Math.random() * 0.2);
+      }
+    }
+    run.heartTimer -= dt;
+    if (run.dread > 0.18 && run.heartTimer <= 0) {
+      run.heartTimer = 1.35 - run.dread * 0.72;
+      audio.play("heart", 0.18 + run.dread * 0.42);
+    }
+  }
+
+  // --- hud -----------------------------------------------------------------
+  let chill = 0;
+  if (running || phase === "paused") {
+    const marks: CompassMark[] = [];
+    const eye = player.eyePosition;
+    for (const l of lamps) {
+      marks.push({
+        bearing: bearingTo(eye, l.position),
+        glyph: l.lit ? "✦" : "✧",
+        label: l.name.replace(" Lamp", ""),
+        color: l.lit ? "#ffc06a" : "#8a8272",
+        distance: l.position.distanceTo(player.position),
+        faded: !l.lit,
+      });
+    }
+    for (const f of flasks) {
+      if (f.taken || !f.discovered) continue;
+      marks.push({
+        bearing: bearingTo(eye, f.position),
+        glyph: "◆",
+        label: "Oil",
+        color: "#d8a15e",
+        distance: f.position.distanceTo(player.position),
+        faded: true,
+      });
+    }
+    if (run.lampsLit >= LAMP_COUNT) {
+      marks.push({
+        bearing: bearingTo(eye, brazier.position),
+        glyph: "❖",
+        label: "Brazier",
+        color: "#ffdf9c",
+        distance: brazier.position.distanceTo(player.position),
+      });
+    }
+    if (run.attune > 0.3) {
+      marks.push({
+        bearing: bearingTo(eye, ghost.position),
+        glyph: "◈",
+        label: "Cold",
+        color: "#9fe6f6",
+        distance: ghost.position.distanceTo(player.position),
+      });
+    }
+    marks.sort((a, b) => a.distance - b.distance);
+
+    const interaction = phase === "playing" ? frameInteraction : null;
+    const gd = ghost.position.distanceTo(player.position);
+    chill = clamp((13 - gd) / 13, 0, 1) * (inSafe ? 0.25 : 1) * 0.8;
+
+    let objective: string;
+    let kicker = "Objective";
+    if (run.lampsLit >= LAMP_COUNT) {
+      kicker = "Final Vigil";
+      objective =
+        brazier.progress > 0.01 ? "Hold the flame — do not let go." : "Reach the vigil brazier at the heart of the garth.";
+    } else if (run.carried > 0) {
+      objective = `Kindle a dark lamp — ${LAMP_COUNT - run.lampsLit} remain.`;
+    } else {
+      objective = "Find a flask of lamp oil.";
+    }
+
+    hud.update(
+      {
+        objective,
+        objectiveKicker: kicker,
+        lampsLit: lamps.map((l) => l.lit),
+        flasks: run.carried,
+        oil: lantern.oil,
+        stamina: player.state.stamina,
+        dread: run.dread,
+        chill,
+        promptName: interaction ? interaction.name : null,
+        promptAction: interaction ? interaction.action : "",
+        promptKey: interaction ? interaction.key : "E",
+        hold: run.hold,
+        yaw: player.yaw,
+        marks: settings.markers ? marks.slice(0, 8) : [],
+        attuned: run.attune > 0.3,
+      },
+      now,
+    );
+  }
+
+  if (grade) {
+    grade.uniforms.uDread!.value = running || phase === "paused" ? run.dread : 0;
+    grade.uniforms.uChill!.value = chill * 0.8;
+    grade.uniforms.uFade!.value = running ? run.fade : 0;
+    grade.uniforms.uTime!.value = clockTime;
+  }
+
+  renderer.info.reset();
+  if (composer && (currentSpec.ao || currentSpec.bloom || currentSpec.grade)) composer.render(dt);
+  else renderer.render(scene, camera);
+
+  // Small read-only diagnostic hook, handy when profiling on a real device.
+  (window as unknown as { vigilStats: unknown }).vigilStats = {
+    tier,
+    fps: Math.round(1 / Math.max(raw, 1e-3)),
+    calls: renderer.info.render.calls,
+    triangles: renderer.info.render.triangles,
+  };
+
+  requestAnimationFrame(frame);
+}
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer?.setSize(innerWidth, innerHeight);
+});
+
+canvas.addEventListener("click", () => {
+  if (phase === "playing" && !input.locked) input.requestLock();
+});
+
+requestAnimationFrame(frame);
+void boot();

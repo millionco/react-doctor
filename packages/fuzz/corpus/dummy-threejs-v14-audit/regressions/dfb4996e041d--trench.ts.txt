@@ -1,0 +1,306 @@
+// rule: js-cache-property-access
+// file-path: src/world/trench.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit dfb4996e041dd50b5c888e2c12f0cee2bdc367e5b22ee9a5530b75bdec6016cb
+import * as THREE from "three";
+import { clamp, clamp01, mix, smoothstep } from "../core/noise";
+import { cutaway, strataMaterial, CUT_MAX } from "../gfx/materials";
+import type { Terrain } from "./terrain";
+import { applyTunnelHoles } from "./tunnels";
+
+const STEP = 7.5;
+const MAX_HIST = 11;
+const RINGS = 44;
+/** Profile samples around the trench cross-section. */
+const WALL_SAMPLES = 9;
+const FLOOR_SAMPLES = 12;
+const PROFILE = 1 + WALL_SAMPLES + FLOOR_SAMPLES + WALL_SAMPLES + 1;
+
+/** Vertical span the strata texture covers, in world units. */
+const STRATA_TOP = 30;
+const STRATA_RANGE = 58;
+
+export interface PathPoint {
+  p: THREE.Vector3;
+  r: number;
+}
+
+/**
+ * The burrow path is the spine of the whole underground presentation: it drives
+ * the terrain carve in the shader, the strata shell geometry, and the "am I in
+ * open tunnel" gameplay query.
+ */
+export class BurrowPath {
+  private hist: THREE.Vector3[] = [];
+  /** Live point list: history + head + a short bore-ahead taper. */
+  readonly live: PathPoint[] = [];
+
+  constructor() {
+    for (let i = 0; i < CUT_MAX; i++) this.live.push({ p: new THREE.Vector3(), r: 0 });
+    this.count = 0;
+  }
+
+  count: number;
+
+  reset(head: THREE.Vector3): void {
+    this.hist.length = 0;
+    this.hist.push(head.clone());
+    this.count = 0;
+  }
+
+  private radiusFor(depth: number): number {
+    if (depth <= 0.6) return 0;
+    return smoothstep(0.6, 5.5, depth) * (4.2 + smoothstep(4, 22, depth) * 8.2);
+  }
+
+  update(head: THREE.Vector3, dir: THREE.Vector3, terrain: Terrain, strength: number): void {
+    if (this.hist.length === 0) this.hist.push(head.clone());
+    const last = this.hist[this.hist.length - 1] as THREE.Vector3;
+    if (head.distanceTo(last) > STEP) {
+      this.hist.push(head.clone());
+      if (this.hist.length > MAX_HIST) this.hist.shift();
+    }
+
+    let n = 0;
+    const write = (x: number, y: number, z: number, r: number): void => {
+      if (n >= CUT_MAX) return;
+      const slot = this.live[n] as PathPoint;
+      slot.p.set(x, y, z);
+      slot.r = r;
+      n++;
+    };
+
+    const total = this.hist.length;
+    for (let i = 0; i < total; i++) {
+      const p = this.hist[i] as THREE.Vector3;
+      const depth = terrain.heightAt(p.x, p.z) - p.y;
+      let r = this.radiusFor(depth) * strength;
+      // Close the trench off behind the camera so it reads as collapsing soil.
+      if (i === 0) r *= 0.18;
+      else if (i === 1) r *= 0.62;
+      write(p.x, p.y, p.z, r);
+    }
+    {
+      const depth = terrain.heightAt(head.x, head.z) - head.y;
+      write(head.x, head.y, head.z, this.radiusFor(depth) * strength);
+    }
+    // Bore-ahead: a short taper in front of the maw so the player can see the
+    // soil face they are about to chew through without the view being blocked.
+    const ahead = [
+      { d: 5.5, k: 0.86 },
+      { d: 11, k: 0.5 },
+      { d: 16, k: 0.14 },
+    ];
+    for (const a of ahead) {
+      const x = head.x + dir.x * a.d;
+      const y = head.y + dir.y * a.d;
+      const z = head.z + dir.z * a.d;
+      const depth = terrain.heightAt(x, z) - y;
+      write(x, y, z, this.radiusFor(depth) * strength * a.k);
+    }
+    this.count = n;
+  }
+
+  /** Push the current path into the shared cutaway uniforms. */
+  writeUniforms(camPos: THREE.Vector3, camRadius: number): void {
+    const u = cutaway();
+    for (let i = 0; i < CUT_MAX; i++) {
+      const v = u.uCut.value[i] as THREE.Vector4;
+      if (i < this.count) {
+        const s = this.live[i] as PathPoint;
+        v.set(s.p.x, s.p.y, s.p.z, s.r);
+      } else {
+        v.set(0, -9999, 0, 0);
+      }
+    }
+    u.uCutCount.value = this.count;
+    u.uCamCut.value.set(camPos.x, camPos.y, camPos.z, camRadius);
+  }
+}
+
+/**
+ * Geometry for the carved shaft itself: two strata walls that run from the
+ * underside of the crust down to a rounded bore floor, with an inward lip at
+ * the top that hides the seam against the terrain's discarded edge.
+ */
+export class Trench {
+  readonly mesh: THREE.Mesh;
+  private readonly pos: THREE.BufferAttribute;
+  private readonly nor: THREE.BufferAttribute;
+  private readonly uv: THREE.BufferAttribute;
+  private readonly col: THREE.BufferAttribute;
+  private readonly curve = new THREE.CatmullRomCurve3([new THREE.Vector3()], false, "catmullrom", 0.4);
+  private readonly tmpP = new THREE.Vector3();
+  private readonly tmpT = new THREE.Vector3();
+  private readonly perp = new THREE.Vector3();
+  private readonly up = new THREE.Vector3(0, 1, 0);
+
+  constructor() {
+    const count = RINGS * PROFILE;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+    geo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(count * 2), 2));
+    geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+    const idx = new Uint32Array((RINGS - 1) * (PROFILE - 1) * 6);
+    let o = 0;
+    for (let r = 0; r < RINGS - 1; r++) {
+      for (let p = 0; p < PROFILE - 1; p++) {
+        const a = r * PROFILE + p;
+        const b = a + 1;
+        const c = a + PROFILE;
+        const d = c + 1;
+        idx[o++] = a;
+        idx[o++] = b;
+        idx[o++] = c;
+        idx[o++] = b;
+        idx[o++] = d;
+        idx[o++] = c;
+      }
+    }
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
+
+    this.pos = geo.getAttribute("position") as THREE.BufferAttribute;
+    this.nor = geo.getAttribute("normal") as THREE.BufferAttribute;
+    this.uv = geo.getAttribute("uv") as THREE.BufferAttribute;
+    this.col = geo.getAttribute("color") as THREE.BufferAttribute;
+    this.pos.setUsage(THREE.DynamicDrawUsage);
+    this.nor.setUsage(THREE.DynamicDrawUsage);
+    this.col.setUsage(THREE.DynamicDrawUsage);
+
+    const mat = strataMaterial();
+    // Old bores break through the wall of the fresh cut.
+    applyTunnelHoles(mat);
+    this.mesh = new THREE.Mesh(geo, mat);
+    this.mesh.frustumCulled = false;
+    this.mesh.receiveShadow = false;
+    this.mesh.castShadow = false;
+    this.mesh.renderOrder = -1;
+    this.mesh.name = "trench";
+  }
+
+  get material(): THREE.MeshStandardMaterial {
+    return this.mesh.material as THREE.MeshStandardMaterial;
+  }
+
+  update(path: BurrowPath, terrain: Terrain): void {
+    const n = path.count;
+    if (n < 2) {
+      this.mesh.visible = false;
+      return;
+    }
+    let maxR = 0;
+    for (let i = 0; i < n; i++) maxR = Math.max(maxR, (path.live[i] as PathPoint).r);
+    if (maxR < 0.4) {
+      this.mesh.visible = false;
+      return;
+    }
+    this.mesh.visible = true;
+
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i < n; i++) pts.push((path.live[i] as PathPoint).p);
+    this.curve.points = pts;
+    this.curve.updateArcLengths();
+
+    const pa = this.pos.array as Float32Array;
+    const na = this.nor.array as Float32Array;
+    const ua = this.uv.array as Float32Array;
+    const ca = this.col.array as Float32Array;
+
+    let along = 0;
+    let prevX = 0;
+    let prevZ = 0;
+
+    for (let ri = 0; ri < RINGS; ri++) {
+      const t = ri / (RINGS - 1);
+      this.curve.getPointAt(t, this.tmpP);
+      this.curve.getTangentAt(t, this.tmpT);
+
+      // Radius interpolated along the same parameter space as the point list.
+      const f = t * (n - 1);
+      const i0 = clamp(Math.floor(f), 0, n - 1);
+      const i1 = clamp(i0 + 1, 0, n - 1);
+      const ft = f - i0;
+      const R = mix((path.live[i0] as PathPoint).r, (path.live[i1] as PathPoint).r, ft) + 0.4;
+
+      if (ri === 0) {
+        prevX = this.tmpP.x;
+        prevZ = this.tmpP.z;
+      }
+      along += Math.hypot(this.tmpP.x - prevX, this.tmpP.z - prevZ);
+      prevX = this.tmpP.x;
+      prevZ = this.tmpP.z;
+
+      this.perp.copy(this.tmpT).cross(this.up);
+      if (this.perp.lengthSq() < 1e-5) this.perp.set(1, 0, 0);
+      this.perp.normalize();
+
+      const px = this.tmpP.x;
+      const py = this.tmpP.y;
+      const pz = this.tmpP.z;
+      const hL = terrain.heightAt(px - this.perp.x * R, pz - this.perp.z * R);
+      const hR = terrain.heightAt(px + this.perp.x * R, pz + this.perp.z * R);
+      const base = ri * PROFILE;
+      let k = 0;
+
+      const put = (
+        u: number,
+        y: number,
+        nu: number,
+        ny: number,
+        skyDist: number,
+      ): void => {
+        const vi = (base + k) * 3;
+        pa[vi] = px + this.perp.x * u;
+        pa[vi + 1] = y;
+        pa[vi + 2] = pz + this.perp.z * u;
+        const nx = this.perp.x * nu;
+        const nz = this.perp.z * nu;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        na[vi] = nx / len;
+        na[vi + 1] = ny / len;
+        na[vi + 2] = nz / len;
+        ua[(base + k) * 2] = along * 0.075 + u * 0.03;
+        ua[(base + k) * 2 + 1] = (STRATA_TOP - y) / STRATA_RANGE;
+        // Baked occlusion: light spills in from the open top of the shaft only.
+        const sky = mix(0.52, 1.2, smoothstep(26, 0.5, skyDist));
+        const crease = mix(0.78, 1.05, clamp01(Math.abs(u) / Math.max(R, 0.001)));
+        const shade = sky * crease;
+        ca[vi] = shade;
+        ca[vi + 1] = shade;
+        ca[vi + 2] = shade;
+        k++;
+      };
+
+      // Inner lip (left) — hides the ragged terrain cut edge from below.
+      put(-(R - 2.1), hL - 0.06, 0, -1, 0.0);
+      // Left wall, top to floor level, denser sampling near the bottom.
+      for (let i = 0; i < WALL_SAMPLES; i++) {
+        const s = (i / (WALL_SAMPLES - 1)) ** 1.35;
+        const y = mix(hL, py, s);
+        put(-R, y, 1, 0, hL - y);
+      }
+      // Rounded bore floor.
+      for (let i = 0; i < FLOOR_SAMPLES; i++) {
+        const a = Math.PI + (Math.PI * i) / (FLOOR_SAMPLES - 1);
+        const u = Math.cos(a) * R;
+        const y = py + Math.sin(a) * R;
+        put(u, y, -Math.cos(a), -Math.sin(a), Math.max(hL, hR) - y);
+      }
+      // Right wall, floor back up to the crust.
+      for (let i = 0; i < WALL_SAMPLES; i++) {
+        const s = 1 - (1 - i / (WALL_SAMPLES - 1)) ** 1.35;
+        const y = mix(py, hR, s);
+        put(R, y, -1, 0, hR - y);
+      }
+      put(R - 2.1, hR - 0.06, 0, -1, 0.0);
+    }
+
+    this.pos.needsUpdate = true;
+    this.nor.needsUpdate = true;
+    this.uv.needsUpdate = true;
+    this.col.needsUpdate = true;
+  }
+}

@@ -1,0 +1,711 @@
+// rule: dangerous-html-sink
+// file-path: src/ui/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit 828dfe6f25b004585e9b0cff2a8074895ca9d78e4a8dfe6e1f87c3a96a83f35f
+/**
+ * The reading console. Plain DOM over the canvas.
+ *
+ * Each control group states what evidence it produces, because the point of the
+ * exercise is that the four things you can do here are not interchangeable:
+ * filtering changes what the display can show, depth changes what the data
+ * contains, selection retrieves the build sheet and the panel record, and
+ * comparison shows what a single layer cannot.
+ */
+
+import {
+  DATASET,
+  DECOYS,
+  LAYERS,
+  LAYER_IDS,
+  MODULES,
+  PANEL_BY_TARGET,
+  PANEL_SIZE,
+  REFERENCE_FEATURES,
+  TARGET_BY_ID,
+  type LayerId,
+} from "../data/phantom";
+import { NZ } from "../sim/volume";
+import { SLAB_OPTIONS, type ReadingState } from "../app/state";
+import { ROUNDS, explain, targetsFor, type ExerciseSession, type Round, type RoundResult } from "../app/exercise";
+
+export interface HudHooks {
+  onChange(): void;
+  onSubmit(): void;
+  onNext(): void;
+  onRetry(): void;
+  onUndo(): void;
+  onClearMarks(): void;
+  onUsePanelWindow(targetId: string): void;
+  onFocusTarget(targetId: string): void;
+  onResetView(): void;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+function section(title: string, subtitle?: string): { root: HTMLElement; body: HTMLElement } {
+  const root = el("section", "panel-section");
+  const h = el("header", "sec-head");
+  h.appendChild(el("h2", undefined, title));
+  root.appendChild(h);
+  if (subtitle) root.appendChild(el("p", "evidence", subtitle));
+  const body = el("div", "sec-body");
+  root.appendChild(body);
+  return { root, body };
+}
+
+export class Hud {
+  readonly root = el("div", "hud");
+  private readonly state: ReadingState;
+  private readonly session: ExerciseSession;
+  private readonly hooks: HudHooks;
+
+  private readonly refs: Record<string, HTMLElement> = {};
+  private readonly inputs: Record<string, HTMLInputElement> = {};
+  private readonly layerButtons: Partial<Record<LayerId, HTMLButtonElement>> = {};
+  private readonly layerBButtons: Partial<Record<LayerId, HTMLButtonElement>> = {};
+  private readonly slabButtons: HTMLButtonElement[] = [];
+  private readonly modeButtons: HTMLButtonElement[] = [];
+
+  constructor(state: ReadingState, session: ExerciseSession, hooks: HudHooks, buildMs: number, noise: Record<LayerId, number>) {
+    this.state = state;
+    this.session = session;
+    this.hooks = hooks;
+
+    this.root.appendChild(this.buildBanner());
+    this.root.appendChild(this.buildLeft(buildMs, noise));
+    this.root.appendChild(this.buildRight());
+    this.root.appendChild(this.buildProbe());
+    document.body.appendChild(this.root);
+    this.refresh();
+  }
+
+  // -------------------------------------------------------------------------
+  // chrome
+  // -------------------------------------------------------------------------
+
+  private buildBanner(): HTMLElement {
+    const b = el("div", "banner");
+    const t = el("div", "brand");
+    t.appendChild(el("span", "brand-main", "SCAN READER"));
+    t.appendChild(el("span", "brand-sub", "layered phantom reading trainer"));
+    b.appendChild(t);
+    const note = el("div", "nondx");
+    note.innerHTML =
+      "<strong>Educational · non-diagnostic.</strong> A synthetic manufactured test object. " +
+      "No patient data, no anatomy, no disease. Nothing here is a clinical decision or supports one.";
+    b.appendChild(note);
+    return b;
+  }
+
+  private buildProbe(): HTMLElement {
+    const p = el("div", "probe");
+    p.innerHTML = `<div class="probe-empty">Hover the slab to sample the registered stack.</div>`;
+    this.refs.probe = p;
+    return p;
+  }
+
+  // -------------------------------------------------------------------------
+  // left column — the reading controls
+  // -------------------------------------------------------------------------
+
+  private buildLeft(buildMs: number, noise: Record<LayerId, number>): HTMLElement {
+    const col = el("div", "col col-left");
+
+    // --- dataset ------------------------------------------------------------
+    {
+      const { root, body } = section("Dataset");
+      const q = el("div", "question");
+      q.innerHTML =
+        `<span class="qmark">Q</span> For each embedded target, <em>which acquisition layer, display window and slab ` +
+        `thickness make it detectable</em> — and where does my reading agree or disagree with the seven-reader panel?`;
+      body.appendChild(q);
+
+      const dl = el("dl", "kv");
+      const rows: [string, string][] = [
+        ["Object", `${DATASET.id} — ${DATASET.title}`],
+        ["Geometry", `${DATASET.fovMm} mm field · ${DATASET.sliceCount} slices @ ${DATASET.sliceThicknessMm} mm · grid ${DATASET.gridInPlane}²`],
+        ["Targets", `18 in 4 modules, plus 4 fixed reference features`],
+        ["Panel", `${PANEL_SIZE} readers, per-layer detection counts`],
+        ["Synthesis", `mulberry32(0x${DATASET.seed.toString(16)}) · built in ${buildMs.toFixed(0)} ms · reproducible`],
+        ["Provenance", DATASET.license],
+      ];
+      for (const [k, v] of rows) {
+        dl.appendChild(el("dt", undefined, k));
+        dl.appendChild(el("dd", undefined, v));
+      }
+      body.appendChild(dl);
+
+      const det = el("details", "more");
+      det.appendChild(el("summary", undefined, "Modules and fixed reference structure"));
+      for (const m of Object.values(MODULES)) {
+        const d = el("div", "mod");
+        d.innerHTML = `<b>Module ${m.id} · ${m.name}</b> <span class="dim">z ${m.zRangeMm[0]}–${m.zRangeMm[1]} mm</span><br>${m.blurb}`;
+        det.appendChild(d);
+      }
+      for (const f of REFERENCE_FEATURES) {
+        const d = el("div", "mod ref");
+        d.innerHTML = `<b>${f.label}</b><br>${f.detail}`;
+        det.appendChild(d);
+      }
+      body.appendChild(det);
+      col.appendChild(root);
+    }
+
+    // --- layers -------------------------------------------------------------
+    {
+      const { root, body } = section(
+        "Layer",
+        "EVIDENCE · which physical quantity was measured. Registered to the same frame, so a voxel means the same place in all three.",
+      );
+      const row = el("div", "seg");
+      for (const id of LAYER_IDS) {
+        const b = el("button", "seg-btn", LAYERS[id].short);
+        b.onclick = () => {
+          this.state.layerA = id;
+          const w = LAYERS[id].window;
+          this.state.level = w.level;
+          this.state.width = w.width;
+          this.commit();
+        };
+        this.layerButtons[id] = b;
+        row.appendChild(b);
+      }
+      body.appendChild(row);
+      const desc = el("p", "layer-note");
+      this.refs.layerNote = desc;
+      body.appendChild(desc);
+
+      const cmp = el("label", "check");
+      const cb = el("input");
+      cb.type = "checkbox";
+      cb.onchange = () => {
+        this.state.compare = cb.checked;
+        this.commit();
+      };
+      this.inputs.compare = cb;
+      cmp.appendChild(cb);
+      cmp.appendChild(el("span", undefined, "Compare two stacks side by side"));
+      body.appendChild(cmp);
+
+      const rowB = el("div", "seg seg-b");
+      for (const id of LAYER_IDS) {
+        const b = el("button", "seg-btn", LAYERS[id].short);
+        b.onclick = () => {
+          this.state.layerB = id;
+          this.commit();
+        };
+        this.layerBButtons[id] = b;
+        rowB.appendChild(b);
+      }
+      body.appendChild(rowB);
+      body.appendChild(
+        el(
+          "p",
+          "evidence",
+          "EVIDENCE · comparison. Both stacks share one depth cursor and one window, so a difference between them is a difference in the measurement, not in how you set the console.",
+        ),
+      );
+
+      const nz = el("div", "noise-row");
+      for (const id of LAYER_IDS) {
+        const c = el("div", "noise-chip");
+        c.innerHTML = `<b>${LAYERS[id].short}</b><span>σ ${noise[id].toFixed(1)} aU</span><span>PSF ${LAYERS[id].psfInPlaneMm} mm</span>`;
+        nz.appendChild(c);
+      }
+      body.appendChild(nz);
+      col.appendChild(root);
+    }
+
+    // --- window -------------------------------------------------------------
+    {
+      const { root, body } = section(
+        "Display window",
+        "EVIDENCE · what the screen can show. Changes nothing in the data. A target that appears when you narrow the window was always there.",
+      );
+      body.appendChild(this.slider("level", "Level", -20, 260, 1, "aU"));
+      body.appendChild(this.slider("width", "Width", 20, 400, 1, "aU"));
+      const presets = el("div", "chips");
+      const mk = (label: string, level: number, width: number) => {
+        const b = el("button", "chip", label);
+        b.onclick = () => {
+          this.state.level = level;
+          this.state.width = width;
+          this.commit();
+        };
+        presets.appendChild(b);
+      };
+      mk("Default", 110, 190);
+      mk("Narrow", 105, 110);
+      mk("Very narrow", 102, 55);
+      mk("Wide", 130, 320);
+      this.refs.presets = presets;
+      body.appendChild(presets);
+
+      const cw = el("label", "check");
+      const cwi = el("input");
+      cwi.type = "checkbox";
+      cwi.onchange = () => {
+        this.state.clipWarn = cwi.checked;
+        this.commit();
+      };
+      this.inputs.clipWarn = cwi;
+      cw.appendChild(cwi);
+      cw.appendChild(el("span", undefined, "Flag clipped pixels (amber over, blue under)"));
+      body.appendChild(cw);
+      col.appendChild(root);
+    }
+
+    // --- depth --------------------------------------------------------------
+    {
+      const { root, body } = section(
+        "Depth",
+        "EVIDENCE · what the data contains. Averaging slices trades noise for through-plane blur; a thin target dilutes, a low-contrast one emerges.",
+      );
+      body.appendChild(this.slider("slice", "Slab centre", 0, NZ - 1, 1, "slice"));
+
+      const slabRow = el("div", "seg");
+      for (const n of SLAB_OPTIONS) {
+        const b = el("button", "seg-btn", String(n));
+        b.onclick = () => {
+          this.state.slabSlices = n;
+          this.commit();
+        };
+        this.slabButtons.push(b);
+        slabRow.appendChild(b);
+      }
+      body.appendChild(this.labelled("Slab thickness (slices)", slabRow));
+
+      const modeRow = el("div", "seg");
+      for (const m of ["mean", "mip"] as const) {
+        const b = el("button", "seg-btn", m === "mean" ? "MEAN" : "MAXIMUM");
+        b.onclick = () => {
+          this.state.mode = m;
+          this.commit();
+        };
+        this.modeButtons.push(b);
+        modeRow.appendChild(b);
+      }
+      body.appendChild(this.labelled("Slab projection", modeRow));
+      body.appendChild(
+        el("p", "evidence", "MEAN suppresses noise and dilutes thin targets. MAXIMUM keeps the brightest voxel in the slab and throws depth away."),
+      );
+
+      body.appendChild(this.slider("context", "Surrounding slices", 0, 1, 0.01, ""));
+      body.appendChild(this.slider("relief", "Intensity relief", 0, 0.12, 0.001, "world"));
+      body.appendChild(
+        this.check("reliefNormals", "Shade the relief (normals from intensity)", (v) => (this.state.reliefNormals = v)),
+      );
+      body.appendChild(
+        el(
+          "p",
+          "evidence",
+          "Relief lifts the reading surface by the displayed value, so a low-contrast target becomes a shape you can see edge-on. " +
+            "Turn the shading off to check a call against the flat grey image alone.",
+        ),
+      );
+      col.appendChild(root);
+    }
+
+    // --- annotations --------------------------------------------------------
+    {
+      const { root, body } = section(
+        "Annotation layers",
+        "EVIDENCE · other people's readings and the build sheet. Filters here hide marks, never data.",
+      );
+      body.appendChild(this.check("showPanel", "Panel consensus rings (teeth = readers of 7)", (v) => (this.state.showPanel = v)));
+      body.appendChild(this.check("showTruth", "Build-sheet truth cores (size = real diameter)", (v) => (this.state.showTruth = v)));
+      body.appendChild(this.check("showDecoys", `Panel false positives (${DECOYS.length})`, (v) => (this.state.showDecoys = v)));
+      body.appendChild(this.check("showReader", "My marks", (v) => (this.state.showReader = v)));
+      body.appendChild(this.check("depthGate", "Fade marks outside the current slab", (v) => (this.state.depthGate = v)));
+      body.appendChild(this.slider("minDia", "Min diameter", 0, 14, 0.5, "mm"));
+      body.appendChild(this.slider("minAgree", "Min panel agreement in current layer", 0, 7, 1, "/7"));
+      body.appendChild(
+        el("p", "evidence", "Raising the agreement filter to 4 leaves only what a majority of the panel saw in the layer you are reading — a different set in each layer."),
+      );
+      const rv = el("button", "btn ghost", "Reset view");
+      rv.onclick = () => this.hooks.onResetView();
+      body.appendChild(rv);
+      col.appendChild(root);
+    }
+
+    return col;
+  }
+
+  // -------------------------------------------------------------------------
+  // right column — the exercise
+  // -------------------------------------------------------------------------
+
+  private buildRight(): HTMLElement {
+    const col = el("div", "col col-right");
+
+    const { root, body } = section("Interpretation exercise");
+    const head = el("div", "round-head");
+    this.refs.roundHead = head;
+    body.appendChild(head);
+
+    const brief = el("p", "brief");
+    this.refs.brief = brief;
+    body.appendChild(brief);
+
+    const constraints = el("div", "chips lock");
+    this.refs.constraints = constraints;
+    body.appendChild(constraints);
+
+    const marks = el("div", "marks");
+    this.refs.marks = marks;
+    body.appendChild(marks);
+
+    const actions = el("div", "actions");
+    const undo = el("button", "btn ghost", "Undo mark");
+    undo.onclick = () => this.hooks.onUndo();
+    const clear = el("button", "btn ghost", "Clear");
+    clear.onclick = () => this.hooks.onClearMarks();
+    const submit = el("button", "btn primary", "Submit reading");
+    submit.onclick = () => this.hooks.onSubmit();
+    actions.append(undo, clear, submit);
+    this.refs.actions = actions;
+    body.appendChild(actions);
+
+    const results = el("div", "results");
+    this.refs.results = results;
+    body.appendChild(results);
+
+    col.appendChild(root);
+
+    const hist = section("Rounds so far");
+    this.refs.history = hist.body;
+    col.appendChild(hist.root);
+
+    const sel = section("Selection");
+    this.refs.selection = sel.body;
+    sel.body.appendChild(el("p", "dim", "Click a consensus ring, a truth core or one of your own marks."));
+    col.appendChild(sel.root);
+
+    return col;
+  }
+
+  // -------------------------------------------------------------------------
+  // small control builders
+  // -------------------------------------------------------------------------
+
+  private labelled(label: string, node: HTMLElement): HTMLElement {
+    const w = el("div", "field");
+    w.appendChild(el("label", undefined, label));
+    w.appendChild(node);
+    return w;
+  }
+
+  private check(key: string, label: string, set: (v: boolean) => void): HTMLElement {
+    const l = el("label", "check");
+    const i = el("input");
+    i.type = "checkbox";
+    i.onchange = () => {
+      set(i.checked);
+      this.commit();
+    };
+    this.inputs[key] = i;
+    l.appendChild(i);
+    l.appendChild(el("span", undefined, label));
+    return l;
+  }
+
+  private slider(key: string, label: string, min: number, max: number, step: number, unit: string): HTMLElement {
+    const w = el("div", "field");
+    const head = el("div", "field-head");
+    head.appendChild(el("label", undefined, label));
+    const val = el("span", "val");
+    head.appendChild(val);
+    w.appendChild(head);
+    const i = el("input");
+    i.type = "range";
+    i.min = String(min);
+    i.max = String(max);
+    i.step = String(step);
+    i.oninput = () => {
+      const v = Number(i.value);
+      switch (key) {
+        case "level": this.state.level = v; break;
+        case "width": this.state.width = v; break;
+        case "slice": this.state.sliceCenter = v; break;
+        case "context": this.state.contextOpacity = v; break;
+        case "relief": this.state.relief = v; break;
+        case "minDia": this.state.minDiameterMm = v; break;
+        case "minAgree": this.state.minPanelAgreement = v; break;
+      }
+      this.commit();
+    };
+    this.inputs[key] = i;
+    this.refs[`${key}Val`] = val;
+    w.appendChild(i);
+    w.dataset.unit = unit;
+    return w;
+  }
+
+  private commit(): void {
+    this.hooks.onChange();
+    this.refresh();
+  }
+
+  // -------------------------------------------------------------------------
+  // refresh
+  // -------------------------------------------------------------------------
+
+  refresh(): void {
+    const s = this.state;
+    for (const id of LAYER_IDS) {
+      this.layerButtons[id]?.classList.toggle("on", s.layerA === id);
+      this.layerBButtons[id]?.classList.toggle("on", s.layerB === id);
+    }
+    this.refs.layerNote!.textContent = LAYERS[s.layerA].note;
+    this.inputs.compare!.checked = s.compare;
+    this.root.querySelector(".seg-b")?.classList.toggle("disabled", !s.compare);
+
+    const setSlider = (key: string, v: number, fmt: (x: number) => string) => {
+      const i = this.inputs[key];
+      if (i && document.activeElement !== i) i.value = String(v);
+      const r = this.refs[`${key}Val`];
+      if (r) r.textContent = fmt(v);
+    };
+    setSlider("level", s.level, (v) => `${v.toFixed(0)} aU`);
+    setSlider("width", s.width, (v) => `${v.toFixed(0)} aU`);
+    setSlider("slice", s.sliceCenter, (v) => `${v} · z ${((v + 0.5) * DATASET.sliceThicknessMm).toFixed(1)} mm`);
+    setSlider("context", s.contextOpacity, (v) => `${Math.round(v * 100)}%`);
+    setSlider("relief", s.relief, (v) => (v < 0.0005 ? "off" : `${(v * 100).toFixed(1)}`));
+    setSlider("minDia", s.minDiameterMm, (v) => `${v.toFixed(1)} mm`);
+    setSlider("minAgree", s.minPanelAgreement, (v) => `${v}/7`);
+
+    this.inputs.clipWarn!.checked = s.clipWarn;
+    this.inputs.showPanel!.checked = s.showPanel;
+    this.inputs.showTruth!.checked = s.showTruth;
+    this.inputs.showDecoys!.checked = s.showDecoys;
+    this.inputs.showReader!.checked = s.showReader;
+    this.inputs.depthGate!.checked = s.depthGate;
+    this.inputs.reliefNormals!.checked = s.reliefNormals;
+
+    SLAB_OPTIONS.forEach((n, i) => this.slabButtons[i]?.classList.toggle("on", s.slabSlices === n));
+    this.modeButtons[0]?.classList.toggle("on", s.mode === "mean");
+    this.modeButtons[1]?.classList.toggle("on", s.mode === "mip");
+
+    this.refreshExercise();
+    this.refreshHistory();
+  }
+
+  private refreshExercise(): void {
+    const r = this.session.round;
+    const done = this.session.submitted;
+    const mod = MODULES[r.module];
+
+    this.refs.roundHead!.innerHTML =
+      `<span class="round-n">Round ${r.index + 1} / ${ROUNDS.length}</span>` +
+      `<span class="round-mod">Module ${r.module} · ${mod.name}</span>` +
+      `<span class="round-z">z ${mod.zRangeMm[0]}–${mod.zRangeMm[1]} mm</span>`;
+    this.refs.brief!.textContent = r.brief;
+
+    const c = this.refs.constraints!;
+    c.replaceChildren();
+    const chip = (t: string, on: boolean) => {
+      const b = el("span", `chip static${on ? " locked" : ""}`, t);
+      c.appendChild(b);
+    };
+    const reviewing = done !== null;
+    chip(
+      r.layer === "free" || reviewing ? "layer: your choice" : `layer: ${LAYERS[r.layer].short} (locked)`,
+      r.layer !== "free" && !reviewing,
+    );
+    chip(r.lockWindow && !reviewing ? `window ${r.preset.level}/${r.preset.width} (locked)` : "window: yours", r.lockWindow && !reviewing);
+    chip(r.lockSlab && !reviewing ? `slab ${r.preset.slabSlices} slice (locked)` : "slab: yours", r.lockSlab && !reviewing);
+    chip(reviewing ? "reviewing — every control is yours now" : `isolates ${r.isolates}`, false);
+
+    const m = this.refs.marks!;
+    m.replaceChildren();
+    if (!done) {
+      const n = this.session.marks.length;
+      const targets = targetsFor(r.module).length;
+      const h = el("div", "marks-head", `${n} mark${n === 1 ? "" : "s"} placed · ${targets} targets in this module`);
+      m.appendChild(h);
+      const list = el("ul", "mark-list");
+      for (const mk of this.session.marks) {
+        const li = el("li", undefined, `(${mk.xMm.toFixed(0)}, ${mk.yMm.toFixed(0)}) mm · slice ${mk.slice} · ${LAYERS[mk.layer].short}`);
+        list.appendChild(li);
+      }
+      m.appendChild(list);
+      m.appendChild(el("p", "dim", "Click the slab surface to drop a mark at that point and depth. Shift-click a mark to remove it."));
+    }
+    this.refs.actions!.style.display = done ? "none" : "";
+
+    const res = this.refs.results!;
+    res.replaceChildren();
+    if (done) res.appendChild(this.renderResult(done));
+  }
+
+  private renderResult(r: RoundResult): HTMLElement {
+    const w = el("div", "result");
+    const score = el("div", "score");
+    score.innerHTML =
+      `<div><b>${r.hits}</b><span>of ${r.total} found</span></div>` +
+      `<div><b>${r.falsePositives.length}</b><span>extra marks</span></div>` +
+      `<div><b>${r.agreement}</b><span>of ${r.total} agree with panel</span></div>` +
+      `<div><b>${r.panelHits}</b><span>panel majority found</span></div>`;
+    w.appendChild(score);
+
+    const tbl = el("table", "verdicts");
+    const thead = el("thead");
+    thead.innerHTML = `<tr><th>Target</th><th>Ø</th><th>Contrast</th><th>You</th><th>Panel</th></tr>`;
+    tbl.appendChild(thead);
+    const tb = el("tbody");
+    for (const v of r.verdicts) {
+      const tr = el("tr", v.agreesWithPanel ? "" : "diverge");
+      const c = v.target.contrast[r.layerRead];
+      tr.innerHTML =
+        `<td><button class="linkish" data-t="${v.target.id}">${v.target.id}</button></td>` +
+        `<td>${v.target.diameterMm} mm</td>` +
+        `<td>${c > 0 ? "+" : ""}${c} aU</td>` +
+        `<td class="${v.found ? "yes" : "no"}">${v.found ? "marked" : "—"}</td>` +
+        `<td class="${v.panelMajority ? "yes" : "no"}">${v.panelCount}/7</td>`;
+      tb.appendChild(tr);
+    }
+    tbl.appendChild(tb);
+    w.appendChild(tbl);
+    tbl.querySelectorAll<HTMLButtonElement>("button.linkish").forEach((b) => {
+      b.onclick = () => this.hooks.onFocusTarget(b.dataset.t!);
+    });
+
+    const notes = el("ul", "explain");
+    for (const line of explain(r)) notes.appendChild(el("li", undefined, line));
+    w.appendChild(notes);
+
+    const act = el("div", "actions");
+    const retry = el("button", "btn ghost", "Read again");
+    retry.onclick = () => this.hooks.onRetry();
+    const next = el("button", "btn primary", "Next round");
+    next.onclick = () => this.hooks.onNext();
+    act.append(retry, next);
+    w.appendChild(act);
+    return w;
+  }
+
+  private refreshHistory(): void {
+    const h = this.refs.history!;
+    h.replaceChildren();
+    if (this.session.history.length === 0) {
+      h.appendChild(el("p", "dim", "Submit a round to start the record. Rounds 2 and 3 read the same five targets — the difference between those two scores is the whole point."));
+      return;
+    }
+    const list = el("div", "hist");
+    for (const r of this.session.history) {
+      const row = el("div", "hist-row");
+      const bar = el("div", "bar");
+      const fill = el("div", "fill");
+      fill.style.width = `${(r.hits / Math.max(1, r.total)) * 100}%`;
+      bar.appendChild(fill);
+      row.innerHTML =
+        `<span class="hr-n">R${r.round.index + 1}</span>` +
+        `<span class="hr-m">${r.round.module}</span>` +
+        `<span class="hr-l">${LAYERS[r.layerRead].short}</span>` +
+        `<span class="hr-w">${r.windowUsed.level}/${r.windowUsed.width} · ${r.slabUsed}sl</span>` +
+        `<span class="hr-s">${r.hits}/${r.total}${r.falsePositives.length ? ` +${r.falsePositives.length}fp` : ""}</span>`;
+      row.appendChild(bar);
+      list.appendChild(row);
+    }
+    h.appendChild(list);
+  }
+
+  // -------------------------------------------------------------------------
+  // live read-outs driven by the scene
+  // -------------------------------------------------------------------------
+
+  /**
+   * A round locks whichever controls it is holding still. The lock is shown, not
+   * hidden — the point of round 2 is that you can see the window you are not
+   * allowed to touch yet.
+   */
+  setLocks(round: Round, submitted: boolean): void {
+    const lockWindow = round.lockWindow && !submitted;
+    const lockSlab = round.lockSlab && !submitted;
+    const lockLayer = round.layer !== "free" && !submitted;
+
+    this.inputs.level!.disabled = lockWindow;
+    this.inputs.width!.disabled = lockWindow;
+    this.refs.presets!.classList.toggle("disabled", lockWindow);
+    for (const b of this.slabButtons) b.disabled = lockSlab;
+    for (const b of this.modeButtons) b.disabled = lockSlab;
+    for (const id of LAYER_IDS) {
+      const b = this.layerButtons[id];
+      if (b) b.disabled = lockLayer && id !== round.layer;
+    }
+  }
+
+  setProbe(html: string | null): void {
+    const p = this.refs.probe!;
+    p.innerHTML = html ?? `<div class="probe-empty">Hover the slab to sample the registered stack.</div>`;
+  }
+
+  setSelection(kind: "target" | "decoy" | "reader" | null, id: string | null): void {
+    const box = this.refs.selection!;
+    box.replaceChildren();
+    if (!kind || !id) {
+      box.appendChild(el("p", "dim", "Click a consensus ring, a truth core or one of your own marks."));
+      return;
+    }
+    if (kind === "target") {
+      const t = TARGET_BY_ID.get(id);
+      const p = PANEL_BY_TARGET.get(id);
+      if (!t || !p) return;
+      const head = el("div", "sel-head");
+      head.innerHTML = `<b>${t.id}</b> <span class="dim">module ${t.module} · ${MODULES[t.module].name}</span>`;
+      box.appendChild(head);
+      const dl = el("dl", "kv");
+      const rows: [string, string][] = [
+        ["Build sheet", `${t.shape}, Ø ${t.diameterMm} mm, ${t.thicknessMm} mm thick, at (${t.x.toFixed(0)}, ${t.y.toFixed(0)}, ${t.z}) mm`],
+        ["Contrast", LAYER_IDS.map((l) => `${LAYERS[l].short} ${t.contrast[l] > 0 ? "+" : ""}${t.contrast[l]}`).join("  ·  ")],
+        ["Panel detection", LAYER_IDS.map((l) => `${LAYERS[l].short} ${p.detected[l]}/7`).join("  ·  ")],
+        ["Panel settings", `${LAYERS[p.bestLayer].short} · level ${p.window.level} / width ${p.window.width} · ${p.slabSlices}-slice slab`],
+        ["Panel note", p.note],
+        ["Why it is here", t.teaches],
+      ];
+      for (const [k, v] of rows) {
+        dl.appendChild(el("dt", undefined, k));
+        dl.appendChild(el("dd", undefined, v));
+      }
+      box.appendChild(dl);
+      const b = el("button", "btn ghost", "Adopt the panel's settings");
+      b.onclick = () => this.hooks.onUsePanelWindow(id);
+      box.appendChild(b);
+    } else if (kind === "decoy") {
+      const d = DECOYS.find((x) => x.id === id);
+      if (!d) return;
+      const head = el("div", "sel-head");
+      head.innerHTML = `<b>${d.id}</b> <span class="dim">panel false positive</span>`;
+      box.appendChild(head);
+      const dl = el("dl", "kv");
+      dl.appendChild(el("dt", undefined, "Location"));
+      dl.appendChild(el("dd", undefined, `(${d.x}, ${d.y}, ${d.z}) mm · read in ${LAYERS[d.layer].short}`));
+      dl.appendChild(el("dt", undefined, "Marked by"));
+      dl.appendChild(el("dd", undefined, `${d.markedBy} of ${PANEL_SIZE} readers`));
+      dl.appendChild(el("dt", undefined, "Build sheet"));
+      dl.appendChild(el("dd", undefined, "Nothing at this location."));
+      dl.appendChild(el("dt", undefined, "Panel note"));
+      dl.appendChild(el("dd", undefined, d.note));
+      box.appendChild(dl);
+    } else {
+      const m = this.session.marks.find((x) => String(x.id) === id);
+      if (!m) return;
+      const head = el("div", "sel-head");
+      head.innerHTML = `<b>My mark #${m.id}</b>`;
+      box.appendChild(head);
+      const dl = el("dl", "kv");
+      dl.appendChild(el("dt", undefined, "Placed at"));
+      dl.appendChild(el("dd", undefined, `(${m.xMm.toFixed(1)}, ${m.yMm.toFixed(1)}) mm · slice ${m.slice} · z ${m.zMm.toFixed(1)} mm`));
+      dl.appendChild(el("dt", undefined, "While reading"));
+      dl.appendChild(el("dd", undefined, LAYERS[m.layer].name));
+      box.appendChild(dl);
+      box.appendChild(el("p", "dim", "Shift-click a mark in the scene to remove it."));
+    }
+  }
+}

@@ -1,0 +1,519 @@
+// rule: dangerous-html-sink
+// file-path: src/game/hud.ts
+// audit-verdict: pass
+// weakness: dummy-threejs-exact-callsite
+// source: Dummy 3D 207-project v9-to-v14 audit bfa396524248c18da18d029b25eb07f1e754a2575544e51e86faba4bd7b0f67f
+import { formatTime, type Progress } from "../core/save";
+import { NOTES, STAGES, type NoteDef } from "./story";
+
+/**
+ * All interface chrome. The HUD always shows the active objective and every
+ * limited resource (lamp charge, sprint wind, flares, notes recovered) plus the
+ * run clock and the time to beat — a speedrun needs all of that visible at once.
+ */
+
+const h = <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+  html?: string,
+): HTMLElementTagNameMap[K] => {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (html !== undefined) el.innerHTML = html;
+  return el;
+};
+
+export type Medal = "gold" | "silver" | "bronze" | "none";
+
+export function medalFor(time: number, stageIndex: number): Medal {
+  const m = STAGES[stageIndex];
+  if (!m) return "none";
+  if (time <= m.par) return "gold";
+  if (time <= m.silver) return "silver";
+  if (time <= m.bronze) return "bronze";
+  return "none";
+}
+
+export interface HudCallbacks {
+  onStart: () => void;
+  onSelectStage: (index: number) => void;
+  onResume: () => void;
+  onRetry: () => void;
+  onNext: () => void;
+  onMenu: () => void;
+  onCloseNote: () => void;
+  onToggleSound: () => void;
+}
+
+export class Hud {
+  readonly root = h("div");
+  private hud = h("div", "hud");
+  private objectiveText = h("div", "text");
+  private clockNow = h("div", "now mono", "00:00.00");
+  private clockBest = h("div", "row");
+  private clockTarget = h("div", "row");
+  private batteryBar = h("i");
+  private batteryVal = h("div", "res-val");
+  private batteryWrap = h("div", "bar");
+  private staminaBar = h("i");
+  private staminaVal = h("div", "res-val");
+  private staminaWrap = h("div", "bar stam");
+  private flarePips: HTMLElement[] = [];
+  private notePips: HTMLElement[] = [];
+  private noteVal = h("div", "res-val");
+  private noiseBar = h("i");
+  private noiseWrap = h("div", "bar noise");
+  private prompt = h("div", "hud-prompt");
+  private hint = h("div", "hud-hint");
+  private toast = h("div", "hud-toast");
+  private danger = h("div", "hud-danger");
+  private toastTimer = 0;
+
+  private screens = new Map<string, HTMLElement>();
+  private noteTitle = h("h1", "note-title");
+  private noteHand = h("div", "note-hand");
+  private noteBody = h("div", "note-body");
+  private stageList = h("div", "stage-list");
+  private resultInner = h("div", "inner");
+  private endingInner = h("div", "inner");
+  private loadingBar = h("i");
+  private loading = h("div", "loading");
+  private soundBtn: HTMLButtonElement;
+
+  constructor(private cb: HudCallbacks) {
+    this.root.id = "ui";
+
+    // ---- HUD
+    const obj = h("div", "hud-objective");
+    obj.appendChild(h("div", "label", "Objective"));
+    obj.appendChild(this.objectiveText);
+    this.hud.appendChild(obj);
+
+    const clock = h("div", "hud-clock");
+    clock.appendChild(this.clockNow);
+    clock.appendChild(this.clockTarget);
+    clock.appendChild(this.clockBest);
+    this.hud.appendChild(clock);
+
+    const res = h("div", "hud-res");
+    res.appendChild(this.resRow("Lamp", this.batteryWrap, this.batteryBar, this.batteryVal));
+    res.appendChild(this.resRow("Wind", this.staminaWrap, this.staminaBar, this.staminaVal));
+
+    const flareRow = h("div", "res-row");
+    flareRow.appendChild(h("div", "res-name", "Flares"));
+    const pips = h("div", "pips");
+    for (let i = 0; i < 5; i++) {
+      const p = h("div", "pip");
+      pips.appendChild(p);
+      this.flarePips.push(p);
+    }
+    flareRow.appendChild(pips);
+    res.appendChild(flareRow);
+
+    const noteRow = h("div", "res-row");
+    noteRow.appendChild(h("div", "res-name", "Notes"));
+    const npips = h("div", "notes-row");
+    for (let i = 0; i < 4; i++) {
+      const p = h("div", "note-pip");
+      npips.appendChild(p);
+      this.notePips.push(p);
+    }
+    noteRow.appendChild(npips);
+    noteRow.appendChild(this.noteVal);
+    res.appendChild(noteRow);
+    res.appendChild(this.resRow("Noise", this.noiseWrap, this.noiseBar, h("div", "res-val")));
+    this.hud.appendChild(res);
+
+    this.hud.appendChild(this.prompt);
+    this.hud.appendChild(this.hint);
+    this.hud.appendChild(this.toast);
+    this.hud.appendChild(this.danger);
+    this.root.appendChild(this.hud);
+
+    // ---- screens
+    this.soundBtn = this.button("Sound: on", () => this.cb.onToggleSound());
+    this.buildTitle();
+    this.buildNote();
+    this.buildPause();
+    this.buildResult();
+    this.buildEnding();
+    this.buildCaught();
+
+    this.loading.appendChild(h("div", "lbl", "Hollowmere — developing surfaces"));
+    const track = h("div", "track");
+    track.appendChild(this.loadingBar);
+    this.loading.appendChild(track);
+    this.root.appendChild(this.loading);
+
+    document.body.appendChild(this.root);
+  }
+
+  private resRow(name: string, wrap: HTMLElement, bar: HTMLElement, val: HTMLElement): HTMLElement {
+    const row = h("div", "res-row");
+    row.appendChild(h("div", "res-name", name));
+    wrap.appendChild(bar);
+    row.appendChild(wrap);
+    row.appendChild(val);
+    return row;
+  }
+
+  private button(label: string, onClick: () => void, primary = false): HTMLButtonElement {
+    const b = h("button", `ln${primary ? " primary" : ""}`, label);
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    return b;
+  }
+
+  private screen(id: string): HTMLElement {
+    const s = h("div", "screen");
+    const inner = h("div", "inner");
+    s.appendChild(inner);
+    this.screens.set(id, s);
+    this.root.appendChild(s);
+    return inner;
+  }
+
+  // ---- screen construction
+
+  private buildTitle(): void {
+    const inner = this.screen("title");
+    inner.appendChild(h("h1", "title-main", "Last Note"));
+    inner.appendChild(h("div", "title-sub", "Hollowmere &middot; nine nights &middot; one tone"));
+    inner.appendChild(
+      h(
+        "div",
+        "blurb",
+        "Nine days ago the composer <em>Ada Kest</em> went out to Hollowmere chapel to record the sound the building makes when the wind drops. She did not come back.<br><br>You are <em>Wren Vale</em>, field recordist. You have a lamp, a handful of flares, and the tape machine she gave you.<br><br>Something in that chapel has no eyes. It navigates entirely by sound — and so every step you take is a decision.",
+      ),
+    );
+    inner.appendChild(h("h2", "sec", "Stages"));
+    inner.appendChild(this.stageList);
+
+    const row = h("div", "btnrow");
+    row.appendChild(this.button("Begin the walk", () => this.cb.onStart(), true));
+    row.appendChild(this.soundBtn);
+    inner.appendChild(row);
+
+    inner.appendChild(h("h2", "sec", "Controls — you will be taught these in play"));
+    const grid = h("div", "controls-grid");
+    grid.innerHTML = [
+      "<div><b>W A S D</b> move</div>",
+      "<div><b>Mouse</b> look</div>",
+      "<div><b>Shift</b> run (loud)</div>",
+      "<div><b>Space</b> vault</div>",
+      "<div><b>F</b> lamp</div>",
+      "<div><b>E</b> take / use</div>",
+      "<div><b>Q</b> drop flare</div>",
+      "<div><b>C</b> recentre camera</div>",
+      "<div><b>R</b> restart stage</div>",
+      "<div><b>Esc</b> pause</div>",
+    ].join("");
+    inner.appendChild(grid);
+    const corner = h("div", "corner-note", "Click the world to capture the mouse");
+    (this.screens.get("title") as HTMLElement).appendChild(corner);
+  }
+
+  private buildNote(): void {
+    const inner = this.screen("note");
+    const card = h("div", "note-card");
+    card.appendChild(this.noteTitle);
+    card.appendChild(this.noteHand);
+    card.appendChild(this.noteBody);
+    card.appendChild(h("div", "note-foot", "The clock is paused while you read &nbsp;·&nbsp; [E] or [Esc] to pocket it"));
+    inner.appendChild(card);
+    const row = h("div", "btnrow");
+    row.style.justifyContent = "center";
+    row.style.marginTop = "18px";
+    row.appendChild(this.button("Pocket it", () => this.cb.onCloseNote(), true));
+    inner.appendChild(row);
+  }
+
+  private buildPause(): void {
+    const inner = this.screen("pause");
+    inner.appendChild(h("h1", "title-main", "Paused"));
+    inner.appendChild(h("div", "title-sub", "the building is still cold"));
+    const row = h("div", "btnrow");
+    row.appendChild(this.button("Resume", () => this.cb.onResume(), true));
+    row.appendChild(this.button("Restart stage", () => this.cb.onRetry()));
+    row.appendChild(this.button("Leave to menu", () => this.cb.onMenu()));
+    inner.appendChild(row);
+    inner.appendChild(h("h2", "sec", "Controls"));
+    const grid = h("div", "controls-grid");
+    grid.innerHTML = [
+      "<div><b>W A S D</b> move</div>",
+      "<div><b>Mouse</b> look</div>",
+      "<div><b>Shift</b> run (loud)</div>",
+      "<div><b>Space</b> vault</div>",
+      "<div><b>F</b> lamp</div>",
+      "<div><b>E</b> take / use</div>",
+      "<div><b>Q</b> drop flare</div>",
+      "<div><b>C</b> recentre camera</div>",
+      "<div><b>R</b> restart stage</div>",
+    ].join("");
+    inner.appendChild(grid);
+  }
+
+  private buildResult(): void {
+    const s = h("div", "screen");
+    s.appendChild(this.resultInner);
+    this.screens.set("result", s);
+    this.root.appendChild(s);
+  }
+
+  private buildEnding(): void {
+    const s = h("div", "screen");
+    s.appendChild(this.endingInner);
+    this.screens.set("ending", s);
+    this.root.appendChild(s);
+  }
+
+  private buildCaught(): void {
+    const inner = this.screen("caught");
+    inner.appendChild(h("h1", "title-main", "It found you"));
+    inner.appendChild(h("div", "title-sub", "you made a sound"));
+    inner.appendChild(
+      h("div", "blurb", "Gravel is quiet. Grass is loud. Running is loudest. A burning flare is louder than all of it — and that is the point of a flare."),
+    );
+    const row = h("div", "btnrow");
+    row.appendChild(this.button("Try again", () => this.cb.onRetry(), true));
+    row.appendChild(this.button("Leave to menu", () => this.cb.onMenu()));
+    inner.appendChild(row);
+  }
+
+  // ---- public API
+
+  setLoading(progress: number, label?: string): void {
+    this.loadingBar.style.width = `${Math.round(progress * 100)}%`;
+    if (label) (this.loading.firstChild as HTMLElement).textContent = label;
+    if (progress >= 1) {
+      this.loading.classList.add("off");
+      setTimeout(() => {
+        this.loading.style.display = "none";
+      }, 600);
+    }
+  }
+
+  show(id: string | null): void {
+    for (const [key, el] of this.screens) el.classList.toggle("on", key === id);
+  }
+
+  showHud(on: boolean): void {
+    this.hud.classList.toggle("on", on);
+  }
+
+  setSoundLabel(on: boolean): void {
+    this.soundBtn.textContent = `Sound: ${on ? "on" : "off"}`;
+  }
+
+  setObjective(text: string): void {
+    if (this.objectiveText.textContent !== text) this.objectiveText.textContent = text;
+  }
+
+  setClock(now: number, best: number | null, stageIndex: number): void {
+    this.clockNow.textContent = formatTime(now);
+    const meta = STAGES[stageIndex];
+    const par = meta ? meta.par : 0;
+    this.clockNow.classList.toggle("gold", now <= par);
+    this.clockNow.classList.toggle("over", meta ? now > meta.bronze : false);
+    this.clockTarget.textContent = `GOLD ${formatTime(par)}`;
+    this.clockBest.textContent = `BEST ${formatTime(best)}`;
+  }
+
+  setResources(battery: number, maxBattery: number, stamina: number, flares: number, notes: number, noteTotal: number): void {
+    const bp = Math.max(0, Math.min(1, battery / maxBattery));
+    this.batteryBar.style.width = `${bp * 100}%`;
+    this.batteryVal.textContent = `${Math.ceil(bp * 100)}%`;
+    this.batteryWrap.classList.toggle("low", bp < 0.22);
+
+    const sp = Math.max(0, Math.min(1, stamina / 100));
+    this.staminaBar.style.width = `${sp * 100}%`;
+    this.staminaVal.textContent = `${Math.ceil(sp * 100)}%`;
+    this.staminaWrap.classList.toggle("low", sp < 0.18);
+
+    for (let i = 0; i < this.flarePips.length; i++) {
+      (this.flarePips[i] as HTMLElement).classList.toggle("on", i < flares);
+    }
+    for (let i = 0; i < this.notePips.length; i++) {
+      const pip = this.notePips[i] as HTMLElement;
+      pip.style.display = i < noteTotal ? "" : "none";
+      pip.classList.toggle("on", i < notes);
+    }
+    this.noteVal.textContent = `${notes}/${noteTotal}`;
+  }
+
+  setNoise(level: number): void {
+    const v = Math.max(0, Math.min(1, level));
+    this.noiseBar.style.width = `${v * 100}%`;
+    this.noiseWrap.classList.toggle("low", v > 0.62);
+  }
+
+  setDanger(level: number): void {
+    this.danger.style.opacity = String(Math.max(0, Math.min(1, level)));
+  }
+
+  setPrompt(text: string | null): void {
+    if (text) {
+      this.prompt.innerHTML = text;
+      this.prompt.classList.add("on");
+    } else {
+      this.prompt.classList.remove("on");
+    }
+  }
+
+  setHint(text: string | null): void {
+    if (text) {
+      this.hint.innerHTML = text;
+      this.hint.classList.add("on");
+    } else {
+      this.hint.classList.remove("on");
+    }
+  }
+
+  showToast(text: string, seconds = 3.2): void {
+    this.toast.textContent = text;
+    this.toast.classList.add("on");
+    this.toastTimer = seconds;
+  }
+
+  tick(dt: number): void {
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toast.classList.remove("on");
+    }
+  }
+
+  openNote(note: NoteDef): void {
+    this.noteTitle.textContent = note.title;
+    this.noteHand.textContent = note.hand;
+    this.noteBody.textContent = note.body;
+    this.show("note");
+  }
+
+  refreshStageList(progress: Progress): void {
+    this.stageList.innerHTML = "";
+    STAGES.forEach((meta, i) => {
+      const rec = progress.stages[i];
+      const locked = i > progress.unlocked;
+      const card = h("div", `stage-card${locked ? " locked" : ""}`);
+      const left = h("div");
+      left.appendChild(h("div", "nm", meta.name));
+      left.appendChild(h("div", "sb", locked ? "Locked — finish the previous stage" : meta.subtitle));
+      card.appendChild(left);
+      const right = h("div", "tm");
+      right.innerHTML = `${formatTime(rec?.bestTime ?? null)}<small>best</small>`;
+      card.appendChild(right);
+      if (!locked) card.addEventListener("click", () => this.cb.onSelectStage(i));
+      this.stageList.appendChild(card);
+    });
+  }
+
+  showResult(opts: {
+    stageIndex: number;
+    time: number;
+    best: number | null;
+    isPB: boolean;
+    notes: number;
+    noteTotal: number;
+    totalNotes: number;
+    hasNext: boolean;
+  }): void {
+    const meta = STAGES[opts.stageIndex] as (typeof STAGES)[number];
+    const medal = medalFor(opts.time, opts.stageIndex);
+    this.resultInner.innerHTML = "";
+    this.resultInner.appendChild(h("div", "title-sub", `${meta.name} — cleared`));
+    this.resultInner.appendChild(h("h1", "title-main", formatTime(opts.time)));
+    this.resultInner.appendChild(
+      h(
+        "div",
+        `medal ${medal}`,
+        medal === "none" ? "no medal — under " + formatTime(meta.bronze) + " for bronze" : `${medal} run`,
+      ),
+    );
+    if (opts.isPB) {
+      const pb = h("span", "pb", "NEW BEST");
+      (this.resultInner.lastChild as HTMLElement).appendChild(pb);
+    }
+
+    const grid = h("div", "result-grid");
+    const cell = (k: string, v: string): HTMLElement => {
+      const c = h("div", "result-cell");
+      c.appendChild(h("div", "k", k));
+      c.appendChild(h("div", "v", v));
+      return c;
+    };
+    grid.appendChild(cell("Best", formatTime(opts.best)));
+    grid.appendChild(cell("Gold at", formatTime(meta.par)));
+    grid.appendChild(cell("Notes", `${opts.notes}/${opts.noteTotal}`));
+    this.resultInner.appendChild(grid);
+
+    this.resultInner.appendChild(
+      h(
+        "div",
+        "blurb",
+        `Ada's pages recovered so far: <em>${opts.totalNotes} of ${Object.keys(NOTES).length - 1}</em>. Replay a stage to cut the clock — the route is short once you know it.`,
+      ),
+    );
+
+    const row = h("div", "btnrow");
+    if (opts.hasNext) row.appendChild(this.button("Go deeper", () => this.cb.onNext(), true));
+    row.appendChild(this.button("Run it again", () => this.cb.onRetry(), !opts.hasNext));
+    row.appendChild(this.button("Menu", () => this.cb.onMenu()));
+    this.resultInner.appendChild(row);
+    this.show("result");
+  }
+
+  /** Reveals the ending one line at a time, then shows the final summary. */
+  showEnding(lines: string[], onDone: () => void): void {
+    this.endingInner.innerHTML = "";
+    const holder = h("div");
+    this.endingInner.appendChild(holder);
+    this.show("ending");
+    const els = lines.map((text) => {
+      const el = h("div", "ending-line", text || "&nbsp;");
+      holder.appendChild(el);
+      return el;
+    });
+    let i = 0;
+    const step = (): void => {
+      if (i >= els.length) {
+        setTimeout(onDone, 1400);
+        return;
+      }
+      (els[i] as HTMLElement).classList.add("on");
+      i++;
+      setTimeout(step, 1750);
+    };
+    setTimeout(step, 700);
+  }
+
+  showFinale(opts: { total: number; bestTotal: number | null; notes: number; noteTotal: number; onReplay: () => void; onMenu: () => void }): void {
+    this.endingInner.innerHTML = "";
+    this.endingInner.appendChild(h("div", "title-sub", "Hollowmere &middot; complete"));
+    this.endingInner.appendChild(h("h1", "title-main", "Last Note"));
+    const grid = h("div", "result-grid");
+    const cell = (k: string, v: string): HTMLElement => {
+      const c = h("div", "result-cell");
+      c.appendChild(h("div", "k", k));
+      c.appendChild(h("div", "v", v));
+      return c;
+    };
+    grid.appendChild(cell("Full run", formatTime(opts.total)));
+    grid.appendChild(cell("Best full run", formatTime(opts.bestTotal)));
+    grid.appendChild(cell("Ada's pages", `${opts.notes}/${opts.noteTotal}`));
+    this.endingInner.appendChild(grid);
+    this.endingInner.appendChild(
+      h(
+        "div",
+        "blurb",
+        "You can go back down. The route is shorter than you think, and Ada left more pages than you found.<br><br><em>“Good. Now go.”</em>",
+      ),
+    );
+    const row = h("div", "btnrow");
+    row.appendChild(this.button("Run it again", () => opts.onReplay(), true));
+    row.appendChild(this.button("Menu", () => opts.onMenu()));
+    this.endingInner.appendChild(row);
+    this.show("ending");
+  }
+}

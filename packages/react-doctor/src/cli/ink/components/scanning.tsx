@@ -1,8 +1,8 @@
 import { Box, Text } from "ink";
-import Spinner from "ink-spinner";
 import type { Diagnostic as LiveDiagnostic } from "@react-doctor/core/schemas";
 import { formatDiagnosticSite } from "../../utils/format-diagnostic-site.js";
 import { severityVariant } from "../lib/severity-variants.js";
+import { ScanningSpinner } from "./scanning-spinner.js";
 
 export interface ScanningProps {
   readonly progressText: string | null;
@@ -14,7 +14,7 @@ export const Scanning = ({ progressText, recent }: ScanningProps) => {
     <Box flexDirection="column">
       <Text wrap="truncate-end">
         <Text color="cyan">
-          <Spinner type="dots" />
+          <ScanningSpinner />
         </Text>
         <Text> {progressText ?? "Scanning…"}</Text>
       </Text>

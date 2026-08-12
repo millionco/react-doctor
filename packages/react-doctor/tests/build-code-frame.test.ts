@@ -32,6 +32,39 @@ describe("buildCodeFrame", () => {
     });
     expect(frame).not.toBeNull();
     expect(frame).toContain("eval(value)");
+    expect(frame).toContain("    |               ^");
+  });
+
+  it("renders a labeled multi-line range with bounded context", () => {
+    const filePath = writeFile(
+      "range.tsx",
+      ["const before = 1;", "const first = 2;", "const second = 3;", "const after = 4;"].join("\n"),
+    );
+    expect(
+      buildCodeFrame({
+        filePath,
+        line: 2,
+        column: 1,
+        endLine: 3,
+        message: "Repeated issue",
+        rootDirectory: temporaryDirectory,
+      }),
+    ).toBe(
+      [
+        "   Repeated issue",
+        "  1 | const before = 1;",
+        "> 2 | const first = 2;",
+        "> 3 | const second = 3;",
+        "  4 | const after = 4;",
+      ].join("\n"),
+    );
+  });
+
+  it("returns null when the location is past the end of the file", () => {
+    const filePath = writeFile("short.tsx", "const value = 1;\n");
+    expect(
+      buildCodeFrame({ filePath, line: 5, column: 1, rootDirectory: temporaryDirectory }),
+    ).toBeNull();
   });
 
   it("returns null when the offending line is too long to render usefully", () => {

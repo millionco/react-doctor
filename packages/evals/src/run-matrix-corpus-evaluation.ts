@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { Daytona, DaytonaNotFoundError, Image } from "@daytona/sdk";
-import pLimit from "p-limit";
 
 import { buildMatrixEvaluationPlan } from "./build-matrix-evaluation-plan.js";
 import type { MatrixEvaluationLane } from "./build-matrix-evaluation-plan.js";
@@ -37,6 +36,7 @@ import { runMatrixEvaluationAttempts } from "./run-matrix-evaluation-attempts.js
 import { abortWriters } from "./utils/abort-writers.js";
 import { assertMatrixBaseRecord } from "./utils/assert-matrix-base-record.js";
 import { createMatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
+import { createConcurrencyLimit } from "./utils/create-concurrency-limit.js";
 import type { MatrixBaseArtifactBinding } from "./utils/matrix-base-artifact-binding.js";
 import { deleteDaytonaSnapshotBeforeDeadline } from "./utils/delete-daytona-snapshot-before-deadline.js";
 import { getEvaluationAttemptDeadlineMilliseconds } from "./utils/get-evaluation-attempt-deadline-milliseconds.js";
@@ -266,7 +266,9 @@ export const runMatrixCorpusEvaluation = async (options: EvaluationOptions): Pro
         Math.min(options.concurrency, concurrency),
       ),
     ];
-    const limitSandboxCreation = pLimit(Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY));
+    const limitSandboxCreation = createConcurrencyLimit(
+      Math.min(options.concurrency, SANDBOX_CREATE_CONCURRENCY),
+    );
     const createSandbox = (sandboxName: string, deadlineMilliseconds: number) =>
       limitSandboxCreation(() =>
         daytona.create(

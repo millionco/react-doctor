@@ -49,7 +49,6 @@
     "@voidzero-dev/vite-plus-core": "^0.1.15",
     "commander": "^14.0.3",
     "cross-env": "^10.1.0",
-    "simple-statistics": "^7.9.3",
     "tsx": "^4.22.4",
     "turbo": "^2.9.7",
     "typescript": "^6.0.3",

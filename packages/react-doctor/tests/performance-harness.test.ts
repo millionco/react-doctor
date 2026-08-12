@@ -477,6 +477,12 @@ describe("performance harness", () => {
       maximum: 100,
       medianAbsoluteDeviation: 1,
     });
+    expect(summarizeDistribution([10, 2, 8, 4])).toEqual({
+      minimum: 2,
+      median: 6,
+      maximum: 10,
+      medianAbsoluteDeviation: 3,
+    });
   });
 
   it("validates reports and hashes diagnostics", () => {

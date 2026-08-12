@@ -2,6 +2,7 @@ import { ResolverFactory } from "oxc-resolver";
 import { dirname, resolve, join, basename, extname, sep, relative, isAbsolute } from "node:path";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import fg from "fast-glob";
+import ts from "typescript";
 import type { ProjectAnalysisConfig } from "../types.js";
 import {
   RESOLVER_EXTENSIONS,
@@ -199,6 +200,12 @@ interface BundlerAliasConfig {
   scopeDirectory: string;
   aliases: BundlerAlias[];
   moduleDirectories: string[];
+  moduleDirectoryNames: string[];
+}
+
+interface WebpackModuleDirectories {
+  moduleDirectories: string[];
+  moduleDirectoryNames: string[];
 }
 
 const WEBPACK_CONFIG_GLOBS = [
@@ -214,6 +221,8 @@ const VITE_CONFIG_GLOBS = [
   "**/vite.config.{js,ts,mjs,cjs,mts,cts}",
   "**/vitest.config.{js,ts,mjs,cjs,mts,cts}",
 ];
+
+const SVELTE_CONFIG_GLOBS = ["svelte.config.{js,ts,mjs,cjs,mts,cts}"];
 
 const BABEL_CONFIG_GLOBS = [
   "babel.config.{js,cjs,mjs,json}",
@@ -232,9 +241,6 @@ const ALIAS_ENTRY_PATTERN =
   /["']?([@\w$./-]+)["']?\s*:\s*(?:path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)|fileURLToPath\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\s*\)|["']([^"']+)["'])/g;
 const JEST_MODULE_NAME_MAPPER_BLOCK_PATTERN = /moduleNameMapper\s*:\s*\{([\s\S]*?)\}/g;
 const JEST_MODULE_NAME_MAPPER_ENTRY_PATTERN = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;
-const WEBPACK_MODULES_BLOCK_PATTERN = /modules\s*:\s*\[([\s\S]*?)\]/g;
-const WEBPACK_PATH_CALL_PATTERN =
-  /path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)/g;
 const STRING_LITERAL_PATTERN = /["']([^"']+)["']/g;
 
 const TSCONFIG_FILENAMES = [
@@ -421,29 +427,201 @@ const extractJestModuleNameMapperAliases = (
   return aliases;
 };
 
-const extractWebpackModuleDirectories = (content: string, configDirectory: string): string[] => {
+const extractWebpackModuleDirectories = (
+  content: string,
+  configDirectory: string,
+): WebpackModuleDirectories => {
   const moduleDirectories: string[] = [];
-  let modulesBlockMatch: RegExpExecArray | null;
-  WEBPACK_MODULES_BLOCK_PATTERN.lastIndex = 0;
-
-  while ((modulesBlockMatch = WEBPACK_MODULES_BLOCK_PATTERN.exec(content)) !== null) {
-    const modulesBlock = modulesBlockMatch[1];
-    let pathCallMatch: RegExpExecArray | null;
-    WEBPACK_PATH_CALL_PATTERN.lastIndex = 0;
-    while ((pathCallMatch = WEBPACK_PATH_CALL_PATTERN.exec(modulesBlock)) !== null) {
-      moduleDirectories.push(resolve(configDirectory, ...extractQuotedSegments(pathCallMatch[1])));
+  const moduleDirectoryNames: string[] = [];
+  const sourceFile = ts.createSourceFile(
+    "webpack.config.ts",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const variableInitializers = new Map<string, ts.Expression>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+        variableInitializers.set(declaration.name.text, declaration.initializer);
+      }
     }
-
-    let stringMatch: RegExpExecArray | null;
-    STRING_LITERAL_PATTERN.lastIndex = 0;
-    while ((stringMatch = STRING_LITERAL_PATTERN.exec(modulesBlock)) !== null) {
-      const moduleDirectory = stringMatch[1];
-      if (moduleDirectory === "node_modules") continue;
-      moduleDirectories.push(resolveConfigPathValue(moduleDirectory, configDirectory));
+  }
+  const unwrapExpression = (expression: ts.Expression): ts.Expression => {
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      return unwrapExpression(expression.expression);
+    }
+    return expression;
+  };
+  const resolveObjectExpression = (
+    expression: ts.Expression,
+    visitedIdentifiers = new Set<string>(),
+  ): ts.ObjectLiteralExpression | undefined => {
+    const unwrappedExpression = unwrapExpression(expression);
+    if (ts.isObjectLiteralExpression(unwrappedExpression)) return unwrappedExpression;
+    if (ts.isIdentifier(unwrappedExpression) && !visitedIdentifiers.has(unwrappedExpression.text)) {
+      const initializer = variableInitializers.get(unwrappedExpression.text);
+      if (!initializer) return undefined;
+      return resolveObjectExpression(
+        initializer,
+        new Set(visitedIdentifiers).add(unwrappedExpression.text),
+      );
+    }
+    return undefined;
+  };
+  const collectModules = (resolveObject: ts.ObjectLiteralExpression): void => {
+    for (const property of resolveObject.properties) {
+      if (!ts.isPropertyAssignment(property)) continue;
+      const propertyName =
+        ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+          ? property.name.text
+          : undefined;
+      if (propertyName !== "modules" && propertyName !== "modulesDirectories") continue;
+      if (!ts.isArrayLiteralExpression(property.initializer)) continue;
+      for (const element of property.initializer.elements) {
+        if (ts.isStringLiteral(element) || ts.isNoSubstitutionTemplateLiteral(element)) {
+          if (element.text === "node_modules") continue;
+          if (element.text.startsWith(".") || element.text.includes("/")) {
+            moduleDirectories.push(resolveConfigPathValue(element.text, configDirectory));
+          } else {
+            moduleDirectoryNames.push(element.text);
+          }
+          continue;
+        }
+        if (!ts.isCallExpression(element)) continue;
+        const calledExpression = element.expression;
+        if (
+          !ts.isPropertyAccessExpression(calledExpression) ||
+          !ts.isIdentifier(calledExpression.expression) ||
+          calledExpression.expression.text !== "path" ||
+          (calledExpression.name.text !== "resolve" && calledExpression.name.text !== "join")
+        ) {
+          continue;
+        }
+        const pathSegments = element.arguments
+          .slice(1)
+          .flatMap((argument) =>
+            ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)
+              ? [argument.text]
+              : [],
+          );
+        if (pathSegments.length > 0) {
+          moduleDirectories.push(resolve(configDirectory, ...pathSegments));
+        }
+      }
+    }
+  };
+  const collectConfigExpression = (
+    expression: ts.Expression,
+    visitedIdentifiers = new Set<string>(),
+  ): void => {
+    const unwrappedExpression = unwrapExpression(expression);
+    if (
+      ts.isBinaryExpression(unwrappedExpression) &&
+      unwrappedExpression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
+      collectConfigExpression(unwrappedExpression.right, visitedIdentifiers);
+      return;
+    }
+    if (ts.isIdentifier(unwrappedExpression)) {
+      if (visitedIdentifiers.has(unwrappedExpression.text)) return;
+      const initializer = variableInitializers.get(unwrappedExpression.text);
+      if (!initializer) return;
+      collectConfigExpression(
+        initializer,
+        new Set(visitedIdentifiers).add(unwrappedExpression.text),
+      );
+      return;
+    }
+    if (ts.isArrayLiteralExpression(unwrappedExpression)) {
+      for (const element of unwrappedExpression.elements) {
+        if (ts.isSpreadElement(element)) {
+          collectConfigExpression(element.expression, visitedIdentifiers);
+        } else {
+          collectConfigExpression(element, visitedIdentifiers);
+        }
+      }
+      return;
+    }
+    if (ts.isConditionalExpression(unwrappedExpression)) {
+      collectConfigExpression(unwrappedExpression.whenTrue, visitedIdentifiers);
+      collectConfigExpression(unwrappedExpression.whenFalse, visitedIdentifiers);
+      return;
+    }
+    if (ts.isArrowFunction(unwrappedExpression) || ts.isFunctionExpression(unwrappedExpression)) {
+      if (!ts.isBlock(unwrappedExpression.body)) {
+        collectConfigExpression(unwrappedExpression.body, visitedIdentifiers);
+        return;
+      }
+      for (const statement of unwrappedExpression.body.statements) {
+        if (ts.isReturnStatement(statement) && statement.expression) {
+          collectConfigExpression(statement.expression, visitedIdentifiers);
+        }
+      }
+      return;
+    }
+    if (!ts.isObjectLiteralExpression(unwrappedExpression)) return;
+    for (const property of unwrappedExpression.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        collectConfigExpression(property.expression, visitedIdentifiers);
+        continue;
+      }
+      if (ts.isShorthandPropertyAssignment(property) && property.name.text === "resolve") {
+        const resolveObject = resolveObjectExpression(property.name);
+        if (resolveObject) collectModules(resolveObject);
+        continue;
+      }
+      if (!ts.isPropertyAssignment(property)) continue;
+      const propertyName =
+        ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+          ? property.name.text
+          : undefined;
+      if (propertyName !== "resolve") continue;
+      const resolveObject = resolveObjectExpression(property.initializer);
+      if (resolveObject) collectModules(resolveObject);
+    }
+  };
+  const isModuleExports = (expression: ts.Expression): boolean =>
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "module" &&
+    expression.name.text === "exports";
+  const collectModuleExportsAssignment = (expression: ts.Expression): void => {
+    if (
+      ts.isBinaryExpression(expression) &&
+      expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
+      if (isModuleExports(expression.left)) {
+        collectConfigExpression(expression.right);
+      } else {
+        collectModuleExportsAssignment(expression.right);
+      }
+    }
+  };
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      collectConfigExpression(statement.expression);
+    }
+    if (ts.isExpressionStatement(statement)) {
+      collectModuleExportsAssignment(statement.expression);
+    }
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (declaration.initializer) collectModuleExportsAssignment(declaration.initializer);
+      }
     }
   }
 
-  return [...new Set(moduleDirectories)];
+  return {
+    moduleDirectories: [...new Set(moduleDirectories)],
+    moduleDirectoryNames: [...new Set(moduleDirectoryNames)],
+  };
 };
 
 const isJestConfigPath = (configPath: string): boolean =>
@@ -470,7 +648,13 @@ const extractPackageJsonJestAliases = (rootDir: string): BundlerAlias[] => {
 
 const loadBundlerAliasConfigs = (rootDir: string): BundlerAliasConfig[] => {
   const configPaths = fg.sync(
-    [...WEBPACK_CONFIG_GLOBS, ...VITE_CONFIG_GLOBS, ...BABEL_CONFIG_GLOBS, ...JEST_CONFIG_GLOBS],
+    [
+      ...WEBPACK_CONFIG_GLOBS,
+      ...VITE_CONFIG_GLOBS,
+      ...SVELTE_CONFIG_GLOBS,
+      ...BABEL_CONFIG_GLOBS,
+      ...JEST_CONFIG_GLOBS,
+    ],
     {
       cwd: rootDir,
       absolute: true,
@@ -489,15 +673,21 @@ const loadBundlerAliasConfigs = (rootDir: string): BundlerAliasConfig[] => {
       if (isJestConfigPath(configPath)) {
         aliases.push(...extractJestModuleNameMapperAliases(content, configDirectory));
       }
-      const moduleDirectories = isWebpackConfigPath(configPath)
+      const webpackModuleDirectories = isWebpackConfigPath(configPath)
         ? extractWebpackModuleDirectories(content, configDirectory)
-        : [];
-      if (aliases.length === 0 && moduleDirectories.length === 0) continue;
+        : { moduleDirectories: [], moduleDirectoryNames: [] };
+      if (
+        aliases.length === 0 &&
+        webpackModuleDirectories.moduleDirectories.length === 0 &&
+        webpackModuleDirectories.moduleDirectoryNames.length === 0
+      ) {
+        continue;
+      }
 
       configs.push({
         scopeDirectory: findConfigScope(configPath, rootDir),
         aliases,
-        moduleDirectories,
+        ...webpackModuleDirectories,
       });
     } catch {
       continue;
@@ -510,6 +700,7 @@ const loadBundlerAliasConfigs = (rootDir: string): BundlerAliasConfig[] => {
       scopeDirectory: resolve(rootDir),
       aliases: packageJsonJestAliases,
       moduleDirectories: [],
+      moduleDirectoryNames: [],
     });
   }
 
@@ -983,7 +1174,10 @@ export const createResolver = (
   };
 
   const tryResolveFromDirectory = (directory: string, specifier: string): string | undefined => {
-    const candidatePath = resolvePathWithExtensionFallback(resolve(directory, specifier));
+    const unresolvedPath = resolve(directory, specifier);
+    const aliasTarget = resolveAliasTarget(unresolvedPath);
+    if (aliasTarget) return aliasTarget;
+    const candidatePath = resolvePathWithExtensionFallback(unresolvedPath);
     if (existsAsFile(candidatePath)) return candidatePath;
     return undefined;
   };
@@ -1013,6 +1207,21 @@ export const createResolver = (
       for (const moduleDirectory of bundlerConfig.moduleDirectories) {
         const moduleCandidate = tryResolveFromDirectory(moduleDirectory, specifier);
         if (moduleCandidate) return moduleCandidate;
+      }
+
+      let currentDirectory = dirname(fromFile);
+      while (isInsideDirectory(currentDirectory, bundlerConfig.scopeDirectory)) {
+        for (const moduleDirectoryName of bundlerConfig.moduleDirectoryNames) {
+          const moduleCandidate = tryResolveFromDirectory(
+            join(currentDirectory, moduleDirectoryName),
+            specifier,
+          );
+          if (moduleCandidate) return moduleCandidate;
+        }
+        if (currentDirectory === bundlerConfig.scopeDirectory) break;
+        const parentDirectory = dirname(currentDirectory);
+        if (parentDirectory === currentDirectory) break;
+        currentDirectory = parentDirectory;
       }
     }
 
@@ -1186,6 +1395,15 @@ export const createResolver = (
         const baseUrlDirectory = getBaseUrlDirectory(tsconfigFile);
         if (baseUrlDirectory) {
           const baseUrlCandidate = resolve(baseUrlDirectory, cleanedSpecifier);
+          if (cachedExistsSync(baseUrlCandidate) && statSync(baseUrlCandidate).isFile()) {
+            const resolvedResult: ResolvedImport = {
+              resolvedPath: baseUrlCandidate,
+              isExternal: false,
+              packageName: undefined,
+            };
+            resolveResultCache.set(cacheKey, resolvedResult);
+            return resolvedResult;
+          }
           for (const candidateExtension of RESOLVER_EXTENSIONS) {
             const fullCandidate = baseUrlCandidate + candidateExtension;
             if (cachedExistsSync(fullCandidate)) {

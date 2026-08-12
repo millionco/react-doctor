@@ -143,6 +143,14 @@ export interface ResolvedEntries {
   alwaysUsedFiles: string[];
   externallyConsumedFiles: string[];
   analysisExcludedFiles: string[];
+  viteProjectScopes?: ViteProjectScope[];
+}
+
+export interface ViteProjectScope {
+  configPath: string;
+  configDirectory: string;
+  rootDirectory: string;
+  entryPaths: string[];
 }
 
 export interface ProjectAnalysisConfig {

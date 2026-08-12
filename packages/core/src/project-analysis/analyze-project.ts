@@ -1,4 +1,4 @@
-import { relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import type {
   CircularDependency,
@@ -15,7 +15,11 @@ import {
   WorkspaceError,
   describeUnknownError,
 } from "./errors.js";
-import { OUTPUT_DIRECTORIES } from "./constants.js";
+import {
+  OUTPUT_DIRECTORIES,
+  REACT_NATIVE_ADDITIONAL_PLATFORM_SUFFIXES,
+  TARO_PLATFORM_SUFFIXES,
+} from "./constants.js";
 import { collectSourceFiles, resolveEntries, getFrameworkExclusions } from "./collect/entries.js";
 import { resolveWorkspaces } from "./collect/workspaces.js";
 import { parseSourceFile } from "./collect/parse.js";
@@ -56,32 +60,42 @@ export interface ProjectAnalysisResult {
 }
 
 const REACT_NATIVE_ENABLERS = ["react-native", "expo"];
+const TARO_ENABLER_PREFIX = "@tarojs/";
 
-const detectReactNative = (
-  rootDir: string,
-  workspacePackages: Array<{ directory: string }>,
-): boolean => {
-  const directoriesToCheck = [
-    rootDir,
-    ...workspacePackages.map((workspacePackage) => workspacePackage.directory),
-  ];
-  for (const directory of directoriesToCheck) {
-    const packageJsonPath = resolve(directory, "package.json");
-    if (!existsSync(packageJsonPath)) continue;
-    try {
-      const content = readFileSync(packageJsonPath, "utf-8");
-      const packageJson = JSON.parse(content);
-      const allDependencies = {
-        ...packageJson.dependencies,
-        ...packageJson.devDependencies,
-        ...packageJson.optionalDependencies,
-      };
-      if (REACT_NATIVE_ENABLERS.some((enabler) => enabler in allDependencies)) return true;
-    } catch {
-      continue;
-    }
-  }
-  return false;
+interface PlatformCapabilities {
+  hasReactNative: boolean;
+  hasTaro: boolean;
+}
+
+interface PlatformCapabilityRoot extends PlatformCapabilities {
+  directory: string;
+}
+
+const detectPlatformCapabilities = (directory: string): PlatformCapabilities => {
+  const packageJsonPath = resolve(directory, "package.json");
+  if (!existsSync(packageJsonPath)) return { hasReactNative: false, hasTaro: false };
+  const content = readFileSync(packageJsonPath, "utf-8");
+  const packageJson = JSON.parse(content);
+  const allDependencies = {
+    ...packageJson.dependencies,
+    ...packageJson.devDependencies,
+    ...packageJson.optionalDependencies,
+  };
+  const dependencyNames = Object.keys(allDependencies);
+  return {
+    hasReactNative: REACT_NATIVE_ENABLERS.some((enabler) => enabler in allDependencies),
+    hasTaro: dependencyNames.some((dependencyName) =>
+      dependencyName.startsWith(TARO_ENABLER_PREFIX),
+    ),
+  };
+};
+
+const isPathInsideDirectory = (filePath: string, directory: string): boolean => {
+  const relativePath = relative(directory, filePath);
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
+  );
 };
 
 const buildEmptyProjectAnalysisResult = (
@@ -267,12 +281,21 @@ const analyzeProjectConfig = async (
     );
   }
 
-  let hasReactNative = false;
-  try {
-    hasReactNative = detectReactNative(config.rootDir, workspacePackages);
-  } catch {
-    hasReactNative = false;
-  }
+  const platformCapabilityRoots: PlatformCapabilityRoot[] = [
+    absoluteRoot,
+    ...workspacePackages.map((workspacePackage) => workspacePackage.directory),
+  ]
+    .map((directory) => {
+      try {
+        return { directory, ...detectPlatformCapabilities(directory) };
+      } catch {
+        return { directory, hasReactNative: false, hasTaro: false };
+      }
+    })
+    .sort((leftRoot, rightRoot) => rightRoot.directory.length - leftRoot.directory.length);
+  const hasReactNativePackage = platformCapabilityRoots.some(
+    (capabilityRoot) => capabilityRoot.hasReactNative,
+  );
 
   let moduleResolver: ReturnType<typeof createResolver>;
   try {
@@ -282,7 +305,7 @@ const analyzeProjectConfig = async (
         name: workspacePackage.name,
         directory: workspacePackage.directory,
       })),
-      { hasReactNative, monorepoRoot },
+      { hasReactNative: hasReactNativePackage, monorepoRoot },
     );
   } catch (resolverError) {
     setupErrors.push(
@@ -307,7 +330,10 @@ const analyzeProjectConfig = async (
     }
   }
   const moduleLinkInputsResult = buildModuleLinkInputs({
-    rootDirectory: absoluteRoot,
+    projectRootDirectories: [
+      absoluteRoot,
+      ...workspacePackages.map((workspacePackage) => workspacePackage.directory),
+    ],
     files,
     parsedModules,
     resolvedEntries: {
@@ -350,7 +376,19 @@ const analyzeProjectConfig = async (
   markFilenameRegistryEntries(moduleGraph);
 
   try {
-    traceReachability(moduleGraph);
+    traceReachability(moduleGraph, (filePath) => {
+      const containingCapabilityRoots = platformCapabilityRoots.filter((capabilityRoot) =>
+        isPathInsideDirectory(filePath, capabilityRoot.directory),
+      );
+      return [
+        ...(containingCapabilityRoots.some((capabilityRoot) => capabilityRoot.hasReactNative)
+          ? REACT_NATIVE_ADDITIONAL_PLATFORM_SUFFIXES
+          : []),
+        ...(containingCapabilityRoots.some((capabilityRoot) => capabilityRoot.hasTaro)
+          ? TARO_PLATFORM_SUFFIXES
+          : []),
+      ];
+    });
   } catch (reachabilityError) {
     setupErrors.push(
       new DetectorError({

@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import fg from "fast-glob";
+import ts from "typescript";
+import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 
 const CONFIG_STRING_ENTRY_GLOBS = [
@@ -31,6 +33,9 @@ const CONFIG_STRING_ENTRY_GLOBS = [
   "**/astro-tina-directive/register.js",
   "rspack.config.{js,ts,mjs,cjs}",
   "rsbuild.config.{js,ts,mjs,cjs}",
+  ".umirc.{js,ts,mjs,mts,cjs,cts}",
+  "config/config.{js,ts,mjs,mts,cjs,cts}",
+  "config/routes*.{js,ts,mjs,mts,cjs,cts}",
   "**/scripts/build.ts",
   "**/scripts/utils/createJestConfig.js",
 ];
@@ -161,8 +166,122 @@ const collectResolvedPathsFromStrings = (
   }
 };
 
+const unwrapConfigExpression = (expression: ts.Expression): ts.Expression => {
+  if (
+    ts.isParenthesizedExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isSatisfiesExpression(expression)
+  ) {
+    return unwrapConfigExpression(expression.expression);
+  }
+  if (ts.isCallExpression(expression) && expression.arguments[0]) {
+    return unwrapConfigExpression(expression.arguments[0]);
+  }
+  return expression;
+};
+
+const getPropertyName = (property: ts.ObjectLiteralElementLike): string | undefined => {
+  if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) {
+    return undefined;
+  }
+  return ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+    ? property.name.text
+    : undefined;
+};
+
+const extractUmiRouteComponentPaths = (content: string, isRouteModule: boolean): string[] => {
+  const sourceFile = ts.createSourceFile(
+    "umi-config.ts",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const variableInitializers = new Map<string, ts.Expression>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+        variableInitializers.set(declaration.name.text, declaration.initializer);
+      }
+    }
+  }
+  const resolveExpression = (
+    expression: ts.Expression,
+    visitedIdentifiers = new Set<string>(),
+  ): ts.Expression => {
+    const unwrappedExpression = unwrapConfigExpression(expression);
+    if (ts.isIdentifier(unwrappedExpression) && !visitedIdentifiers.has(unwrappedExpression.text)) {
+      const initializer = variableInitializers.get(unwrappedExpression.text);
+      if (initializer) {
+        return resolveExpression(
+          initializer,
+          new Set(visitedIdentifiers).add(unwrappedExpression.text),
+        );
+      }
+    }
+    return unwrappedExpression;
+  };
+  const exportAssignment = sourceFile.statements.find(
+    (statement): statement is ts.ExportAssignment =>
+      ts.isExportAssignment(statement) && !statement.isExportEquals,
+  );
+  if (!exportAssignment) return [];
+  const exportedExpression = resolveExpression(exportAssignment.expression);
+  const routeComponentPaths: string[] = [];
+  const collectRouteObjects = (expression: ts.Expression): void => {
+    const resolvedExpression = resolveExpression(expression);
+    if (!ts.isArrayLiteralExpression(resolvedExpression)) return;
+    for (const routeElement of resolvedExpression.elements) {
+      if (ts.isSpreadElement(routeElement)) {
+        collectRouteObjects(routeElement.expression);
+        continue;
+      }
+      const resolvedRouteElement = resolveExpression(routeElement);
+      if (!ts.isObjectLiteralExpression(resolvedRouteElement)) continue;
+      for (const property of resolvedRouteElement.properties) {
+        const propertyName = getPropertyName(property);
+        if (propertyName === "component" && ts.isPropertyAssignment(property)) {
+          const componentExpression = resolveExpression(property.initializer);
+          if (
+            (ts.isStringLiteral(componentExpression) ||
+              ts.isNoSubstitutionTemplateLiteral(componentExpression)) &&
+            componentExpression.text.startsWith("@/")
+          ) {
+            routeComponentPaths.push(componentExpression.text.slice(2));
+          }
+        }
+        if (propertyName === "routes" && ts.isPropertyAssignment(property)) {
+          collectRouteObjects(property.initializer);
+        }
+      }
+    }
+  };
+
+  if (isRouteModule) {
+    collectRouteObjects(exportedExpression);
+  } else if (ts.isObjectLiteralExpression(exportedExpression)) {
+    for (const property of exportedExpression.properties) {
+      if (getPropertyName(property) !== "routes") continue;
+      if (ts.isPropertyAssignment(property)) collectRouteObjects(property.initializer);
+      if (ts.isShorthandPropertyAssignment(property)) {
+        const initializer = variableInitializers.get(property.name.text);
+        if (initializer) collectRouteObjects(initializer);
+      }
+    }
+  }
+  return routeComponentPaths;
+};
+
 export const extractConfigStringReferencedEntries = (directory: string): string[] => {
   const entries = new Set<string>();
+  let hasDeclaredUmiAccessPlugin = false;
+  try {
+    const packageJson = JSON.parse(readFileSync(resolve(directory, "package.json"), "utf-8"));
+    const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    hasDeclaredUmiAccessPlugin =
+      "@umijs/plugin-access" in dependencies || "@umijs/preset-ant-design-pro" in dependencies;
+  } catch {}
 
   const configPaths = fg.sync(CONFIG_STRING_ENTRY_GLOBS, {
     cwd: directory,
@@ -176,6 +295,17 @@ export const extractConfigStringReferencedEntries = (directory: string): string[
     try {
       const content = readFileSync(configPath, "utf-8");
       collectResolvedPathsFromStrings(content, dirname(configPath), directory, entries);
+      const isUmiRouteModule = /(?:^|[\\/])config[\\/]routes[^\\/]*\.[^\\/]+$/.test(configPath);
+      for (const routeComponentPath of extractUmiRouteComponentPaths(content, isUmiRouteModule)) {
+        addResolvedConfigPath(`src/${routeComponentPath}`, directory, directory, entries);
+      }
+      if (
+        /(?:^|[\\/])(?:\.umirc\.|config[\\/]config\.)/.test(configPath) &&
+        (hasDeclaredUmiAccessPlugin ||
+          /\baccess\s*:\s*\{/.test(maskJavaScriptStringsAndComments(content)))
+      ) {
+        addResolvedConfigPath("src/access", directory, directory, entries);
+      }
     } catch {
       continue;
     }

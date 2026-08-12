@@ -107,10 +107,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
         const globExpression = compileGlobPattern(globPattern);
         for (const [filePath] of fileIdMap) {
           const relativePath = toPosixPath(path.relative(sourceDir, filePath));
-          const normalizedRelative = relativePath.startsWith(".")
-            ? relativePath
-            : `./${relativePath}`;
-          if (globExpression.test(normalizedRelative)) {
+          if (globExpression.test(relativePath)) {
             const targetIndex = fileIdMap.get(filePath);
             if (targetIndex !== undefined) {
               addEdge(sourceIndex, targetIndex, [], false, [], [], true);

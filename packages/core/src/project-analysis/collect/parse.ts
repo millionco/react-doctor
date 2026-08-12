@@ -1,5 +1,6 @@
 import { parseSync } from "oxc-parser";
 import { readFileSync, statSync } from "node:fs";
+import ts from "typescript";
 import {
   BINARY_DETECTION_NULL_BYTE_THRESHOLD,
   BINARY_DETECTION_SAMPLE_BYTES,
@@ -43,13 +44,100 @@ export interface ParsedSource extends SourceModuleAnalysis {
   isGenerated: boolean;
 }
 
+const extractRecoveryImports = (filePath: string, sourceText: string): ImportReference[] => {
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    filePath.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const imports: ImportReference[] = [];
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+      continue;
+    }
+    const importedNames: ImportBinding[] = [];
+    const importClause = statement.importClause;
+    if (importClause?.name) {
+      importedNames.push({
+        name: "default",
+        alias: importClause.name.text,
+        isNamespace: false,
+        isDefault: true,
+        isTypeOnly: importClause.isTypeOnly,
+      });
+    }
+    if (importClause?.namedBindings && ts.isNamespaceImport(importClause.namedBindings)) {
+      importedNames.push({
+        name: "*",
+        alias: importClause.namedBindings.name.text,
+        isNamespace: true,
+        isDefault: false,
+        isTypeOnly: importClause.isTypeOnly,
+      });
+    }
+    if (importClause?.namedBindings && ts.isNamedImports(importClause.namedBindings)) {
+      for (const element of importClause.namedBindings.elements) {
+        importedNames.push({
+          name: element.propertyName?.text ?? element.name.text,
+          alias: element.name.text,
+          isNamespace: false,
+          isDefault: false,
+          isTypeOnly: importClause.isTypeOnly || element.isTypeOnly,
+        });
+      }
+    }
+    const offset = statement.getStart(sourceFile);
+    imports.push({
+      specifier: statement.moduleSpecifier.text,
+      importedNames,
+      isTypeOnly: importClause?.isTypeOnly ?? false,
+      isDynamic: false,
+      isSideEffect: importClause === undefined,
+      line: getLineFromOffset(sourceText, offset),
+      column: getColumnFromOffset(sourceText, offset),
+    });
+  }
+  return imports;
+};
+
 const extractMdxImportsExports = (sourceText: string): string => {
   const statements: string[] = [];
   let isInMultiline = false;
   let braceDepth = 0;
+  let fenceMarker: string | undefined;
+  let fenceLength = 0;
+  let isInHtmlComment = false;
 
   for (const line of sourceText.split("\n")) {
     const trimmedLine = line.trim();
+    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (fenceMatch) {
+      const nextFenceMarker = fenceMatch[1][0];
+      if (!fenceMarker) {
+        fenceMarker = nextFenceMarker;
+        fenceLength = fenceMatch[1].length;
+      } else if (
+        nextFenceMarker === fenceMarker &&
+        fenceMatch[1].length >= fenceLength &&
+        fenceMatch[2].trim().length === 0
+      ) {
+        fenceMarker = undefined;
+        fenceLength = 0;
+      }
+      continue;
+    }
+    if (fenceMarker) continue;
+    if (isInHtmlComment) {
+      if (line.includes("-->")) isInHtmlComment = false;
+      continue;
+    }
+    if (line.trimStart().startsWith("<!--")) {
+      isInHtmlComment = !line.includes("-->");
+      continue;
+    }
+    if (!isInMultiline && /^(?: {4}|\t)/.test(line)) continue;
     if (isInMultiline) {
       statements.push(line);
       for (const character of trimmedLine) {
@@ -514,6 +602,7 @@ const safeReadSourceFile = (
 };
 
 export const parseSourceFile = (filePath: string): ParsedSource => {
+  const shouldCollectPushReferences = !/(?:^|[\\/])app\.config\.[^\\/]+$/.test(filePath);
   const isCss = CSS_EXTENSIONS.some((ext) => filePath.endsWith(ext));
   if (isCss) {
     try {
@@ -613,11 +702,12 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
   }
 
   if (result.errors.length > 0 && !isPreprocessed) {
+    imports.push(...extractRecoveryImports(filePath, sourceText));
     return {
       ...createEmptyParsedSource(),
       imports,
       exports,
-      referencedFilenames: extractReferencedFilenames(sourceText),
+      referencedFilenames: extractReferencedFilenames(sourceText, [], shouldCollectPushReferences),
       isGenerated,
       errors: [
         ...earlyErrors,
@@ -648,7 +738,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
       ...createEmptyParsedSource(),
       imports,
       exports,
-      referencedFilenames: extractReferencedFilenames(sourceText),
+      referencedFilenames: extractReferencedFilenames(sourceText, [], shouldCollectPushReferences),
       isGenerated,
       errors: [
         ...earlyErrors,
@@ -742,7 +832,11 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     [],
   );
 
-  const referencedFilenames = extractReferencedFilenames(sourceText, program.body);
+  const referencedFilenames = extractReferencedFilenames(
+    sourceText,
+    program.body,
+    shouldCollectPushReferences,
+  );
 
   return {
     imports,
@@ -764,6 +858,7 @@ const REFERENCED_MODULE_PATH_PATTERN = /^[a-zA-Z0-9_@-][a-zA-Z0-9_@.-]*(?:\/[a-z
 const extractReferencedFilenames = (
   sourceText: string,
   bodyNodes: Array<Statement | ModuleDeclaration> = [],
+  shouldCollectPushReferences = true,
 ): string[] => {
   const captured = new Set<string>();
   REFERENCED_FILENAME_LITERAL_PATTERN.lastIndex = 0;
@@ -785,11 +880,21 @@ const extractReferencedFilenames = (
 
     if (node.type === "CallExpression" || node.type === "NewExpression") {
       const callArguments = node.arguments;
-      for (const callArgument of Array.isArray(callArguments) ? callArguments : []) {
-        if (!isWalkableNode(callArgument) || callArgument.type !== "Literal") continue;
-        const literalValue = callArgument.value;
-        if (typeof literalValue === "string" && REFERENCED_MODULE_PATH_PATTERN.test(literalValue)) {
-          captured.add(literalValue);
+      const isPushCall =
+        node.type === "CallExpression" &&
+        isWalkableNode(node.callee) &&
+        node.callee.type === "MemberExpression" &&
+        getIdentifierName(node.callee.property) === "push";
+      if (!isPushCall || shouldCollectPushReferences) {
+        for (const callArgument of Array.isArray(callArguments) ? callArguments : []) {
+          if (!isWalkableNode(callArgument) || callArgument.type !== "Literal") continue;
+          const literalValue = callArgument.value;
+          if (
+            typeof literalValue === "string" &&
+            REFERENCED_MODULE_PATH_PATTERN.test(literalValue)
+          ) {
+            captured.add(literalValue);
+          }
         }
       }
     }
@@ -1296,7 +1401,9 @@ const extractGlobPatterns = (callArguments: unknown): string[] => {
     const literalValue = firstArgument.value;
     if (
       typeof literalValue === "string" &&
-      (literalValue.startsWith("./") || literalValue.startsWith("../"))
+      (literalValue.startsWith("./") ||
+        literalValue.startsWith("../") ||
+        literalValue.startsWith("/"))
     ) {
       return [literalValue];
     }
@@ -1310,7 +1417,9 @@ const extractGlobPatterns = (callArguments: unknown): string[] => {
         !isWalkableNode(element) ||
         element.type !== "Literal" ||
         typeof element.value !== "string" ||
-        (!element.value.startsWith("./") && !element.value.startsWith("../"))
+        (!element.value.startsWith("./") &&
+          !element.value.startsWith("../") &&
+          !element.value.startsWith("/"))
       ) {
         return [];
       }
@@ -1319,6 +1428,54 @@ const extractGlobPatterns = (callArguments: unknown): string[] => {
   }
 
   return [];
+};
+
+const extractRequireContextPattern = (callArguments: unknown): string | undefined => {
+  if (!Array.isArray(callArguments)) return undefined;
+  const directoryArgument = callArguments[0];
+  const recursiveArgument = callArguments[1];
+  const regularExpressionArgument = callArguments[2];
+  if (
+    !isWalkableNode(directoryArgument) ||
+    directoryArgument.type !== "Literal" ||
+    typeof directoryArgument.value !== "string" ||
+    (!directoryArgument.value.startsWith("./") &&
+      !directoryArgument.value.startsWith("../") &&
+      directoryArgument.value !== "." &&
+      directoryArgument.value !== "..") ||
+    !isWalkableNode(regularExpressionArgument) ||
+    !isObjectRecord(regularExpressionArgument.regex) ||
+    typeof regularExpressionArgument.regex.pattern !== "string"
+  ) {
+    return undefined;
+  }
+  const regularExpressionPattern = regularExpressionArgument.regex.pattern;
+  if (!regularExpressionPattern.startsWith("^\\.\\/") || !regularExpressionPattern.endsWith("$")) {
+    return undefined;
+  }
+  const relativePattern = regularExpressionPattern.slice("^\\.\\/".length, -1);
+  const filePatternMatch = relativePattern.match(/^(.*)\\\.\(([^()]+)\)$/);
+  if (!filePatternMatch) return undefined;
+  const pathPattern = filePatternMatch[1]
+    .replace(/\[[^\]/]+\]\+\?/g, "*")
+    .replace(/\[[^\]/]+\]\+/g, "*")
+    .replaceAll("\\/", "/");
+  if (!/^[A-Za-z0-9_@./*-]+$/.test(pathPattern)) return undefined;
+  const isRecursive =
+    isWalkableNode(recursiveArgument) &&
+    recursiveArgument.type === "Literal" &&
+    recursiveArgument.value === true;
+  if (!isRecursive && pathPattern.includes("/")) return undefined;
+  const directory = directoryArgument.value.replace(/\/$/, "");
+  const extensions = filePatternMatch[2].split("|");
+  if (
+    extensions.length === 0 ||
+    extensions.some((extension) => !/^[A-Za-z0-9]+$/.test(extension))
+  ) {
+    return undefined;
+  }
+  const extensionPattern = extensions.length === 1 ? extensions[0] : `{${extensions.join(",")}}`;
+  return `${directory}/${pathPattern}.${extensionPattern}`;
 };
 
 interface RegexMetadata {
@@ -1437,6 +1594,22 @@ const collectDynamicImports = (
       if (callee?.type === "MemberExpression" && !callee.computed) {
         const objectName = getIdentifierName(callee.object);
         const propertyName = getIdentifierName(callee.property);
+
+        if (objectName === "require" && propertyName === "context") {
+          const contextPattern = extractRequireContextPattern(node.arguments);
+          if (contextPattern) {
+            imports.push({
+              specifier: contextPattern,
+              importedNames: [createNamespaceImportBinding()],
+              isTypeOnly: false,
+              isDynamic: true,
+              isSideEffect: false,
+              isGlob: true,
+              line: getLineFromOffset(sourceText, node.start),
+              column: getColumnFromOffset(sourceText, node.start),
+            });
+          }
+        }
 
         if (objectName === "require" && propertyName === "resolve") {
           const resolveSpecifier = extractStringLiteralFromArgument(node.arguments);

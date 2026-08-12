@@ -256,6 +256,19 @@ export const PLATFORM_SUFFIXES = [
   ".client",
 ];
 
+export const REACT_NATIVE_ADDITIONAL_PLATFORM_SUFFIXES = [".rn"];
+
+export const TARO_PLATFORM_SUFFIXES = [
+  ".rn",
+  ".h5",
+  ".weapp",
+  ".alipay",
+  ".swan",
+  ".tt",
+  ".qq",
+  ".jd",
+];
+
 export const REACT_NATIVE_PLATFORM_EXTENSIONS = [
   ".web.ts",
   ".web.tsx",

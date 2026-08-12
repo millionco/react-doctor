@@ -24,6 +24,87 @@ const SCRIPT_OPTIONS_WITH_VALUES = new Set([
   "-u",
 ]);
 
+interface HeredocMarker {
+  delimiter: string;
+  shouldTrimLeadingTabs: boolean;
+}
+
+const collectHeredocMarkers = (line: string): HeredocMarker[] => {
+  const markers: HeredocMarker[] = [];
+  let quote = "";
+
+  for (let characterIndex = 0; characterIndex < line.length; characterIndex++) {
+    const character = line[characterIndex];
+    if (quote) {
+      if (character === "\\" && quote !== "'" && characterIndex + 1 < line.length) {
+        characterIndex++;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "\\" && characterIndex + 1 < line.length) {
+      characterIndex++;
+      continue;
+    }
+    if (character !== "<" || line[characterIndex + 1] !== "<" || line[characterIndex + 2] === "<") {
+      continue;
+    }
+
+    let markerIndex = characterIndex + 2;
+    const shouldTrimLeadingTabs = line[markerIndex] === "-";
+    if (shouldTrimLeadingTabs) markerIndex++;
+    while (/\s/.test(line[markerIndex] ?? "")) markerIndex++;
+
+    let delimiter = "";
+    const delimiterQuote = line[markerIndex];
+    if (delimiterQuote === '"' || delimiterQuote === "'") {
+      markerIndex++;
+      while (markerIndex < line.length && line[markerIndex] !== delimiterQuote) {
+        if (line[markerIndex] === "\\" && delimiterQuote === '"' && markerIndex + 1 < line.length) {
+          markerIndex++;
+        }
+        delimiter += line[markerIndex];
+        markerIndex++;
+      }
+      if (line[markerIndex] === delimiterQuote) markerIndex++;
+    } else {
+      while (markerIndex < line.length && !/[\s;|&<>]/.test(line[markerIndex])) {
+        if (line[markerIndex] === "\\" && markerIndex + 1 < line.length) markerIndex++;
+        delimiter += line[markerIndex];
+        markerIndex++;
+      }
+    }
+
+    if (delimiter) markers.push({ delimiter, shouldTrimLeadingTabs });
+    characterIndex = markerIndex - 1;
+  }
+
+  return markers;
+};
+
+const stripHeredocBodies = (command: string): string => {
+  const retainedLines: string[] = [];
+  const pendingMarkers: HeredocMarker[] = [];
+  for (const line of command.split(/\r?\n/)) {
+    const pendingMarker = pendingMarkers[0];
+    if (pendingMarker) {
+      const closingMarker = pendingMarker.shouldTrimLeadingTabs ? line.replace(/^\t+/, "") : line;
+      if (closingMarker.trimEnd() === pendingMarker.delimiter) {
+        pendingMarkers.shift();
+      }
+      continue;
+    }
+    retainedLines.push(line);
+    pendingMarkers.push(...collectHeredocMarkers(line));
+  }
+  return retainedLines.join("\n");
+};
+
 const splitShellCommand = (command: string): string[] => {
   const segments: string[] = [];
   let currentSegment = "";
@@ -57,6 +138,10 @@ const splitShellCommand = (command: string): string[] => {
       currentSegment += command[characterIndex];
       continue;
     }
+    if (character === "\n" || character === "\r") {
+      pushCurrentSegment();
+      continue;
+    }
     if (character === ";" || character === "|" || character === "&") {
       pushCurrentSegment();
       if (command[characterIndex + 1] === character) characterIndex++;
@@ -87,7 +172,10 @@ const tokenizeShellSegment = (segment: string): string[] => {
         quote = "";
       } else if (character === "\\" && quote !== "'" && characterIndex + 1 < segment.length) {
         characterIndex++;
-        currentToken += segment[characterIndex];
+        const escapedCharacter = segment[characterIndex];
+        currentToken += ";|&".includes(escapedCharacter)
+          ? `\\${escapedCharacter}`
+          : escapedCharacter;
       } else {
         currentToken += character;
       }
@@ -104,7 +192,8 @@ const tokenizeShellSegment = (segment: string): string[] => {
     }
     if (character === "\\" && characterIndex + 1 < segment.length) {
       characterIndex++;
-      currentToken += segment[characterIndex];
+      const escapedCharacter = segment[characterIndex];
+      currentToken += ";|&".includes(escapedCharacter) ? `\\${escapedCharacter}` : escapedCharacter;
       continue;
     }
     currentToken += character;
@@ -189,6 +278,14 @@ const collectScriptBinaryNames = (command: string, binaryNames: Set<string>): vo
     const binaryIndex = findScriptBinaryIndex(tokens);
     if (binaryIndex >= tokens.length) continue;
 
+    const usesCrossEnvShell = tokens
+      .slice(0, binaryIndex)
+      .some((token) => normalizeBinaryToken(token) === "cross-env-shell");
+    if (usesCrossEnvShell) {
+      collectScriptBinaryNames(tokens.slice(binaryIndex).join(" "), binaryNames);
+      continue;
+    }
+
     const binaryName = normalizeBinaryToken(tokens[binaryIndex]);
     const shellCommand = extractShellCommand(tokens, binaryIndex);
     if (shellCommand) {
@@ -204,6 +301,6 @@ const collectScriptBinaryNames = (command: string, binaryNames: Set<string>): vo
 
 export const extractScriptBinaryNames = (command: string): string[] => {
   const binaryNames = new Set<string>();
-  collectScriptBinaryNames(command, binaryNames);
+  collectScriptBinaryNames(stripHeredocBodies(command), binaryNames);
   return [...binaryNames];
 };

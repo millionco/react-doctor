@@ -11,8 +11,11 @@ const PLATFORM_DIRECTORY_NAMES = new Set([
   "macos",
 ]);
 
-const stripPlatformSuffix = (filePath: string): string | undefined => {
-  for (const suffix of PLATFORM_SUFFIXES) {
+const stripPlatformSuffix = (
+  filePath: string,
+  platformSuffixes: ReadonlyArray<string>,
+): string | undefined => {
+  for (const suffix of platformSuffixes) {
     const extensionIndex = filePath.lastIndexOf(".");
     if (extensionIndex === -1) continue;
 
@@ -43,7 +46,10 @@ interface ReachabilityQueueItem {
   demandedSymbols: Set<string> | "all";
 }
 
-export const traceReachability = (graph: DependencyGraph): void => {
+export const traceReachability = (
+  graph: DependencyGraph,
+  additionalPlatformSuffixesForFile: (filePath: string) => ReadonlyArray<string> = () => [],
+): void => {
   const totalModules = graph.modules.length;
   const visited = new Uint8Array(totalModules);
   const consumedExportsPerModule = new Map<number, Set<string>>();
@@ -160,7 +166,10 @@ export const traceReachability = (graph: DependencyGraph): void => {
   for (let moduleIndex = 0; moduleIndex < totalModules; moduleIndex++) {
     const modulePath = graph.modules[moduleIndex].fileId.path;
 
-    const basePathFromSuffix = stripPlatformSuffix(modulePath);
+    const basePathFromSuffix = stripPlatformSuffix(modulePath, [
+      ...PLATFORM_SUFFIXES,
+      ...additionalPlatformSuffixesForFile(modulePath),
+    ]);
     if (basePathFromSuffix) {
       addToSiblingGroup(basePathFromSuffix, moduleIndex);
     }
@@ -173,8 +182,11 @@ export const traceReachability = (graph: DependencyGraph): void => {
 
   for (let moduleIndex = 0; moduleIndex < totalModules; moduleIndex++) {
     const modulePath = graph.modules[moduleIndex].fileId.path;
-    if (platformSiblingGroups.has(modulePath)) {
-      platformSiblingGroups.get(modulePath)!.push(moduleIndex);
+    const declarationBasePath = modulePath.replace(/\.d(?=\.[^./]+$)/, "");
+    const siblingGroup =
+      platformSiblingGroups.get(modulePath) ?? platformSiblingGroups.get(declarationBasePath);
+    if (siblingGroup) {
+      siblingGroup.push(moduleIndex);
     }
   }
 

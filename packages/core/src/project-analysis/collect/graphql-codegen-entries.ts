@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import fg from "fast-glob";
+import ts from "typescript";
 import { GRAPHQL_CODEGEN_CONFIG_SCAN_MAX_DEPTH, SOURCE_EXTENSIONS } from "../constants.js";
 import { maskJavaScriptStringsAndComments } from "../utils/mask-javascript-strings-and-comments.js";
 
@@ -9,6 +10,10 @@ const GRAPHQL_CODEGEN_CONFIG_GLOBS = [
   "codegen-*.{ts,js,mts,mjs,cts,cjs,yml,yaml}",
   "**/codegen.{ts,js,mts,mjs,cts,cjs,yml,yaml}",
   "**/codegen-*.{ts,js,mts,mjs,cts,cjs,yml,yaml}",
+  ".graphqlrc.{ts,js,mts,mjs,cts,cjs,json,yml,yaml}",
+  "**/.graphqlrc.{ts,js,mts,mjs,cts,cjs,json,yml,yaml}",
+  "vite.config.{ts,js,mts,mjs,cts,cjs}",
+  "**/vite.config.{ts,js,mts,mjs,cts,cjs}",
 ];
 
 const DOCUMENTS_ARRAY_PATTERN = /^[ \t]*documents\s*:\s*\[([\s\S]*?)\]/gm;
@@ -242,6 +247,238 @@ const resolveGeneratedOutputs = (patterns: string[], configDirectory: string): s
   return [...generatedEntries];
 };
 
+const extractVitePluginConfigContents = (content: string): string[] => {
+  const pluginConfigContents: string[] = [];
+  const sourceFile = ts.createSourceFile(
+    "vite.config.ts",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const pluginImport = sourceFile.statements.find(
+    (statement): statement is ts.ImportDeclaration =>
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === "vite-plugin-graphql-codegen" &&
+      statement.importClause?.name !== undefined,
+  );
+  const pluginName = pluginImport?.importClause?.name?.text;
+  if (!pluginName) return [];
+  const exportAssignment = sourceFile.statements.find(
+    (statement): statement is ts.ExportAssignment =>
+      ts.isExportAssignment(statement) && !statement.isExportEquals,
+  );
+  if (!exportAssignment) return [];
+  const topLevelVariableInitializers = new Map<string, ts.Expression>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+        topLevelVariableInitializers.set(declaration.name.text, declaration.initializer);
+      }
+    }
+  }
+  const unwrapExpression = (expression: ts.Expression): ts.Expression => {
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      return unwrapExpression(expression.expression);
+    }
+    return expression;
+  };
+  const collectPluginExpression = (
+    expression: ts.Expression,
+    variableInitializers: ReadonlyMap<string, ts.Expression>,
+    isPluginNameShadowed: boolean,
+    visitedIdentifiers = new Set<string>(),
+  ): void => {
+    const unwrappedExpression = unwrapExpression(expression);
+    if (
+      ts.isCallExpression(unwrappedExpression) &&
+      ts.isIdentifier(unwrappedExpression.expression) &&
+      unwrappedExpression.expression.text === pluginName
+    ) {
+      const configArgument = unwrappedExpression.arguments[0];
+      if (configArgument && !isPluginNameShadowed) {
+        pluginConfigContents.push(configArgument.getText(sourceFile));
+      }
+      return;
+    }
+    if (ts.isIdentifier(unwrappedExpression) && !visitedIdentifiers.has(unwrappedExpression.text)) {
+      const initializer = variableInitializers.get(unwrappedExpression.text);
+      if (!initializer) return;
+      collectPluginExpression(
+        initializer,
+        variableInitializers,
+        isPluginNameShadowed,
+        new Set(visitedIdentifiers).add(unwrappedExpression.text),
+      );
+      return;
+    }
+    if (ts.isArrayLiteralExpression(unwrappedExpression)) {
+      for (const element of unwrappedExpression.elements) {
+        collectPluginExpression(
+          ts.isSpreadElement(element) ? element.expression : element,
+          variableInitializers,
+          isPluginNameShadowed,
+          visitedIdentifiers,
+        );
+      }
+      return;
+    }
+    if (ts.isConditionalExpression(unwrappedExpression)) {
+      collectPluginExpression(
+        unwrappedExpression.whenTrue,
+        variableInitializers,
+        isPluginNameShadowed,
+        visitedIdentifiers,
+      );
+      collectPluginExpression(
+        unwrappedExpression.whenFalse,
+        variableInitializers,
+        isPluginNameShadowed,
+        visitedIdentifiers,
+      );
+      return;
+    }
+    if (
+      ts.isBinaryExpression(unwrappedExpression) &&
+      (unwrappedExpression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+        unwrappedExpression.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        unwrappedExpression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+    ) {
+      collectPluginExpression(
+        unwrappedExpression.left,
+        variableInitializers,
+        isPluginNameShadowed,
+        visitedIdentifiers,
+      );
+      collectPluginExpression(
+        unwrappedExpression.right,
+        variableInitializers,
+        isPluginNameShadowed,
+        visitedIdentifiers,
+      );
+    }
+  };
+  const collectConfigPlugins = (
+    expression: ts.Expression,
+    variableInitializers: ReadonlyMap<string, ts.Expression>,
+    isPluginNameShadowed: boolean,
+    visitedIdentifiers = new Set<string>(),
+  ): void => {
+    const unwrappedExpression = unwrapExpression(expression);
+    if (ts.isIdentifier(unwrappedExpression) && !visitedIdentifiers.has(unwrappedExpression.text)) {
+      const initializer = variableInitializers.get(unwrappedExpression.text);
+      if (!initializer) return;
+      collectConfigPlugins(
+        initializer,
+        variableInitializers,
+        isPluginNameShadowed,
+        new Set(visitedIdentifiers).add(unwrappedExpression.text),
+      );
+      return;
+    }
+    if (ts.isCallExpression(unwrappedExpression)) {
+      const calledExpression = unwrapExpression(unwrappedExpression.expression);
+      if (!ts.isIdentifier(calledExpression) || calledExpression.text !== "defineConfig") return;
+      const configArgument = unwrappedExpression.arguments[0];
+      if (!configArgument) return;
+      const unwrappedArgument = unwrapExpression(configArgument);
+      if (ts.isArrowFunction(unwrappedArgument) || ts.isFunctionExpression(unwrappedArgument)) {
+        let callbackPluginNameShadowed =
+          isPluginNameShadowed ||
+          unwrappedArgument.parameters.some(
+            (parameter) => ts.isIdentifier(parameter.name) && parameter.name.text === pluginName,
+          );
+        if (!ts.isBlock(unwrappedArgument.body)) {
+          collectConfigPlugins(
+            unwrappedArgument.body,
+            variableInitializers,
+            callbackPluginNameShadowed,
+          );
+          return;
+        }
+        const callbackVariableInitializers = new Map(variableInitializers);
+        for (const statement of unwrappedArgument.body.statements) {
+          if (ts.isVariableStatement(statement)) {
+            for (const declaration of statement.declarationList.declarations) {
+              if (!ts.isIdentifier(declaration.name)) continue;
+              if (declaration.name.text === pluginName) callbackPluginNameShadowed = true;
+              if (declaration.initializer) {
+                callbackVariableInitializers.set(declaration.name.text, declaration.initializer);
+              }
+            }
+          }
+          if (ts.isReturnStatement(statement) && statement.expression) {
+            collectConfigPlugins(
+              statement.expression,
+              callbackVariableInitializers,
+              callbackPluginNameShadowed,
+            );
+            return;
+          }
+        }
+        return;
+      }
+      collectConfigPlugins(unwrappedArgument, variableInitializers, isPluginNameShadowed);
+      return;
+    }
+    if (!ts.isObjectLiteralExpression(unwrappedExpression)) return;
+    for (const property of unwrappedExpression.properties) {
+      if (
+        ts.isPropertyAssignment(property) &&
+        ((ts.isIdentifier(property.name) && property.name.text === "plugins") ||
+          (ts.isStringLiteral(property.name) && property.name.text === "plugins"))
+      ) {
+        collectPluginExpression(property.initializer, variableInitializers, isPluginNameShadowed);
+      }
+      if (ts.isShorthandPropertyAssignment(property) && property.name.text === "plugins") {
+        collectPluginExpression(property.name, variableInitializers, isPluginNameShadowed);
+      }
+    }
+  };
+  collectConfigPlugins(exportAssignment.expression, topLevelVariableInitializers, false);
+
+  return pluginConfigContents;
+};
+
+const collectJsonCodegenPatterns = (content: string): GraphqlCodegenEntries => {
+  const documentEntries: string[] = [];
+  const generatedEntries: string[] = [];
+  const schemaEntries: string[] = [];
+  const visitValue = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) visitValue(item);
+      return;
+    }
+    if (typeof value !== "object" || value === null) return;
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (key === "generates" && typeof nestedValue === "object" && nestedValue !== null) {
+        generatedEntries.push(...Object.keys(nestedValue));
+      } else if (key === "documents") {
+        documentEntries.push(
+          ...(Array.isArray(nestedValue) ? nestedValue : [nestedValue]).filter(
+            (item): item is string => typeof item === "string",
+          ),
+        );
+      } else if (key === "schema") {
+        schemaEntries.push(
+          ...(Array.isArray(nestedValue) ? nestedValue : [nestedValue]).filter(
+            (item): item is string => typeof item === "string",
+          ),
+        );
+      }
+      visitValue(nestedValue);
+    }
+  };
+  visitValue(JSON.parse(content));
+  return { documentEntries, generatedEntries, schemaEntries };
+};
+
 export const extractGraphqlCodegenEntries = (directory: string): GraphqlCodegenEntries => {
   const documentEntries = new Set<string>();
   const generatedEntries = new Set<string>();
@@ -256,21 +493,29 @@ export const extractGraphqlCodegenEntries = (directory: string): GraphqlCodegenE
 
   for (const configPath of configPaths) {
     try {
-      const content = readFileSync(configPath, "utf-8")
+      const rawContent = readFileSync(configPath, "utf-8");
+      const isViteConfig = basename(configPath).startsWith("vite.config.");
+      const isJsonConfig = configPath.endsWith(".json");
+      const relevantContent = isViteConfig
+        ? extractVitePluginConfigContents(rawContent).join("\n")
+        : rawContent;
+      if (relevantContent.length === 0) continue;
+      const content = relevantContent
         .replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*\r?$/gm, "")
         .replace(/^[ \t]*(?:\/\/|#).*$/gm, "");
       const configDirectory = dirname(configPath);
-      const documentPatterns = collectCodegenPatterns(
-        content,
-        DOCUMENTS_ARRAY_PATTERN,
-        DOCUMENTS_STRING_PATTERN,
-      );
-      const schemaPatterns = collectCodegenPatterns(
-        content,
-        SCHEMA_ARRAY_PATTERN,
-        SCHEMA_STRING_PATTERN,
-      );
-      const generatedOutputPatterns = collectGeneratedOutputPatterns(content);
+      const jsonPatterns = isJsonConfig
+        ? collectJsonCodegenPatterns(content)
+        : { documentEntries: [], generatedEntries: [], schemaEntries: [] };
+      const documentPatterns = isJsonConfig
+        ? jsonPatterns.documentEntries
+        : collectCodegenPatterns(content, DOCUMENTS_ARRAY_PATTERN, DOCUMENTS_STRING_PATTERN);
+      const schemaPatterns = isJsonConfig
+        ? jsonPatterns.schemaEntries
+        : collectCodegenPatterns(content, SCHEMA_ARRAY_PATTERN, SCHEMA_STRING_PATTERN);
+      const generatedOutputPatterns = isJsonConfig
+        ? jsonPatterns.generatedEntries
+        : collectGeneratedOutputPatterns(content);
       if (configPath.endsWith(".yml") || configPath.endsWith(".yaml")) {
         documentPatterns.push(...collectYamlBlockPatterns(content, DOCUMENTS_YAML_BLOCK_PATTERN));
         schemaPatterns.push(...collectYamlBlockPatterns(content, SCHEMA_YAML_BLOCK_PATTERN));

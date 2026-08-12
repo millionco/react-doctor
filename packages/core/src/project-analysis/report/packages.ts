@@ -1,5 +1,5 @@
-import { basename, resolve, join } from "node:path";
-import { readFileSync, existsSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import fg from "fast-glob";
 import type {
   DependencyGraph,
@@ -16,8 +16,10 @@ import {
 } from "../utils/collect-override-mappings-from-record.js";
 import { collectPnpmWorkspaceOverrideMappings } from "../utils/parse-pnpm-workspace-overrides.js";
 import { matchesPackageImportReference } from "../utils/matches-package-import-reference.js";
-import { matchesPackageTokenReference } from "../utils/matches-package-token-reference.js";
 import { extractScriptBinaryNames } from "../utils/extract-script-binary-names.js";
+import { extractLocalScriptFileReference } from "../utils/extract-local-script-file-reference.js";
+import { hasHtmlSassStylesheetReference } from "../utils/has-html-sass-stylesheet-reference.js";
+import { matchesPackageCliOptionReference } from "../utils/matches-package-cli-option-reference.js";
 import { matchesNodeModulesPackageReference } from "../utils/matches-node-modules-package-reference.js";
 import { collectStylesheetImportSpecifiers } from "../utils/collect-stylesheet-import-specifiers.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
@@ -247,6 +249,7 @@ export const detectStalePackages = (
 
   const projectConventionReferenced = collectProjectConventionReferencedPackages(
     config.rootDir,
+    graph,
     declaredNames,
     usedPackageNames,
     directlyImportedPackageNames,
@@ -536,8 +539,23 @@ const collectScriptReferencedPackages = (
 
     for (const scriptCommand of Object.values(scripts)) {
       if (typeof scriptCommand !== "string") continue;
+      const commandContents = [scriptCommand];
+      const localScriptFileReference = extractLocalScriptFileReference(scriptCommand);
+      if (localScriptFileReference) {
+        const packageDirectory = dirname(packageJsonPath);
+        const localScriptPath = resolve(packageDirectory, localScriptFileReference);
+        const localScriptRelativePath = relative(packageDirectory, localScriptPath);
+        if (
+          !localScriptRelativePath.startsWith("..") &&
+          !isAbsolute(localScriptRelativePath) &&
+          existsSync(localScriptPath) &&
+          statSync(localScriptPath).isFile()
+        ) {
+          commandContents.push(readFileSync(localScriptPath, "utf-8"));
+        }
+      }
       const commandReferences = collectCommandReferencedPackages(
-        scriptCommand,
+        commandContents.join("\n"),
         declaredNames,
         binToPackage,
       );
@@ -548,19 +566,11 @@ const collectScriptReferencedPackages = (
         ambiguousPackageNames.add(packageName);
       }
 
-      // A dep can appear in a script as a flag argument rather than the
-      // leading binary (`jest --testResultsProcessor jest-sonar-reporter`),
-      // which the binary matcher above skips. Treat any declared package named
-      // as a standalone token anywhere in the command as referenced.
       for (const declaredName of declaredNames) {
         if (referencedPackageNames.has(declaredName)) continue;
-        if (matchesNodeModulesPackageReference(scriptCommand, declaredName)) {
-          referencedPackageNames.add(declaredName);
-          continue;
-        }
         if (
-          !commandReferences.ambiguousPackageNames.has(declaredName) &&
-          matchesPackageTokenReference(scriptCommand, declaredName)
+          matchesNodeModulesPackageReference(scriptCommand, declaredName) ||
+          matchesPackageCliOptionReference(scriptCommand, declaredName)
         ) {
           referencedPackageNames.add(declaredName);
         }
@@ -1058,8 +1068,20 @@ const scanSourceFilesForPackageImports = (
   return found;
 };
 
+const SASS_COMPILER_HOST_PACKAGES = [
+  "vite",
+  "next",
+  "react-scripts",
+  "react-app-rewired",
+  "gatsby",
+  "gatsby-plugin-sass",
+  "astro",
+  "parcel-bundler",
+];
+
 const collectProjectConventionReferencedPackages = (
   rootDir: string,
+  graph: DependencyGraph,
   declaredNames: Set<string>,
   usedPackageNames: Set<string>,
   directlyImportedPackageNames: Set<string>,
@@ -1086,14 +1108,34 @@ const collectProjectConventionReferencedPackages = (
     if (declaredNames.has("@capacitor/ios")) referenced.add("@capacitor/ios");
   }
 
-  const hasUsedSassHost = usedPackageNames.has("vite") || usedPackageNames.has("sass-loader");
+  const hasUsedSassLoader =
+    usedPackageNames.has("sass-loader") ||
+    ((usedPackageNames.has("webpack") || usedPackageNames.has("@electron-forge/plugin-webpack")) &&
+      declaredNames.has("sass-loader"));
+  let hasMeteorSassPlugin = false;
+  try {
+    hasMeteorSassPlugin = readFileSync(resolve(rootDir, ".meteor/versions"), "utf8").includes(
+      "fourseven:scss@",
+    );
+  } catch {}
+  const hasUsedSassHost =
+    SASS_COMPILER_HOST_PACKAGES.some((packageName) => usedPackageNames.has(packageName)) ||
+    hasUsedSassLoader ||
+    hasMeteorSassPlugin;
   if (hasUsedSassHost) {
-    const sassFiles = fg.sync(["**/*.{scss,sass}"], {
-      cwd: rootDir,
-      onlyFiles: true,
-      ignore: SOURCE_FILE_IGNORES,
-    });
-    if (sassFiles.length > 0) {
+    const hasImportedSassFile = graph.modules.some(
+      (module) =>
+        module.isReachable &&
+        module.imports.some((importReference) =>
+          /\.(?:scss|sass)(?:[?#].*)?$/.test(importReference.specifier),
+        ),
+    );
+    const hasMeteorSassFile =
+      hasMeteorSassPlugin &&
+      graph.modules.some((module) => /\.(?:scss|sass)$/.test(module.fileId.path));
+    const hasParcelHtmlSassReference =
+      usedPackageNames.has("parcel-bundler") && hasHtmlSassStylesheetReference(rootDir);
+    if (hasImportedSassFile || hasMeteorSassFile || hasParcelHtmlSassReference) {
       if (directlyImportedPackageNames.has("sass-embedded")) {
         referenced.add("sass-embedded");
       } else if (directlyImportedPackageNames.has("sass")) {

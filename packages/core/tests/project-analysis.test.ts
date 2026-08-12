@@ -405,6 +405,35 @@ describe("analyzeProject", () => {
     expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
   });
 
+  it("discovers Taro pages through conditional array calls and pushed subpackages", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app.tsx": "export default () => null;",
+        "src/app.config.ts": `
+          const pages = ["pages/home/index", "pages/about/index"];
+          const subpackages = [{ root: "package-a", pages: ["profile/index"] }];
+          if (process.env.TARO_ENV === "rn") {
+            subpackages.push({ root: "package-b", pages: ["settings/index"] });
+          }
+          export default {
+            pages: process.env.TARO_ENV === "rn" ? pages : pages.splice(1),
+            subpackages,
+          };
+        `,
+        "src/pages/home/index.tsx": "export default () => null;",
+        "src/pages/about/index.tsx": "export default () => null;",
+        "src/package-a/profile/index.tsx": "export default () => null;",
+        "src/package-b/settings/index.tsx": "export default () => null;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
   it("discovers Remix routes from a custom app directory", async () => {
     const rootDirectory = createProject(
       {
@@ -547,6 +576,45 @@ describe("analyzeProject", () => {
     ]);
   });
 
+  it("discovers GraphQL codegen outputs from graphqlrc and the Vite codegen plugin", async () => {
+    const rootDirectory = createProject(
+      {
+        ".graphqlrc.yml": `generates:\n  ./src/gql/:\n    preset: client`,
+        "vite.config.ts": `
+          import graphqlCodegen from "vite-plugin-graphql-codegen";
+          export default { plugins: [graphqlCodegen({ generates: { "./src/vite-gql/": { preset: "client" } } })] };
+        `,
+        "src/index.ts": "console.log('app');",
+        "src/gql/graphql.ts": "export interface GraphqlOutput { value: string }",
+        "src/vite-gql/graphql.ts": "export interface ViteGraphqlOutput { value: string }",
+        "src/authored/graphql.ts": "export interface AuthoredGraphqlShape { value: string }",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/authored/graphql.ts"]);
+    expect(result.unusedExports).toEqual([]);
+  });
+
+  it("recognizes explicit generated-via provenance only in leading comments", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        "src/api.ts":
+          "/* THIS FILE WAS GENERATED VIA SWAGGER-TYPESCRIPT-API */\nexport interface ApiShape { value: string }",
+        "src/manual.ts":
+          "export interface ManualShape { value: string }\n/* generated via a test example */",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/manual.ts"]);
+  });
+
   it("does not discover GraphQL codegen outputs from strings or comments", async () => {
     const rootDirectory = createProject(
       {
@@ -603,6 +671,8 @@ describe("analyzeProject", () => {
         "src/vendor/library.ts": "export const vendored = 1;",
         "src/assets/libs/runtime.ts": "export const staticRuntime = 1;",
         "src/button.figma.tsx": "export const codeConnectExample = 1;",
+        "src/legacy-sdk/README.md": "legacy-sdk is an in-progress migration of another package.",
+        "src/legacy-sdk/types.ts": "export interface MigratedPackageShape { value: string }",
         "public/runtime.ts": "export const publicRuntime = 1;",
         "src/public/manual.ts": "export const manuallyOwned = 1;",
         "src/orphan.ts": "export const orphan = 1;",
@@ -617,6 +687,7 @@ describe("analyzeProject", () => {
       "src/do-not-edit.ts",
       "src/graphql-types.ts",
       "src/late-generated-marker.ts",
+      "src/legacy-sdk/types.ts",
       "src/orphan.ts",
       "src/protocol.h.ts",
       "src/public/manual.ts",
@@ -646,6 +717,194 @@ describe("analyzeProject", () => {
     const result = await analyzeProject({ rootDirectory });
 
     expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("resolves a Vite callback root without selecting nested test roots", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.mts": `
+          import { join } from "node:path";
+          const rendererRoot = join(__dirname, "src", "renderer");
+          export default defineConfig(() => ({
+            root: rendererRoot,
+            test: { root: "src" },
+          }));
+        `,
+        "src/renderer/index.html": `<script type="module" src="/main.ts"></script>`,
+        "src/renderer/main.ts": `import { app } from "./app"; console.log(app);`,
+        "src/renderer/app.ts": "export const app = 1;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("expands project-root import.meta.glob patterns", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `const previews = import.meta.glob("/src/previews/**/*.tsx"); console.log(previews);`,
+        "src/previews/button/index.tsx": "export default () => null;",
+        "src/previews/dialog/index.tsx": "export default () => null;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("binds project-root Vite globs to the owning root across workspaces", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": "export default {};",
+        "index.html": `<script type="module" src="/src/main.ts"></script>`,
+        "src/main.ts": `import { previews } from "../packages/library/glob"; console.log(previews);`,
+        "src/previews/root.tsx": "export default () => null;",
+        "packages/library/package.json": JSON.stringify({ name: "@example/library" }),
+        "packages/library/glob.ts":
+          'export const previews = import.meta.glob("/src/previews/**/*.tsx");',
+        "packages/library/src/previews/workspace.tsx": "export default () => null;",
+      },
+      { private: true, workspaces: ["packages/*"], devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain(
+      "packages/library/src/previews/workspace.tsx",
+    );
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/previews/root.tsx");
+  });
+
+  it("uses a custom Vite root for globs imported from sibling source", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `export default { root: "app" };`,
+        "app/index.html": `<script type="module" src="/main.ts"></script>`,
+        "app/main.ts": `import { previews } from "../shared/glob"; console.log(previews);`,
+        "app/src/previews/application.tsx": "export default () => null;",
+        "shared/glob.ts": 'export const previews = import.meta.glob("/src/previews/**/*.tsx");',
+        "shared/src/previews/shared.tsx": "export default () => null;",
+        "src/previews/project.tsx": "export default () => null;",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "shared/src/previews/shared.tsx",
+      "src/previews/project.tsx",
+    ]);
+  });
+
+  it("resolves SvelteKit aliases before expanding project-root globs", async () => {
+    const rootDirectory = createProject(
+      {
+        "svelte.config.js": `export default { kit: { alias: { $docs: "src/docs" } } };`,
+        "src/routes/+page.ts": `import { previews } from "$docs/preview.js"; console.log(previews);`,
+        "src/docs/preview.ts": `export const previews = import.meta.glob("/src/previews/**/*.svelte");`,
+        "src/previews/button/index.svelte": "<main>Button</main>",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { dependencies: { "@sveltejs/kit": "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("extracts live MDX imports without parsing fenced examples as module syntax", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app/components/page.mdx": [
+          "# Component",
+          "",
+          "```tsx",
+          "export function IncompleteExample(",
+          "```",
+          "",
+          'import { Demo } from "./demos/example";',
+          "",
+          "<Demo />",
+        ].join("\n"),
+        "src/app/components/demos/example/index.ts": `export { Demo } from "./render";`,
+        "src/app/components/demos/example/render.tsx":
+          "export const Demo = () => <main>Demo</main>;",
+        "src/orphan.ts": "export const orphan = 1;",
+      },
+      { dependencies: { next: "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+    expect(result.analysisErrors).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "parse-recovered-partial" })]),
+    );
+  });
+
+  it("resolves Webpack v1 entries from the project root", async () => {
+    const rootDirectory = createProject(
+      {
+        "webpack/prod/webpack.config.js": `
+          const commonResolve = { modulesDirectories: ["shared", "node_modules"] };
+          module.exports = { entry: { app: ["./lib/client/app.js"] }, resolve: commonResolve };
+        `,
+        "lib/client/app.js": `import { screen } from "screens/home"; console.log(screen);`,
+        "lib/shared/screens/home.js": "export const screen = 1;",
+        "lib/orphan.js": "export const orphan = 1;",
+      },
+      { devDependencies: { webpack: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["lib/orphan.js"]);
+  });
+
+  it("discovers computed entries in imported Webpack configuration modules", async () => {
+    const rootDirectory = createProject(
+      {
+        "webpack.config.ts": `import adminConfig from "./webpack-configs/admin"; export default adminConfig;`,
+        "webpack-configs/admin.ts": `
+          import PathUtil from "../scripts/path-util";
+          export default { entry: PathUtil.admin("index") };
+        `,
+        "scripts/path-util.ts": "export default {};",
+        "src/admin/index.tsx": `import "./main.scss"; export const Admin = () => null;`,
+        "src/admin/main.scss": "$color: red;",
+      },
+      { devDependencies: { webpack: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/admin/index.tsx");
+  });
+
+  it("does not infer computed Webpack entries from arbitrary helpers", async () => {
+    const rootDirectory = createProject(
+      {
+        "webpack.config.ts": `
+          const Routes = { admin: (name) => "/admin/" + name };
+          export default { entry: Routes.admin("index") };
+        `,
+        "src/admin/index.tsx": "export const Admin = () => null;",
+      },
+      { devDependencies: { webpack: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("src/admin/index.tsx");
   });
 
   it("uses only the top-level Vite root and resolves direct path calls", async () => {
@@ -823,6 +1082,52 @@ describe("analyzeProject", () => {
     );
   });
 
+  it("suppresses public assets at workspace roots without suppressing nested source folders", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const root = 1;",
+        "packages/client/package.json": JSON.stringify({
+          name: "@example/client",
+          devDependencies: { vite: "1.0.0" },
+        }),
+        "packages/client/src/index.ts": "export const client = 1;",
+        "packages/client/public/runtime.ts": "export const publicRuntime = 1;",
+        "packages/client/src/public/manual.ts": "export const manuallyOwned = 1;",
+      },
+      { private: true, workspaces: ["packages/*"] },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain(
+      "packages/client/src/public/manual.ts",
+    );
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
+      "packages/client/public/runtime.ts",
+    );
+  });
+
+  it("reports authored public source in library workspaces", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "export const root = 1;",
+        "packages/library/package.json": JSON.stringify({
+          name: "@example/library",
+          exports: "./src/index.ts",
+        }),
+        "packages/library/src/index.ts": "export const library = 1;",
+        "packages/library/public/manual.ts": "export const manual = 1;",
+      },
+      { private: true, workspaces: ["packages/*"] },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain(
+      "packages/library/public/manual.ts",
+    );
+  });
+
   it("credits packages referenced by scripts, config, and CI workflows", async () => {
     const rootDirectory = createProject(
       {
@@ -848,6 +1153,55 @@ describe("analyzeProject", () => {
     expect(unusedPackageNames).not.toEqual(
       expect.arrayContaining(["script-package", "config-package", "ci-package"]),
     );
+  });
+
+  it("credits package-valued CLI options without accepting unrelated script tokens", async () => {
+    const rootDirectory = createProject(
+      { "src/index.ts": "console.log('app');" },
+      {
+        scripts: {
+          test: "jest --testResultsProcessor jest-sonar-reporter",
+          explain: "echo unused-token-package",
+        },
+        devDependencies: {
+          jest: "1.0.0",
+          "jest-sonar-reporter": "1.0.0",
+          "unused-token-package": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).not.toContain("jest-sonar-reporter");
+    expect(unusedPackageNames).toContain("unused-token-package");
+  });
+
+  it("credits binaries invoked by a local shell script without reading shell-script arguments", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        "scripts/build.sh": "firebase deploy",
+        "scripts/dormant.sh": "unused-shell-package deploy",
+      },
+      {
+        scripts: {
+          build: "bash ./scripts/build.sh",
+          explain: "echo ./scripts/dormant.sh",
+        },
+        devDependencies: {
+          "firebase-tools": "1.0.0",
+          "unused-shell-package": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).not.toContain("firebase-tools");
+    expect(unusedPackageNames).toContain("unused-shell-package");
   });
 
   it("credits framework-owned image and MDX dependencies", async () => {
@@ -1042,7 +1396,12 @@ describe("analyzeProject", () => {
 
   it("credits script-implied tools and binary aliases", async () => {
     const rootDirectory = createProject(
-      { "src/index.ts": "console.log('app');" },
+      {
+        "src/index.ts": "console.log('app');",
+        "node_modules/openfin-cli/package.json": JSON.stringify({
+          bin: { openfin: "dist/cli.js" },
+        }),
+      },
       {
         scripts: {
           check: "astro check && oxlint --type-aware",
@@ -1059,6 +1418,8 @@ describe("analyzeProject", () => {
           parcel: "parcel src/index.html",
           babel: "cross-env BABEL_ENV=production babel src --out-dir dist",
           "babel-node": 'nodemon --exec "babel-node --inspect" server.js',
+          openfin:
+            'cross-env-shell "wait-on -l $npm_config_manifest_url && openfin -l -c $npm_config_manifest_url"',
           coverage: "node node_modules/coveralls/bin/coveralls.js",
         },
         devDependencies: {
@@ -1077,6 +1438,8 @@ describe("analyzeProject", () => {
           "parcel-bundler": "1.0.0",
           "babel-cli": "1.0.0",
           coveralls: "1.0.0",
+          "openfin-cli": "1.0.0",
+          "wait-on": "1.0.0",
         },
       },
     );
@@ -1223,7 +1586,7 @@ describe("analyzeProject", () => {
     expect(unusedPackageNames).toEqual(["prisma"]);
   });
 
-  it("credits native Capacitor platforms and the selected Sass compiler", async () => {
+  it("credits native Capacitor platforms without inferring Sass use from an orphan stylesheet", async () => {
     const rootDirectory = createProject(
       {
         "src/index.ts": "console.log('app');",
@@ -1247,9 +1610,10 @@ describe("analyzeProject", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
     const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
 
-    for (const usedPackageName of ["@capacitor/android", "@capacitor/ios", "sass-embedded"]) {
+    for (const usedPackageName of ["@capacitor/android", "@capacitor/ios"]) {
       expect(unusedPackageNames).not.toContain(usedPackageName);
     }
+    expect(unusedPackageNames).toContain("sass-embedded");
   });
 
   it("uses Sass Embedded before Sass when an observed host can compile Sass", async () => {
@@ -1291,6 +1655,25 @@ describe("analyzeProject", () => {
     const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
 
     expect(unusedPackageNames).not.toContain("sass");
+  });
+
+  it("credits Sass for observed framework hosts while preserving source evidence", async () => {
+    for (const frameworkPackage of ["next", "react-scripts", "gatsby", "astro"]) {
+      const rootDirectory = createProject(
+        {
+          "src/index.ts": `import "./theme.scss";`,
+          "src/theme.scss": "$color: red;",
+        },
+        {
+          scripts: { build: `${frameworkPackage} build` },
+          devDependencies: { sass: "1.0.0", [frameworkPackage]: "1.0.0" },
+        },
+      );
+
+      const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+      expect(result.unusedDependencies.map((dependency) => dependency.name)).not.toContain("sass");
+    }
   });
 
   it("does not infer Capacitor or Sass compiler use from declarations and stale paths", async () => {
@@ -1435,5 +1818,640 @@ describe("analyzeProject", () => {
     const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
 
     expect(result.circularDependencies).toEqual([]);
+  });
+
+  it("scopes generated outputs to real GraphQL codegen configuration", async () => {
+    const rootDirectory = createProject(
+      {
+        ".graphqlrc.json": JSON.stringify({ generates: { "./src/gql/": {} } }),
+        "vite.config.ts": `
+          import graphqlCodegen from "vite-plugin-graphql-codegen";
+          const dormant = (graphqlCodegen) => graphqlCodegen({ generates: { "./src/authored/": {} } });
+          export default { plugins: [] };
+        `,
+        "src/index.ts": "console.log('app');",
+        "src/gql/graphql.ts": "export interface GeneratedShape { value: string }",
+        "src/authored/manual.ts": "export interface ManualShape { value: string }",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/authored/manual.ts"]);
+  });
+
+  it("keeps negated and explanatory generated-via comments authored", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        "src/negated.ts":
+          "// This file is not generated via codegen; maintain manually.\nexport const negated = true;",
+        "src/explainer.ts":
+          "// This file documents how code is generated via our build.\nexport const explainer = true;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/explainer.ts",
+      "src/negated.ts",
+    ]);
+  });
+
+  it("only treats component paths inside Umi route arrays as entries", async () => {
+    const rootDirectory = createProject(
+      {
+        ".umirc.ts": `export default {
+          pluginOptions: { component: "@/unused" },
+          routes: [{ path: "/", component: "@/used" }],
+        };`,
+        "src/used.tsx": "export default () => null;",
+        "src/unused.tsx": "export default () => null;",
+      },
+      { dependencies: { umi: "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("src/unused.tsx");
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/used.tsx");
+  });
+
+  it("uses the root returned by a Vite config callback", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `export default defineConfig(() => {
+          const preview = { root: "fixtures" };
+          console.log(preview);
+          return {};
+        });`,
+        "index.html": `<script type="module" src="/src/main.ts"></script>`,
+        "src/main.ts": "console.log('app');",
+        "fixtures/index.html": `<script type="module" src="/main.ts"></script>`,
+        "fixtures/main.ts": "console.log('fixture');",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("fixtures/main.ts");
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/main.ts");
+  });
+
+  it("ignores dormant shadowed Taro page pushes", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app.config.ts": `
+          const pages = ["pages/home/index"];
+          const dormant = () => { const pages = []; pages.push("pages/unused/index"); };
+          console.log(dormant);
+          export default { pages };
+        `,
+        "src/pages/home/index.tsx": "export default () => null;",
+        "src/pages/unused/index.tsx": "export default () => null;",
+      },
+      { dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain(
+      "src/pages/unused/index.tsx",
+    );
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
+      "src/pages/home/index.tsx",
+    );
+  });
+
+  it("keeps filtered Taro pages without merging block-scoped pushes", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app.config.ts": `
+          const pages = ["pages/home/index"];
+          {
+            const pages = [];
+            pages.push("pages/unused/index");
+          }
+          export default { pages: pages.filter(Boolean) };
+        `,
+        "src/pages/home/index.tsx": "export default () => null;",
+        "src/pages/unused/index.tsx": "export default () => null;",
+      },
+      { dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain(
+      "src/pages/unused/index.tsx",
+    );
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
+      "src/pages/home/index.tsx",
+    );
+  });
+
+  it("ignores catch-bound Taro page pushes while preserving live catch pushes", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app.config.ts": `
+          const pages = ["pages/home/index"];
+          try {
+            throw [];
+          } catch (pages) {
+            pages.push("pages/shadowed/index");
+          }
+          try {
+            throw new Error("include fallback");
+          } catch (error) {
+            console.log(error);
+            pages.push("pages/fallback/index");
+          }
+          export default { pages };
+        `,
+        "src/pages/home/index.tsx": "export default () => null;",
+        "src/pages/fallback/index.tsx": "export default () => null;",
+        "src/pages/shadowed/index.tsx": "export default () => null;",
+      },
+      { dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+
+    expect(unusedFilePaths).toContain("src/pages/shadowed/index.tsx");
+    expect(unusedFilePaths).not.toContain("src/pages/home/index.tsx");
+    expect(unusedFilePaths).not.toContain("src/pages/fallback/index.tsx");
+  });
+
+  it("ignores loop-bound Taro page pushes while preserving live loop pushes", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app.config.ts": `
+          const pages = ["pages/home/index"];
+          for (const pages of [[]]) {
+            pages.push("pages/shadowed-for-of/index");
+          }
+          for (let pages = []; false; ) {
+            pages.push("pages/shadowed-for/index");
+          }
+          for (const fallback of ["fallback"]) {
+            console.log(fallback);
+            pages.push("pages/fallback/index");
+          }
+          export default { pages };
+        `,
+        "src/pages/home/index.tsx": "export default () => null;",
+        "src/pages/fallback/index.tsx": "export default () => null;",
+        "src/pages/shadowed-for/index.tsx": "export default () => null;",
+        "src/pages/shadowed-for-of/index.tsx": "export default () => null;",
+      },
+      { dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+    const unusedFilePaths = relativePaths(rootDirectory, result.unusedFiles);
+
+    expect(unusedFilePaths).toEqual(
+      expect.arrayContaining([
+        "src/pages/shadowed-for/index.tsx",
+        "src/pages/shadowed-for-of/index.tsx",
+      ]),
+    );
+    expect(unusedFilePaths).not.toContain("src/pages/home/index.tsx");
+    expect(unusedFilePaths).not.toContain("src/pages/fallback/index.tsx");
+  });
+
+  it("ignores nested Webpack resolve objects outside the exported config", async () => {
+    const rootDirectory = createProject(
+      {
+        "webpack.config.js": `
+          module.exports = {
+            entry: "./src/index.js",
+            plugins: [{ options: { resolve: { modules: ["shared"] } } }],
+          };
+        `,
+        "src/index.js": `import { value } from "thing"; console.log(value);`,
+        "shared/thing.js": "export const value = true;",
+      },
+      { devDependencies: { webpack: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("shared/thing.js");
+  });
+
+  it("resolves callback-local Vite config identifiers", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `
+          import { defineConfig } from "vite";
+          export default defineConfig(() => {
+            const config = { root: "app" };
+            return config;
+          });
+        `,
+        "app/index.html": `<script type="module" src="/main.ts"></script>`,
+        "app/main.ts": "export const main = true;",
+      },
+      { devDependencies: { vite: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("app/main.ts");
+  });
+
+  it("resolves explicit extensions through a TypeScript base URL", async () => {
+    const rootDirectory = createProject(
+      {
+        "tsconfig.json": JSON.stringify({ compilerOptions: { baseUrl: "src" } }),
+        "src/pages/index.astro": `---\nimport Layout from "Layout.astro";\n---\n<Layout />`,
+        "src/Layout.astro": "<main>Layout</main>",
+      },
+      { dependencies: { astro: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/Layout.astro");
+  });
+
+  it("ignores GraphQL codegen calls inside dormant Vite helpers", async () => {
+    const rootDirectory = createProject(
+      {
+        "vite.config.ts": `
+          import { defineConfig } from "vite";
+          import graphqlCodegen from "vite-plugin-graphql-codegen";
+          export default defineConfig(() => {
+            function dormant() {
+              return graphqlCodegen({ generates: { "./src/authored/": {} } });
+            }
+            console.log(dormant);
+            return { plugins: [] };
+          });
+        `,
+        "src/authored/manual.ts": "export const manual = true;",
+      },
+      {
+        devDependencies: {
+          vite: "1.0.0",
+          "vite-plugin-graphql-codegen": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain("src/authored/manual.ts");
+  });
+
+  it("expands statically bound Umi route array spreads", async () => {
+    const rootDirectory = createProject(
+      {
+        ".umirc.ts": `
+          const extraRoutes = [{ path: "/manual", component: "@/manual" }];
+          export default { routes: [...extraRoutes] };
+        `,
+        "src/manual.tsx": "export default () => null;",
+      },
+      { dependencies: { react: "1.0.0", umi: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain("src/manual.tsx");
+  });
+
+  it("skips CommonMark code and HTML comments while retaining live MDX imports", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/page.mdx": [
+          "    export function IndentedExample(",
+          "<!--",
+          "export function CommentedExample(",
+          "-->",
+          "```tsx",
+          "```not-a-close",
+          "export function FencedExample(",
+          "```",
+          'import { Demo } from "./demo";',
+          "<Demo />",
+        ].join("\n"),
+        "src/demo.tsx": "export const Demo = () => null;",
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/page.mdx"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("does not infer Sass compiler use from unreachable Sass files", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        "src/orphan.scss": "$color: red;",
+      },
+      { scripts: { build: "next build" }, devDependencies: { next: "1.0.0", sass: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.unusedDependencies.map((dependency) => dependency.name)).toContain("sass");
+  });
+
+  it("does not infer Parcel Sass use from an HTML file outside the Parcel entry command", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.html": "<main>Application</main>",
+        "examples/old.html": '<link rel="stylesheet" href="./old.scss" />',
+        "examples/old.scss": "$color: red;",
+      },
+      {
+        scripts: { build: "parcel src/index.html" },
+        devDependencies: { "parcel-bundler": "1.0.0", sass: "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(result.unusedDependencies.map((dependency) => dependency.name)).toContain("sass");
+  });
+
+  it("credits Sass through a live Sass loader and an extensionless build script", async () => {
+    for (const files of [
+      {
+        "src/index.ts": `import "./theme.scss";`,
+        "src/theme.scss": "$color: red;",
+        "webpack.config.js": `module.exports = { module: { rules: [{ use: ["sass-loader"] }] } };`,
+      },
+      {
+        "src/index.ts": "console.log('app');",
+        "src/theme.scss": "$color: red;",
+        "bin/build-css": "#!/usr/bin/env bash\nsass src/theme.scss dist/theme.css",
+      },
+    ]) {
+      const rootDirectory = createProject(files, {
+        scripts: { build: "bin/build-css" in files ? "./bin/build-css" : "webpack" },
+        devDependencies: { sass: "1.0.0", "sass-loader": "1.0.0", webpack: "1.0.0" },
+      });
+      const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+      expect(result.unusedDependencies.map((dependency) => dependency.name)).not.toContain("sass");
+    }
+  });
+
+  it.each([
+    {
+      compilerInput: "an Astro import",
+      files: {
+        "src/index.ts": "console.log('app');",
+        "src/pages/index.astro": '---\nimport "../styles.scss";\n---\n<main />',
+        "src/styles.scss": "$color: red;",
+      },
+      scripts: { build: "astro build" },
+      tools: { astro: "1.0.0" },
+    },
+    {
+      compilerInput: "a Parcel HTML stylesheet link",
+      files: {
+        "src/index.ts": "console.log('app');",
+        "src/html/index.html":
+          '<html><head><link href="../styles.scss" rel="stylesheet" /></head></html>',
+        "src/styles.scss": "$color: red;",
+      },
+      scripts: { build: "parcel src/html/index.html" },
+      tools: { "parcel-bundler": "1.0.0" },
+    },
+    {
+      compilerInput: "a Sass loader module import",
+      files: {
+        "src/index.ts": "console.log('app');",
+        "src/admin.tsx": 'import "./admin.scss"; export const Admin = () => null;',
+        "src/admin.scss": "$color: red;",
+        "webpack.config.js":
+          'module.exports = { entry: "./src/admin.tsx", module: { rules: [{ use: ["sass-loader"] }] } };',
+      },
+      scripts: { build: "webpack" },
+      tools: { "sass-loader": "1.0.0", webpack: "1.0.0" },
+    },
+  ])("credits Sass through $compilerInput outside the reachable module graph", async (project) => {
+    const rootDirectory = createProject(project.files, {
+      scripts: project.scripts,
+      devDependencies: { sass: "1.0.0", ...project.tools },
+    });
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(result.unusedDependencies.map((dependency) => dependency.name)).not.toContain("sass");
+  });
+
+  it("does not execute escaped cross-env-shell separators or heredoc payloads", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": "console.log('app');",
+        "bin/write-docs": [
+          "#!/usr/bin/env bash",
+          "cat <<FIRST <<-'SECOND'",
+          "payload-tool first",
+          "FIRST",
+          "\tpayload-tool second",
+          "\tSECOND",
+        ].join("\n"),
+      },
+      {
+        scripts: {
+          escapedQuoted: 'cross-env-shell "echo foo\\; escaped-tool build"',
+          escapedUnquoted: "cross-env-shell echo foo\\; escaped-tool build",
+          docs: "./bin/write-docs",
+          quotedHeredoc: "echo '<<EOF'\nreal-tool build",
+        },
+        devDependencies: {
+          "escaped-tool": "1.0.0",
+          "payload-tool": "1.0.0",
+          "real-tool": "1.0.0",
+        },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+    const unusedPackageNames = result.unusedDependencies.map((dependency) => dependency.name);
+
+    expect(unusedPackageNames).toEqual(expect.arrayContaining(["escaped-tool", "payload-tool"]));
+    expect(unusedPackageNames).not.toContain("real-tool");
+  });
+
+  it("follows Webpack require.context entries through partially parsed modules", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `import items from "./items"; console.log(items);`,
+        "src/items/index.js": `
+          const context = require.context(".", true, /^\\.\\/[a-z\\-]+?\\/index\\.(js|jsx)$/);
+          export default context.keys();
+        `,
+        "src/items/button/index.jsx": `
+          import detail from "./detail";
+          export default class Button { bind = ::this.render; render() { return detail; } }
+        `,
+        "src/items/button/detail.js": `export default "button";`,
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("preserves fixed paths in Webpack require.context expressions", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `require.context(".", true, /^\\.\\/admin\\/index\\.(js|jsx)$/);`,
+        "src/admin/index.jsx": "export default null;",
+        "src/other/index.jsx": "export default null;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/other/index.jsx"]);
+  });
+
+  it("does not reinterpret absolute Webpack require.context directories as project roots", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `require.context("/outside", true, /^\\.\\/index\\.(js|jsx)$/);`,
+        "outside/index.jsx": "export default null;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["outside/index.jsx"]);
+  });
+
+  it("keeps live filename registries populated with push", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `
+          const pages = [];
+          pages.push("pages/consumed/index");
+          console.log(pages);
+        `,
+        "src/pages/consumed/index.ts": "export const consumed = true;",
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("keeps reachable Taro platform siblings", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/app.tsx": `import { platform } from "./platform"; console.log(platform);`,
+        "src/app.rn.tsx": `import { platform } from "./platform"; console.log(platform);`,
+        "src/platform.ts": `export const platform = "default";`,
+        "src/platform.h5.ts": `export const platform = "h5";`,
+        "src/platform.rn.ts": `export const platform = "rn";`,
+        "src/platform.weapp.ts": `export const platform = "weapp";`,
+        "src/orphan.ts": "export const orphan = true;",
+      },
+      { dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" } },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual(["src/orphan.ts"]);
+  });
+
+  it("reports framework-specific platform siblings outside their hosts", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.ts": `import { platform } from "./platform"; console.log(platform);`,
+        "src/platform.ts": `export const platform = "default";`,
+        "src/platform.h5.ts": `export const platform = "h5";`,
+        "src/platform.rn.ts": `export const platform = "rn";`,
+      },
+      {},
+    );
+
+    const result = await analyzeProject({ rootDirectory, entryPatterns: ["src/index.ts"] });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toEqual([
+      "src/platform.h5.ts",
+      "src/platform.rn.ts",
+    ]);
+  });
+
+  it("scopes framework platform siblings to their workspace package", async () => {
+    const rootDirectory = createProject(
+      {
+        "packages/taro/package.json": JSON.stringify({
+          name: "@example/taro",
+          dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" },
+        }),
+        "packages/taro/src/app.tsx": `import { value } from "./value"; console.log(value);`,
+        "packages/taro/src/value.ts": "export const value = true;",
+        "packages/taro/src/value.h5.ts": "export const value = true;",
+        "packages/web/package.json": JSON.stringify({
+          name: "@example/web",
+          exports: "./src/index.ts",
+        }),
+        "packages/web/src/index.ts": `import { value } from "./value"; console.log(value);`,
+        "packages/web/src/value.ts": "export const value = true;",
+        "packages/web/src/value.h5.ts": "export const value = true;",
+      },
+      { private: true, workspaces: ["packages/*"] },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).toContain(
+      "packages/web/src/value.h5.ts",
+    );
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
+      "packages/taro/src/value.h5.ts",
+    );
+  });
+
+  it("inherits root framework platform capabilities inside workspace packages", async () => {
+    const rootDirectory = createProject(
+      {
+        "packages/application/package.json": JSON.stringify({
+          name: "@example/application",
+          exports: "./src/index.ts",
+        }),
+        "packages/application/src/index.ts": 'import { value } from "./value"; console.log(value);',
+        "packages/application/src/value.ts": "export const value = true;",
+        "packages/application/src/value.h5.ts": "export const value = true;",
+        "packages/application/src/value.weapp.ts": "export const value = true;",
+      },
+      {
+        private: true,
+        workspaces: ["packages/*"],
+        dependencies: { "@tarojs/react": "1.0.0", react: "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
+      "packages/application/src/value.h5.ts",
+    );
+    expect(relativePaths(rootDirectory, result.unusedFiles)).not.toContain(
+      "packages/application/src/value.weapp.ts",
+    );
   });
 });

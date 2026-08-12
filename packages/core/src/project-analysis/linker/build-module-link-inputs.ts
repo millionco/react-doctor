@@ -7,9 +7,10 @@ import { parseSourceFile, type ParsedSource } from "../collect/parse.js";
 import type { ResolvedImport } from "../resolver/resolve.js";
 import type { ModuleLinkInput } from "./build.js";
 import { isProjectAnalysisExcludedPath } from "../utils/is-project-analysis-excluded-path.js";
+import { normalizeProjectRootGlobSpecifier } from "../utils/normalize-project-root-glob-specifier.js";
 
 interface BuildModuleLinkInputsOptions {
-  rootDirectory: string;
+  projectRootDirectories: ReadonlyArray<string>;
   files: SourceFile[];
   parsedModules: ParsedSource[];
   resolvedEntries: ResolvedEntries;
@@ -168,7 +169,22 @@ const buildSourceModuleLinkInputs = (
 
   for (let fileIndex = 0; fileIndex < options.files.length; fileIndex++) {
     const file = options.files[fileIndex];
-    const parsedModule = options.parsedModules[fileIndex];
+    const originalParsedModule = options.parsedModules[fileIndex];
+    const parsedModule = {
+      ...originalParsedModule,
+      imports: originalParsedModule.imports.map((importInfo) => ({
+        ...importInfo,
+        specifier:
+          importInfo.isGlob && importInfo.specifier.startsWith("/")
+            ? normalizeProjectRootGlobSpecifier(
+                importInfo.specifier,
+                file.path,
+                options.projectRootDirectories,
+                options.resolvedEntries.viteProjectScopes ?? [],
+              )
+            : importInfo.specifier,
+      })),
+    };
     const resolvedImports = collectSourceImports(parsedModule, file.path, resolutionContext);
     collectReExportImports(parsedModule, file.path, resolvedImports, resolutionContext);
 
@@ -185,7 +201,7 @@ const buildSourceModuleLinkInputs = (
       isGitIgnored: options.gitIgnoredFilePaths.has(file.path),
       isAnalysisExcluded:
         analysisExcludedFilePaths.has(file.path) ||
-        isProjectAnalysisExcludedPath(file.path, options.rootDirectory),
+        isProjectAnalysisExcludedPath(file.path, options.projectRootDirectories[0]),
     });
   }
 
@@ -290,7 +306,10 @@ const buildStyleModuleLinkInputs = (
       isExternallyConsumed: false,
       isTestEntry: false,
       isGitIgnored: options.gitIgnoredFilePaths.has(styleFilePath),
-      isAnalysisExcluded: isProjectAnalysisExcludedPath(styleFilePath, options.rootDirectory),
+      isAnalysisExcluded: isProjectAnalysisExcludedPath(
+        styleFilePath,
+        options.projectRootDirectories[0],
+      ),
     });
     discoveredFilePaths.add(styleFilePath);
     nextFileIndex++;

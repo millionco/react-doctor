@@ -1,7 +1,13 @@
 import fg from "fast-glob";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
-import type { SourceFile, ProjectAnalysisConfig, ResolvedEntries } from "../types.js";
+import ts from "typescript";
+import type {
+  SourceFile,
+  ProjectAnalysisConfig,
+  ResolvedEntries,
+  ViteProjectScope,
+} from "../types.js";
 import {
   DEFAULT_EXTENSIONS,
   DEFAULT_EXCLUSIONS,
@@ -135,6 +141,7 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
   );
 
   const workspaceEntries: string[] = [];
+  const workspacePublicAssetFiles: string[] = [];
   for (const workspacePackage of workspacePackages) {
     const isEligible = isEntryEligible(workspacePackage);
 
@@ -145,6 +152,29 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     if (shouldRunFrameworkDetection) {
       const workspaceFrameworkEntries = detectFrameworkEntries(workspacePackage.directory);
       workspaceEntries.push(...workspaceFrameworkEntries);
+      const workspaceDependencies = readPackageJsonDependencies(
+        join(workspacePackage.directory, "package.json"),
+      );
+      const hasPublicAssetHost = [
+        "next",
+        "vite",
+        "gatsby",
+        "astro",
+        "nuxt",
+        "react-scripts",
+        "@sveltejs/kit",
+        "@react-router/dev",
+        "@remix-run/dev",
+      ].some((dependencyName) => dependencyName in workspaceDependencies);
+      if (hasPublicAssetHost) {
+        workspacePublicAssetFiles.push(
+          ...fg.sync("public/**/*", {
+            cwd: workspacePackage.directory,
+            absolute: true,
+            onlyFiles: true,
+          }),
+        );
+      }
     }
 
     const shouldExtractEntries =
@@ -192,10 +222,11 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     webpackEntries.push(...extractWebpackEntryPoints(workspacePackage.directory));
   }
 
-  const viteEntries = extractViteEntryPoints(absoluteRoot);
+  const viteProjectScopes = extractViteProjectScopes(absoluteRoot);
   for (const workspacePackage of entryEligiblePackages) {
-    viteEntries.push(...extractViteEntryPoints(workspacePackage.directory));
+    viteProjectScopes.push(...extractViteProjectScopes(workspacePackage.directory));
   }
+  const viteEntries = viteProjectScopes.flatMap((viteProjectScope) => viteProjectScope.entryPaths);
 
   const bundlerConfigEntries = extractBundlerConfigEntryPoints(absoluteRoot);
   for (const workspacePackage of entryEligiblePackages) {
@@ -345,7 +376,9 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
   ];
 
   const analysisExcludedFiles = [
-    ...new Set(graphqlCodegenEntries.generatedEntries.map(toPosixPath)),
+    ...new Set(
+      [...graphqlCodegenEntries.generatedEntries, ...workspacePublicAssetFiles].map(toPosixPath),
+    ),
   ];
 
   return {
@@ -354,6 +387,14 @@ export const resolveEntries = async (config: ProjectAnalysisConfig): Promise<Res
     alwaysUsedFiles,
     externallyConsumedFiles,
     analysisExcludedFiles,
+    viteProjectScopes: [
+      ...new Map(
+        viteProjectScopes.map((viteProjectScope) => [
+          viteProjectScope.configPath,
+          viteProjectScope,
+        ]),
+      ).values(),
+    ],
   };
 };
 
@@ -778,66 +819,6 @@ const BUNDLER_ENTRY_FILE_PATTERN =
   /['"]([^'"]+\.(?:js|ts|tsx|jsx|mjs|mts|less|scss|css|sass|html))['"]/g;
 const VITE_PATH_VARIABLE_PATTERN =
   /const\s+(\w+)\s*=\s*(?:path\.)?(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"][\s,]*)+)\)/g;
-const VITE_CONFIG_OBJECT_PATTERN =
-  /(?:export\s+default\s+(?:defineConfig\s*\(\s*)?|\bdefineConfig\s*\(\s*)\{/g;
-const VITE_ROOT_PATTERN =
-  /\broot\s*:\s*(?:(?:path\.)?(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"][\s,]*)+)\)|([A-Za-z_$][\w$]*)|['"]([^'"]+)['"])/g;
-
-const getCurlyBraceDepthAtPosition = (
-  content: string,
-  openBraceIndex: number,
-  targetPosition: number,
-): number => {
-  let braceDepth = 1;
-  let quote: string | undefined;
-  let isEscaped = false;
-  let isLineComment = false;
-  let isBlockComment = false;
-
-  for (let position = openBraceIndex + 1; position < targetPosition; position++) {
-    const character = content[position];
-    const nextCharacter = content[position + 1];
-    if (isLineComment) {
-      if (character === "\n") isLineComment = false;
-      continue;
-    }
-    if (isBlockComment) {
-      if (character === "*" && nextCharacter === "/") {
-        isBlockComment = false;
-        position++;
-      }
-      continue;
-    }
-    if (quote) {
-      if (isEscaped) {
-        isEscaped = false;
-      } else if (character === "\\") {
-        isEscaped = true;
-      } else if (character === quote) {
-        quote = undefined;
-      }
-      continue;
-    }
-    if (character === "/" && nextCharacter === "/") {
-      isLineComment = true;
-      position++;
-      continue;
-    }
-    if (character === "/" && nextCharacter === "*") {
-      isBlockComment = true;
-      position++;
-      continue;
-    }
-    if (character === '"' || character === "'" || character === "`") {
-      quote = character;
-      continue;
-    }
-    if (character === "{") braceDepth++;
-    if (character === "}") braceDepth--;
-  }
-
-  return braceDepth;
-};
 
 const resolveVitePathSegments = (rawSegments: string, configDirectory: string): string => {
   const pathSegments = [...rawSegments.matchAll(/['"]([^'"]*)['"]/g)].map(
@@ -846,9 +827,82 @@ const resolveVitePathSegments = (rawSegments: string, configDirectory: string): 
   return resolve(configDirectory, ...pathSegments);
 };
 
+const unwrapViteConfigExpression = (expression: ts.Expression): ts.Expression => {
+  if (
+    ts.isParenthesizedExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isSatisfiesExpression(expression)
+  ) {
+    return unwrapViteConfigExpression(expression.expression);
+  }
+  return expression;
+};
+
+const resolveViteConfigObject = (
+  expression: ts.Expression,
+  variableInitializers: ReadonlyMap<string, ts.Expression>,
+  visitedIdentifiers = new Set<string>(),
+): ts.ObjectLiteralExpression | undefined => {
+  const unwrappedExpression = unwrapViteConfigExpression(expression);
+  if (ts.isObjectLiteralExpression(unwrappedExpression)) return unwrappedExpression;
+  if (ts.isIdentifier(unwrappedExpression) && !visitedIdentifiers.has(unwrappedExpression.text)) {
+    const initializer = variableInitializers.get(unwrappedExpression.text);
+    if (!initializer) return undefined;
+    return resolveViteConfigObject(
+      initializer,
+      variableInitializers,
+      new Set(visitedIdentifiers).add(unwrappedExpression.text),
+    );
+  }
+  if (!ts.isCallExpression(unwrappedExpression)) return undefined;
+  const calledExpression = unwrapViteConfigExpression(unwrappedExpression.expression);
+  if (!ts.isIdentifier(calledExpression) || calledExpression.text !== "defineConfig") {
+    return undefined;
+  }
+  const configArgument = unwrappedExpression.arguments[0];
+  if (!configArgument) return undefined;
+  const unwrappedArgument = unwrapViteConfigExpression(configArgument);
+  if (ts.isArrowFunction(unwrappedArgument) || ts.isFunctionExpression(unwrappedArgument)) {
+    if (!ts.isBlock(unwrappedArgument.body)) {
+      return resolveViteConfigObject(unwrappedArgument.body, variableInitializers);
+    }
+    const callbackVariableInitializers = new Map(variableInitializers);
+    for (const statement of unwrappedArgument.body.statements) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+            callbackVariableInitializers.set(declaration.name.text, declaration.initializer);
+          }
+        }
+      }
+      if (ts.isReturnStatement(statement) && statement.expression) {
+        return resolveViteConfigObject(statement.expression, callbackVariableInitializers);
+      }
+    }
+    return undefined;
+  }
+  return resolveViteConfigObject(unwrappedArgument, variableInitializers);
+};
+
 const extractViteRoot = (content: string, configDirectory: string): string => {
   const syntaxContent = maskJavaScriptStringsAndComments(content);
   const resolvedVariables = new Map<string, string>();
+  const variableInitializers = new Map<string, ts.Expression>();
+  const sourceFile = ts.createSourceFile(
+    "vite.config.ts",
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+        variableInitializers.set(declaration.name.text, declaration.initializer);
+      }
+    }
+  }
   VITE_PATH_VARIABLE_PATTERN.lastIndex = 0;
   let variableMatch: RegExpExecArray | null;
   while ((variableMatch = VITE_PATH_VARIABLE_PATTERN.exec(content)) !== null) {
@@ -859,35 +913,35 @@ const extractViteRoot = (content: string, configDirectory: string): string => {
     );
   }
 
-  VITE_CONFIG_OBJECT_PATTERN.lastIndex = 0;
-  let configObjectMatch: RegExpExecArray | null;
-  do {
-    configObjectMatch = VITE_CONFIG_OBJECT_PATTERN.exec(content);
-  } while (configObjectMatch && syntaxContent[configObjectMatch.index] === " ");
-  if (!configObjectMatch) return configDirectory;
-  const configObjectOpenBraceIndex = content.indexOf("{", configObjectMatch.index);
-
-  VITE_ROOT_PATTERN.lastIndex = 0;
-  let rootMatch: RegExpExecArray | null;
-  while ((rootMatch = VITE_ROOT_PATTERN.exec(content)) !== null) {
-    if (rootMatch.index <= configObjectOpenBraceIndex) continue;
-    if (syntaxContent.slice(rootMatch.index, rootMatch.index + 4) !== "root") continue;
-    const braceDepth = getCurlyBraceDepthAtPosition(
-      content,
-      configObjectOpenBraceIndex,
-      rootMatch.index,
-    );
-    if (braceDepth < 1) break;
-    if (braceDepth !== 1) continue;
-    if (rootMatch[1]) return resolveVitePathSegments(rootMatch[1], configDirectory);
-    if (rootMatch[2]) return resolvedVariables.get(rootMatch[2]) ?? configDirectory;
-    return resolve(configDirectory, rootMatch[3]);
+  const exportAssignment = sourceFile.statements.find(
+    (statement): statement is ts.ExportAssignment =>
+      ts.isExportAssignment(statement) && !statement.isExportEquals,
+  );
+  if (!exportAssignment) return configDirectory;
+  const configObject = resolveViteConfigObject(exportAssignment.expression, variableInitializers);
+  if (!configObject) return configDirectory;
+  const rootProperty = configObject.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) &&
+      ((ts.isIdentifier(property.name) && property.name.text === "root") ||
+        (ts.isStringLiteral(property.name) && property.name.text === "root")),
+  );
+  if (!rootProperty) return configDirectory;
+  const rootExpression = unwrapViteConfigExpression(rootProperty.initializer);
+  if (ts.isStringLiteral(rootExpression) || ts.isNoSubstitutionTemplateLiteral(rootExpression)) {
+    return resolve(configDirectory, rootExpression.text);
+  }
+  if (ts.isIdentifier(rootExpression)) {
+    return resolvedVariables.get(rootExpression.text) ?? configDirectory;
+  }
+  if (ts.isCallExpression(rootExpression)) {
+    return resolveVitePathSegments(rootExpression.getText(sourceFile), configDirectory);
   }
   return configDirectory;
 };
 
-const extractViteEntryPoints = (directory: string): string[] => {
-  const entries: string[] = [];
+const extractViteProjectScopes = (directory: string): ViteProjectScope[] => {
+  const viteProjectScopes: ViteProjectScope[] = [];
   const viteConfigPaths = fg.sync("vite.config.{js,ts,mjs,mts}", {
     cwd: directory,
     absolute: true,
@@ -896,6 +950,7 @@ const extractViteEntryPoints = (directory: string): string[] => {
 
   for (const configPath of viteConfigPaths) {
     try {
+      const entries: string[] = [];
       const content = readFileSync(configPath, "utf-8");
       const configDirectory = dirname(configPath);
       const viteRoot = extractViteRoot(content, configDirectory);
@@ -916,10 +971,16 @@ const extractViteEntryPoints = (directory: string): string[] => {
           if (existsSync(absoluteEntryPath)) entries.push(absoluteEntryPath);
         }
       }
+      viteProjectScopes.push({
+        configPath,
+        configDirectory,
+        rootDirectory: viteRoot,
+        entryPaths: entries,
+      });
     } catch {}
   }
 
-  return entries;
+  return viteProjectScopes;
 };
 
 const BUNDLER_CONFIG_ENTRY_BLOCK_PATTERN = /entry\s*:\s*\[([^\]]*)\]/gs;
@@ -964,6 +1025,108 @@ const WEBPACK_PATH_JOIN_PATTERN =
   /path\.(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"][\s,]*)+)\)/g;
 const REQUIRE_RESOLVE_PATTERN = /require\.resolve\(\s*['"]([^'"]+)['"]\s*\)/g;
 
+const collectWebpackConfigModules = (configPath: string): string[] => {
+  const configModulePaths: string[] = [];
+  const pendingModulePaths = [configPath];
+  const visitedModulePaths = new Set<string>();
+
+  for (let moduleIndex = 0; moduleIndex < pendingModulePaths.length; moduleIndex++) {
+    const modulePath = pendingModulePaths[moduleIndex];
+    if (visitedModulePaths.has(modulePath)) continue;
+    visitedModulePaths.add(modulePath);
+    configModulePaths.push(modulePath);
+
+    const sourceFile = ts.createSourceFile(
+      modulePath,
+      readFileSync(modulePath, "utf-8"),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    for (const statement of sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+        continue;
+      }
+      const specifier = statement.moduleSpecifier.text;
+      if (!specifier.startsWith(".")) continue;
+      const importedModulePath = resolveEntryWithExtensions(
+        resolve(dirname(modulePath), specifier),
+      );
+      if (importedModulePath) pendingModulePaths.push(importedModulePath);
+    }
+  }
+
+  return configModulePaths;
+};
+
+const extractComputedWebpackEntries = (configPath: string, projectDirectory: string): string[] => {
+  const entries: string[] = [];
+  for (const modulePath of collectWebpackConfigModules(configPath)) {
+    const sourceFile = ts.createSourceFile(
+      modulePath,
+      readFileSync(modulePath, "utf-8"),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    const objectInitializers = new Map<string, ts.ObjectLiteralExpression>();
+    for (const statement of sourceFile.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          declaration.initializer &&
+          ts.isObjectLiteralExpression(declaration.initializer)
+        ) {
+          objectInitializers.set(declaration.name.text, declaration.initializer);
+        }
+      }
+    }
+    const exportedObjects = sourceFile.statements.flatMap((statement) => {
+      if (!ts.isExportAssignment(statement)) return [];
+      if (ts.isObjectLiteralExpression(statement.expression)) return [statement.expression];
+      if (ts.isIdentifier(statement.expression)) {
+        const objectInitializer = objectInitializers.get(statement.expression.text);
+        return objectInitializer ? [objectInitializer] : [];
+      }
+      return [];
+    });
+    for (const exportedObject of exportedObjects) {
+      const entryProperty = exportedObject.properties.find(
+        (property): property is ts.PropertyAssignment =>
+          ts.isPropertyAssignment(property) &&
+          ((ts.isIdentifier(property.name) && property.name.text === "entry") ||
+            (ts.isStringLiteral(property.name) && property.name.text === "entry")),
+      );
+      const pathSegments: string[] = [];
+      if (entryProperty && ts.isCallExpression(entryProperty.initializer)) {
+        for (const argument of entryProperty.initializer.arguments) {
+          if (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) {
+            pathSegments.push(argument.text);
+          }
+        }
+      }
+      if (
+        !entryProperty ||
+        !ts.isCallExpression(entryProperty.initializer) ||
+        !ts.isPropertyAccessExpression(entryProperty.initializer.expression) ||
+        !ts.isIdentifier(entryProperty.initializer.expression.expression) ||
+        !/path/i.test(entryProperty.initializer.expression.expression.text) ||
+        pathSegments.length !== entryProperty.initializer.arguments.length
+      ) {
+        continue;
+      }
+      const directoryName = entryProperty.initializer.expression.name.text;
+      for (const candidatePath of [
+        resolve(projectDirectory, directoryName, ...pathSegments),
+        resolve(projectDirectory, "src", directoryName, ...pathSegments),
+      ]) {
+        const resolvedEntry = resolveEntryWithExtensions(candidatePath);
+        if (resolvedEntry) entries.push(resolvedEntry);
+      }
+    }
+  }
+  return entries;
+};
+
 const extractWebpackEntryPoints = (directory: string): string[] => {
   const entries: string[] = [];
   const webpackConfigPaths = fg.sync(
@@ -984,6 +1147,7 @@ const extractWebpackEntryPoints = (directory: string): string[] => {
 
   for (const configPath of webpackConfigPaths) {
     try {
+      entries.push(...extractComputedWebpackEntries(configPath, directory));
       const content = readFileSync(configPath, "utf-8");
       const configDirectory = dirname(configPath);
 
@@ -1028,7 +1192,7 @@ const extractWebpackEntryPoints = (directory: string): string[] => {
             entryPath.startsWith("../") ||
             !entryPath.startsWith("/")
           ) {
-            const absoluteEntryPath = resolve(configDirectory, entryPath);
+            const absoluteEntryPath = resolve(directory, entryPath);
             const resolvedEntry = resolveEntryWithExtensions(absoluteEntryPath);
             if (resolvedEntry) {
               entries.push(resolvedEntry);

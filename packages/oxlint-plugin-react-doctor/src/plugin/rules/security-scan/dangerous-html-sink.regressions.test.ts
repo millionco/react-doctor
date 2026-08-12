@@ -1078,6 +1078,18 @@ const renderHud = (element: HTMLElement, result: GameResult) => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags an exported async helper parameter without local call sites", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.ts",
+      content: `export async function renderPreview(element, html) {
+  await preparePreview(element);
+  element.innerHTML = html;
+}
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("ignores recursive calls when every external helper argument is trusted", () => {
     const content = [
       "function renderPreview(element, html, remaining) {",

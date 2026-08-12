@@ -148,22 +148,20 @@ const declarationAwaitsGate = (declaration: EsTreeNode, context: RuleContext): b
   return false;
 };
 
-const callbackHasObservableWork = (callback: EsTreeNode): boolean => {
-  let hasObservableWork = false;
+const PROGRESS_CALLBACK_WORDS = new Set(["progress", "stage", "step"]);
+
+const callbackReportsProgress = (callback: EsTreeNode): boolean => {
+  let doesReportProgress = false;
   walkAst(callback, (candidate) => {
-    if (hasObservableWork || (candidate !== callback && isFunctionLike(candidate))) return false;
-    if (
-      isNodeOfType(candidate, "AwaitExpression") ||
-      isNodeOfType(candidate, "AssignmentExpression") ||
-      isNodeOfType(candidate, "UpdateExpression") ||
-      isNodeOfType(candidate, "CallExpression") ||
-      isNodeOfType(candidate, "NewExpression")
-    ) {
-      hasObservableWork = true;
-      return false;
-    }
+    if (doesReportProgress || (candidate !== callback && isFunctionLike(candidate))) return false;
+    if (!isNodeOfType(candidate, "CallExpression")) return;
+    const calleeName = getCalleeName(candidate);
+    if (!calleeName) return;
+    doesReportProgress = tokenizeIdentifierWords(calleeName).some((word) =>
+      PROGRESS_CALLBACK_WORDS.has(word),
+    );
   });
-  return hasObservableWork;
+  return doesReportProgress;
 };
 
 const declarationAwaitsIntentionalSequence = (
@@ -189,7 +187,7 @@ const declarationAwaitsIntentionalSequence = (
         (callArgument) =>
           !isNodeOfType(callArgument, "SpreadElement") &&
           isFunctionLike(callArgument) &&
-          callbackHasObservableWork(callArgument),
+          callbackReportsProgress(callArgument),
       )
     ) {
       return true;

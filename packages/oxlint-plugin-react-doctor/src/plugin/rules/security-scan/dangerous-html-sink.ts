@@ -745,10 +745,16 @@ const isHtmlTainted = (
     }
     if (didInspectCallArgument) return false;
     const declarationPrefix = fileContent.slice(
-      Math.max(0, parameterSource.declarationNameIndex - 24),
+      Math.max(0, parameterSource.declarationNameIndex - 48),
       parameterSource.declarationNameIndex,
     );
-    if (/\bexport\s+(?:const|let|var|function)\s+$/.test(declarationPrefix)) return true;
+    if (
+      /\bexport\s+(?:(?:default\s+)?(?:async\s+)?function|const|let|var)\s+$/.test(
+        declarationPrefix,
+      )
+    ) {
+      return true;
+    }
     return HTML_TAINT_PATTERN.test(trimmedExpression);
   }
 

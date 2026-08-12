@@ -82,6 +82,19 @@ describe("server-sequential-independent-await — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags independent awaits with ordinary side-effect callbacks", () => {
+    const result = runRule(
+      serverSequentialIndependentAwait,
+      `async function loadData() {
+        const profile = await loadProfile((error) => console.error(error));
+        const preferences = await loadPreferences((value) => cache.set("preferences", value));
+        return { profile, preferences };
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an independent visible helper even when its name starts with initialize", () => {
     const result = runRule(
       serverSequentialIndependentAwait,

@@ -251,6 +251,9 @@ export const METRIC_DISTRIBUTION_BOUNDARIES = [
   600_000,
 ];
 
+export const DEFAULT_FIND_LIMIT = 50;
+export const DEFAULT_SOURCE_POSITION = 1;
+
 // Metric names. Centralized so emit sites can't drift on a typo'd string and
 // the full counter surface stays greppable in one place.
 // Dotted, domain-grouped names (Sentry convention); high-cardinality

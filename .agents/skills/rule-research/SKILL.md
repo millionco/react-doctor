@@ -24,10 +24,10 @@ If the user requested implementation, make the contract concise and continue.
 1. Define the rule in one sentence: `This rule catches <pattern> that causes <problem>.`
 2. Explain the runtime reason.
 3. Inspect nearby rules, tests, utilities, and the generated registry.
-4. Use `truffler` before proposing a new detector or helper:
+4. Use `react-doctor find` before proposing a new detector or helper:
 
    ```sh
-   bunx @rayhanadev/truffler "<symbol-or-behavior>" \
+   react-doctor find "<symbol-or-behavior>" \
      packages/oxlint-plugin-react-doctor/src/plugin \
      --kind function,interface,type,constant --limit 20
    ```

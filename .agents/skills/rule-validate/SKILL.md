@@ -21,10 +21,10 @@ Check for:
 - messages that overstate detection
 - missing valid and invalid tests
 
-Use `truffler` before accepting a new helper:
+Use `react-doctor find` before accepting a new helper:
 
 ```sh
-bunx @rayhanadev/truffler "<helper-name>" packages \
+react-doctor find "<helper-name>" packages \
   --kind function,method,interface,type,constant --limit 20
 ```
 

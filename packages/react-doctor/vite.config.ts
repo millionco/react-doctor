@@ -71,6 +71,7 @@ export default defineConfig({
         // `yaml` (pure JS, no native deps) backs the `ci config` in-place
         // workflow editor; inline it so end users get no extra install.
         alwaysBundle: [
+          "@rayhanadev/truffler",
           "commander",
           "ink",
           "ink-spinner",

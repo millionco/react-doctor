@@ -55,7 +55,7 @@ Then run two filters before you commit to building:
 Reuse beats adding every time — the cheapest surface is the one you never create. Before adding a flag, option, or report field, search for an existing one to extend:
 
 ```bash
-bunx @rayhanadev/truffler "<name or behavior>" packages --kind function,interface,type,constant --limit 20
+react-doctor find "<name or behavior>" packages --kind function,interface,type,constant --limit 20
 rg -n "<flag-or-option-name>" packages/react-doctor/src/cli packages/core/src/types
 ```
 

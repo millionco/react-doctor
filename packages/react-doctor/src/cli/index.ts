@@ -3,6 +3,7 @@ import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
 import { shutdownTelemetry } from "./utils/telemetry-runtime.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
+import { DEFAULT_FIND_LIMIT } from "./utils/constants.js";
 import { ensureWindowsUtf8Console } from "./utils/ensure-windows-utf8-console.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { guardStdin } from "./utils/guard-stdin.js";
@@ -12,6 +13,7 @@ import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import type { InspectFlags } from "./utils/inspect-flags.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
+import { FIND_KIND_HELP } from "./utils/parse-find-kinds.js";
 import { printDebugTrace } from "./utils/print-debug-trace.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
@@ -66,6 +68,7 @@ ${formatExampleLines([
   ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],
   ["react-doctor --json > report.json", "write a machine-readable report"],
   ["react-doctor why src/App.tsx:42", "explain why a rule fired there"],
+  ["react-doctor find Button src", "find matching JS/TS symbols"],
   ["react-doctor ci install", "scan every pull request in CI"],
   ["react-doctor install", "set up the agent skill and git hook"],
 ])}
@@ -110,6 +113,19 @@ ${highlighter.dim("Scope:")}
   Runs every rule tagged ${highlighter.info("design")}; all design rules stay opt-in during a general health scan.
   Dead-code, supply-chain, external lint-config, custom-plugin, and health-score passes are skipped.
   Standard scan flags such as ${highlighter.info("--scope")}, ${highlighter.info("--project")}, ${highlighter.info("--verbose")}, and ${highlighter.info("--json")} still work.
+`;
+
+const renderFindHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  ["react-doctor find Button src", "fuzzy-search symbols under src"],
+  ["react-doctor find use --kind hook", "find React hooks by naming convention"],
+  ["react-doctor find card --kind component,interface", "find components and related types"],
+  ["react-doctor find Button --json", "write structured results"],
+])}
+
+${highlighter.dim("React-aware kinds:")}
+  ${highlighter.info("component")} matches PascalCase functions, classes, and common wrappers. ${highlighter.info("hook")} matches ${highlighter.info("use")}, ${highlighter.info("useThing")}, and ${highlighter.info("use2D")} bindings.
 `;
 
 const MAX_DURATION_OPTION_DESCRIPTION =
@@ -270,6 +286,22 @@ program
   .action(async (location, options) => {
     const { whyAction } = await import("./commands/why.js");
     return whyAction(location, options);
+  });
+
+program
+  .command("find <query> [directory]")
+  .aliases(["search", "grep"])
+  .description("Fuzzy-search JavaScript and TypeScript symbols")
+  .option("-k, --kind <kinds>", `comma-separated kinds: ${FIND_KIND_HELP}`)
+  .addOption(
+    new Option("-l, --limit <count>", "maximum results to print").default(DEFAULT_FIND_LIMIT),
+  )
+  .option("--json", "output structured JSON")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .addHelpText("after", renderFindHelpEpilog)
+  .action(async (query, directory, _options, command) => {
+    const { findAction } = await import("./commands/find.js");
+    return findAction(query, directory ?? ".", command.optsWithGlobals());
   });
 
 program

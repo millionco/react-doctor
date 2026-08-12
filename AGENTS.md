@@ -13,16 +13,16 @@
 - MUST: Frequently re-evaluate and refactor variable names to be more accurate and descriptive.
 - MUST: Do not type cast ("as") unless absolutely necessary
 - MUST: Remove unused code and don't repeat yourself.
-- MUST: Use `truffler` to find existing symbols before adding a utility, helper, type, or rule, and again after finishing a task to catch duplicates and dead code (see "Symbol Search & Deduplication").
+- MUST: Use `react-doctor find` to find existing symbols before adding a utility, helper, type, or rule, and again after finishing a task to catch duplicates and dead code (see "Symbol Search & Deduplication").
 - MUST: Always search the codebase, think of many solutions, then implement the most _elegant_ solution.
 - MUST: Before adding or changing the **public surface** (CLI flags/commands, the score, config, the JSON report, package APIs, the GitHub Action, website, or terminal output), run the `product-thinking` pass (`.agents/skills/product-thinking/`): name the user's job, reuse before adding, wire one telemetry metric, add the compatibility artifacts, and set a kill metric. Lint rules use the rule pipeline instead.
 - MUST: Put all magic numbers in `constants.ts` using `SCREAMING_SNAKE_CASE` with unit suffixes (`_MS`, `_PX`).
 - MUST: Put small, focused utility functions in `utils/` with one utility per file.
 - MUST: Use Boolean over !!.
 
-## Symbol Search & Deduplication (truffler)
+## Symbol Search & Deduplication
 
-`@rayhanadev/truffler` (dev dependency) is fuzzy JS/TS symbol search powered by `oxc-parser`.
+`react-doctor find` is fuzzy JS/TS symbol search powered by `oxc-parser`.
 Use it to avoid duplicating existing code. The `find-similar-functions` skill
 (`.agents/skills/find-similar-functions/`) carries the full workflow; the short version:
 
@@ -35,12 +35,11 @@ Use it to avoid duplicating existing code. The `find-similar-functions` skill
   duplicate an existing helper, and delete any code your change superseded.
 
 ```bash
-bunx @rayhanadev/truffler "<query>" packages --kind function,method,interface,type,constant --limit 20
+react-doctor find "<query>" packages --kind function,method,interface,type,constant --limit 20
 ```
 
-Run it with `bunx @rayhanadev/truffler` (the published `bin` is a TypeScript entry Bun runs
-directly, and the pinned dev dependency is reused rather than re-downloaded). Narrow `<query>`
-and the root (e.g. `packages/core/src`) for precision; broaden only when nothing matches.
+Narrow `<query>` and the root (e.g. `packages/core/src`) for precision; broaden only when
+nothing matches. Use `--json` when structured results are easier to inspect.
 
 ## Package Layout
 

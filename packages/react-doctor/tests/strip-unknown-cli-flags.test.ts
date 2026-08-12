@@ -191,6 +191,33 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps find options for find, search, and grep", () => {
+    for (const command of ["find", "search", "grep"]) {
+      expect(
+        stripUserArguments([
+          command,
+          "Button",
+          "src",
+          "--kind",
+          "component,interface",
+          "--limit",
+          "10",
+          "--json",
+          "--offline",
+        ]),
+      ).toEqual([
+        command,
+        "Button",
+        "src",
+        "--kind",
+        "component,interface",
+        "--limit",
+        "10",
+        "--json",
+      ]);
+    }
+  });
+
   it("keeps color flags on rules subcommands so the color resolver can see them", () => {
     expect(stripUserArguments(["rules", "list", "--no-color"])).toEqual([
       "rules",

@@ -40,6 +40,10 @@ Pair it with the matching per-rule prompts at `https://www.react.doctor/prompts/
 
 When the user wants to understand a rule, disagrees with one, or wants to disable / tune which rules run (not fix code), read [references/explain.md](references/explain.md) and follow it. Start with `npx react-doctor@latest rules explain <rule>`, then apply the narrowest control via `npx react-doctor@latest rules disable|set|category|ignore-tag …`, which edits your `doctor.config.*` (or `package.json#reactDoctor`).
 
+## Finding existing code
+
+Before adding a component, hook, helper, or type, run `npx react-doctor@latest find <query> [directory]`. Use `--kind component`, `--kind hook`, or a comma-separated mix of generic JS/TS kinds to narrow the results. Add `--json` when structured output is easier to inspect.
+
 ## Command
 
 ```bash

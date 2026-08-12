@@ -62,7 +62,7 @@ const collectUnusedExports = (project: TestProject): string[] =>
   detectDeadExports(project.graph, defineProjectAnalysisConfig({ rootDir: project.rootDirectory }))
     .map(
       (finding) =>
-        `${path.relative(project.rootDirectory, finding.path).replaceAll("\\", "/")}::${finding.name}`,
+        `${path.relative(project.rootDirectory, fs.realpathSync(finding.path)).replaceAll("\\", "/")}::${finding.name}`,
     )
     .sort();
 

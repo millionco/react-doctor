@@ -9,6 +9,7 @@ import { resolveExpressionKey } from "../../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
+import { isInsideRepeatedExecution } from "./is-inside-repeated-execution.js";
 import { resolveThreeConstructor } from "./resolve-three-constructor.js";
 
 export const getStaticThreeMeshVisibility = (
@@ -81,7 +82,8 @@ export const getStaticThreeMeshVisibility = (
     }
     if (
       (context.cfg.enclosingFunction(node) ?? program) !== owner ||
-      isNodeConditionallyExecuted(node, owner)
+      isNodeConditionallyExecuted(node, owner) ||
+      isInsideRepeatedExecution(node)
     ) {
       isComplete = false;
       return;

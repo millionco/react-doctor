@@ -20,6 +20,7 @@ import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestLibraryImportSource } from "../../utils/is-test-library-import-source.js";
 import { nodeDominatesNode } from "../../utils/node-dominates-node.js";
 import { resolveExpressionKey } from "../../utils/resolve-expression-key.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -28,6 +29,36 @@ import { walkAst } from "../../utils/walk-ast.js";
 
 const LOOP_STATEMENT_TYPES: ReadonlySet<string> = new Set(LOOP_TYPES);
 const ORDERED_OUTPUT_INSERTION_METHOD_NAMES = new Set(["push", "unshift"]);
+const HOST_YIELD_SCHEDULER_NAMES: ReadonlySet<string> = new Set([
+  "queueMicrotask",
+  "requestAnimationFrame",
+  "requestIdleCallback",
+  "setImmediate",
+  "setTimeout",
+]);
+const OPAQUE_PACING_CALLEE_NAMES: ReadonlySet<string> = new Set([
+  "yieldNow",
+  "yieldTo",
+  "yieldToBrowser",
+  "slice",
+  "sliceYield",
+  "nextFrame",
+  "breathe",
+  "onYield",
+  "onProgress",
+  "progress",
+  "onStep",
+  "step",
+  "runStage",
+]);
+
+const getCalleeName = (callee: EsTreeNode | null | undefined): string | null => {
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
 
 const getLoopBody = (loopNode: EsTreeNode): EsTreeNode | null => {
   if (
@@ -81,9 +112,95 @@ const isIntentionalSequencingCallee = (callee: EsTreeNode | null | undefined): b
     return INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(callee.name);
   }
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    const receiver = stripParenExpression(callee.object);
+    if (
+      callee.property.name === "check" &&
+      isNodeOfType(receiver, "Identifier") &&
+      /sched(?:uler)?/i.test(receiver.name)
+    ) {
+      return true;
+    }
     return INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(callee.property.name);
   }
   return false;
+};
+
+const isGlobalHostSchedulerCall = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): boolean => {
+  if (
+    isNodeOfType(callExpression.callee, "Identifier") &&
+    HOST_YIELD_SCHEDULER_NAMES.has(callExpression.callee.name) &&
+    context.scopes.isGlobalReference(callExpression.callee)
+  ) {
+    return true;
+  }
+  if (
+    !isNodeOfType(callExpression.callee, "MemberExpression") ||
+    !isNodeOfType(callExpression.callee.property, "Identifier") ||
+    !HOST_YIELD_SCHEDULER_NAMES.has(callExpression.callee.property.name)
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(callExpression.callee.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    (receiver.name === "globalThis" || receiver.name === "window") &&
+    context.scopes.isGlobalReference(receiver)
+  );
+};
+
+const doesLocalFunctionYieldToHost = (
+  localFunction: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode> = new Set(),
+): boolean => {
+  if (!isFunctionLike(localFunction) || visitedFunctions.has(localFunction)) return false;
+  visitedFunctions.add(localFunction);
+  let hasDirectHostYieldPromise = false;
+  let hasNestedPacingCall = false;
+  walkAst(localFunction.body, (child: EsTreeNode): boolean | void => {
+    if (child !== localFunction.body && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "NewExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === "Promise" &&
+      context.scopes.isGlobalReference(child.callee)
+    ) {
+      const promiseRoot = findTransparentExpressionRoot(child);
+      const promiseParent = promiseRoot.parent;
+      const producesFunctionResult =
+        (isNodeOfType(promiseParent, "ReturnStatement") &&
+          promiseParent.argument === promiseRoot) ||
+        (isNodeOfType(promiseParent, "AwaitExpression") &&
+          promiseParent.argument === promiseRoot) ||
+        (isFunctionLike(promiseParent) && promiseParent.body === promiseRoot);
+      const executor = child.arguments[0];
+      if (producesFunctionResult && isFunctionLike(executor)) {
+        walkAst(executor.body, (executorChild: EsTreeNode): boolean | void => {
+          if (executorChild !== executor.body && isFunctionLike(executorChild)) return false;
+          if (
+            isNodeOfType(executorChild, "CallExpression") &&
+            isGlobalHostSchedulerCall(executorChild, context)
+          ) {
+            hasDirectHostYieldPromise = true;
+          }
+        });
+      }
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (isGlobalHostSchedulerCall(child, context)) return;
+    const nestedLocalFunction = resolveStaticLocalCallFunction(child, context.scopes);
+    if (nestedLocalFunction !== null) {
+      if (doesLocalFunctionYieldToHost(nestedLocalFunction, context, visitedFunctions)) {
+        hasNestedPacingCall = true;
+      }
+      return;
+    }
+    if (isIntentionalSequencingCallee(child.callee)) hasNestedPacingCall = true;
+  });
+  return hasDirectHostYieldPromise || hasNestedPacingCall;
 };
 
 const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode, context: RuleContext): boolean => {
@@ -91,7 +208,24 @@ const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode, context: RuleContext): b
   const argument = awaitNode.argument;
   if (!argument) return false;
   if (!isNodeOfType(argument, "CallExpression")) return false;
+  if (
+    argument.arguments.some((callArgument) => {
+      if (isNodeOfType(callArgument, "SpreadElement")) return false;
+      const pacingArgument = stripParenExpression(callArgument);
+      return (
+        isNodeOfType(pacingArgument, "Identifier") && /sched(?:uler)?/i.test(pacingArgument.name)
+      );
+    })
+  ) {
+    return true;
+  }
+  const localFunction = resolveStaticLocalCallFunction(argument, context.scopes);
+  if (localFunction !== null && doesLocalFunctionYieldToHost(localFunction, context)) return true;
   if (getOrderIndependentLocalFunction(argument, context.scopes) !== null) return false;
+  const calleeName = getCalleeName(argument.callee);
+  if (localFunction !== null && calleeName && OPAQUE_PACING_CALLEE_NAMES.has(calleeName)) {
+    return false;
+  }
   return isIntentionalSequencingCallee(argument.callee);
 };
 
@@ -1181,6 +1315,7 @@ export const asyncAwaitInLoop = defineRule({
   recommendation:
     "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
   create: (context: RuleContext) => {
+    let hasTestLibraryImport = false;
     const inspectLoop = (
       loopNode:
         | EsTreeNodeOfType<"ForStatement">
@@ -1190,6 +1325,7 @@ export const asyncAwaitInLoop = defineRule({
         | EsTreeNodeOfType<"DoWhileStatement">,
       label: string,
     ): void => {
+      if (hasTestLibraryImport) return;
       const loopBody = loopNode.body;
       if (!loopBody) return;
       if (loopBodyHasIntentionallySequentialAwait(loopBody, context)) return;
@@ -1214,6 +1350,9 @@ export const asyncAwaitInLoop = defineRule({
     };
 
     return {
+      ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
+        if (isTestLibraryImportSource(node.source?.value)) hasTestLibraryImport = true;
+      },
       ForStatement(node: EsTreeNodeOfType<"ForStatement">) {
         inspectLoop(node, "for-loop");
       },
@@ -1233,6 +1372,7 @@ export const asyncAwaitInLoop = defineRule({
         inspectLoop(node, "do-while loop");
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (hasTestLibraryImport) return;
         // arr.forEach(async item => { await fn(item); }) — sequential
         // because forEach doesn't await; even worse, the awaits are
         // dropped on the floor (forEach ignores return values).

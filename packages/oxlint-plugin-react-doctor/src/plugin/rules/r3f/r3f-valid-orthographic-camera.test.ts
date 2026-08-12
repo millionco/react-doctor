@@ -12,7 +12,7 @@ describe("r3f-valid-orthographic-camera", () => {
         <orthographicCamera left={2} right={2} />
       </>;
     `;
-    expect(runRule(r3fValidOrthographicCamera, code).diagnostics).toHaveLength(3);
+    expect(runRule(r3fValidOrthographicCamera, code).diagnostics).toHaveLength(2);
   });
 
   it("allows valid, dynamic, spread, and perspective configurations", () => {
@@ -20,6 +20,7 @@ describe("r3f-valid-orthographic-camera", () => {
       import { Canvas } from "@react-three/fiber";
       export const Scene = (props) => <>
         <Canvas orthographic camera={{ near: 0, far: 100 }} />
+        <Canvas orthographic camera={{ near: -1, far: 1 }} />
         <Canvas orthographic={false} camera={{ near: -1, far: -2 }} />
         <orthographicCamera args={[-1, 1, 1, -1, 0, 100]} />
         <orthographicCamera {...props} near={-1} />

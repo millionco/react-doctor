@@ -94,7 +94,7 @@ export const r3fValidOrthographicCamera = defineRule({
   tags: ["react-jsx-only"],
   severity: "error",
   recommendation:
-    "Use distinct horizontal and vertical frustum planes, a nonnegative near plane, and a far plane greater than near",
+    "Use distinct horizontal and vertical frustum planes and a far plane greater than near",
   create: (context: RuleContext) => {
     let importsReactThreeFiber = false;
     return {

@@ -55,16 +55,16 @@ const collectResizeFacts = (
       const methodName = getStaticPropertyName(candidate.callee);
       const targetKey = resolveExpressionKey(candidate.callee.object, context);
       const constructorName = getThreeConstructorName(candidate.callee.object, context.scopes);
-      if (methodName === "setSize" && targetKey && constructorName === "EffectComposer") {
-        resizedComposerKeys.add(targetKey);
-        return;
-      }
       if (
         methodName === "setSize" &&
         targetKey &&
         (constructorName === "WebGLRenderer" || constructorName === "WebGPURenderer")
       ) {
         rendererResizes.set(targetKey, candidate);
+        return;
+      }
+      if (methodName === "setSize" && targetKey) {
+        resizedComposerKeys.add(targetKey);
         return;
       }
     }
@@ -96,6 +96,7 @@ export const threeEffectComposerRequireSizeOnResize = defineRule({
   recommendation: "Resize every EffectComposer associated with a resized renderer",
   create: (context: RuleContext) => {
     const analyzedCallbacks = new Set<EsTreeNode>();
+    const assignmentAliases: Array<readonly [string, string]> = [];
     const composerBindings: EffectComposerBinding[] = [];
     const resizeFacts: EffectComposerResizeFact[] = [];
     const analyzeResizeSource = (
@@ -108,6 +109,11 @@ export const threeEffectComposerRequireSizeOnResize = defineRule({
     };
     return {
       AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
+        if (node.operator === "=") {
+          const targetKey = resolveExpressionKey(node.left, context);
+          const sourceKey = resolveExpressionKey(node.right, context);
+          if (targetKey && sourceKey) assignmentAliases.push([targetKey, sourceKey]);
+        }
         analyzeResizeSource(node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
@@ -121,11 +127,28 @@ export const threeEffectComposerRequireSizeOnResize = defineRule({
         if (binding) composerBindings.push(binding);
       },
       "Program:exit"() {
+        const areKeysAliased = (leftKey: string, rightKey: string): boolean => {
+          const pendingKeys = [leftKey];
+          const visitedKeys = new Set<string>();
+          while (pendingKeys.length > 0) {
+            const currentKey = pendingKeys.pop();
+            if (!currentKey || visitedKeys.has(currentKey)) continue;
+            if (currentKey === rightKey) return true;
+            visitedKeys.add(currentKey);
+            for (const [aliasTarget, aliasSource] of assignmentAliases) {
+              if (aliasTarget === currentKey) pendingKeys.push(aliasSource);
+              if (aliasSource === currentKey) pendingKeys.push(aliasTarget);
+            }
+          }
+          return false;
+        };
         for (const resizeFact of resizeFacts) {
           const staleComposer = composerBindings.find(
             (binding) =>
               binding.rendererKey === resizeFact.rendererKey &&
-              !resizeFact.resizedComposerKeys.has(binding.composerKey) &&
+              ![...resizeFact.resizedComposerKeys].some((resizedKey) =>
+                areKeysAliased(binding.composerKey, resizedKey),
+              ) &&
               !resizeFact.delegatedComposerKeys.has(binding.composerKey),
           );
           if (!staleComposer) continue;

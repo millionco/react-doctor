@@ -31,6 +31,7 @@ export const r3fPreferGpuPositionAnimation = defineRule({
           callback,
           context,
           managedPositionBufferRefSymbolIds,
+          false,
         )[0];
         if (!firstMutation) return;
         context.report({

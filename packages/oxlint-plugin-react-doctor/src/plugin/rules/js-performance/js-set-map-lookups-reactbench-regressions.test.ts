@@ -98,6 +98,45 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
     `);
   });
 
+  it("stays silent when slice rebuilds the receiver for each lookup", () => {
+    expectNoDiagnostics(`
+      for (let index = 0; index < sequence.length; index += 1) {
+        if (sequence.slice(0, index).includes(index)) continue;
+      }
+    `);
+  });
+
+  it("stays silent when a classic for-loop index selects a different receiver", () => {
+    expectNoDiagnostics(`
+      function findOwner(targets, selected) {
+        for (let index = 0; index < targets.length; index += 1) {
+          if (targets[index].children.includes(selected)) return index;
+        }
+      }
+    `);
+  });
+
+  it("stays silent when a call receiver depends on the iteration binding", () => {
+    expectNoDiagnostics(`
+      function findBuilding(buildings, selected) {
+        for (const building of buildings) {
+          if (building.getGlassMeshes().includes(selected)) return building;
+        }
+      }
+    `);
+  });
+
+  it("stays silent when a call receiver is declared inside the loop", () => {
+    expectNoDiagnostics(`
+      function findBuilding(level, hits) {
+        for (const hit of hits) {
+          const building = level.buildingForMesh(hit);
+          if (building.getGlassMeshes().includes(hit)) return building;
+        }
+      }
+    `);
+  });
+
   it("reports an unproven userland transform method that can return a cached large array", () => {
     expectDiagnostic(`
       const cachedValues = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
@@ -112,6 +151,22 @@ describe("js-set-map-lookups — ReactBench regressions", () => {
         text.slice(row.offset).includes(row.query) ||
         (row.title || "").includes(row.query)
       );
+    `);
+  });
+
+  it("uses an explicit string annotation instead of guessing from a generic name", () => {
+    expectNoDiagnostics(`
+      function findMatches(rows: string[], name: string) {
+        return rows.filter((row) => name.includes(row));
+      }
+    `);
+  });
+
+  it("still reports an explicitly typed array with a string-like variable name", () => {
+    expectDiagnostic(`
+      function findMatches(rows: string[], name: string[]) {
+        return rows.filter((row) => name.includes(row));
+      }
     `);
   });
 

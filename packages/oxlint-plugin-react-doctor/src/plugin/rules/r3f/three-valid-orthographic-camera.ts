@@ -14,7 +14,6 @@ import {
 import { getApiReferenceProvenance } from "./utils/get-api-reference-provenance.js";
 import { getInvalidOrthographicCameraParameter } from "./utils/get-invalid-orthographic-camera-parameter.js";
 import { getStaticNumber } from "./utils/get-static-number.js";
-import { getThreePropertyAssignment } from "./utils/get-three-property-assignment.js";
 import { isThreeModuleSource } from "./utils/is-three-module-source.js";
 
 interface StaticCameraParameter {
@@ -37,7 +36,7 @@ export const threeValidOrthographicCamera = defineRule({
   category: "Correctness",
   severity: "error",
   recommendation:
-    "Use distinct horizontal and vertical frustum planes, a nonnegative near plane, and a far plane greater than near",
+    "Use distinct horizontal and vertical frustum planes and a far plane greater than near",
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       const provenance = getApiReferenceProvenance(node.callee, context.scopes);
@@ -72,27 +71,6 @@ export const threeValidOrthographicCamera = defineRule({
           node.arguments[ORTHOGRAPHIC_CAMERA_FAR_ARGUMENT_INDEX],
           context,
         ),
-      });
-      if (invalidParameter)
-        context.report({ node: invalidParameter.node, message: invalidParameter.message });
-    },
-    AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
-      const assignment = getThreePropertyAssignment(node, context);
-      if (
-        assignment?.constructorName !== "OrthographicCamera" ||
-        assignment.propertyName !== "near"
-      ) {
-        return;
-      }
-      const value = getStaticNumber(assignment.value, context.scopes);
-      if (value === null) return;
-      const invalidParameter = getInvalidOrthographicCameraParameter({
-        bottom: null,
-        far: null,
-        left: null,
-        near: { node: assignment.value, value },
-        right: null,
-        top: null,
       });
       if (invalidParameter)
         context.report({ node: invalidParameter.node, message: invalidParameter.message });

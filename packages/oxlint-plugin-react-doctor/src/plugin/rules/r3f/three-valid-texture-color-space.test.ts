@@ -34,4 +34,18 @@ describe("three-valid-texture-color-space", () => {
     `;
     expect(runRule(threeValidTextureColorSpace, code).diagnostics).toHaveLength(0);
   });
+
+  it("allows a linear render-target texture used as a generated material map", () => {
+    const code = `
+      import * as THREE from "three";
+      class ContactShadow {
+        constructor() {
+          this.target = new THREE.WebGLRenderTarget(512, 512);
+          this.target.texture.colorSpace = THREE.NoColorSpace;
+          this.material = new THREE.MeshBasicMaterial({ map: this.target.texture });
+        }
+      }
+    `;
+    expect(runRule(threeValidTextureColorSpace, code).diagnostics).toHaveLength(0);
+  });
 });

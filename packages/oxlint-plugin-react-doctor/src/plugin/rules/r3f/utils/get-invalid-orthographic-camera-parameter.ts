@@ -1,5 +1,4 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
-import { MINIMUM_ORTHOGRAPHIC_CAMERA_NEAR } from "../constants.js";
 
 interface StaticOrthographicCameraParameter {
   readonly node: EsTreeNode;
@@ -33,12 +32,6 @@ export const getInvalidOrthographicCameraParameter = (
     return {
       node: parameters.bottom.node,
       message: "OrthographicCamera top and bottom planes must differ",
-    };
-  }
-  if (parameters.near && parameters.near.value < MINIMUM_ORTHOGRAPHIC_CAMERA_NEAR) {
-    return {
-      node: parameters.near.node,
-      message: "OrthographicCamera near must be zero or greater",
     };
   }
   if (parameters.near && parameters.far && parameters.far.value <= parameters.near.value) {

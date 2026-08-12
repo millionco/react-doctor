@@ -129,6 +129,31 @@ const findIndexedArrayObject = (
   return indexedArrayObject;
 };
 
+const EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "==", "!==", "!="]);
+
+const hasIndexedAccessWithinEquality = (
+  callbackBody: EsTreeNode,
+  indexParameterName: string,
+): boolean => {
+  let hasIndexedEquality = false;
+  walkAst(callbackBody, (child: EsTreeNode) => {
+    if (hasIndexedEquality || !isNodeOfType(child, "BinaryExpression")) return;
+    if (!EQUALITY_OPERATORS.has(child.operator)) return;
+    walkAst(child, (comparisonChild: EsTreeNode) => {
+      if (
+        isNodeOfType(comparisonChild, "MemberExpression") &&
+        comparisonChild.computed &&
+        isNodeOfType(comparisonChild.property, "Identifier") &&
+        comparisonChild.property.name === indexParameterName
+      ) {
+        hasIndexedEquality = true;
+        return false;
+      }
+    });
+  });
+  return hasIndexedEquality;
+};
+
 const unwrapChainExpression = (node: EsTreeNode): EsTreeNode =>
   isNodeOfType(node, "ChainExpression") ? node.expression : node;
 
@@ -346,18 +371,19 @@ const peelLengthPreservingDerivation = (expression: EsTreeNode): EsTreeNode => {
       const callee = unwrapChainExpression(current.callee);
       if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
         const calleeObject = unwrapChainExpression(callee.object);
+        const calleePropertyName = callee.property.name;
         if (
           isNodeOfType(calleeObject, "Identifier") &&
           calleeObject.name === "Array" &&
-          callee.property.name === "from" &&
+          calleePropertyName === "from" &&
           current.arguments?.length === 1
         ) {
           current = unwrapChainExpression(current.arguments[0]);
           continue;
         }
-        if (LENGTH_PRESERVING_METHOD_NAMES.has(callee.property.name)) {
+        if (LENGTH_PRESERVING_METHOD_NAMES.has(calleePropertyName)) {
           const isBoundedSlice =
-            callee.property.name === "slice" && (current.arguments ?? []).length > 0;
+            calleePropertyName === "slice" && (current.arguments ?? []).length > 0;
           if (!isBoundedSlice) {
             current = calleeObject;
             continue;
@@ -477,6 +503,7 @@ export const jsLengthCheckFirst = defineRule({
       if (callbackParameters.length < 2) return; // need (item, index, ...) to address other array
       const indexParameter = callbackParameters[1];
       if (!isNodeOfType(indexParameter, "Identifier")) return;
+      if (!hasIndexedAccessWithinEquality(callback.body, indexParameter.name)) return;
 
       const indexedArrayObject = findIndexedArrayObject(callback.body, indexParameter.name);
       if (!indexedArrayObject) return;

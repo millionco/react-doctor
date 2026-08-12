@@ -28,4 +28,38 @@ describe("three-no-compile-in-animation-loop", () => {
     `;
     expect(runRule(threeNoCompileInAnimationLoop, code).diagnostics).toHaveLength(0);
   });
+
+  it("allows a one-shot compile stage that advances after its switch", () => {
+    const code = `
+      import { WebGLRenderer } from "three";
+      const renderer = new WebGLRenderer();
+      let loadingStage = 0;
+      const buildNextStage = () => {
+        switch (loadingStage) {
+          case 4:
+            renderer.compileAsync(scene, camera);
+            break;
+        }
+        loadingStage += 1;
+      };
+      renderer.setAnimationLoop(() => buildNextStage());
+    `;
+    expect(runRule(threeNoCompileInAnimationLoop, code).diagnostics).toHaveLength(0);
+  });
+
+  it("reports a compile in a switch that does not advance its stage", () => {
+    const code = `
+      import { WebGLRenderer } from "three";
+      const renderer = new WebGLRenderer();
+      let loadingStage = 0;
+      renderer.setAnimationLoop(() => {
+        switch (loadingStage) {
+          case 0:
+            renderer.compile(scene, camera);
+            break;
+        }
+      });
+    `;
+    expect(runRule(threeNoCompileInAnimationLoop, code).diagnostics).toHaveLength(1);
+  });
 });

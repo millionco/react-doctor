@@ -19,7 +19,12 @@ export const threePreferGpuPositionAnimation = defineRule({
         const callback = resolveThreeAnimationLoopCallback(node, context.scopes);
         if (!callback || analyzedCallbacks.has(callback)) return;
         analyzedCallbacks.add(callback);
-        const firstMutation = findRepeatedPositionBufferMutations(callback, context)[0];
+        const firstMutation = findRepeatedPositionBufferMutations(
+          callback,
+          context,
+          new Set(),
+          false,
+        )[0];
         if (!firstMutation) return;
         context.report({
           node: firstMutation,

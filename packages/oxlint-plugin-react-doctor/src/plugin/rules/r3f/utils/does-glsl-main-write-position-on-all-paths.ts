@@ -302,6 +302,18 @@ export const doesGlslMainWritePositionOnAllPaths = (
   source: string,
 ): GlslPositionPathAnalysis => {
   const analysis = doesGlslMainWriteVectorOnAllPaths(program, source, "gl_Position");
+  const mainStart = analysis.mainFunction?.location?.start.offset;
+  const mainEnd = analysis.mainFunction?.location?.end.offset;
+  const mainSource =
+    mainStart !== undefined && mainEnd !== undefined ? source.slice(mainStart, mainEnd) : "";
+  if (
+    /^[ \t]*#[ \t]*include[ \t]*<[ \t]*project_vertex[ \t]*>/m.test(maskGlslComments(mainSource))
+  ) {
+    return {
+      mainFunction: analysis.mainFunction,
+      writesPositionOnAllPaths: true,
+    };
+  }
   return {
     mainFunction: analysis.mainFunction,
     writesPositionOnAllPaths: analysis.writesVectorOnAllPaths,

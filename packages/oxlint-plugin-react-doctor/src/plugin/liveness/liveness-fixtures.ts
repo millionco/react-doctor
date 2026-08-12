@@ -2725,7 +2725,7 @@ export const useListNavigation = ({ selectedIndex, focusItem }) => {
     code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.setAnimationLoop(() => renderer.readRenderTargetPixels(target, 0, 0, 1, 1, pixels));',
   },
   "three-prefer-set-animation-loop": {
-    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const frame = () => { renderer.render(scene, camera); requestAnimationFrame(frame); }; requestAnimationFrame(frame);',
+    code: 'import { WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); renderer.xr.enabled = true; const frame = () => { renderer.render(scene, camera); requestAnimationFrame(frame); }; requestAnimationFrame(frame);',
   },
   "three-require-animation-mixer-update": {
     code: 'import { AnimationMixer, WebGLRenderer } from "three"; const renderer = new WebGLRenderer(); const mixer = new AnimationMixer(model); mixer.clipAction(clip).play(); renderer.setAnimationLoop(() => renderer.render(scene, camera));',

@@ -237,7 +237,10 @@ const resolveCleanedDiagnostic = (
   };
 };
 
-const parseRuleCode = (code: string): { plugin: string; rule: string } => {
+const parseRuleCode = (code: unknown): { plugin: string; rule: string } => {
+  if (typeof code !== "string" || code.length === 0) {
+    return { plugin: "unknown", rule: "unknown" };
+  }
   const match = code.match(/^(.+)\((.+)\)$/);
   if (!match) return { plugin: "unknown", rule: code };
   return { plugin: match[1].replace(/^eslint-plugin-/, ""), rule: match[2] };

@@ -111,7 +111,6 @@ const LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY: Readonly<Record<string, string>> = {
   "react/no-direct-mutation-state": "react-doctor/no-direct-mutation-state",
   "react/no-find-dom-node": "react-doctor/no-find-dom-node",
   "react/no-is-mounted": "react-doctor/no-is-mounted",
-  "react/no-multi-comp": "react-doctor/no-multi-comp",
   "react/no-namespace": "react-doctor/no-namespace",
   "react/no-react-children": "react-doctor/no-react-children",
   "react/no-redundant-should-component-update": "react-doctor/no-redundant-should-component-update",

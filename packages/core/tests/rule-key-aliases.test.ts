@@ -113,4 +113,22 @@ describe("rule-key-aliases", () => {
       expect(getEquivalentRuleKeys("toString")).toEqual(["toString"]);
     });
   });
+
+  describe("removed aliases (issue #1639)", () => {
+    it("does not alias react/no-multi-comp to react-doctor/no-multi-comp", () => {
+      expect(isSameRuleKey("react/no-multi-comp", "react-doctor/no-multi-comp")).toBe(false);
+    });
+
+    it("treats react/no-multi-comp as a distinct rule from react-doctor/no-multi-comp", () => {
+      const reactKeys = getEquivalentRuleKeys("react/no-multi-comp");
+      expect(reactKeys).toEqual(["react/no-multi-comp"]);
+      expect(reactKeys).not.toContain("react-doctor/no-multi-comp");
+    });
+
+    it("treats react-doctor/no-multi-comp as its own rule", () => {
+      const rdKeys = getEquivalentRuleKeys("react-doctor/no-multi-comp");
+      expect(rdKeys).toEqual(["react-doctor/no-multi-comp"]);
+      expect(rdKeys).not.toContain("react/no-multi-comp");
+    });
+  });
 });

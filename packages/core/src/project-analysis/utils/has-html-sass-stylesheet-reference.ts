@@ -150,12 +150,25 @@ export const hasHtmlSassStylesheetReference = (rootDirectory: string): boolean =
   for (const htmlFile of collectParcelHtmlEntryPaths(rootDirectory)) {
     let content: string;
     try {
-      content = readFileSync(htmlFile, "utf8").replace(HTML_COMMENT_PATTERN, "");
+      content = readFileSync(htmlFile, "utf8");
     } catch {
       continue;
     }
 
-    for (const linkTag of content.match(HTML_LINK_PATTERN) ?? []) {
+    const commentRanges = [...content.matchAll(HTML_COMMENT_PATTERN)].map((commentMatch) => ({
+      start: commentMatch.index,
+      end: commentMatch.index + commentMatch[0].length,
+    }));
+    for (const linkTagMatch of content.matchAll(HTML_LINK_PATTERN)) {
+      if (
+        commentRanges.some(
+          (commentRange) =>
+            linkTagMatch.index >= commentRange.start && linkTagMatch.index < commentRange.end,
+        )
+      ) {
+        continue;
+      }
+      const linkTag = linkTagMatch[0];
       const relation = getHtmlAttribute(linkTag, "rel");
       const href = getHtmlAttribute(linkTag, "href")?.split(/[?#]/, 1)[0];
       if (

@@ -2185,6 +2185,23 @@ describe("analyzeProject", () => {
     expect(result.unusedDependencies.map((dependency) => dependency.name)).toContain("sass");
   });
 
+  it("does not infer Parcel Sass use from a commented stylesheet link", async () => {
+    const rootDirectory = createProject(
+      {
+        "src/index.html": '<!-- <link rel="stylesheet" href="./old.scss" /> -->',
+        "src/old.scss": "$color: red;",
+      },
+      {
+        scripts: { build: "parcel src/index.html" },
+        devDependencies: { "parcel-bundler": "1.0.0", sass: "1.0.0" },
+      },
+    );
+
+    const result = await analyzeProject({ rootDirectory });
+
+    expect(result.unusedDependencies.map((dependency) => dependency.name)).toContain("sass");
+  });
+
   it("credits Sass through a live Sass loader and an extensionless build script", async () => {
     for (const files of [
       {

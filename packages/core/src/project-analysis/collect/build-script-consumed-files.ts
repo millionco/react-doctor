@@ -9,6 +9,7 @@ import {
 import { parseSourceFile } from "./parse.js";
 import { resolveEntryWithExtensions } from "../utils/resolve-entry-with-extensions.js";
 import { extractScriptFileReferences } from "../utils/extract-script-file-references.js";
+import { toPosixPath } from "../utils/to-posix-path.js";
 
 interface InvokedScriptFile {
   filePath: string;
@@ -1146,5 +1147,5 @@ export const extractBuildScriptConsumedFiles = (projectRoot: string): string[] =
 
   collectRegistryMetadataConsumedFiles(scriptAnalyses, projectRoot, consumedFiles);
   collectShadcnRegistryFiles(packageJsonPaths, projectRoot, consumedFiles);
-  return [...consumedFiles];
+  return [...consumedFiles].map(toPosixPath);
 };
